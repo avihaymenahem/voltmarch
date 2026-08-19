@@ -1343,9 +1343,13 @@ The three that are real gaps:
 ### Aircraft, and the four rifles holding the whole air layer up
 
 Extracted from `docs/AERIAL_PLAN.md`, which was a PLAN and has been DELETED. These are the
-measurements inside it that outlive it; the unexecuted design went to the task list, which is this
-repo's record-of-intent mechanism. **The rework itself is not done** — do not read any of this as
-describing shipped behaviour.
+measurements inside it that outlive it.
+
+**THE REWORK LANDED 2026-08-19 AND THE BLOCKS BELOW DESCRIBE SHIPPED BEHAVIOUR.** This note used to
+read *"the rework itself is not done — do not read any of this as describing shipped behaviour"*,
+and everything under it was a diagnosis. `WeaponDef.airMultiplier` is the fix: 0.25 on the four
+line-infantry rifles, 1 on all 38 other rows. What is still NOT done is named under *What is still
+open* below — the loiter, and the 8 m overhead blind cone.
 
 ### A rifleman out-shoots a flak battery, and that is one inversion
 
@@ -1373,12 +1377,19 @@ for. What is a nanosecond is the infantry screen a player already owns without e
 Per credit, against `ArmorClass.Light`, inside each army's own roster:
 
 ```
-army       LINE infantryman         its best DEDICATED answer      inversion
-Allies     gi            115.3      aaTurret        124.4            0.93x   (the only one not inverted)
-Meridian   mrdWayfarer   117.9      mrdSkiff         99.5            1.18x
-Soviets    conscript     220.0      flakTrooper      86.3            2.55x
-Reclaim    rclPicker     209.1      rclSkimmer       60.0            3.49x
+army       LINE infantryman         its best DEDICATED answer      inversion   AFTER
+Allies     gi            115.3      aaTurret        124.4            0.927x    0.232x
+Meridian   mrdWayfarer   117.9      mrdSkiff         99.5            1.184x    0.296x
+Soviets    conscript     220.0      flakTrooper      86.3            2.550x    0.637x
+Reclaim    rclPicker     209.1      rclSkimmer       60.0            3.485x    0.871x
 ```
+
+**RE-DERIVED 2026-08-19, AFTER THE TWELVE UNIT RENAMES AND EVERY WEAPON RETUNE SINCE: the left half
+of that table is UNCHANGED to three decimals.** Two corrections to the figures themselves, both of
+which the previous version of this block got wrong. The `dps/1000cr` columns DO run through
+`globalMul` — the sentence above says "no `dps/1000cr` ratio is", which is true of the INVERSION
+ratio (a global scalar cancels) and false of the absolute per-credit numbers beside it, which are
+delivered dps. And the raw-dps band is **47-52**, not the 46-52 quoted below.
 
 **THE MECHANISM IS THE RAW DPS, NOT THE MULTIPLIER, WHICH IS WHY THE AA ROWS ARE INNOCENT.** A rifle
 is balanced to kill infantry (SmallArms 1.00 vs Infantry) and therefore carries 46-52 raw dps; 55%
@@ -1394,11 +1405,102 @@ credits and kills two thirds of one man. Aircraft are also the thinnest hulls in
 hp on 900-1200 credits, and that is deliberate and pinned (`air-layer.spec.ts` caps `maxHp < 300`) —
 contributory, not causal.
 
-**If this is ever fixed, fix it with a per-weapon air multiplier on those four rows and nothing
-else**, and see the floor rule below for why a multiplier rather than deleting the flag. Two traps in
-deriving the number: a per-credit anchor always flatters the cheapest unit in the game (the
-Reclamation bound is set by a 90-credit Scrap Picker), and after any such nerf the AA Battery
-turret becomes the dominant answer and must be RE-MEASURED — never in the same commit.
+### The fix is one number on four rows, and the number came out of a window
+
+**`WeaponDef.airMultiplier` is 0.25 on `rifle`, `conscriptRifle`, `pulseCarbine` and `arcProd`, and
+1 on every other row in the 42-row armoury.** It multiplies the armour matrix inside
+`Damage.applyOne` — the only function in the game that writes `hp` — and ONLY when the victim's
+`locomotor` is `Air`, so ground combat and every unmodified weapon are bit-identical. The derivation
+lives above `rifle` in `src/sim/Combat.ts`; the band is `tests/air-multiplier.spec.ts`.
+
+**IT TRAVELS ON THE DAMAGE RECORD RATHER THAN BEING FOLDED INTO `amount` AT FIRE TIME**, and that is
+per-VICTIM correctness rather than tidiness. `arcProd` is a chaining tesla bolt: one trigger pull
+writes up to four records, and a gunship and the two riflemen the arc hops to next need two
+different answers. Splash has the same shape. `DamageQueue.airMul` and `ProjectileSystem.airMul` are
+the two columns that carry it — a round in flight knows only `damage`, `warhead` and its splash
+numbers, so without the second one a rifle round fired at a gunship and clipping a passing tank
+would hand the tank the gunship's answer.
+
+**THE NUMBER IS A WINDOW WITH A CHOICE INSIDE IT.** Three bounds, every one computed from the
+shipped defs, all stated over EIGHT MEN — one Barracks tab-full, the screen a player already owns
+without ever deciding to, and the same squad `emplacement-band.spec.ts` derives its ceiling from:
+
+```
+                      ceiling A       ceiling B         floor
+                       one pass    counter parity    8 men / 10 s
+  Allies                 0.416          1.078            0.130   <- the floor binds here
+  Meridian               0.382          0.844            0.127
+  Soviets                0.428          0.392            0.108
+  Reclaim                0.469          0.287            0.120
+                                        ^ the ceiling binds here
+```
+
+Ceiling A is `8 q T < hp`, where `T = 2R/v` is one attack pass across the SHOOTER's disc — measured
+per hull at 3.13 / 3.33 / 2.52 / 2.55 s. An aircraft that cannot survive one pass over a screen it
+did not choose to fight is not a unit class. Ceiling B is 1/the inversion column. The floor is the
+anti-hang floor made quantitative: a floor that takes a minute is not a floor. **Window
+[0.130, 0.287], shipped 0.25** — 13% under the tightest ceiling, 92% over the tightest floor,
+sitting high in it on purpose, because the floor is the property that must never be lost and the
+ceilings are the ones the report is about.
+
+**TRAP 1 IS REAL AND THIS IS THE ANSWER TO IT.** A per-credit anchor always flatters the cheapest
+unit, and ceiling B's binding value IS set by the 90-credit Scrap Picker — whose ABSOLUTE air output
+is the LOWEST of the four (18.8 delivered dps against a G.I.'s 23.1). It does not set the constant:
+the window is bracketed at the top by the Reclamation and at the bottom by the ALLIES, and 0.25
+satisfies all four armies' own bounds at once. Four per-row values were considered and rejected
+because the four windows overlap — four numbers would encode a precision the arithmetic does not
+support. The FIELD is per-weapon so they can diverge later; the VALUE is one because the evidence
+says one.
+
+**MEASURED IN THE ENGINE, NOT ONLY ON PAPER.** `aircraft-killer-probe.spec.ts` §3, eight men against
+three Interceptors at 14 m, sim-seconds to clear all three; and §6, a 5800-credit Allied position
+against three Interceptors:
+
+```
+                  before    after          §6 damage dealt to the flight
+  gi x8            3.10     12.60            aaTurret  338.7 -> 430.1
+  conscript x8     3.93     15.63            ifv        88.0 -> 104.0
+  mrdWayfarer x8   3.77     14.63            gi        140.9 ->  34.8   (0.247x)
+  rclPicker x8     7.77     28.23            still 3/3 down
+```
+
+The right-hand column is the whole point in one line: **the answer you bought on purpose now does
+the work.**
+
+Both columns are A/B CONTROLS taken on this tree with the constant forced to 1 and then to 0.25, not
+figures carried forward — which matters, because §6's own header quotes a 6100-credit position and
+the renames have made it 5800. The control reproduced the previously published 338.7 / 140.9 / 88.0
+to the digit, so the two halves really are comparable.
+
+**THE FIRST RUN OF THAT PROBE REPORTED THE TABLE UNCHANGED, AND WAS GREEN.** `makeRig` shadows the
+private `applyOne` with a POSITIONAL re-declaration to attribute each hit to a path, and the
+wrapper simply did not forward the new seventh argument — so the real method read its default and
+thirteen tests measured the behaviour the change had just removed. A harness that re-declares a
+signature silently discards anything added to it; the wrapper carries a note saying so now.
+
+**TRAP 2, AND IT IS DELIBERATELY NOT ACTED ON HERE.** The AA Battery becomes the dominant answer
+after this and must be re-measured in a SEPARATE commit. Re-measured 2026-08-19: **nothing about
+`aaCannon` moved** — 3x34 / 0.82 s, 99.5 delivered dps vs air, 1.81-2.41 s per airframe, and
+187 / 202 / 205 / 261% of an aircraft's health on one 26 m pass, reproducing the figures this file
+already carried. What moved is everything around it. Against 800 credits of that army's line
+infantry it went from **1.7-1.8x SLOWER in the two cheap-infantry armies and a bare 1.06-1.08x
+faster in the other two**, to **2.3-4.3x faster in all four**:
+
+```
+             800 cr of line infantry      one AA Battery
+             before      after
+  Allies      2.60 s     10.40 s              2.41 s
+  Meridian    2.23 s      8.91 s              2.11 s
+  Soviets     1.08 s      4.32 s              1.91 s
+  Reclaim     1.08 s      4.30 s              1.81 s
+```
+
+Whether that is now TOO dominant is the open question this change hands forward, and it is a
+question about the Battery's price and tier rather than about its row.
+`tests/air-multiplier.spec.ts` deliberately asserts no ceiling on it.
+
+**DO NOT REVERT THIS BY DELETING `canTargetAir`.** The floor rule below is the same argument from
+the other side, and §1 of `air-multiplier.spec.ts` goes red by name if anyone tries.
 
 ### The anti-hang floor is four rifles, and it is the reason never to delete `canTargetAir`
 
@@ -1431,8 +1533,15 @@ AI is then ungated against whatever the human happens to have earned.
 > held up entirely by the four line-infantry rifles. Deleting `canTargetAir` from them is the
 > cleanest-looking answer to "too many things shoot planes" and it removes the floor in all four
 > armies at once. **Nerf them with a MULTIPLIER instead** — a weapon that still kills an aircraft
-> slowly keeps the floor by construction, and twenty Scrap Pickers at 0.30 still take a Hornet down
-> in about two seconds.
+> slowly keeps the floor by construction.
+
+**THAT IS WHAT SHIPPED, AND THE FLOOR IS MEASURED NOW RATHER THAN ARGUED.** At 0.25, eight men take
+4.13 / 5.53 / 4.77 / 13.10 sim-seconds to bring an Interceptor down in the real engine
+(`aircraft-killer-probe.spec.ts` §5, whose assertion is unchanged: the aircraft must DIE), one
+rifleman alone still manages it in 34-42 s, and twenty Scrap Pickers in 1.9 — the "about two
+seconds" this paragraph used to project at 0.30. `air-multiplier.spec.ts` fails in BOTH directions:
+above 0.287 the inversion returns, below 0.130 the floor stops being reachable, and at 0 the
+`canTargetAir` assertion goes red by name.
 
 The residual state this does NOT close: no Construction Yard, no barracks-equivalent, and no
 surviving air-capable unit. With a yard you rebuild the barracks; with a war factory you build the
@@ -1461,6 +1570,14 @@ the largest single multiplier on how fast aircraft die.
 attack run takes **14% off a Power Plant**. An aircraft that cannot stop is not a unit class. The
 loiter is a problem because it is the ONLY behaviour, not because loitering is wrong: the fix is a
 way OUT that the player and the AI can both issue, never a rule forbidding staying.
+
+**THE AIR MULTIPLIER DOES NOT CLOSE THIS AND WAS NOT MEANT TO.** It buys the aircraft roughly four
+times as long to be wrong in — a screen that used to end it in about a second now needs four to
+five, and one full 2R/v pass is survivable in all four armies where it was not in any — but a parked
+aircraft still stays until one side is dead. **What is still open, and neither is a data change:**
+the loiter has no way out, and the 8 m overhead blind cone means the safest place for an aircraft is
+directly over the battery. Both are behaviour, both are in the task list, and both survived this
+change untouched by design.
 
 **FIVE ANSWERS TO "AIRCRAFT DIE TOO FAST" THAT WERE COSTED AND REJECTED**, recorded so nobody
 re-derives them. Overturn one by rewriting it with an argument, not by trying it.
@@ -1517,8 +1634,10 @@ had already recorded.
 ### A tank stopped killing aircraft, and measuring it moved two other numbers
 
 Reported as *"i still think we have unbalanced fights... 3 airplanes destroyed by 1 tank in a
-second... something is weird"*. **This one is SHIPPED behaviour, unlike the rest of this section.**
-`tests/aircraft-killer-probe.spec.ts` holds every figure below; re-run it rather than re-quoting it.
+second... something is weird"*. `tests/aircraft-killer-probe.spec.ts` holds every figure below;
+re-run it rather than re-quoting it. (This block used to open "**This one is SHIPPED behaviour,
+unlike the rest of this section**", which stopped being a distinction when the air multiplier
+landed — the whole section is shipped now except the two items named under *What is still open*.)
 
 - **`Damage.applySplash` WAS PURELY HORIZONTAL.** `y` was a parameter of that function read by
   nothing but the crater decal, and the victim loop filters on Alive, PendingDestroy and Garrisoned

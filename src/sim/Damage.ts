@@ -244,12 +244,12 @@ export class DamageSystem {
       if (splash > 0) {
         this.applySplash(
           s, q.x[r], q.y[r], q.z[r], splash, q.splashFalloff[r],
-          q.amount[r], warhead, attacker,
+          q.amount[r], warhead, attacker, q.airMul[r],
         );
       } else {
         const idx = this.world.store.index(q.target[r] as EntityId);
         if (idx < 0) continue;
-        this.applyOne(s, idx, attacker, q.amount[r], warhead, 1);
+        this.applyOne(s, idx, attacker, q.amount[r], warhead, 1, q.airMul[r]);
       }
     }
     q.clear();
@@ -265,6 +265,7 @@ export class DamageSystem {
     x: number, y: number, z: number,
     radius: number, rimFalloff: number,
     amount: number, warhead: WarheadClass, attacker: EntityId,
+    airMul = 1,
   ): void {
     const w = this.world;
     const st = w.store;
@@ -352,7 +353,7 @@ export class DamageSystem {
         const victimPlayer = st.owner[i] as PlayerId;
         if (w.areAllied(attackerPlayer, victimPlayer)) scale *= COMBAT_DAMAGE.friendlyFireMul;
       }
-      this.applyOne(s, i, attacker, amount * scale, warhead, falloff);
+      this.applyOne(s, i, attacker, amount * scale, warhead, falloff, airMul);
     }
 
     // The crater itself, once, regardless of how many victims it found.
@@ -372,7 +373,7 @@ export class DamageSystem {
   private applyOne(
     s: SimContext,
     i: number, attacker: EntityId, amount: number, warhead: WarheadClass,
-    intensity: number,
+    intensity: number, airMul = 1,
   ): void {
     const w = this.world;
     const st = w.store;
@@ -398,8 +399,27 @@ export class DamageSystem {
     // replaces, so it is invariant on every trade ratio: scaling attacker and
     // defender by the same factor cancels out of `36 x r x HP/D`. See the
     // constant's own block in `config.ts` for the measured before/after.
+    //
+    // THE FOURTH TERM IS `WeaponDef.airMultiplier` AND IT ONLY EXISTS FOR A
+    // FLYING VICTIM. Reported as *"Redecide who can shoot drones and planes,
+    // they are being destroyed in nano seconds"*: the four line-infantry rifles
+    // out-shot their own army's purpose-built anti-air per credit, because a
+    // rifle's air number is a side effect of the one chosen to kill infantry.
+    // The scale rides on the damage RECORD (`DamageQueue.airMul`) rather than
+    // being folded into `amount` at fire time, so a chaining tesla bolt and a
+    // splash burst answer each victim separately — see that column's own note.
+    //
+    // `locomotor === Air` IS `Combat.isAirborne`, INLINED BECAUSE THIS FILE MAY
+    // NOT IMPORT THAT ONE (Combat imports `armorMultiplier` from here). Read
+    // off the DECLARATION and never off altitude, for the reason that function
+    // gives: a tank cresting a ridge must not become an aircraft for one tick.
+    //
+    // The whole term is `1` for every row that has not asked for one, so ground
+    // combat and every unmodified weapon are bit-identical.
+    const airborne = st.locomotor[i] === Locomotor.Air;
     const mult = armorMultiplier(warhead, st.armorClass[i] as ArmorClass)
       * upgradeMul(w.players[st.owner[i]], UpgradeLever.Armour, st.kind[i] as EntityKind)
+      * (airborne ? airMul : 1)
       * COMBAT_DAMAGE.globalMul;
     const dealt = amount * mult;
     if (!(dealt > 0)) return;

@@ -92,6 +92,9 @@ function wpn(
     // Opposite default to its sibling, and deliberately so — see WeaponDef.
     // A gun answers air only when its row SAYS it answers air.
     canTargetAir: extra?.canTargetAir ?? false,
+    // 1 = "this row's air damage is whatever the armour matrix says". Only the
+    // four line-infantry rifles carry anything else; see `rifle` below.
+    airMultiplier: extra?.airMultiplier ?? 1,
     muzzleFx: extra?.muzzleFx ?? FxKind.MuzzleFlashSmall,
     travelFx: extra?.travelFx ?? FxKind.TracerBullet,
     impactFx: extra?.impactFx ?? FxKind.ImpactMetal,
@@ -101,6 +104,21 @@ function wpn(
 }
 
 const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
+
+/**
+ * The one air-damage scale the four LINE-INFANTRY rifles share.
+ *
+ * ONE CONSTANT, FOUR ROWS, TWO FILES — `rifle` and `conscriptRifle` below,
+ * `pulseCarbine` and `arcProd` in `data/Defs.ts`. It is a named export rather
+ * than four literals because the derivation below is a single window computed
+ * across all four armies at once: four copies of a number would let somebody
+ * "fix" one army and leave the other three quietly describing a band nobody
+ * re-derived. `tests/air-multiplier.spec.ts` asserts the roster carrying it is
+ * exactly these four, in both directions.
+ *
+ * The full derivation is the block above `rifle`.
+ */
+export const LINE_RIFLE_AIR_MUL = 0.25;
 
 /**
  * The fallback armoury. Ordering is STABLE — `WEAPON_KEYS` indexes into it and
@@ -120,14 +138,103 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  * point of having one.
  */
 export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
+  /*
+   * `airMultiplier: 0.25` — THE LINE RIFLE IS AN EMERGENCY ANSWER, NOT AN
+   * AIR-DEFENCE PLAN. Reported as *"Redecide who can shoot drones and planes,
+   * they are being destroyed in nano seconds"*.
+   *
+   * FOUR ROWS CARRY THIS AND NOTHING ELSE DOES: this one, `conscriptRifle`
+   * below, and `pulseCarbine` / `arcProd` in `data/Defs.ts`. They are the four
+   * armies' LINE infantry weapons — the gun each army has the most of — and
+   * that is the whole defect. Measured off the shipped tables (delivered dps
+   * per 1000 credits against `ArmorClass.Light`, which every aircraft is):
+   *
+   *     army      line infantryman       its best dedicated answer     inversion
+   *     Allies    gi           115.3     aaTurret       124.4            0.927x
+   *     Meridian  mrdWayfarer  117.9     mrdSkiff        99.5            1.184x
+   *     Soviets   conscript    220.0     flakTrooper     86.3            2.550x
+   *     Reclaim   rclPicker    209.1     rclSkimmer      60.0            3.485x
+   *
+   * THE MECHANISM IS THE RAW DPS, NOT THE MULTIPLIER, which is why the AA rows
+   * are innocent and cutting them would deepen the inversion. A rifle is
+   * balanced to kill infantry (SmallArms 1.00 vs Infantry) and therefore
+   * carries 47-52 raw dps; 55% of that is still 20-23. `flakBurst` is balanced
+   * as an infantryman and carries 32.4 raw at 100%. The purpose-built weapon's
+   * 1.6x multiplier and its 1.6x raw deficit CANCEL EXACTLY. Nothing ever chose
+   * a rifle's air number; it fell out of one chosen for a different job.
+   *
+   * WHY NOT DELETE `canTargetAir` FROM THESE FOUR. It is the cleanest-looking
+   * fix and it removes the anti-hang floor in all four armies at once — see
+   * `WeaponDef.airMultiplier`. Five other candidates (a seventh `ArmorClass`,
+   * an `EntityKind.Aircraft`, moving `ARMOR_MATRIX[SmallArms][Light]` off 0.55,
+   * raising aircraft HP, a `BuildTab.Aircraft`) are costed and rejected in
+   * CLAUDE.md; overturn one with an argument, not by restating it.
+   *
+   * THE NUMBER IS A WINDOW WITH A CHOICE INSIDE IT, and all three bounds are
+   * computed from the shipped defs rather than picked. Eight men is the unit
+   * throughout: one Barracks tab-full, the screen a player already owns without
+   * ever deciding to, and the same squad `tests/emplacement-band.spec.ts`
+   * derives its ceiling from.
+   *
+   *   CEILING A — ONE PASS. An aircraft's atomic piece of work is one attack
+   *   pass, `2R / v` across the SHOOTER's disc, measured per hull: 3.13 s
+   *   (Petrel), 3.33 (Kestrel), 2.52 (Interceptor), 2.55 (Swarmhornet). An
+   *   aircraft that cannot survive one pass over a screen it did not choose to
+   *   fight is not a unit class. `8 q T < hp` gives 0.416 / 0.382 / 0.428 /
+   *   0.469 — binding 0.382, the Pact.
+   *
+   *   CEILING B — THE COUNTER MUST BE THE ANSWER. Credit for credit, an army's
+   *   own dedicated answer must beat its line infantryman against aircraft, or
+   *   the purpose-built thing is a trap nobody should ever buy. That is 1/the
+   *   inversion column above: 1.078 / 0.844 / 0.392 / 0.287 — binding 0.287,
+   *   the Reclamation.
+   *
+   *   FLOOR — THE ANTI-HANG FLOOR MUST STAY REAL. A floor that takes a minute
+   *   is not a floor. Eight men must still kill an aircraft inside ten seconds:
+   *   0.130 / 0.127 / 0.108 / 0.120 — binding 0.130, the Allies.
+   *
+   * Window [0.130, 0.287]. Shipped 0.25: 13% under the tightest ceiling and
+   * 92% over the tightest floor, sitting HIGH in the window on purpose, because
+   * the floor is the property that must never be lost and the ceilings are the
+   * ones the report is about.
+   *
+   * TRAP 1, AND HOW THIS ANSWERS IT. A per-credit anchor always flatters the
+   * cheapest unit in the game, and the tightest ceiling here IS set by a
+   * 90-credit Scrap Picker. It does not set the SHIPPED number: the window is
+   * bracketed at the top by the Reclamation and at the bottom by the Allies,
+   * and 0.25 satisfies all four armies' own bounds simultaneously. Four
+   * per-row values were considered and rejected — the four windows overlap on
+   * [0.130, 0.287], so four numbers would encode a precision the arithmetic
+   * does not support. The FIELD is per-weapon so they can diverge later; the
+   * VALUE is one number because today the evidence says one number.
+   *
+   * WHAT IT BUYS, and every figure is re-derivable from `WEAPONS` + `UNITS`:
+   *
+   *                q     8 men kill    1 man kills   inversion   800 cr of line
+   *     Allies    5.77     5.20 s        41.6 s        0.232x    2.60 -> 10.40 s
+   *     Meridian  5.16     5.09 s        40.7 s        0.296x    2.23 ->  8.91 s
+   *     Soviets   5.50     4.32 s        34.5 s        0.637x    1.08 ->  4.32 s
+   *     Reclaim   4.70     4.78 s        38.3 s        0.871x    1.08 ->  4.30 s
+   *
+   * Every army's dedicated answer now wins per credit, the screen is 2.2-2.6x
+   * slower than one AA Battery (1.81-2.41 s) instead of twice as fast, and one
+   * rifleman alone still takes an aircraft down in 34-42 s — non-zero, bounded,
+   * and the floor by construction.
+   *
+   * TRAP 2, DELIBERATELY NOT ACTED ON HERE. The AA Battery becomes the dominant
+   * answer after this and must be RE-MEASURED — in its own commit, never this
+   * one. `tests/aircraft-killer-probe.spec.ts` §4 prints the live figures.
+   */
   /* 0 */ wpn('rifle', 'M1 Carbine', 18, WarheadClass.SmallArms, 18, 0.85,
     ProjectileKind.Bullet, 95,
     { burstCount: 3, burstDelay: 0.09, turretTurnRate: 320, canTargetAir: true,
+      airMultiplier: LINE_RIFLE_AIR_MUL,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 1 */ wpn('conscriptRifle', 'AK Pattern', 16, WarheadClass.SmallArms, 17, 0.8,
     ProjectileKind.Bullet, 92,
     { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320, canTargetAir: true,
+      airMultiplier: LINE_RIFLE_AIR_MUL,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 2 */ wpn('bite', 'Jaws', 55, WarheadClass.SmallArms, 3.6, 1.1,
@@ -720,6 +827,7 @@ export class WeaponSystem {
           shooter, targetHandle, owner, faction,
           w.impactFx, w.travelFx,
           w.projectile === ProjectileKind.Rocket ? ROCKET_TURN_RATE : 0,
+          w.airMultiplier,
         );
         break;
     }
@@ -775,7 +883,7 @@ export class WeaponSystem {
 
     this.channels.damage.push(
       st.handleOf(t), st.handleOf(i), damage, w.warhead,
-      hx, hy, hz, w.splashRadius, w.splashFalloff,
+      hx, hy, hz, w.splashRadius, w.splashFalloff, w.airMultiplier,
     );
     if (w.travelFx !== FxKind.None) {
       // scale carries the beam LENGTH in metres; dx/dy/dz are the unit vector.
@@ -813,7 +921,7 @@ export class WeaponSystem {
 
       this.channels.damage.push(
         st.handleOf(victim), shooter, dmg, w.warhead, hx, hy, hz,
-        w.splashRadius, w.splashFalloff,
+        w.splashRadius, w.splashFalloff, w.airMultiplier,
       );
       this.channels.fx.push(
         FxKind.TeslaArc, fromX, fromY, fromZ, dx / d, dy / d, dz / d, d, shooter, faction,

@@ -96,6 +96,18 @@ export class ProjectileSystem {
   readonly warhead = new Uint8Array(MAX_PROJECTILES);
   readonly splashRadius = new Float32Array(MAX_PROJECTILES);
   readonly splashFalloff = new Float32Array(MAX_PROJECTILES);
+  /**
+   * `WeaponDef.airMultiplier`, carried to the damage record this round writes.
+   *
+   * A ROUND IN FLIGHT DOES NOT KNOW ITS WEAPON — only `damage`, `warhead` and
+   * the two splash numbers travel — so without this column the multiplier would
+   * have to be folded into `damage` at SPAWN time, against the target the
+   * shooter was AIMING at. `sweep` hits whatever it meets first, so a rifle
+   * round fired at a gunship and clipping a passing tank would have taken the
+   * gunship's answer to the tank. Three of the four rows that carry a
+   * multiplier are `ProjectileKind.Bullet`, so this is their whole path.
+   */
+  readonly airMul = new Float32Array(MAX_PROJECTILES);
   readonly impactFx = new Uint8Array(MAX_PROJECTILES);
   readonly travelFx = new Uint8Array(MAX_PROJECTILES);
 
@@ -154,6 +166,7 @@ export class ProjectileSystem {
     owner: PlayerId, faction: Faction,
     impactFx: FxKind, travelFx: FxKind,
     turnRateRad: number,
+    airMul = 1,
   ): number {
     if (this.freeCount === 0) { this.spawnFailures++; return -1; }
     const i = this.freeList[--this.freeCount];
@@ -191,6 +204,7 @@ export class ProjectileSystem {
     this.warhead[i] = warhead;
     this.splashRadius[i] = splashRadius;
     this.splashFalloff[i] = splashFalloff;
+    this.airMul[i] = airMul;
     this.impactFx[i] = impactFx;
     this.travelFx[i] = travelFx;
 
@@ -409,12 +423,12 @@ export class ProjectileSystem {
       // full amount (falloff 1 at distance 0) and everything nearby scales down.
       this.channels.damage.push(
         NONE, this.attacker[i] as EntityId, this.damage[i], this.warhead[i] as WarheadClass,
-        hx, hy, hz, splash, this.splashFalloff[i],
+        hx, hy, hz, splash, this.splashFalloff[i], this.airMul[i],
       );
     } else if (target !== NONE) {
       this.channels.damage.push(
         target, this.attacker[i] as EntityId, this.damage[i], this.warhead[i] as WarheadClass,
-        hx, hy, hz, 0, 0,
+        hx, hy, hz, 0, 0, this.airMul[i],
       );
     }
 
@@ -438,7 +452,7 @@ export class ProjectileSystem {
     if (splash > 0) {
       this.channels.damage.push(
         NONE, this.attacker[i] as EntityId, this.damage[i], this.warhead[i] as WarheadClass,
-        hx, hy, hz, splash, this.splashFalloff[i],
+        hx, hy, hz, splash, this.splashFalloff[i], this.airMul[i],
       );
       this.channels.fx.push(
         this.impactFx[i] as FxKind, hx, hy, hz, 0, 1, 0,

@@ -372,10 +372,23 @@ async function makeRig(seed = 7): Promise<Rig> {
    * Nothing in the game records this. `entity:killed` carries the killer and
    * not the route, and `DamageStats` counts applications and kills in bulk.
    */
+  /*
+   * EVERY PARAMETER MUST BE FORWARDED, AND A DROPPED ONE IS INVISIBLE.
+   *
+   * These wrappers are POSITIONAL re-declarations of two private methods, so a
+   * parameter added to either one is silently discarded here and the real
+   * method reads its default instead. That is not hypothetical: when
+   * `WeaponDef.airMultiplier` landed, the first run of this file reported the
+   * whole §3 table UNCHANGED — one G.I. still killing an Interceptor in 8.47 s
+   * for exactly 190 damage — because `applyOne`'s new 7th argument stopped at
+   * this line. Thirteen green tests measuring the behaviour the change had just
+   * removed. `airMul` is threaded through explicitly below for that reason; the
+   * next parameter has to be too.
+   */
   const dyn = damage as unknown as {
     applySplash: (...a: unknown[]) => void;
     applyOne: (s: SimContext, i: number, attacker: EntityId, amount: number,
-      warhead: WarheadClass, intensity: number) => void;
+      warhead: WarheadClass, intensity: number, airMul?: number) => void;
   };
   const realSplash = dyn.applySplash.bind(damage);
   const realOne = dyn.applyOne.bind(damage);
@@ -393,13 +406,13 @@ async function makeRig(seed = 7): Promise<Rig> {
   };
   dyn.applyOne = (
     s: SimContext, i: number, attacker: EntityId, amount: number,
-    warhead: WarheadClass, intensity: number,
+    warhead: WarheadClass, intensity: number, airMul?: number,
   ): void => {
     const before = st.hp[i];
     const victim = st.handleOf(i) as number;
     const ev = current;
     const path: Path = ev !== null ? 'splash' : 'direct';
-    realOne(s, i, attacker, amount, warhead, intensity);
+    realOne(s, i, attacker, amount, warhead, intensity, airMul);
     const after = st.hp[i];
     if (after === before) return;              // refused (matrix 0, construction, dead)
     if (ev !== null) ev.victims.push(victim);
@@ -858,10 +871,24 @@ describe('§3b the reported incident, staged', () => {
   8 m: ${JSON.stringify(outside)}`);
     expect(inside.damageDirect + inside.damageSplash, 'the dead zone has closed — re-measure it')
       .toBe(0);
+    /*
+     * THE CONTROL IS DAMAGE, NOT A KILL, AND IT WAS A KILL UNTIL 2026-08-19.
+     *
+     * This is a claim about GEOMETRY — whether a round fired at 62 degrees ever
+     * reaches the aircraft's band inside the airframe's hit disc — and the
+     * honest control for it is "rounds connect at 8 m and none connect at 7".
+     * `killed === 1` was a proxy that also depended on the rifle's DPS, and
+     * `WeaponDef.airMultiplier` (0.25 on all four line rifles) took one G.I.
+     * from 8.47 s to kill an Interceptor to 33.8 s — past this rig's 30-second
+     * window. The measurement did not change: 190.0 damage delivered before,
+     * 177.8 delivered in the same window now, both from 8 m, both zero at 7.
+     * A control that moves when an unrelated balance number moves is the wrong
+     * control.
+     */
     expect(
-      outside.killed,
-      'the control at 8 m failed too, so the dead-zone reading proves nothing',
-    ).toBe(1);
+      outside.damageDirect,
+      'the control at 8 m landed nothing either, so the dead-zone reading proves nothing',
+    ).toBeGreaterThan(0);
     // The centre-line derivation, kept so a change to `maxElevationDeg` shows up
     // here rather than in a player's match.
     expect(BLIND_CONE).toBeGreaterThan(11);

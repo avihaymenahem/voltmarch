@@ -734,6 +734,21 @@ export class DamageQueue {
   readonly z = new Float32Array(DAMAGE_CAPACITY);
   readonly splashRadius = new Float32Array(DAMAGE_CAPACITY);
   readonly splashFalloff = new Float32Array(DAMAGE_CAPACITY);
+  /**
+   * `WeaponDef.airMultiplier`, carried to `Damage.applyOne` and applied ONLY to
+   * an airborne victim. 1 for every record that does not come from a weapon.
+   *
+   * IT TRAVELS ON THE RECORD RATHER THAN BEING FOLDED INTO `amount` AT FIRE
+   * TIME, and that is per-VICTIM correctness rather than tidiness. A tesla bolt
+   * chains — `Combat.resolveTesla` walks up to four victims off one trigger
+   * pull, and `arcProd` (one of the four rows that carries a multiplier) is
+   * exactly such a bolt, so a gunship and the two riflemen the arc hops to next
+   * are one shot with two different answers. Splash has the same shape:
+   * `applySplash` resolves each victim separately. Folding the scale into
+   * `amount` would take the aircraft's answer and hand it to everything else
+   * the same shot touched.
+   */
+  readonly airMul = new Float32Array(DAMAGE_CAPACITY);
 
   /** Number of valid records. */
   count = 0;
@@ -743,11 +758,12 @@ export class DamageQueue {
   /**
    * Queue a damage event.
    * @param splashRadius 0 for a direct hit; >0 to apply falloff from (x,y,z).
+   * @param airMul `WeaponDef.airMultiplier`; ignored unless the victim flies.
    */
   push(
     target: EntityId, attacker: EntityId, amount: number, warhead: WarheadClass,
     x: number, y: number, z: number,
-    splashRadius = 0, splashFalloff = 0,
+    splashRadius = 0, splashFalloff = 0, airMul = 1,
   ): void {
     if (this.count >= DAMAGE_CAPACITY) { this.dropped++; return; }
     const i = this.count++;
@@ -758,6 +774,7 @@ export class DamageQueue {
     this.x[i] = x; this.y[i] = y; this.z[i] = z;
     this.splashRadius[i] = splashRadius;
     this.splashFalloff[i] = splashFalloff;
+    this.airMul[i] = airMul;
   }
 
   /** Called at the end of Phase.Damage. */

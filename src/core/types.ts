@@ -828,6 +828,31 @@ export interface WeaponDef {
    * torpedo tube, a naval deck gun and an emplaced MG cannot.
    */
   readonly canTargetAir: boolean;
+  /**
+   * Damage scale applied ON TOP of the armour matrix, and ONLY when the victim
+   * is airborne. 1 for every row that has not been told otherwise.
+   *
+   * WHY A MULTIPLIER AND NOT A FLAG. Reported as *"Redecide who can shoot
+   * drones and planes, they are being destroyed in nano seconds"*. The four
+   * line-infantry rifles — `rifle`, `conscriptRifle`, `pulseCarbine`,
+   * `arcProd` — out-shoot their own army's purpose-built anti-air per credit,
+   * because a rifle's air output is 55% (or 95%) of a number chosen to kill
+   * INFANTRY and nothing ever chose the air half of it. The cleanest-looking
+   * fix is to take `canTargetAir` off those four rows, and it is wrong: the
+   * anti-hang floor — *from every reachable tech state, every army must be able
+   * to produce something whose weapon carries `canTargetAir`, ungated* — is
+   * held up by exactly those four rifles, and deleting the flag removes the
+   * floor in all four armies at once. A weapon that still kills an aircraft
+   * SLOWLY keeps the floor by construction. See `src/sim/Combat.ts`'s `rifle`
+   * row for the derivation of the shipped 0.25 and `tests/air-multiplier.spec.ts`
+   * for the two-sided band it has to stay inside.
+   *
+   * IT IS NOT AN `ARMOR_MATRIX` CELL AND MUST NOT BECOME ONE. The Light row is
+   * shared by the IFV, the Refractor Tank, every Pact and Reclamation hull, the
+   * escort ships and every carrier; moving it would shift a dozen GROUND
+   * relationships silently. This term is invisible to anything on the deck.
+   */
+  readonly airMultiplier: number;
   readonly muzzleFx: FxKind;
   readonly travelFx: FxKind;
   readonly impactFx: FxKind;

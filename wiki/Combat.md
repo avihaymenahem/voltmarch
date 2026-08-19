@@ -170,6 +170,31 @@ emplaced MG, the Glaive Post and the Spitpost.
 That gap is the point of owning aircraft: an armoured column with no escort
 genuinely cannot answer one.
 
+### The four line rifles do a quarter damage to aircraft
+
+The G.I.'s carbine, the Conscript's AK pattern, the Wayfarer's pulse carbine and
+the Scrap Picker's Arc Prod all deal **25% damage against an airborne target**,
+on top of the armour matrix. Nothing else in the game carries that penalty, and
+it applies to nothing on the ground.
+
+It exists because those four guns are balanced to kill *infantry*, and 55% of a
+number that big was still more anti-aircraft output per credit than the answers
+each army builds on purpose — a Conscript screen used to clear a gunship two and
+a half times more cheaply than a Flak Trooper wall, and four times more cheaply
+than a Scrap Picker's own army could manage any other way.
+
+What it means in play:
+
+- **Your rifle line is an emergency answer, not an air-defence plan.** Eight
+  riflemen still bring an aircraft down, in four to five seconds instead of one.
+  A single rifleman still can, in half a minute. You are never helpless.
+- **The thing you bought on purpose is now the fast one.** An AA Battery clears
+  an aircraft in under two and a half seconds; the same 800 credits spent on
+  line infantry needs four to ten, depending on the army.
+- **Dedicated anti-air is worth building.** Flak Troopers, Sunlancers, Javelins,
+  the Sandskiff, the Arcspitter, the Scrap Skimmer, the IFV and every specialist
+  tower are all untouched by this.
+
 ---
 
 ## 3. How a shot resolves

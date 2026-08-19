@@ -27,9 +27,11 @@ also Medium armour, not Heavy, and armour-piercing rounds hit Medium at exactly 
 hit Heavy — so an Anvil does not lose damage against you the way you lose damage against it. The
 trade is speed (6.6 m/s against 5.4) and count.
 
-Your infantry can shoot up. The G.I.'s carbine and the Javelin's shoulder rocket both elevate, which
-means an Allied ground force is never completely helpless against aircraft even before you build a
-turret.
+Your infantry can shoot up, but not equally. The G.I.'s carbine and the Javelin's shoulder rocket
+both elevate, so an Allied ground force is never completely helpless against aircraft even before you
+build a turret — the G.I. is the emergency answer, at a quarter damage against anything airborne
+(see [Combat](/avihaymenahem/voltmarch/wiki/Combat)), and the Javelin is the real one. Eight G.I.s
+still bring a gunship down in about five seconds; an AA Battery does it in under two and a half.
 
 Your specialist units are glass. The Refractor Tank is 1200 credits for 260 hit points behind Light
 armour, must stop to fire, and cannot shoot at aircraft at all. Nor can the Field Marshal, who

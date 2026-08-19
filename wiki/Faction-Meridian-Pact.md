@@ -57,7 +57,8 @@ Trained at the **Chapterhouse**.
 The Sunlancer matters more here than the equivalent unit does in other armies. With no dedicated
 anti-air emplacement, he — plus the Sandskiff and the Kestrel — is the Pact's answer to a Petrel Bomber
 or an Interceptor until a Helios Spire is standing. The Wayfarer's carbine elevates too, but 15 damage a
-round is a nuisance rather than a deterrent.
+round at a quarter effect against aircraft (see
+[Combat](/avihaymenahem/voltmarch/wiki/Combat)) is a nuisance rather than a deterrent.
 
 ## Vehicles
 

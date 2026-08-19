@@ -65,7 +65,7 @@ Trained at the **Rookery**.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Scrap Picker | **90** | **3 s** | Rookery | 85 | Infantry | 3.6 | Arc Prod, 26, tesla, chains to 1 | 14 m | yes | Ninety credits, three seconds, bring forty. The cheapest unit in the game — and unlike a G.I. or a Conscript, his warhead actually hurts armour (0.90 vs Heavy) and aircraft |
+| Scrap Picker | **90** | **3 s** | Rookery | 85 | Infantry | 3.6 | Arc Prod, 26, tesla, chains to 1 | 14 m | yes | Ninety credits, three seconds, bring forty. The cheapest unit in the game — and unlike a G.I. or a Conscript, his warhead actually hurts armour (0.90 vs Heavy). Against AIRCRAFT he is a line rifle like the other three and takes the same quarter-damage penalty |
 | Slagger | 380 | 7 s | Rookery | 115 | Infantry | 3.0 | Slag Charge, 74, HE, 2.6 m splash | 12 m | no | A satchel of molten slag. High explosive at 1.00 against Concrete makes him one of only two things the Reclamation can bring to a land map that actually hurts a building |
 | Tinker | 500 | 10 s | Rookery, Ore Sorter | 85 | Infantry | 3.5 | unarmed | — | — | Captures enemy and neutral structures outright, and repairs your own |
 | Dredger | 300 | 6 s | Rookery | 95 | Infantry | 3.0 | Arc Prod, 26, tesla, chains to 1 | 14 m | yes | **Crosses open water on his own.** The cheapest swimmer of the four, and the only one whose warhead hurts armour — but he is 210 credits dearer than the Picker he otherwise is |
@@ -160,7 +160,9 @@ real trade — and the pylon is the biggest draw in the first class the shed ord
 also the first gun to go dark in the brownout it caused. Build the furnace before the pylon.
 
 Three chained arcs at 94 damage and 28 m, elevating, is also the closest thing the Reclamation has
-to anti-air. There is no dedicated AA turret.
+to anti-air. There is no dedicated AA turret — and since the four line rifles do a quarter damage to
+aircraft (see [Combat](/avihaymenahem/voltmarch/wiki/Combat)), the Arcspitter and the Scrap Skimmer
+are worth buying on purpose rather than trusting a Picker screen to sort it out.
 
 ## Superweapon
 

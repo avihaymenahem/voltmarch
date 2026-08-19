@@ -74,7 +74,7 @@ import {
 import type {
   BuildingDef, DefTables, FactionDef, FactionLook, UnitDef, WeaponDef,
 } from '../core/types';
-import { DEFAULT_WEAPONS, weaponIndexOf } from '../sim/Combat';
+import { DEFAULT_WEAPONS, LINE_RIFLE_AIR_MUL, weaponIndexOf } from '../sim/Combat';
 // The neutral map furniture's footprints, shared verbatim with the fallback
 // table in `src/game/Scenarios.ts` and the mass lists in
 // `src/art/BuildingDefs.ts`. One constant, three readers — see that file's
@@ -129,6 +129,9 @@ function wpn(
     // Same default as `sim/Combat.wpn`, and the opposite of its sibling's: a
     // gun answers air only when its row says so. See `WeaponDef.canTargetAir`.
     canTargetAir: extra?.canTargetAir ?? false,
+    // 1 = "the armour matrix is the whole story against an aircraft". Two rows
+    // in this file say otherwise; see `pulseCarbine` and `arcProd`.
+    airMultiplier: extra?.airMultiplier ?? 1,
     muzzleFx: extra?.muzzleFx ?? FxKind.MuzzleFlashSmall,
     travelFx: extra?.travelFx ?? FxKind.TracerBullet,
     impactFx: extra?.impactFx ?? FxKind.ImpactMetal,
@@ -189,9 +192,16 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  * emplaced repeater do not.
  */
 export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
+  // `LINE_RIFLE_AIR_MUL` — the Pact's third of the four line-infantry rifles
+  // that were out-shooting their own army's dedicated anti-air per credit. The
+  // Wayfarer sat at 117.9 delivered dps per 1000 credits against a Sandskiff's
+  // 99.5, a 1.184x inversion; he is at 0.296x now. The derivation, the window
+  // it came from and the two traps around it are the block above `rifle` in
+  // `src/sim/Combat.ts` — one constant, four rows, one argument.
   /* 18 */ wpn('pulseCarbine', 'Pulse Carbine', 15, WarheadClass.SmallArms, 20, 0.80,
     ProjectileKind.Bullet, 105,
     { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320, canTargetAir: true,
+      airMultiplier: LINE_RIFLE_AIR_MUL,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 19 */ wpn('sunLance', 'Sun Lance', 58, WarheadClass.Rocket, 26, 2.4,
@@ -375,9 +385,22 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
   // the air rule lands here as: THE SOLDIER AND THE PYLON, nothing else. The
   // Reclamation's answer to a gunship is the same as its answer to everything —
   // stand under it with a stick and hope.
+  //
+  // `LINE_RIFLE_AIR_MUL` — and this row is the WORST of the four, at 3.485x its
+  // own army's best dedicated answer per credit, because "stand under it with a
+  // stick" costs NINETY CREDITS. The Prod's absolute air output is the LOWEST
+  // of the four line rifles (18.8 delivered dps against a G.I.'s 23.1); only
+  // the price makes it the outlier, which is exactly the trap the derivation
+  // block above `rifle` in `src/sim/Combat.ts` is written around. 0.871x now.
+  //
+  // The Prod is the one non-SmallArms row in the four, so it is also the proof
+  // that this is not a SmallArms nerf wearing a different hat: `Tesla` scores
+  // 0.95 against Light where `SmallArms` scores 0.55, and the inversion is
+  // present in both. The mechanism is the RAW dps and the price, not the cell.
   /* 28 */ wpn('arcProd', 'Arc Prod', 26, WarheadClass.Tesla, 14, 1.05,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 1, turretTurnRate: 320, canTargetAir: true,
+      airMultiplier: LINE_RIFLE_AIR_MUL,
       muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 29 */ wpn('slagCharge', 'Slag Charge', 74, WarheadClass.HighExplosive, 12, 2.7,

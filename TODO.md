@@ -73,12 +73,27 @@ with no number is untracked, and that is itself the bug.
 
 ## Gameplay
 
-- **#50 — ship the aerial rework.** All the measurement is done and lives in CLAUDE.md: a line
-  infantryman out-shoots the army's own dedicated AA per credit (Reclamation 3.49×, Soviets 2.55×),
-  five candidate fixes are costed and rejected with reasons, and there is an **8 m overhead blind
-  cone** in which a projectile weapon cannot hit an aircraft above it at all. The *work* is
-  unstarted. Two traps recorded: a per-credit anchor flatters the cheapest unit in the game, and the
-  AA Battery turret must be re-measured after any such nerf — never in the same commit.
+- **#50 — the aerial rework. PARTLY CLOSED 2026-08-19.** The per-credit inversion is fixed:
+  `WeaponDef.airMultiplier` is 0.25 on the four line-infantry rifles and 1 on all 38 other rows, and
+  every army's dedicated answer now beats its line infantryman against aircraft (3.485× → 0.871×,
+  2.550× → 0.637×, 1.184× → 0.296×, 0.927× → 0.232×). The number came out of a three-bound window
+  [0.130, 0.287] re-derived from the shipped defs; `tests/air-multiplier.spec.ts` fails in both
+  directions. Trap 2 is discharged: the AA Battery was re-measured and its row did not move
+  (1.81–2.41 s per airframe, 187–261% of an aircraft's health on a 26 m pass) — but against 800
+  credits of line infantry it went from 1.7–1.8× SLOWER in the Soviet and Reclamation cases and a
+  bare 1.06–1.08× faster in the other two, to 2.3–4.3× faster in all four. **Whether the
+  Battery is now too dominant is the open follow-up, and it is a question about its price and tier,
+  not its row.**
+
+  What remains of #50, both behaviour rather than data:
+
+  - **The loiter has no way out.** `Targeting` parks an attacker at `range * 0.80` and it stays
+    until one side is dead, so an aircraft still cannot disengage. The multiplier bought it ~4×
+    longer to be wrong in; it did not give it a verb. The fix is a way OUT the player and the AI can
+    both issue — never a rule forbidding staying.
+  - **The 8 m overhead blind cone.** `COMBAT_WEAPONS.maxElevationDeg` is 62, so a projectile weapon
+    cannot hit an aircraft directly above it at all; the safest place for an aircraft is over the
+    battery. Measured, not derived — quote 8 m, not the 11.70 the centre-line geometry gives.
 - **#27 — the AI owns no engineer**, so `Capture` is unreachable for it. The def exists with weight 0
   and `buildUnits` filters `weight <= 0`. Giving the brain the verb alone would hand it to a unit
   that never exists; buying one, escorting it and choosing a building is a feature.
