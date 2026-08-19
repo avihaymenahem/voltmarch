@@ -29,6 +29,23 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
+## Tips
+
+- **Situational in-match tips — Commit 3 remains.** *(untracked; the plan is `TIPS_BUILD_SPEC.md`,
+  which names its own deletion condition.)* Commits 1 and 2 shipped: the loading-screen tips no
+  longer lie about rebound keys, and the brownout tip proves trigger, suppression, settings and the
+  `gameplay.tips` toggle end to end. What is left is the CARD (answers "where on screen", needs a
+  frame-share number and a control capture), the CORPUS and its lazy chunk (**the bundle rule in
+  §2.4 must be written BEFORE a second tip lands — nothing in the tree catches that leak today**),
+  the mute list (needs a `PROFILE_VERSION` bump), and the install path.
+
+  Commit 2 taught one thing that changes the rest: **a tip is a PAIR of predicates**, the situation
+  and the answer not already being under way. The brownout tip fired while the player was already
+  holding a finished Power Plant, because `buildSpeedMul` is driven toward 0.25 by the very deficit
+  that caused the brownout. Every future tip needs its `answeringPower` equivalent.
+
+---
+
 ## Multiplayer
 
 - **Teams shipped; three follow-ups it deliberately did not do.** *(untracked — the task tool was
