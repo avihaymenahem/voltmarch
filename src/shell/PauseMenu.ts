@@ -183,7 +183,7 @@ export class PauseMenuScreen implements Screen {
       iconName: 'keyboard',
       onClick: () => this.openHelp(),
     }));
-    nav.appendChild(button('Options', {
+    nav.appendChild(button('Settings', {
       iconName: 'sliders',
       onClick: () => this.shell.openSettings('paused'),
     }));

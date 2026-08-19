@@ -11,7 +11,7 @@ If you have played Command & Conquer, most of this will be familiar and you can 
 ## Starting a match
 
 The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, **Missions**,
-**Load Game**, **Replays**, **Options** and **Credits**.
+**Load Game**, **Replays** and **Settings**. The credits are a tab inside Settings.
 
 **Campaign** is the story mode — authored operations with a briefing, a fixed map, fixed objectives
 and a medal. It is partial: [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists which

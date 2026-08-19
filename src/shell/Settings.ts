@@ -516,7 +516,7 @@ export class SettingsScreen implements Screen {
     host.classList.add('vm-page');
     if (this.returnTo !== 'menu') host.classList.add('is-modal');
 
-    const frame = pageFrame('Options', () => this.leave());
+    const frame = pageFrame('Settings', () => this.leave());
 
     const tabs = el('div', 'vm-tabs');
     for (const t of TABS) {
@@ -906,7 +906,7 @@ export class SettingsScreen implements Screen {
         'No match is running, so there is nothing to survey. The export below still carries the '
         + 'build, the graphics settings and the GPU actually in use — which is what a rendering '
         + 'or start-up report needs. For anything about units, buildings or how a match ended, '
-        + 'open this tab from inside the game (Escape -> Options).',
+        + 'open this tab from inside the game (Escape -> Settings).',
       ));
       const next = this.shell.getSetup();
       const choice = mapById(next.map);

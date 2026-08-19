@@ -207,7 +207,7 @@ export class MainMenuScreen implements Screen {
       onClick: () => this.shell.openReplays(),
     }));
 
-    nav.appendChild(button('Options', {
+    nav.appendChild(button('Settings', {
       iconName: 'sliders',
       onClick: () => this.shell.openSettings('menu'),
     }));

@@ -617,12 +617,18 @@ describe('the options screen offers it', () => {
 
   it('does not hand the Manual tab id to SettingsStore.reset', () => {
     /*
-     * `reset` takes `keyof Omit<Settings, 'version'>`, and the four other tab
-     * ids happen to be exactly those keys — which is why the button could pass
-     * `this.tab` straight through. `manual` is not one, so the guard is the
-     * thing that keeps a fifth tab from being a type error and a crash.
+     * `reset` takes `keyof Omit<Settings, 'version'>`, and the settings-backed
+     * tab ids happen to be exactly those keys — which is why the button could
+     * pass `this.tab` straight through. `manual` is not one, so the guard is the
+     * thing that keeps a content-only tab from being a type error and a crash.
+     *
+     * MATCHED LOOSELY BECAUSE THE GUARD GREW A SECOND TAB. `credits` joined it
+     * when the credits moved off the main menu, and pinning the exact one-tab
+     * spelling made this fail on a change that was the guard working rather
+     * than breaking. What must hold is that `manual` is refused before the
+     * `reset` call, not the shape of the condition around it.
      */
-    expect(SETTINGS).toMatch(/if \(tab === 'manual'\) return;/);
+    expect(SETTINGS).toMatch(/if \(tab === 'manual'[^)]*\) return;/);
   });
 
   it('leaves the keybind reference alone — this is additive', () => {

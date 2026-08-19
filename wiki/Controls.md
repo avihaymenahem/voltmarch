@@ -2,7 +2,7 @@
 
 Every control in the game, by category. The **Binding** column says how you reach it:
 
-- **Rebindable** — you can change it, on the Controls tab of Options
+- **Rebindable** — you can change it, on the Controls tab of Settings
 - **Fixed** — the engine reads this key directly and it cannot be changed
 - **Gesture** — mouse, trackpad or an on-screen control; no key involved
 
@@ -173,7 +173,7 @@ change it, but nothing in the engine reads it yet. They do nothing.
 
 ## Rebinding
 
-**Options → Controls**, or **Pause → Controls** during a match.
+**Settings → Controls**, or **Pause → Controls** during a match.
 
 Select a command, then press the key or chord. **Backspace** clears a binding; **Escape** cancels
 the capture. **Restore Defaults** puts the whole scheme back.
@@ -208,7 +208,7 @@ Above the key list on the same tab:
 | Invert zoom | Off | For anyone whose scroll direction is already reversed by the OS |
 | Edge scrolling | Off | See the note under Camera |
 
-### Elsewhere in Options
+### Elsewhere in Settings
 
 The **Gameplay** tab carries Tooltips, Floating Damage Numbers, EVA Subtitles and a Screen Shake
 slider. Camera and navigation are deliberately *not* there — they are on Controls, which is where

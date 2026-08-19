@@ -17,8 +17,22 @@
   max-width: 760px;
 }
 
+/*
+ * THE LEDE PAYS ITS OWN INSET, BECAUSE ITS SIBLINGS PAY THEIRS AS PADDING.
+ *
+ * `.vm-replays` is a bare flex column at the panel's edge; every card in it
+ * carries `padding: 16px 18px`, so card TEXT lands at 18 while this paragraph
+ * — `margin: 0` — started at 0. Measured on a booted page: one element in the
+ * whole shell was flush, and it was this one.
+ *
+ * Worth knowing if you audit this again: measuring an element's border box
+ * says nothing, because a padded `<p>` has its box at 0 and its text at 18. A
+ * `Range` over the text node is what tells the truth, and by that measure
+ * Skirmish, Missions and Settings were correct all along. Same shape and same
+ * fix as `.vm-camp-note` in `shell.css`, which has the longer note.
+ */
 .vm-shell .vm-replays-lede {
-  margin: 0;
+  margin: 0 18px;
   color: var(--vm-text-dim);
   font-size: 13.5px;
   line-height: 1.6;
