@@ -11,8 +11,8 @@ with no number is untracked, and that is itself the bug.
 
 ## Campaign
 
-- **#66 — Phases 6-7. 13 of a planned 37 operations are authored; 24 remain.** Chapters run
-  5 / 3 / 2 / 3 (Soviets, Allies, Pact, Reclamation) for 186 minutes of authored par against a
+- **#66 — Phases 6-7. 17 of a planned 37 operations are authored; 20 remain.** Chapters run
+  6 / 4 / 3 / 4 (Soviets, Allies, Pact, Reclamation) for 251 minutes of authored par against a
   10-hour table. **180-320 person-hours, roughly 3-5x the engine**, of which ~35 hours is human
   play no agent can do. That ratio is the single most important fact about the campaign.
 
@@ -21,7 +21,7 @@ with no number is untracked, and that is itself the bug.
   that can be taken LAST, after the table is timed. `tests/campaign-length.spec.ts` arms itself at
   the 37th row and will force the question then regardless.
 
-- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Twelve are authored, adversarially verified
+- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Sixteen are authored, adversarially verified
   and gate-green; exactly one has a play time. Every par past S1 is an author's estimate, and
   `tools/op-harness.mjs`'s header now records how far a harness figure sits from a play time (11:00
   against 15:09.7 on the one operation where both exist). This is not a defect and it is not
