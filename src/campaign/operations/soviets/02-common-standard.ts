@@ -29,7 +29,7 @@
  * button. Here they are the only two that exist.
  *
  * **THE GUARD IS CONCRETE, NOT HULLS, AND THAT IS A FIX RATHER THAN A FLAVOUR
- * CHOICE.** It was two parked Grizzlies until 2026-08-19, when a headless boot
+ * CHOICE.** It was two parked Wardens until 2026-08-19, when a headless boot
  * read their positions off the store: both were re-tasked inside the first four
  * seconds, and by t+20 s they were 117 and 129 m from the park, standing at the
  * AI's rally point. `AiBrain.census` files every AI-owned mobile hull into
@@ -65,7 +65,7 @@
  * end the match the instant the ten-second grace expired, because the player
  * has no buildings. **That is not what the shipped code does.**
  * `countLivingAssets` in `src/shell/Shell.ts` walks `EntityKind.Building`,
- * `Vehicle` AND `Infantry`, so eight Rhinos standing on the ground at t=0 are
+ * `Vehicle` AND `Infantry`, so eight Anvils standing on the ground at t=0 are
  * eight assets and `pollOutcome` returns at its `alive > 0` branch. The failure
  * the policy actually disarms is the INSERTION — a squad that arrives at
  * t+30 s and therefore owns nothing at t+10 s. This column owns everything it
@@ -79,7 +79,7 @@
  *
  * Both flags are still off, and the reason is thresholds rather than timing:
  *
- *   - **`annihilationWin` must be off.** Eight Rhinos against an Allied
+ *   - **`annihilationWin` must be off.** Eight Anvils against an Allied
  *     opening with an empty bank can plausibly raze it, and razing it is not
  *     the order. With annihilation on, the match would end in victory the tick
  *     the last Allied asset died — somewhere on the road, with the pad empty
@@ -197,7 +197,7 @@ const op: OperationDef = {
 
   // EMPTY IS A RESTRICTION, NOT AN ABSENCE. The roster is an ALLOW-LIST over
   // tagged content, so `ai: []` holds the Allies to the day-one catalogue: no
-  // Prism Tank, no Prism Tower, no Multigunner AA, no aircraft. A force that
+  // Refractor Tank, no Refractor Tower, no AA Battery, no aircraft. A force that
   // cannot replace a hull cannot answer a tech tier either, and the Allied
   // Javelin — ungated, and the right answer to Heavy armour — is still there.
   roster: { player: [], ai: [] },
@@ -261,7 +261,7 @@ const op: OperationDef = {
      * **AND THE CONJUNCTION IS WHY THE GUARD HAD TO STOP BEING A HULL.** Read
      * together, these two say "beat the guard AT the park" — which is a claim
      * about a place, and a mobile AI-owned hull does not stay in one.
-     * `regroupSquads` walked both of the Grizzlies that used to be here off the
+     * `regroupSquads` walked both of the Wardens that used to be here off the
      * park in the first four seconds, so `entityDead` went on resolving while
      * `unitsInArea` was counting hulls parked in an empty lot. Emplacements
      * cannot leave; `campaign-maps.spec.ts` pins the rule.

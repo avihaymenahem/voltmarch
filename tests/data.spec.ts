@@ -114,9 +114,9 @@ describe('id spaces do not collide', () => {
   });
 
   it('round-trips every publicId back to its own entry with no hint', async () => {
-    // THE REGRESSION. `units[7]` is the Rhino and `buildings[7]` is the Naval
+    // THE REGRESSION. `units[7]` is the Anvil and `buildings[7]` is the Naval
     // Yard; `resolve()` with no isBuilding hint used to answer with the
-    // building, so a Soviet AI asking "can I build a Rhino" was told "Wrong
+    // building, so a Soviet AI asking "can I build an Anvil" was told "Wrong
     // faction" about an Allied structure, forever.
     const catalog = new ProductionCatalog(await resolveDefBinding());
     for (const e of catalog.entries) {
@@ -193,7 +193,7 @@ describe('the def table does not silently re-balance the game', () => {
   });
 
   it('spawns vehicles clear of the factory that built them', () => {
-    // A 7 m Rhino leaving a 3x2 War Factory nose-first needs the exit outside
+    // A 7 m Anvil leaving a 3x2 War Factory nose-first needs the exit outside
     // the blocked footprint or it spawns inside its own parent.
     const wf = BUILDINGS[DEF_TABLES.buildingByKey.get('warFactory')!];
     expect(wf.exitOffsetZ).toBeGreaterThan(wf.footprintH * 4 * 0.5 + 3);

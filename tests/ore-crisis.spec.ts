@@ -180,7 +180,7 @@ describe('the refund arithmetic: can a broke, harvesterless player sell their wa
   it('the escape from a mid-game base costs the Construction Yard or both economy buildings', async () => {
     const cat = new ProductionCatalog(await resolveDefBinding());
     for (const a of ARMIES) {
-      // Yard, two power, refinery, factory, barracks, radar. No battle lab.
+      // Yard, two power, refinery, factory, barracks, radar. No proving ground.
       const full = [a.yard, a.power, a.power, a.refinery, a.factory, a.barracks, a.radar];
       expect(escapes(cat, a, full)).toBe(true);
       // Take away permission to touch the yard, the refinery and the factory —
@@ -383,7 +383,7 @@ describe('surveyOreCrisis', () => {
 
     const s = surveyOreCrisis(rig.world, rig.production, P0, makeOreCrisisSurvey());
     expect(s.harvesterBuildable).toBe(true);
-    // Battle lab 1000 + radar 500 + barracks 250 + power 150 = 1900 >= 1400.
+    // Proving ground 1000 + radar 500 + barracks 250 + power 150 = 1900 >= 1400.
     expect(s.raisableForHarvester).toBeGreaterThanOrEqual(s.harvesterCost);
     expect(s.state).toBe(OreCrisisState.SellOut);
   });

@@ -21,7 +21,7 @@
  *   1. AN AIRCRAFT COULD NOT BE CLICKED. `pickEntity` builds its candidate set
  *      from a circle on the GROUND PLANE around the terrain hit, and a flyer's
  *      pixels are 23-25 m from that point at the shipped camera pitch — against
- *      a query radius of 11.6 m. Measured on three Vindicators: 25.2, 23.5 and
+ *      a query radius of 11.6 m. Measured on three Petrel Bombers: 25.2, 23.5 and
  *      22.9 m. A left-click on the hull selected nothing, or the Power Plant
  *      that happened to sit under the far-away ground point, and selecting
  *      nothing REPLACES the selection with nothing.
@@ -209,7 +209,7 @@ describe('an aircraft is 20-odd metres from its own ground point', () => {
   });
 
   it('does not hand back the building that happens to sit under the ground hit', () => {
-    // The measured failure exactly: clicking a Vindicator selected a structure
+    // The measured failure exactly: clicking a Petrel Bomber selected a structure
     // 25 m away, because that structure genuinely CONTAINED the terrain point
     // the ray landed on and the aircraft was not even a candidate.
     const rig = makeRig();

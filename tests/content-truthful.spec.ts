@@ -268,7 +268,7 @@ describe('flags and the columns that depend on them', () => {
   it('gives every crushLevel a Crusher flag to switch it on', () => {
     // `Crush.ts#crushesUnit` tests `EntityFlag.Crusher` BEFORE it reads
     // `crushLevel`, so a level without the flag is a dead column that reads
-    // like a working one. The Prism Tank carried `crushLevel: 2` in BOTH def
+    // like a working one. The Refractor Tank carried `crushLevel: 2` in BOTH def
     // tables and no flag, so the number was authored twice and honoured never.
     //
     // Only the def's own flag word is checked. For the two original armies the
@@ -302,7 +302,7 @@ describe('flags and the columns that depend on them', () => {
     // and it is read by nothing, because `Crush.ts` tests
     // `EntityFlag.Crushable` first and NO VEHICLE HAS IT. Those numbers
     // describe a vehicle-ramming rule nobody designed: implementing it would
-    // let an Apocalypse delete a 420 hp Rhino on contact.
+    // let a Sledge delete a 420 hp Anvil on contact.
     //
     // The numbers are left as authored because each one is duplicated in
     // `Scenarios.FALLBACK_UNITS` and `data.spec.ts` asserts the two tables
@@ -441,10 +441,10 @@ describe('a blurb that names a power dependency has one', () => {
 const UNFIRED_ROWS: Readonly<Record<string, string>> = {
   artillery:
     'The "V4 Launcher". A complete Soviet siege gun (130 HE, 48 m, 6.5 m burst, 12 m minimum) '
-    + 'with no Soviet siege unit. The roster answers a base with the Apocalypse and the air arm. '
+    + 'with no Soviet siege unit. The roster answers a base with the Sledge and the air arm. '
     + 'Giving it a hull is a def row, a FALLBACK_UNITS row, a model, a cameo and a balance pass.',
   chaingun:
-    'The Multigunner IFV\'s old gun, at 115.8 raw dps the most over-scaled row in the game. '
+    'The Sabre IFV\'s old gun, at 115.8 raw dps the most over-scaled row in the game. '
     + 'Replaced by `ifvChaingun` in Defs.ts#REBALANCE_WEAPONS. It could not be retuned in place '
     + 'because this table borrows DEFAULT_WEAPONS verbatim as its prefix and does not own it.',
 };
@@ -499,7 +499,7 @@ describe('the armoury', () => {
 });
 
 /* ==========================================================================
- * 6. THE MULTIGUNNER IFV, PINNED
+ * 6. THE SABRE IFV, PINNED
  *
  * Not a general balance test — those belong to a designer, not a spec file.
  * This pins the two specific claims that made the IFV a defect: it topped four
@@ -524,16 +524,16 @@ const unitByKey = (key: string): UnitDef => {
   return u!;
 };
 
-describe('the Multigunner IFV', () => {
-  it('loses a straight fight with a Grizzly', () => {
-    // WAS 4.52 s against the Grizzly's 7.06 s — a 600-credit raider deleting a
+describe('the Sabre IFV', () => {
+  it('loses a straight fight with a Warden', () => {
+    // WAS 4.52 s against the Warden's 7.06 s — a 600-credit raider deleting a
     // 700-credit main battle tank. The margin is asserted, not just the sign:
     // a rank-1 promotion is +15% damage, so a duel decided by 3% is not decided.
     const ifv = unitByKey('ifv');
     const grizzly = unitByKey('grizzly');
     const ifvKills = timeToKill(ifv, grizzly);
     const tankKills = timeToKill(grizzly, ifv);
-    expect(ifvKills, `IFV ${ifvKills.toFixed(2)}s vs Grizzly ${tankKills.toFixed(2)}s`)
+    expect(ifvKills, `IFV ${ifvKills.toFixed(2)}s vs Warden ${tankKills.toFixed(2)}s`)
       .toBeGreaterThan(tankKills * 1.1);
   });
 
@@ -574,7 +574,7 @@ describe('the Multigunner IFV', () => {
     expect(timeToKill(ifv, skiff)).toBeLessThan(timeToKill(skiff, ifv));
   });
 
-  it('leaves the Sandskiff losing to a Grizzly too', () => {
+  it('leaves the Sandskiff losing to a Warden too', () => {
     const skiff = unitByKey('mrdSkiff');
     const grizzly = unitByKey('grizzly');
     expect(timeToKill(skiff, grizzly)).toBeGreaterThan(timeToKill(grizzly, skiff) * 1.1);
@@ -586,7 +586,7 @@ describe('the Multigunner IFV', () => {
  *
  * `LOCKED_REASON` was the only thing a padlocked cameo ever said: "Locked —
  * complete a mission", for every gated def in the game. The player hovering a
- * Battle Lab was being asked to guess.
+ * Proving Ground was being asked to guess.
  * ========================================================================== */
 
 describe('the locked reason', () => {
@@ -608,7 +608,7 @@ describe('the locked reason', () => {
   });
 
   it('reads as one sentence for the def the bug was reported against', () => {
-    // The exact case: hover a Battle Lab, be told to complete "a mission".
+    // The exact case: hover a Proving Ground, be told to complete "a mission".
     expect(UNLOCK_TAGS.battleLab).toBe(UNLOCKS.structTech);
     expect(unlockRequirementText(UNLOCKS.structTech))
       .toBe('Strip Mine: mine 70,000 credits of ore');

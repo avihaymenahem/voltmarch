@@ -241,7 +241,7 @@ The shape of those three numbers *is* the faction. One Solar Array opens the Pac
 where the other armies need a second plant — and it has 420 hit points against a Power Plant's 800.
 
 Typical draws: Construction Yard 20, Barracks 20, Ore Silo 10, Ore Refinery 30, Naval Yard 30,
-Repair Depot 30, Radar 40, War Factory 40, Battle Lab 60, Tesla Coil 75, Arc Pylon 90,
+Repair Depot 30, Radar 40, War Factory 40, Proving Ground 60, Tesla Coil 75, Arc Pylon 90,
 any superweapon 150.
 
 ### What a deficit costs you
@@ -302,7 +302,7 @@ Both armies share the same spine and differ in the leaves.
 | Ore Silo | 150 | 5 s | −10 | 1×1 | Ore Refinery |
 | Naval Yard *(Allies)* / Naval Pen *(Soviets)* | 1,000 | 14 s | −30 | 3×3 | Ore Refinery, **and a coast** |
 | Repair Depot | 800 | 10 s | −30 | 2×2 | War Factory |
-| Battle Lab | 2,000 | 24 s | −60 | 2×2 | Radar Dome |
+| Proving Ground | 2,000 | 24 s | −60 | 2×2 | Radar Dome |
 
 Defences:
 
@@ -313,12 +313,12 @@ Defences:
 | Pillbox | Allies | 400 | 8 s | — | Barracks |
 | Sentry Gun | Soviets | 400 | 8 s | — | Barracks |
 | Flame Tower | Soviets | 600 | 10 s | −20 | Barracks |
-| Multigunner AA | Allies | 800 | 12 s | −30 | Radar Dome |
-| Prism Tower | Allies | 1,500 | 16 s | −50 | Battle Lab |
+| AA Battery | Allies | 800 | 12 s | −30 | Radar Dome |
+| Refractor Tower | Allies | 1,500 | 16 s | −50 | Proving Ground |
 | Tesla Coil | Soviets | 1,500 | 16 s | −75 | Radar Dome |
 
 Note that the Pillbox, the Sentry Gun and the walls draw **no power at all** and therefore cannot
-be browned out. Everything else in that table can, the Flame Tower and the Multigunner AA included —
+be browned out. Everything else in that table can, the Flame Tower and the AA Battery included —
 a dark building does not shoot, whatever its gun costs to run. The Tesla Coil draws 75 and is first
 in the shedding order, so it is the structure the phrase "dies in a brownout" was written for.
 
@@ -344,7 +344,7 @@ in the shedding order, so it is the structure the phrase "dies in a brownout" wa
 
 Read the Requires column, because it is the whole faction: the Arcspitter and the Grinder need
 **only** the Breaker Yard. Four structures and the Reclamation's line army exists, where an Allied
-or Soviet player needs six before a Grizzly. It pays for that tempo with an 80-power plant and the
+or Soviet player needs six before a Warden. It pays for that tempo with an 80-power plant and the
 softest hulls in the game.
 
 | Structure | Cost | Time | Power | Size | Requires |
@@ -411,7 +411,7 @@ with one selected and it walks in.
 interface**: park a damaged vehicle you own within **10 metres** of one and it is serviced.
 
 - **10% of the vehicle's maximum health per second** — so a full hull in about ten seconds,
-  regardless of whether it is a 190-hit-point scout or an 800-hit-point Apocalypse
+  regardless of whether it is a 190-hit-point scout or an 800-hit-point Sledge
 - The same **0.25 credits per hit point**
 - **Eight** vehicles at once per depot
 - A depot that is unfinished, dying, or **dark from a brownout** services nothing
@@ -499,10 +499,10 @@ Every faction has one buildable superweapon structure, gated behind its tech bui
 
 | Structure | Faction | Cost | Time | Power | Requires | Weapon | Charge |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Nuclear Missile Silo | Soviets | 2,500 | 32 s | −150 | Battle Lab | Nuclear Missile | 7:00 |
-| Iron Curtain Device | Soviets | 2,000 | 28 s | −150 | Battle Lab | Iron Curtain | 5:00 |
-| Chronosphere | Allies | 2,000 | 28 s | −150 | Battle Lab | Chronosphere | 5:00 |
-| Weather Control Device | Allies | 2,500 | 32 s | −150 | Battle Lab | Lightning Storm | 6:40 |
+| Nuclear Missile Silo | Soviets | 2,500 | 32 s | −150 | Proving Ground | Nuclear Missile | 7:00 |
+| Ironclad Field | Soviets | 2,000 | 28 s | −150 | Proving Ground | Ironclad Field | 5:00 |
+| Displacement Ring | Allies | 2,000 | 28 s | −150 | Proving Ground | Displacement Ring | 5:00 |
+| Weather Control Device | Allies | 2,500 | 32 s | −150 | Proving Ground | Lightning Storm | 6:40 |
 | Heliograph | Meridian | 2,500 | 32 s | −150 | Reliquary | Solar Lance | 7:00 |
 | Stormworks | Reclamation | 2,500 | 32 s | −150 | Crucible | Arc Storm | 6:40 |
 
@@ -528,11 +528,11 @@ time remaining. When it finishes charging the time is replaced by **READY** and 
 Click the ready row. The row arms and a toast tells you *"Pick a target on the map."* Then click
 the ground.
 
-The Chronosphere is the exception: it wants **two** clicks — a source point, then a destination —
+The Displacement Ring is the exception: it wants **two** clicks — a source point, then a destination —
 because it lifts up to nine of your units out of one place and sets them down in another.
 
 Radii, for aiming: Nuclear Missile 26 m, Solar Lance 24 m, Arc Storm 17 m, Lightning Storm 16 m,
-Iron Curtain 13 m, Chronosphere 11 m. The nuke and the Solar Lance are announced before they land.
+Ironclad Field 13 m, Displacement Ring 11 m. The nuke and the Solar Lance are announced before they land.
 
 For what each one actually does to what it hits, see [Combat](/avihaymenahem/voltmarch/wiki/Combat).
 

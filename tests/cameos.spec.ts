@@ -90,7 +90,7 @@ function ctxFor(): CanvasRenderingContext2D {
 
 function subject(over: Partial<CameoSubject> = {}): CameoSubject {
   return {
-    key: 'grizzly', name: 'Grizzly Tank', faction: Faction.Allies,
+    key: 'grizzly', name: 'Warden Tank', faction: Faction.Allies,
     tab: BuildTab.Vehicles, isBuilding: false, footprintW: 0, footprintH: 0,
     ...over,
   };

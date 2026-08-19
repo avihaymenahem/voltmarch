@@ -11,7 +11,7 @@
  *   - an engineer cannot flip a healthy enemy structure (the low-health rule),
  *   - a repair that cannot be paid for does not happen,
  *   - crates roll identically from an identical seed,
- *   - the Iron Curtain restores the EXACT hp it suspended (it is invulnerability,
+ *   - the Ironclad Field restores the EXACT hp it suspended (it is invulnerability,
  *     not a heal).
  */
 
@@ -793,7 +793,7 @@ describe('garrison', () => {
  * The gating structure for each weapon. These used to be `battleLab` on every
  * line, because when this block was written the structures did not exist and
  * `SUPERWEAPONS[i].structureKeys` ended its fallback chain at the tech
- * building. That fallback also meant one Battle Lab armed BOTH of its army's
+ * building. That fallback also meant one Proving Ground armed BOTH of its army's
  * superweapons, which is why it is gone — see the header of Superweapons.ts.
  */
 const GATE: Readonly<Record<string, string>> = {
@@ -813,7 +813,7 @@ describe('superweapons', () => {
     expect(rig.supers.fireAt(ALLIES, 'chronosphere', 100, 100)).toBe('rejected');
   });
 
-  it('is unavailable on a Battle Lab alone', () => {
+  it('is unavailable on a Proving Ground alone', () => {
     // THE REGRESSION THIS FILE'S OWN FIXTURES USED TO ENCODE. Every case below
     // built a `battleLab` and got a charged nuke out of it, because the
     // structure chain fell back to the tech building. It does not any more:
@@ -917,7 +917,7 @@ describe('superweapons', () => {
     expect(rig.supers.stats.unitsTeleported).toBe(1);
   });
 
-  it('makes Iron Curtain units invulnerable, then restores the exact hp', () => {
+  it('makes units under the Ironclad Field invulnerable, then restores the exact hp', () => {
     rig.building(GATE.ironCurtain, SOVIETS, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(SOVIETS, 'ironCurtain');

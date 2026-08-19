@@ -51,7 +51,7 @@ const FALLBACK_IS_ALSO_RIGHT = new Set([
   // one to satisfy a test would be the test writing the design. A commander is
   // a man with a rifle and a hat; `infantry` is the honest answer.
   'fieldMarshal', 'commissar', 'mrdHierarch', 'rclBaron',
-  // Vehicles tab, `tank` glyph, and right: a Prism Tank is a tank.
+  // Vehicles tab, `tank` glyph, and right: a Refractor Tank is a tank.
   'grizzly', 'mrdSolarch', 'rclGrinder', 'prismTank',
 ]);
 

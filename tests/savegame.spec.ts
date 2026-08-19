@@ -1448,17 +1448,17 @@ describe('refusals', () => {
     // Every restored tank must now carry defId 1 ('grizzly' in the new table),
     // not the 0 it was saved as.
     const b = dst.world.store;
-    let grizzlies = 0;
+    let wardens = 0;
     let refineries = 0;
     for (let k = 0; k < b.aliveCount; k++) {
       const i = b.alive[k];
-      if (b.kind[i] === EntityKind.Vehicle && b.defId[i] === 1) grizzlies++;
+      if (b.kind[i] === EntityKind.Vehicle && b.defId[i] === 1) wardens++;
       if (b.kind[i] === EntityKind.Building && b.defId[i] === 2) refineries++;
     }
-    expect(grizzlies).toBe(6);
+    expect(wardens).toBe(6);
     expect(refineries).toBe(1);
 
-    // The queue's mid-progress Grizzly must have followed the key too.
+    // The queue's mid-progress Warden must have followed the key too.
     expect(dst.world.player(P0).queues[BuildTab.Vehicles].items[0].defId).toBe(1);
   });
 

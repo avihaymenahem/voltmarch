@@ -24,7 +24,7 @@
  *                   hull around the man and inherit his walking pace as a queue
  *                   brake, and `Movement.relax` then held the two discs 3.02 m
  *                   apart against a crush test that needs 2.19 m. A measured
- *                   probe put a Grizzly's closest approach at 2.83 m with the
+ *                   probe put a Warden's closest approach at 2.83 m with the
  *                   rifleman untouched. `a rolling hull reaches the man` is the
  *                   test that says those carve-outs are still there.
  *
@@ -191,7 +191,7 @@ describe('a tank runs down the infantry in front of it', () => {
 
     // THE WHOLE BUG IN ONE ASSERTION. On the old one-line victim test
     // (`if (st.kind[j] !== EntityKind.Prop) continue`) the conscript finished
-    // this drive at 100/100 HP with a Grizzly parked on the far side.
+    // this drive at 100/100 HP with a Warden parked on the far side.
     expect(alive(rig, man)).toBe(false);
     expect(rig.crush.crushedUnits).toBe(1);
   });
@@ -254,7 +254,7 @@ describe('the crushLevel / crushableBy pair decides', () => {
     // The asymmetry that makes this rule easy to get wrong: for a PROP, whose
     // column no spawn path writes, 0 means "unset" and falls back to
     // `CRUSH.propDefaultLevel`. For a UNIT it means immune, and that is what
-    // keeps an Apocalypse safe. Merging the two would delete the immunity.
+    // keeps a Sledge safe. Merging the two would delete the immunity.
     const rig = makeRig();
     const tank = spawn(rig, 'apocalypse', rig.red, C(40), C(50)); // crushLevel 6
     const man = spawn(rig, 'conscript', rig.blue, C(50), C(50));
@@ -270,7 +270,7 @@ describe('the crushLevel / crushableBy pair decides', () => {
 
   it('does nothing for a hull without EntityFlag.Crusher', () => {
     const rig = makeRig();
-    // The Prism Tank carries `crushLevel: 2` in the def table and NOT the
+    // The Refractor Tank carries `crushLevel: 2` in the def table and NOT the
     // Crusher flag. The flag is the switch; the level is only the threshold.
     const tank = spawn(rig, 'prismTank', rig.red, C(40), C(50));
     const man = spawn(rig, 'conscript', rig.blue, C(50), C(50));
@@ -318,8 +318,8 @@ describe('the crushLevel / crushableBy pair decides', () => {
  * ========================================================================== */
 
 describe('armour is not crushable, however heavy the hull that hits it', () => {
-  it('never crushes an Apocalypse', () => {
-    // True twice over, and that is deliberate: the Apocalypse carries
+  it('never crushes a Sledge', () => {
+    // True twice over, and that is deliberate: the Sledge carries
     // `crushableBy: 0`, AND no vehicle in the roster carries
     // `EntityFlag.Crushable` at all. Either alone would save it.
     const rig = makeRig();
@@ -565,7 +565,7 @@ describe('the death goes through the damage channel', () => {
 
     // Where he was, not where the tank ended up.
     expect(Math.hypot(s.x - manX, s.z - manZ)).toBeLessThan(1.5);
-    // Sized off the TRACK. A Grizzly's disc is max(6.2, 3.1) * 0.45 = 2.79 m.
+    // Sized off the TRACK. A Warden's disc is max(6.2, 3.1) * 0.45 = 2.79 m.
     expect(s.size).toBeCloseTo(2.79 * CRUSH.stainFrac, 2);
     expect(s.size).toBeGreaterThanOrEqual(SQUISH_HALF_SIZE);
     // Oriented to the CRUSHER's heading, so the print lands square with the

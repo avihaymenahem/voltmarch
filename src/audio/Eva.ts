@@ -23,7 +23,7 @@
  * ---------------------------------
  * There is no text-to-phoneme engine here and there must not be one: forty
  * lines of hand-tuned ASCII phonemes is a few kilobytes and always right, while
- * a G2P engine is thousands of lines and mispronounces "Chronosphere" forever.
+ * a G2P engine is thousands of lines and mispronounces "Displacement Ring" forever.
  *
  * SEPARATORS. A space merely separates two phones INSIDE a word and costs no
  * time — phonemes in running speech are contiguous, and inserting 70 ms between

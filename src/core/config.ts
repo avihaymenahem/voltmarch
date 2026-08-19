@@ -137,8 +137,8 @@ export const UNIT_DIMENSIONS = {
   //                     length  width  height   turret ring Y
   infantry:      { l: 0.52, w: 0.52, h: 1.75, turretY: 0 },
   attackDog:     { l: 1.10, w: 0.40, h: 0.70, turretY: 0 },
-  lightTank:     { l: 6.20, w: 3.10, h: 2.25, turretY: 1.50 },  // Grizzly
-  heavyTank:     { l: 7.00, w: 3.40, h: 2.50, turretY: 1.62 },  // Rhino
+  lightTank:     { l: 6.20, w: 3.10, h: 2.25, turretY: 1.50 },  // Warden
+  heavyTank:     { l: 7.00, w: 3.40, h: 2.50, turretY: 1.62 },  // Anvil
   apocalypse:    { l: 8.20, w: 3.90, h: 2.90, turretY: 1.85 },
   ifv:           { l: 5.40, w: 2.80, h: 2.20, turretY: 1.55 },
   prismTank:     { l: 6.40, w: 3.00, h: 2.40, turretY: 1.55 },
@@ -189,7 +189,7 @@ export const INFANTRY_LEGIBILITY = {
    * MEASURED through the live camera matrix at 1366x768, projecting the real
    * `UNIT_DIMENSIONS` boxes:
    *
-   *      camera    infantry (h x w)    Grizzly (h x w)
+   *      camera    infantry (h x w)    Warden (h x w)
    *       30 m      70.4 x 29.6         235.7 x 286.6
    *       55 m      37.4 x 15.9         129.2 x 152.5    <- the default zoom
    *       90 m      21.7 x  9.6          81.5 x  92.2
@@ -299,8 +299,8 @@ export const BUILDING_DIMENSIONS = {
   // — so the silhouette is honest rather than decorated. Still under the Radar
   // Dome's 12.0, which has to stay the tallest thing in a base that has one.
   commandPost: { w: 2, h: 2, height: 10.5 },
-  // THE SUPERWEAPON PAD, one shape for all six of them (Nuclear Silo, Iron
-  // Curtain, Chronosphere, Weather Control, Heliograph, Stormworks).
+  // THE SUPERWEAPON PAD, one shape for all six of them (Nuclear Silo, Ironclad
+  // Field, Displacement Ring, Weather Control, Heliograph, Stormworks).
   //
   // Bigger than the Construction Yard's plan and taller than the Radar Dome
   // deliberately: this is the only structure in the game that decides a match
@@ -1902,7 +1902,7 @@ export const REPAIR_COST_PER_HP = 0.25;
  * and the player is choosing how much to spend, which is a different question.
  *
  * The price per point is deliberately NOT a second number: repairing a hit
- * point costs `REPAIR_COST_PER_HP` wherever you do it. A Grizzly at 1 hp costs
+ * point costs `REPAIR_COST_PER_HP` wherever you do it. A Warden at 1 hp costs
  * about a third of a fresh one, which is the trade the building has to offer.
  */
 export const REPAIR_DEPOT = {
@@ -4464,7 +4464,7 @@ export const HUD_GRID = {
  * `CameoRenderer`, and deleted in the same session — the citation outlived it.
  *
  * "Bottom left hud still uses icons and not the models." Every card drew the
- * same `makeIcon('tank')` glyph — for a Grizzly, a Harvester and a Construction
+ * same `makeIcon('tank')` glyph — for a Warden, a Harvester and a Construction
  * Yard alike — while the real mesh sat built and lit in the render bridge's
  * registry.
  *
@@ -5134,7 +5134,7 @@ export const PRODUCTION = {
    * takes a slot on a packed lattice around the flag.
    *
    * Spacing is `max(rallyMinSpacing, 2 * radius + rallyGap)` — derived from the
-   * hull that will actually stand there, so a Grizzly rank does not overlap and
+   * hull that will actually stand there, so a Warden rank does not overlap and
    * an infantry rank does not sprawl. Infantry (radius 0.234) land on the 2.0 m
    * floor; a tank at 1.7 gets 4.8 m.
    */
@@ -6075,7 +6075,7 @@ export const VFX_LIGHTS = {
   // notch down, and the comment above says prism "is raised for the same reason
   // and by the same measurement", so it inherits the same correction.
   // Cut with teslaArc and by the same measurement. The report named the Tesla
-  // Coil, but the Prism Tower measured WORSE than it (+4.13pp against +3.40pp
+  // Coil, but the Refractor Tower measured WORSE than it (+4.13pp against +3.40pp
   // blue at four) once the arc had been cut twice, and shipping the Allied
   // equivalent brighter than the Soviet one the player complained about would
   // just be the next report.
@@ -7757,7 +7757,7 @@ export const MANHOLE_HALF_SIZE = 0.42;
  * cleat rhythm with it, which is the only thing that says "a track did this".
  *
  * SIZED OFF THE TRACK, NOT OFF THE MAN. `CRUSH.stainFrac` takes it from the
- * crusher's hull disc, so an Apocalypse leaves a wider print than a Grizzly;
+ * crusher's hull disc, so a Sledge leaves a wider print than a Warden;
  * this is the FLOOR under that, and it is what a track is wide. The tile's
  * pressed strip covers 0.54 of the patch across and 0.88 along, so a half-size
  * of 0.85 draws a mark ~0.9 m across and ~1.5 m long — one track, one body.
@@ -7863,7 +7863,7 @@ export const NAV_COST_ROAD = [0.88, 0.78, 0.58, 1.0, 1.0, 1.0] as const;
 /**
  * Rough-ground cost multiplier per move class, applied wherever terrain
  * already classified a cell as rough (slope past ROUGH_SLOPE). Tracks shrug it
- * off; wheels are punished hard, which is what separates an IFV from a Grizzly
+ * off; wheels are punished hard, which is what separates an IFV from a Warden
  * on a hillside.
  */
 export const NAV_COST_ROUGH = [1.25, 1.45, 2.05, 1.0, 1.0, 1.0] as const;
@@ -8706,15 +8706,15 @@ export const ABILITIES: readonly AbilityDef[] = [
 /** Effect magnitudes. Separate from `ABILITIES` so balance is one small block. */
 export const ABILITY_FX = {
   /**
-   * Units one Chrono Rally can lift. The Chronosphere lifts 9; a commander
+   * Units one Chrono Rally can lift. The Displacement Ring lifts 9; a commander
    * lifts 6, and pulls them IN rather than pushing them anywhere, so it is a
    * regroup rather than a drop.
    */
   chronoMaxUnits: 6,
-  /** Metres between arrival slots, matching the Chronosphere's spiral. */
+  /** Metres between arrival slots, matching the Displacement Ring's spiral. */
   chronoSpacing: 3.4,
 
-  /** Seconds of invulnerability. A quarter of the Iron Curtain's 20. */
+  /** Seconds of invulnerability. A quarter of the Ironclad Field's 20. */
   ironWillSeconds: 5,
   /** Seconds between the shimmer sparks on a protected unit. */
   ironWillSparkSeconds: 0.6,

@@ -36,7 +36,7 @@
  *   Next up        the nearest unfinished missions, with their rewards named.
  *                  This is the hook: the end screen is the exact moment a
  *                  player decides whether to press Rematch, and "you are 18 of
- *                  25 kills from a Prism Tank" is the argument for it.
+ *                  25 kills from a Refractor Tank" is the argument for it.
  *
  * Every one of those blocks is absent — not empty, absent — when the
  * progression handle is missing or has nothing to say, so a build without the
@@ -256,7 +256,7 @@ export function nextUpMissions(catalogue: readonly CatalogueEntry[], limit = 3):
   return open.slice(0, Math.max(0, limit));
 }
 
-/** `18 / 25 · Prism Tank` — progress and what it buys, in one line. */
+/** `18 / 25 · Refractor Tank` — progress and what it buys, in one line. */
 export function nextUpLine(e: CatalogueEntry): string {
   const target = e.progress.target > 1 ? e.progress.target : 1;
   const value = Math.max(0, Math.min(target, Math.floor(e.progress.value)));

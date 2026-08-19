@@ -398,7 +398,7 @@ describe('canTargetAir — the gate, and its default', () => {
       // Kestrel's pods and the Hornet's arc do: aircraft must be able to answer
       // aircraft, or owning the only one is a win condition.
       'vindicatorMissile', 'migCannon',
-      // The Multigunner IFV's replacement gun. It elevates for the same reason
+      // The Sabre IFV's replacement gun. It elevates for the same reason
       // `chaingun` (still row 6, still listed above) did: an autocannon on a
       // turret is the textbook mobile AA mount, and the IFV is the Allied
       // army's only one that moves. See `REBALANCE_WEAPONS` in Defs.ts — the
@@ -1005,7 +1005,7 @@ describe('an aircraft can actually leave the factory', () => {
     const p = 0 as PlayerId;
     world.player(p).credits = 100_000;
 
-    // The Vindicator's whole tech tree, planted by hand: a yard, power, the
+    // The Petrel Bomber's whole tech tree, planted by hand: a yard, power, the
     // factory that services the Vehicles tab, and the radar it is gated on.
     const st = world.store;
     const plant = (key: string, x: number, z: number, extraFlags: number): void => {

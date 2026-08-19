@@ -200,9 +200,9 @@ export const COMMANDER_POWER_FX = {
   /** Most entities one Emergency Repair will mend. */
   repairMaxTargets: 24,
 
-  /** Units one Chronoshift lifts. The Chronosphere lifts 9; this lifts 8. */
+  /** Units one Chronoshift lifts. The Displacement Ring lifts 9; this lifts 8. */
   chronoshiftMaxUnits: 8,
-  /** Metres between arrival slots, matching the Chronosphere's spiral. */
+  /** Metres between arrival slots, matching the Displacement Ring's spiral. */
   chronoshiftSpacing: 3.4,
   /** Radius around the caster's base centroid that a Chronoshift lifts from. */
   chronoshiftPickupRadius: 40,

@@ -289,9 +289,9 @@ describe('objectiveSignature', () => {
 
 describe('humaniseId', () => {
   it('handles every id shape the contract permits', () => {
-    expect(humaniseId('prism-tank')).toBe('Prism Tank');
-    expect(humaniseId('prism_tank')).toBe('Prism Tank');
-    expect(humaniseId('prismTank')).toBe('Prism Tank');
+    expect(humaniseId('sentry-gun')).toBe('Sentry Gun');
+    expect(humaniseId('sentry_gun')).toBe('Sentry Gun');
+    expect(humaniseId('sentryGun')).toBe('Sentry Gun');
     expect(humaniseId('map.canyon')).toBe('Map Canyon');
     expect(humaniseId('unit:v4_launcher')).toBe('Unit V4 Launcher');
   });

@@ -265,8 +265,8 @@ export default defineSystem({
       // last played on that box. But an EMPTY profile is not neutral — it is
       // the most restrictive profile there is, and the moment the gate was
       // wired into `availabilityOf` and `ScenarioBuilder` it started deleting
-      // the Battle Lab from 02-hud-full, the Tesla Coils from 07-soviet-base
-      // and the Apocalypses from 05-combat. Those scenarios are authored
+      // the Proving Ground from 02-hud-full, the Tesla Coils from 07-soviet-base
+      // and the Sledges from 05-combat. Those scenarios are authored
       // compositions scored against `docs/RA3_LOOK_BIBLE.md`, and the grade
       // dropped a point before this line existed. Measured, not guessed.
       //

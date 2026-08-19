@@ -129,7 +129,7 @@ export interface BuildExtras {
    * WHICH MISSION UNLOCKS THIS — `Strip Mine: mine 70,000 credits of ore` —
    * or '' when the def is not progression-gated, or when nothing can say.
    *
-   * A player hovered a locked Battle Lab, read the gate's generic "Locked —
+   * A player hovered a locked Proving Ground, read the gate's generic "Locked —
    * complete a mission", and asked whether they were meant to guess. This is
    * the sentence that answers them. It is computed in `src/ui/Hud.ts`, which is
    * the one place that can see BOTH the def tables (for `unlockedBy`) and the
@@ -1516,7 +1516,7 @@ class SelectionPanel {
      * exactly as the reference draws it. The old panel put a 54-unit stub and
      * a right-aligned number in the header, where it competed with the name
      * for the eye and lost. Absolute points, not an average of fractions:
-     * twelve conscripts and one Apocalypse at 60% are not the same army, and
+     * twelve conscripts and one Sledge at 60% are not the same army, and
      * how much punishment the GROUP can still take is the question. */
     const hp = el('div', 'vm-sel-hp', this.live);
     this.hpRoot = hp;

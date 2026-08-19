@@ -18,7 +18,7 @@
  *
  * The last one deserves its own sentence. `docs/SPEC_DRIFT_AUDIT.md` is a
  * catalogue of second copies that stopped agreeing with their originals, and
- * the wiki quoting the Multigunner IFV's pre-rebalance `22 x4` — on two pages,
+ * the wiki quoting the Sabre IFV's pre-rebalance `22 x4` — on two pages,
  * for three releases — was an example of the same defect in the same product.
  * It has since been corrected in both. Every number a player needs
  * here is already derived and on screen — the cost on the cameo, the build time
@@ -209,10 +209,10 @@ describe('no description retypes a number the tables own', () => {
    * and on screen beside this text, and every other quantity lives in
    * `Defs.ts`, `config.ts` or `Superweapons.ts`. A figure retyped here is a
    * second copy nothing compares — the exact defect the wiki demonstrates by
-   * still quoting the Multigunner IFV's pre-rebalance gun.
+   * still quoting the Sabre IFV's pre-rebalance gun.
    *
    * Comparisons are the supported form and cost nothing: "reaches further than
-   * a Grizzly" cannot silently stop being true the way "reaches 26 m" can.
+   * a Warden" cannot silently stop being true the way "reaches 26 m" can.
    */
   it('contains no digits at all', () => {
     const offenders = Object.entries(BUILD_DESCRIPTIONS)

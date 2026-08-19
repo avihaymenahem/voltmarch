@@ -8,7 +8,7 @@
  * THE ONE THING THIS FILE EXISTS FOR
  * ----------------------------------
  * A turret that slews independently of the hull. It is the single most
- * recognisable read in Command & Conquer: a column of Rhinos drives north with
+ * recognisable read in Command & Conquer: a column of Anvils drives north with
  * every gun tracking east. `turretYaw` is stored in WORLD space (not relative
  * to the hull) precisely so this file can write it without ever reading, or
  * fighting, whatever the movement layer is doing to `yaw`.
@@ -107,8 +107,8 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  * saved games / replays would break if a row moved. Append, never reorder.
  *
  * Damage is per SHOT before the armour matrix. Read the pairs, not the
- * absolutes: a rifle does 18 to flesh and 1.8 to a Rhino; a Rhino's gun does 75
- * to a Rhino and 26 to a conscript. That spread IS the counter-triangle.
+ * absolutes: a rifle does 18 to flesh and 1.8 to an Anvil; an Anvil's gun does 75
+ * to an Anvil and 26 to a conscript. That spread IS the counter-triangle.
  *
  * `canTargetAir` is the second axis and it is off unless a row says otherwise.
  * The rule, applied identically here and in `data/Defs.ts`: A SOLDIER CAN POINT
@@ -179,7 +179,7 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
   // Range 15 -> 18. Still the shortest gun in the game by four metres, which is
   // what "Short-ranged, brutal on infantry" should mean — but 15 put it inside
   // the stopping distance of every attacker in the game (a unit closes to
-  // `range * 0.80`, so a 22 m rifleman parks at 17.6 and a 30 m Grizzly at 24),
+  // `range * 0.80`, so a 22 m rifleman parks at 17.6 and a 30 m Warden at 24),
   // and a defence nothing ever enters the envelope of is a 600-credit ornament.
   /* 10 */ wpn('flameJet', 'Flame Nozzle', 26, WarheadClass.HighExplosive, 18, 0.5,
     ProjectileKind.Flame, COMBAT_PROJECTILES.flameSpeed,

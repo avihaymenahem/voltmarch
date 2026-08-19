@@ -945,7 +945,7 @@ export class SettingsScreen implements Screen {
        *   2. THE AI GETS IT TOO. `UnlockGate.mirrorAI` resolves the opponent
        *      against the HUMAN's profile, so this is symmetric by construction
        *      and not a bug — but a player who turns it on and is met with an
-       *      Apocalypse will read it as one unless it is stated first.
+       *      Sledge will read it as one unless it is stated first.
        *   3. NOTHING IS EARNED. The gate only changes what `isUnlocked`
        *      ANSWERS; it never writes the profile. That is what makes it safe
        *      to ship to everyone, and it is the sentence that stops it reading

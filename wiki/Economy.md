@@ -174,7 +174,7 @@ A queued item accumulates cost as it builds. Two consequences follow, and both a
    advances 40% of its increment. Build speed tracks income, which is what makes a refinery feel
    like a build-speed upgrade rather than just a bigger number.
 2. **Cancelling refunds exactly what you have paid so far** — never the full cost, never a
-   percentage. Queue an Apocalypse Tank, cancel it at 90%, and you are out nothing but the time.
+   percentage. Queue a Sledge Tank, cancel it at 90%, and you are out nothing but the time.
    Queueing things you may not want is genuinely free.
 
 Only when you pay *literally nothing* for longer than about half a second does a queue flip to

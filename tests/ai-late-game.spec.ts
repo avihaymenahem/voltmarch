@@ -126,7 +126,7 @@ interface Options {
   difficulty?: number;
   /** Refineries the AI owns. The superweapon gate is `maxRefineries`. */
   refineries?: number;
-  /** A Battle Lab, which every superweapon and one upgrade names as a prereq. */
+  /** A Proving Ground, which every superweapon and one upgrade names as a prereq. */
   techLab?: boolean;
   infantry?: number;
   vehicles?: number;
@@ -334,8 +334,8 @@ describe('the late-game doctrine tables', () => {
   });
 
   it('names an offensive superweapon first in every army that has a choice', () => {
-    // `forRole` would hand the Allies a Chronosphere purely because of table
-    // order, and a Chronosphere is worth what your plan for nine teleported
+    // `forRole` would hand the Allies a Displacement Ring purely because of table
+    // order, and a Displacement Ring is worth what your plan for nine teleported
     // tanks is worth. The plan overrides that.
     expect(superweaponPlanFor(Faction.Allies)[0]).toBe('weatherControl');
     expect(superweaponPlanFor(Faction.Soviets)[0]).toBe('nuclearSilo');
@@ -577,7 +577,7 @@ describe('the AI builds a superweapon', () => {
     const first = h.log.filter((c) => c.kind === CommandKind.ProductionStart
       && (c.defId === siloId || c.defId === curtainId));
     // The plan is [nuclearSilo, ironCurtain] and only the first unbuilt entry
-    // is ever offered to the scorer, so nothing can queue the Curtain while the
+    // is ever offered to the scorer, so nothing can queue the Field while the
     // Silo is still outstanding.
     for (const c of first) expect(c.defId).toBe(siloId);
   });
@@ -672,7 +672,7 @@ describe('the AI fires a superweapon', () => {
     expect(abilityOrders(h.log).length).toBe(0);
   });
 
-  it('holds an Iron Curtain until its own group is actually in contact', () => {
+  it('holds an Ironclad Field until its own group is actually in contact', () => {
     // Twenty seconds of invulnerability is worth nothing in an empty field.
     const quiet = makeHarness({
       difficulty: BRUTAL, refineries: 3, power: 2000, vehicles: 8,

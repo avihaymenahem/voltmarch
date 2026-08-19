@@ -448,7 +448,7 @@ describe('a bank running ahead of the line buys another door', () => {
     const h = makeHarness({
       difficulty,
       // THE RUSHER, and it is load-bearing rather than flavour. `pers.tech` 0.6
-      // puts the Battle Lab (0.9 x tech x techBias) and the Command Post
+      // puts the Proving Ground (0.9 x tech x techBias) and the Command Post
       // (`AI_POWER_BUY.score` 1.25 x tech) below `AI_PRODUCERS.score`, so the
       // one Structures slot is genuinely free and these cases measure the
       // producer rule rather than the tech ladder's turn order.

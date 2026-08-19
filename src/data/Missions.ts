@@ -24,8 +24,8 @@
  *   1. The starting army is COMPLETE. Full building line, infantry, a main
  *      battle tank, harvesters, a dozer and a basic defence, for every faction.
  *      Nobody grinds before the game is fun.
- *   2. Unlocks are VARIETY, not power. A Prism Tank is not better than a
- *      Grizzly, it is different. Superweapons are the one deliberate exception
+ *   2. Unlocks are VARIETY, not power. A Refractor Tank is not better than a
+ *      Warden, it is different. Superweapons are the one deliberate exception
  *      and sit at the end of the longest chains in the file.
  *   3. FACTIONS ARE NOT GATED. All four are available from the first launch.
  *      That was decided against the recommendation, it is not up for
@@ -64,9 +64,9 @@ import { RULE_METRIC } from '../progression/types';
 
 export const UNLOCKS = {
   /* -- units: sidegrades, one per faction each ---------------------------- */
-  /** Fast harass: Multigunner IFV / Attack Dog / Sandskiff. */
+  /** Fast harass: Sabre IFV / Attack Dog / Sandskiff. */
   unitRaider: 'unit.raider',
-  /** The faction's tier-3 specialist: Prism Tank / Apocalypse / Zenith Emitter. */
+  /** The faction's tier-3 specialist: Refractor Tank / Sledge / Zenith Emitter. */
   unitSpecialist: 'unit.specialist',
   /*
    * THREE NAVAL IDS USED TO SIT HERE — `unit.naval`, `unit.naval.capital` and
@@ -86,7 +86,7 @@ export const UNLOCKS = {
    */
   /**
    * The air arm, and ALL FOUR armies have one: Kestrel Gunship, Swarmhornet,
-   * Vindicator, MiG Fighter.
+   * Petrel Bomber, Interceptor.
    *
    * This read "Meridian only today — the Pactworks Kestrel" and was paid by
    * `mastery.meridian.2`, "win 12 skirmishes as the Meridian Pact". That was
@@ -101,11 +101,11 @@ export const UNLOCKS = {
   unitAir: 'unit.air',
 
   /* -- structures --------------------------------------------------------- */
-  /** Tech centre: Battle Lab / Reliquary. Opens the top of every tab. */
+  /** Tech centre: Proving Ground / Reliquary. Opens the top of every tab. */
   structTech: 'struct.tech',
-  /** Advanced defences: Flame Tower, Prism Tower, Tesla Coil, Helios Spire. */
+  /** Advanced defences: Flame Tower, Refractor Tower, Tesla Coil, Helios Spire. */
   structDefenceSpecialist: 'struct.defence.specialist',
-  /** Anti-air emplacement: Multigunner AA. */
+  /** Anti-air emplacement: AA Battery. */
   structDefenceAA: 'struct.defence.aa',
 
   /* -- superweapons: the end of the longest chains ------------------------ *
@@ -712,7 +712,7 @@ const MASTERY: readonly MissionDef[] = [
   {
     id: 'mastery.allies.2',
     scope: 'profile', category: 'mastery', difficulty: 3, faction: Faction.Allies,
-    title: 'Chronosphere Programme',
+    title: 'Displacement Ring Programme',
     description: 'Win 20 skirmishes as the Allied Forces.',
     target: 20,
     requires: ['mastery.allies.1'],
@@ -733,7 +733,7 @@ const MASTERY: readonly MissionDef[] = [
   {
     id: 'mastery.soviets.2',
     scope: 'profile', category: 'mastery', difficulty: 3, faction: Faction.Soviets,
-    title: 'Iron Curtain Programme',
+    title: 'Ironclad Field Programme',
     description: 'Win 20 skirmishes as the Soviet Union.',
     target: 20,
     requires: ['mastery.soviets.1'],
@@ -951,7 +951,7 @@ export const MISSION_UNLOCK_IDS: readonly string[] = (() => {
  *
  * WHY THIS EXISTS. A locked build slot used to say `Locked — complete a
  * mission` — one constant, no mission name, on every padlocked cameo in the
- * sidebar. A player hovering a Battle Lab was told to complete "a mission" and
+ * sidebar. A player hovering a Proving Ground was told to complete "a mission" and
  * had no way to find out which one, and every piece of data needed to answer
  * was already here: the def carries `unlockedBy: 'struct.tech'`, and exactly
  * one mission (`economy.harvest.2`, "Strip Mine") pays that id out.

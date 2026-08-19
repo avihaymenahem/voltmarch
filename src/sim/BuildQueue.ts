@@ -17,7 +17,7 @@
  * ---------------------------------------
  * `item.spent` accumulates the credits actually paid so far, and a cancel
  * refunds exactly that number — never the full cost, never a percentage. So
- * queueing an Apocalypse and cancelling it at 90% costs you nothing but the
+ * queueing a Sledge and cancelling it at 90% costs you nothing but the
  * time, which is precisely the C&C "queue as a bank" behaviour players expect.
  *
  * Because payment is per tick, a poor player does not stop — they crawl. A tick

@@ -45,7 +45,7 @@
  *      `tests/amphibious-landing.spec.ts` installs `new UnlockGate(() => [])`
  *      — a profile owning nothing — and that is correct THERE only because the
  *      navy is deliberately ungated. Here an empty profile would silently take
- *      superweapons, repair depots, prism tanks and the commander off the AI,
+ *      superweapons, repair depots, refractor tanks and the commander off the AI,
  *      which is precisely how three separate investigations concluded "the AI
  *      never builds a superweapon". This installs a gate whose reader returns
  *      `MISSION_UNLOCK_IDS` — a profile that has finished every mission — and

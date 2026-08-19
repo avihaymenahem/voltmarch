@@ -19,15 +19,15 @@ run over infantry**, and the main line sits one armour class below the tracked e
 
 **Shields stop shells, not bullets.** The main line is Light armour with a deep hit-point pool
 instead of Medium or Heavy with a shallow one. Read that against the damage table and it means
-armour-piercing rounds do less to a Solarch than to a Grizzly (0.85 against 1.00) — but autocannon
+armour-piercing rounds do less to a Solarch than to a Warden (0.85 against 1.00) — but autocannon
 does *more* (1.00 against 0.65) and small arms does twice as much (0.55 against 0.28). A Solarch
-trades evenly with a Grizzly and gets deleted by a Multigunner IFV or a squad of Conscripts. That
+trades evenly with a Warden and gets deleted by a Sabre IFV or a squad of Conscripts. That
 hole is the reason the Pact is not simply better.
 
 ## How it plays
 
 You win standoffs and lose brawls. Every Pact gun out-ranges its opposite number by one to three
-metres and under-damages it. The Solarch reaches 26 m against a Grizzly's 24; the Sunmonitor reaches
+metres and under-damages it. The Solarch reaches 26 m against a Warden's 24; the Sunmonitor reaches
 40 m; the Zenith Emitter reaches 33. Hold the line at maximum range, kite, and never let a Soviet
 column close.
 
@@ -55,8 +55,8 @@ Trained at the **Chapterhouse**.
 | Hierarch | 1500 | 20 s | Chapterhouse, Oculus | 430 | Infantry | 4.0 | Focus Lance, 60, AP, 1.4 m splash | 26 m | no | Commander. One alive at a time. The fastest commander, with 36 m of sight |
 
 The Sunlancer matters more here than the equivalent unit does in other armies. With no dedicated
-anti-air emplacement, he — plus the Sandskiff and the Kestrel — is the Pact's answer to a Vindicator
-or a MiG until a Helios Spire is standing. The Wayfarer's carbine elevates too, but 15 damage a
+anti-air emplacement, he — plus the Sandskiff and the Kestrel — is the Pact's answer to a Petrel Bomber
+or an Interceptor until a Helios Spire is standing. The Wayfarer's carbine elevates too, but 15 damage a
 round is a nuisance rather than a deterrent.
 
 ## Vehicles
@@ -161,8 +161,8 @@ One, where the Allies and the Soviets each get two.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Heliograph | 2500 | 32 s | Reliquary | 900 | -150 | 7:00 | 24 m | The Solar Lance. Turns the sky on one point — a single annihilating strike, announced before it burns |
 
-Same shape as the Soviet nuke at a slightly tighter radius. There is no Pact equivalent of the Iron
-Curtain or the Chronosphere; whatever you want done, the Lance is the only button you have.
+Same shape as the Soviet nuke at a slightly tighter radius. There is no Pact equivalent of the
+Ironclad Field or the Displacement Ring; whatever you want done, the Lance is the only button you have.
 
 ## Commander
 
@@ -193,7 +193,7 @@ has to walk into a fight to be useful with 430 hit points.
 ## Weaknesses
 
 - Light armour on the entire main line. Autocannon hits it at 1.00 and small arms at 0.55 — a
-  Multigunner IFV, a Flak Trooper squad or a wave of Conscripts will take a Pact column apart.
+  Sabre IFV, a Flak Trooper squad or a wave of Conscripts will take a Pact column apart.
 - **Nothing the Pact fields can crush infantry.** You never win a ram, and enemy foot units can
   stand in front of your tanks with impunity.
 - The Solar Array is 420 hit points. Your power grid is the softest target on the map, and losing it

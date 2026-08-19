@@ -940,7 +940,7 @@ arc CHAINS"*; `:227` *"**Every arc row is 14-20 m**"*; `:912-913` *"**Seven of t
 **six** Tesla, not seven and not ten (`slagCharge` 12 m, `slagMortar` 42 m, `scowGun` 32 m,
 `hulkBattery` 38 m are HighExplosive and chain nothing); and `pylonArc` is a **28 m** arc, 8 m outside
 the band the header presents as the price of having no turret. Everything else in the block checks
-out exactly (the Tesla armour row, the Grinder/Grizzly/Rhino comparison, `RCL_TURN`'s worked
+out exactly (the Tesla armour row, the Grinder/Warden/Anvil comparison, `RCL_TURN`'s worked
 example) — this is drift in one block, not a sloppy file.
 
 ---
@@ -973,7 +973,7 @@ Do not re-open them without new evidence.
 
 | # | Killed candidate | Why it dies |
 |---|---|---|
-| K1 | `SUPERWEAPONS[].structureKeys` names four buildings that do not exist; one Battle Lab unlocks both weapons | **Deliberate and documented.** `src/sim/Superweapons.ts:27-33`: *"There are no superweapon structures in the roster yet, so each entry carries a `structureKeys` fallback chain and every one of them ends at `battleLab`. The moment `nuclearSilo` / `ironCurtain` / `chronosphere` / `weatherControl` exist as building defs, they take over with no code change."* That is exactly the observed behaviour. *(The faction-coverage half is a real finding — §4 #32.)* |
+| K1 | `SUPERWEAPONS[].structureKeys` names four buildings that do not exist; one Proving Ground unlocks both weapons | **Deliberate and documented.** `src/sim/Superweapons.ts:27-33`: *"There are no superweapon structures in the roster yet, so each entry carries a `structureKeys` fallback chain and every one of them ends at `battleLab`. The moment `nuclearSilo` / `ironCurtain` / `chronosphere` / `weatherControl` exist as building defs, they take over with no code change."* That is exactly the observed behaviour. *(The faction-coverage half is a real finding — §4 #32.)* |
 | K2 | Income is exponentially smoothed twice in series | **Factually wrong.** `src/ui/Hud.ts:696` feeds `incomeBucket` from `credits:changed` deltas directly, not from `Economy.incomeRate`. They are two independent estimators, not a cascade. *(The duplicate-constant half survives with corrected reasoning — §4 #44.)* |
 | K3 | `wall` blurb "Stops vehicles. Stops nothing else." | Ambiguous. The reading "it has no gun" is defensible and probably intended. Not a factual contradiction. |
 | K4 | `p99Luminance [0.90,1.00]` rewards clipping | `docs/RA3_LOOK_BIBLE.md:815` row 6 literally says `p99 ≥ 0.90`. The probe implements the spec correctly. A critique of the bible, not drift from it. |
@@ -1005,7 +1005,7 @@ Re-treading these is wasted time unless the underlying code changes.
 - **Soviet `teslaCoil` and Allied `prismTower` power gating** — both correctly carry the entity flag
   *and* the weapon flag. Meridian's `mrdHelios` likewise. The §3 #2 defect is confined to two
   Meridian entries.
-- **`rclCrucible`'s unlock blurb** and the whole Reclamation Tesla-armour / Grinder-versus-Grizzly
+- **`rclCrucible`'s unlock blurb** and the whole Reclamation Tesla-armour / Grinder-versus-Warden
   comparison in `Defs.ts` — verified against the tables, exactly right. §4 #47 is drift in one
   header block, not a sloppy file.
 - **`Explosions.ts` scorch path** — `setScorchSink` is genuinely bound (`roads.system.ts:115`) and

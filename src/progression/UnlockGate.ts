@@ -75,7 +75,7 @@ export interface UnlockGateOptions {
  * Tooltip text for a def the gate rejected when nothing better is known.
  *
  * THE FALLBACK, NOT THE ANSWER. This was the only thing a locked cameo ever
- * said: a player hovered a padlocked Battle Lab, was told to "complete a
+ * said: a player hovered a padlocked Proving Ground, was told to "complete a
  * mission", and had no way to find out which one — while the def carried
  * `unlockedBy: 'struct.tech'` and exactly one mission paid that id out. See
  * `lockedReasonFor`, and `UnlockGateOptions.unlockHints` for why the lookup

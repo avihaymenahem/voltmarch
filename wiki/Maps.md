@@ -159,12 +159,12 @@ A 6 m step across a 1 m sample is about an 80° face, so **every terrace edge is
 | Hover | 1.00× (immune) | 1.00× |
 | Naval / Air | n/a | n/a |
 
-Wheeled hulls — the Multigunner IFV, the Arcspitter, the Grinder, the Scrapjaw, the Yardcrawler —
+Wheeled hulls — the Sabre IFV, the Arcspitter, the Grinder, the Scrapjaw, the Yardcrawler —
 pay double to cross broken ground and are the units most rerouted by it. Tracked hulls barely
 notice. Hover ignores slope entirely, which is the Meridian Pact's quiet mobility advantage.
 
 > **Slope does not slow you down, it reroutes you.** Maximum speed is written once from the unit
-> definition and nothing else ever touches it. A Grizzly on a hillside travels at exactly the same
+> definition and nothing else ever touches it. A Warden on a hillside travels at exactly the same
 > metres per second as one on a lawn. What changes is that the flow field steers the column around
 > the hillside — so terrain costs you *distance*, not *velocity*.
 
@@ -213,7 +213,7 @@ are solid.
 **Crushing flattens scenery — and soldiers.** A vehicle with a crush level moving above 0.6 m/s
 fells trees and shrubs under the front 70 % of its hull, permanently for the match, and kills any
 enemy infantryman it drives over. Boulders and rocks are solid instead and will stop a column. Six
-hulls crush: the Grizzly, the Rhino, the Apocalypse, the Ore Harvester, the Grinder and the
+hulls crush: the Warden, the Anvil, the Sledge, the Ore Harvester, the Grinder and the
 Scrapjaw. The whole Meridian Pact hovers and crushes nothing. See
 [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#crushing-infantry) for the full rule.
 
@@ -358,7 +358,7 @@ one.
 | Dud | 8 % | It was ammunition — 45 % of the finder's max HP, 5 m splash |
 
 Crates are the reason an early cheap scout pays for itself twice. They spawn on passable, dry,
-unoccupied ground, and after ten minutes a single credit crate is worth more than a Grizzly.
+unoccupied ground, and after ten minutes a single credit crate is worth more than a Warden.
 
 ---
 
@@ -409,7 +409,7 @@ anything; only the holder at each interval is paid.
 ### Garrisoning generally
 
 You can also garrison your own unarmed, non-production structures with a footprint of at least
-2 × 2 cells — the **Power Plant**, the **Battle Lab** and the **Repair Depot**, plus each faction's
+2 × 2 cells — the **Power Plant**, the **Proving Ground** and the **Repair Depot**, plus each faction's
 equivalents. The Ore Silo is 1 × 1 and is refused as too small; anything that builds, refines or
 carries a radar is refused as a production structure; anything with a gun is refused because it does
 not need the help.

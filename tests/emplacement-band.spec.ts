@@ -30,13 +30,13 @@
  *     Glaive Post      450 cr   5 x 21 / 0.69 s   152.2      338 dps/1000cr
  *     Pillbox          400 cr   5 x 20 / 0.69 s   144.9      362 dps/1000cr
  *     Sentry Gun       400 cr   5 x 20 / 0.69 s   144.9      362 dps/1000cr
- *     Multigunner AA   800 cr   3 x 34 / 0.82 s    99.5      124 dps/1000cr
+ *     AA Battery       800 cr   3 x 34 / 0.82 s    99.5      124 dps/1000cr
  *     Tesla Coil      1500 cr   1 x 120 / 2.40 s   80.0       53 dps/1000cr
  *     Arc Pylon       1450 cr   1 x 94 / 2.20 s    68.4       47 dps/1000cr
  *     Spitpost         420 cr   1 x 34 / 0.85 s    64.0      152 dps/1000cr
  *     Flame Tower      600 cr   1 x 26 / 0.50 s    46.8       78 dps/1000cr
  *     Helios Spire    1500 cr   1 x 116 / 2.80 s   45.6       30 dps/1000cr
- *     Prism Tower     1500 cr   1 x 115 / 3.00 s   42.2       28 dps/1000cr
+ *     Refractor Tower 1500 cr   1 x 115 / 3.00 s   42.2       28 dps/1000cr
  *
  * The two cheapest emplacements in the game are the two highest-dps rows in the
  * whole 42-row armoury, and they are 7-12x the credit efficiency of the towers
@@ -69,14 +69,14 @@
  * -----------------------------------------------------------
  * 81.5 dps on a 400-credit box is 204 dps per 1000 credits, and `BAND_MAX` is
  * that rounded to 210. An absolute dps ceiling was tried first and it indicted
- * the 800-credit Multigunner AA at 99.5, which is wrong: that structure costs
+ * the 800-credit AA Battery at 99.5, which is wrong: that structure costs
  * twice what a Pillbox does and buys 124 dps/1000cr, a third of the Pillbox's
  * 362. Cost IS power in an RTS, and `REBALANCE_WEAPONS`' own argument for
  * re-authoring the IFV's gun was made in exactly these units ("dps per 1000
  * credits, best in the whole roster among VEHICLES against Light (193) …").
  *
  * Checked against the rest of the roster the band leaves the Spitpost (152),
- * the Flame Tower (78), the Multigunner AA (124) and all four heavy towers
+ * the Flame Tower (78), the AA Battery (124) and all four heavy towers
  * (28-53) inside, so it describes the emplacements that were always fine rather
  * than being reverse-engineered from the two that are not.
  *
@@ -101,7 +101,7 @@
  * first version of this rule forbade a pull that deletes a line infantryman
  * outright, and it correctly indicted the MG posts and then went on to indict
  * all four heavy towers, which is nonsense: a 1500-credit beam that vaporises
- * a rifleman is exactly what a Prism Tower is FOR. What separates them is the
+ * a rifleman is exactly what a Refractor Tower is FOR. What separates them is the
  * clock. The towers pull once every 2.2-3.0 s; the MG posts pull every 0.69 s.
  * So the rule is `MIN_ONE_SHOT_CYCLE`: an emplacement whose single pull kills a
  * line infantryman outright must wait at least 1.2 s before it can do it again.

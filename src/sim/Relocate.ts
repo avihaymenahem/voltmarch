@@ -238,7 +238,7 @@ const scratchPlacement: PlacementReport = makePlacementReport();
  * The superweapon a structure key is the dedicated host for, or -1.
  *
  * Only `structureKeys[0]` counts. Every superweapon lists `battleLab` as its
- * fallback host, and refusing to move a Battle Lab because SOMETHING somewhere
+ * fallback host, and refusing to move a Proving Ground because SOMETHING somewhere
  * might be charging off it would forbid relocating the most commonly misplaced
  * structure in the game for a reason the player cannot see.
  */

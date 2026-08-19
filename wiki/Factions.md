@@ -3,7 +3,7 @@
 Four armies. Two of them are variations on a shared chassis; two of them are not.
 
 The **Allied Forces** and the **Soviet Union** draw from a common pool. Their Construction Yard,
-Power Plant, Ore Refinery, Barracks, War Factory, Radar Dome, Ore Silo, Battle Lab, Repair Depot,
+Power Plant, Ore Refinery, Barracks, War Factory, Radar Dome, Ore Silo, Proving Ground, Repair Depot,
 Wall, Gate, Engineer, Ore Harvester, Construction Vehicle and Heavy Transport are literally the same
 things at the same prices. They diverge at the tanks, the infantry specialists, the defences, the
 rest of the navy and the superweapons.
@@ -23,13 +23,13 @@ gate at all**, because the Gate lives in the pool.
 | Team colour | Cobalt | Crimson | Jade | Arc violet |
 | Shipped one-liner | Precision, mobility and beam tech. Fewer, better units. | Armour and volume. Slower, heavier, hits like a building. | Nothing the Pact fields touches the ground. Solar tech, hovering hulls. | Welded out of other people's wrecks. Open frames, chained arcs, no turrets. |
 | Tech tree | Shared pool | Shared pool | Parallel | Parallel, and the cheapest |
-| Starting units | 2 G.I., 1 Grizzly | 2 Conscript, 1 Rhino | 2 Wayfarer, 1 Solarch | 3 Scrap Picker, 1 Grinder |
+| Starting units | 2 G.I., 1 Warden | 2 Conscript, 1 Anvil | 2 Wayfarer, 1 Solarch | 3 Scrap Picker, 1 Grinder |
 | Power plant | 300 cr, +100, 800 hp | 300 cr, +100, 800 hp | 350 cr, +160, **420 hp** | 240 cr, **+80**, 950 hp |
-| Line tank | Grizzly 700 / 340 hp / Medium | Rhino 900 / 420 hp / Heavy | Solarch 800 / 330 hp / Light | Grinder 600 / 270 hp / Medium |
+| Line tank | Warden 700 / 340 hp / Medium | Anvil 900 / 420 hp / Heavy | Solarch 800 / 330 hp / Light | Grinder 600 / 270 hp / Medium |
 | Cheapest infantry | G.I. 200 | Conscript 100 | Wayfarer 175 | Scrap Picker **90** |
 | Harvester load | 700 | 700 | 450 | 600 |
 | Superweapons | **2** | **2** | 1 | 1 |
-| Emplacements that shoot up | Multigunner AA (the only dedicated one), Prism Tower | Tesla Coil only | Helios Spire only | Arc Pylon only |
+| Emplacements that shoot up | AA Battery (the only dedicated one), Refractor Tower | Tesla Coil only | Helios Spire only | Arc Pylon only |
 | Gate | Yes | Yes | **none** | **none** |
 | Recon hull | Hydrofoil 450, 44 m sight | Picket Boat 450, 42 m | Sun Cutter 480, **46 m** | Scrap Skimmer **400**, 42 m |
 | Landing ship, 4 slots | Landing Craft 700 | Assault Barge 680 | Sun Lighter 720 | Slag Scow 850, **armed** |
@@ -37,7 +37,7 @@ gate at all**, because the Gate lives in the pool.
 | Escort hull | Assault Destroyer 1000 | Attack Submarine 1000 | Kite Corvette 950 | **none** |
 | Swimmer infantry | Frogman 350 | Naval Infantry 320 | Tidewalker 380 | Dredger **300** |
 | Carrier that works inland | none | none | Sandskiff, 2 slots | none |
-| Can crush infantry | Grizzly, Harvester | Rhino, Apocalypse, Harvester | **nothing** | Scrapjaw, Grinder |
+| Can crush infantry | Warden, Harvester | Anvil, Sledge, Harvester | **nothing** | Scrapjaw, Grinder |
 | Turrets | Yes | Yes | Yes | **None, on anything** |
 
 **A cargo slot is not a seat.** Infantry cost one, a vehicle costs two, so a
@@ -52,8 +52,8 @@ is buildable on a brand-new profile — see
 
 | Faction | Good at | Bad at |
 | --- | --- | --- |
-| **Allied Forces** | Cost-efficient medium armour, three armed emplacements including the only dedicated anti-air turret in the game, long-range beam damage that most armour barely resists, two superweapons that answer two different problems | Nothing survives being focused — the Grizzly is 80 hp lighter than a Rhino and the Prism Tank is a 1200-credit vehicle with 260 hp; the beam units must stop to fire and cannot shoot at aircraft |
-| **Soviet Union** | Raw hit points, the only 800-hp tank in the game, the cheapest infantry going, two cheap defences from the first minute, the best air-superiority fighter, a warned nuke and true invulnerability | Slow. Every Soviet answer is heavier rather than smarter, so a fast army decides where the fight happens; no dedicated anti-air structure; the Attack Dog and Apocalypse both sit behind unlocks |
+| **Allied Forces** | Cost-efficient medium armour, three armed emplacements including the only dedicated anti-air turret in the game, long-range beam damage that most armour barely resists, two superweapons that answer two different problems | Nothing survives being focused — the Warden is 80 hp lighter than an Anvil and the Refractor Tank is a 1200-credit vehicle with 260 hp; the beam units must stop to fire and cannot shoot at aircraft |
+| **Soviet Union** | Raw hit points, the only 800-hp tank in the game, the cheapest infantry going, two cheap defences from the first minute, the best air-superiority fighter, a warned nuke and true invulnerability | Slow. Every Soviet answer is heavier rather than smarter, so a fast army decides where the fight happens; no dedicated anti-air structure; the Attack Dog and Sledge both sit behind unlocks |
 | **Meridian Pact** | Reach — every Pact gun out-ranges its opposite number; total amphibiousness on the ground, since every Forgeyard hull hovers and can cross any lake on the map; the cheapest power per credit in the game, which puts the Pact a tier ahead early | Skin. The whole line is Light armour, which autocannon and massed rifles tear through; nothing the Pact fields can crush infantry, so it never wins a ram; its power plant has 420 hp and its best emplacement goes dark when the grid does |
 | **The Reclamation** | Tempo. The cheapest power plant, the cheapest vehicle factory and the cheapest units in the game, with no radar or tech building between you and a line army; chained arcs delete massed infantry outright and hit extra targets standing behind the one you shot | Range and facing. Every arc is 14–20 m where everyone else is 22–26, and nothing in the army has a turret, so a hull must point its whole chassis at what it wants to kill. Arcs barely scratch concrete: the *entire* answer to an enemy base is one siege hull and one satchel infantryman |
 
@@ -77,11 +77,11 @@ system; the rest is positioning.
 Three consequences worth memorising:
 
 - **Rifles do not kill tanks.** Small arms at 0.10 against Heavy armour means a G.I. shooting an
-  Apocalypse is doing nothing you will live to see. Both shared-pool armies have a dedicated
+  Sledge is doing nothing you will live to see. Both shared-pool armies have a dedicated
   anti-armour infantryman for exactly this reason (Javelin, Flak Trooper), and both Pact and
   Reclamation line infantry already carry a warhead that works.
 - **Every aircraft in the game is Light armour.** So the autocannon column *is* the anti-air
-  column. That is why the MiG, at 1.00 against Light, is the best air-superiority unit in the
+  column. That is why the Interceptor, at 1.00 against Light, is the best air-superiority unit in the
   game, and why it is also useless against a base at 0.35 against Concrete.
 - **Arcs cannot siege.** Tesla at 0.60 against Concrete is the reason the Reclamation, whose entire
   armoury is arcs, has a specific and very short list of things that can hurt a building.
@@ -101,8 +101,8 @@ the structure or the grid; it does not reset.
 | Weapon | Faction | Structure | Cost | Charge | Radius | What it does |
 | --- | --- | --- | --- | --- | --- | --- |
 | Nuclear Missile | Soviets | Nuclear Missile Silo | 2500 | 7:00 | 26 m | One annihilating blast, announced 3.5 s before it lands |
-| Iron Curtain | Soviets | Iron Curtain Device | 2000 | 5:00 | 13 m | 20 seconds of true invulnerability for friendlies in the radius |
-| Chronosphere | Allies | Chronosphere | 2000 | 5:00 | 11 m | Two clicks: lifts up to 9 friendly ground units from one place to another |
+| Ironclad Field | Soviets | Ironclad Field | 2000 | 5:00 | 13 m | 20 seconds of true invulnerability for friendlies in the radius |
+| Displacement Ring | Allies | Displacement Ring | 2000 | 5:00 | 11 m | Two clicks: lifts up to 9 friendly ground units from one place to another |
 | Lightning Storm | Allies | Weather Control Device | 2500 | 6:40 | 16 m | 9 seconds of scattered bolts; more total damage than the nuke, none of it where you aimed |
 | Solar Lance | Meridian Pact | Heliograph | 2500 | 7:00 | 24 m | The nuke's single warned strike, at a slightly tighter radius |
 | Arc Storm | Reclamation | Stormworks | 2500 | 6:40 | 17 m | The lightning storm, as loose arcs |
@@ -133,7 +133,7 @@ the aim.
 
 ## Which should I play first?
 
-**Start with the Soviet Union.** Conscripts are 100 credits, the Rhino has 420 hit points behind
+**Start with the Soviet Union.** Conscripts are 100 credits, the Anvil has 420 hit points behind
 Heavy armour (which takes 0.10 from small arms and 0.35 from autocannon), and you have two cheap
 defensive emplacements available from the first minute where the Allies have one. It is the most
 forgiving army in the game and the one that punishes a slow decision least. It also shares its
@@ -141,7 +141,7 @@ entire economic tree with the Allies, so nothing you learn is wasted when you sw
 
 **Then the Allied Forces.** Same buildings, same prices, a completely different fighting style:
 cheaper and faster armour that dies quicker, a rifleman who can shoot at aircraft, and the only
-dedicated anti-air turret in the game. The Grizzly at 700 credits against a Rhino at 900 is the
+dedicated anti-air turret in the game. The Warden at 700 credits against an Anvil at 900 is the
 whole faction in one number — you get more tanks, and you have to use them better.
 
 **Then the Meridian Pact,** once you are comfortable deciding where a fight happens. Every Pact gun

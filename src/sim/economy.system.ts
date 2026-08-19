@@ -87,7 +87,7 @@ import { production } from './Production';
 /**
  * How much storage the structure in slot `i` is worth — `Economy`'s window onto
  * the content catalog, which is the only table in the build that knows an Ore
- * Silo from a Battle Lab.
+ * Silo from a Proving Ground.
  *
  * THIS REPLACES A TWO-ROW LOOKUP THAT DID NOT WORK. There used to be a
  * `STORAGE_BY_KEY` here with rows for `refinery` and `oreSilo`, swept over the

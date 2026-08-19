@@ -1993,7 +1993,7 @@ export const EXAMPLE_TANK: UnitMassList = (() => {
 })();
 
 /**
- * WORKED EXAMPLE 2 — AN AIRCRAFT. The Vindicator, rebuilt.
+ * WORKED EXAMPLE 2 — AN AIRCRAFT. The Petrel Bomber, rebuilt.
  *
  * The fuselage is a `hull` — a convex point cloud with every edge bevelled —
  * which is the primitive that exists precisely for blended bodies. The wings
@@ -2138,7 +2138,7 @@ export const EXAMPLE_AIRCRAFT: UnitMassList = (() => {
 
   return {
     key: 'example_aircraft',
-    name: 'Vindicator (hi-tech)',
+    name: 'Petrel Bomber (hi-tech)',
     faction: 'allies',
     cls: 'air',
     hullLength: L,

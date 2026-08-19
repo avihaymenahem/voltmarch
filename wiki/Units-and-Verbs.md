@@ -44,9 +44,9 @@ pays out what.
 
 | Locked at the start | What it takes away |
 |---|---|
-| The tech building (Battle Lab, Reliquary, Crucible) | **Every superweapon**, and every tier-3 unit |
+| The tech building (Proving Ground, Reliquary, Crucible) | **Every superweapon**, and every tier-3 unit |
 | The air tier | All four aircraft |
-| The AA emplacement | The Allied Multigunner AA |
+| The AA emplacement | The Allied AA Battery |
 
 Everything else — engineers, garrisons, deploy, harvesting, repair, sell,
 relocate, crushing, crates and all four commanders — is available in your very
@@ -134,7 +134,7 @@ In practice that is:
 
 - the three **neutral civilian buildings** — Oil Derrick, Civilian Hospital,
   Apartment Block;
-- your own Power Plant, Ore Silo and Battle Lab.
+- your own Power Plant, Ore Silo and Proving Ground.
 
 **Capacity is 5 men.** A sixth is refused and stays outside.
 
@@ -418,9 +418,9 @@ than or equal to** the victim's crushable-by.
 
 | Hull | Army | Crush level |
 |---|---|---|
-| Grizzly Tank | Allies | 3 |
-| Rhino Tank | Soviets | 4 |
-| **Apocalypse Tank** | Soviets | **6** |
+| Warden Tank | Allies | 3 |
+| Anvil Tank | Soviets | 4 |
+| **Sledge Tank** | Soviets | **6** |
 | Ore Harvester | Allies and Soviets | 5 |
 | Grinder | Reclamation | 5 |
 | Scrapjaw | Reclamation | 5 |
@@ -432,12 +432,12 @@ Everything else crushes nothing. The whole Meridian Pact hovers and therefore
 never wins a ram; the IFV, the Arcspitter and the Sandskiff are wheeled but not
 crushers.
 
-**The Prism Tank does not crush, despite carrying a crush level of 2.** Its data
-says 2 and the resolver never asks, because the Prism Tank is missing the flag
-that marks a hull as a crusher in the first place. Treat the Prism Tank as
+**The Refractor Tank does not crush, despite carrying a crush level of 2.** Its data
+says 2 and the resolver never asks, because the Refractor Tank is missing the flag
+that marks a hull as a crusher in the first place. Treat the Refractor Tank as
 harmless to infantry underfoot.
 
-**Nothing can crush the Apocalypse Tank, either harvester, the Scrapjaw, any
+**Nothing can crush the Sledge Tank, either harvester, the Scrapjaw, any
 construction vehicle, any aircraft, or any hull a shipyard builds** — all of
 them carry a crushable-by of 0, which means uncrushable. The Sandskiff is the
 one carrier that does not: it is a land raider, and it carries a 4.
@@ -448,10 +448,10 @@ infantry as crushable. Ramming a tank with a bigger tank does nothing.
 
 **You have to actually line it up.** A rolling hull does not steer around, brake
 for, or bounce off a man it is entitled to crush — that carve-out is real and
-measurable: with and without an infantryman in its path, a Grizzly's route is
+measurable: with and without an infantryman in its path, a Warden's route is
 identical. But the pathfinder aims at your *order point*, not at the man, so a
 tank sent past a rifleman will often miss him by a metre or two. The kill radius
-is about **2.2 m** for a Grizzly. If you want the crush, right-click the ground
+is about **2.2 m** for a Warden. If you want the crush, right-click the ground
 directly behind him.
 
 A **parked** tank keeps its collision and shoves infantry aside instead of
@@ -467,12 +467,12 @@ split is a targeting rule, not a seventh armour class.
 | Aircraft | Army | Cost | HP | Speed | Sight | Gun |
 |---|---|---|---|---|---|---|
 | Swarmhornet | Reclamation | 900 | 180 | 11.0 | 34 | Chained arc |
-| MiG Fighter | Soviets | 1000 | 190 | **13.5** | 32 | Autocannon |
+| Interceptor | Soviets | 1000 | 190 | **13.5** | 32 | Autocannon |
 | Kestrel Gunship | Meridian | 1100 | 210 | 12.0 | 36 | Guided pods |
-| Vindicator | Allies | 1200 | **240** | 11.5 | **38** | Guided AGM |
+| Petrel Bomber | Allies | 1200 | **240** | 11.5 | **38** | Guided AGM |
 
-The asymmetry is the warhead. The **Vindicator** carries Rocket (0.90 against
-Concrete): a strike aircraft, bought to open a base. The **MiG** carries
+The asymmetry is the warhead. The **Petrel Bomber** carries Rocket (0.90 against
+Concrete): a strike aircraft, bought to open a base. The **Interceptor** carries
 Autocannon (1.00 against Light, 0.35 against Heavy and Concrete): the best
 air-superiority unit in the game and useless against a tank line or a wall.
 
@@ -485,7 +485,7 @@ air-superiority unit in the game and useless against a tank line or a wall.
   units, ignore the navigation grid entirely, and travel in a straight line. No
   pathing, no queueing, no traffic.
 - **Most guns cannot touch it.** See [Combat §2](/avihaymenahem/voltmarch/wiki/Combat#which-guns-can-shoot-up).
-  Only the Allies have a dedicated AA emplacement (Multigunner AA); the Pact and
+  Only the Allies have a dedicated AA emplacement (AA Battery); the Pact and
   the Reclamation answer aircraft with units — the Sunlancer and the Arcspitter.
 - **Killed over water it sinks**, from altitude, leaving a splash at the
   waterline rather than a wreck in the air.
@@ -512,7 +512,7 @@ tick, the resolution is deterministic and identical on every machine.
 
 Crates are the reason an early scout pays for itself. The dud is rare enough to
 be a story rather than a tax, and it hurts a Conscript far less than it hurts an
-Apocalypse.
+Sledge.
 
 ---
 
@@ -525,13 +525,13 @@ heaviest single draw in the game.
 | Weapon | Army | Structure | Cost | Charge | Radius | Aiming |
 |---|---|---|---|---|---|---|
 | **Nuclear Missile** | Soviets | Nuclear Missile Silo | 2500 | 7:00 | 26 m | One click |
-| **Iron Curtain** | Soviets | Iron Curtain Device | 2000 | 5:00 | 13 m | One click |
-| **Chronosphere** | Allies | Chronosphere | 2000 | 5:00 | 11 m | **Two clicks** |
+| **Ironclad Field** | Soviets | Ironclad Field | 2000 | 5:00 | 13 m | One click |
+| **Displacement Ring** | Allies | Displacement Ring | 2000 | 5:00 | 11 m | **Two clicks** |
 | **Lightning Storm** | Allies | Weather Control Device | 2500 | 6:40 | 16 m | One click |
 | **Solar Lance** | Meridian | Heliograph | 2500 | 7:00 | 24 m | One click |
 | **Arc Storm** | Reclamation | Stormworks | 2500 | 6:40 | 17 m | One click |
 
-Every one is gated on its army's tech building — Battle Lab, Reliquary or
+Every one is gated on its army's tech building — Proving Ground, Reliquary or
 Crucible — so a superweapon is the last thing on the tree and never an opening.
 That tech building is itself a mission unlock, so a fresh profile has no
 superweapons at all.
@@ -548,13 +548,13 @@ Explosive, across the radius. It is announced **3.5 seconds** before it lands,
 with a marker beam standing on the target that **both sides can see**. That
 warning is the mechanic — the target has time to be afraid and to scatter.
 
-**Iron Curtain.** Every friendly infantryman and vehicle in the radius becomes
+**Ironclad Field.** Every friendly infantryman and vehicle in the radius becomes
 **genuinely invulnerable for 20 seconds**. Not damage reduction — nothing in the
 game can hurt them. Their original health is restored on expiry, so it is
 invulnerability and not a heal. Twenty seconds is long enough to walk an
-Apocalypse column through a defensive belt.
+Sledge column through a defensive belt.
 
-**Chronosphere.** Click a **source**, then a **destination**. Up to **nine**
+**Displacement Ring.** Click a **source**, then a **destination**. Up to **nine**
 friendly ground units are lifted out of one and set down in a spiral around the
 other, anywhere on the map. They arrive idle with no orders.
 
@@ -567,7 +567,7 @@ devastating; against a base (0.60) it is not.
 ### Charging and firing
 
 - **The charge only runs while you own a live, finished, powered structure.** A
-  browned-out silo charges nothing. Confirmed in play: a Chronosphere built with
+  browned-out silo charges nothing. Confirmed in play: a Displacement Ring built with
   no spare generation reads unavailable and refuses to fire even with the timer
   at zero.
 - **Losing the structure pauses the charge, it does not reset it.** Rebuild and
@@ -606,7 +606,7 @@ They are also real combat units in their own right: 430–520 HP and a serious g
 
 Prism Focus is ordinary damage — the armour matrix applies, the kill is credited
 to the Hierarch, and a unit already at 1 HP dies to it exactly as it dies to a
-rifle. Iron Will works the way the Iron Curtain does, at a quarter of the
+rifle. Iron Will works the way the Ironclad Field does, at a quarter of the
 duration.
 
 ---
@@ -655,7 +655,7 @@ already bought stays bought.
 
 ## Things that surprise people
 
-- **A Grizzly will drive straight past an infantryman it could have crushed**,
+- **A Warden will drive straight past an infantryman it could have crushed**,
   because the pathfinder aims at your click, not at him. Click the ground
   *behind* the target.
 - **Riflemen will not voluntarily shoot a tank** while any softer target is

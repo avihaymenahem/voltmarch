@@ -476,7 +476,7 @@ const RALLY_SNAP_INSET = 0.6;
  * `Movement.canStand` refuses to integrate a hull CENTRE into a cell the hard
  * grid closed. Meanwhile `NavAssigner` copies `orderX/orderZ` into the goal
  * VERBATIM and the arrival test measures against that raw point
- * (`radius + NAV_ARRIVE_SLACK`, 3.89 m for a Grizzly). A flag further than that
+ * (`radius + NAV_ARRIVE_SLACK`, 3.89 m for a Warden). A flag further than that
  * inside a footprint is therefore a point no hull can ever satisfy: the unit
  * grinds, displaces, and finally parks several metres short of a flag the
  * overlay drew exactly where the player clicked. This is the one place that

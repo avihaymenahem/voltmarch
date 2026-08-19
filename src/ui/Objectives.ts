@@ -163,7 +163,7 @@ export interface MissionDef {
    * IT IS NOT `target === 1`, AND THAT DISTINCTION IS THE FIX. Reading the
    * target is a heuristic that is wrong in both directions: a campaign
    * objective is a flag whatever its target reads, and a skirmish mission that
-   * legitimately counts to one of something ("build a Battle Lab") is a counter
+   * legitimately counts to one of something ("build a Proving Ground") is a counter
    * and would be silently relabelled. `src/shell/PauseMenu.ts` still infers it
    * from `target <= 1`; that is the sibling screen and outside this change.
    *
@@ -199,7 +199,7 @@ export interface ProfileView {
  * WHERE AN UNLOCK COMES FROM. What the build palette needs in order to stop
  * saying "complete a mission" and start saying WHICH.
  *
- * A player hovered a locked Battle Lab, read "Locked — complete a mission", and
+ * A player hovered a locked Proving Ground, read "Locked — complete a mission", and
  * asked whether they were supposed to guess. They were: `LOCKED_REASON` in
  * `src/progression/UnlockGate.ts` is one constant with no mission in it, and
  * the palette printed it verbatim. The data to do better has always existed —

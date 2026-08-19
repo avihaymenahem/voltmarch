@@ -1262,7 +1262,7 @@ function pactFlyer(key: string, name: string, L: number, S: number, H: number): 
  * 9. THE ROSTER
  *
  * Dimensions come off the same scale ladder the shipped roster uses: the
- * Solarch is a 6.4 m hull against the Grizzly's 6.6 and the Rhino's 7.0, which
+ * Solarch is a 6.4 m hull against the Warden's 6.6 and the Anvil's 7.0, which
  * is the "lighter than both, not smaller than either" read the stats promise.
  * ========================================================================== */
 

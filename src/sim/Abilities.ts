@@ -72,7 +72,7 @@ import { CreditReason } from '../core/types';
 /**
  * Units one Iron Will can hold protected at once, across all players.
  *
- * 48 is six full squads. The Iron Curtain's own table is 64 for a 20-second
+ * 48 is six full squads. The Ironclad Field's own table is 64 for a 20-second
  * effect with a 300-second charge; this is a 5-second effect on a 60-second
  * cooldown, so the standing population is far smaller and the extra slots
  * would only ever be zeroes to walk.
@@ -298,7 +298,7 @@ export class AbilityService {
    * ALLIES — Chrono Rally. Friendlies in radius blink to a ring around the
    * commander.
    *
-   * The Chronosphere's spiral, inverted: that one pushes a group somewhere,
+   * The Displacement Ring's spiral, inverted: that one pushes a group somewhere,
    * this one PULLS a scattered group home. Same arrival spacing so nine units
    * do not land inside each other and spend two seconds shoving apart.
    */
@@ -362,7 +362,7 @@ export class AbilityService {
    * SOVIETS — Iron Will. Friendlies in radius cannot be harmed for a few
    * seconds.
    *
-   * Implemented the Iron Curtain's way and for its reason: splash damage is
+   * Implemented the Ironclad Field's way and for its reason: splash damage is
    * resolved from one queue record against everything in the blast, so a
    * per-record veto cannot protect a unit standing next to the target. Raising
    * `maxHp` to 1e7 for the duration is exact, needs no hook in `Damage.ts`, and

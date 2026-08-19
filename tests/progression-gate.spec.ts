@@ -217,7 +217,7 @@ describe('ProductionService.availabilityOf', () => {
   });
 
   it('reports the faction refusal before the progression one', async () => {
-    // "Locked" on an Apocalypse would promise an Allied player a Soviet tank.
+    // "Locked" on a Sledge would promise an Allied player a Soviet tank.
     setUnlockGate(gateOwning());
     const { service } = await makeService(Faction.Allies, Faction.Soviets);
     expect(refusal(service, 0, 'apocalypse')).toBe('Wrong faction');
@@ -427,7 +427,7 @@ describe('the opening base respects the gate', () => {
 
   it('hands out gated structures and units when nothing gates them', async () => {
     // The control. Without this the test below passes trivially on a scenario
-    // that never placed a Battle Lab in the first place.
+    // that never placed a Proving Ground in the first place.
     const [human, ai] = await skirmish(Faction.Allies, Faction.Soviets, null);
     expect(human).toContain('battleLab');
     expect(ai).toContain('apocalypse');
@@ -470,7 +470,7 @@ describe('the opening base respects the gate', () => {
  * The harness runs a memory profile so no shot depends on whoever last played
  * on that machine. An EMPTY profile is deterministic but it is also the most
  * RESTRICTIVE profile there is, so with the gate live the harness started
- * deleting the Battle Lab from 02-hud-full and the Tesla Coils from
+ * deleting the Proving Ground from 02-hud-full and the Tesla Coils from
  * 07-soviet-base — authored compositions scored against the look bible. The
  * grade fell a point. The gate is therefore constructed `unrestricted` under
  * the harness, which is equally deterministic and shows the content.

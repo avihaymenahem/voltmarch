@@ -101,7 +101,7 @@ survive an early rush with nothing on the field.
 **The Reclamation.** Scrap Furnace → **Rookery** → Ore Sorter → Scrap Furnace → Breaker Yard →
 Spotter Mast. Same shape, and for the same reason: three Scrap Pickers cost 270 credits and nine
 seconds. The Breaker Yard is 1,900/22 s against everyone else's 2,000/24, and a Grinder is 600/9 s
-against a Grizzly's 700/11 and a Rhino's 900/13. The Reclamation's whole case is that it arrives
+against a Warden's 700/11 and an Anvil's 900/13. The Reclamation's whole case is that it arrives
 first and arrives again.
 
 The Reclamation's bill comes later: a full base (Foundry, Sorter, Rookery, Breaker Yard, Spotter,
@@ -161,7 +161,7 @@ cap entirely — you begin the match **over** it, and every credit your first ha
 destroyed until you have spent back down below 10,000. Spend fast or build silos early.
 
 **Money is paid by the drip.** A queued item accumulates only what you can afford this tick, and
-cancelling refunds exactly what was paid — never a percentage. Queueing an Apocalypse and cancelling
+cancelling refunds exactly what was paid — never a percentage. Queueing a Sledge and cancelling
 it at 90 % costs nothing but the time. Use the queue as a bank when you are saving for a structure.
 
 **Extra factories are build speed, not extra queues.** All Barracks feed one infantry queue; each
@@ -175,7 +175,7 @@ speed upgrade, not a second production line.
 Fog of war is a flat circle stamp. **Terrain does not block vision** — a unit at the bottom of a cliff
 sees exactly as far as one on top of it. Structures see 3 m further than their listed sight.
 
-Sight radii worth knowing: Radar Dome 44 · Oculus 46 · Spotter Mast 42 · Kestrel 36 · Multigunner IFV
+Sight radii worth knowing: Radar Dome 44 · Oculus 46 · Spotter Mast 42 · Kestrel 36 · Sabre IFV
 32 · Sandskiff 32 · Arcspitter 28 · Attack Dog 26 · Wayfarer 26 · G.I. 24 · Conscript 22 · Scrap
 Picker 22.
 
@@ -221,7 +221,7 @@ Multiply the weapon's raw damage by the cell.
 Read the shape:
 
 - **Small arms cannot fight vehicles.** 0.10 against heavy armour. A lone G.I. needs **100 seconds**
-  to kill a Rhino Tank and 191 to kill an Apocalypse.
+  to kill an Anvil Tank and 191 to kill a Sledge.
 - **Autocannon owns light armour** and is helpless against heavy (0.35) and against buildings (0.35).
 - **AP owns tanks** and wastes itself on infantry (0.35).
 - **HE is the building-killer** and the only warhead at 1.00 against concrete.
@@ -238,7 +238,7 @@ In practice:
 
 - Riflemen and Conscripts will not shoot at tanks or buildings.
 - Tank guns deprioritise infantry.
-- **Multigunner IFVs and Sandskiffs deprioritise heavy tanks and structures.**
+- **Sabre IFVs and Sandskiffs deprioritise heavy tanks and structures.**
 
 Force-fire overrides it. So does an explicit attack order — the air veto is the only gate that
 survives an explicit click.
@@ -266,40 +266,40 @@ than dividing hit points by one of these columns would suggest. See
 | Sunlancer | 450 | 130 Inf | 26 | 13 | 23 | 22 | 23 | 22 |
 | Flak Trooper | 300 | 110 Inf | 20 | 26 | 32 | 21 | 11 | 11 |
 | Slagger | 380 | 115 Inf | 12 | 25 | 22 | 18 | 14 | **27** |
-| Multigunner IFV | 600 | 220 Light | 22 | 52 | 65 | 43 | 23 | 23 |
+| Sabre IFV | 600 | 220 Light | 22 | 52 | 65 | 43 | 23 | 23 |
 | Sandskiff | 550 | 190 Light | 23 | 55 | 68 | 44 | 24 | 24 |
 | Arcspitter | 420 | 170 Light | 16 | 51 | 30 | 27 | 28 | 19 |
-| Grizzly Tank | 700 | 340 Med | 24 | 13 | 31 | 37 | 37 | 20 |
-| Rhino Tank | 900 | 420 Heavy | 26 | 14 | 33 | 39 | 39 | 21 |
+| Warden Tank | 700 | 340 Med | 24 | 13 | 31 | 37 | 37 | 20 |
+| Anvil Tank | 900 | 420 Heavy | 26 | 14 | 33 | 39 | 39 | 21 |
 | Solarch | 800 | 330 Light | 26 | 13 | 32 | 38 | 38 | 21 |
 | Grinder | 600 | 270 Med | **18** | 59 | 35 | 31 | 33 | 22 |
-| Apocalypse | 1,750 | 800 Heavy | 28 | 16 | 40 | 47 | 47 | 26 |
-| Prism Tank | 1,200 | 260 Light | 30 | 39 | 34 | 34 | 32 | 28 |
+| Sledge | 1,750 | 800 Heavy | 28 | 16 | 40 | 47 | 47 | 26 |
+| Refractor Tank | 1,200 | 260 Light | 30 | 39 | 34 | 34 | 32 | 28 |
 | Zenith Emitter | 1,500 | 240 Light | 33 | 36 | 31 | 31 | 29 | 26 |
 | Slaghurler | 1,150 | 230 Light | **42** | 26 | 23 | 19 | 14 | **29** |
 | Swarmhornet *(air)* | 900 | 180 Light | 17 | 47 | 28 | 25 | 26 | 18 |
-| MiG Fighter *(air)* | 1,000 | 190 Light | 21 | 76 | **95** | 62 | 33 | 33 |
+| Interceptor *(air)* | 1,000 | 190 Light | 21 | 76 | **95** | 62 | 33 | 33 |
 | Kestrel Gunship *(air)* | 1,100 | 210 Light | 22 | 23 | 41 | 38 | 41 | 38 |
-| Vindicator *(air)* | 1,200 | 240 Light | 23 | 26 | 46 | 43 | **46** | **43** |
+| Petrel Bomber *(air)* | 1,200 | 240 Light | 23 | 26 | 46 | 43 | **46** | **43** |
 
 Add to that: **Tesla weapons chain.** Each arc jumps up to 9 m from its last victim, retaining 60 %
 of the damage per link. A Grinder chains twice and a Scrap Picker once, so the table above understates
 every Reclamation unit against a blob and states it correctly against a single target.
 
-Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.6 m, the Rhino's gun
+Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.6 m, the Anvil's gun
 2.1 m, the Javelin's rocket 2.4 m. Massed infantry against splash is a donation.
 
 ### The duels that actually come up
 
 | Matchup | Result |
 | --- | --- |
-| Grizzly vs Rhino | **Rhino wins** 1v1 (10.9 s vs 14.3 s) and outranges by 2 m. But at equal credits three Grizzlies beat two-and-a-third Rhinos on both HP and DPS. |
-| IFV vs Grizzly | **Grizzly wins**, 8.8 s to 10.0 s. The IFV is 100 credits cheaper, 1.8 m/s faster and sees two metres further, and it still loses the straight fight — autocannon falls to 0.65 against medium armour and the tank has 120 more hit points. Raid with it; do not trade with it. |
-| IFV vs Rhino | **Rhino wins**, 8.3 s to 22.9 s. Autocannon at 0.35 against heavy armour is the whole answer. |
-| Solarch vs Grizzly | **Solarch wins** narrowly and outranges by 2 m. |
+| Warden vs Anvil | **Anvil wins** 1v1 (10.9 s vs 14.3 s) and outranges by 2 m. But at equal credits three Wardens beat two-and-a-third Anvils on both HP and DPS. |
+| IFV vs Warden | **Warden wins**, 8.8 s to 10.0 s. The IFV is 100 credits cheaper, 1.8 m/s faster and sees two metres further, and it still loses the straight fight — autocannon falls to 0.65 against medium armour and the tank has 120 more hit points. Raid with it; do not trade with it. |
+| IFV vs Anvil | **Anvil wins**, 8.3 s to 22.9 s. Autocannon at 0.35 against heavy armour is the whole answer. |
+| Solarch vs Warden | **Solarch wins** narrowly and outranges by 2 m. |
 | IFV vs Solarch | **IFV wins**, 6.3 s to 8.6 s. Autocannon at 1.00 against light armour is why a raider beats a main battle tank here and loses to the Allied one. |
-| Grinder vs Grizzly | **Grizzly wins** 1v1 and gets six metres of free fire first. At equal credits it is a coin flip, and the Grinder chains. |
-| Javelins vs Rhinos | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill a Rhino in 5.1 s. The counter-play is to drive over them: a Rhino crushes any infantryman it lines up on, which is why a Javelin screen needs its own screen. |
+| Grinder vs Warden | **Warden wins** 1v1 and gets six metres of free fire first. At equal credits it is a coin flip, and the Grinder chains. |
+| Javelins vs Anvils | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill an Anvil in 5.1 s. The counter-play is to drive over them: an Anvil crushes any infantryman it lines up on, which is why a Javelin screen needs its own screen. |
 
 ### The three holes worth exploiting
 
@@ -315,7 +315,7 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
    holds. Kill power plants — Solar Arrays have 420 hp — and a defensive belt goes dark without a
    single shot at the towers themselves. The three exceptions all draw *nothing*: the Allied Pillbox,
    the Soviet Sentry Gun and the Reclamation Spitpost. The Pact has no such gun. Electric weapons go
-   further and refuse on any deficit at all — the Tesla Coil, the Prism Tower, the Helios Spire and
+   further and refuse on any deficit at all — the Tesla Coil, the Refractor Tower, the Helios Spire and
    the Glaive Post — so a shallow shortfall disarms the Pact belt before the shed order reaches it.
    The Zenith Emitter is the one beam that never cares: it is a vehicle, and a hull has no grid.
 
@@ -329,16 +329,16 @@ cruise at 22 m, never land, never rearm and travel in a straight line to whereve
 | Aircraft | Army | Cost | HP | Speed | Warhead | What it is for |
 | --- | --- | --- | --- | --- | --- | --- |
 | Swarmhornet | Reclamation | 900 | 180 | 11.0 | Tesla, chains ×2 | Deleting infantry from above |
-| **MiG Fighter** | Soviets | 1,000 | 190 | **13.5** | Autocannon | **Air superiority.** 1.00 against Light, and every aircraft is Light |
+| **Interceptor** | Soviets | 1,000 | 190 | **13.5** | Autocannon | **Air superiority.** 1.00 against Light, and every aircraft is Light |
 | Kestrel Gunship | Meridian | 1,100 | 210 | 12.0 | Rocket | The generalist raider |
-| **Vindicator** | Allies | 1,200 | 240 | 11.5 | Rocket | **Opening a base.** 0.90 against Concrete, 0.95 against Heavy |
+| **Petrel Bomber** | Allies | 1,200 | 240 | 11.5 | Rocket | **Opening a base.** 0.90 against Concrete, 0.95 against Heavy |
 
 Every one is gated on the **vehicle factory plus a radar** — one tier below the tech building, the
 same shape for all four armies — and on the *unit.air* unlock, which is one mission for everybody.
 
-The two Allied and Soviet rows are deliberately different questions. A MiG at 95 DPS against Light beats any other
-aircraft in the game and does 33 against a Rhino or a wall — it is an interceptor and nothing else. A
-Vindicator does 43 to a structure and 46 to heavy armour and will lose a dogfight to the MiG. Buy the
+The two Allied and Soviet rows are deliberately different questions. An Interceptor at 95 DPS against Light beats any other
+aircraft in the game and does 33 against an Anvil or a wall — it is air superiority and nothing else. A
+Petrel Bomber does 43 to a structure and 46 to heavy armour and will lose a dogfight to the Interceptor. Buy the
 one that answers what you scouted.
 
 **Range is measured on the ground plane**, so cruising altitude costs an aircraft nothing and costs
@@ -352,11 +352,11 @@ naval deck guns, siege beams and the emplaced MG in a pillbox cannot. What can:
 | Rifles / carbines (G.I., Conscript, Wayfarer) | 17–20 | Free, and weak — but every army has them from minute one |
 | Scrap Picker, Arcspitter | 14 / 16 | The Reclamation's ground answers, both very short |
 | Flak Trooper | 20 | 300 cr, 32 DPS against Light |
-| Multigunner IFV, Sandskiff | 22 / 23 | Autocannon at 1.00 against an aircraft's Light armour |
+| Sabre IFV, Sandskiff | 22 / 23 | Autocannon at 1.00 against an aircraft's Light armour |
 | Javelin, Sunlancer | 24 / 26 | 0.95 rocket multiplier, and they hit tanks too |
-| **Multigunner AA** | 26 | The only dedicated AA structure in the game — **Allied only**. Draws 30, so it stops with the grid |
+| **AA Battery** | 26 | The only dedicated AA structure in the game — **Allied only**. Draws 30, so it stops with the grid |
 | Arc Pylon | 28 | Chains three ways. Draws 90 — the heaviest load in the game, and the first thing off in a brownout |
-| Tesla Coil, Helios Spire, Prism Tower | 30–34 | All double as AA, all stop in a brownout |
+| Tesla Coil, Helios Spire, Refractor Tower | 30–34 | All double as AA, all stop in a brownout |
 | Every aircraft | 17–23 | Air answers air — which is why owning the only gunship is not a win condition |
 
 The asymmetry that matters: **the Pact and the Reclamation have no dedicated AA emplacement at all.**
@@ -364,7 +364,7 @@ Their static answer is the Helios Spire and the Arc Pylon, which are tier-3 defe
 answer is the Sunlancer and the Arcspitter, which are units and have to be somewhere. If you are
 flying against either of them, go around the towers.
 
-Against the Allies and the Soviets, assume a Multigunner AA or a Tesla Coil is covering anything
+Against the Allies and the Soviets, assume an AA Battery or a Tesla Coil is covering anything
 worth bombing.
 
 ---
@@ -374,26 +374,26 @@ worth bombing.
 The honest general rule is a **2:1 line-to-answer ratio**, with the answer chosen from what you
 scouted. Concretely:
 
-**[Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies).** Grizzlies are the line, and the Multigunner IFV is not a cheap substitute for
-one: it loses the 1v1 both ways round, to a Grizzly and to a Rhino. What it is, is the best raider in
+**[Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies).** Wardens are the line, and the Sabre IFV is not a cheap substitute for
+one: it loses the 1v1 both ways round, to a Warden and to an Anvil. What it is, is the best raider in
 the army — 1.00 against Light armour, faster than anything else with a turret, and two metres more
-sight than the tank. Point it at aircraft, at other raiders and at harvesters, and keep the Grizzlies
-for armour. Javelins behind the armour, not in front: they have 24 m of range against a Rhino's 26
-and have to walk into the gun. Prism Tanks
+sight than the tank. Point it at aircraft, at other raiders and at harvesters, and keep the Wardens
+for armour. Javelins behind the armour, not in front: they have 24 m of range against an Anvil's 26
+and have to walk into the gun. Refractor Tanks
 must stop to fire and die to anything that reaches them — keep them behind the line at 30 m, and
-remember the Prism Tank is the one Allied hull that does **not** crush infantry. The Vindicator is
-your base-opener. On a map with a sea, the Heavy Transport is how four Grizzlies arrive on somebody
+remember the Refractor Tank is the one Allied hull that does **not** crush infantry. The Petrel Bomber is
+your base-opener. On a map with a sea, the Heavy Transport is how four Wardens arrive on somebody
 else's beach at the same moment — eight slots at two per vehicle — and the Hydrofoil is 450 credits
 for 44 m of sight, which is every metre the Radar Dome you paid a thousand for can see.
 
-**[Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
-value in the game at 0.50 DPS per credit — screen with them and let the Rhinos shoot armour.
+**[Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets).** Anvils win fights and lose exchange rates. Conscripts are the best anti-infantry
+value in the game at 0.50 DPS per credit — screen with them and let the Anvils shoot armour.
 Flak Troopers are the light-armour answer, not the heavy one: 1.00 against light and 0.35 against
-heavy. The Soviet answer to heavy armour is heavier armour. The Apocalypse is poor per credit (0.027
+heavy. The Soviet answer to heavy armour is heavier armour. The Sledge is poor per credit (0.027
 DPS per credit against medium) and good where concentration matters — 800 HP, 28 m, uncrushable, and
-a crush level of 6, which is the highest in the game. The MiG is the answer to anybody else's air and
-nothing else: 33 DPS against a Rhino is not a tank. Soviet armour is also the best crushing armour in
-the game — a Rhino column driving through a Conscript screen is a real Soviet play.
+a crush level of 6, which is the highest in the game. The Interceptor is the answer to anybody else's air and
+nothing else: 33 DPS against an Anvil is not a tank. Soviet armour is also the best crushing armour in
+the game — an Anvil column driving through a Conscript screen is a real Soviet play.
 
 **[Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact).** A Pact line wins a standoff and loses a brawl: every Pact gun outranges its
 opposite number by 1–3 m and under-damages it. Fight at maximum range, retreat rather than trade, and
@@ -440,9 +440,9 @@ alive — see the Repair Depot below — is worth more than replacing it.
 | Flame Tower | Soviets | 600 | 550 | 18 | −20 | no |
 | Glaive Post | Meridian | 450 | 480 | 24 | −10 | no |
 | Spitpost | Reclamation | 420 | 520 | 20 | **0** | no |
-| Multigunner AA | Allies | 800 | 550 | 26 | −30 | **yes** |
+| AA Battery | Allies | 800 | 550 | 26 | −30 | **yes** |
 | Tesla Coil | Soviets | 1,500 | 700 | 30 | −75 | yes |
-| Prism Tower | Allies | 1,500 | 600 | **34** | −50 | yes |
+| Refractor Tower | Allies | 1,500 | 600 | **34** | −50 | yes |
 | Helios Spire | Meridian | 1,500 | 600 | 33 | −55 | yes |
 | Arc Pylon | Reclamation | 1,450 | 560 | 28 | **−90** | yes |
 | Concrete Wall | all | 100 | 300 | — | 0 | — |
@@ -468,7 +468,7 @@ economy is the second thing it wants, not the last.
 
 **Repair.** The repair wrench mends structures at 30 HP/s for 0.25 credits per HP. The **Repair
 Depot** (800 cr, prereq: vehicle factory) mends *vehicles* with no order at all — park inside 10 m and
-it services you at 10 % of max HP per second, up to eight at once, at the same 0.25 per HP. A Grizzly
+it services you at 10 % of max HP per second, up to eight at once, at the same 0.25 per HP. A Warden
 at 1 HP costs about 85 credits to repair against 700 to replace, and takes ten seconds. It is the
 cheapest structure in the game per credit saved, and most players never build one.
 
@@ -484,7 +484,7 @@ four seconds in transit and two to rise. Selling and rebuilding costs 50 % *and*
 *and* a queue slot. A badly sited War Factory costs 700 to fix, not 1,000 plus 24 seconds. A
 superweapon part-way through a charge cannot be relocated at all; a fully charged one can.
 
-**Defend against crushing.** Six hulls flatten infantry — Grizzly, Rhino, Apocalypse, Ore Harvester,
+**Defend against crushing.** Six hulls flatten infantry — Warden, Anvil, Sledge, Ore Harvester,
 Grinder, Scrapjaw. A Javelin or Sunlancer screen standing in the open in front of an armour column is
 free kills for the column, and the counter is geometry rather than more infantry: put them behind a
 wall run, on rough ground, inside a garrison, or 4 m off the lane the tanks are pathing down. The
@@ -527,7 +527,7 @@ before anything else does. Once superweapons are on the map this gets sharper st
 **Drive over the screen.** A tank column that lines up on an enemy infantry line kills it for free —
 no ammunition, no cooldown, no exposure. It has to actually line up: right-click the ground *behind*
 the target, not on him, because the pathfinder aims at your click. The kill radius is about 2.2 m for
-a Grizzly.
+a Warden.
 
 **Land a squad where the wall is not.** Every army has a four-slot landing ship and an eight-slot
 carrier, and **a slot is not a seat** — infantry cost one, a vehicle costs two — so eight slots is
@@ -590,7 +590,7 @@ before this you could not: the squad walked to the sand and stood there.
 
 ## 10. The end game
 
-Once your tech building is up — Battle Lab, Reliquary or Crucible — two things change.
+Once your tech building is up — Proving Ground, Reliquary or Crucible — two things change.
 
 **Superweapons.** One or two per army, 2,000–2,500 credits, and the real price is **−150 power**, the
 heaviest single draw in the game. Charge times run 5:00 to 7:00 and the countdown only advances while
@@ -603,11 +603,11 @@ it, so a rebuild resumes where you stopped.
 | Solar Lance | Meridian | 7:00 | 24 m | The same, slightly tighter |
 | Lightning Storm | Allies | 6:40 | 16 m | 9 s of Tesla bolts, ~190 each. Devastating on infantry (1.60), poor on a base (0.60) |
 | Arc Storm | Reclamation | 6:40 | 17 m | The same |
-| Iron Curtain | Soviets | 5:00 | 13 m | **20 seconds of true invulnerability** for everything friendly in the radius |
-| Chronosphere | Allies | 5:00 | 11 m | Nine units from anywhere to anywhere, two clicks |
+| Ironclad Field | Soviets | 5:00 | 13 m | **20 seconds of true invulnerability** for everything friendly in the radius |
+| Displacement Ring | Allies | 5:00 | 11 m | Nine units from anywhere to anywhere, two clicks |
 
-The two that decide games are not the damage ones. **Iron Curtain plus an Apocalypse column walks
-through a defensive belt that would otherwise stop it**, and a **Chronosphere puts nine units inside
+The two that decide games are not the damage ones. **Ironclad Field plus a Sledge column walks
+through a defensive belt that would otherwise stop it**, and a **Displacement Ring puts nine units inside
 a base with no approach at all**. Plan the push around the timer rather than firing it when it
 happens to be ready.
 
@@ -622,12 +622,12 @@ the powers are 800 to 2,500 each. Nine thousand credits buys all five, which is 
 bank — so the honest question mid-game is whether that money is better spent on hardware.
 
 Two things make it a decision rather than a shopping list. The **−80** is the third-heaviest draw in
-the game, so a Post on top of a Battle Lab wants generation paid for first. And the tab is published
+the game, so a Post on top of a Proving Ground wants generation paid for first. And the tab is published
 only while the Post is standing and POWERED, so it is a structure worth raiding and a grid worth
 protecting (see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers)).
 
 **Commander abilities** are the ones you can actually press, and they are free with your faction's
-1,500-credit hero. Iron Will (5 s of invulnerability, 60 s cooldown) is a small Iron Curtain you can
+1,500-credit hero. Iron Will (5 s of invulnerability, 60 s cooldown) is a small Ironclad Field you can
 have in the first five minutes, and Chrono Rally pulls six units to the Field Marshal — which is a
 retreat button, an ambush button, and the cheapest teleport in the game.
 
@@ -693,7 +693,7 @@ Behaviours worth knowing:
 3. **Massing riflemen against armour.** 0.10 against heavy armour, and they will not even aim at it
    while anything else is in view. Build the anti-armour infantryman: Javelin, Sunlancer, or just
    more tanks.
-4. **Massing infantry against splash.** A Rhino's gun has 2.1 m of splash, a Slaghurler's 5.8, and
+4. **Massing infantry against splash.** An Anvil's gun has 2.1 m of splash, a Slaghurler's 5.8, and
    Tesla arcs chain 9 m from every victim.
 5. **Skipping the second refinery.** 2,000 credits for 2,000 storage and a free 1,400-credit
    harvester.
@@ -719,7 +719,7 @@ Be aware of these before you build a plan around one:
   plan without it — and note that a carrier no longer works on land, so there is no such thing as
   using one as a fast land ferry. The four swimmer infantry are the exception: barracks-built, on
   every map.
-- **The Prism Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
+- **The Refractor Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
   crush resolver actually reads. Every other Allied and Soviet tank crushes; this one does not.
 - **Vehicles cannot ram vehicles.** Eleven hulls carry a crushable-by number and nothing reads it.
   Only infantry are crushable.

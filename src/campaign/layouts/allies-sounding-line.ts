@@ -228,10 +228,10 @@ export default layout({
      * THE BASE GARRISON IS NOT AN ESCORT AND THE TWO ARMIES' BASES ARE NOT THE
      * SAME SIZE. Counted on a world built with the def tables BOUND, which is
      * the only state in which the roster below is actually in force:
-     * `buildAlliedGarrison` lays 4 Grizzlies, 2 IFVs and 5 G.I.s;
-     * `buildSovietGarrison` lays 5 Rhinos, 6 Conscripts, 2 Attack Dogs and an
-     * Apocalypse. The allow-list then takes the 2 IFVs off the player and the
-     * Apocalypse AND both dogs off the opponent, so what is really inherited is
+     * `buildAlliedGarrison` lays 4 Wardens, 2 IFVs and 5 G.I.s;
+     * `buildSovietGarrison` lays 5 Anvils, 6 Conscripts, 2 Attack Dogs and an
+     * Sledge. The allow-list then takes the 2 IFVs off the player and the
+     * Sledge AND both dogs off the opponent, so what is really inherited is
      * **9 hulls against 11** — and the deficit is four riflemen, not a tier.
      *
      * AN EARLIER DRAFT SAID "9 CONSCRIPTS" AND ARGUED 11 AGAINST 17. The 9 is

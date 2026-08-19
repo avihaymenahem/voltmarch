@@ -1267,7 +1267,7 @@
  * THE SELECTION CARD'S MODEL CAMEO.
  *
  * "Bottom left hud still uses icons and not the models." The card drew
- * `makeIcon('tank')` — the same glyph for a Grizzly, a Harvester and a
+ * `makeIcon('tank')` — the same glyph for a Warden, a Harvester and a
  * Construction Yard — while the build rail beside it had been rendering the
  * real meshes since `CameoRenderer` landed. It now shares that one renderer.
  *
@@ -2163,7 +2163,7 @@
  * and 16 px Rajdhani wraps ordinary prose at about 62 characters, so the 200
  * character ceiling `tests/build-descriptions.spec.ts` enforces lands inside
  * four lines with room to spare. The longest entry in the game today is the
- * Battle Lab at 199, and it wraps to four.
+ * Proving Ground at 199, and it wraps to four.
  *
  * `-webkit-line-clamp` still cuts silently and without an ellipsis if that ever
  * stops being true, which is why the character cap is a TEST and not a comment.

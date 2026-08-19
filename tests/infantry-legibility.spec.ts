@@ -17,7 +17,7 @@
  *     play happens at would trade a real fix for a new complaint, and the
  *     constant was chosen off that row of the measurement for that reason.
  *   - IT DOES NOT RUN AWAY. Uncapped, the formula grows without bound and a
- *     rifleman ends up taller than the Battle Lab.
+ *     rifleman ends up taller than the Proving Ground.
  *   - THERE ARE TWO FLOORS AND THE LARGER WINS. Apparent size (CSS pixels) and
  *     sample count (drawing-buffer pixels) are different failures: a 4K panel
  *     fixes the second without touching the first, and adaptive resolution
@@ -103,7 +103,7 @@ describe('the floor does nothing until it has to', () => {
 
 describe('the floor bites where the report said it hurts', () => {
   it('corrects meaningfully at 90 m, the worst gameplay camera measured', () => {
-    // 21.7 px tall and 9.6 px wide at 1366x768, against a Grizzly's 81.5 x
+    // 21.7 px tall and 9.6 px wide at 1366x768, against a Warden's 81.5 x
     // 92.2 — a 36x area difference, almost all of it width. This is the case
     // the whole change exists for, so it is asserted rather than described.
     const s = native(90, 768);

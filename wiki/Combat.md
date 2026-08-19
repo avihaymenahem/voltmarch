@@ -36,10 +36,10 @@ kill *time* anywhere in this wiki is after it.**
 Read it as shapes, not as numbers:
 
 - **Small arms shred flesh and bounce off tanks.** A G.I.'s rifle does 18 damage
-  a round; against a Rhino that is 1.8. Riflemen are not a mistake against
+  a round; against an Anvil that is 1.8. Riflemen are not a mistake against
   armour, they are nothing at all.
 - **Armour-piercing is the anti-tank answer and wastes itself on infantry.**
-  A Grizzly's 90 mm does 55 to another tank and 19 to a conscript.
+  A Warden's 90 mm does 55 to another tank and 19 to a conscript.
 - **High explosive is the building-killer** and the only warhead at 1.00 against
   Concrete. Artillery, naval guns, mortars.
 - **Autocannon owns Light.** Every aircraft in the game is Light armour, so the
@@ -53,15 +53,15 @@ Read it as shapes, not as numbers:
 | Class | Who has it |
 |---|---|
 | Infantry | Every foot unit, including all four commanders |
-| Light | IFV, Prism Tank, all aircraft, most Pact hulls, most Reclamation hulls, escort ships, all four recon hulls, and every carrier except the Slag Hauler |
-| Medium | Grizzly, Grinder, Aircraft Cruiser, Sunmonitor |
-| Heavy | Rhino, Apocalypse, harvesters, construction vehicles, Dreadnought, Reclaimed Hulk, **Slag Hauler** |
+| Light | IFV, Refractor Tank, all aircraft, most Pact hulls, most Reclamation hulls, escort ships, all four recon hulls, and every carrier except the Slag Hauler |
+| Medium | Warden, Grinder, Aircraft Cruiser, Sunmonitor |
+| Heavy | Anvil, Sledge, harvesters, construction vehicles, Dreadnought, Reclaimed Hulk, **Slag Hauler** |
 | Concrete | Every structure |
 | Wood | Wrecks, crates, trees and rocks |
 
 A Meridian design note that matters at the table: the Pact's main line is
 **Light with a deep health pool** rather than Medium with a shallow one. A
-Solarch trades evenly with a Grizzly (AP falls 1.00 to 0.85) and is deleted by
+Solarch trades evenly with a Warden (AP falls 1.00 to 0.85) and is deleted by
 an IFV or a squad of conscripts (Autocannon rises 0.65 to 1.00, small arms 0.28
 to 0.55).
 
@@ -89,7 +89,7 @@ column says — see [Chain lightning](#chain-lightning).
 | Slag Charge | Slagger | 74 | High Explosive | 12 | 2.70 s | 27 | 2.6 | no |
 
 The two anti-armour infantrymen are deliberately asymmetric. The **Javelin**
-buys the warhead (Rocket, 0.95 against Heavy) and deletes an Apocalypse. The
+buys the warhead (Rocket, 0.95 against Heavy) and deletes a Sledge. The
 **Flak Trooper** buys volume (Autocannon, 1.00 against Light, 0.35 against
 Heavy) and only chips one — the Soviet answer to a heavy tank is still a heavier
 tank. Both elevate, so both are also anti-air.
@@ -98,19 +98,19 @@ tank. Both elevate, so both are also anti-air.
 
 | Weapon | Carried by | Damage | Warhead | Range | Cycle | Raw DPS | Splash | Hits air |
 |---|---|---|---|---|---|---|---|---|
-| 90 mm Cannon | Grizzly, Picket Boat | 55 | Armour-Piercing | 24 | 1.50 s | 37 | 1.6 | no |
-| 125 mm Cannon | Rhino | 78 | Armour-Piercing | 26 | 2.00 s | 39 | 2.1 | no |
-| Twin 125 mm | Apocalypse | 60 x2 | Armour-Piercing | 28 | 2.58 s | 47 | 2.2 | no |
-| 25 mm Multigunner | Multigunner IFV, Hydrofoil | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
-| Prism Emitter | Prism Tank, Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
+| 90 mm Cannon | Warden, Picket Boat | 55 | Armour-Piercing | 24 | 1.50 s | 37 | 1.6 | no |
+| 125 mm Cannon | Anvil | 78 | Armour-Piercing | 26 | 2.00 s | 39 | 2.1 | no |
+| Twin 125 mm | Sledge | 60 x2 | Armour-Piercing | 28 | 2.58 s | 47 | 2.2 | no |
+| 25 mm Sabre | Sabre IFV, Hydrofoil | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
+| Prism Emitter | Refractor Tank, Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
 | Focus Lance | Solarch, Hierarch | 60 | Armour-Piercing | 26 | 1.60 s | 38 | 1.4 | no |
 | Arc Repeater | Sandskiff | 13 x4 | Autocannon | 23 | 0.76 s | 68 | – | yes |
 | Zenith Emitter | Zenith Emitter | 94 | Prism | 33 | 2.90 s | 32 | – | no |
 | Spit Coil | Arcspitter, Scrap Skimmer | 30 | Tesla | 16 | 0.95 s | 32 | – | yes |
 | Grinder Arc | Grinder, Scrap Baron | 70 | Tesla | 18 | 1.90 s | 37 | – | no |
 | Slag Mortar | Slaghurler | 124 | High Explosive | 42 (min 11) | 4.30 s | 29 | 5.8 | no |
-| Vindicator AGM | Vindicator | 62 x2 | Rocket | 23 | 2.58 s | 48 | 2.2 | yes |
-| MiG Autocannon | MiG Fighter | 24 x3 | Autocannon | 21 | 0.76 s | 95 | 0.9 | yes |
+| Petrel AGM | Petrel Bomber | 62 x2 | Rocket | 23 | 2.58 s | 48 | 2.2 | yes |
+| Interceptor Autocannon | Interceptor | 24 x3 | Autocannon | 21 | 0.76 s | 95 | 0.9 | yes |
 | Kestrel Pod | Kestrel Gunship | 44 x2 | Rocket | 22 | 2.06 s | 43 | 1.8 | yes |
 | Hornet Arc | Swarmhornet | 44 | Tesla | 17 | 1.50 s | 29 | – | yes |
 | Tesla Coil (bolt) | War Commissar | 120 | Tesla | 30 | 2.40 s | 50 | – | yes |
@@ -135,8 +135,8 @@ tank. Both elevate, so both are also anti-air.
 | Flame Nozzle | Flame Tower | 26 | High Explosive | 18 | 0.50 s | 52 | no | no |
 | Glaive Repeater | Glaive Post | 12 x5 | Small Arms | 24 | 0.79 s | 76 | **yes** | no |
 | Post Coil | Spitpost | 34 | Tesla | 20 | 0.85 s | 40 | no | no |
-| Flak Battery | Multigunner AA | 34 x3 | Autocannon | 26 | 0.82 s | 124 | no | **yes** |
-| Prism Cannon | Prism Tower | 115 | Prism | 34 | 3.00 s | 38 | **yes** | **yes** |
+| Flak Battery | AA Battery | 34 x3 | Autocannon | 26 | 0.82 s | 124 | no | **yes** |
+| Prism Cannon | Refractor Tower | 115 | Prism | 34 | 3.00 s | 38 | **yes** | **yes** |
 | Tesla Coil | Tesla Coil | 120 | Tesla | 30 | 2.40 s | 50 | **yes** | **yes** |
 | Helios Lance | Helios Spire | 116 | Prism | 33 | 2.80 s | 41 | **yes** | **yes** |
 | Pylon Arc | Arc Pylon | 94 | Tesla | 28 | 2.20 s | 43 | no | **yes** |
@@ -159,7 +159,7 @@ turret and never pull the trigger.
 infantry — the Arc Prod, the Javelin, the Flak Trooper, the Sunlancer, the IFV
 chaingun and the Hydrofoil that shares it, the Sandskiff's repeater, the coil the
 Arcspitter and the Scrap Skimmer share, all four aircraft, the Dreadnought and
-the Sunmonitor, and the Multigunner AA, Prism Tower, Tesla Coil, Helios Spire
+the Sunmonitor, and the AA Battery, Refractor Tower, Tesla Coil, Helios Spire
 and Arc Pylon.
 
 **Cannot:** every tank cannon — including the one the Picket Boat carries to
@@ -189,7 +189,7 @@ the entire signature of the Reclamation: not one of their eleven hulls has a
 turret, and they pay for it with a full extra radian per second of hull turn.
 Armed structures always traverse, whatever their model looks like.
 
-**Stop-to-fire.** The Prism Tank, the Zenith Emitter, the Slaghurler and the V4
+**Stop-to-fire.** The Refractor Tank, the Zenith Emitter, the Slaghurler and the V4
 launcher must be stationary (under 0.45 m/s) to shoot.
 
 **Minimum range.** The Slag Mortar (11 m) and the V4 (12 m) cannot fire at
@@ -361,14 +361,14 @@ Sight radii worth knowing:
 | Unit / structure | Sight |
 |---|---|
 | Radar Dome / Oculus / Spotter Mast | 44 / 46 / 42 |
-| Vindicator | 38 |
+| Petrel Bomber | 38 |
 | Dreadnought, Sunmonitor | 38 |
 | Kestrel Gunship | 36 |
 | Field Marshal, Hierarch | 34 / 36 |
-| Prism Tank, Swarmhornet | 34 |
-| Multigunner IFV, Sandskiff, MiG | 32 |
-| Grizzly, Solarch | 30 |
-| Rhino, Arcspitter | 28 |
+| Refractor Tank, Swarmhornet | 34 |
+| Sabre IFV, Sandskiff, Interceptor | 32 |
+| Warden, Solarch | 30 |
+| Anvil, Arcspitter | 28 |
 | Attack Dog | 26 |
 | Conscript | 22 |
 | Harvester, Scrapjaw | 20 |

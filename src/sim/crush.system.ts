@@ -41,7 +41,7 @@ export default defineSystem({
     debug.setCounter('propsCrushed', 0);
     // Kept apart from `propsCrushed` deliberately: scenery and casualties are
     // not the same number, and one overlay line reading 4000 because a
-    // harvester drove through a wood would hide the four men under a Rhino.
+    // harvester drove through a wood would hide the four men under an Anvil.
     debug.setCounter('unitsCrushed', 0);
   },
 

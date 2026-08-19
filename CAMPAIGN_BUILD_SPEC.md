@@ -45,7 +45,7 @@ Nobody has ever timed a VOLTMARCH campaign operation, because none exists. So **
 
 ## 2. THE FICTION
 
-Adopted from the lore workstream substantially unchanged. It is derived from mechanics the engine already pays for — the shared Allied/Soviet building pool, hover, scrap, arcs, ore regrowth, the power grid's independence from credits — and from nothing in Cold War history, so it survives the naming decision in §2.5 in any of its three outcomes.
+Adopted from the lore workstream substantially unchanged. It is derived from mechanics the engine already pays for — the shared Allied/Soviet building pool, hover, scrap, arcs, ore regrowth, the power grid's independence from credits — and from nothing in Cold War history, so it survived the naming decision in §2.5 untouched.
 
 ### 2.1 The setting
 
@@ -93,11 +93,38 @@ The house voice already exists in `Descriptions.ts` and the shipped mission titl
 
 **One author, or the register breaks.** If it must be split, split by **campaign**, never by operation, so each writer holds one commander's voice end to end.
 
-### 2.5 THE NAMING DECISION — the author's first call, and the only irreversible one in §2
+### 2.5 THE NAMING DECISION — DECIDED 2026-08-19: OPTION B, TIERS 1 AND 2, TWELVE ROWS
 
-~20 rows of `Defs.ts` carry proper nouns coined by Westwood/EA: Grizzly · Rhino · Apocalypse · Prism Tank · Prism Tower · Multigunner IFV · Iron Curtain · Chronosphere · Weather Control Device · Battle Lab · Flak Trooper · Conscript · G.I. · Vindicator · Naval Pen (`key: 'subPen'`) · Hydrofoil · Dreadnought · Nuclear Missile Silo — plus **MiG**, a live mark of a real aircraft manufacturer. Today those names live in a build rail read silently. A campaign puts them in narrated prose, character dialogue, a published wiki page and a store description.
+**The author's call: rename tier 1 and tier 2, keep tiers 3 and 4 exactly as they are.** Executed 2026-08-19, before a word of briefing prose was authored, which is the whole reason the question had a deadline. The survey that priced it is §2.5.1 and §2.5.2 below and is kept in place — it is the evidence for the decision, not a record of an open question.
 
-Renaming costs more than the `name:` field: `Defs.ts` (~20), `Descriptions.ts` (36 kB, gated by `content-truthful.spec.ts`), four `wiki/Faction-*.md` roster tables (gated by `wiki-numbers.spec.ts`), two shipped manual pages that name Command & Conquer directly (`Base-Building.md:94`, `How-to-Play.md:6`, gated word-for-word by `manual.spec.ts`), ~40 argued comment blocks reasoning *by name*, and `RA3_LOOK_BIBLE.md`. `key:` strings do **not** change — they are in `store.defId` ordering, saves, replays and `UNLOCK_TAGS`.
+The twelve, approved verbatim. **`key:` did not change on any row** — keys are in `store.defId` ordering, save blobs, replay streams and `UNLOCK_TAGS`, so changing one invalidates every save and replay on disk:
+
+| `key:` | was | is |
+|---|---|---|
+| `grizzly` | Grizzly Tank | **Warden Tank** |
+| `rhino` | Rhino Tank | **Anvil Tank** |
+| `apocalypse` | Apocalypse Tank | **Sledge Tank** |
+| `prismTank` | Prism Tank | **Refractor Tank** |
+| `prismTower` | Prism Tower | **Refractor Tower** |
+| `ifv` | Multigunner IFV | **Sabre IFV** |
+| `aaTurret` | Multigunner AA | **AA Battery** |
+| `battleLab` | Battle Lab | **Proving Ground** |
+| `ironCurtain` | Iron Curtain Device | **Ironclad Field** |
+| `chronosphere` | Chronosphere | **Displacement Ring** |
+| `vindicator` | Vindicator | **Petrel Bomber** |
+| `mig` | MiG Fighter | **Interceptor** |
+
+Three display strings moved with them because they embed a renamed noun rather than a real-world term: `vindicatorMissile` "Vindicator AGM" → **Petrel AGM**, `migCannon` "MiG Autocannon" → **Interceptor Autocannon**, `ifvChaingun` "25 mm Multigunner" → **25 mm Sabre**.
+
+**`WarheadClass.Prism` and the two beam rows that carry its name — `prismBeam` "Prism Emitter" and `prismTowerBeam` "Prism Cannon" — did NOT move**, and neither did `AbilityId.PrismFocus`'s "Prism Focus" label. A prism is an optical device nobody owns, which is tier 3 by this section's own test; the coined thing was the unit name. The warhead is also shared with the Meridian Pact's Zenith Emitter and the Reclamation's Helios Lance, so it is original-faction vocabulary as much as Allied vocabulary. A Refractor Tank firing a Prism Emitter is coherent; a Zenith Emitter firing a "Refractor" warhead would not be.
+
+**Tiers 3 and 4 were not touched.** Tesla Coil, Conscript, G.I., Flak Trooper, Attack Dog, Dreadnought, Hydrofoil, Attack Submarine, Pillbox, Engineer, Barracks, Power Plant, War Factory, Construction Yard, Ore Refinery, Ore Harvester, Ore Silo, Radar Dome, Naval Yard, Naval Pen, Sentry Gun, Nuclear Missile Silo and Weather Control Device all stand.
+
+What it actually cost, measured: `Defs.ts` (12 `name:` rows plus 3 weapon names and ~30 argued comment blocks), the `Production.ts` fallback catalog which carries the same 12 rows, `Descriptions.ts` (gated by `content-truthful.spec.ts`), 14 `wiki/` pages including the four `Faction-*.md` roster tables (gated by `wiki-numbers.spec.ts` and `manual.spec.ts`), ~40 argued comment blocks across `src/`, 30 spec files, `CLAUDE.md`, `RA3_LOOK_BIBLE.md`, `VISUAL_DNA.md` and `SPEC_DRIFT_AUDIT.md` — 103 files, 666 changed lines.
+
+**Alias tables were deliberately left alone.** `UNIT_ALIASES` / `BUILDING_ALIASES` in `Scenarios.ts` and the keyword tables in `ui/icons.ts` match against `key:`, not `name:`, and are already written wide enough to hold other games' spellings. Every icon still resolves through its key, which is why the rename moved no glyph.
+
+**The two manual pages that name Command & Conquer directly (`Base-Building.md:94`, `How-to-Play.md:6`) are UNTOUCHED and remain an open question.** Renaming twelve units does not decide what to do about a page that names the genre's ancestor in prose; that is a separate call for the author.
 
 #### 2.5.1 The ~20 are not one thing, and the tiers have different urgency — surveyed 2026-08-19
 
@@ -118,7 +145,7 @@ The list above reads as one uniform block of twenty, which makes the decision lo
 
 Every borrowed name is confined to the Allied and Soviet rosters — verified per row, `faction:` field by `faction:` field, not inferred. So option B is *"do again, for twelve rows, the thing this project has already done twice for sixty-one"*, which is a materially different proposition from the open-ended rename §2.5 currently implies. It does not decide the question; it prices it honestly.
 
-> **UNDECIDED-1: rename (B), keep (A), or keep-and-acknowledge (C)? Recommend B. The author decides, and decides before a word of briefing prose is authored.** Renaming after 37 briefings exist is the expensive version of the same job.
+> **UNDECIDED-1 IS CLOSED. The author chose B on 2026-08-19 and it shipped the same day — tiers 1 and 2, twelve rows, keys untouched.** The table is at the head of §2.5. Nothing below this line is an open question; it is why the answer was cheap.
 
 ---
 
@@ -723,7 +750,7 @@ Ordered by how much rework a wrong guess causes.
 
 | # | Question | Who decides | When |
 |---|---|---|---|
-| **1** | **Naming — rename the ~20 Westwood/EA proper nouns (B), keep (A), or keep-and-acknowledge (C)?** Recommend B. The only decision that can invalidate 22,750 words of authored prose. §2.5 | **The author** | **Before Phase 0 ends** |
+| **1** | ~~**Naming — rename the ~20 Westwood/EA proper nouns (B), keep (A), or keep-and-acknowledge (C)?**~~ **CLOSED 2026-08-19: B, twelve rows, keys untouched.** Shipped the same day, so it never reached the prose it could have invalidated. §2.5 | **The author** | **DECIDED** |
 | **2** | **Does campaign play ever feed the profile chains?** Default is **no** (§5.1). The question is preserved as a *measurement*: instrument one playthrough and report which profile missions would have completed. If "most of them", the skirmish curve is vestigial. | **The author**, on data this plan can produce | After Gate M |
 | **3** | **Voice: how many Piper voices have individually-verified clean `MODEL_CARD` chains?** The survey has not been run. **If the answer is one, the writing must be shaped for an announcer from the first word** — four commanders delivered by one flat narrator is worse than prose written for one. §6.3 | **The author**, after hearing samples | **Before Phase 6 prose** |
 | **4** | **Does the author fund one or two genuinely new `MAP_PRESET` rows?** Without it, 37 operations sit on 7 landforms and 28 validated seeds. **Cloning a preset is not an option — that was tried, shipped as three maps, and undone.** Each new preset needs its own `?shot=` fixture. §6.2 | **The author**, with a graphics-fluent agent | Phase 6 |
@@ -779,7 +806,7 @@ The terrain is not authorable; a chokepoint is *found*, not made. Bounded — no
 ### 10.9 What is irreversible, and what is not
 
 **Irreversible or expensive to reverse — decide with care:**
-- The **naming decision**, once prose exists.
+- The **naming decision**, once prose exists. Taken 2026-08-19 with no prose in the tree, which is why it cost 666 lines instead of 22,750 words (§2.5).
 - **`PROFILE_VERSION` 3** — a migration written once, and a player's medals live in it.
 - The **`types.ts` effect union freeze** — a twelfth effect after Phase 6 starts is a migration across 37 authored files.
 - **`ReplayHeader.campaign`** — additive and version-safe, but once files exist in the wild the field's meaning is fixed.

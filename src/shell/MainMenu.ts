@@ -179,7 +179,7 @@ export class MainMenuScreen implements Screen {
     nav.appendChild(this.multiplayerButton());
 
     // Directly under Skirmish, because the missions board is where a player
-    // finds out that a Prism Tank exists and what it costs them to get one.
+    // finds out that a Refractor Tank exists and what it costs them to get one.
     // Buried under Options it would be a screen most players never open, and
     // the whole progression layer would then be an invisible restriction
     // instead of a visible reward.

@@ -15,7 +15,7 @@
  * `src/data/Descriptions.ts` and it is worth restating, because it is the
  * failure mode this file is shaped around:
  *
- *   - The Multigunner IFV's gun was re-authored from `chaingun` (22 x4, 116 raw
+ *   - The Sabre IFV's gun was re-authored from `chaingun` (22 x4, 116 raw
  *     dps) to `ifvChaingun` (11 x5, 65 raw dps). **The wiki went on quoting the
  *     old figure for three releases** before anyone compared the two.
  *   - When that was finally fixed, six wiki claims were checked against
@@ -207,16 +207,16 @@ const ARMOR_LABELS: Readonly<Record<string, number>> = {
  * THE THREE TANKS THE WIKI CALLS BY THEIR SHORT NAME.
  *
  * `Combat.md`'s "carried by" column and `Strategy.md`'s effective-dps table both
- * write "Grizzly" where the cameo says "Grizzly Tank", which is the right call
+ * write "Warden" where the cameo says "Warden Tank", which is the right call
  * for a page written for players. Declared rather than fuzzy-matched, because a
  * prefix match would also silently accept a genuinely wrong unit — and the
  * declaration is checked in BOTH directions: an alias that names no def, or that
  * the pages stop using, fails.
  */
 const SHORT_UNIT_NAMES: Readonly<Record<string, string>> = {
-  Grizzly: 'Grizzly Tank',
-  Rhino: 'Rhino Tank',
-  Apocalypse: 'Apocalypse Tank',
+  Warden: 'Warden Tank',
+  Anvil: 'Anvil Tank',
+  Sledge: 'Sledge Tank',
 };
 
 /** A wiki cell naming a unit -> the def, short names resolved. */
@@ -713,10 +713,10 @@ interface Duel {
 }
 
 const DUELS: readonly Duel[] = [
-  { row: 'Grizzly vs Rhino', a: 'Grizzly Tank', b: 'Rhino Tank', winner: 'Rhino' },
-  { row: 'IFV vs Grizzly', a: 'Multigunner IFV', b: 'Grizzly Tank', winner: 'Grizzly' },
-  { row: 'IFV vs Rhino', a: 'Multigunner IFV', b: 'Rhino Tank', winner: 'Rhino' },
-  { row: 'IFV vs Solarch', a: 'Multigunner IFV', b: 'Solarch', winner: 'IFV' },
+  { row: 'Warden vs Anvil', a: 'Warden Tank', b: 'Anvil Tank', winner: 'Anvil' },
+  { row: 'IFV vs Warden', a: 'Sabre IFV', b: 'Warden Tank', winner: 'Warden' },
+  { row: 'IFV vs Anvil', a: 'Sabre IFV', b: 'Anvil Tank', winner: 'Anvil' },
+  { row: 'IFV vs Solarch', a: 'Sabre IFV', b: 'Solarch', winner: 'IFV' },
 ];
 
 describe('the derived time-to-kill claims survive the pace scalar', () => {
@@ -753,24 +753,24 @@ describe('the derived time-to-kill claims survive the pace scalar', () => {
     }
   });
 
-  it('quotes the four-Javelin answer to a Rhino', () => {
+  it('quotes the four-Javelin answer to an Anvil', () => {
     const jav = DEF_BY_NAME.get('Javelin') as UnitDef;
-    const rhino = DEF_BY_NAME.get('Rhino Tank') as UnitDef;
-    const cell = duelRows.get('Javelins vs Rhinos');
-    expect(cell, 'Strategy.md: no "Javelins vs Rhinos" duel row').toBeDefined();
-    expect(cell, 'Strategy.md: four Javelins against one Rhino')
+    const rhino = DEF_BY_NAME.get('Anvil Tank') as UnitDef;
+    const cell = duelRows.get('Javelins vs Anvils');
+    expect(cell, 'Strategy.md: no "Javelins vs Anvils" duel row').toBeDefined();
+    expect(cell, 'Strategy.md: four Javelins against one Anvil')
       .toContain(secs(ttk(jav, rhino, 4)));
   });
 
   it('quotes how long a rifle takes against the two heavy tanks', () => {
     const gi = DEF_BY_NAME.get('G.I.') as UnitDef;
-    const rhino = DEF_BY_NAME.get('Rhino Tank') as UnitDef;
-    const apoc = DEF_BY_NAME.get('Apocalypse Tank') as UnitDef;
+    const rhino = DEF_BY_NAME.get('Anvil Tank') as UnitDef;
+    const apoc = DEF_BY_NAME.get('Sledge Tank') as UnitDef;
     // Whole seconds: the sentence is prose, not a table.
     expect(strategy, 'Strategy.md §5: the small-arms-against-heavy sentence')
       .toContain(`${Math.round(ttk(gi, rhino))} seconds`);
     expect(strategy, 'Strategy.md §5: the small-arms-against-heavy sentence')
-      .toContain(`${Math.round(ttk(gi, apoc))} to kill an Apocalypse`);
+      .toContain(`${Math.round(ttk(gi, apoc))} to kill a Sledge`);
   });
 
   it('states the pace scalar itself, since every time above depends on it', () => {
@@ -1485,7 +1485,7 @@ const UNCHECKED_CLAIMS: readonly { page: string; phrase: string; why: string }[]
   },
   {
     page: 'Strategy',
-    phrase: 'at equal credits three Grizzlies beat two-and-a-third Rhinos',
+    phrase: 'at equal credits three Wardens beat two-and-a-third Anvils',
     why: 'A cost-normalised group claim. The 1v1 halves of the same row ARE checked '
       + 'above; this clause depends on a fight model no table owns.',
   },

@@ -52,11 +52,11 @@
  * from `prereqs`, and everything else lives in `Defs.ts`, `config.ts` or
  * `Superweapons.ts`. A number RETYPED here is a second copy that nothing
  * compares, which is precisely the class of defect `docs/SPEC_DRIFT_AUDIT.md`
- * catalogues; the Multigunner IFV's gun was rebalanced from 22x4 to 11x5 and
+ * catalogues; the Sabre IFV's gun was rebalanced from 22x4 to 11x5 and
  * the wiki went on quoting the old figure for three releases before anyone
  * compared the two.
  *
- * The rule costs less than it sounds like. "Reaches further than a Grizzly" is
+ * The rule costs less than it sounds like. "Reaches further than a Warden" is
  * a comparison the balance pass cannot silently break in the way "reaches 26 m"
  * can, and it is the sentence a new player actually needed.
  *
@@ -73,7 +73,7 @@
  * number in a SECOND place (`Combat.md`) that this list did not name, which is
  * the argument for writing findings down rather than fixing them in passing:
  *
- *   1. `Faction-Allies.md` gave the Multigunner IFV "25 mm Chaingun, 22 x4".
+ *   1. `Faction-Allies.md` gave the Sabre IFV "25 mm Chaingun, 22 x4".
  *      It fires `ifvChaingun`, 11 x5 on a 0.60 s cycle. `DEFAULT_WEAPONS[6]`
  *      still holds the 22 x4 row and no shipped def fires it — see the
  *      REBALANCE_WEAPONS block in `Defs.ts`.
@@ -85,7 +85,7 @@
  *      Glaive Post is a structure drawing power, so it goes dark WITH the
  *      Spire. The Zenith half was right, and for the reason `Defs.ts` gives: it
  *      is a hull, and a hull can never carry `NeedsPower`.
- *   4. `Faction-Allies.md` called the Vindicator "the heaviest and slowest of
+ *   4. `Faction-Allies.md` called the Petrel Bomber "the heaviest and slowest of
  *      the four aircraft". Heaviest yes; slowest no — it is 11.5 against the
  *      Swarmhornet's 11.0. The same wrong phrase was in `Defs.ts`'s own comment
  *      three lines above the number, which is where the wiki got it.
@@ -144,7 +144,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   radar:
     'Turns the tactical map on, and sees further than any other building you '
     + 'own. It is also the middle rung of the tech tree: the second-tier units '
-    + 'and the Battle Lab behind them all name it.',
+    + 'and the Proving Ground all name it.',
 
   oreSilo:
     'Bank space, and nothing else. Credits earned above your storage cap are '
@@ -224,8 +224,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   prismTower:
     'A beam tower with the longest reach of any defence in the game, and it '
-    + 'shoots at aircraft. Prism ignores most armour. It needs the Battle Lab, '
-    + 'and goes dark the moment your grid browns out.',
+    + 'shoots at aircraft. Prism ignores most armour. It needs the Proving '
+    + 'Ground, and goes dark when the grid browns out.',
 
   chronosphere:
     'The one superweapon that moves your own army instead of hurting somebody '
@@ -279,7 +279,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   destroyer:
     'The Allied capital ship: the same deck gun as the escort, on far more hull '
-    + 'and better armour. It needs the Battle Lab, and like the escort it '
+    + 'and better armour. It needs the Proving Ground, and like the escort it '
     + 'cannot answer aircraft.',
 
   hydrofoil:
@@ -372,7 +372,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'never walk it into a rocket squad alone.',
 
   mig:
-    'The fastest thing on the map, and a pure interceptor: its autocannon is at '
+    'The fastest thing on the map, and it does one job: its autocannon is at '
     + 'its best against light armour, which is what every aircraft is made of. '
     + 'It cannot hurt a tank or open a base.',
 
@@ -408,8 +408,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   upgSovietUranium:
     'A purchase, not a unit: buy it once and every vehicle you own or ever '
-    + 'build hits harder. It needs the Battle Lab, which puts it late — but it '
-    + 'improves an Apocalypse as much as a Rhino.',
+    + 'build hits harder. It needs the Proving Ground, which puts it late — but it '
+    + 'improves a Sledge as much as an Anvil.',
 
   upgSovietSlurry:
     'A purchase, not a unit: buy it once and every ore load your harvesters '
@@ -492,8 +492,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   mrdHeliograph:
     'The one superweapon the Pact gets. A single annihilating strike, announced '
-    + 'before it burns. There is no Iron Curtain and no Chronosphere here — '
-    + 'whatever you want done, this is the button.',
+    + 'before it burns. No Ironclad Field, no Displacement Ring — whatever you '
+    + 'want done, this is the button.',
 
   mrdWayfarer:
     'Pact line infantry: the fastest basic rifleman in the game and the '
@@ -527,7 +527,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   mrdSolarch:
     'The Pact main line: turreted, faster than any other line tank, and it '
-    + 'reaches further than a Grizzly. Light armour, though — autocannon and '
+    + 'reaches further than a Warden. Light armour, though — autocannon and '
     + 'massed rifles take it apart, so win the standoff.',
 
   mrdZenith:

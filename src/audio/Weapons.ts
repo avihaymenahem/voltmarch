@@ -148,7 +148,7 @@ function buildFxTable(): readonly (string | null)[] {
 
 /**
  * Tank cannon. The heavy variant is not "the same sound, louder": every
- * frequency scales by 0.86 and every decay by 1.3, which is what makes a Rhino
+ * frequency scales by 0.86 and every decay by 1.3, which is what makes an Anvil
  * read as a bigger object rather than a closer one.
  *
  * The measured failure of the previous version was a spectral centroid of

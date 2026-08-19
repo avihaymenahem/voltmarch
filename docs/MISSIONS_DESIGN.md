@@ -129,7 +129,7 @@ is fun has already stopped playing.
 
 **2. Power creep against the AI.**
 If unlocks are strictly stronger, early matches are unfair and late ones trivial. Unlocks skew toward
-**sidegrades and options** — a prism tank is not better than a main battle tank, it is different.
+**sidegrades and options** — a refractor tank is not better than a main battle tank, it is different.
 Superweapons are the one deliberate exception and sit at the end of long chains.
 
 **3. Rewards must be visible.**
@@ -163,7 +163,7 @@ the battlefield, so every client gets the same answer. `tests/sea-crossing-gate.
 
 | Tier | Available | Earned |
 | --- | --- | --- |
-| Units | Infantry, main tank, harvester, dozer, basic defence | Prism/tesla specialists, artillery, naval, air |
+| Units | Infantry, main tank, harvester, dozer, basic defence | Refractor/tesla specialists, artillery, naval, air |
 | ...except | On a map with no land route, the dock and the lift (see trap 4) | The warships still are |
 | Structures | Con yard, power, barracks, refinery, war factory, radar | Tech centre, advanced defences, superweapon structures |
 | Maps | 2–3 starters | Naval, urban, canyon, snow biomes |

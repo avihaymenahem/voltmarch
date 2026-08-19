@@ -81,7 +81,7 @@ with no number is untracked, and that is itself the bug.
   five candidate fixes are costed and rejected with reasons, and there is an **8 m overhead blind
   cone** in which a projectile weapon cannot hit an aircraft above it at all. The *work* is
   unstarted. Two traps recorded: a per-credit anchor flatters the cheapest unit in the game, and the
-  Multigunner AA turret must be re-measured after any such nerf — never in the same commit.
+  AA Battery turret must be re-measured after any such nerf — never in the same commit.
 - **#27 — the AI owns no engineer**, so `Capture` is unreachable for it. The def exists with weight 0
   and `buildUnits` filters `weight <= 0`. Giving the brain the verb alone would hand it to a unit
   that never exists; buying one, escorting it and choosing a building is a feature.
@@ -120,10 +120,10 @@ Decisions, not work. Nobody should sweep them without an answer.
 
 ## Not on this list, deliberately
 
-`CAMPAIGN_BUILD_SPEC.md` §9's undecided items are author decisions rather than work. The largest is
-**UNDECIDED-1**: whether to rename the ~20 Westwood/EA proper nouns in `Defs.ts` — Grizzly, Rhino,
-Apocalypse, Prism Tank, Iron Curtain, Chronosphere, and **MiG**, a live mark of a real aircraft
-manufacturer. Today those names sit in a build rail read silently; a campaign puts them in narrated
-prose, character dialogue, a published wiki page and a store description. **The decision has to be
-made before a word of briefing prose is authored** — renaming after 37 briefings exist is the
-expensive version of the same job.
+`CAMPAIGN_BUILD_SPEC.md` §9's undecided items are author decisions rather than work. The largest,
+**UNDECIDED-1**, is **CLOSED**: on 2026-08-19 the author took option B and twelve `name:` rows were
+renamed — tier 1 (MiG, a live mark of a real aircraft manufacturer) and tier 2 (the eleven Westwood/EA
+coinages). Tiers 3 and 4 stand: Tesla Coil, Conscript, G.I., War Factory, Barracks and the rest are
+real-world terms or genre idiom that nobody owns. No `key:` moved, so no save or replay on disk was
+invalidated. It landed before a word of briefing prose existed, which is what made it cost 666 lines
+instead of 22,750 words. §2.5 carries the table and the survey that priced it.

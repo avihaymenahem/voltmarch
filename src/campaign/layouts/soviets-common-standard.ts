@@ -91,7 +91,7 @@ export const PAD_POINT: Point = { x: CENTRE, z: CENTRE };
  * `nudgeToBuildable` (which is a no-op on a reserved shelf).
  *
  * So the detour is 156.9 + 176 = 332.9 m of driving against 193.1 m straight to
- * the pad — **+139.8 m, about 26 seconds at a Rhino's 5.4 m/s** — plus whatever
+ * the pad — **+139.8 m, about 26 seconds at an Anvil's 5.4 m/s** — plus whatever
  * the guard costs, and it is exactly as far inside the Allied half as the
  * Soviet one. That symmetry is the seed's doing and not a design choice; if the
  * seed ever moves, re-derive this number rather than carrying it forward.
@@ -107,7 +107,7 @@ export const DEPOT: Area = { x: CENTRE, z: CENTRE + 176, r: 34 };
  * `connectedGround` and pulls the spot onto ground the locomotor can hold. The
  * Director's `spawnUnits` calls `ProductionService.spawnUnit` instead, which
  * clamps to the map, reads `heightAt` and allocates — it asks nothing. So a
- * drop point on a ridge is a Rhino standing on a ridge, permanently, counting
+ * drop point on a ridge is an Anvil standing on a ridge, permanently, counting
  * towards the `ownerCount` the loss threshold reads while being no use to
  * anybody.
  *
@@ -138,7 +138,7 @@ export const DEPOT_DROP: Point = { x: CENTRE - 8, z: CENTRE + 164 };
  * army arrives from its base, these arrive from the opposite bearing, and the
  * player cannot face both with one line.
  *
- * 168 m from the pad: about 25 seconds of driving for a Grizzly, which is what
+ * 168 m from the pad: about 25 seconds of driving for a Warden, which is what
  * makes the warning line worth saying.
  */
 export const RELIEF_ROAD: Point = { x: CENTRE, z: CENTRE - 168 };
@@ -165,7 +165,7 @@ const COLUMN_HULLS = 8;
  *
  * **THREE IS DERIVED FROM THE TWO TANKS THIS REPLACED, NOT PICKED.** See the
  * placement block below for the arithmetic; the short version is that a pillbox
- * delivers about a third of what a Grizzly does to a Heavy hull, and three of
+ * delivers about a third of what a Warden does to a Heavy hull, and three of
  * them cost 1200 credits against the two tanks' 1400 — the same money, spent on
  * concrete instead of hulls.
  */
@@ -345,7 +345,7 @@ export default layout({
     b.spawnWreck(DEPOT.x + 17, DEPOT.z + 15, b.world.player(foe).faction, false);
 
     /*
-     * THE GUARD IS EMPLACEMENTS, AND IT WAS TWO GRIZZLIES UNTIL IT WAS
+     * THE GUARD IS EMPLACEMENTS, AND IT WAS TWO WARDENS UNTIL IT WAS
      * MEASURED. THIS IS THE ONE THING IN THIS FILE NOT TO UNDO.
      *
      * **A LAYOUT-PLACED HULL ON AN AI SEAT IS NOT PARKED. IT IS THE AI'S.**
@@ -399,12 +399,12 @@ export default layout({
      * (`DEFAULT_WEAPONS`, `ARMOR_MATRIX`, `COMBAT_DAMAGE.globalMul` 0.80) and
      * must be re-derived rather than re-quoted after any weapon retune.
      * `lightCannon` is 55 AP on a 1.5 s cooldown = 36.67 raw, and AP against
-     * Heavy is 1.00, so a Grizzly puts **29.3 dps** on a Rhino. `pillboxMg` is
+     * Heavy is 1.00, so a Warden puts **29.3 dps** on an Anvil. `pillboxMg` is
      * 5x13 over a 0.79 s cycle = 82.3 raw, and SmallArms against Heavy is 0.10,
      * so a Pillbox puts **6.6 dps** on one — a ninth of the tank's, which is the
      * honest cost of the only static gun this roster has. What closes most of
      * the gap is survival: a Pillbox is 500 hp of Concrete (AP 0.55) against a
-     * Grizzly's 340 of Medium (AP 1.00), so it lives about three times as long
+     * Warden's 340 of Medium (AP 1.00), so it lives about three times as long
      * under the same column. Integrating a sequential kill over the post,
      * two tanks deliver ~250 damage and three pillboxes ~236. Two would deliver
      * ~118 and would have been a decoration.
@@ -416,7 +416,7 @@ export default layout({
      * reach, and the total would fall rather than rise.
      *
      * **AN EMPLACEMENT CAN BE OUTRANGED AND A TANK CANNOT, WHICH IS A REAL
-     * DISCOUNT AND IS LEFT IN.** A Rhino reaches 26 m against the post's 22, so
+     * DISCOUNT AND IS LEFT IN.** An Anvil reaches 26 m against the post's 22, so
      * a player who stops the column by hand at 24 m pays nothing. `Targeting`
      * does not do that for them — it closes to `range * APPROACH_STOP_FRAC`
      * (0.80) = 20.8 m and parks there, inside 22 — so the ordinary right-click

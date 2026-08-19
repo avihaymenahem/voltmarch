@@ -399,7 +399,7 @@ crops show tight pebble clusters with 2–4 empty cells between them.
 | **Team accent (blue slot)** | core `#4878C8`, shade `#183868`, hi `#8898D8` | 7–10% units / 2.5–4% buildings |
 | Crucible glow | `#D89020` → `#F8C858` | 1–2% |
 
-- Hard-edged **rectangular tile panels**. Battle Lab bulbs are quilted into ~9×9 px white tiles with 1-px
+- Hard-edged **rectangular tile panels**. Proving Ground bulbs are quilted into ~9×9 px white tiles with 1-px
   `#9898B0` grout. Read: **ceramic + chrome + glass. Zero rust, zero rivets.**
 - **Curves dominate:** barrel vaults, domes, capsules, tori. Ore Refinery = one ribbed lavender cylinder
   (7 rib bands, 11 px pitch). War Factory = quonset arch with a 14-slat roll-up shutter (3 px pitch).
@@ -455,8 +455,8 @@ REF px at 60×30 cells; multiply by 4/3 for OUR.
 
 | Unit | REF bbox | OUR bbox | Plan (cells) | Height above ground (REF) |
 |---|---|---|---|---|
-| Grizzly Battle Tank | **26 × 21** hull (33×42 with raised barrel) | 35 × 28 | 0.45 × 0.70 | 14 |
-| Rhino Heavy Tank | 31 × 20 | 41 × 27 | 0.50 × 0.66 | 13 |
+| Warden Battle Tank | **26 × 21** hull (33×42 with raised barrel) | 35 × 28 | 0.45 × 0.70 | 14 |
+| Anvil Heavy Tank | 31 × 20 | 41 × 27 | 0.50 × 0.66 | 13 |
 | Flak Track | 30 × 24 | 40 × 32 | 0.50 × 0.80 | 17 |
 | **Chrono / War Miner** | **60 × 43** | 80 × 57 | 1.00 × 1.40 | 22 |
 | IFV | 28 × 22 | 37 × 29 | 0.47 × 0.73 | 12 |
@@ -466,9 +466,9 @@ REF px at 60×30 cells; multiply by 4/3 for OUR.
 
 | Structure | Pad (REF) | Plan | Silhouette height (REF) | **height : pad-width** |
 |---|---|---|---|---|
-| Prism Tower | 46 × 26 | 1×1 | 94 | **2.04** |
+| Refractor Tower | 46 × 26 | 1×1 | 94 | **2.04** |
 | Tesla Coil | 40 × 24 | 1×1 | 105 | **2.60** |
-| Battle Lab | 125 × 70 | 2×2 | 130 (175 with antennas) | 1.40 |
+| Proving Ground | 125 × 70 | 2×2 | 130 (175 with antennas) | 1.40 |
 | Nuclear Silo | 150 × 85 | 3×3 | 135 | 0.90 |
 | Power Plant | 62 × 36 | 1×1 | 50 | 0.81 |
 | Ore Refinery | 195 × 110 | 3×3 | 72 (+55 stacks) | 0.65 |
@@ -509,7 +509,7 @@ an unreadable carpet.
 
 - **B1 — Two silhouette scales must never mix.** If infantry approaches tank size, both classes die.
 - **B2 — Luminance separation ≥ 30 luma points** from the ground for the unit's dominant band. Every unit
-  must be **both darker AND lighter than the terrain somewhere** (desert sand luma ~112; a Grizzly spans
+  must be **both darker AND lighter than the terrain somewhere** (desert sand luma ~112; a Warden spans
   40 → 205).
 - **B3 — 1–1.5 px hard contact edge.** A near-black rim on the down-light edges (screen-space outline or a
   strong rim-darkening term). This is what stops "grey blob".
@@ -1023,7 +1023,7 @@ the music duck must be driven by `onstart`/`onend`, not an analyser. Tier A is t
 | `Unit lost.` | own unit destroyed | P3 | **8 s** (uncapped this fires ~50×/min in a mass battle) |
 | `Primary building selected.` / `New rally point established.` / `Selected structure sold.` / `Repairing.` / `Building.` | as named | P3/P4 | 1.5–3 s |
 | `Reinforcements have arrived.` | scripted/paradrop delivery lands | P1 | 10 s |
-| `<Superweapon> ready.` (Iron Curtain / Chronosphere / Weather device / Nuclear silo / Force shield / Spy satellite) | charge timer hits 0 | **P0** | once per charge |
+| `<Superweapon> ready.` (Ironclad Field / Displacement Ring / Weather device / Nuclear silo / Force shield / Spy satellite) | charge timer hits 0 | **P0** | once per charge |
 | `Nuclear missile launched.` | any player launches | **P0** | once — ducks everything −14 dB for 2.2 s |
 | `Warning: incoming missile.` | hostile superweapon targets own base radius, 6 s pre-impact | **P0** | once |
 | `Mission accomplished.` / `Mission failed.` / `Battle control terminated.` | win / loss / exit | P0/P0/P2 | once |
@@ -1090,8 +1090,8 @@ Envelopes are (attack ms → peak → decay ms). **Never exponential-ramp to 0**
 | C punch | triangle | 250 → 62 Hz over 60 ms | 1 ms → 0.75 → 90 ms | −8 dB |
 | D tail | pink noise → LP 300 → reverb send | static | 40 ms → 0.5 → 750 ms | −16 dB |
 
-Rhino variant: **all frequencies ×0.86, all decays ×1.25, layer B +2 dB.**
-Apocalypse: fire the stack twice, second at +95 ms, −2.5 dB, pitch ×1.04.
+Anvil Tank variant: **all frequencies ×0.86, all decays ×1.25, layer B +2 dB.**
+Sledge: fire the stack twice, second at +95 ms, −2.5 dB, pitch ×1.04.
 **Shell eject** 30% of the time at +55 ms: noise → BP 3200 **Q 12**, 3/120 ms, −22 dB, pan +0.06.
 **Muzzle sub-thump** for camera-shake sync: 45 Hz sine, 8/70 ms, −10 dB, **bypassing the distance lowpass**.
 Variance: freq ×rand(0.94,1.07), durations ×rand(0.92,1.08), level ±1.5 dB, pan ±0.04.
@@ -1147,9 +1147,9 @@ control-rate buffer during the offline bake), −20 dB.
   with a **master lowpass sweeping 900 → 18000 Hz over 1.2 s**, fully recovered by t+3.2 s.
   Ducks everything else **−14 dB for 2.2 s**.
 
-**3.4.7 Superweapon FX.** *Iron Curtain:* saw 40 + 41.5 Hz (1.5 Hz beat) → LP 300, 1.4 s, −8 dB; metallic
+**3.4.7 Superweapon FX.** *Ironclad Field:* saw 40 + 41.5 Hz (1.5 Hz beat) → LP 300, 1.4 s, −8 dB; metallic
 "seal" noise → BP 2400 Q9 with a **reversed envelope** (600 ms rise, 40 ms cut), −12 dB. Invulnerable units
-get a +140 Hz resonant peak (Q6) on their own weapon sounds. *Chronosphere:* ascending sine glissando
+get a +140 Hz resonant peak (Q6) on their own weapon sounds. *Displacement Ring:* ascending sine glissando
 200 → 3200 Hz over 900 ms with a 3-tap feedback delay (170 ms, fb 0.55); the departure is the **time-reversed
 buffer** of the arrival.
 
@@ -1414,7 +1414,7 @@ mass-battle shot for C21). Audio criteria are scored by reading the audio source
 | **C14** | **Cliffs & elevation** | ×1 | Smooth extruded walls, vertical striations, arbitrary heights, AO pooling at the base. | **Stacked 20-px shelves**, silhouette breaking every 11–27 px, **striations along the iso axes**, a biome cap on every ledge, all vertices snapped to **0.408 world units**. |
 | **C15** | **Size ladder** | ×2 | Tanks at or above cell width; infantry the same size as tanks; the harvester indistinguishable from a tank. | Tank hull **35 px OUR (≤ 44 max)**, infantry **17 × 24**, harvester **≥ 2.2× the tank's area with no barrel**. Four non-overlapping aspect classes. |
 | **C16** | **Silhouette law** | ×2 | Detailed panel-lined models that mush at 35 px; no barrel spike; point-symmetric hulls; no track band. | Every combat vehicle has **one near-black barrel ≥ 15 px OUR at ≤ 3 px wide**; a **3–4 px dark track band with road-wheel dots**; a readable front; **5–7 distinguishable colour blocks** total. |
-| **C17** | **Building proportion** | ×1 | Squat, geometrically-correct buildings; Prism Tower shorter than 1.6× its base. | **×1.25 vertical push applied.** Height : pad-width ratios within ±15% of: Prism 2.04, Tesla 2.60, Battle Lab 1.40, War Factory 0.36. |
+| **C17** | **Building proportion** | ×1 | Squat, geometrically-correct buildings; Refractor Tower shorter than 1.6× its base. | **×1.25 vertical push applied.** Height : pad-width ratios within ±15% of: Refractor 2.04, Tesla 2.60, Proving Ground 1.40, War Factory 0.36. |
 | **C18** | **Faction material split** | ×2 | Grey PBR metal on everything; both factions distinguishable only by accent hue. | Allied shows **≥2 of** {white ceramic tile `#C8C8C8`, polished chrome, blue glass} with **blue-black shadows `#282838`**. Soviet shows **≥2 of** {riveted plate, ochre brick `#A08868`, red slab `#A80808`, exposed pipe} with **warm-black shadows `#180808`**. |
 | **C19** | **Team colour placement** | ×1 | Whole-hull tint; team colour > 25% or < 3%; accent only on top faces; a flat roof wash on buildings. | **7–10% of vehicle pixels, 2.5–4% of building pixels**, contiguous, **touching the silhouette edge**, on camera-facing surfaces, **15–30% brighter than the surrounding hull**. Buildings use vertical slabs/edge stripes. |
 | **C20** | **Grounding** | ×1 | Buildings float; no pad; rounded pad corners; pad identical in every theatre. | **Pad decal 5–13 px past the silhouette on the exact cell diamond**, 2 px `#22231D` rim, **contact AO 15% darker in the 3–5 px touching the wall**, hard cast shadow, **theatre-appropriate pad material**, painted markings present. |

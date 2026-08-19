@@ -19,7 +19,7 @@ Three rules make the army, and every number on this page is one of them.
 **Nothing has a turret.** Not one unit in the roster, including the ships. A Reclamation hull cannot
 shoot anything it is not pointing at and cannot cover a flank while it drives. The compensation is
 authored directly: every Reclamation chassis turns a full radian per second faster than the
-equivalent Allied or Soviet hull — a Grinder slews at 2.73 rad/s against a Grizzly's 1.73. That buys
+equivalent Allied or Soviet hull — a Grinder slews at 2.73 rad/s against a Warden's 1.73. That buys
 back the reaction time. It does not buy back the arc.
 
 **It arcs, so it cannot siege.** Six of the army's ten guns are chained tesla arcs, five of them
@@ -28,8 +28,8 @@ conscript waves and Pact Wayfarer screens alike — and **0.60 against concrete*
 Reclamation answer to an enemy base is one siege hull and one man with a satchel. If both die, you
 can stand in the middle of someone's base doing almost nothing.
 
-**It is the cheapest and the frailest.** A Grinder is 600 credits against a Grizzly's 700 and a
-Rhino's 900, builds in nine seconds against eleven and thirteen, and dies at 270 hit points against
+**It is the cheapest and the frailest.** A Grinder is 600 credits against a Warden's 700 and a
+Anvil's 900, builds in nine seconds against eleven and thirteen, and dies at 270 hit points against
 340 and 420. A Scrap Picker is 90 credits and three seconds — the cheapest unit any army fields. The
 Reclamation wins by arriving first and by arriving again. It never wins a trade.
 
@@ -40,8 +40,8 @@ Grinder — name **only the Breaker Yard** in their prerequisites, where the All
 a Radar Dome. And the Breaker Yard is the cheapest and fastest vehicle factory in the game (1900
 credits / 22 s against everyone else's 2000 / 24 s), sitting behind the cheapest power plant. You
 reach a working army a few hundred credits and a few seconds ahead of everyone, and then you keep
-the lead, because a Grinder is 600 credits and nine seconds where a Grizzly is 700 and eleven and a
-Rhino is 900 and thirteen.
+the lead, because a Grinder is 600 credits and nine seconds where a Warden is 700 and eleven and a
+Anvil is 900 and thirteen.
 
 You pay for that on the grid. A Scrap Furnace is 240 credits for **80 power** — the cheapest plant
 in the game, the toughest at 950 hit points, and by a distance the least productive. Several of your
@@ -154,7 +154,7 @@ equivalent of the shared-pool Gate to let your own column through.
 
 The Spitpost draws no power at all, so it fires through a total blackout. The Arc Pylon is the
 opposite kind of decision: 90 power, the heaviest single draw outside a superweapon, and it arrives
-a full tech tier before an Allied Prism Tower or a Pact Helios Spire because it hangs off the
+a full tech tier before an Allied Refractor Tower or a Pact Helios Spire because it hangs off the
 Spotter Mast rather than the Crucible. An early heavy defence that browns out your own base is a
 real trade — and the pylon is the biggest draw in the first class the shed order touches, so it is
 also the first gun to go dark in the brownout it caused. Build the furnace before the pylon.

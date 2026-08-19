@@ -691,7 +691,7 @@ export class AiBrain {
    *
    * The census cannot answer this from `roleCount` alone: every superweapon is
    * `BuildRole.Superweapon`, so a Brutal brain allowed two would happily build
-   * a second Nuclear Silo and never touch the Iron Curtain. The mask costs one
+   * a second Nuclear Silo and never touch the Ironclad Field. The mask costs one
    * catalog lookup per superweapon building per census — of which there are
    * never more than two.
    */
@@ -720,10 +720,10 @@ export class AiBrain {
   /** Tick the fire layer last looked for a target and found nothing worth one. */
   private superBackoffTick = -1e9;
   /**
-   * Tick the Chronosphere's SOURCE command went out. -1e9 when nothing is
+   * Tick the Displacement Ring's SOURCE command went out. -1e9 when nothing is
    * staged.
    *
-   * The Chronosphere is the one `pointPair` weapon: `consumeOrders` reads the
+   * The Displacement Ring is the one `pointPair` weapon: `consumeOrders` reads the
    * order's TARGET as the stage flag — `NONE` for the source click, the
    * structure's own id to commit — so the AI spends two layer ticks on it, half
    * a second apart, exactly as a human spends two clicks.
@@ -1266,7 +1266,7 @@ export class AiBrain {
   }
 
   /**
-   * IRON CURTAIN — twenty seconds of true invulnerability, on the strike group.
+   * IRONCLAD FIELD — twenty seconds of true invulnerability, on the strike group.
    *
    * The one superweapon aimed at our OWN units, which makes it the one with no
    * vision question and the one with a genuine timing problem: it is worth
@@ -1291,12 +1291,12 @@ export class AiBrain {
     if (this.hostilesWithin(cx, cz, def.radius * 2, true) < AI_SUPERWEAPON.curtainMinEnemies) {
       return false;
     }
-    this.lateGoal = `iron curtain over ${this.strikeCount} in contact`;
+    this.lateGoal = `ironclad field over ${this.strikeCount} in contact`;
     return this.issueOrder(OrderKind.UseAbility, this.one(structure), 1, cx, cz, structure);
   }
 
   /**
-   * CHRONOSPHERE — lift the committed wave onto the objective.
+   * DISPLACEMENT RING — lift the committed wave onto the objective.
    *
    * THE ONLY TWO-COMMAND VERB THE AI HAS. `targetMode` is `pointPair`, and
    * `consumeOrders` reads the order's TARGET as the stage flag: `NONE` means
@@ -1342,7 +1342,7 @@ export class AiBrain {
         return false;
       }
       this.chronoStagedTick = s.tick;
-      this.lateGoal = 'chronosphere: marking the wave';
+      this.lateGoal = 'displacement ring: marking the wave';
       // Deliberately NOT counted as a fire and NOT returned as one — no charge
       // has been spent yet and the layer must come back next tick to commit.
       return false;
@@ -2842,7 +2842,7 @@ export class AiBrain {
           1.0 * this.pers.tech * this.diff.techBias, 'teching to radar');
       } else if (this.roleCount[BuildRole.TechLab] + this.roleBuilding[BuildRole.TechLab] === 0) {
         this.consider(this.catalog.forRole(BuildRole.TechLab, this.faction),
-          0.9 * this.pers.tech * this.diff.techBias, 'teching to the battle lab');
+          0.9 * this.pers.tech * this.diff.techBias, 'teching to the proving ground');
       }
     }
 
@@ -2873,7 +2873,7 @@ export class AiBrain {
      * to do with score. `consider` runs `available()`, which records the FIRST
      * refusal of the pass into `unavailableReason` — the string the brain
      * publishes as `blocked` when it queues nothing. A superweapon refused for
-     * "Requires a Battle Lab" is the least interesting thing that can be wrong
+     * "Requires a Proving Ground" is the least interesting thing that can be wrong
      * with this AI, and reported first it would bury whatever actually is. */
     this.considerNavy();
     this.considerSuperweapon();
@@ -3215,7 +3215,7 @@ export class AiBrain {
    *               is an Easy brain banking for a silo it never finishes and
    *               building no army for two minutes while it tries.
    *   ONE AT A TIME  by `superOwnedMask`, so a Brutal brain allowed two builds
-   *               the Iron Curtain second rather than a spare Nuclear Silo.
+   *               the Ironclad Field second rather than a spare Nuclear Silo.
    *   INCOME      THE ECONOMY MUST BE FINISHED, not merely started: the AI
    *               wants `maxRefineries` — the number its own difficulty rung
    *               says is a complete economy — and never fewer than
@@ -3261,7 +3261,7 @@ export class AiBrain {
         // comfortably above it, so the AI parks at a surplus that is fine for
         // everything it currently owns and 150 short of the one thing it wants
         // — forever. Watching a real Brutal match is what found this: three
-        // refineries, a Battle Lab, all three upgrades bought, and a permanent
+        // refineries, a Proving Ground, all three upgrades bought, and a permanent
         // surplus of exactly 100 against a silo needing 190.
         //
         // A human wanting a nuke builds two power plants first. So does this.
@@ -3276,7 +3276,7 @@ export class AiBrain {
       this.consider(entry, AI_SUPERWEAPON.score * this.pers.tech, `superweapon: ${entry.key}`);
       // Only ever the FIRST unbuilt entry in the plan. Offering both to the
       // scorer would let the cheaper one win on affordability alone, which is
-      // how the Allies end up with a Chronosphere and no plan for it.
+      // how the Allies end up with a Displacement Ring and no plan for it.
       return;
     }
   }
@@ -3287,7 +3287,7 @@ export class AiBrain {
    * THE QUESTION THIS ANSWERS IS "is an upgrade a better buy than the tank it
    * costs the same as", and the honest answer is: it depends entirely on how
    * many of that tank you are going to buy afterwards. Composite Armour is 1200
-   * credits for 18% off every Allied hull — 1.7 Grizzlies' worth of purchase,
+   * credits for 18% off every Allied hull — 1.7 Wardens' worth of purchase,
    * against a multiplier that covers the whole column and everything built
    * after it for the rest of the match. Bought over an army of two it is a
    * disaster; bought over a war factory that has been running for five minutes

@@ -188,7 +188,7 @@ function appendAirborne(world: World, count: number): number {
  * A flyer holds `AIR_CRUISE_ALTITUDE` metres of altitude, so the pixel it is
  * drawn at and the terrain under that pixel are different places: at the
  * shipped camera pitch the ray passes through the hull and lands 23-25 m
- * further on. Measured on a live match, three Vindicators drawn at screen
+ * further on. Measured on a live match, three Petrel Bombers drawn at screen
  * (569,180), (669,213) and (775,241) had ground hits 25.2, 23.5 and 22.9 m from
  * their own x/z — against a query radius of `PICK_RADIUS + 10` = 11.6 m. So no
  * aircraft was EVER a candidate, and the screen-proximity test below — which
@@ -251,7 +251,7 @@ export function pickEntity(
     // pointing straight at the hull, so it answers "no" in exactly the case it
     // is being asked about — and then a building that happens to sit under
     // that far-away terrain point wins the pick as `contained`, which is the
-    // measured behaviour: clicking a Vindicator selected a Power Plant.
+    // measured behaviour: clicking a Petrel Bomber selected a Power Plant.
     const airborne = s.locomotor[i] === Locomotor.Air;
     let contained = false;
     if (!airborne) {

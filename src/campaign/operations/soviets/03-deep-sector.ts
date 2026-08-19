@@ -228,7 +228,7 @@ const op: OperationDef = {
      * `validateCampaign` checks every `spawnUnits` key against the army of
      * the seat it lands on, seat 0 being `faction` and every other seat
      * `foe`, so a literal key on the wrong seat is a build error instead of a
-     * Rhino in Allied paint.
+     * Anvil in Allied paint.
      */
     {
       id: 't.rail',

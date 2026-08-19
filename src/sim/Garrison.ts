@@ -39,7 +39,7 @@
  * openings, so the strongpoints are equidistant from both armies.
  *
  * The eligible set is therefore those, plus what it always was: your own
- * unarmed non-production structures (Power Plant, Ore Silo, Battle Lab).
+ * unarmed non-production structures (Power Plant, Ore Silo, Proving Ground).
  * `src/input/Commands.ts` §5b is what makes a right-click able to say so — a
  * neutral structure is neither `hoverOwn` nor `hoverEnemy`, so before that
  * branch existed no click could produce `OrderKind.Enter` against one at all.

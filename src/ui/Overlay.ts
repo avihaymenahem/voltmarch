@@ -261,7 +261,7 @@ const BUILD_AREA_MAX = 64;
  * A player reported that infantry "cannot get into buildings". The mechanic
  * works; the eligible SET is tiny — `GarrisonService.refusalFor` rejects armed
  * structures, anything producing, and any footprint under 2x2, which against
- * the shipped roster leaves the Power Plant and the Battle Lab — and there was
+ * the shipped roster leaves the Power Plant and the Proving Ground — and there was
  * no way to tell an eligible building from the rest without clicking it and
  * watching the squad walk to the wall.
  *

@@ -23,7 +23,7 @@
  *   2. "Find missing models."
  *      Seven entities were wearing another unit's mesh. They now have their
  *      own: the Attack Submarine, the Assault Destroyer (`gunboat`), the Hover
- *      Transport, the Apocalypse Tank and the Attack Dog — and the G.I. and the
+ *      Transport, the Sledge Tank and the Attack Dog — and the G.I. and the
  *      Conscript, which were two draw batches of byte-identical geometry, are
  *      now two genuinely different soldiers.
  *
@@ -1786,7 +1786,7 @@ function hoverTransport(faction: 'allies' | 'soviets', hullNumber: number): Unit
 interface PlaneOpts {
   key: string; name: string; faction: UnitMassList['faction']; hullNumber: number;
   length: number; span: number; height: number;
-  /** The Soviet MiG carries its engines in nacelles; the Vindicator is blended. */
+  /** The Soviet Interceptor carries its engines in nacelles; the Petrel Bomber is blended. */
   nacelles: boolean;
 }
 
@@ -1828,7 +1828,7 @@ function plane(o: PlaneOpts): UnitMassList {
   masses.push(
     // THE NOSE WAS ON BACKWARDS AND FLOATING, and nothing could have noticed:
     // these two models were built and validated on every boot and DRAWN BY
-    // NOTHING until the Vindicator and the MiG got def rows, so this is the
+    // NOTHING until the Petrel Bomber and the Interceptor got def rows, so this is the
     // first time anyone has seen the result.
     //
     // Two separate errors in one line. `coneProfile` is radius 0.5 at local
@@ -1838,7 +1838,7 @@ function plane(o: PlaneOpts): UnitMassList {
     // And at `z = L * 0.56` with a height of `L * 0.22` the cone spanned
     // 0.45L..0.67L while the fuselage hull ends at 0.44L — so it hung in front
     // of the aircraft with a visible gap, which is exactly what the first
-    // screenshot of a flying Vindicator showed.
+    // screenshot of a flying Petrel Bomber showed.
     //
     // `+HALF_PI` points the tip forward. `z = L * 0.42` over `L * 0.20` spans
     // 0.32L..0.52L, which buries the base inside the hull's forward taper
@@ -1934,14 +1934,14 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     hullLength: 6.6, hullWidth: 3.2, height: 2.50, brutalist: false, gun: 'cannon', wheels: 5,
   }),
   tank({
-    key: 'allied_ifv', name: 'Multigunner IFV', faction: 'allies', hullNumber: 4172,
+    key: 'allied_ifv', name: 'Sabre IFV', faction: 'allies', hullNumber: 4172,
     // 5, not 4: VISUAL_DNA S5 wants 5-7 road-wheel dots and the IFV was the one
     // unit in the roster below the floor. Its run is 4.47 m, so five 0.43 m
     // wheels sit 1.12 m apart with room to spare.
     hullLength: 5.4, hullWidth: 2.9, height: 2.45, brutalist: false, gun: 'twinCannon', wheels: 5,
   }),
   tank({
-    key: 'allied_prism', name: 'Prism Tank', faction: 'allies', hullNumber: 4172,
+    key: 'allied_prism', name: 'Refractor Tank', faction: 'allies', hullNumber: 4172,
     hullLength: 6.4, hullWidth: 3.0, height: 2.60, brutalist: false, gun: 'prism', wheels: 5,
   }),
   support({
@@ -1962,7 +1962,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   }),
   hoverTransport('allies', 4172),
   plane({
-    key: 'allied_vindicator', name: 'Vindicator', faction: 'allies', hullNumber: 4172,
+    key: 'allied_vindicator', name: 'Petrel Bomber', faction: 'allies', hullNumber: 4172,
     length: 11.0, span: 12.0, height: 3.0, nacelles: false,
   }),
   // The two naval rungs added when every army got a full fleet. The recon hull
@@ -2002,11 +2002,11 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   attackDog(),
 
   tank({
-    key: 'soviet_rhino', name: 'Rhino Heavy Tank', faction: 'soviets', hullNumber: 8188,
+    key: 'soviet_rhino', name: 'Anvil Heavy Tank', faction: 'soviets', hullNumber: 8188,
     hullLength: 7.0, hullWidth: 3.4, height: 2.60, brutalist: true, gun: 'cannon', wheels: 6,
   }),
   tank({
-    key: 'soviet_apocalypse', name: 'Apocalypse Tank', faction: 'soviets', hullNumber: 8188,
+    key: 'soviet_apocalypse', name: 'Sledge Tank', faction: 'soviets', hullNumber: 8188,
     hullLength: 8.6, hullWidth: 4.1, height: 3.20, brutalist: true, gun: 'twinCannon', wheels: 7, heavy: true,
   }),
   sickle(),
@@ -2029,7 +2029,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   submarine(),
   hoverTransport('soviets', 8188),
   plane({
-    key: 'soviet_mig', name: 'MiG Fighter', faction: 'soviets', hullNumber: 8188,
+    key: 'soviet_mig', name: 'Interceptor', faction: 'soviets', hullNumber: 8188,
     length: 10.0, span: 10.5, height: 2.9, nacelles: true,
   }),
   ship({

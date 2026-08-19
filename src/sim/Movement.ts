@@ -13,7 +13,7 @@
  * §0 property 2 of the look bible calls units "toys" — chamfered, oversized,
  * deliberately readable. A toy that slides around like a cursor destroys that
  * read instantly. The four models below are the cheapest possible way to make
- * a Rhino feel like 40 tonnes and a conscript feel like a person:
+ * an Anvil feel like 40 tonnes and a conscript feel like a person:
  *
  *   Foot   — free pivot. Faces travel almost immediately, no speed penalty.
  *   Track  — TURNS IN PLACE. Beyond MOVE_TURN_IN_PLACE_ANGLE of heading error
@@ -654,7 +654,7 @@ export class MovementIntegrator {
           // solid because `sim/Crush.ts` will not flatten it, and this one
           // makes a rifleman permeable because `sim/Crush.ts` will. Without it
           // the crush rule is correct and unreachable — this constraint holds
-          // a Grizzly and a rifleman 3.02 m apart while the crush test needs
+          // a Warden and a rifleman 3.02 m apart while the crush test needs
           // 2.19 m, and a measured probe put the closest approach at 2.83 m
           // with the man untouched on the far side.
           //

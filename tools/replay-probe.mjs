@@ -56,7 +56,7 @@
  * effect that writes the world. On `soviets.01.first-tap` that is the relief
  * column at `minutes(5)` — SIM TICK 9000 — so `CAMPAIGN_MARKS` brackets it at
  * 8940 and 9120, and the `alive` column printed beside each hash is where four
- * Grizzlies visibly arrive. **A campaign arm that stopped at tick 1800 would
+ * Wardens visibly arrive. **A campaign arm that stopped at tick 1800 would
  * prove the operation was ARMED and nothing whatever about the Director**, and
  * would pass against a playback in which the Director never ran.
  *
@@ -129,7 +129,7 @@ const SEED = 987654321;
  * whole boot argument, which is itself part of what phases D–F check.
  *
  * 8940 and 9120 BRACKET `minutes(5)` = tick 9000, where `t.relief` fires:
- * four Grizzlies for seat 1 through `spawnUnits`, followed by an `orderTagged`
+ * four Wardens for seat 1 through `spawnUnits`, followed by an `orderTagged`
  * attack-move. The spawn touches no bus and therefore appears in NO recording;
  * it exists on the replay only if the Director re-ran. The `orderTagged` DOES
  * cross the bus, at Cleanup 9000, so it is drained and recorded on tick 9001 —
@@ -384,7 +384,7 @@ if (!CAMPAIGN) {
   const arrived = after.alive - before.alive;
   console.log(`  across the relief wave (${before.tick} -> ${after.tick}): alive ${arrived >= 0 ? '+' : ''}${arrived}`);
   if (arrived < 4) {
-    console.log('  WARNING: fewer than the four Grizzlies `t.relief` spawns appeared. Combat losses');
+    console.log('  WARNING: fewer than the four Wardens `t.relief` spawns appeared. Combat losses');
     console.log('  in the same window can mask them, but if this is 0 the Director may not have run');
     console.log('  at all — in which case phase E proves only that the LAYOUT reproduces.');
   }

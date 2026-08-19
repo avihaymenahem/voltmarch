@@ -101,7 +101,7 @@ const ALLIED_CORE: readonly StructurePlacement[] = [
 ];
 
 /**
- * The defended face: a pillbox line with one prism tower as the hard point, and
+ * The defended face: a pillbox line with one refractor tower as the hard point, and
  * a wall behind it with a 20 m gate so the armour can actually sortie.
  */
 const ALLIED_DEFENCE: readonly StructurePlacement[] = [
@@ -124,7 +124,7 @@ export interface BaseOptions {
    * un-yawed shot. The threat axis therefore points at `facingDeg + 180`.
    */
   facingDeg?: number;
-  /** Place radar/battle lab and the standing garrison. */
+  /** Place radar/proving ground and the standing garrison. */
   garrison?: boolean;
   /** Include the wall + defence line. Default true. */
   defended?: boolean;
@@ -335,7 +335,7 @@ export function buildAlliedArmy(
   const at = (dx: number, dz: number): [number, number] => toWorld(cx, cz, dx, dz, cos, sin);
 
   let n = 0;
-  // Armour leads, IFVs on the flank, prism tanks and infantry behind — the
+  // Armour leads, IFVs on the flank, refractor tanks and infantry behind — the
   // shape a real push has, and the shape that keeps 40 units readable because
   // the silhouette classes are grouped rather than shuffled.
   const [fx, fz] = at(0, -6);

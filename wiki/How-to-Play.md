@@ -267,7 +267,7 @@ A **Barracks** (500 credits) unlocks infantry and, more importantly, unlocks wal
 faction's cheap defensive emplacement.
 
 The AI's own opening for the Allies and Soviets is: power plant, refinery, barracks, war factory,
-a second power plant, radar, ore silo, battle lab. It is a perfectly good opening for you too.
+a second power plant, radar, ore silo, proving ground. It is a perfectly good opening for you too.
 
 ### Minute three to eight — an army and a second harvester
 
@@ -282,7 +282,7 @@ credits of storage.
 
 ### Minute eight onward — tech and pressure
 
-The **Battle Lab** (2,000 credits, needs Radar) opens the top of every tab at once — the
+The **Proving Ground** (2,000 credits, needs Radar) opens the top of every tab at once — the
 specialist tank, the specialist defence, the capital ship, and the superweapons. The tree is
 deliberately shallow: three tiers, never four.
 

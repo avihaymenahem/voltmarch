@@ -119,15 +119,15 @@ export const enum BuildRole {
    * depot does, exactly. Folding it into Storage or Unknown would have been
    * enough to stop the misfile, but `roleCount[TechLab] > 0` is the gate on
    * every top-tier unit the AI can build — an army that thought a service pad
-   * was its Battle Lab would stop building the real one and quietly never
-   * field a Prism Tank for the rest of the match.
+   * was its Proving Ground would stop building the real one and quietly never
+   * field a Refractor Tank for the rest of the match.
    */
   Repair = 18,
   /**
    * A superweapon structure. Its own role for exactly the reason `Repair` is:
    * `roleOfBuilding`'s flag fallback ends at "draws power and is bigger than
    * 1x1" => TechLab, and a Nuclear Silo matches that to the letter. An AI that
-   * filed one as its Battle Lab would believe the tech gate was already open
+   * filed one as its Proving Ground would believe the tech gate was already open
    * and stop building the real lab.
    *
    * That paragraph used to end "Nothing in `AI.considerBuild` asks for this
@@ -185,7 +185,7 @@ export const enum BuildRole {
    *
    * A ROLE OF ITS OWN, and not because the AI needs a fifth adjective: without
    * one, `roleOfBuilding`'s flag fallback ends at "2x2 and draws power => a tech
-   * lab", so a standing Command Post would be counted as the army's Battle Lab
+   * lab", so a standing Command Post would be counted as the army's Proving Ground
    * and the brain would stop building the real one — every tier-3 hull silently
    * unreachable for the rest of the match. `forRole(TechLab)` would also be able
    * to answer with it.
@@ -730,9 +730,9 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Allies, [1.3, 0.7, 0.2, 0.4, 0.9], 3),
   // THE HEAVY COLUMN IS WHY THIS ROW EXISTS. Read it against the G.I. above:
   // 0.2 there, 1.5 here. Until the Javelin landed, the best answer the Allied
-  // INFANTRY tab offered against a Rhino was 0.2, so a composition scorer facing
+  // INFANTRY tab offered against an Anvil was 0.2, so a composition scorer facing
   // massed heavies had nothing to reach for and spent the whole match rolling
-  // Grizzlies. Its Infantry column is deliberately BELOW the G.I.'s: a rocket
+  // Wardens. Its Infantry column is deliberately BELOW the G.I.'s: a rocket
   // is 0.55 against flesh, and an AI that screened with these would be feeding
   // 500-credit soldiers to conscripts.
   fighter('javelin', BuildRole.Skirmisher, EntityKind.Infantry, 500, ['barracks', 'radar'],
@@ -760,7 +760,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [0.8, 1.5, 1.5, 1.2, 0], 5),
   // The Air column WAS 1.2 here. It was never wrong in a way anything could
   // notice — nothing in the game could get airborne, so the column was dead —
-  // but it is wrong now: the Apocalypse fields exactly one weapon, `twinCannon`,
+  // but it is wrong now: the Sledge fields exactly one weapon, `twinCannon`,
   // and a 125 mm gun does not elevate. An answer vector that promises air cover
   // a unit cannot deliver sends the whole build layer chasing 1750-credit tanks
   // the moment a gunship crosses the map. `tests/air-layer.spec.ts` asserts the
@@ -877,7 +877,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   // The Spitpost is the cheapest static defence any army fields and it answers
   // infantry hardest, which is what the build layer should reach for first when
   // it is being rushed. The Arc Pylon takes the AntiAir slot and is gated on
-  // the RADAR rather than the tech lab — a tier earlier than a Prism Tower —
+  // the RADAR rather than the tech lab — a tier earlier than a Refractor Tower —
   // which is why its 90-power draw has to be modelled honestly here.
   structure('rclSpitpost', BuildRole.Defense, 420, 0, B.pillbox, ['rclRookery'],
     FACTION_RECLAIM, BuildTab.Defense, [1.9, 0.8, 0.3, 0, 0]),
@@ -934,15 +934,16 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
    * >= 1.0 against Air without a gun whose `canTargetAir` is true — and both
    * of these clear it honestly. Above that floor:
    *
-   *   Vindicator  Rocket warhead: 0.90 vs Concrete and 0.95 vs Heavy, so
-   *               Structure 1.4 and Heavy 1.5. Air 1.2 — it CAN elevate, but
-   *               a 2.58 s missile cycle will not catch a MiG.
-   *   MiG         AutoCannon: 1.00 vs Light, and every aircraft in the game is
-   *               Light. Air 1.9 is the highest figure in the table, ahead of
-   *               the Flak Trooper's 1.7, which is correct — a Soviet brain
-   *               that sees a gunship should reach for the interceptor first.
-   *               0.35 vs Heavy AND Concrete is why Structure is 0.3: this
-   *               must never look like an answer to a base.
+   *   Petrel Bomber   Rocket warhead: 0.90 vs Concrete and 0.95 vs Heavy, so
+   *                   Structure 1.4 and Heavy 1.5. Air 1.2 — it CAN elevate,
+   *                   but a 2.58 s missile cycle will not catch an Interceptor.
+   *   Interceptor     AutoCannon: 1.00 vs Light, and every aircraft in the game
+   *                   is Light. Air 1.9 is the highest figure in the table,
+   *                   ahead of the Flak Trooper's 1.7, which is correct — a
+   *                   Soviet brain that sees a gunship should reach for the
+   *                   Interceptor first. 0.35 vs Heavy AND Concrete is why
+   *                   Structure is 0.3: this must never look like an answer to
+   *                   a base.
    *
    * Weight 1 on both, matching the Kestrel and the Hornet. Aircraft are an
    * accent on an army, not the bulk of one, and a weight that said otherwise
@@ -1795,7 +1796,7 @@ const AUDIENCE_ORDER: readonly UpgradeAudience[] = [
  * ARMY-WIDE NEXT, then VEHICLE, then INFANTRY, which is a value-density
  * ordering: a multiplier is worth the credits standing under it, and a hull
  * costs three to six times a body. Composite Armour at 1200 covers ~1.7
- * Grizzlies' worth of purchase and improves every hull the AI will ever build;
+ * Wardens' worth of purchase and improves every hull the AI will ever build;
  * Advanced Optics at 800 covers four G.I.s.
  *
  * THE BREAK-EVEN IS A FLOW, NOT A STOCK, and `AI.ts` gates on the stock anyway.
@@ -2339,8 +2340,8 @@ export const EXTRA_PRODUCERS: readonly { readonly role: BuildRole; readonly tab:
  * Which superweapon each army builds, and IN WHICH ORDER.
  *
  * This exists because `BuildCatalog.forRole` returns the FIRST entry with a
- * matching role, and for the Allies that is the Chronosphere purely because of
- * where it sits in `FALLBACK_CATALOG`. A Chronosphere is worth exactly as much
+ * matching role, and for the Allies that is the Displacement Ring purely because of
+ * where it sits in `FALLBACK_CATALOG`. A Displacement Ring is worth exactly as much
  * as the plan you have for nine teleported tanks; a Weather Control Device is
  * worth a base to anyone who can click. So the offensive weapon is named first
  * in every army that has one, which is the same judgement a human makes with
@@ -2412,7 +2413,7 @@ export const AI_SUPERWEAPON = {
   chronoMinStrike: 5,
   /** Metres the group must still have to walk for a chronoshift to save anything. */
   chronoMinTravel: 90,
-  /** Ticks between the Chronosphere's source command and its destination command. */
+  /** Ticks between the Displacement Ring's source command and its destination command. */
   chronoCommitTicks: 60,
   /**
    * Metres SHORT of the objective that a chronoshifted wave is set down.

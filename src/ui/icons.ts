@@ -162,7 +162,7 @@ export const ICONS: Readonly<Record<IconName, IconDef>> = {
     ],
   },
 
-  /** Battle Lab: a flask with a rising bubble. */
+  /** Proving Ground: a flask with a rising bubble. */
   lab: {
     paths: [
       { d: 'M2.5 21h19' },
@@ -272,7 +272,7 @@ export const ICONS: Readonly<Record<IconName, IconDef>> = {
     ],
   },
 
-  /** Prism Tower: a faceted crystal firing a beam. */
+  /** Refractor Tower: a faceted crystal firing a beam. */
   prism: {
     paths: [
       { d: 'M2.5 21h19' },

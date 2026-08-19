@@ -5,7 +5,7 @@
  * "Bottom left hud still uses icons and not the models."
  *
  * Every card in the selection dock drew `makeIcon('tank')` — one hand-authored
- * glyph, the same one for a Grizzly, a Harvester and a Construction Yard —
+ * glyph, the same one for a Warden, a Harvester and a Construction Yard —
  * while the build rail six inches to its right had been rendering the REAL
  * MESHES since `CameoRenderer` landed. The renderer, the model provider, the
  * faction handling and the fallback were all already built and tested. The
@@ -24,8 +24,8 @@
  *     resolvable def — all three must leave the pictogram showing. This is the
  *     property that makes the change unable to be a regression.
  *   - THE SIGNATURE GATE SEES THE KEY. Cards are pooled and reused; a card that
- *     goes from a Grizzly to a Rhino without the key in its change signature
- *     keeps the Grizzly's portrait.
+ *     goes from a Warden to an Anvil without the key in its change signature
+ *     keeps the Warden's portrait.
  * ============================================================================
  */
 
@@ -48,7 +48,7 @@ describe('the selection card knows what it is a picture of', () => {
     // shape the panel consumes.
     const card = {
       id: 0, icon: 'tank' as const, cameoKey: 'grizzly', isBuilding: false,
-      name: 'Grizzly', hpFrac: 1, veterancy: 0, stack: 1, primary: true,
+      name: 'Warden', hpFrac: 1, veterancy: 0, stack: 1, primary: true,
     };
     expect(card.cameoKey).not.toBe('');
     expect(typeof card.isBuilding).toBe('boolean');
@@ -126,7 +126,7 @@ describe('the glyph still covers every hole', () => {
 describe('the pooled card cannot show the previous unit', () => {
   it('puts the cameo key and the faction in the change signature', () => {
     // Cards are recycled across selections. Without these two terms a card that
-    // goes Grizzly -> Rhino, or Allied -> Soviet, keeps the old portrait
+    // goes Warden -> Anvil, or Allied -> Soviet, keeps the old portrait
     // because every other term happens to match.
     const sig = SIDEBAR.match(/const sig = `[^`]*`[^;]*;/)?.[0] ?? '';
     expect(sig).toContain('data.cameoKey');

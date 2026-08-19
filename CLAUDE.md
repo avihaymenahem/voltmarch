@@ -1295,7 +1295,7 @@ concluded the AI never builds a superweapon. It does. The probes installed
 `new UnlockGate(() => [], …)` — a profile owning nothing — and superweapons are progression-gated
 (`struct.superweapon.strategic` / `.siege` / `.chronosphere`). With unlocks granted, Brutal builds
 BOTH allowed superweapons and fires two by minute 24, reaching them through the saving reserve. The
-same empty gate silently removes repair depots, prism tanks and the commander from the AI's reach,
+same empty gate silently removes repair depots, refractor tanks and the commander from the AI's reach,
 and the traces had been printing `blocked: repairDepot: Locked — complete a mission` for two tasks
 before anyone read it. **Any AI harness that stubs `UnlockGate` is measuring a different game.**
 
@@ -1389,7 +1389,7 @@ not that 21 live rows carry `canTargetAir`; it is four of them — `rifle` (0), 
 dedicated rows would deepen the inversion, not fix it.
 
 The trade is one-sided in both directions: an aircraft flown at eight line infantry returns **22 to
-104 credits** of damage on a 900-1200 credit hull before dying. A MiG at eight Conscripts loses 935
+104 credits** of damage on a 900-1200 credit hull before dying. An Interceptor at eight Conscripts loses 935
 credits and kills two thirds of one man. Aircraft are also the thinnest hulls in the game at 180-240
 hp on 900-1200 credits, and that is deliberate and pinned (`air-layer.spec.ts` caps `maxHp < 300`) —
 contributory, not causal.
@@ -1397,7 +1397,7 @@ contributory, not causal.
 **If this is ever fixed, fix it with a per-weapon air multiplier on those four rows and nothing
 else**, and see the floor rule below for why a multiplier rather than deleting the flag. Two traps in
 deriving the number: a per-credit anchor always flatters the cheapest unit in the game (the
-Reclamation bound is set by a 90-credit Scrap Picker), and after any such nerf the Multigunner AA
+Reclamation bound is set by a 90-credit Scrap Picker), and after any such nerf the AA Battery
 turret becomes the dominant answer and must be RE-MEASURED — never in the same commit.
 
 ### The anti-hang floor is four rifles, and it is the reason never to delete `canTargetAir`
@@ -1457,7 +1457,7 @@ once, so an aircraft flies to 13.6-18.4 m of its target and stays until one of t
 the largest single multiplier on how fast aircraft die.
 
 **Do not "fix" it by forcing an attack run.** Measured at today's damage, one 19 m pass (`2R / v`,
-2.8-3.5 s) is worth 6-14% of a Power Plant and 17-41% of a main battle tank — a Vindicator's entire
+2.8-3.5 s) is worth 6-14% of a Power Plant and 17-41% of a main battle tank — a Petrel Bomber's entire
 attack run takes **14% off a Power Plant**. An aircraft that cannot stop is not a unit class. The
 loiter is a problem because it is the ONLY behaviour, not because loitering is wrong: the fix is a
 way OUT that the player and the AI can both issue, never a rule forbidding staying.
@@ -1475,14 +1475,14 @@ re-derives them. Overturn one by rewriting it with an argument, not by trying it
   is typed `Infantry | Vehicle`, and the change would silently move `Viability.UNIT_KINDS`, the
   Repair Depot's `byKind` walk and every `st.byKind[EntityKind.Vehicle]` loop in the tree.
 - **Moving `ARMOR_MATRIX[SmallArms][Light]` off 0.55.** That single cell also governs riflemen
-  against the IFV, Sandskiff, Spitter, Prism Tank, Zenith, Solarch, Slaghurler, Hydrofoil, Skimmer,
+  against the IFV, Sandskiff, Spitter, Refractor Tank, Zenith, Solarch, Slaghurler, Hydrofoil, Skimmer,
   transports and every landing ship. `armorMultiplier(SmallArms, Infantry)` is pinned to exactly 1
   as the counter-triangle's reference cell; **the Light cell is pinned by nothing, which is precisely
   why it must not move** — a dozen ground relationships would shift silently. Use a gate that only
   sees the air case.
 - **Raising aircraft HP.** They sit at 180-240 hp on 900-1200 credits, bottom of the whole vehicle
   roster, and `air-layer.spec.ts` caps `maxHp < 300` on purpose. Making eight G.I.s need 3.7 s to
-  kill a Vindicator by HP alone needs **685 hp** — 2.9x, three times a Grizzly's hp-per-credit — and
+  kill a Petrel Bomber by HP alone needs **685 hp** — 2.9x, three times a Warden's hp-per-credit — and
   it takes the AA turret from 2.41 s to 6.9 s. It fixes the symptom by deleting the counter.
 - **A dedicated `BuildTab.Aircraft`.** All four armies field exactly one aircraft (pinned), so the
   tab holds ONE cameo per army while Vehicles drops 12 → 11 against a 14-slot cap — a container for
@@ -1531,18 +1531,18 @@ second... something is weird"*. **This one is SHIPPED behaviour, unlike the rest
   line-infantry rifles. Real distance — the vertical gap beyond the hull's own extent,
   `|dy| - estimatedHeight * 0.5` — keeps that floor BY CONSTRUCTION: a weapon that can elevate puts
   its blast AT the aircraft. Measured, `aaCannon`'s impact `y` lands within **2.36 m** of a plane
-  at 22 m, against a MiG half-extent of 2.0655 — so `gap` is **+0.296 m** and does NOT clamp to
+  at 22 m, against an Interceptor half-extent of 2.0655 — so `gap` is **+0.296 m** and does NOT clamp to
   zero, costing 3.63 m of reach against 3.62. A near miss, not a clamp, and the distinction is
   worth the words because the clamp is the floor's only structural defence. `estimatedHeight` must
   be called with `footprintW = 0` for a unit, or it takes its BUILDING branch and answers 4.60
   instead of 4.131 — which is how one draft of this paragraph came to quote a gap of 0.06. And all
-  four ungated line infantries still take a MiG down with eight men (gi 0.97 s,
+  four ungated line infantries still take an Interceptor down with eight men (gi 0.97 s,
   mrdWayfarer 1.60 s, conscript 1.67 s, rclPicker 3.50 s).
-- **THE STAGED INCIDENT, BEFORE AND AFTER.** A Rhino shelling a Grizzly with three MiGs parked over
+- **THE STAGED INCIDENT, BEFORE AND AFTER.** An Anvil shelling a Warden with three Interceptors parked over
   the victim: **7 blasts under the flight, 0.0 damage, 3/3 still flying**. The falsifier that makes
   that 0 a reading rather than a constant is the same rig with the flight at 5 m — **570 damage,
   one blast touching all three, 0/3 still flying**. And end to end, 5800 credits of Allied position
-  against three MiGs kills all three with **no tank contributing a single point**: aaTurret 2 kills
+  against three Interceptors kills all three with **no tank contributing a single point**: aaTurret 2 kills
   / 338.7 damage / 100% via splash, gi 1 kill / 140.9 / 0% via splash, ifv 88.0.
 
 **AN AIRCRAFT DIRECTLY OVERHEAD CANNOT BE HIT AT ALL, AND THE BLOCK ABOVE IMPLIES THE OPPOSITE.**
@@ -1551,7 +1551,7 @@ natural reading is false about outcomes. `Combat.engage` clamps the launch pitch
 `COMBAT_WEAPONS.maxElevationDeg` (62), so a projectile weapon fires at 62 degrees however steep the
 real bearing is; the round climbs 1.88 m per metre downrange and reaches the aircraft's band well
 beyond it. The gun tracks, the trigger releases, the tracer looks right, and nothing connects. One
-G.I. against one MiG at cruise:
+G.I. against one Interceptor at cruise:
 
 ```
   7 m horizontally     killed 0    0 damage in the whole window
@@ -1580,7 +1580,7 @@ unchanged — it would read 4.00 for a flight of four. The per-aircraft figure i
 the sentence above and not a second finding, and an earlier draft of this block cited it as one.
 That is the vacuous-metric trap this file warns about twice elsewhere, walked into a third time.
 
-**THE MULTIGUNNER RE-MEASUREMENT CAME BACK CONFIRMING THE FLAG.** The "187-261% of an aircraft's
+**THE AA BATTERY RE-MEASUREMENT CAME BACK CONFIRMING THE FLAG.** The "187-261% of an aircraft's
 health on ONE 26 m pass" figure this file demanded be re-derived reproduces to the digit, from the
 shipped `aaCannon` row (3x34 / 0.82 s, range 26, splash 1.2, 99.5 dps vs air): vindicator 187%,
 mig 202%, mrdKestrel 205%, rclHornet 261%. Seconds-to-kill 1.81-2.41. Nothing to change; the claim

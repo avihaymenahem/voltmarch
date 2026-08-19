@@ -9,8 +9,8 @@ answer to a heavy tank is a heavier tank.**
 
 That is not a joke about the faction, it is how the numbers are actually built. The Soviet
 anti-armour infantryman does not counter heavy armour — the Flak Trooper is 1.00 against Light and
-0.35 against Heavy, so he erases raiders and aircraft and merely chips an Apocalypse. The Soviet
-answer to an Apocalypse is your own Apocalypse. Everything else in the army exists to buy that tank
+0.35 against Heavy, so he erases raiders and aircraft and merely chips a Sledge. The Soviet
+answer to a Sledge is your own Sledge. Everything else in the army exists to buy that tank
 the time to arrive.
 
 The Soviets are also the cheapest army to *staff*. A Conscript is 100 credits and four seconds. You
@@ -19,15 +19,15 @@ will lose a lot of them and it will not matter much.
 ## How it plays
 
 Heavy armour, everywhere it counts. Both Soviet tanks and the Dreadnought are Heavy class, which
-takes **0.10 from small arms and 0.35 from autocannon**. Enemy infantry standing in front of a Rhino
+takes **0.10 from small arms and 0.35 from autocannon**. Enemy infantry standing in front of an Anvil
 are, functionally, not shooting at it. Only armour-piercing, high explosive, rockets and beams
 threaten you, and that narrows the enemy's list of useful answers considerably.
 
-You are slow. A Rhino moves at 5.4 m/s against a Grizzly's 6.6 and a Solarch's 7.6; an Apocalypse
+You are slow. An Anvil moves at 5.4 m/s against a Warden's 6.6 and a Solarch's 7.6; a Sledge
 moves at 3.8. That means you rarely choose where the fight happens. Build accordingly — two cheap
 defensive emplacements are available from the first minute, and both do real work.
 
-You crush things. The Rhino flattens infantry at crush level 4, the Apocalypse at 6 (and cannot be
+You crush things. The Anvil flattens infantry at crush level 4, the Sledge at 6 (and cannot be
 crushed by anything), and the Harvester at 5. Soviet armour driving through a rifle squad is a
 legitimate tactic rather than a novelty.
 
@@ -47,7 +47,7 @@ Trained at the **Barracks**.
 Note the split between the Flak Trooper and the Allied Javelin. Both are the shared-pool armies'
 anti-armour infantry, and they answer completely different things: the Javelin buys the *warhead*
 (0.95 against Heavy) and the Flak Trooper buys *volume* (1.00 against Light). The Flak Trooper is
-your answer to Multigunner IFVs, Sandskiffs, Arcspitters and all four aircraft. He is not your
+your answer to Sabre IFVs, Sandskiffs, Arcspitters and all four aircraft. He is not your
 answer to a tank.
 
 ## Vehicles
@@ -57,22 +57,22 @@ Built at the **War Factory**.
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Ore Harvester | 1400 | 16 s | War Factory, Refinery | 1000 | Heavy | 5.0 | unarmed | — | — | Your entire economy. Carries 700 credits of ore. Crushes infantry |
-| Rhino Tank | 900 | 13 s | War Factory | 420 | **Heavy** | 5.4 | 125 mm Cannon, 78, AP, 2.1 m splash | 26 m | no | The main battle tank. Slower, heavier, hits harder, and out-ranges a Grizzly by 2 m |
-| Apocalypse Tank **(locked)** | 1750 | 24 s | War Factory, Battle Lab | **800** | Heavy | 3.8 | Twin 125 mm, 60 x2, AP, 2.2 m splash | 28 m | no | The end of an argument. More than twice a Grizzly's hit points, the longest reach of any tank cannon at 28 m, crushes everything and can be crushed by nothing |
+| Anvil Tank | 900 | 13 s | War Factory | 420 | **Heavy** | 5.4 | 125 mm Cannon, 78, AP, 2.1 m splash | 26 m | no | The main battle tank. Slower, heavier, hits harder, and out-ranges a Warden by 2 m |
+| Sledge Tank **(locked)** | 1750 | 24 s | War Factory, Proving Ground | **800** | Heavy | 3.8 | Twin 125 mm, 60 x2, AP, 2.2 m splash | 28 m | no | The end of an argument. More than twice a Warden's hit points, the longest reach of any tank cannon at 28 m, crushes everything and can be crushed by nothing |
 | Construction Vehicle | 3000 | 32 s | War Factory | 1000 | Heavy | 4.2 | unarmed | — | — | Unfolds into a second Construction Yard. Cannot be crushed |
 
 ## Aircraft
 
-Built at the **War Factory**. No airfield, no rearm, no fuel — a MiG takes off and stays up until it
+Built at the **War Factory**. No airfield, no rearm, no fuel — an Interceptor takes off and stays up until it
 dies. An idle aircraft loiters at cruise altitude, where two thirds of the army cannot touch it and
 it is also doing nothing.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MiG Fighter **(locked)** | 1000 | 14 s | War Factory, Radar | 190 | Light | **13.5** | MiG Autocannon, 24 x3, autocannon | 21 m | yes | Interceptor. The fastest thing on the map. 1.00 against Light armour — and every aircraft in the game is Light — makes it the best air-superiority unit going. 0.35 against Heavy and Concrete means it cannot substitute for a tank or open a base |
+| Interceptor **(locked)** | 1000 | 14 s | War Factory, Radar | 190 | Light | **13.5** | Interceptor Autocannon, 24 x3, autocannon | 21 m | yes | The fastest thing on the map. 1.00 against Light armour — and every aircraft in the game is Light — makes it the best air-superiority unit going. 0.35 against Heavy and Concrete means it cannot substitute for a tank or open a base |
 
-The MiG is an air-superiority fighter and nothing else. If you want to hurt a building from the air,
-you are the wrong faction; build a Dreadnought or an Apocalypse.
+The Interceptor is an air-superiority fighter and nothing else. If you want to hurt a building from the air,
+you are the wrong faction; build a Dreadnought or a Sledge.
 
 ## Navy
 
@@ -85,12 +85,12 @@ rather than driving up it.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Picket Boat | 450 | 6 s | Naval Pen | 200 | Light | 10.4 | 90 mm Cannon, 55, AP, 1.6 m splash | 24 m | no | Recon. **42 m of sight** on the cheapest hull you can buy, and a tank gun that fires once every 1.5 s from 200 hit points |
 | Assault Barge | 680 | 10 s | Naval Pen | 520 | Light | 6.0 | unarmed | — | — | **Four slots**: two vehicles, or four infantry. The toughest four-slot hull in the game |
-| Heavy Transport | 1200 | 15 s | Naval Pen | 780 | Light | 5.4 | unarmed | — | — | **Eight slots** — four Rhinos |
+| Heavy Transport | 1200 | 15 s | Naval Pen | 780 | Light | 5.4 | unarmed | — | — | **Eight slots** — four Anvils |
 | Attack Submarine | 1000 | 14 s | Naval Pen | 500 | Light | 6.0 | Torpedo Tube, 105, rocket, 3.0 m splash | 30 m | no | Ambush hull. Heavy single-shot damage on a long cycle |
-| Dreadnought **(locked)** | 2000 | 24 s | Naval Pen, Battle Lab | 900 | Heavy | 4.0 | Cruise Battery, 120 x2, rocket, 4.5 m splash | **42 m** | yes | Siege ship. The longest naval reach in the game, Heavy armour, and its missiles elevate — the one Soviet hull that answers aircraft at range |
+| Dreadnought **(locked)** | 2000 | 24 s | Naval Pen, Proving Ground | 900 | Heavy | 4.0 | Cruise Battery, 120 x2, rocket, 4.5 m splash | **42 m** | yes | Siege ship. The longest naval reach in the game, Heavy armour, and its missiles elevate — the one Soviet hull that answers aircraft at range |
 
-The Dreadnought's **(locked)** is the Battle Lab, not the mission table — the same
-tech gate that holds back the Apocalypse.
+The Dreadnought's **(locked)** is the Proving Ground, not the mission table — the same
+tech gate that holds back the Sledge.
 
 ## Structures
 
@@ -105,7 +105,7 @@ tech gate that holds back the Apocalypse.
 | Ore Silo | 150 | 5 s | Ore Refinery | 500 | -10 | +1500 to your bank cap |
 | Repair Depot | 800 | 10 s | War Factory | 800 | -30 | Mends any vehicle parked on the pad. Priced at roughly two full repairs of a main battle tank |
 | Naval Pen | 1000 | 14 s | Ore Refinery | 1000 | -30 | Builds Soviet hulls. **Must be founded on a coast** — the game refuses an inland site |
-| Battle Lab **(locked)** | 2000 | 24 s | Radar Dome | 900 | -60 | Unlocks the top of every tab: Apocalypse, Dreadnought, and both superweapons |
+| Proving Ground **(locked)** | 2000 | 24 s | Radar Dome | 900 | -60 | Unlocks the top of every tab: Sledge, Dreadnought, and both superweapons |
 
 ## Defences
 
@@ -124,7 +124,7 @@ brutal against anything on foot.
 
 The Tesla Coil is your best emplacement and the only Soviet structure that shoots at aircraft. It
 needs power and draws 75 — brown out and it goes dark. It also unlocks off the Radar Dome rather
-than the Battle Lab, one tier earlier than the Allied Prism Tower.
+than the Proving Ground, one tier earlier than the Allied Refractor Tower.
 
 **The Sentry Gun is the only Soviet gun that survives a blackout**, because it is the only one that
 draws nothing. The Flame Tower's 20 is a small draw, but a dark building cannot shoot whatever its
@@ -133,14 +133,14 @@ else.
 
 ## Superweapons
 
-Both need the Battle Lab, both cost -150 power, and you can field both at once.
+Both need the Proving Ground, both cost -150 power, and you can field both at once.
 
 | Structure | Cost | Time | HP | Charge | Radius | Effect |
 | --- | --- | --- | --- | --- | --- | --- |
 | Nuclear Missile Silo | 2500 | 32 s | 1000 | 7:00 | 26 m | A single annihilating blast — 1400 damage — announced 3.5 seconds before it lands, so the target has time to be afraid and to scatter. The largest radius of any superweapon in the game |
-| Iron Curtain Device | 2000 | 28 s | 950 | 5:00 | 13 m | Twenty seconds of **true invulnerability** for every friendly unit in the radius. Not damage reduction — invulnerability |
+| Ironclad Field | 2000 | 28 s | 950 | 5:00 | 13 m | Twenty seconds of **true invulnerability** for every friendly unit in the radius. Not damage reduction — invulnerability |
 
-Iron Curtain over a Rhino column walking into a defended base is the single most decisive twenty
+Ironclad Field over an Anvil column walking into a defended base is the single most decisive twenty
 seconds either shared-pool army can buy.
 
 ## Commander
@@ -150,7 +150,7 @@ toughest commander in the game), 3.5 m/s, 30 m of sight, and he carries a full T
 damage, chains to two additional targets, and it elevates, so he can shoot at aircraft.
 
 **Iron Will** — 60-second cooldown, 16 m radius. Friendlies in the radius cannot be harmed for five
-seconds. It is the Iron Curtain in miniature — a quarter of the duration on a tenth of the wait —
+seconds. It is the Ironclad Field in miniature — a quarter of the duration on a tenth of the wait —
 and it turns a lost engagement into an even one if you press it at the right moment. The shortest
 radius and longest cooldown of the four commander abilities, so positioning matters more here than
 anywhere.
@@ -159,11 +159,11 @@ anywhere.
 
 - Heavy armour on both tanks, the Harvester and the Dreadnought: 0.10 from small arms, 0.35 from
   autocannon.
-- The Apocalypse has 800 hit points, the longest reach of any tank cannon at 28 m, and cannot be
+- The Sledge has 800 hit points, the longest reach of any tank cannon at 28 m, and cannot be
   crushed.
 - The cheapest infantry in the game outside the Reclamation, at 100 credits and four seconds.
 - Two cheap defensive emplacements from the first minute.
-- The Tesla Coil arrives a tech tier earlier than the Allied Prism Tower.
+- The Tesla Coil arrives a tech tier earlier than the Allied Refractor Tower.
 - The best air-superiority fighter in the game.
 - Three of your units crush infantry, at the three highest crush levels available.
 
@@ -177,6 +177,6 @@ anywhere.
 - The Attack Dog, your raider, is 70 hit points and only useful against infantry.
 - The Flame Tower's 18 m is the shortest range of any emplacement in the game — plenty of attackers
   will simply out-range it.
-- Attack Dog, Apocalypse, MiG, the Tesla Coil, the Battle Lab and both superweapons are behind
+- Attack Dog, Sledge, Interceptor, the Tesla Coil, the Proving Ground and both superweapons are behind
   mission unlocks on a fresh profile. The navy is not: the Pen, the hulls and the Naval Infantry
   are all day-one.

@@ -6,7 +6,7 @@
  *
  * WHAT A BATCH IS
  * ---------------
- * A `InstanceBatch` is one MODEL — a Grizzly tank, a Power Plant — rendered as
+ * A `InstanceBatch` is one MODEL — a Warden tank, a Power Plant — rendered as
  * 1..N `THREE.InstancedMesh` "parts", one per (geometry, material) pair. Every
  * part shares ONE slot allocator, so instance 7 is the same entity in the hull
  * mesh and in the turret mesh. That is what lets the bridge slew a turret
@@ -14,7 +14,7 @@
  *
  * WHY TEAM COLOUR IS AN ATTRIBUTE AND NOT A BATCH KEY
  * ---------------------------------------------------
- * If Allied and Soviet Rhinos were separate batches, every shared model would
+ * If Allied and Soviet Anvils were separate batches, every shared model would
  * cost two draws and the 130-call budget would be gone before the first shot is
  * fired. So `aTeamColor` is a per-instance vec3 and one batch covers both
  * armies. An art module that hands the SAME `KindMesh` object to both factions

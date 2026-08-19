@@ -286,7 +286,7 @@ describe('an operation declares its foe, and the validator holds the seats to it
 
   it('an Allied hull on the PLAYER’s Soviet seat is a build error', () => {
     // The shape of the defect this whole field exists for, in one line: the
-    // catalog is faction-blind, so this spawns a Grizzly in Soviet paint.
+    // catalog is faction-blind, so this spawns a Warden in Soviet paint.
     expectOneFault(withWave(operation(), 0, 'grizzly'), "key 'grizzly'");
   });
 

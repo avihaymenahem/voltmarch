@@ -135,7 +135,7 @@ describe('§1b who answers HEAVY armour on foot, and who deliberately does not',
    * DECISION someone made, not a thing nobody noticed.
    *
    * The Soviets are the deliberate absence. `flakBurst` is 0.35 against Heavy,
-   * which is exactly `ineffectiveBelow`, so a Flak Trooper will chip a Rhino
+   * which is exactly `ineffectiveBelow`, so a Flak Trooper will chip an Anvil
    * but will not prioritise one — and that is the faction's thesis stated in
    * mechanics: the Soviet answer to heavy armour is heavier armour. They get
    * Light (1.00) and Medium (0.65) instead, which is what actually closes the
@@ -281,8 +281,8 @@ describe('§3 the counter is a counter, not an upgrade', () => {
   });
 
   it('keeps both of them crushable', () => {
-    // The counter to the counter. A Javelin out-ranges a Rhino's gun by a metre;
-    // what stops that being free is that the Rhino can simply drive over him.
+    // The counter to the counter. A Javelin out-ranges an Anvil's gun by a metre;
+    // what stops that being free is that the Anvil can simply drive over him.
     for (const key of ['javelin', 'flakTrooper']) {
       expect(UNITS.find((u) => u.key === key)!.crushableBy, key).toBe(1);
     }

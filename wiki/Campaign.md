@@ -12,7 +12,7 @@ pays out when you hit a number. It is what actually widens your roster, and none
 
 **The two do not touch, and that is deliberate rather than unfinished.** An operation advances
 nothing on your profile — no mission, no unlock, no win, no streak, no lifetime counter. §3 is that
-rule and the reason for it. If what you want is the Prism Tank, what you want is the mission table,
+rule and the reason for it. If what you want is the Refractor Tank, what you want is the mission table,
 and you get it by playing skirmishes.
 
 There is also a separate **tutorial** on the main menu — a director that watches a real match and
@@ -276,9 +276,9 @@ resets it.
 | Mission | Target | Requires | Reward |
 | --- | --- | --- | --- |
 | Allied Command | win 5 as the Allied Forces | — | Allied insignia |
-| Chronosphere Programme | win 20 as the Allied Forces | Allied Command | Chronosphere superweapon *(see §9)* |
+| Displacement Ring Programme | win 20 as the Allied Forces | Allied Command | Displacement Ring superweapon *(see §9)* |
 | Soviet Command | win 5 as the Soviet Union | — | Soviet insignia |
-| Iron Curtain Programme | win 20 as the Soviet Union | Soviet Command | Iron Curtain superweapon *(see §9)* |
+| Ironclad Field Programme | win 20 as the Soviet Union | Soviet Command | Ironclad Field superweapon *(see §9)* |
 | Pact Command | win 5 as the Meridian Pact | — | Meridian insignia |
 | Solar Lance Programme | win 20 as the Meridian Pact | Pact Command | Solar Lance superweapon *(see §9)* |
 | Career Officer | finish 100 skirmishes | — | Star decal |
@@ -345,12 +345,12 @@ What is behind the gate, and therefore what an unlock *widens*:
 
 | Unlock | What it opens |
 | --- | --- |
-| Raider unit | Multigunner IFV · Attack Dog · Sandskiff · Arcspitter |
-| Tier-3 specialist | Prism Tank · Apocalypse Tank · Zenith Emitter · Slaghurler |
-| Aircraft | Vindicator · MiG Fighter · Kestrel Gunship · Swarmhornet — all four behind **Air Wing**, on the vehicle chain |
-| Tech centre | Battle Lab · Reliquary · Crucible |
-| Specialist defence | Prism Tower · Tesla Coil · Helios Spire · Arc Pylon |
-| Anti-air emplacement | Multigunner AA *(Allied only — no other faction has a dedicated AA structure)* |
+| Raider unit | Sabre IFV · Attack Dog · Sandskiff · Arcspitter |
+| Tier-3 specialist | Refractor Tank · Sledge Tank · Zenith Emitter · Slaghurler |
+| Aircraft | Petrel Bomber · Interceptor · Kestrel Gunship · Swarmhornet — all four behind **Air Wing**, on the vehicle chain |
+| Tech centre | Proving Ground · Reliquary · Crucible |
+| Specialist defence | Refractor Tower · Tesla Coil · Helios Spire · Arc Pylon |
+| Anti-air emplacement | AA Battery *(Allied only — no other faction has a dedicated AA structure)* |
 | Support pad | Repair Depot · Solar Infirmary · Patch Yard |
 | Commander hero | Field Marshal · War Commissar · Hierarch · Scrap Baron |
 
@@ -374,14 +374,14 @@ What is behind the gate, and therefore what an unlock *widens*:
 > The rule that replaced them is narrower than "ungate the navy": **content
 > required to reach the enemy is never progression-gated.** What is left is the
 > in-match tech gate, which was always the right one — a capital ship still
-> needs the Battle Lab, Reliquary or Crucible, and every hull still needs a dock
+> needs the Proving Ground, Reliquary or Crucible, and every hull still needs a dock
 > on a real coast.
 
 Two things follow from this that are easy to miss:
 
 **The tech centre is the biggest single unlock in the game.** Strip Mine — 70,000 credits of
-lifetime *mined* ore, roughly one map's worth — opens the Battle Lab and its equivalents, and the tech
-building is the prereq for the tier-3 specialists, the Prism Tower, the capital ships and **every
+lifetime *mined* ore, roughly one map's worth — opens the Proving Ground and its equivalents, and the tech
+building is the prereq for the tier-3 specialists, the Refractor Tower, the capital ships and **every
 superweapon in the game**. Until you have it, four of your five sidebar tabs stop one tier short and
 you have no end-game at all. If you only chase one mission, chase this one.
 
@@ -403,7 +403,7 @@ so Strip Mine only starts counting once Prospector's 25,000 is done — and Flee
 means 1 + 10 + 40 wins, not 40. Worth knowing before you plan a route.
 
 **The AI mirrors your unlocks.** By default the opponent resolves against the *same profile you do*,
-so unlocking the Apocalypse Tank also arms the enemy Soviets with it. This is deliberate: an AI
+so unlocking the Sledge Tank also arms the enemy Soviets with it. This is deliberate: an AI
 fielding a unit you have never seen reads as cheating. Multiplayer suppresses gating entirely — both
 players get everything.
 
@@ -508,14 +508,14 @@ effects and [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building#superwea
 | Weapon | Army | Structure | Cost | Charge |
 | --- | --- | --- | --- | --- |
 | Nuclear Missile | Soviets | Nuclear Missile Silo | 2,500 | 7:00 |
-| Iron Curtain | Soviets | Iron Curtain Device | 2,000 | 5:00 |
-| Chronosphere | Allies | Chronosphere | 2,000 | 5:00 |
+| Ironclad Field | Soviets | Ironclad Field | 2,000 | 5:00 |
+| Displacement Ring | Allies | Displacement Ring | 2,000 | 5:00 |
 | Lightning Storm | Allies | Weather Control Device | 2,500 | 6:40 |
 | Solar Lance | Meridian Pact | Heliograph | 2,500 | 7:00 |
 | Arc Storm | The Reclamation | Stormworks | 2,500 | 6:40 |
 
 **But the five superweapon rewards in the mission table are not what unlocks them.** Every
-superweapon structure is gated on its army's **tech building** — Battle Lab, Reliquary or Crucible —
+superweapon structure is gated on its army's **tech building** — Proving Ground, Reliquary or Crucible —
 and on nothing else. The tech building *is* a mission unlock (*Strip Mine*, 70,000 mined ore), so a
 fresh profile genuinely has no superweapons; but the moment you have the tech building you can build
 all of your faction's, whether or not you have finished *Total War*, *Continental Engineering* or the
@@ -546,7 +546,7 @@ If you want the roster open quickly, the cheap end of the table is:
 
 1. **Opening Move** — win one skirmish. Free.
 2. **First Blood** — 25 kills. You will pass this in your first match.
-3. **Can Opener** — 60 vehicles. Two or three matches. Opens the Multigunner AA, which matters the
+3. **Can Opener** — 60 vehicles. Two or three matches. Opens the AA Battery, which matters the
    moment aircraft are in play.
 4. **Prospector** — 25,000 ore. One long match, or two short ones. Frozen Sector.
 5. **Groundworks** — 50 structures. Build silos and walls; they count. Industrial Grid.

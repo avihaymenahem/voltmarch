@@ -1195,7 +1195,7 @@ function alliedAaTurret(): StructureMassList {
     }),
     teamPanel('team.head', [w * 0.40, 0.12, w * 0.26], [0, ringY + h * 0.26, 0], { target: 'turret' }),
   ];
-  return list('allied_aa', 'Multigunner AA', 'allies', 'aaTurret', masses, [
+  return list('allied_aa', 'AA Battery', 'allies', 'aaTurret', masses, [
     { part: PartId.MuzzleA, pos: [w * 0.16, ringY + h * 0.52, w * 0.42], pitch: 1.16, turret: true },
     { part: PartId.MuzzleB, pos: [-w * 0.16, ringY + h * 0.52, w * 0.42], pitch: 1.16, turret: true },
   ], { cls: 'defence', turretPivot: [0, ringY, 0] });
@@ -1462,7 +1462,7 @@ function sovietTech(): StructureMassList {
     }),
     ...lattice(-s.w * 0.42, -s.d * 0.18, 1.4, roof * 1.5, 'frame'),
   );
-  return list('soviet_tech', 'Battle Lab', 'soviets', 'techCentre', s.masses, [
+  return list('soviet_tech', 'Proving Ground', 'soviets', 'techCentre', s.masses, [
     ...baseSockets(s.d, f.height, s.w * 0.30, -s.d * 0.24),
     { part: PartId.CoilTip, pos: [s.w * 0.02, roof * 2.30, s.d * 0.22] },
   ]);
@@ -1634,12 +1634,12 @@ function sovietTeslaCoil(): StructureMassList {
  *   flameTower   drew the Sentry Gun, cannon and all — and because
  *                `Defs.flameTower` leaves `hasTurret` false, that cannon never
  *                slewed. A flamethrower emplacement with a welded gun barrel.
- *   prismTower   drew the Multigunner AA turret: an anti-air mount firing a
+ *   prismTower   drew the AA Battery turret: an anti-air mount firing a
  *                ground beam.
  *
  * The two defences are built to the def they actually have. The Flame Tower is
  * authored TURRETLESS with four radial nozzles, so nothing on it needs to slew;
- * the Prism Tower has `hasTurret: true` in the defs and gets a real rotating
+ * the Refractor Tower has `hasTurret: true` in the defs and gets a real rotating
  * crystal head on `target: 'turret'`.
  * ========================================================================== */
 
@@ -1844,7 +1844,7 @@ function sovietFlameTower(): StructureMassList {
 }
 
 /**
- * ALLIED PRISM TOWER. 1x1, 8.0 m. A defence WITH a real turret.
+ * ALLIED REFRACTOR TOWER. 1x1, 8.0 m. A defence WITH a real turret.
  *
  * `Defs.prismTower` sets `hasTurret: true`, so unlike the Flame Tower this one
  * genuinely slews — the crystal head is on `target: 'turret'` and the rest is
@@ -1912,7 +1912,7 @@ function alliedPrismTower(): StructureMassList {
     ...windows(w * 0.30, h * 0.22, w * 0.36, 2, 0.24, 0.14, 'lamp'),
   ];
 
-  return list('allied_prismtower', 'Prism Tower', 'allies', 'prismTower', masses, [
+  return list('allied_prismtower', 'Refractor Tower', 'allies', 'prismTower', masses, [
     { part: PartId.MuzzleA, pos: [0, h * 0.90, 0], turret: true },
     { part: PartId.Emitter, pos: [0, h * 0.90, 0] },
   ], { cls: 'defence', turretPivot: [0, ringY, 0] });
@@ -2112,7 +2112,7 @@ function oreSilo(faction: StructureFaction): StructureMassList {
  * ========================================================================== */
 
 /**
- * THE CHRONOSPHERE. Two raking pylons carrying a glass sphere in the gap
+ * THE DISPLACEMENT RING. Two raking pylons carrying a glass sphere in the gap
  * between them — the one Allied structure whose readable volume is not a
  * module but a void with something floating in it.
  */
@@ -2154,7 +2154,7 @@ function alliedChronosphere(): StructureMassList {
     }),
     box('bus.hood', MassRole.Greeble, [s.w * 0.20, 0.30, s.d * 0.16], [-s.w * 0.12, roof + 0.22, s.d * 0.28], 'vent', { group: 'bus' }),
   );
-  return list('allied_chrono', 'Chronosphere', 'allies', 'superweapon', s.masses, [
+  return list('allied_chrono', 'Displacement Ring', 'allies', 'superweapon', s.masses, [
     ...baseSockets(s.d, roof + 1.0, -s.w * 0.30, -s.d * 0.30),
     { part: PartId.Emitter, pos: [0, coreY, 0] },
     { part: PartId.Antenna, pos: [0, f.height, 0] },
@@ -2406,7 +2406,7 @@ function civHospital(): StructureMassList {
 }
 
 /**
- * THE IRON CURTAIN DEVICE. Two emitter drums on cantilevered arms facing each
+ * THE IRONCLAD FIELD. Two emitter drums on cantilevered arms facing each
  * other across a lit gap. The gap IS the building: it is the only structure in
  * the game whose most important feature is empty space, and the arms exist to
  * hold that space open at a height the camera can see into.
@@ -2446,7 +2446,7 @@ function sovietIronCurtain(): StructureMassList {
       group: 'ties', chamfer: 0.05,
     }),
     // Two chargers and NO STACK, which is the one place this structure departs
-    // from SOVIET-3. Nothing is burned here — the Curtain is a capacitor bank
+    // from SOVIET-3. Nothing is burned here — the Field is a capacitor bank
     // discharged through two coils — and a smoking chimney on it would be the
     // faction language overruling what the building actually does.
     ...sovietVessel(-s.w * 0.28, s.d * 0.26, s.w * 0.14, roof * 1.08, 'charger'),
@@ -2455,7 +2455,7 @@ function sovietIronCurtain(): StructureMassList {
     // a second one is 400 triangles of scaffolding behind the arms.
     greebleRun('bus.run', s.d * 0.46, 0.24, 0.20, [-s.w * 0.40, roof * 0.52, s.d * 0.06], 0x4943),
   );
-  return list('soviet_curtain', 'Iron Curtain Device', 'soviets', 'superweapon', s.masses, [
+  return list('soviet_curtain', 'Ironclad Field', 'soviets', 'superweapon', s.masses, [
     ...baseSockets(s.d, roof * 1.30, -s.w * 0.10, -s.d * 0.34),
     { part: PartId.Emitter, pos: [0, gapY, 0] },
     { part: PartId.CoilTip, pos: [0, f.height, -s.d * 0.04] },

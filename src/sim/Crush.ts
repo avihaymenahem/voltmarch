@@ -70,7 +70,7 @@
  * VEHICLE IN THE ROSTER CARRIES `EntityFlag.Crushable` — the flag whose own
  * docstring is "dies instantly under a Crusher with a higher crushLevel" —
  * and every foot unit does. The roster therefore already says who the victims
- * are, and a ram that deletes a 420 HP Rhino because an Apocalypse touched it
+ * are, and a ram that deletes a 420 HP Anvil because a Sledge touched it
  * is a balance decision with no authored intent behind it. The `crushableBy`
  * numbers on hulls describe a ram rule that does not exist; they are reported,
  * not implemented. See `docs/SPEC_DRIFT_AUDIT.md` §10.
@@ -81,8 +81,8 @@
  *    above `CRUSH.minSpeed`, flattens a live `EntityKind.Infantry` carrying
  *    `EntityFlag.Crushable` whose `crushableBy` is non-zero and no greater
  *    than that level. `crushesUnit` in §2 is the ONE function that says so;
- *    nothing re-derives it. A Grizzly (3) flattens every rifleman in the game
- *    (1); an Apocalypse (`crushableBy: 0`) is flattened by nothing, because 0
+ *    nothing re-derives it. A Warden (3) flattens every rifleman in the game
+ *    (1); a Sledge (`crushableBy: 0`) is flattened by nothing, because 0
  *    means UNCRUSHABLE for a unit. That is the exact opposite of what 0 means
  *    for a prop — see `CRUSH.propDefaultLevel`, and do not merge the two.
  *
@@ -110,7 +110,7 @@
  *    actually dealt, and a 10x "make sure" figure would spike it.
  *
  * 4. THE HULL HAS TO GET THERE. Two systems used to stop it, and a measured
- *    probe put a Grizzly's closest approach to a standing rifleman at 2.83 m
+ *    probe put a Warden's closest approach to a standing rifleman at 2.83 m
  *    against the 2.19 m its own hull disc needs — so the rule above would
  *    have been correct and unreachable. `Steering` leaned the tank around him
  *    and inherited his walking pace as a queue brake; `Movement.relax` then
@@ -267,8 +267,8 @@ export const CRUSH = {
    * Half-size of the ground mark, as a fraction of the CRUSHER's collision disc.
    *
    * The crusher's, not the victim's: the print is made by the track, so an
-   * Apocalypse leaves a wider one than a Grizzly and a rifleman's 0.23 m
-   * footprint has nothing to do with it. A Grizzly's disc is 2.79 m
+   * Sledge leaves a wider one than a Warden and a rifleman's 0.23 m
+   * footprint has nothing to do with it. A Warden's disc is 2.79 m
    * (`hullRadius` = max(l,w) * 0.45), so 0.34 of it is a 1.9 m square patch —
    * inside which the tile draws a strip ~1.0 m across and ~1.7 m long. Compare
    * the tread stamp it lands between: `TREAD_HALF_WIDTH` 0.42 is a 0.84 m strip.
@@ -323,7 +323,7 @@ export function crushesUnit(w: World, i: number, j: number): boolean {
   if ((jf & EntityFlag.Crushable) === 0) return false;
 
   // 0 IS UNCRUSHABLE FOR A UNIT — the documented meaning of the column, and
-  // what keeps an Apocalypse (`crushableBy: 0`) safe from everything. It means
+  // what keeps a Sledge (`crushableBy: 0`) safe from everything. It means
   // the opposite for a prop, whose column no spawn path writes at all; that
   // asymmetry is `CRUSH.propDefaultLevel` and it must not leak into here.
   const need = st.crushableBy[j];

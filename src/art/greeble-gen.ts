@@ -24,7 +24,7 @@
  * THE SURFACE LAW — read this before changing a single pixel
  * ============================================================================
  * RA3 is "clean painted plastic toys". Look at `docs/surface-refs/
- * ra3-units-road.png`: the Prism tank is LARGE UNBROKEN AREAS OF FLAT PAINT —
+ * ra3-units-road.png`: RA3's Prism tank is LARGE UNBROKEN AREAS OF FLAT PAINT —
  * a yellow-olive base and bright saturated green team slabs — with a handful of
  * crisp dark panel lines and a few small clean mechanical details. Glossy
  * highlights on the upper surfaces. Zero grime, zero marbling, zero noise.

@@ -104,7 +104,7 @@
  * ----------------------------------------------------------------------------
  * A save written by build N and read by build N+1 does not fail loudly on its
  * own. It loads WRONG: a def table gained a row, every index past it shifted,
- * and the player's Grizzlies are now Rhinos. Two independent gates:
+ * and the player's Wardens are now Anvils. Two independent gates:
  *
  *   1. `SAVE_SCHEMA_VERSION` — bumped by hand whenever the meaning of a byte in
  *      this file changes. A mismatch refuses.
@@ -2245,7 +2245,7 @@ function restorePlayer(
 
   /* Building counts drive prereqs and the victory check, so they are restored
    * by KEY wherever the save recorded one: a def table that gained a row would
-   * otherwise credit the player with a Battle Lab they never built. */
+   * otherwise credit the player with a Proving Ground they never built. */
   p.buildingCount.fill(0);
   for (let i = 0, slot = 0; i + 1 < ps.buildingCount.length; i += 2, slot++) {
     const savedIndex = ps.buildingCount[i];
@@ -2278,7 +2278,7 @@ function restorePlayer(
     if (typeof v === 'number') stats[key] = v;
   }
 
-  /* Queues: a half-built Rhino keeps its progress AND its `spent`, because
+  /* Queues: a half-built Anvil keeps its progress AND its `spent`, because
    * cancelling refunds exactly what was paid and a lost `spent` is either a
    * free tank or a stolen refund. */
   for (let t = 0; t < p.queues.length; t++) {

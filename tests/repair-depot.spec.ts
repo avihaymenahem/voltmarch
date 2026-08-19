@@ -496,7 +496,7 @@ describe('the rate is a fraction of the hull, not a number of hit points', () =>
  * 5. THE FLAG HAS A NEW READER, SO ITS OLD ABUSES MATTER NOW
  * ========================================================================== */
 
-describe('the AI files the depot as a depot, not as its Battle Lab', () => {
+describe('the AI files the depot as a depot, not as its Proving Ground', () => {
   it('gives every army a Repair-role catalog entry', async () => {
     const { BuildCatalog, BuildRole } = await import('../src/sim/AIStrategy');
     const binding = await resolveDefBinding();
@@ -514,7 +514,7 @@ describe('the AI files the depot as a depot, not as its Battle Lab', () => {
     // TechLab, because nothing else in the game matched that until now. A
     // depot does, exactly — and `roleCount[TechLab] > 0` is the gate on every
     // top-tier unit, so an AI that made this mistake would stop building the
-    // real lab and quietly never field a Prism Tank again.
+    // real lab and quietly never field a Refractor Tank again.
     const { BuildCatalog, BuildRole } = await import('../src/sim/AIStrategy');
     const binding = await resolveDefBinding();
     const catalog = new BuildCatalog();

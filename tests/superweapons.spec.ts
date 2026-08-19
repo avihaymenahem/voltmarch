@@ -25,7 +25,7 @@
  *      structure; it is in the catalog the sidebar reads; its prereq chain is
  *      real; it has a `FALLBACK_BUILDINGS` row (without one it builds, charges,
  *      completes and then never places, with nothing logged); and it has art.
- *   2. THE COUNTDOWN RUNS OFF IT, and off nothing else. A Battle Lab arms
+ *   2. THE COUNTDOWN RUNS OFF IT, and off nothing else. A Proving Ground arms
  *      nothing now. Losing power stops the clock.
  *   3. FIRING GOES THROUGH THE BUS. `issueFire` puts an ordinary
  *      `CommandKind.Order` on `channels.commands`; `input/Commands.ts` applies
@@ -361,7 +361,7 @@ describe('the countdown', () => {
 
       expect(seen.has('nuke'), 'the HUD was never told about the nuke').toBe(true);
       expect(seen.get('nuke')).toBeGreaterThan(0);
-      // Only what this army can field. The Chronosphere is Allied.
+      // Only what this army can field. The Displacement Ring is Allied.
       expect(cleared).toContain('chronosphere');
 
       cleared.length = 0;
@@ -410,7 +410,7 @@ describe('firing is an ordinary command, not a service call', () => {
   });
 
   it('refuses to address a command it has no structure for', () => {
-    // Nothing to aim: no Chronosphere, and this player is not Allied anyway.
+    // Nothing to aim: no Displacement Ring, and this player is not Allied anyway.
     expect(rig.supers.issueFire(ME, 'chronosphere', 200, 200)).toBe(false);
     expect(rig.channels.commands.pending).toBe(0);
   });
@@ -464,7 +464,7 @@ describe('firing is an ordinary command, not a service call', () => {
     // match: staging used to alternate on the service's own `stagedSw`, and
     // the cursor reset it in `cancelArm()`. The second click issued its
     // command and cancelled the arm in the same statement, so `stagedSw` was
-    // cleared BEFORE the command reached `simTick` — and the Chronosphere
+    // cleared BEFORE the command reached `simTick` — and the Displacement Ring
     // re-staged on its destination instead of firing. Every click looked like
     // a first click and the weapon could never be fired at all.
     const allies = await makeRig(Faction.Allies, Faction.Soviets);

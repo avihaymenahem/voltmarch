@@ -50,7 +50,7 @@
  *
  * CHARGING is gated on a live, finished, POWERED structure, and `structureKeys`
  * names it. This used to end every chain at `battleLab` because no superweapon
- * structure existed — which meant a Battle Lab, the prerequisite for half the
+ * structure existed — which meant a Proving Ground, the prerequisite for half the
  * roster, silently armed BOTH of its army's superweapons. The six structures
  * exist now (`nuclearSilo`, `ironCurtain`, `chronosphere`, `weatherControl`,
  * `mrdHeliograph`, `rclStormworks`), so the chains name them and nothing else.
@@ -66,13 +66,13 @@
  * and fires. Read the comment on `CommandKind.Relocate` in core/types.ts for
  * why: a verb that reaches the simulation without passing the bus is invisible
  * to the replay recorder, to a spectator and to the multiplayer link, and the
- * AI's every move is visible. It also makes the two-click Chronosphere staging
+ * AI's every move is visible. It also makes the two-click Displacement Ring staging
  * deterministic — it advances on a tick rather than on a pointer event.
  *
  * The order rides on a BUILDING, which is why `sim/Abilities.ts` cannot eat it:
  * that module's `consumeOrders` walks `MOBILE_KINDS` only.
  *
- * WHY IRON CURTAIN INFLATES maxHp INSTEAD OF FILTERING DAMAGE. `Damage.ts` is
+ * WHY THE IRONCLAD FIELD INFLATES maxHp INSTEAD OF FILTERING DAMAGE. `Damage.ts` is
  * owned elsewhere and there is no invulnerability hook. Splash damage is
  * resolved from a single queue record against everything in the blast, so a
  * per-record veto cannot protect a unit standing next to the target. Raising
@@ -162,7 +162,7 @@ export const SUPERWEAPONS: readonly SuperweaponDef[] = [
     id: SuperweaponId.IronCurtain,
     effect: SuperweaponId.IronCurtain,
     key: 'ironCurtain',
-    label: 'Iron Curtain',
+    label: 'Ironclad Field',
     faction: Faction.Soviets,
     chargeSeconds: 300,
     structureKeys: ['ironCurtain'],
@@ -173,7 +173,7 @@ export const SUPERWEAPONS: readonly SuperweaponDef[] = [
     id: SuperweaponId.Chronosphere,
     effect: SuperweaponId.Chronosphere,
     key: 'chronosphere',
-    label: 'Chronosphere',
+    label: 'Displacement Ring',
     faction: Faction.Allies,
     chargeSeconds: 300,
     structureKeys: ['chronosphere'],
@@ -361,7 +361,7 @@ export class SuperweaponService {
   private intentCount = 0;
   private readonly strikes: Strike[] = [];
 
-  /* -- iron curtain registry --------------------------------------------- */
+  /* -- ironclad field registry --------------------------------------------- */
   private readonly protectedId = new Int32Array(PROTECT_CAPACITY);
   private readonly protectUntil = new Float64Array(PROTECT_CAPACITY);
   private readonly protectMaxHp = new Float32Array(PROTECT_CAPACITY);
@@ -533,7 +533,7 @@ export class SuperweaponService {
     return out;
   }
 
-  /** True while this entity is inside an Iron Curtain. */
+  /** True while this entity is inside an Ironclad Field. */
   isProtected(id: EntityId): boolean {
     const st = this.world.store;
     const i = st.index(id);
@@ -563,7 +563,7 @@ export class SuperweaponService {
    * That is a lockstep divergence on its own, and it also raced itself: the
    * second click issued its command and cancelled the arm in the same
    * statement, `cancelArm` cleared `stagedSw` before the command reached
-   * `simTick`, and the Chronosphere re-staged on its destination instead of
+   * `simTick`, and the Displacement Ring re-staged on its destination instead of
    * firing. Every click looked like a first click and the weapon never fired.
    *
    * Omitting it — the console, the tests, `__vmFeatures.fire` — keeps the old
@@ -614,7 +614,7 @@ export class SuperweaponService {
     //
     // It does NOT `cancelArm()`. Arming is cursor state and this now runs a
     // phase after the click that armed it: a player who fires a nuke and
-    // immediately arms an Iron Curtain would have had the second arming torn
+    // immediately arms an Ironclad Field would have had the second arming torn
     // down by the first one's command arriving.
     this.remaining[b] = def.chargeSeconds;
     return 'fired';
@@ -651,7 +651,7 @@ export class SuperweaponService {
    * One pass over the building list per rescan. A superweapon is available when
    * the player owns a finished, powered structure whose catalog key appears in
    * the weapon's fallback chain — first match wins, so a real Nuclear Silo
-   * supersedes the Battle Lab stand-in the moment one exists.
+   * supersedes the Proving Ground stand-in the moment one exists.
    */
   rescanAvailability(): void {
     const w = this.world;
@@ -714,7 +714,7 @@ export class SuperweaponService {
       const i = list[a];
       if (st.orderKind[i] !== OrderKind.UseAbility) continue;
       // THE ORDER'S TARGET IS THE STAGE FLAG, and it is read before it is
-      // cleared. `NONE` means "this click is a Chronosphere's SOURCE"; the
+      // cleared. `NONE` means "this click is a Displacement Ring's SOURCE"; the
       // structure's own id means "commit". The alternative was for the service
       // to alternate on its own staging state and for the cursor to reset it,
       // which is simulation state written from a DOM event — see `fireAt`.
@@ -747,7 +747,7 @@ export class SuperweaponService {
    * readiness check: the charge is the simulation's business and re-testing it
    * here would be a second copy of a rule that has to live in one place.
    *
-   * `stage` rides on the order's TARGET: `NONE` for a Chronosphere's source
+   * `stage` rides on the order's TARGET: `NONE` for a Displacement Ring's source
    * click, the structure's own id to commit. See `consumeOrders`.
    */
   issueFire(player: PlayerId, key: string, x: number, z: number, stage = false): boolean {
@@ -1120,7 +1120,7 @@ export class SuperweaponService {
 
   /**
    * Enter targeting mode. The next click on the canvas fires (or, for the
-   * Chronosphere, stages then fires). Returns false when the weapon is not
+   * Displacement Ring, stages then fires). Returns false when the weapon is not
    * ready or no targeting host was attached.
    */
   arm(player: PlayerId, key: string): boolean {
@@ -1143,7 +1143,7 @@ export class SuperweaponService {
    * IT TOUCHES NO SIMULATION STATE. It used to clear `stagedSw`, which is two
    * bugs in one line: writing sim state from a DOM event is a lockstep
    * divergence, and it raced the very command the click had just issued (see
-   * `fireAt`). An abandoned Chronosphere source is harmless because the next
+   * `fireAt`). An abandoned Displacement Ring source is harmless because the next
    * source click carries `stage` and overwrites it.
    */
   cancelArm(): void {
@@ -1182,7 +1182,7 @@ export class SuperweaponService {
    *
    * `pairClicks` is the one piece of state that stays here, because it is the
    * CURSOR's business rather than the simulation's: after the first click of a
-   * Chronosphere the reticle has to stay up for the second. The sim keeps its
+   * Displacement Ring the reticle has to stay up for the second. The sim keeps its
    * own staging in `stagedSw` and the two agree because they count the same
    * clicks; if they ever disagreed the sim's copy is the one that fires.
    */

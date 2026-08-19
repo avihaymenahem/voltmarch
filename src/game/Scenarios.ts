@@ -1195,7 +1195,7 @@ function unit(
     armor,
     maxSpeed,
     // Heavier things accelerate and turn slower; this single derivation is what
-    // stops a Rhino and a dog reading as the same chassis when they move.
+    // stops an Anvil and a dog reading as the same chassis when they move.
     accel: extra?.accel ?? Math.max(2.4, maxSpeed * 1.15),
     turnRate: extra?.turnRate ?? (kind === EntityKind.Infantry ? 6.0 : 2.6 - dim.l * 0.14),
     turretTurnRate: extra?.turretTurnRate ?? 1.9,
@@ -1291,7 +1291,7 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
    * Two rows carrying the same warning as the commanders and the anti-armour
    * pair above, and it bites HARDER here than anywhere else in this table:
    * `ProductionService.spawnUnit` reads `FALLBACK_UNITS` BEFORE the def table
-   * and returns NONE when the row is missing, so a Vindicator with a flawless
+   * and returns NONE when the row is missing, so a Petrel Bomber with a flawless
    * def row and no row here would take 1200 credits, run its bar to 100%, and
    * never leave the factory. Silently. Forever.
    *
@@ -1711,7 +1711,7 @@ const PROP_BASE = EntityFlag.NotATarget | EntityFlag.NotSelectable;
  * interpret it as an index into `DefTables.units` — `input/Commands.ts`'s
  * `defOf()` guards only against Buildings, and `sim/Production.ts#entryOf()`
  * asks its catalog for `(defId, isBuilding=false)`. A prop numbered 3 would
- * come back as "a Grizzly". Out here every such lookup misses cleanly and the
+ * come back as "a Warden". Out here every such lookup misses cleanly and the
  * caller falls through to the heuristic it already has.
  */
 export const PROP_DEF_BASE = 1000;
@@ -1840,7 +1840,7 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   // resolves to `undefined`, `resolveEntry` falls back to defId -1, and
   // `units.system.ts` skips the model registration. The unit would still build
   // and still fly; it would just wear the per-faction default hull, which is a
-  // Grizzly. No bare 'mig' -> anything else: the key IS 'mig'.
+  // Warden. No bare 'mig' -> anything else: the key IS 'mig'.
   vindicator: ['vindicator', 'alliedvindicator', 'alliedbomber', 'harrier'],
   mig: ['mig', 'sovietmig', 'migfighter', 'sovietfighter'],
 
@@ -1966,7 +1966,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
  *
  * EVERY ROW MUST BE `FACTION_COUNT` LONG. `keyFor` reads `row[player.faction]`
  * and falls back to the unmapped key on a miss, so a short row does not throw —
- * it quietly gives a Reclamation player an Allied Grizzly, which the fallback
+ * it quietly gives a Reclamation player an Allied Warden, which the fallback
  * table then refuses on its faction check and nothing spawns at all.
  */
 const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
@@ -2691,7 +2691,7 @@ export class ScenarioBuilder {
     // Same gate as `spawnBuilding`, and for the same reason: the standing
     // garrison in an opening base is authored in role terms, and one of the
     // Soviet roles is 'apocalypse'. A fresh profile used to start the match
-    // looking at an Apocalypse Tank it could not build for another 500 kills.
+    // looking at a Sledge Tank it could not build for another 500 kills.
     // Skipped rather than substituted; `formation()` simply lands fewer hulls.
     if (!isBuildable(def, this.world.player(owner))) return NONE;
 
@@ -2726,7 +2726,7 @@ export class ScenarioBuilder {
     s.turretTurnRate[i] = fb.turretTurnRate;
     s.locomotor[i] = loco;
     // A radius fitted to the hull box: too small and tanks interpenetrate, too
-    // large and a column of Rhinos cannot use a 3-cell gap in its own wall.
+    // large and a column of Anvils cannot use a 3-cell gap in its own wall.
     s.radius[i] = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
     s.crushLevel[i] = def?.crushLevel ?? fb.crushLevel;
     s.crushableBy[i] = def?.crushableBy ?? fb.crushableBy;
@@ -2801,7 +2801,7 @@ export class ScenarioBuilder {
      * in role terms ('battleLab', 'prismTower') which `keyFor` remaps per
      * faction. Without this check the opening base HANDS OUT the structures the
      * mission table exists to sell: a fresh profile started next to a free
-     * Battle Lab, the Soviet AI opened with three Tesla Coils the player could
+     * Proving Ground, the Soviet AI opened with three Tesla Coils the player could
      * not build, and the reward for a 150-kill chain was already in both bases
      * before the first shot. Verified live before it was fixed.
      *

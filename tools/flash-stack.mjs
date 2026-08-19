@@ -218,7 +218,7 @@ async function arcSweep(page, results) {
               const x = f.x + Math.cos(a) * r;
               const z = f.z + Math.sin(a) * r;
               // A 9 m arc from a coil head to a target hull, which is the
-              // geometry a Tesla Coil or a Prism Tower actually produces.
+              // geometry a Tesla Coil or a Refractor Tower actually produces.
               if (effect === 'tesla') V.tesla(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 900);
               else if (effect === 'prism') V.beam(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 'prism');
               // THE STARBURST ALONE. A Tesla Coil firing produces the bolt AND

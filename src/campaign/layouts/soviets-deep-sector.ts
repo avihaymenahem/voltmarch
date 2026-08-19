@@ -404,7 +404,7 @@ export default layout({
      * to the tap — the column is parked pointing at the thing it was sent for.
      *
      * ROLE KEYS, DELIBERATELY. `ScenarioBuilder.spawnUnit` runs every key
-     * through `keyFor`, so 'grizzly' is a Rhino for this Soviet seat. The
+     * through `keyFor`, so 'grizzly' is an Anvil for this Soviet seat. The
      * OPERATION file cannot do this: `EffectSink.spawnUnits` goes through
      * `ProductionCatalog.byKey` and remaps nothing, so its waves name literal
      * keys. Two spawn paths, two vocabularies, and the difference is silent.

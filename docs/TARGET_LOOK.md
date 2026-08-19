@@ -72,7 +72,7 @@ edge** rather than a soft multi-stop gradient ramp.
 **Every cameo is a small three-quarter render of the actual structure.** Not a glyph, not an
 outline, not a silhouette. This is precisely the gap already recorded in `TODO.md` §2:
 
-> Cameos are generic outline glyphs with no names — a flask for Battle Lab, an anchor for Naval
+> Cameos are generic outline glyphs with no names — a flask for Proving Ground, an anchor for Naval
 > Yard. In RA2/RA3 the cameo *is* a picture of the thing.
 
 **This does not require generated image assets, and therefore does not break the README's

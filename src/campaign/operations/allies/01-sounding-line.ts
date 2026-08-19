@@ -171,8 +171,8 @@ const op: OperationDef = {
 
   // Nothing granted on either side, which is NOT the same as nothing withheld.
   // Two empty lists make `isBuildable` an allow-list, so every tagged def is
-  // refused for both seats — no Battle Lab, no Tesla Coil, no Prism Tower, no
-  // IFV, no Attack Dog, no Apocalypse, in the opening bases or in the sidebar.
+  // refused for both seats — no Proving Ground, no Tesla Coil, no Refractor Tower, no
+  // IFV, no Attack Dog, no Sledge, in the opening bases or in the sidebar.
   // That is the right shape for a first operation: what is left is the opening
   // path, which is what the difficulty here is actually made of — a clock, two
   // guns and ninety seconds of standing still. It is also SYMMETRIC and
@@ -316,7 +316,7 @@ const op: OperationDef = {
         },
         { do: 'dialogue', speaker: 'Wend', text: 'Post relief is moving off the control head.' },
         { do: 'revealArea', player: 0, area: { x: POST.x, z: POST.z, r: 44 } },
-        // Six and two against a counted opening of seven Grizzlies and nine
+        // Six and two against a counted opening of seven Wardens and nine
         // G.I.s, minus whatever the control head cost and minus whatever is
         // still standing over the ore. Enough to take the head off an escort
         // that was spent getting there, not enough to be a second mission —

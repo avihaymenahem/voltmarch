@@ -19,9 +19,9 @@
  * borrowed. When `src/data/**` publishes a real `DefTables` we read cost,
  * build time, footprint and power out of it; until then we fall back to
  * `FALLBACK_UNITS` / `FALLBACK_BUILDINGS` in game/Scenarios.ts so that a
- * Grizzly rolling off my War Factory is byte-for-byte the same entity as a
- * Grizzly the scenario parked on the map. Two spawn paths that disagree about
- * what a Grizzly is would be a bug nobody finds for a week.
+ * Warden rolling off my War Factory is byte-for-byte the same entity as a
+ * Warden the scenario parked on the map. Two spawn paths that disagree about
+ * what a Warden is would be a bug nobody finds for a week.
  *
  * THE `defId` CONVENTION — READ THIS BEFORE CALLING ANYTHING
  * ---------------------------------------------------------
@@ -226,11 +226,11 @@ export interface BuildEntry {
    * building, and it is unambiguous precisely because no real ones exist.
    *
    * UNITS ARE OFFSET BY `UNIT_PUBLIC_ID_BASE`. `DefTables` has two independent
-   * index spaces — `units[7]` is the Rhino, `buildings[7]` is the Naval Yard —
+   * index spaces — `units[7]` is the Anvil, `buildings[7]` is the Naval Yard —
    * so a bare def index is only meaningful next to an `isBuilding` flag, and
    * `availability(player, defId)` does not take one. Before this offset,
    * `resolve()` guessed buildings first and a Soviet AI asking "can I build a
-   * Rhino?" was answered about an ALLIED Naval Yard: "Wrong faction", forever.
+   * Anvil?" was answered about an ALLIED Naval Yard: "Wrong faction", forever.
    * (That is a real bug this repo shipped the moment src/data/Defs.ts landed,
    * caught by tests/ai.spec.ts.) `resolve()` strips the offset, and still
    * accepts a bare def index when the caller supplies `isBuilding` — which is
@@ -424,7 +424,7 @@ const P = BuildTab.Powers;
  * Costs and times are the RA2 curve, which is the one this game's economy
  * constants (START_CREDITS 10000, HARVESTER_CAPACITY 700) were tuned against:
  * a Power Plant inside 10 seconds, a Refinery paying for itself in about three
- * loads, and an Apocalypse costing roughly two and a half Rhinos.
+ * loads, and a Sledge costing roughly two and a half Anvils.
  *
  * Prerequisites are deliberately SHALLOW — three tiers, never four. RA2's real
  * tree is: power, then economy, then army, then one tech building that opens
@@ -490,7 +490,7 @@ const CONTENT: readonly ContentSpec[] = [
 
   /* -- tier 3: the one tech building ------------------------------------- */
   {
-    key: 'battleLab', name: 'Battle Lab', blurb: 'Unlocks the top of every tab.',
+    key: 'battleLab', name: 'Proving Ground', blurb: 'Unlocks the top of every tab.',
     kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
     cost: 2000, buildTime: 24, prereqs: ['radar'], sortOrder: 80,
   },
@@ -512,7 +512,7 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 600, buildTime: 10, prereqs: ['barracks'], sortOrder: 20,
   },
   {
-    key: 'prismTower', name: 'Prism Tower', blurb: 'Long-ranged beam defence. Needs power.',
+    key: 'prismTower', name: 'Refractor Tower', blurb: 'Long-ranged beam defence. Needs power.',
     kind: BuildKind.Building, faction: Faction.Allies, tab: D,
     cost: 1500, buildTime: 16, prereqs: ['battleLab'], sortOrder: 30,
   },
@@ -522,7 +522,7 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 1500, buildTime: 16, prereqs: ['radar'], sortOrder: 30,
   },
   {
-    key: 'aaTurret', name: 'Multigunner AA', blurb: 'Flak battery. Reaches what tanks cannot.',
+    key: 'aaTurret', name: 'AA Battery', blurb: 'Flak battery. Reaches what tanks cannot.',
     kind: BuildKind.Building, faction: Faction.Allies, tab: D,
     cost: 800, buildTime: 12, prereqs: ['radar'], sortOrder: 25,
   },
@@ -581,27 +581,27 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 1400, buildTime: 16, prereqs: ['warFactory', 'refinery'], sortOrder: 10,
   },
   {
-    key: 'grizzly', name: 'Grizzly Tank', blurb: 'The Allied main battle tank.',
+    key: 'grizzly', name: 'Warden Tank', blurb: 'The Allied main battle tank.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
     cost: 700, buildTime: 11, prereqs: ['warFactory'], sortOrder: 20,
   },
   {
-    key: 'rhino', name: 'Rhino Tank', blurb: 'Slower, heavier, hits harder.',
+    key: 'rhino', name: 'Anvil Tank', blurb: 'Slower, heavier, hits harder.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
     cost: 900, buildTime: 13, prereqs: ['warFactory'], sortOrder: 20,
   },
   {
-    key: 'ifv', name: 'Multigunner IFV', blurb: 'Fast wheeled gun platform.',
+    key: 'ifv', name: 'Sabre IFV', blurb: 'Fast wheeled gun platform.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
     cost: 600, buildTime: 10, prereqs: ['warFactory', 'radar'], sortOrder: 30,
   },
   {
-    key: 'prismTank', name: 'Prism Tank', blurb: 'Beam artillery. Fragile.',
+    key: 'prismTank', name: 'Refractor Tank', blurb: 'Beam artillery. Fragile.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
     cost: 1200, buildTime: 17, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
   },
   {
-    key: 'apocalypse', name: 'Apocalypse Tank', blurb: 'The end of an argument.',
+    key: 'apocalypse', name: 'Sledge Tank', blurb: 'The end of an argument.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
     cost: 1750, buildTime: 24, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
   },
@@ -800,7 +800,7 @@ const CONTENT: readonly ContentSpec[] = [
    * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists.
    *
    * FOUR IS ALSO WHAT EVERYONE ELSE NEEDS, and this comment used to claim
-   * otherwise: "an Allied or Soviet player needs six before a Grizzly, and a
+   * otherwise: "an Allied or Soviet player needs six before a Warden, and a
    * Pact player needs five". Walk the chains and all three are the same length.
    *
    *   conyard   -> powerPlant     -> refinery  -> warFactory    -> grizzly
@@ -812,7 +812,7 @@ const CONTENT: readonly ContentSpec[] = [
    * than the Sorter (infantry one building earlier than anyone else), a Breaker
    * Yard 100 credits and 2 seconds cheaper than the rival factories, and the
    * cheapest and fastest hulls in the game — a Grinder is 600/9 s against a
-   * Grizzly's 700/11, a Solarch's 800/12 and a Rhino's 900/13. It pays for that
+   * Warden's 700/11, a Solarch's 800/12 and an Anvil's 900/13. It pays for that
    * tempo with an 80-power plant (against 100 and 160) and the softest hulls in
    * the game: 270 hp against 340, 330 and 420.
    * ====================================================================== */
@@ -1044,13 +1044,13 @@ const CONTENT: readonly ContentSpec[] = [
    * putting them last.
    * ---------------------------------------------------------------------- */
   {
-    key: 'vindicator', name: 'Vindicator',
+    key: 'vindicator', name: 'Petrel Bomber',
     blurb: 'Strike aircraft. Kills armour from a place tanks cannot reach.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
     cost: 1200, buildTime: 16, prereqs: ['warFactory', 'radar'], sortOrder: 45,
   },
   {
-    key: 'mig', name: 'MiG Fighter', blurb: 'Interceptor. Owns the sky and nothing under it.',
+    key: 'mig', name: 'Interceptor', blurb: 'Air superiority. Owns the sky and nothing under it.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
     cost: 1000, buildTime: 14, prereqs: ['warFactory', 'radar'], sortOrder: 45,
   },
@@ -1082,13 +1082,13 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 2500, buildTime: 32, prereqs: ['battleLab'], sortOrder: 90,
   },
   {
-    key: 'ironCurtain', name: 'Iron Curtain Device',
+    key: 'ironCurtain', name: 'Ironclad Field',
     blurb: 'Makes everything in the radius untouchable for twenty seconds.',
     kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
     cost: 2000, buildTime: 28, prereqs: ['battleLab'], sortOrder: 91,
   },
   {
-    key: 'chronosphere', name: 'Chronosphere',
+    key: 'chronosphere', name: 'Displacement Ring',
     blurb: 'Lifts nine of your units out of one place and sets them down in another.',
     kind: BuildKind.Building, faction: Faction.Allies, tab: S,
     cost: 2000, buildTime: 28, prereqs: ['battleLab'], sortOrder: 90,
@@ -2069,7 +2069,7 @@ export class ProductionService implements QueueHooks {
 
   /**
    * The real def tables, when a data module published some. Spawn paths read
-   * hp/speed/armour straight out of this so a produced Grizzly is identical to
+   * hp/speed/armour straight out of this so a produced Warden is identical to
    * a scenario-placed one. Set once by `production.system.ts` at init.
    */
   bindingTables: DefTables | null = null;
@@ -2297,7 +2297,7 @@ export class ProductionService implements QueueHooks {
     // The progression gate. Third, not first: "Wrong faction" is a fact about
     // the entry and "Locked" is a fact about the profile, and reporting the
     // profile answer for an entry the army could never field either way would
-    // promise a Soviet player an Apocalypse the moment they unlock one.
+    // promise a Soviet player a Sledge the moment they unlock one.
     //
     // `p` is passed so the AI resolves against the SAME profile the human does
     // (see UnlockGate.allowsFor). An opponent fielding a unit the player has
@@ -2308,7 +2308,7 @@ export class ProductionService implements QueueHooks {
       // NAME THE MISSION. `reasonFor` resolves the def's `unlockedBy` through
       // the hint table `progression.system.ts` injects and answers
       // "Locked — Strip Mine: mine 70,000 credits of ore" rather than
-      // "Locked — complete a mission". A player hovered a Battle Lab, was told
+      // "Locked — complete a mission". A player hovered a Proving Ground, was told
       // to complete "a mission", and asked whether they were supposed to guess.
       // They were: one constant served every locked cameo in the game while the
       // def already carried the tag and the mission already carried the grant.
@@ -3761,7 +3761,7 @@ export class ProductionService implements QueueHooks {
    * live match: 1200 credits taken, `ready` at tick 1377, still sitting there
    * at tick 1802 with the tab blocked behind it.
    *
-   * It was NOT introduced by the Vindicator and the MiG. The Kestrel and the
+   * It was NOT introduced by the Petrel Bomber and the Interceptor. The Kestrel and the
    * Hornet have been unbuildable by exactly this route since `Locomotor.Air`
    * shipped, in both of the factions that were supposed to have an air arm —
    * which is why `tests/air-layer.spec.ts` could assert an end-to-end air layer

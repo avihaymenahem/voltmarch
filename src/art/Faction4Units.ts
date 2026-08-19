@@ -1375,7 +1375,7 @@ function scrapFlyer(key: string, name: string, L: number, S: number, H: number):
  * 9. THE ROSTER
  *
  * Dimensions come off the same scale ladder the shipped rosters use. The
- * Grinder is a 6.2 m hull against the Grizzly's 6.6, the Rhino's 7.0 and the
+ * Grinder is a 6.2 m hull against the Warden's 6.6, the Anvil's 7.0 and the
  * Solarch's 6.4 — the smallest main line in the game, which is the "cheap and
  * frail" read the stat block promises.
  * ========================================================================== */

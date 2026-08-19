@@ -9,7 +9,7 @@
  *     weapon's own `needsPower` bit. Four rows out of forty-two carry it, so six
  *     of the ten armed structures in the game kept firing on a grid producing
  *     nothing — and three of those six were DRAWING power while they did it: the
- *     Flame Tower (-20), the Multigunner AA (-30) and the Arc Pylon (-90). The
+ *     Flame Tower (-20), the AA Battery (-30) and the Arc Pylon (-90). The
  *     measured coverage went 4/10 silent to 7/10; the three still firing are the
  *     three with a draw of zero.
  *   - `Production.census` gated exactly one tab (`Powers`) on `EntityFlag.
@@ -211,7 +211,7 @@ describe('a building with no power cannot shoot', () => {
   it('silences a gun whose weapon never opted in, which is the whole report', () => {
     // `pillboxMg` has `needsPower: false` and always has. Under the old triple
     // condition this tower fired through a total blackout; that is the Flame
-    // Tower, the Multigunner AA and the Arc Pylon, verbatim.
+    // Tower, the AA Battery and the Arc Pylon, verbatim.
     expect(weaponAt(W_MG)!.needsPower).toBe(false);
     const post = tower(rig, 100, 100, W_MG, { draw: -20, powered: false });
     const foe = victim(rig, 100, 112);

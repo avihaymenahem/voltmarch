@@ -203,18 +203,18 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   rb('warfactory', 'War Factory', 'Builds vehicles.', 2000, 16, -30, BuildTab.Structures, ['refinery'], Faction.Allies),
   rb('radar', 'Radar Dome', 'Brings the tactical map online.', 1000, 10, -50, BuildTab.Structures, ['refinery'], Faction.Allies),
   rb('silo', 'Ore Silo', 'Stores 1500 credits of unprocessed ore.', 150, 4, -10, BuildTab.Structures, ['refinery'], Faction.Allies),
-  rb('lab', 'Battle Lab', 'Unlocks the top of the tech tree.', 2000, 20, -100, BuildTab.Structures, ['radar'], Faction.Allies),
+  rb('lab', 'Proving Ground', 'Unlocks the top of the tech tree.', 2000, 20, -100, BuildTab.Structures, ['radar'], Faction.Allies),
   rb('wall', 'Fortress Wall', 'Cheap. Blocks vehicles, not shells.', 100, 2, 0, BuildTab.Defense, ['conyard'], Faction.Allies),
   rb('pillbox', 'Pillbox', 'Anti-infantry emplacement.', 400, 5, -10, BuildTab.Defense, ['barracks'], Faction.Allies),
   rb('patriot', 'Patriot Missiles', 'Anti-air battery.', 1000, 9, -50, BuildTab.Defense, ['radar'], Faction.Allies),
-  rb('prismtower', 'Prism Tower', 'Refracting beam tower.', 1500, 12, -75, BuildTab.Defense, ['lab'], Faction.Allies),
+  rb('prismtower', 'Refractor Tower', 'Refracting beam tower.', 1500, 12, -75, BuildTab.Defense, ['lab'], Faction.Allies),
   ru('allied_rifle', 'Peacekeeper', 'Line infantry. Cheap, numerous, crushable.', 200, 4, BuildTab.Infantry, ['barracks'], Faction.Allies),
   ru('allied_javelin', 'Javelin', 'Shoulder launcher. Kills armour and aircraft.', 500, 7, BuildTab.Infantry, ['barracks', 'radar'], Faction.Allies),
   ru('allied_engineer', 'Engineer', 'Captures structures and mends damage.', 500, 6, BuildTab.Infantry, ['barracks'], Faction.Allies),
   ru('allied_harvester', 'Chrono Miner', 'Mines ore. The economy is this unit.', 1400, 12, BuildTab.Vehicles, ['refinery'], Faction.Allies),
   ru('allied_guardian', 'Guardian Tank', 'Main battle tank. Fast, thin armour.', 700, 8, BuildTab.Vehicles, ['warfactory'], Faction.Allies),
-  ru('allied_ifv', 'Multigunner IFV', 'Weapon changes with its passenger.', 600, 7, BuildTab.Vehicles, ['warfactory'], Faction.Allies),
-  ru('allied_prism', 'Prism Tank', 'Long-range beam armour. Fragile.', 1200, 13, BuildTab.Vehicles, ['lab'], Faction.Allies),
+  ru('allied_ifv', 'Sabre IFV', 'Weapon changes with its passenger.', 600, 7, BuildTab.Vehicles, ['warfactory'], Faction.Allies),
+  ru('allied_prism', 'Refractor Tank', 'Long-range beam armour. Fragile.', 1200, 13, BuildTab.Vehicles, ['lab'], Faction.Allies),
 
   /* -- Soviet ---------------------------------------------------------- */
   rb('conyard', 'Construction Yard', 'Unpacks from an MCV. Everything starts here.', 2500, 20, 0, BuildTab.Structures, [], Faction.Soviets),
@@ -224,7 +224,7 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   rb('warfactory', 'War Factory', 'Builds vehicles.', 2000, 16, -30, BuildTab.Structures, ['refinery'], Faction.Soviets),
   rb('radar', 'Radar Dome', 'Brings the tactical map online.', 1000, 10, -50, BuildTab.Structures, ['refinery'], Faction.Soviets),
   rb('silo', 'Ore Silo', 'Stores 1500 credits of unprocessed ore.', 150, 4, -10, BuildTab.Structures, ['refinery'], Faction.Soviets),
-  rb('lab', 'Battle Lab', 'Unlocks the top of the tech tree.', 2000, 20, -100, BuildTab.Structures, ['radar'], Faction.Soviets),
+  rb('lab', 'Proving Ground', 'Unlocks the top of the tech tree.', 2000, 20, -100, BuildTab.Structures, ['radar'], Faction.Soviets),
   rb('wall', 'Concrete Wall', 'Cheap. Blocks vehicles.', 100, 2, 0, BuildTab.Defense, ['conyard'], Faction.Soviets),
   rb('sentry', 'Sentry Gun', 'Anti-infantry emplacement.', 500, 5, -20, BuildTab.Defense, ['barracks'], Faction.Soviets),
   rb('flak', 'Flak Cannon', 'Anti-air battery.', 1000, 9, -50, BuildTab.Defense, ['radar'], Faction.Soviets),
@@ -235,7 +235,7 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   // while no def, no fallback and no content->model binding could produce one.
   ru('soviet_flak', 'Flak Trooper', 'Drum-fed autocannon. Hates anything light.', 300, 6, BuildTab.Infantry, ['barracks', 'radar'], Faction.Soviets),
   ru('soviet_harvester', 'Ore Collector', 'Mines ore. The economy is this unit.', 1400, 12, BuildTab.Vehicles, ['refinery'], Faction.Soviets),
-  ru('soviet_rhino', 'Rhino Heavy Tank', 'Slow, heavy, and it wins the trade.', 900, 10, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
+  ru('soviet_rhino', 'Anvil Heavy Tank', 'Slow, heavy, and it wins the trade.', 900, 10, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
   ru('soviet_sickle', 'Sickle', 'Legged scout. Hops over obstacles.', 700, 8, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
   ru('soviet_v4', 'V4 Rocket Launcher', 'Siege artillery. Cannot defend itself.', 1400, 14, BuildTab.Vehicles, ['radar'], Faction.Soviets),
 ];
@@ -1984,7 +1984,7 @@ export class Hud {
    *
    * THE JOIN NOTHING WAS MAKING. `UnlockGate` refuses a def and puts one
    * constant sentence on the cameo — "Locked — complete a mission" — with no
-   * mission in it, and a player who hovered a locked Battle Lab asked whether
+   * mission in it, and a player who hovered a locked Proving Ground asked whether
    * they were supposed to guess. Both halves of the answer already existed: the
    * def carries `unlockedBy`, and exactly one mission grants each id. This is
    * the only place in the product that can see both, because it is the only
@@ -2162,7 +2162,7 @@ export class Hud {
 
     /* -- aggregate health ---------------------------------------------- *
      * Absolute hit points, not an average of fractions: twelve conscripts and
-     * one Apocalypse at the same 60% are not the same army, and the number the
+     * one Sledge at the same 60% are not the same army, and the number the
      * player is deciding on is how much punishment the GROUP can still take. */
     view.hpFrac = totalMaxHp > 0 ? Math.max(0, Math.min(1, totalHp / totalMaxHp)) : 1;
     view.hpText = totalMaxHp > 0

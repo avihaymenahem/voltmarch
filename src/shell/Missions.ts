@@ -130,13 +130,18 @@ export interface RewardCopy {
 }
 
 /**
- * `prism-tank` / `prism_tank` / `prismTank` -> `Prism Tank`.
+ * `sentry-gun` / `sentry_gun` / `sentryGun` -> `Sentry Gun`.
  *
  * The contract hands the UI ids and nothing else, so this is the whole of what
  * can honestly be said about an unlock's name. It is deliberately not a lookup
  * table: a table here would go stale the first time the progression agent added
  * a row, and a screen that prints a wrong unlock name is worse than one that
  * prints a plain one.
+ *
+ * THE EXAMPLE IS A KEY NOBODY RENAMED, AND THAT IS THE POINT. `prismTank`
+ * humanises to "Prism Tank" while the unit is called the Refractor Tank: the
+ * transform reads the KEY, and the 2026-08-19 rename deliberately moved no key.
+ * Illustrating it with a renamed row would teach the wrong lesson twice over.
  */
 export function humaniseId(id: string): string {
   const spaced = id

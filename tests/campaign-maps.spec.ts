@@ -288,7 +288,7 @@ describe('every operation builds a world its triggers can read', () => {
        * `GROUP_WITHDRAW`, `GROUP_RAID`, each with a header in `src/sim/AI.ts`
        * saying why) are AI-internal state set by the brain itself.
        *
-       * MEASURED, NOT REASONED. `soviets.02.common-standard` parked two Grizzlies
+       * MEASURED, NOT REASONED. `soviets.02.common-standard` parked two Wardens
        * on the Works vehicle park and hung its secondary on
        * `all: [entityDead 'guard', unitsInArea DEPOT]`. A headless boot on
        * 2026-08-19 read their positions off the store through the armed session's
@@ -497,7 +497,7 @@ describe('the built world fields the operation’s foe, and only hulls that army
               const i = st.index(id);
               // THE AUTHORED HULL, UNREMAPPED. `keyFor` is deliberately not on
               // this path — see `runtime.ts#spawnUnits` — so a `rhino` stays a
-              // Rhino whoever owns it. If this ever starts remapping, the
+              // Anvil whoever owns it. If this ever starts remapping, the
               // authored key stops meaning the authored hull and this fails.
               expect(st.defId[i], `'${w.key}' did not land as itself`).toBe(entry.defId);
               // …and it flies the seat's colours, which is the other half of

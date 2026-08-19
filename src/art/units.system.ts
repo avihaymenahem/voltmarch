@@ -26,7 +26,7 @@
  *      before the content tables exist still gets real art instead of the
  *      hazard box;
  *   b. an EXACT registration per content key once `resolveDefBinding()` has a
- *      def table, so a Prism Tank stops borrowing the Guardian's hull.
+ *      def table, so a Refractor Tank stops borrowing the Guardian's hull.
  *
  * `unitLibrary` stays the direct surface for anything that wants the geometry
  * itself (cameo baking, a wreck module, the harness).

@@ -54,7 +54,7 @@
  *  B. The BEFORE number, reproduced rather than remembered: the same sweep run
  *     against `() => null`, which is what the module shipped with.
  *  C. Glyph collisions: how many defs share an `iconForBuildable` glyph today.
- *     That is the user-visible complaint ("a flask for Battle Lab") expressed
+ *     That is the user-visible complaint ("a flask for Proving Ground") expressed
  *     as a number.
  *  D. Cost: milliseconds for a full tab switch — bind N cells, drain the render
  *     queue at `HUD_CAMEO.perFrameBudget` per frame — on both paths.

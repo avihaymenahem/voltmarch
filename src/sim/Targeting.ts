@@ -794,7 +794,7 @@ export class TargetingSystem {
       }
       if (t === currentIdx) score *= COMBAT_TARGETING.stickiness;
 
-      // Shooting a Rhino with a rifle is legal and almost always wrong.
+      // Shooting an Anvil with a rifle is legal and almost always wrong.
       if (armorMultiplier(w.warhead, st.armorClass[t] as ArmorClass)
           <= COMBAT_TARGETING.ineffectiveBelow) {
         score *= COMBAT_TARGETING.ineffective;

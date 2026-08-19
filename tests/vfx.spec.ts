@@ -1464,7 +1464,7 @@ describe('the tesla starburst, and the gap that hid it', () => {
     expect(VFX_TESLA.spikeLenPx[1] * VFX_TESLA.spikeLongMul).toBeLessThan(140);
   });
 
-  it('does not leave the Prism Tower brighter than the Coil that was reported', () => {
+  it('does not leave the Refractor Tower brighter than the Coil that was reported', () => {
     // The report named the Tesla Coil. Once the arc had been cut twice the
     // Allied equivalent measured WORSE (+4.13pp against +3.40pp blue at four),
     // and shipping that would simply be the next report.

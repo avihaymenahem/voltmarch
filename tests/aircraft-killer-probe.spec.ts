@@ -23,7 +23,7 @@
  *       that writes `hp` (its own header says so), which is what makes a wrap
  *       there complete rather than a sample.
  *
- *   §3  Is the Multigunner AA turret hot? CLAUDE.md's aerial block flags it at
+ *   §3  Is the AA Battery turret hot? CLAUDE.md's aerial block flags it at
  *       "187-261% of an aircraft's health on ONE 26 m pass" and says in terms
  *       that it must be re-measured. Measured here, in the simulation, not on
  *       paper.
@@ -249,7 +249,7 @@ describe('§1 a ground blast and an aircraft 22 m over it', () => {
  *
  * `makeCombatRig` in `tests/air-layer.spec.ts` hand-fills columns with synthetic
  * numbers, which is right for the invariants it pins and wrong for a question
- * about BALANCE: "how long does a Rhino take" cannot be answered by a hull with
+ * about BALANCE: "how long does an Anvil take" cannot be answered by a hull with
  * a made-up 600 hp. This one spawns through `ProductionService.spawnUnit` and
  * `spawnBuilding` off the shipped catalog with `bindingTables` and
  * `setWeaponTable` both bound, so every hp, radius, armour class and weapon row
@@ -569,7 +569,7 @@ const AIR_LIMIT_TICKS = 30 * 30;   // 30 sim-seconds
  * EVERY TANK ROW IN §3 IS A VACUOUS PASS.
  *
  * A main battle tank cannot ACQUIRE an aircraft — `Targeting` refuses and
- * `Combat.engage` holds the trigger — so a Grizzli alone under a flight simply
+ * `Combat.engage` holds the trigger — so a Warden alone under a flight simply
  * never fires, reports 0 damage, and satisfies "no tank damages an aircraft"
  * whatever `applySplash` does. Mutation-verified: with the vertical term
  * disabled the tank rows still passed. They only mean something once the tank
@@ -615,7 +615,7 @@ async function runCase(
         // Keep the shells coming for the whole window: a dead bait stops the
         // tank firing and shortens the exposure the aircraft is being measured
         // against. THE HANDLE MUST BE REASSIGNED — a `const baitId` here kept
-        // testing the FIRST corpse and spawned a fresh Grizzly every tick for
+        // testing the FIRST corpse and spawned a fresh Warden every tick for
         // the rest of the run.
         baitId = rig.spawn(P1, 'grizzly', cx + standoff, cz);
       }
@@ -722,11 +722,11 @@ describe('§2/§3 three aircraft over one shooter — who kills them, and how', 
     for (const spread of [0, 2, 6]) {
       rows.push({ ...await runCase('aaTurret', 1, 'mig', 3, spread), shooter: `aaTurret@${spread}m` });
     }
-    console.log(`[airkill §3] one Multigunner AA vs 3 migs, by spacing\n${
+    console.log(`[airkill §3] one AA Battery vs 3 migs, by spacing\n${
       rows.map((r) => JSON.stringify(r)).join('\n')}`);
     /*
      * TOTAL DAMAGE IS THE WRONG METRIC HERE AND IT WAS THE FIRST ONE TRIED.
-     * Three MiGs hold 570 hp between them and every row in this sweep kills all
+     * Three Interceptors hold 570 hp between them and every row in this sweep kills all
      * three, so `damageSplash` came back 564.4 / 566.0 / 566.0 — a quantity
      * pinned by the targets' health rather than by the blast, i.e. a number
      * that cannot move and must not be cited. TIME and VICTIMS-PER-BLAST can.
@@ -840,7 +840,7 @@ describe('§3b the reported incident, staged', () => {
      * directly over the battery.
      *
      * MEASURED, NOT DERIVED, because the derivation is wrong by 3 m. A single
-     * shooter, a single MiG at cruise, horizontal separation swept 0..20 m:
+     * shooter, a single Interceptor at cruise, horizontal separation swept 0..20 m:
      *
      *     d (m)     0   2   4   5   6   7   8   9  10  12  14  16  18  20
      *     rifle     .   .   .   .   .   .   K   K   K   K   K   K   K   K
@@ -870,15 +870,15 @@ describe('§3b the reported incident, staged', () => {
 });
 
 /* ==========================================================================
- * §4. THE MULTIGUNNER AA TURRET, RE-MEASURED
+ * §4. THE AA BATTERY, RE-MEASURED
  *
- * CLAUDE.md: "after any such nerf the Multigunner AA turret becomes the
+ * CLAUDE.md: "after any such nerf the AA Battery turret becomes the
  * dominant answer and must be RE-MEASURED", and separately flags it at
  * "187-261% of an aircraft's health on ONE 26 m pass". Both are claims about
  * the SAME weapon and neither has a live number behind it.
  * ========================================================================== */
 
-describe('§4 is the Multigunner AA hot', () => {
+describe('§4 is the AA Battery hot', () => {
   it('prices one pass against every airframe, from the shipped row', () => {
     const aa = WEAPONS.find((w) => w.key === 'aaCannon');
     expect(aa, 'no aaCannon row').toBeDefined();
@@ -983,7 +983,7 @@ describe('§5 the floor still holds after the splash fix', () => {
       console.log(`[airkill §5] aaCannon impact y vs plane y=${planeY.toFixed(2)}: ${
         ys.length} records, worst |dy| ${worst.toFixed(2)} m`);
       // JUST OUTSIDE THE AIRFRAME'S OWN VERTICAL EXTENT, AND IT DOES NOT CLAMP.
-      // `estimatedHeight(0, radius, kind)` gives a MiG 4.131 m, so half is
+      // `estimatedHeight(0, radius, kind)` gives an Interceptor 4.131 m, so half is
       // 2.0655 and a worst |dy| of 2.362 leaves `gap = +0.296 m` — small, and
       // NOT zero. Reach falls 3.63 -> 3.62 m, which is why the floor is
       // unharmed, but the term is live rather than clamped.
@@ -1028,8 +1028,8 @@ describe('§5 the floor still holds after the splash fix', () => {
  *
  * §3 isolates one shooter per row, which is what makes each number readable and
  * is NOT what a flight actually meets. This is the mixed answer: an Allied
- * defensive position — four Grizzlies, one Multigunner AA, one IFV and eight
- * G.I.s — against three MiGs at cruise, with every death attributed to a def
+ * defensive position — four Wardens, one AA Battery, one IFV and eight
+ * G.I.s — against three Interceptors at cruise, with every death attributed to a def
  * key and a path. The bill is printed rather than quoted here.
  *
  * WHAT THIS IS NOT. It is not a full match. There is no terrain, no AI, no
@@ -1070,7 +1070,7 @@ describe('§6 who actually gets the kill when a flight meets a real position', (
       // report describes and the worst case for the defenders' splash.
       const air = [0, 1, 2].map((k) => rig.spawnAir(P1, 'mig', 200 + k * 0.4, 214));
       const airSet = new Set(air.map((a) => a as number));
-      // A ground escort under the flight, so the four Grizzlies actually fire.
+      // A ground escort under the flight, so the four Wardens actually fire.
       // Without it they never acquire anything and "no tank damaged the flight"
       // is true of a tank that never pulled the trigger — mutation-verified.
       let escort = rig.spawn(P1, 'rhino', 200, 214);
@@ -1110,7 +1110,7 @@ describe('§6 who actually gets the kill when a flight meets a real position', (
       for (const r of table) {
         expect(r.killer, 'a main battle tank damaged an aircraft').not.toBe('grizzly');
       }
-      // Which is only a reading if the Grizzlies were shooting. They are firing
+      // Which is only a reading if the Wardens were shooting. They are firing
       // at the escort standing under the flight, so their shells are landing in
       // the right place and the absence above is a decision rather than silence.
       const shelled = rig.splashes.filter((e) => Math.hypot(e.x - 200, e.z - 214) < 8).length;

@@ -31,7 +31,7 @@
  * 0.45` from the fallback dimensions. It is written out explicitly here at
  * exactly that value rather than left to a formula, because nav separation,
  * the placement blocker and the targeting hit radius all read it and a 10 cm
- * drift is a column of Rhinos that can no longer fit through its own gate.
+ * drift is a column of Anvils that can no longer fit through its own gate.
  *
  * THE WEAPON TABLE IS BORROWED, NOT REDECLARED — AND THEN APPENDED TO
  * -------------------------------------------------------------------
@@ -204,11 +204,11 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
   // At 19 x 4 on a 0.76 s cycle this was 100 raw dps on a 550-credit raider,
   // and the pair of burst-4 autocannons — this and the IFV's — were the two
   // best units in the game per credit. Both were scaled like EMPLACEMENTS: the
-  // Sandskiff out-damaged the 1000-credit MiG and killed a 700-credit Grizzly
-  // in 5.23 s while the Grizzly needed 6.10 s to kill it.
+  // Sandskiff out-damaged the 1000-credit Interceptor and killed a 700-credit Warden
+  // in 5.23 s while the Warden needed 6.10 s to kill it.
   //
   // 13 x 4 / 0.76 s = 68.4 raw. Against Medium (AutoCannon 0.65) that is 44.5
-  // dps, so a Grizzly now dies in 7.65 s and wins the duel by 25%. The row is
+  // dps, so a Warden now dies in 7.65 s and wins the duel by 25%. The row is
   // retuned IN PLACE rather than appended because this file owns it outright
   // and editing a value changes no index; see `ifvChaingun` below for why the
   // IFV's half could not be done the same way.
@@ -445,7 +445,7 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
  *
  * Every buildable foot soldier those two armies field — G.I., Conscript,
  * Attack Dog — fires SmallArms. At 0.10 a lone G.I. needs **100 seconds** to
- * kill a Rhino and **153** to kill an Apocalypse, while `COMBAT_TARGETING`'s
+ * kill an Anvil and **153** to kill a Sledge, while `COMBAT_TARGETING`'s
  * `ineffective` penalty (0.35x at or below a 0.35 multiplier) means he will not
  * voluntarily aim at either one while any enemy infantryman stands within
  * 2.2 m of the same bearing. The player reads that, correctly, as "my troops
@@ -483,13 +483,13 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
  *   flakBurst       AutoCannon  [0.80, 1.00, 0.65, 0.35, 0.35]  32 dps @ 20 m
  *
  * Read the Heavy column and the asymmetry is deliberate: 0.95 against 0.35.
- * The Javelin deletes an Apocalypse and the Flak Trooper only chips one, so
+ * The Javelin deletes a Sledge and the Flak Trooper only chips one, so
  * the SOVIET answer to heavy armour is still heavier armour — which is that
  * faction's whole thesis, and `tests/anti-armour-infantry.spec.ts` §1b records
  * it as a listed asymmetry rather than letting it look like an oversight.
  * Where the Flak Trooper wins is Light (1.00) and Medium (0.65), and both of
  * those clear `COMBAT_TARGETING.ineffectiveBelow`, so unlike a Conscript he
- * will actually AIM at a Grizzly.
+ * will actually AIM at a Warden.
  *
  * Neither replaces its army's line infantryman: both are worse than a rifle
  * against flesh, which is the whole point of a counter.
@@ -529,8 +529,8 @@ export const AUGMENT_WEAPONS: readonly WeaponDef[] = [
  *     aaCannon        34x3 @ 0.82 s     = 124 raw dps   (a static EMPLACEMENT)
  *     kestrelPod      44x2 @ 2.06 s     =  43 raw dps   (an 1100-cr aircraft)
  *
- * A 1200-credit Vindicator firing the Javelin's shoulder rocket would be the
- * worst credit-for-damage unit either army fields; a 1000-credit MiG firing the
+ * A 1200-credit Petrel Bomber firing the Javelin's shoulder rocket would be the
+ * worst credit-for-damage unit either army fields; a 1000-credit Interceptor firing the
  * flak battery would out-damage every tank in the game from a chassis nothing
  * on the ground is allowed to shoot at. Neither is a balance the reuse buys —
  * so the rows are authored, and the shape of each one is the doctrine.
@@ -545,11 +545,11 @@ export const AUGMENT_WEAPONS: readonly WeaponDef[] = [
  *     Rocket      [0.55 inf, 0.95 LIGHT, 0.90 med, 0.95 heavy, 0.90 concrete]
  *     AutoCannon  [0.80 inf, 1.00 LIGHT, 0.65 med, 0.35 heavy, 0.35 concrete]
  *
- * The Vindicator carries the Rocket row: it hurts armour and bases and can
- * defend itself. The MiG carries the AutoCannon row: 1.00 against Light makes
+ * The Petrel Bomber carries the Rocket row: it hurts armour and bases and can
+ * defend itself. The Interceptor carries the AutoCannon row: 1.00 against Light makes
  * it the best air-superiority unit in the game and 0.35 against Heavy and
  * Concrete means it cannot substitute for a tank or take a base apart. An
- * Allied player buys a strike aircraft; a Soviet player buys an interceptor.
+ * Allied player buys a strike aircraft; a Soviet player buys air superiority.
  *
  * BOTH ELEVATE, and that is not symmetry for its own sake — `air-layer.spec`
  * §6 asserts that every authored aircraft can fight the others.
@@ -561,7 +561,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
   // Wing-pylon AGMs. `plane()` in `src/art/UnitDefs.ts` builds MuzzleA/MuzzleB
   // under the wings at exactly the pylon the `ordnance` capsules hang from, so
   // MUZZLE_PAIR here is a real socket pair and not a guess.
-  /* 39 */ wpn('vindicatorMissile', 'Vindicator AGM', 62, WarheadClass.Rocket, 23, 2.4,
+  /* 39 */ wpn('vindicatorMissile', 'Petrel AGM', 62, WarheadClass.Rocket, 23, 2.4,
     ProjectileKind.Rocket, 52,
     { burstCount: 2, burstDelay: 0.18, splashRadius: 2.2, splashFalloff: 0.28,
       turretTurnRate: 280, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
@@ -576,7 +576,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
   // 600-credit wheeled raider out-damaging a 1000-credit aircraft is not an
   // order, it is an inversion; `ifvChaingun` below is 65 raw dps now and this
   // row is the ceiling for a mobile burst weapon again.
-  /* 40 */ wpn('migCannon', 'MiG Autocannon', 24, WarheadClass.AutoCannon, 21, 0.62,
+  /* 40 */ wpn('migCannon', 'Interceptor Autocannon', 24, WarheadClass.AutoCannon, 21, 0.62,
     ProjectileKind.Bullet, 170,
     { burstCount: 3, burstDelay: 0.07, splashRadius: 0.9, splashFalloff: 0.45,
       turretTurnRate: 340, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
@@ -587,7 +587,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  * THE GUN THAT HAD TO BE RE-AUTHORED RATHER THAN RETUNED.
  *
  * `DEFAULT_WEAPONS[6]` — `chaingun`, "25 mm Chaingun" — was the single most
- * over-scaled row in the game, and the Multigunner IFV that carried it was the
+ * over-scaled row in the game, and the Sabre IFV that carried it was the
  * best unit in the game per credit by a wide margin. 22 damage x 4 rounds with
  * a 0.07 s burst delay and a 0.55 s cooldown is a **0.76 s cycle for 88 damage,
  * 115.8 raw dps**, on a 600-credit hull. Read against `ARMOR_MATRIX`:
@@ -601,10 +601,10 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  *   - dps per 1000 credits, best in the whole roster among VEHICLES against
  *     Light (193), Medium (125), Heavy (68) AND Concrete (68). One unit, top of
  *     four of the six armour columns.
- *   - it beat a Grizzly 1v1 in **5.65 s** while the Grizzly needed **8.82 s** —
+ *   - it beat a Warden 1v1 in **5.65 s** while the Warden needed **8.82 s** —
  *     a 600-credit raider deleting a 700-credit main battle tank, faster,
  *     longer-sighted (32 against 30) and 100 credits cheaper.
- *   - it beat the Sandskiff, the MiG and the Solarch too. Only the Rhino won.
+ *   - it beat the Sandskiff, the Interceptor and the Solarch too. Only the Anvil won.
  *
  * WHY A NEW ROW AND NOT AN EDIT. `chaingun` lives in `src/sim/Combat.ts`, which
  * this file borrows verbatim as its prefix (§5 asserts it element-by-element)
@@ -612,10 +612,10 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  * exactly this case — `flakBurst` exists because `aaCannon` was "balanced as an
  * EMPLACEMENT" and could not be reused on an infantryman. `chaingun` is
  * balanced as nothing: it out-damaged the 800-credit emplaced flak battery's
- * cousin and the 1000-credit MiG from a chassis a third the price.
+ * cousin and the 1000-credit Interceptor from a chassis a third the price.
  *
  * THE NEW NUMBERS, DERIVED AND NOT GUESSED. The binding constraint is the
- * Grizzly duel. The Grizzly's `lightCannon` does 55 x 0.85 (AP vs Light) every
+ * Warden duel. The Warden's `lightCannon` does 55 x 0.85 (AP vs Light) every
  * 1.5 s = 31.2 dps, so it needs 220 / (31.2 x 0.80) = **8.82 s** to kill an IFV. For the
  * tank to win, the IFV must need longer than that on 340 hp of Medium armour:
  *
@@ -629,7 +629,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  *
  * WHAT THAT BUYS, ALL FOUR COMPLAINTS ANSWERED:
  *
- *     vs Grizzly   9.99 s against the tank's 8.82 s   the TANK wins
+ *     vs Warden    9.99 s against the tank's 8.82 s   the TANK wins
  *
  * THE SECONDS ARE THROUGH `COMBAT_DAMAGE.globalMul` (0.80); THE DPS FIGURES ARE
  * NOT. That scalar is applied once, in `Damage.applyOne`, so every damage and
@@ -640,7 +640,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  * is exactly why the stale ones were easy to miss.
  *     vs Light     65.5 dps, still the anti-air and anti-raider gun it is for
  *     vs Medium    42.6 dps  ->  5th per credit, behind the Sandskiff
- *     vs Heavy     22.9 dps  ->  nowhere near the top; a Rhino takes 22.9 s
+ *     vs Heavy     22.9 dps  ->  nowhere near the top; an Anvil takes 22.9 s
  *     vs Concrete  22.9 dps  ->  behind the Slagger, which IS the wall-breaker
  *
  * It keeps `canTargetAir`, its 22 m reach and its 200 deg/s turret, because
@@ -655,7 +655,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  * APPENDED, NEVER INTERLEAVED. Rows 0..40 keep their indices.
  */
 export const REBALANCE_WEAPONS: readonly WeaponDef[] = [
-  /* 41 */ wpn('ifvChaingun', '25 mm Multigunner', 11, WarheadClass.AutoCannon, 22, 0.60,
+  /* 41 */ wpn('ifvChaingun', '25 mm Sabre', 11, WarheadClass.AutoCannon, 22, 0.60,
     ProjectileKind.Bullet, 150,
     { burstCount: 5, burstDelay: 0.06, turretTurnRate: 200, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactMetal }),
@@ -738,7 +738,7 @@ interface UnitSpec {
    * How heavy this hull is when it drives over something. LIVE, and read by
    * `sim/Crush.ts#crushesUnit` — but ONLY together with `EntityFlag.Crusher`,
    * which is the gate. A `crushLevel` without that flag is inert, which is what
-   * the Prism Tank's 2 was until it got one.
+   * the Refractor Tank's 2 was until it got one.
    */
   crushLevel?: number;
   /**
@@ -746,7 +746,7 @@ interface UnitSpec {
    * EVERY VEHICLE, and the difference is not in this column.
    *
    * `Crush.ts` tests `EntityFlag.Crushable` BEFORE it reads this number. Every
-   * foot unit in the game carries that flag with `crushableBy: 1`, so a Grizzly
+   * foot unit in the game carries that flag with `crushableBy: 1`, so a Warden
    * (3) flattens riflemen and the column does real work. NOT ONE VEHICLE
    * CARRIES IT — so the 4/5/6 on fifteen hulls below describes a
    * vehicle-ramming rule that has never existed, and `Crush.ts`'s own header
@@ -761,7 +761,7 @@ interface UnitSpec {
    * What is NOT acceptable is the silent version: `tests/content-truthful.spec.ts`
    * §3 pins "no vehicle carries `EntityFlag.Crushable`", so the day one does,
    * the ram rule has to be designed and priced rather than switched on by a
-   * flag edit. An Apocalypse deleting a 420 hp Rhino on contact is a balance
+   * flag edit. A Sledge deleting a 420 hp Anvil on contact is a balance
    * decision, and nobody has made it.
    */
   crushableBy?: number;
@@ -1068,7 +1068,7 @@ const RCL_GUNNER = RCL_MOVER | EntityFlag.CanAttack;
  * The shared derivation everywhere else is `2.6 - length * 0.14`. A turretless
  * army has to slew its whole hull to bear, so every Reclamation hull gets a
  * full extra radian/sec — a 6.2 m Grinder turns at 2.73 rad/s against a
- * Grizzly's 1.73. That is the compensation, and it is deliberately not enough:
+ * Warden's 1.73. That is the compensation, and it is deliberately not enough:
  * one second of extra slew does not answer being outranged by six metres.
  */
 function RCL_TURN(dim: { l: number }): number {
@@ -1093,7 +1093,7 @@ export const UNITS: readonly UnitDef[] = [
   //
   // 125 HP and 3.0 m/s is the SLOWEST, second-frailest thing either army can
   // field, and it is OUT-RANGED by everything it is built to kill: 24 m of
-  // `rocketLauncher` against a Rhino's 26 and an Apocalypse's 28. He has to
+  // `rocketLauncher` against an Anvil's 26 and a Sledge's 28. He has to
   // walk into the gun to use his own, and `crushableBy: 1` means the tank can
   // decline the exchange entirely and drive over him. The warhead answers the
   // tank; nothing here answers the escort.
@@ -1148,7 +1148,7 @@ export const UNITS: readonly UnitDef[] = [
   //
   // Volume, not reach — the mirror of the Javelin. `flakBurst` is 1.00 against
   // Light and 0.35 against Heavy, so a Flak squad erases IFVs and Skiffs and
-  // merely chips an Apocalypse: the Soviet answer to a heavy tank is still a
+  // merely chips a Sledge: the Soviet answer to a heavy tank is still a
   // heavier tank, which is the faction's whole thesis.
   unit({
     key: 'flakTrooper', name: 'Flak Trooper', blurb: 'Drum-fed autocannon. Hates anything light.',
@@ -1163,7 +1163,7 @@ export const UNITS: readonly UnitDef[] = [
 
   /* -- Allied vehicles ---------------------------------------------------- */
   unit({
-    key: 'grizzly', name: 'Grizzly Tank', blurb: 'The Allied main battle tank.',
+    key: 'grizzly', name: 'Warden Tank', blurb: 'The Allied main battle tank.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
     cost: 700, buildTime: 11, tab: BuildTab.Vehicles, prereqs: ['warFactory'], sortOrder: 20,
     model: 'allied_guardian',
@@ -1173,12 +1173,12 @@ export const UNITS: readonly UnitDef[] = [
   }),
   // `ifvChaingun`, NOT `chaingun`. See `REBALANCE_WEAPONS` for the derivation:
   // the old gun made this 600-credit raider the best unit in the game per
-  // credit and let it kill a Grizzly 1v1 in 5.65 s. Every other number on the
+  // credit and let it kill a Warden 1v1 in 5.65 s. Every other number on the
   // row is unchanged — hp, armour, speed and sight are all duplicated in
   // `Scenarios.FALLBACK_UNITS` and asserted equal by `tests/data.spec.ts`, and
   // the gun was the thing that was wrong anyway.
   unit({
-    key: 'ifv', name: 'Multigunner IFV', blurb: 'Fast wheeled gun platform.',
+    key: 'ifv', name: 'Sabre IFV', blurb: 'Fast wheeled gun platform.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
     cost: 600, buildTime: 10, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'radar'], sortOrder: 30,
@@ -1188,22 +1188,22 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('ifvChaingun')], hasTurret: true, crushableBy: 4,
   }),
   // `EntityFlag.Crusher`, ADDED, and it is the missing half of a number that
-  // was authored TWICE. `crushLevel: 2` is on this row and on the Prism Tank's
+  // was authored TWICE. `crushLevel: 2` is on this row and on the Refractor Tank's
   // row in `Scenarios.FALLBACK_UNITS`, and `Crush.ts` tests the FLAG before it
-  // reads the level — so the column was dead and the Grizzly on the line above
+  // reads the level — so the column was dead and the Warden on the line above
   // carried both. Two independent tables agreeing on 2 is authored intent, not
   // a stray value.
   //
   // A TRACKED hull flattens men; that is the whole rule. Level 2 clears every
   // foot unit's `crushableBy: 1` and nothing else in the game is crushable, so
-  // this is exactly "the Prism Tank can drive over infantry" and is not a step
-  // toward ramming vehicles. It is deliberately BELOW the Grizzly's 3, which is
+  // this is exactly "the Refractor Tank can drive over infantry" and is not a step
+  // toward ramming vehicles. It is deliberately BELOW the Warden's 3, which is
   // what the original author's 2 was saying.
   //
   // The two hulls that fill this slot for the other new armies still do not
   // crush, and both have a reason: `mrdZenith` is a hover skirt (Pact doctrine
   // rule 1 — `crushLevel: 0` on everything, the Pact never wins a ram) and
-  // `rclSlaghurler` is wheeled and carries no level at all. The Apocalypse
+  // `rclSlaghurler` is wheeled and carries no level at all. The Sledge
   // does, because it is a heavy tank rather than an artillery piece.
   //
   // Adding the flag HERE and not in `Scenarios.ts` is deliberate and complete:
@@ -1212,7 +1212,7 @@ export const UNITS: readonly UnitDef[] = [
   // `tests/data.spec.ts` compares the crush COLUMNS, not the flag word — so the
   // two tables still agree on every field it checks.
   unit({
-    key: 'prismTank', name: 'Prism Tank', blurb: 'Beam artillery. Fragile.',
+    key: 'prismTank', name: 'Refractor Tank', blurb: 'Beam artillery. Fragile.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
     cost: 1200, buildTime: 17, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
@@ -1225,7 +1225,7 @@ export const UNITS: readonly UnitDef[] = [
 
   /* -- Soviet vehicles ---------------------------------------------------- */
   unit({
-    key: 'rhino', name: 'Rhino Tank', blurb: 'Slower, heavier, hits harder.',
+    key: 'rhino', name: 'Anvil Tank', blurb: 'Slower, heavier, hits harder.',
     faction: Faction.Soviets, kind: EntityKind.Vehicle,
     cost: 900, buildTime: 13, tab: BuildTab.Vehicles, prereqs: ['warFactory'], sortOrder: 20,
     model: 'soviet_rhino',
@@ -1234,7 +1234,7 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('heavyCannon')], hasTurret: true, crushLevel: 4, crushableBy: 6,
   }),
   unit({
-    key: 'apocalypse', name: 'Apocalypse Tank', blurb: 'The end of an argument.',
+    key: 'apocalypse', name: 'Sledge Tank', blurb: 'The end of an argument.',
     faction: Faction.Soviets, kind: EntityKind.Vehicle,
     cost: 1750, buildTime: 24, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
@@ -1366,7 +1366,7 @@ export const UNITS: readonly UnitDef[] = [
    *    with a deep HP pool instead of ArmorClass.Medium/Heavy with a shallow
    *    one. Read that against ARMOR_MATRIX: AP falls from 1.00 to 0.85 and
    *    Rocket from 0.90 to 0.95, but AutoCannon RISES from 0.65 to 1.00 and
-   *    SmallArms from 0.28 to 0.55. A Solarch trades evenly with a Grizzly and
+   *    SmallArms from 0.28 to 0.55. A Solarch trades evenly with a Warden and
    *    is deleted by an IFV or a squad of Conscripts. That hole is the reason
    *    the faction is not simply better.
    * ====================================================================== */
@@ -1553,7 +1553,7 @@ export const UNITS: readonly UnitDef[] = [
    *    stop to fire.
    *
    * 3. IT IS THE CHEAPEST AND THE FRAILEST. A Grinder is 600 against a
-   *    Grizzly's 700 and a Rhino's 900, builds in 9 seconds against 11 and 13,
+   *    Warden's 700 and an Anvil's 900, builds in 9 seconds against 11 and 13,
    *    and dies at 270 hp against 340 and 420. A Scrap Picker is 90 credits and
    *    three seconds — the cheapest thing any army fields. The Reclamation wins
    *    by arriving first and by arriving again; it never wins a trade.
@@ -1839,7 +1839,7 @@ export const UNITS: readonly UnitDef[] = [
    * agreeing with this in advance.
    * --------------------------------------------------------------------- */
   unit({
-    key: 'vindicator', name: 'Vindicator', blurb: 'Strike aircraft. Kills armour from a place tanks cannot reach.',
+    key: 'vindicator', name: 'Petrel Bomber', blurb: 'Strike aircraft. Kills armour from a place tanks cannot reach.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
     cost: 1200, buildTime: 16, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'radar'], sortOrder: 45,
@@ -1850,7 +1850,7 @@ export const UNITS: readonly UnitDef[] = [
     //
     // It said "the heaviest and SLOWEST of the four" and the second half was
     // false against the number three lines below: 11.5 beats the Swarmhornet's
-    // 11.0, so the Vindicator is second-slowest. Full order, slowest first —
+    // 11.0, so the Petrel Bomber is second-slowest. Full order, slowest first —
     // rclHornet 11.0, vindicator 11.5, mrdKestrel 12.0, mig 13.5. The same
     // wrong claim had been copied into `wiki/Faction-Allies.md`, while
     // `wiki/Strategy.md` carried the correct table two pages away.
@@ -1858,8 +1858,8 @@ export const UNITS: readonly UnitDef[] = [
     // "the ONLY one" was wrong: `kestrelPod` is Rocket too, same 0.90 against
     // Concrete, and it also splashes. The difference is weight of fire, not the
     // warhead row — 62 x 2 over a 2.58 s cycle with a 2.2 m burst against the
-    // Kestrel's 44 x 2 over 2.06 s at 1.8 m, so the Vindicator lands 55.8
-    // damage a shot against 35.2 and reaches a metre wider. The MiG (AutoCannon
+    // Kestrel's 44 x 2 over 2.06 s at 1.8 m, so the Petrel Bomber lands 55.8
+    // damage a shot against 35.2 and reaches a metre wider. The Interceptor (AutoCannon
     // 0.35) and the Swarmhornet (Tesla 0.60, no splash) are the two that really
     // cannot open a base.
     maxHp: 240, armor: ArmorClass.Light, maxSpeed: 11.5, turnRate: 2.9,
@@ -1867,7 +1867,7 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('vindicatorMissile')], hasTurret: false, crushableBy: 0,
   }),
   unit({
-    key: 'mig', name: 'MiG Fighter', blurb: 'Interceptor. Owns the sky and nothing under it.',
+    key: 'mig', name: 'Interceptor', blurb: 'Air superiority. Owns the sky and nothing under it.',
     faction: Faction.Soviets, kind: EntityKind.Vehicle,
     cost: 1000, buildTime: 14, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'radar'], sortOrder: 45,
@@ -2186,7 +2186,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 1200, power: -40, sight: 20,
     produces: ['harvester', 'grizzly', 'rhino', 'ifv', 'prismTank', 'apocalypse', 'mcv'],
     producesTab: BuildTab.Vehicles,
-    // A Rhino is 7 m long and leaves nose-first; anything under ~6 m and it
+    // An Anvil is 7 m long and leaves nose-first; anything under ~6 m and it
     // spawns intersecting its own factory's blocked footprint.
     exitClearance: 6,
   }),
@@ -2221,7 +2221,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     exitClearance: 8,
   }),
   building({
-    key: 'battleLab', name: 'Battle Lab', blurb: 'Unlocks the top of every tab.',
+    key: 'battleLab', name: 'Proving Ground', blurb: 'Unlocks the top of every tab.',
     faction: Faction.Neutral, cost: 2000, buildTime: 24, tab: BuildTab.Structures,
     prereqs: ['radar'], sortOrder: 80, model: 'battleLab', dim: B.battleLab,
     maxHp: 900, power: -60, sight: 20,
@@ -2247,7 +2247,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 550, power: -20, sight: 22, weapons: [w('flameJet')],
   }),
   building({
-    key: 'prismTower', name: 'Prism Tower', blurb: 'Long-ranged beam defence. Needs power.',
+    key: 'prismTower', name: 'Refractor Tower', blurb: 'Long-ranged beam defence. Needs power.',
     faction: Faction.Allies, cost: 1500, buildTime: 16, tab: BuildTab.Defense,
     prereqs: ['battleLab'], sortOrder: 30, model: 'prismTower', dim: B.prismTower,
     maxHp: 600, power: -50, sight: 30, weapons: [w('prismTowerBeam')], hasTurret: true,
@@ -2259,12 +2259,12 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 700, power: -75, sight: 30, weapons: [w('teslaBolt')],
   }),
   // The two rows the models audit asked for. `allied_aa` and `soviet_sentry`
-  // were finished models doing stand-in duty for the Prism Tower and the Flame
+  // were finished models doing stand-in duty for the Refractor Tower and the Flame
   // Tower, both of which now have their own art; these give them real defs and
   // make the two armies' defence sets symmetric — a cheap gun, a heavy gun and
   // one that dies in a brownout, each side.
   building({
-    key: 'aaTurret', name: 'Multigunner AA', blurb: 'Flak battery. Reaches what tanks cannot.',
+    key: 'aaTurret', name: 'AA Battery', blurb: 'Flak battery. Reaches what tanks cannot.',
     faction: Faction.Allies, cost: 800, buildTime: 12, tab: BuildTab.Defense,
     prereqs: ['radar'], sortOrder: 25, model: 'aaTurret', dim: B.prismTower,
     maxHp: 550, power: -30, sight: 28, weapons: [w('aaCannon')], hasTurret: true,
@@ -2414,7 +2414,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
    *
    * The second price is the Pylon's placement in the tree: it is gated on the
    * Spotter Mast, not on the Crucible, so it lands a full tech tier before a
-   * Prism Tower or a Helios Spire. An early heavy defence that browns out your
+   * Refractor Tower or a Helios Spire. An early heavy defence that browns out your
    * own base is a real decision, which is the point.
    * ====================================================================== */
   building({
@@ -2589,7 +2589,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
    *
    * SIX ROWS, FOUR ARMIES. The two original armies field two apiece because
    * that is what the service implements: the Soviets get the missile and the
-   * Curtain, the Allies get the Chronosphere and the storm. The Pact and the
+   * Field, the Allies get the Displacement Ring and the storm. The Pact and the
    * Reclamation are complete parallel trees that never draw from the
    * `Faction.Neutral` pool (`SHARED_POOL_FACTIONS` in Production.ts), so each
    * needs a row of its own — a Neutral superweapon would put a Soviet silo in
@@ -2621,14 +2621,14 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 1000, power: -150, sight: 20,
   }),
   building({
-    key: 'ironCurtain', name: 'Iron Curtain Device',
+    key: 'ironCurtain', name: 'Ironclad Field',
     blurb: 'Makes everything in the radius untouchable for twenty seconds.',
     faction: Faction.Soviets, cost: 2000, buildTime: 28, tab: BuildTab.Structures,
     prereqs: ['battleLab'], sortOrder: 91, model: 'ironCurtain', dim: B.superweapon,
     maxHp: 950, power: -150, sight: 20,
   }),
   building({
-    key: 'chronosphere', name: 'Chronosphere',
+    key: 'chronosphere', name: 'Displacement Ring',
     blurb: 'Lifts nine of your units out of one place and sets them down in another.',
     faction: Faction.Allies, cost: 2000, buildTime: 28, tab: BuildTab.Structures,
     prereqs: ['battleLab'], sortOrder: 90, model: 'chronosphere', dim: B.superweapon,
@@ -2733,7 +2733,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
    * THE PRICE IS A REAL DECISION, and it is priced against the tech building it
    * sits beside rather than against nothing:
    *
-   *   Battle Lab      2000 credits, 24 s, -60 power, opens the top of every tab.
+   *   Proving Ground  2000 credits, 24 s, -60 power, opens the top of every tab.
    *   Command Post    1500 credits, 20 s, -80 power, opens a tab of its own.
    *
    * Cheaper and quicker to raise, and then MORE EXPENSIVE TO KEEP: -80 is the
@@ -3004,7 +3004,7 @@ export { RELOCATE, relocationFee } from '../sim/Relocate';
    *   12  artillery    "V4 Launcher" — 130 HE at 48 m with a 6.5 m burst and a
    *                    12 m minimum. A fully authored Soviet siege gun with no
    *                    Soviet siege unit to carry it: the roster's answer to a
-   *                    base is the Apocalypse and the air arm. Giving it a hull
+   *                    base is the Sledge and the air arm. Giving it a hull
    *                    means a def row, a `FALLBACK_UNITS` row, a model, a
    *                    cameo and a balance pass, which is content work rather
    *                    than a data fix.

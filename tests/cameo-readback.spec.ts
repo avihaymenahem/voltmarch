@@ -621,7 +621,7 @@ describe('CameoRenderer on the node path', () => {
      * NOT COVERED BY AN IDENTITY CHECK. `bind()` REUSES the job object when the
      * canvas is already bound, so `jobs.get(canvas) === job` stays true across a
      * subject change and a fix written on object identity would paint a
-     * Grizzly's pixels into an Apocalypse's slot. That is what `Job.epoch` is
+     * Warden's pixels into a Sledge's slot. That is what `Job.epoch` is
      * for, and this is the test that fails without it.
      */
     const node = new FakeNodeRenderer();

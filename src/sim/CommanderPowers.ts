@@ -593,7 +593,7 @@ export class CommanderPowerService {
   /**
    * CHRONOSHIFT — lifts the units standing around your base to the marker.
    *
-   * A one-click chronosphere. The Chronosphere proper takes a source AND a
+   * A one-click Displacement Ring. The structure proper takes a source AND a
    * destination and needs a reticle, a staged-target state machine and a second
    * click that can be misread as a move order; this takes the destination only
    * and derives the source, so it fires from the same one-click command every
