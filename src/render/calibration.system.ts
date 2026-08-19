@@ -139,7 +139,10 @@ export function calibrationStage(): CalibrationStage | null {
  * A second call while one is running is ignored; re-arming mid-probe would fit
  * a line through two different scenes.
  */
-export function armCalibration(onDone: (result: CalibrationResult) => void): boolean {
+export function armCalibration(
+  onDone: (result: CalibrationResult) => void,
+  targetMs: number = CALIBRATION.targetMs,
+): boolean {
   if (underHarness() || handle === null || controller !== null) return false;
   if (handle.isFixedSize) return false;
 
@@ -150,12 +153,13 @@ export function armCalibration(onDone: (result: CalibrationResult) => void): boo
   // empty string on a driver that masked its renderer info.
   const name = typeof handle.capabilities.gpu === 'string' ? handle.capabilities.gpu : '';
   const prior = calibrationPrior(classifyGpu(name), handle.capabilities.adapter, handle.backend);
-  controller = new HardwareCalibration(prior.startScale, entry, CALIBRATION.maxScale);
+  controller = new HardwareCalibration(prior.startScale, entry, CALIBRATION.maxScale, targetMs);
   calibrationProgress = 0;
   done = onDone;
 
   console.info(
-    `[render] hardware calibration: probing from ${Math.round(prior.startScale * 100)}% — ${prior.note}`,
+    `[render] hardware calibration: probing from ${Math.round(prior.startScale * 100)}% `
+    + `for ${(1000 / targetMs).toFixed(0)} fps — ${prior.note}`,
   );
   // The first probe's scale goes on NOW so the warmup frames are already at it.
   apply(controller.firstProbeScale);

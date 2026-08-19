@@ -272,7 +272,7 @@ in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
 - **`playback.system.ts` is `Phase.Command` order 1** — before the drain at 9000, or every command
   applies one tick late forever. It harvests the bus first, which is the input lock: a viewer's slot
   IS the recorded player's slot, so their right-click would otherwise be accepted.
-- **Its `dispose()` calls `detachPlayback`, not `endPlayback`.** `startReplay` arms the file and then
+- **Its `dispose()` calls `detachPlayback`, not `preparePlayback(null)`.** `startReplay` arms the file and then
   boots, and booting disposes the previous engine — clearing the armed file there meant the viewer
   silently got an ordinary AI-less skirmish on the recording's seed. Same split as `net.system.ts`.
 - **`npm run replay-probe` is the proof**, and its second phase is the load-bearing one: it deletes
@@ -1813,14 +1813,44 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   the first thing to check when a TSL defect arrives from a desktop build and not from the web
   one.
 
--  **`displayFrequency` IS EXPOSED AND HAS ZERO READERS, and `CALIBRATION.targetMs` is still
-  16.7.** `screen.getPrimaryDisplay().displayFrequency` has **no web equivalent**, which is the
-  whole reason it is on the bridge — `vm:display-frequency` in `desktop/src/main.ts`, declared at
-  `src/platform/desktop.ts:112` — and nothing in `src/` calls it. So a 144 Hz desktop player is
-  calibrated against a 60 Hz target exactly as a browser player is, and the one capability that
-  could fix it is already delivered. Same shape as `graphics.fpsCap`: persisted, plumbed, consumed
-  by nobody. Wiring it is a real change rather than a one-liner — the target is what the fitted
-  line is solved for, so it moves every scale the calibration produces.
+-  **`displayFrequency` AND `graphics.fpsCap` HAVE READERS NOW — AND THE OBVIOUS WIRING WAS
+  BACKWARDS.** Both were persisted, plumbed and consumed by nobody, and the obvious reading was
+  that a 144 Hz desktop player is calibrated against a 60 Hz target while the one capability that
+  could fix it is already delivered. **That reading is measured false.** Feeding §9's own fitted
+  line (`5.86 + 6.40 x Mpx`) through the real `solveScale` at a 1440p buffer:
+
+  ```
+    target      solved scale   outcome
+    16.7  60Hz  0.625          fill-rate — a sharp, honest answer
+    11.1  90Hz  0.435          FLOOR: 0.55 + AO OFF + shadows LOW
+     8.3 120Hz  0.299          FLOOR: 0.55 + AO OFF + shadows LOW
+     6.9 144Hz  0.198          FLOOR: 0.55 + AO OFF + shadows LOW
+  ```
+
+  **The cause is the INTERCEPT, not the slope.** That machine spends 5.86 ms before a single pixel
+  is drawn — 84% of a 144 Hz budget, 70% of a 120 Hz one — so no resolution scale delivers those
+  rates and the calibration would spend every quality setting it owns discovering that. And on a
+  machine fast enough to reach 144 (`1.50 + 1.20 x Mpx`) the answer clamps to the ceiling and is
+  IDENTICAL to 60's. **Inert where it would help, destructive where it would not.**
+
+  So the target is OPT-IN: `fpsCap` drives it (`targetMsForCap`, 0 → 60), `Shell.maybeCalibrate`
+  passes it, and `displayFrequency` only ANNOTATES the row — it names your panel and marks options
+  above it. `tests/frame-rate-target.spec.ts` holds every number above.
+
+  **THE LOAD-BEARING HALF IS THE EXEMPT LIST.** `graphics.fpsCap` was on `CALIBRATION_EXEMPT`
+  under an argument that was TRUE when written — *"it has ZERO readers... it cannot affect
+  anything, including the frame"* — and giving it a reader expired that argument silently. Left
+  there, choosing 120 fps would retire nothing, the calibration solved for 60 would stand, and the
+  row would appear to do nothing. `hardware-calibration.spec.ts` was PINNING that behaviour and
+  the entry is moved rather than deleted. **An exemption argued from "nothing reads it" carries an
+  expiry date no mechanism can notice passing.**
+
+  **IT IS NOT A FRAME LIMITER AND THE ROW SAYS SO.** There is none in this project — the render
+  loop is `src/core/`, frozen infrastructure, and a capped frame time is a FLAT frame time, which
+  is exactly what `CALIBRATION.flatSlopeMs` reads as "not fill-rate bound". A limiter left on
+  during a probe would poison the fit that measures it. Still open: `displayFrequency` answers for
+  the PRIMARY monitor, so a window on a second screen is annotated with the first one's rate;
+  fixing that means putting `hz` on each `DesktopDisplayInfo`, which is a bridge-version bump.
 
 ## Hard rules
 

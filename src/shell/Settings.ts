@@ -42,6 +42,7 @@ import {
   type RenderQualityTier,
 } from '../render/renderer';
 import { adaptiveLiveScale, setAdaptiveResolution } from '../render/adaptive-res.system';
+import { targetMsForCap } from '../render/HardwareCalibration';
 import { audio } from '../audio/AudioEngine';
 import { CAMERA_NAV } from '../core/config';
 import type { GameHandle } from '../game/Bootstrap';
@@ -58,6 +59,7 @@ import {
   chordLabel,
   conflictingIds,
   defaultSettings,
+  FPS_CAPS,
   isBindableCode,
   touched,
   type Chord,
@@ -439,6 +441,18 @@ export class SettingsScreen implements Screen {
    * permanent piece of furniture.
    */
   private desktop: DesktopDisplayState | null = null;
+  /**
+   * The primary monitor's refresh rate, or null in a browser / before it lands.
+   *
+   * PRIMARY, NOT THE ONE THE WINDOW IS ON. `vm:display-frequency` answers
+   * `screen.getPrimaryDisplay().displayFrequency`, so a player whose game is on
+   * a second monitor is told about the first one. It is used only to ANNOTATE
+   * the frame-rate row — never to change a setting — so the failure mode is a
+   * note that reads oddly on a mismatched multi-monitor rig rather than a
+   * picture solved for the wrong panel. Fixing it properly means putting `hz`
+   * on each `DesktopDisplayInfo`, which is a bridge-version bump.
+   */
+  private displayHz: number | null = null;
   /** The options frame itself, hidden while the help overlay is up. */
   private frameRoot: HTMLElement | null = null;
   private help: HelpPanel | null = null;
@@ -1078,6 +1092,14 @@ export class SettingsScreen implements Screen {
       .displayState()
       .then((state) => this.adoptDesktop(state))
       .catch(() => undefined);
+    void bridge
+      .displayFrequency()
+      .then((hz) => {
+        if (!Number.isFinite(hz) || hz <= 0) return;
+        this.displayHz = Math.round(hz);
+        if (this.body !== null && this.tab === 'graphics') this.renderTab();
+      })
+      .catch(() => undefined);
   }
 
   private patchDesktop(patch: DesktopDisplayPatch): void {
@@ -1300,6 +1322,45 @@ export class SettingsScreen implements Screen {
         : 'Renders below native and upscales. The cheapest frame you will ever buy.',
     ));
     /*
+     * FRAME RATE TARGET — WHAT THE CALIBRATION SOLVES FOR, AND NOTHING ELSE.
+     *
+     * IT DOES NOT LIMIT FRAMES. There is no frame limiter in this project: the
+     * render loop is in `src/core/`, which is frozen infrastructure, and adding
+     * one there is a separate feature with its own interaction to think about
+     * (a capped frame time is a FLAT frame time, which is exactly what
+     * `CALIBRATION.flatSlopeMs` reads as "not fill-rate bound" — a limiter
+     * switched on during a probe would poison the fit it is measured by). The
+     * copy below therefore says "solves for" and never "caps".
+     *
+     * WHY 60 IS THE DEFAULT ON A 144 Hz PANEL, measured rather than assumed:
+     * `targetMsForCap`'s header has the table. The short version is that on
+     * §9's own machine every target above 60 lands on the resolution floor with
+     * ambient occlusion switched off — because 5.86 ms of fixed cost is already
+     * 84% of a 144 Hz frame — while on a machine fast enough to reach 144 the
+     * answer clamps to the ceiling and is identical to 60's. Inert where it
+     * would help, destructive where it would not. So it is opt-in.
+     */
+    const hz = this.displayHz;
+    presets.appendChild(row(
+      'Frame Rate Target',
+      chooser(
+        FPS_CAPS.map((v) => ({
+          value: v,
+          label: v === 0
+            ? '60 fps (default)'
+            : hz !== null && v > hz ? `${v} fps (above your display)` : `${v} fps`,
+        })),
+        g.fpsCap,
+        (v) => { set({ fpsCap: v }); this.renderTab(); },
+      ),
+      'What Hardware Calibration solves the resolution for. It does not limit frames. '
+      + (hz !== null ? `Your primary display runs at ${hz} Hz. ` : '')
+      + 'Raising it trades sharpness for frame rate, and on most machines it reaches '
+      + 'the resolution floor without reaching the target — so changing it re-runs the '
+      + 'calibration.',
+    ));
+    const targetFps = Math.round(1000 / targetMsForCap(g.fpsCap));
+    /*
      * ONE-TIME CALIBRATION, AND THE ROW HAS TO SAY WHICH STATE IT IS IN.
      *
      * "Calibrate" next to no other information is a button nobody presses,
@@ -1322,10 +1383,14 @@ export class SettingsScreen implements Screen {
         },
       }),
       g.calibrated
-        ? 'Measures your GPU for a few seconds during a battle and solves for the '
-          + 'resolution that holds 60 fps. Already done — press to measure again.'
-        : 'Measures your GPU for a few seconds at the start of your next battle and '
-          + 'solves for the resolution that holds 60 fps. Runs once.',
+        // THE FPS IN THIS SENTENCE IS READ FROM THE SETTING, NOT TYPED. It said
+        // "60 fps" in both branches, which became false the moment `fpsCap`
+        // gained a reader — a row describing a measurement it no longer
+        // performs is the exact defect `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+        ? `Measures your GPU for a few seconds during a battle and solves for the `
+          + `resolution that holds ${targetFps} fps. Already done — press to measure again.`
+        : `Measures your GPU for a few seconds at the start of your next battle and `
+          + `solves for the resolution that holds ${targetFps} fps. Runs once.`,
     ));
     presets.appendChild(row(
       'Adaptive Resolution',

@@ -949,6 +949,89 @@ export function effectiveOpponents(setup: MatchSetup): OpponentSetup[] {
     : { ...o }));
 }
 
+/* --------------------------------------------------------------------------
+ * DESCRIBING THE OPPOSITION
+ *
+ * ONE CHIP FOR N ARMIES IS A LIE, and the end screen told it. It printed
+ * `MatchSetup.difficulty` — the mirror of opponent ONE — next to a name string
+ * that listed every hostile army, so a four-way against Easy, Normal and Brutal
+ * announced whichever setting happened to be seated first as though it were the
+ * table's. Nothing on the screen gave it away.
+ *
+ * WHY THIS LIVES HERE AND NOT IN `EndScreen.ts`. It is a pure formatting rule
+ * over `DIFFICULTIES`, which this file owns — and this file is the one shell
+ * module that imports nothing from the engine and nothing from the document, so
+ * a test can reach it. `src/shell/EndScreen.ts` transitively pulls `Shell.ts`
+ * and therefore three, the renderer and the whole engine; MEASURED, importing
+ * it into a vitest file takes over two minutes to transform and times out. A
+ * "pure, and therefore tested" selector that no test can import is neither.
+ * ------------------------------------------------------------------------ */
+
+/** One hostile army, as a results screen needs to describe it. */
+export interface OpponentSummary {
+  /** `PlayerState.name` — "Soviet AI 2" in a four-way, "Soviet AI" in a duel. */
+  readonly name: string;
+  /** Index into `DIFFICULTIES`. Not read when `isHuman`. */
+  readonly difficulty: number;
+  /**
+   * A PvP seat. It has no difficulty, and printing one for it would be the same
+   * class of falsehood this shape exists to end.
+   */
+  readonly isHuman: boolean;
+}
+
+/** What one chip says, and what its `title` says when hovered. */
+export interface OpponentChip {
+  readonly text: string;
+  readonly title: string;
+}
+
+/** `Brutal`, or `Human` for a PvP seat, which has no difficulty at all. */
+export function controllerLabel(o: OpponentSummary): string {
+  return o.isHuman ? 'Human' : (DIFFICULTIES[o.difficulty] ?? '—');
+}
+
+/**
+ * The opponent chips: ONE when every seat played at the same setting, one PER
+ * SEAT when they did not.
+ *
+ * The collapsed form is unchanged down to the separator, so a 1v1 end screen is
+ * exactly the one that shipped — this is a fix, not a redesign, and a duel has
+ * one answer to give. A mixed table grows a chip each; `.vm-load-meta` is
+ * `flex-wrap: wrap`, so a fourth chip wraps rather than clipping. Either way
+ * the FULL per-seat list is on the tooltip, so folding never loses the detail.
+ *
+ * `fallbackName` / `fallbackDifficulty` are used only when `opponents` is empty
+ * — `Shell.endMatch` can build a result with no live world to read, and a
+ * results screen that silently stops naming the opponent is worse than one that
+ * names them coarsely.
+ */
+export function opponentChips(
+  opponents: readonly OpponentSummary[], fallbackName: string, fallbackDifficulty: number,
+): OpponentChip[] {
+  if (opponents.length === 0) {
+    const label = DIFFICULTIES[fallbackDifficulty] ?? '—';
+    return [{ text: `${fallbackName} · ${label}`, title: `Opponents: ${fallbackName}` }];
+  }
+
+  const labels = opponents.map(controllerLabel);
+  const full = opponents.map((o, i) => `${o.name} · ${labels[i]}`).join('\n');
+
+  if (labels.every((l) => l === labels[0])) {
+    // The chip is one line in a flex meta row and three army names is more than
+    // that line has, so the names stay visible for the common case and the full
+    // list goes on the tooltip where nothing is lost if the text is clipped.
+    return [{
+      text: `${opponents.map((o) => o.name).join(' · ')} · ${labels[0]}`,
+      title: `Opponents:\n${full}`,
+    }];
+  }
+  return opponents.map((o, i) => ({
+    text: `${o.name} · ${labels[i]}`,
+    title: `Opponents:\n${full}`,
+  }));
+}
+
 /**
  * A deep-enough copy: `opponents` and its entries are fresh objects.
  *
@@ -1023,18 +1106,40 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
   const r = isRecord(raw) ? raw : {};
   const keys = factionKeys.length > 0 ? factionKeys : [d.playerFaction, d.aiFaction];
 
-  let player = typeof r.playerFaction === 'string' && keys.includes(r.playerFaction)
+  const player = typeof r.playerFaction === 'string' && keys.includes(r.playerFaction)
     ? r.playerFaction
     : (keys.includes(d.playerFaction) ? d.playerFaction : keys[0]);
 
-  let ai = typeof r.aiFaction === 'string' && keys.includes(r.aiFaction)
+  const ai = typeof r.aiFaction === 'string' && keys.includes(r.aiFaction)
     ? r.aiFaction
     : (keys.includes(d.aiFaction) ? d.aiFaction : keys[keys.length - 1]);
 
-  // A mirror match would hand both scripted bases to one player — see the
-  // module report. The opponent always ends up on a different side.
-  if (ai === player) ai = keys.find((k) => k !== player) ?? ai;
-  if (ai === player) player = keys[0];
+  /*
+   * THERE IS NO ANTI-MIRROR RULE, AND DELETING IT WAS THE FIX RATHER THAN
+   * EXTENDING IT. Two lines here used to move `aiFaction` off the player's own
+   * side, under the reason "a mirror match would hand both scripted bases to
+   * one player". That reason was real and it is FIXED, in the layer that owned
+   * it: `ScenarioBuilder.allies` / `.soviets` resolve by SLOT rather than by
+   * searching the player table for a faction, and `ScenarioBuilder.keyFor`
+   * remaps a layout's content keys per owner. Both carry the mirror match in
+   * their headers as the defect they were written for.
+   *
+   * It could not survive the four-army lobby in any case. It was WRONG — a
+   * player who picks Soviets against Soviets has asked for a legitimate match,
+   * and silently launching them against somebody else is the lobby lying about
+   * what it is about to boot. And it was INCOHERENT — it only ever looked at
+   * `opponents[0]`, so seats 2 and 3 could already mirror the player and each
+   * other through `normalizeOpponent`, and with four seats over four factions
+   * a general no-repeat rule is not satisfiable at all. `Chrome.hostileColor`
+   * already states the consequence as settled: blip colours are keyed on the
+   * SEAT precisely "because two armies may pick the same side (mirror matches
+   * are legal), so an accent is not a unique key for an army".
+   *
+   * Variety is still the DEFAULT everywhere it is a free choice rather than a
+   * stated one — `withArmyCount` fills new seats from the untaken factions and
+   * the lobby's Randomise rolls the opponent out of the other sides. Neither
+   * overrides a choice the player made.
+   */
 
   const map = mapById(typeof r.map === 'string' ? r.map : d.map);
   const difficulty = Math.round(num(r.difficulty, 0, DIFFICULTIES.length - 1, d.difficulty));
@@ -1343,9 +1448,18 @@ export class SettingsStore {
  *       player INVESTIGATES performance; it is not a decision about it.
  *   `fov` / `minZoom` / `maxZoom` — the camera. They change what is on screen,
  *       not what a pixel costs.
- *   `fpsCap` — and this one is worth naming: it has ZERO readers anywhere in
- *       `src/`. It is persisted, clamped and rendered, and nothing consumes it.
- *       Exempt here because it cannot affect anything, including the frame.
+ * `fpsCap` USED TO BE ON THIS LIST AND HAD TO COME OFF THE DAY IT GAINED A
+ * READER. Its exemption was justified in writing — *"it has ZERO readers
+ * anywhere in `src/`... it cannot affect anything, including the frame"* — and
+ * that justification was true, load-bearing, and silently expired the moment
+ * `Shell.maybeCalibrate` started passing `targetMsForCap(fpsCap)` as the
+ * calibration's frame-time target. Left here it would have been the worst kind
+ * of bug: choosing 120 fps would retire nothing, so the stored calibration —
+ * solved for 60 — would stand, and the setting would appear to do nothing.
+ *
+ * **An exemption argued from "nothing reads it" is an exemption with an expiry
+ * date.** There is no mechanism that can notice one expiring, which is why the
+ * reasoning is preserved above rather than deleted with the entry.
  */
 const CALIBRATION_EXEMPT: readonly string[] = [
   'graphics.calibrated',
@@ -1354,7 +1468,6 @@ const CALIBRATION_EXEMPT: readonly string[] = [
   'graphics.fov',
   'graphics.minZoom',
   'graphics.maxZoom',
-  'graphics.fpsCap',
 ];
 
 /**

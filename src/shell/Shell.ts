@@ -80,6 +80,7 @@ import { BriefingScreen, CampaignScreen } from './Campaign';
 import type { CampaignResult } from './EndScreen';
 
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
+import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
 
 import { applySettings, SettingsScreen } from './Settings';
@@ -3234,7 +3235,14 @@ export class Shell {
   private maybeCalibrate(): void {
     if (this.game === null || this.disposed) return;
     if (this.settings.get().graphics.calibrated) return;
-    armCalibration((result) => { this.commitCalibration(result); });
+    // THE TARGET IS THE PLAYER'S, NOT THE PANEL'S. `targetMsForCap` carries the
+    // measurement: a 144 Hz target is inert on hardware that could reach it and
+    // floors the picture on hardware that cannot, so `fpsCap` is opt-in and 0
+    // resolves to 60.
+    armCalibration(
+      (result) => { this.commitCalibration(result); },
+      targetMsForCap(this.settings.get().graphics.fpsCap),
+    );
   }
 
   /**

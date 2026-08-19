@@ -89,7 +89,12 @@ import type { GpuClass } from './renderer';
  * ========================================================================== */
 
 export const CALIBRATION = {
-  /** Frame-time target in ms. 16.7 = 60 fps, the same target `ADAPTIVE` uses. */
+  /**
+   * DEFAULT frame-time target in ms. 16.7 = 60 fps, the same target `ADAPTIVE`
+   * uses. The live target is `targetMsForCap(settings.graphics.fpsCap)` and is
+   * passed in per run — see that function for why the default is 60 on a 144 Hz
+   * panel and why raising it is a decision only the player may make.
+   */
   targetMs: 16.7,
   /**
    * Fraction of the solved pixel budget actually spent.
@@ -146,6 +151,53 @@ export const CALIBRATION = {
    */
   flatSlopeMs: 1.0,
 } as const;
+
+/**
+ * The frame-time target a chosen frame-rate cap implies, in ms.
+ *
+ * `0` means "no cap", which is the shipped default and resolves to 60 fps.
+ *
+ * ============================================================================
+ * WHY THE DEFAULT IS 60 ON A 144 Hz PANEL, AND WHY THAT IS NOT THE BUG IT
+ * LOOKS LIKE
+ * ============================================================================
+ * The obvious reading — "a 144 Hz desktop player is calibrated against a 60 Hz
+ * target, and `screen.getPrimaryDisplay().displayFrequency` is already on the
+ * bridge, so wire it up" — is BACKWARDS, and this was measured rather than
+ * argued. Feeding §9's own fitted line (`GPU ms = 5.86 + 6.40 x Mpx`, r2 0.995)
+ * through `solveScale` at a 1440p buffer:
+ *
+ * ```
+ *   target      solved scale   outcome
+ *   16.7  60Hz  0.625          fill-rate — a sharp, honest answer
+ *   11.1  90Hz  0.435          FLOOR: 0.55 + AO OFF + shadows LOW
+ *    8.3 120Hz  0.298          FLOOR: 0.55 + AO OFF + shadows LOW
+ *    6.9 144Hz  0.197          FLOOR: 0.55 + AO OFF + shadows LOW
+ * ```
+ *
+ * The cause is the INTERCEPT, not the slope. That machine spends 5.86 ms before
+ * a single pixel is drawn — **84% of a 144 Hz frame budget and 70% of a 120 Hz
+ * one** — so no resolution scale on earth delivers those frame rates, and the
+ * calibration would spend every quality setting it owns discovering that. The
+ * player would be handed a mushed 55% frame with ambient occlusion switched off
+ * in exchange for nothing at all.
+ *
+ * And at the other end it does not even do anything. On a fast machine
+ * (`1.50 + 1.20 x Mpx`) a 144 Hz target solves to 1.022, which clamps to the
+ * ceiling — the identical answer 60 Hz gives. **So a higher target is inert on
+ * hardware that could use it and destructive on hardware that cannot.** It buys
+ * something only in a narrow middle band, and what it buys there is sharpness
+ * traded for frames, which is exactly the trade the header's ONE THING IT
+ * REFUSES TO DO is about. That is a decision for the player, never for a
+ * first-run wizard measuring a stranger's GPU.
+ *
+ * Hence: opt-in. `displayFrequency` decides which caps are OFFERED (a 60 Hz
+ * panel must not be sold 144), and the player decides whether to chase one.
+ */
+export function targetMsForCap(fpsCap: number): number {
+  if (!Number.isFinite(fpsCap) || fpsCap <= 0) return CALIBRATION.targetMs;
+  return 1000 / fpsCap;
+}
 
 /* ==========================================================================
  * 2. SHAPES
@@ -416,6 +468,8 @@ export class HardwareCalibration {
   /** The scale to restore if this is abandoned. */
   readonly entryScale: number;
   private readonly ceiling: number;
+  /** Frame-time target this run is solving for. See `targetMsForCap`. */
+  private readonly targetMs: number;
 
   /** Reused; see `CalibrationStep`. */
   private readonly step: CalibrationStep = { scale: null, result: null, progress: 0 };
@@ -425,7 +479,15 @@ export class HardwareCalibration {
    * @param entryScale the scale in force before calibration started.
    * @param ceiling    the highest scale the result may name.
    */
-  constructor(startScale: number, entryScale: number, ceiling: number = CALIBRATION.maxScale) {
+  constructor(
+    startScale: number,
+    entryScale: number,
+    ceiling: number = CALIBRATION.maxScale,
+    targetMs: number = CALIBRATION.targetMs,
+  ) {
+    // A non-finite or non-positive target would make `solveScale` return 0 and
+    // floor every machine — see `targetMsForCap` for what flooring costs.
+    this.targetMs = Number.isFinite(targetMs) && targetMs > 0 ? targetMs : CALIBRATION.targetMs;
     this.ceiling = clamp(ceiling, CALIBRATION.minScale, 2);
     this.entryScale = entryScale;
     this.scaleA = round3(clamp(startScale, CALIBRATION.minScale, this.ceiling));
@@ -564,7 +626,7 @@ export class HardwareCalibration {
       if (k > mpxPerScaleSq) mpxPerScaleSq = k;
     }
 
-    const raw = solveScale(line, CALIBRATION.targetMs, mpxPerScaleSq);
+    const raw = solveScale(line, this.targetMs, mpxPerScaleSq);
 
     if (raw === null) {
       // Flat slope. Pixels are not what costs; cutting them is pure loss.

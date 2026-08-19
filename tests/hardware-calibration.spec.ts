@@ -823,6 +823,21 @@ describe('hardware calibration — persistence', () => {
       { shadows: false },
       { tier: 'low' as const },
       { adaptiveResolution: true },
+      /*
+       * MOVED HERE FROM THE EXEMPT LIST BELOW, and the move is the point.
+       *
+       * `fpsCap` was exempt under an argument that was TRUE when it was
+       * written — it had no readers anywhere in `src/`, so it could not affect
+       * a pixel. `Shell.maybeCalibrate` passes `targetMsForCap(fpsCap)` as the
+       * calibration's frame-time target now, which expired that argument
+       * silently and left this spec PINNING THE OBSOLETE BEHAVIOUR: the player
+       * picks 120 fps, nothing re-measures, the calibration solved for 60
+       * stands, and the row appears to do nothing.
+       *
+       * An exemption argued from "nothing reads it" carries an expiry date that
+       * no mechanism can notice passing. See `tests/frame-rate-target.spec.ts`.
+       */
+      { fpsCap: 120 },
     ]) {
       const store = new SettingsStore(memoryStorage());
       expect(store.get().graphics.calibrated).toBe(false);
@@ -853,7 +868,6 @@ describe('hardware calibration — persistence', () => {
       { fov: 44 },
       { panelBlur: 'off' as const },
       { minZoom: 20 },
-      { fpsCap: 60 },
     ]) {
       const store = new SettingsStore(memoryStorage());
       store.patch({ graphics: row });

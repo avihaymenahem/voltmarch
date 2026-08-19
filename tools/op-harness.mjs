@@ -70,11 +70,18 @@
  * ── HOW IT DRIVES THE WORLD ───────────────────────────────────────────────
  *
  * `__VM.advanceTicks` in bounded slices, with the loop PAUSED so the harness is
- * the only clock in the process. That matters twice. It makes the resolution
- * tick a pure function of the simulation rather than of how fast this machine
- * happened to be — two runs of one build land on the same tick — and it is what
- * "maximum sim speed" actually means here: `setTimeScale` scales the real
- * loop's accumulator, and the real loop is not running.
+ * the only clock in the process. That is also what "maximum sim speed" actually
+ * means here: `setTimeScale` scales the real loop's accumulator, and the real
+ * loop is not running.
+ *
+ * **PAUSING IS NOT SUFFICIENT FOR A REPEATABLE RUN, AND THIS FILE ONCE CLAIMED
+ * IT WAS.** The paragraph here used to read "two runs of one build land on the
+ * same tick". They did not: the live rAF loop reaches a different tick before
+ * the pause on every run, the handover is performed on whatever tick that is,
+ * and a brain born two ticks apart makes different decisions forever after.
+ * Measured at 743 ticks of spread on a single trigger — see `HANDOVER_TICK` in
+ * `runOperation`, which pins the tick the world is taken over on and is what
+ * makes the claim true rather than intended.
  *
  * `advanceTicks` and not `__VM.step`, and the difference is load-bearing rather
  * than cosmetic. `step` is `runHeadless` — simulation only, no frames — and
@@ -115,7 +122,7 @@
  */
 
 import { chromium } from 'playwright';
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { serve, build } from './lib/serve.mjs';
@@ -221,6 +228,37 @@ const opSeconds = (tick) => (tick - 1) / TICKS_PER_SECOND;
  * empty" into "no operations exist", which is a silent green run over a
  * campaign nobody measured.
  */
+/**
+ * WHICH BUILD DID THIS RUN ACTUALLY DRIVE?
+ *
+ * Rollup content-hashes every chunk filename, so the entry and campaign chunk
+ * names ARE a fingerprint of the bundle — no hashing needed here.
+ *
+ * THIS EXISTS BECAUSE TWO RUNS OF `soviets.01.first-tap` DISAGREED. One
+ * reported NO RESOLUTION in 39 minutes; the next, driven with `--no-build`,
+ * resolved as a loss at 15:09.7. That reads exactly like harness
+ * non-determinism, which would falsify this file's own claim that "two runs of
+ * one build land on the same tick" — and it is nothing of the sort. A `npm run
+ * build` had landed in between, so the two runs drove DIFFERENT BUNDLES and
+ * were never comparable. Nothing in the output said so.
+ *
+ * That is `tools/shoot.mjs`'s defect in a second costume: it photographed
+ * another worktree's build and printed `12/12 captured`, and the fix there was
+ * to record the origin and byte-compare what was served. Same lesson, cheaper
+ * instrument — print what you drove, so "did these two runs measure the same
+ * thing" is answerable from the output instead of from memory.
+ */
+function buildFingerprint() {
+  const campaign = campaignChunkPath().replace('assets/', '');
+  let entry = '(no index.html)';
+  try {
+    const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
+    const m = /assets\/(index-[A-Za-z0-9_-]+\.js)/.exec(html);
+    if (m !== null) entry = m[1];
+  } catch { /* reported as the placeholder above */ }
+  return { entry, campaign };
+}
+
 function campaignChunkPath() {
   const dir = join(ROOT, 'dist', 'assets');
   const hits = readdirSync(dir).filter((f) => /^campaign-install-.*\.js$/.test(f));
@@ -292,6 +330,59 @@ async function readOperationTable(page, base) {
         rosterPlayer: [...o.roster.player],
         rosterAi: [...o.roster.ai],
         objectives: o.objectives.map((ob) => ({ id: ob.id, kind: ob.kind, title: ob.title })),
+        /*
+         * CAN A BRAIN THAT HAS NEVER READ AN OBJECTIVE EVEN ATTEMPT THIS WIN?
+         *
+         * Computed here, inside the page, because the trigger table lives in
+         * the campaign chunk and is deliberately not projected out.
+         *
+         * Two condition kinds require a DECISION rather than a fight, and no
+         * amount of attack-moving produces either:
+         *
+         *   `unitsInArea`      — walk this particular squad to this particular
+         *                        patch of ground. The brain goes where enemies
+         *                        are; it reaches an area only by coincidence.
+         *   `structureCaptured` — needs an engineer, and the AI owns none: its
+         *                        def has weight 0 and `buildUnits` filters
+         *                        `weight <= 0`, which CLAUDE.md records as a
+         *                        standing gap (task #27).
+         *
+         * Everything else falls out of attrition or the clock — `entityDead`,
+         * `entityHpBelow` and `ownerCount` are what an army walking at a base
+         * produces, and `elapsedSinceArmed` is a HOLD over other conditions, so
+         * it inherits their reachability rather than blocking it.
+         *
+         * WITHOUT THIS, A `NO RESOLUTION` ROW IS AMBIGUOUS IN THE ONE WAY THAT
+         * MATTERS: it reads identically whether the win path is unreachable on
+         * the ground (a real defect, and the thing this tool exists to catch)
+         * or simply not the sort of thing this driver can attempt (expected,
+         * and no evidence of anything). Measured on chapter one, two of the
+         * three non-resolutions were the second kind.
+         */
+        winPath: (() => {
+          const BLIND = new Set(['unitsInArea', 'structureCaptured']);
+          const leaves = (c, out) => {
+            if (c === null || c === undefined) return out;
+            if (c.on === 'all' || c.on === 'any') {
+              for (const k of c.of) leaves(k, out);
+            } else if (c.on === 'not') {
+              leaves(c.of, out);
+            } else {
+              out.add(c.on);
+            }
+            return out;
+          };
+          const paths = [];
+          for (const t of o.triggers) {
+            const wins = t.then.some(
+              (e) => e.do === 'endOperation' && e.result === 'win',
+            );
+            if (!wins) continue;
+            const kinds = [...leaves(t.when, new Set())].sort();
+            paths.push({ id: t.id, kinds, blind: !kinds.some((k) => BLIND.has(k)) });
+          }
+          return { paths, blindWinnable: paths.some((p) => p.blind) };
+        })(),
         outcome: {
           annihilationWin: o.outcome.annihilationWin,
           assetLossDefeat: o.outcome.assetLossDefeat,
@@ -500,7 +591,7 @@ const SAMPLE = () => {
  * ONE OPERATION
  * ========================================================================== */
 
-async function runOperation(page, server, base, op, errors, chunkUrl) {
+async function runOperation(page, server, base, op, { errors, faults }, chunkUrl) {
   const budgetSec = (MINUTES !== null ? MINUTES : Math.max(20, Math.ceil(op.parSec / 60) * 3)) * 60;
   const budgetTicks = Math.round(budgetSec * TICKS_PER_SECOND);
 
@@ -556,6 +647,49 @@ async function runOperation(page, server, base, op, errors, chunkUrl) {
   }
   console.log(`  took the clock at sim tick ${probe.tick0} `
     + `(${mmss(opSeconds(probe.tick0))} of operation time ran on the live loop before this)`);
+
+  /*
+   * ADVANCE TO A FIXED TICK BEFORE ANYTHING ELSE TOUCHES THE WORLD, AND THIS IS
+   * NOT TIDINESS — IT IS THE DIFFERENCE BETWEEN A REPEATABLE RUN AND A COIN.
+   *
+   * `probe.tick0` is however many ticks the live rAF loop got through between
+   * `?campaign=` and the pause: a wall-clock quantity, 35 on one run of this
+   * file and 37 on the next. The ticks themselves are harmless — a fixed step
+   * is a fixed step whoever drives it, so the world at the pause is identical
+   * either way. What is NOT harmless is that the handover below happens ON that
+   * tick. `world.addPlayer` makes `ai.system.ts` rebuild the brain list, the
+   * new brain for seat 0 is constructed there, and `AiBrain` is slow-ticked and
+   * phase-offset from where it starts — so a two-tick difference in WHEN it is
+   * born moves every decision it makes for the rest of the match.
+   *
+   * MEASURED 2026-08-19, twice, same build (dist byte-identical before and
+   * after), same command, `--minutes=5` on `soviets.01.first-tap`:
+   *
+   *     tick0 35  ->  t.derricksLost tick 6807 (3:46.9), seats [54/133] at 5:01
+   *     tick0 37  ->  t.derricksLost tick 7550 (4:11.6), seats [54/142] at 5:01
+   *
+   * 743 ticks apart on one trigger. An earlier version of this file claimed in
+   * its own header that "two runs of one build land on the same tick"; they did
+   * not, and a marginal operation would have resolved on some runs and reported
+   * NO RESOLUTION on others with nothing on screen to say which had happened.
+   *
+   * REFUSE RATHER THAN CATCH UP. If the boot was slow enough to pass the pin,
+   * advancing is no longer available and quietly running from wherever we
+   * landed is the defect this block exists to remove.
+   */
+  const HANDOVER_TICK = 120;
+  if (probe.tick0 > HANDOVER_TICK) {
+    throw new Error(
+      `the live loop reached tick ${probe.tick0} before the harness could pause it, past the `
+      + `${HANDOVER_TICK}-tick pin. Every run would be measured from a different tick and would `
+      + 'not be comparable with any other. Raise HANDOVER_TICK — it costs only a fixed prefix of '
+      + 'unattended sim — or find out what made the boot that slow.',
+    );
+  }
+  await page.evaluate(
+    (t) => { window.__VM.advanceTicks(t - window.__vmShell.getGame().ctx.loop.tick); },
+    HANDOVER_TICK,
+  );
 
   let handover = null;
   if (DRIVE_AI) {
@@ -636,15 +770,47 @@ async function runOperation(page, server, base, op, errors, chunkUrl) {
     }
   };
 
+  /**
+   * ON BOTH EXIT PATHS, AND THE ONE IT WAS MISSING FROM WAS THE ONE THAT NEEDS
+   * IT. This lived below the resolved branch's `return`, so a run that ended in
+   * `NO RESOLUTION` — the row whose whole job is to say WHY an operation did
+   * not finish — printed no error tally at all.
+   */
+  const showProblems = () => {
+    if (faults.length > 0) {
+      console.log(`  ${faults.length} console error/warning(s) from the page, `
+        + `${new Set(faults).size} distinct. A '[campaign] … spawn' line here means a wave `
+        + 'arrived short or empty, which is an authoring fault and not a harness one.');
+    }
+    if (errors.length > 0) console.log(`  ${errors.length} page error(s), first: ${errors[0]}`);
+  };
+
   /* -- the report --------------------------------------------------------- */
 
   if (rec.ended === null) {
     console.log(`\n  NO RESOLUTION in ${mmss(opSeconds(last.tick))} of operation time.`);
-    console.log('  THAT IS THE FINDING, not a harness failure: from the authored starting position, '
-      + 'on the authored ground,');
-    console.log('  the authored win path was not reached and neither was the authored lose path.');
+    const wp = op.winPath ?? { paths: [], blindWinnable: true };
+    for (const p of wp.paths) {
+      console.log(`    win path ${p.id}: ${p.kinds.join(' + ') || '(none)'}`
+        + `  — ${p.blind ? 'attrition can reach this' : 'NEEDS A DECIDING PLAYER'}`);
+    }
+    if (wp.blindWinnable) {
+      console.log('  THAT IS THE FINDING, not a harness failure: an authored win path is the sort');
+      console.log('  an army walking at the enemy can satisfy, and 39 minutes of it did not. The');
+      console.log('  lose path did not fire either. Check that the objective is on the seat the');
+      console.log('  trigger names, that the layout put it where a ground army can reach, and that');
+      console.log('  nothing else has to happen first.');
+    } else {
+      console.log('  EXPECTED, AND NOT EVIDENCE OF ANYTHING. Every authored win path here needs a');
+      console.log('  deciding player — a squad walked somewhere, or a structure captured — and this');
+      console.log('  driver is the skirmish brain, which has never read an objective and owns no');
+      console.log('  engineer. It cannot ATTEMPT this win, so failing to reach it says nothing about');
+      console.log('  the ground. What the run still proves is below: the timeline fired, and the tags');
+      console.log('  are alive on the seats the triggers name.');
+    }
     showCensus();
     printTimeline(rec);
+    showProblems();
     return {
       op, resolved: false, fault: 'no-resolution', tick: last.tick, peakAlive, peakPlaying,
       wallSec, rows: rec.rows,
@@ -674,14 +840,24 @@ async function runOperation(page, server, base, op, errors, chunkUrl) {
   }
   console.log(`    peak ${peakAlive} entities in the store, ${peakPlaying} of them owned by a `
     + `playing seat, sampled every ${SLICE} ticks (${(SLICE / TICKS_PER_SECOND).toFixed(1)} s)`);
-  console.log(`    ${ratio.toFixed(2)}x the authored par — ${Math.round(resSec)} s measured against `
-    + `${op.parSec} s authored.`);
-  console.log('    READ THAT RATIO AS "how long a brain that never read the briefing took", and as '
-    + 'nothing else.');
+  // A RATIO AGAINST PAR IS ONLY MEANINGFUL FOR A WIN, and the first version of
+  // this printed "1.58x the authored par" underneath the word LOSS on a real
+  // run. `parSec` is how long COMPLETING the operation should take; the time at
+  // which somebody else finished you off is not a slower version of that, it is
+  // a different quantity, and putting the two on one line is precisely the
+  // misreading the rest of this file exists to prevent.
+  if (rec.ended.won) {
+    console.log(`    ${ratio.toFixed(2)}x the authored par — ${Math.round(resSec)} s measured `
+      + `against ${op.parSec} s authored.`);
+    console.log('    READ THAT RATIO AS "how long a brain that never read the briefing took", and '
+      + 'as nothing else.');
+  } else {
+    console.log(`    NO RATIO. ${op.parSec} s of par is how long WINNING should take; this run did `
+      + 'not win, so there is nothing to compare.');
+  }
   showCensus();
   printTimeline(rec);
-
-  if (errors.length > 0) console.log(`  ${errors.length} page error(s), first: ${errors[0]}`);
+  showProblems();
 
   return {
     op, resolved: true, won: rec.ended.won, tick: rec.ended.tick, sec: resSec, ratio,
@@ -772,11 +948,47 @@ page.on('pageerror', (e) => {
   console.log(`  [pageerror] ${text}`);
 });
 
+/**
+ * THE PAGE'S CONSOLE, NOT ONLY ITS EXCEPTIONS — AND THIS IS NOT TIDINESS.
+ *
+ * `pageerror` fires for a thrown Error and for nothing else. The campaign
+ * runtime's loudest alarm is not a throw: `Session`'s `onSpawnFault` hook calls
+ * `console.error`, and its own comment says why — both sim callers of
+ * `spawnUnit` treat a refused spawn as a silent `continue`, so "a reinforcement
+ * wave that quietly arrives empty is the most plausible way an operation
+ * becomes unwinnable with every test green".
+ *
+ * That is the exact failure this harness exists to surface, and without this
+ * listener it is written to a console in a headless browser nobody is reading.
+ * Measured, not hypothetical: a six-minute run of `soviets.01.first-tap` on
+ * 2026-08-19 reported a `relief` tag with ONE live entity against a wave
+ * authored at four, and the line that says which of those two numbers was
+ * spawned went nowhere.
+ *
+ * DEDUPED BY TEXT. A fault raised from a per-tick effect would otherwise be the
+ * whole log; the count is kept so "once" and "nine hundred times" stay
+ * distinguishable.
+ */
+const faults = [];
+const faultSeen = new Set();
+page.on('console', (msg) => {
+  const type = msg.type();
+  if (type !== 'error' && !(type === 'warning' && msg.text().includes('[campaign]'))) return;
+  const text = msg.text().slice(0, 300);
+  faults.push(text);
+  if (faultSeen.has(text)) return;
+  faultSeen.add(text);
+  console.log(`  [console.${type}] ${text}`);
+});
+
 console.log(`\n${CAVEAT}\n`);
 
 const table = await readOperationTable(page, BASE);
 const all = table.flatMap((c) => c.operations);
+const fp = buildFingerprint();
 console.log(`campaign table: ${table.length} chapter(s), ${all.length} operation(s)`);
+console.log(`build driven: entry ${fp.entry}  campaign ${fp.campaign}`);
+console.log('  Two runs are comparable only if BOTH names match. They are content hashes.');
 
 const onDisk = operationModulesOnDisk();
 if (onDisk.length !== all.length) {
@@ -802,7 +1014,11 @@ let thrown = null;
 try {
   for (const op of wanted) {
     errors.length = 0;
-    results.push(await runOperation(page, server, BASE, op, errors, `${BASE}${campaignChunkPath()}`));
+    faults.length = 0;
+    faultSeen.clear();
+    results.push(await runOperation(
+      page, server, BASE, op, { errors, faults }, `${BASE}${campaignChunkPath()}`,
+    ));
   }
 } catch (err) {
   thrown = err;
@@ -823,8 +1039,10 @@ for (const r of results) {
       + `${rpad(r.peakPlaying ?? '—', 5)} ${rpad(mmss(r.wallSec), 7)}`);
     continue;
   }
+  // The ratio column is blank on a loss for the reason stated at its other
+  // printing site: par measures winning, and a loss time is not a slow win.
   console.log(`${pad(r.op.id, 26)} ${rpad(mmss(r.op.parSec), 7)} ${rpad(mmss(r.sec), 9)} `
-    + `${rpad(`${r.ratio.toFixed(2)}x`, 7)} ${pad(r.won ? 'win' : 'loss', 9)} `
+    + `${rpad(r.won ? `${r.ratio.toFixed(2)}x` : '—', 7)} ${pad(r.won ? 'win' : 'loss', 9)} `
     + `${rpad(r.medal ?? '—', 5)} ${rpad(r.peakPlaying, 5)} ${rpad(mmss(r.wallSec), 7)}`);
 }
 
@@ -832,10 +1050,22 @@ const unresolved = results.filter((r) => !r.resolved);
 if (unresolved.length > 0) {
   console.log(`\n${unresolved.length} operation(s) DID NOT RESOLVE:`);
   for (const r of unresolved) console.log(`  ${r.op.id} — ${r.fault}`);
-  console.log('  An operation the brain cannot finish is a real signal about the ground: the win');
-  console.log('  path exists in the trigger table and was not reachable by an army walking at it.');
-  console.log('  Check that the objective is on the seat the trigger names, that the layout put it');
-  console.log('  somewhere a ground army can reach, and that nothing else has to happen first.');
+  const actionable = unresolved.filter((r) => (r.op.winPath?.blindWinnable ?? true));
+  const expected = unresolved.filter((r) => !(r.op.winPath?.blindWinnable ?? true));
+  if (expected.length > 0) {
+    console.log(`  ${expected.length} of those are EXPECTED and are NOT findings: `
+      + `${expected.map((r) => r.op.id).join(', ')}.`);
+    console.log('  Every authored win path there needs a deciding player — a squad walked to a');
+    console.log('  place, or a structure captured — and this driver can do neither.');
+  }
+  if (actionable.length > 0) {
+    console.log(`  ${actionable.length} IS a real signal about the ground: `
+      + `${actionable.map((r) => r.op.id).join(', ')}.`);
+    console.log('  A win path there is the sort an army walking at the enemy can satisfy, and it');
+    console.log('  was not. Check that the objective is on the seat the trigger names, that the');
+    console.log('  layout put it somewhere a ground army can reach, and that nothing else has to');
+    console.log('  happen first.');
+  }
 }
 
 console.log(`\n${CAVEAT}`);
