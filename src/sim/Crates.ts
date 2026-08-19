@@ -37,7 +37,7 @@
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import {
-  ArmorClass, CreditReason, EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS,
+  ArmorClass, CreditReason, EntityFlag, EntityKind, Faction, FACTION_COUNT,
   FxKind, Locomotor, NONE, UnitState, WarheadClass,
 } from '../core/types';
 import type { EntityId, PlayerId, SimContext } from '../core/types';
@@ -93,13 +93,76 @@ const REWARD_COUNT = 5;
 const WEIGHTS: readonly number[] = [40, 20, 14, 18, 8];
 const WEIGHT_TOTAL = WEIGHTS.reduce((a, b) => a + b, 0);
 
-/** Free-unit table per faction, cheapest first. Resolved against the catalog. */
-const FREE_UNITS: Readonly<Record<string, readonly string[]>> = {
-  allies: ['grizzly', 'ifv', 'gi'],
-  soviets: ['rhino', 'attackDog', 'conscript'],
-  meridian: ['mrdSolarch', 'mrdSkiff', 'mrdWayfarer'],
-  neutral: ['gi', 'conscript'],
+/**
+ * What walks out of a free-unit crate, per faction. Resolved against the
+ * catalog by `giveFreeUnit`, which takes the FIRST key it can actually spawn.
+ *
+ * KEYED BY `Faction`, WITH NO OPTIONAL MEMBERS, AND THAT IS THE POINT.
+ *
+ * This was `Readonly<Record<string, readonly string[]>>` over palette keys, and
+ * a string-keyed record cannot say "exactly one row per army". It had FOUR rows
+ * against `FACTION_COUNT` 5 — no `reclaim` — so from v1.25.0 every Reclamation
+ * player who opened a free-unit crate got the `?? neutral` fallback and a squad
+ * of ALLIED G.I.s. Nothing threw, nothing logged, and `tsc` had nothing to say,
+ * because a missing key in that shape is a plausible wrong answer rather than a
+ * type error. Keyed by the enum, an army left out is
+ * `TS2741: Property '[Faction.Reclaim]' is missing`, and a sixth faction breaks
+ * this literal on the commit that adds it. Same idiom as `FACTION_NAMES` in
+ * `src/shell/Diagnostics.ts`, and it is what `FACTION_KEY_MAP` in
+ * `src/game/Scenarios.ts` asks for in prose ("EVERY ROW MUST BE `FACTION_COUNT`
+ * LONG") and cannot enforce.
+ *
+ * THE ORDER IS PREFERENCE, RICHEST FIRST. This said "cheapest first", which is
+ * the reverse of every row's own numbers (700/600/200, 900/300/100, 800/550/175,
+ * 600/420/90) and the reverse of what the loop does — cheapest first would make
+ * the crate pay out the line infantryman every time and the other two entries
+ * would be unreachable. They are fallbacks for a catalog that cannot resolve or
+ * a spawn that finds no egress.
+ *
+ * Each row is that army's main line, its light raider, and its line infantry.
+ * The Reclamation reads role for role against the Pact's: `rclGrinder` is "the
+ * line", `rclSpitter` is the fast coil buggy, and `rclPicker` is the line
+ * infantryman — which is independently what `FACTION_KEY_MAP.gi` in
+ * `src/game/Scenarios.ts` already names for this army.
+ *
+ * GAIA IS NOT A CRATE FINDER. `finderNear` refuses any candidate whose owner is
+ * `Faction.Neutral`, so this row is never selected BY faction. It exists because
+ * the type is total, and it is what an out-of-range faction resolves to — see
+ * `freeUnitsFor`.
+ */
+export const FREE_UNITS: Readonly<Record<Faction, readonly string[]>> = {
+  [Faction.Neutral]: ['gi', 'conscript'],
+  [Faction.Allies]: ['grizzly', 'ifv', 'gi'],
+  [Faction.Soviets]: ['rhino', 'attackDog', 'conscript'],
+  [Faction.Meridian]: ['mrdSolarch', 'mrdSkiff', 'mrdWayfarer'],
+  [Faction.Reclaim]: ['rclGrinder', 'rclSpitter', 'rclPicker'],
 };
+
+/**
+ * The row one army reads — and the one thing the table's type cannot promise.
+ *
+ * `Record<Faction, …>` makes a MISSING ROW a compile error. It does NOT make the
+ * INDEX safe, and the two are different guards. `PlayerState.faction` is a
+ * runtime value with two sources, and only one of them is checked:
+ *
+ *   wire   BOUNDED. `src/net/Session.ts` and `server/src/index.ts` both refuse a
+ *          seated faction outside `WIRE_LIMITS.factions` before it is relayed,
+ *          and both say why.
+ *   save   NOT BOUNDED. `src/game/SaveGame.ts` reads the player chunk with
+ *          `JSON.parse(...) as PlayerSection[]` and hands it straight to
+ *          `world.addPlayer(ps.faction as Faction, …)` with no range test, so a
+ *          corrupt or hand-edited slot really can present a faction of 9 here.
+ *
+ * So the clamp stays and it is reachable. What it is NOT is the `?? FREE_UNITS
+ * .neutral` it replaces: that one covered a missing ROW, which is exactly the
+ * `reclaim` hole above and is now unrepresentable. Left in place over a total
+ * table it would have been dead code that reads like a guard — which is how the
+ * hole survived being looked at.
+ */
+export function freeUnitsFor(faction: Faction): readonly string[] {
+  const f = faction as number;
+  return FREE_UNITS[f >= 0 && f < FACTION_COUNT ? (f as Faction) : Faction.Neutral];
+}
 
 /* ==========================================================================
  * 2. PUBLIC SHAPES
@@ -345,7 +408,7 @@ export class CrateService {
     const svc = production();
     const p = this.world.players[player as number];
     if (svc === null || p === undefined) return 0;
-    const keys = FREE_UNITS[factionKey(p.faction)] ?? FREE_UNITS.neutral;
+    const keys = freeUnitsFor(p.faction);
 
     for (let k = 0; k < keys.length; k++) {
       const entry = svc.catalog.byKey(keys[k]);
@@ -468,10 +531,6 @@ export class CrateService {
   dispose(): void {
     this.listeners.length = 0;
   }
-}
-
-function factionKey(f: Faction): string {
-  return FACTION_PALETTE_KEYS[f as number] ?? 'neutral';
 }
 
 /* ==========================================================================

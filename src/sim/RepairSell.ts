@@ -38,7 +38,7 @@ import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import { PerEntityF32 } from '../core/world';
 import {
-  CommandKind, CreditReason, EntityFlag, EntityKind, Faction, FxKind,
+  CommandKind, CreditReason, EntityFlag, EntityKind, Faction, FACTION_COUNT, FxKind,
   NONE, OrderKind, Stance, UnitState, WarheadClass,
 } from '../core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../core/types';
@@ -52,11 +52,64 @@ import { getEconomy } from './Economy';
  * ========================================================================== */
 
 /**
- * The line infantry that walks out of a sold structure, indexed by `Faction`.
+ * The line infantry that walks out of a sold structure, keyed by `Faction`.
  * A Pact building selling into a squad of G.I.s would hand the player free
  * units of an army they are not playing.
+ *
+ * WHICH IS EXACTLY WHAT THE RECLAMATION GOT, FROM v1.25.0 UNTIL THIS COMMIT.
+ * The declared type was `readonly string[]` — an array has no opinion about its
+ * own length — so the table sat at FOUR entries against `FACTION_COUNT` 5 while
+ * a fifth army landed, and `SURVIVOR_KEY[Faction.Reclaim]` was `undefined`. The
+ * `?? 'gi'` at the read site turned that into a plausible wrong answer: a
+ * Reclamation Foundry sold G.I.s. `tsc` cannot see a hole in an array type, so
+ * nothing anywhere reported it.
+ *
+ * Keyed by the enum with no optional members, an army left out is
+ * `TS2741: Property '[Faction.Reclaim]' is missing`, and a sixth faction breaks
+ * this literal on the commit that adds it. Same idiom as `FACTION_NAMES` in
+ * `src/shell/Diagnostics.ts`, and it is what `FACTION_KEY_MAP` in
+ * `src/game/Scenarios.ts` asks for in prose ("EVERY ROW MUST BE `FACTION_COUNT`
+ * LONG") and has no way to enforce.
+ *
+ * The five values ARE `FACTION_KEY_MAP.gi`, entry for entry — that table maps a
+ * shared layout's `gi` onto each army's line infantryman and was authored
+ * independently of this one, so it is a second witness rather than a copy.
+ * `Faction.Neutral` reads the Allied answer, which is what shipped and what
+ * `GAIA_SLOT` in `src/art/faction-models.ts` chooses for the same reason.
  */
-const SURVIVOR_KEY: readonly string[] = ['gi', 'gi', 'conscript', 'mrdWayfarer'];
+export const SURVIVOR_KEY: Readonly<Record<Faction, string>> = {
+  [Faction.Neutral]: 'gi',
+  [Faction.Allies]: 'gi',
+  [Faction.Soviets]: 'conscript',
+  [Faction.Meridian]: 'mrdWayfarer',
+  [Faction.Reclaim]: 'rclPicker',
+};
+
+/**
+ * The key one army reads — and the one thing the table's type cannot promise.
+ *
+ * `Record<Faction, …>` makes a MISSING ROW a compile error. It does NOT make the
+ * INDEX safe, and the two are different guards. `PlayerState.faction` is a
+ * runtime value with two sources, and only one of them is checked:
+ *
+ *   wire   BOUNDED. `src/net/Session.ts` and `server/src/index.ts` both refuse a
+ *          seated faction outside `WIRE_LIMITS.factions` before it is relayed,
+ *          and both say why.
+ *   save   NOT BOUNDED. `src/game/SaveGame.ts` reads the player chunk with
+ *          `JSON.parse(...) as PlayerSection[]` and hands it straight to
+ *          `world.addPlayer(ps.faction as Faction, …)` with no range test, so a
+ *          corrupt or hand-edited slot really can present a faction of 9 here.
+ *
+ * So the clamp stays and it is reachable. What it is NOT is the `?? 'gi'` it
+ * replaces: that one covered a missing ROW, which is exactly the `rclPicker`
+ * hole above and is now unrepresentable. Left in place over a total table it
+ * would have been dead code that reads like a guard — which is how the hole
+ * survived being looked at.
+ */
+export function survivorKeyFor(faction: Faction): string {
+  const f = faction as number;
+  return SURVIVOR_KEY[f >= 0 && f < FACTION_COUNT ? (f as Faction) : Faction.Neutral];
+}
 
 /**
  * Content keys that service vehicles. Three, not four: `repairDepot` is a
@@ -651,7 +704,7 @@ export class RepairSellService {
       const rec = this.crew[c];
       const p = this.world.players[rec.player];
       if (p === undefined) continue;
-      const key = SURVIVOR_KEY[p.faction as number] ?? 'gi';
+      const key = survivorKeyFor(p.faction);
       const entry = svc.catalog.byKey(key);
       if (entry === null) continue;
 
