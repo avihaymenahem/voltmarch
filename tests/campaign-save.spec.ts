@@ -87,6 +87,7 @@ function makeOp(id: string, triggers: readonly TriggerDef[] = TRIGGERS): Operati
     id,
     chapter: 'soviets',
     faction: Faction.Soviets,
+    foe: Faction.Allies,
     index: 1,
     title: 'Fixture',
     beat: 'A fixture, not a mission.',

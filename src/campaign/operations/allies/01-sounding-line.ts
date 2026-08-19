@@ -131,6 +131,11 @@ const op: OperationDef = {
   id: 'allies.01.sounding-line',
   chapter: 'allies',
   faction: Faction.Allies,
+  // `t.plate` spawns `conscript` and `rhino` and its own comment says why:
+  // "Soviet keys because the antagonist of this chapter is". The rest of that
+  // sentence — "even though nothing in `OperationDef` can pin the opposing
+  // seat's army" — is what this field retires.
+  foe: Faction.Soviets,
   index: 1,
   title: 'Sounding Line',
   beat: 'Two points on the seam and a gradient between them. The party is three people.',
@@ -315,8 +320,11 @@ const op: OperationDef = {
         // G.I.s, minus whatever the control head cost and minus whatever is
         // still standing over the ore. Enough to take the head off an escort
         // that was spent getting there, not enough to be a second mission —
-        // and Soviet keys because the antagonist of this chapter is, even
-        // though nothing in `OperationDef` can pin the opposing seat's army.
+        // and Soviet keys because the antagonist of this chapter is — which
+        // `foe: Faction.Soviets` now PINS rather than hopes for. The rest of
+        // this sentence used to read "even though nothing in `OperationDef`
+        // can pin the opposing seat's army", and `validateCampaign` refuses
+        // these two keys on any seat that is not Soviet.
         { do: 'spawnUnits', player: 1, key: 'conscript', count: 6, at: POST, spread: 18, tag: 'sortie' },
         { do: 'spawnUnits', player: 1, key: 'rhino', count: 2, at: POST, spread: 26, tag: 'sortie' },
         { do: 'orderTagged', tag: 'sortie', order: 'attackMove', at: { x: DEEP_HEAD.x, z: DEEP_HEAD.z } },

@@ -152,7 +152,13 @@ export function campaignFacts(): CampaignFacts {
   const layoutTags = new Map<string, ReadonlySet<string>>();
   for (const [id, l] of LAYOUTS) layoutTags.set(id, new Set(l.tags));
   return {
-    unitKeys: new Set(Object.keys(FALLBACK_UNITS)),
+    // KEY -> THE ARMY THE ROW ITSELF DECLARES, from the one table
+    // `Production.spawnUnit` actually reads. `FallbackUnit.faction` is
+    // `Faction.Neutral` for the rows both sides field, which is what makes
+    // `harvester` and `engineer` legal on any seat.
+    unitFactions: new Map(
+      Object.entries(FALLBACK_UNITS).map(([key, u]) => [key, u.faction] as const),
+    ),
     mapPresets: new Set(Object.keys(MAP_PRESETS)),
     unlockIds: new Set(Object.values(UNLOCKS)),
     evaLines: new Set(Object.keys(EVA_LINES)),

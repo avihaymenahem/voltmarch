@@ -323,6 +323,39 @@ export function makeEffectSink(
      * that as a silent `continue`. A wave that quietly arrives empty is the
      * most plausible way an operation becomes unwinnable with every test green,
      * so every miss is counted and raised.
+     *
+     * ======================================================================
+     * `byKey` IS LITERAL AND DOES NOT GO THROUGH `keyFor`. THAT IS DECIDED,
+     * NOT MISSED.
+     * ======================================================================
+     * `ScenarioBuilder.spawnUnit` remaps every key through
+     * `ScenarioBuilder.keyFor`, so a LAYOUT's `grizzly` becomes the seated
+     * army's own main battle tank. This path does not, and the two used to
+     * disagree in a way nothing could see: `store.alloc` takes the DEF from
+     * the key and the COLOUR from the seat, so a wave authored `grizzly` on a
+     * Reclamation seat was an Allied tank in Reclamation paint, silently.
+     *
+     * The disagreement is not fixed by remapping here. Three reasons, in
+     * ascending order:
+     *
+     *   1. **A layout is geometry reused across armies; an operation is
+     *      content written for one.** `keyFor` exists because
+     *      `buildAlliedBase` has to work for a Meridian player. A trigger
+     *      table is authored against ONE foe, which `OperationDef.foe` now
+     *      declares, so the remap has nothing left to resolve.
+     *   2. **A remap could not do the job anyway.** `FACTION_KEY_MAP` covers
+     *      ~30 ROLE keys and returns everything else unchanged, so
+     *      `rclGrinder` on an Allied seat would remap to itself. Half a rule
+     *      is worse than none, because it reads as coverage.
+     *   3. **It would rewrite an authoring mistake into a working wave.** The
+     *      dialogue would still name the wrong army and nothing would say so —
+     *      the exact class of quiet falsehood `docs/SPEC_DRIFT_AUDIT.md`
+     *      catalogues.
+     *
+     * `validateCampaign` refuses a key whose `FallbackUnit.faction` is neither
+     * `Neutral` nor the army of the seat it lands on, AT IMPORT. So the two
+     * paths no longer disagree — not because they were made the same, but
+     * because the case in which they differ is a build error.
      */
     spawnUnits(player, key, count, at, spread, facingDeg, tag): SpawnReport {
       const svc = production();

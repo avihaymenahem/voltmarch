@@ -140,6 +140,41 @@ const op: OperationDef = {
   id: 'reclamation.01.held-paper',
   chapter: 'reclamation',
   faction: Faction.Reclaim,
+  /*
+   * THE ONE OF THE FIVE THAT IS NOT READ OFF ITS OWN DIALOGUE, AND SAYING SO
+   * IS THE POINT.
+   *
+   * The other four name their enemy out loud — S1 "the Allies got there
+   * first", S2 "two Allied tanks are sitting on it", S3 "the Allies sitting on
+   * it", A1's own spawn comment "Soviet keys because the antagonist of this
+   * chapter is". Nothing in this file's prose or its layout's names an army:
+   * it is "a garrison", "the district office", "the watch". The layout is
+   * role-keyed throughout and the one `spawnUnits` here is `rclGrinder` on the
+   * PLAYER'S seat, so no key constrains the answer either. The field is
+   * required, so it has to be decided rather than deferred, and it is decided
+   * from the chapter grid rather than from a line of text that does not exist.
+   *
+   * Soviets, for two reasons out of `CAMPAIGN_BUILD_SPEC.md`:
+   *
+   *   - §2.1 divides the Works at the Split — "The Allies took the survey
+   *     office and the instruments… the Soviets took the yards and the plate
+   *     mills." This operation is four breaking yards in an industrial belt
+   *     with a district office administering them. That is the Soviet half of
+   *     the split, on the nose.
+   *   - §3.4's grid puts "Pull the field the Soviets left in week 2" at R2 and
+   *     "The Allies want your yard" at R4. R1 is week 1. An Allied garrison
+   *     here spends R4's beat three operations early and leaves the Soviets
+   *     unintroduced in a chapter that names them next.
+   *
+   * MECHANICALLY IT IS FREE, WHICH IS WHY THE ARGUMENT IS ALLOWED TO BE
+   * LITERARY. `keyFor` gives the compound `teslaCoil` for
+   * `struct.defence.specialist` and `sentryGun` for the two `pillbox`-role
+   * boxes, and the hidden secondary needs exactly that split — a tower that
+   * draws power and a box at `power: 0`. Both hold in every army's column.
+   * **A briefing author who writes this chapter's prose may overturn this;
+   * they should change the field, not work around it.**
+   */
+  foe: Faction.Soviets,
   index: 1,
   title: 'Held Paper',
   beat: 'The yards are already yours. Nobody has read the paperwork.',

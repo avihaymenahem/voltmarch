@@ -73,6 +73,7 @@ function op(
     id: 'soviets.01.probe',
     chapter: 'soviets',
     faction: Faction.Soviets,
+    foe: Faction.Allies,
     index: 1,
     title: 'Probe',
     beat: 'A probe.',

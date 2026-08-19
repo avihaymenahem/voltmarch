@@ -28,7 +28,16 @@ import { Faction } from '../src/core/types';
 /* -- the world these fixtures live in ------------------------------------- */
 
 const FACTS: CampaignFacts = {
-  unitKeys: new Set(['conscript', 'rhino', 'gi', 'grizzly']),
+  // Keys mapped to the army each one belongs to, exactly as `index.ts` reads
+  // them off `FallbackUnit.faction`. `harvester` is the Neutral row, and it is
+  // here so the "legal on any seat" arm has something to exercise.
+  unitFactions: new Map<string, Faction>([
+    ['conscript', Faction.Soviets],
+    ['rhino', Faction.Soviets],
+    ['gi', Faction.Allies],
+    ['grizzly', Faction.Allies],
+    ['harvester', Faction.Neutral],
+  ]),
   mapPresets: new Set(['temperate', 'arid', 'snow', 'urban']),
   unlockIds: new Set(['struct.defence.aa', 'unit.specialist', 'struct.tech']),
   evaLines: new Set(['reinforcements', 'unitLost', 'baseUnderAttack']),
@@ -45,6 +54,7 @@ function operation(over: Partial<OperationDef> = {}): OperationDef {
     id: 'soviets.01.first-tap',
     chapter: 'soviets',
     faction: Faction.Soviets,
+    foe: Faction.Allies,
     index: 1,
     title: 'First Tap',
     beat: 'The March surfaces in a new place.',
@@ -245,6 +255,76 @@ describe('the faults that would otherwise be invisible at runtime', () => {
         ? { ...t, when: { on: 'playerBeaten', player: 3 } as Condition }
         : t),
     }, 'outside the 2');
+  });
+});
+
+/* ==========================================================================
+ * 2b. THE FOE, AND THE HULL THAT HAS TO MATCH IT
+ *
+ * `OperationDef.foe` is the army every non-player seat is fought against, and
+ * before it existed `Shell.startOperation` took that from the SKIRMISH LOBBY.
+ * These are the rules that stop it drifting back into prose.
+ * ========================================================================== */
+
+describe('an operation declares its foe, and the validator holds the seats to it', () => {
+  /** A wave onto a seat, so each case below differs in exactly one thing. */
+  const withWave = (op: OperationDef, player: number, key: string): OperationDef => ({
+    ...op,
+    triggers: [...op.triggers, {
+      id: 't.wave',
+      when: { on: 'elapsed', ticks: minutes(3) },
+      then: [{ do: 'spawnUnits', player, key, count: 4, at: { x: 100, z: 100 } } as Effect],
+    }],
+  });
+
+  it('THE CONTROL: an Allied hull on the Allied foe seat is clean', () => {
+    // Without this the rule below could pass by refusing every spawn, which is
+    // the failure a one-directional test cannot see.
+    expect(faultsFor([withWave(operation(), 1, 'grizzly')])).toEqual([]);
+    expect(faultsFor([withWave(operation(), 0, 'rhino')])).toEqual([]);
+  });
+
+  it('an Allied hull on the PLAYER’s Soviet seat is a build error', () => {
+    // The shape of the defect this whole field exists for, in one line: the
+    // catalog is faction-blind, so this spawns a Grizzly in Soviet paint.
+    expectOneFault(withWave(operation(), 0, 'grizzly'), "key 'grizzly'");
+  });
+
+  it('a Soviet hull on the Allied FOE seat is a build error', () => {
+    expectOneFault(withWave(operation(), 1, 'rhino'), "key 'rhino'");
+  });
+
+  it('…and moving `foe` is what makes the same wave legal or not', () => {
+    // The rule reads `foe` rather than "seat 1 is always the enemy of seat 0".
+    // Flip the field and the two verdicts swap, with the trigger untouched.
+    const mirror = { ...operation(), foe: Faction.Soviets };
+    expect(faultsFor([withWave(mirror, 1, 'rhino')])).toEqual([]);
+    expectOneFault(withWave(mirror, 1, 'grizzly'), "key 'grizzly'");
+  });
+
+  it('a Neutral row is legal on every seat, which is what Neutral means', () => {
+    // `harvester`, `engineer` and `mcv` carry `Faction.Neutral` in
+    // `FALLBACK_UNITS` precisely because both sides field them. A rule that
+    // refused them would make `OreCrisis`-shaped reinforcement unauthorable.
+    expect(faultsFor([withWave(operation(), 0, 'harvester')])).toEqual([]);
+    expect(faultsFor([withWave(operation(), 1, 'harvester')])).toEqual([]);
+  });
+
+  it('ONE MISTAKE, ONE FAULT: a bad key on an illegal seat does not report twice', () => {
+    // `armyOfSeat` answers `foe` for any seat that is not 0, including seat 7.
+    // Without the range re-test in `checkEffect` this would report a faction
+    // mismatch AND an illegal seat for a single typo.
+    expectOneFault(withWave(operation(), 7, 'grizzly'), 'outside the 2');
+  });
+
+  it('a Neutral foe is Gaia, and Gaia is allied to everybody', () => {
+    expectOneFault({ ...operation(), foe: Faction.Neutral }, 'Gaia');
+  });
+
+  it('a mirror match is a legal operation', () => {
+    // Nothing structural forbids one and the lobby offers it, so the rule must
+    // refuse only Neutral — not "the foe differs from the player".
+    expect(faultsFor([{ ...operation(), foe: Faction.Soviets }])).toEqual([]);
   });
 });
 

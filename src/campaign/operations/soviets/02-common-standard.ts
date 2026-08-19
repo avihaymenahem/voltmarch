@@ -141,6 +141,12 @@ const op: OperationDef = {
   id: 'soviets.02.common-standard',
   chapter: 'soviets',
   faction: Faction.Soviets,
+  // Named four times in the dialogue — "Two Allied tanks are sitting on it",
+  // "Allied armour on the valley road" — and both relief waves spawn literal
+  // `grizzly`/`javelin`. This is the operation the missing field was most
+  // visibly wrong on: a player whose last skirmish row said Reclamation
+  // fought Arcspitters while Vosk called them Allied armour.
+  foe: Faction.Allies,
   index: 2,
   title: 'Common Standard',
   beat: 'The Split turns into shooting, and the column is a long way from a yard.',

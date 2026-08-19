@@ -226,12 +226,24 @@ export default layout({
 
     /* -- the escort, authored rather than inherited -----------------------
      * THE BASE GARRISON IS NOT AN ESCORT AND THE TWO ARMIES' BASES ARE NOT THE
-     * SAME SIZE. Built and counted: `buildAlliedBase` lays down 4 Grizzlies, 2
-     * IFVs and 5 G.I.s, while the Soviet layout the opposing seat takes lays
-     * down 5 Rhinos, 9 Conscripts, 2 Attack Dogs and an Apocalypse. This
+     * SAME SIZE. Counted on a world built with the def tables BOUND, which is
+     * the only state in which the roster below is actually in force:
+     * `buildAlliedGarrison` lays 4 Grizzlies, 2 IFVs and 5 G.I.s;
+     * `buildSovietGarrison` lays 5 Rhinos, 6 Conscripts, 2 Attack Dogs and an
+     * Apocalypse. The allow-list then takes the 2 IFVs off the player and the
+     * Apocalypse AND both dogs off the opponent, so what is really inherited is
+     * **9 hulls against 11** — and the deficit is four riflemen, not a tier.
+     *
+     * AN EARLIER DRAFT SAID "9 CONSCRIPTS" AND ARGUED 11 AGAINST 17. The 9 is
+     * the shipped total and three of them are the picket sixty lines down,
+     * placed by THIS file; counting your own content as the opponent's
+     * inheritance is how a handout acquires an argument. Bound and rebuilt, the
+     * two openings are 9 and 11.
+     *
+     * The column is still the right answer to 9 against 11, because this
      * operation asks the player to LEAVE that base and cross 279 m into the
-     * other one's half on a clock, so inheriting the smaller of two openings
-     * would be an authored disadvantage nobody authored.
+     * other half on a clock. It is a real thumb on the scale and it should be
+     * read as one: with the picket it lands at 16 against 14, not at parity.
      *
      * Three more hulls and four more riflemen, formed line abreast with the
      * party so the opening frame reads as a column about to march rather than
@@ -297,16 +309,30 @@ export default layout({
      * THE COVERAGE IS PARTIAL ON PURPOSE, AND IT WAS MEASURED ON A BUILT WORLD
      * RATHER THAN INTENDED. The two guns land at (238, 206) and (206, 230) —
      * 19.2 m and 21.9 m out from the head after `findClearFootprint` snapped
-     * them — against a 20 m disc and a 20-22 m weapon range. Between them they
-     * cover the lobe of the reading ground nearest each gun and leave a band
-     * across the perpendicular: the two extremes of that band sit 24.0 m and
-     * 31.0 m from the NEARER gun, outside a 22 m Pillbox and further outside a
-     * 20 m Sentry Gun. A player who reads a coverage ring can stand two
-     * surveyors there and take the control reading without breaking the post.
+     * them — against a 20 m disc.
      *
-     * That is the reward for looking, and it is why this is two guns and not
-     * three: a head nobody can stand on is a head nobody attempts, and the
-     * secondary is supposed to be tempting.
+     * THE RANGE IS 22 M WHICHEVER ARMY HOLDS THE SEAT, and an earlier draft of
+     * this block invented a second number. `pillbox` and `sentryGun` both fire
+     * `pillboxMg` — `DEFAULT_WEAPONS[11]`, range 22 — so `keyFor` changes the
+     * silhouette and nothing else. There is no 20 m Sentry Gun to be further
+     * outside of.
+     *
+     * (That sentence said "whichever army THE LOBBY SEATS" when it was written,
+     * which was true then and is not now: `OperationDef.foe` declares the
+     * opposing army, so this operation always faces the Soviets. The
+     * MEASUREMENT is unaffected — it never depended on which army arrived, only
+     * on both candidates firing the same weapon row — but the mechanism it
+     * named is gone, and a stale mechanism in a comment that happens to reach a
+     * true conclusion is the worst kind to leave standing.)
+     *
+     * What that leaves is two lobes of reading ground outside both guns:
+     * **193.1 m2, 15.4% of the disc**, the larger holding an inscribed circle
+     * of 5.63 m at (233.5, 233.3). Two surveyors fit in that with room for
+     * `Movement.relax` to separate them. The other lobe clears the nearer gun
+     * by **2.0 m** and should be treated as not existing. So the reward for
+     * reading a coverage ring is real and it is ONE pocket, which is why this
+     * is two guns and not three: a head nobody can stand on is a head nobody
+     * attempts, and the secondary is supposed to be tempting.
      *
      * The infantry are NOT a garrison in any mechanical sense. `AiBrain` forms
      * squads out of every idle unit it owns, so the section will be absorbed

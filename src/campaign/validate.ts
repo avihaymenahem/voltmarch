@@ -50,6 +50,7 @@
  *     never fire. Defensible-looking and permanently dead.
  * ========================================================================== */
 
+import { FACTION_COUNT, Faction } from '../core/types';
 import { CONDITION_KINDS, COUNT_ROLES, EFFECT_KINDS, PRIMARY_TYPES, TAGGED_ORDERS } from './types';
 import type {
   ChapterDef, Condition, Effect, ObjectiveDef, OperationDef, TriggerDef,
@@ -57,8 +58,17 @@ import type {
 
 /** What the caller knows about the world that this module refuses to import. */
 export interface CampaignFacts {
-  /** Keys of `FALLBACK_UNITS` — the table `Production.spawnUnit` reads first. */
-  readonly unitKeys: ReadonlySet<string>;
+  /**
+   * `FALLBACK_UNITS` — the table `Production.spawnUnit` reads first — mapped to
+   * the army each row declares, with `Faction.Neutral` for the rows both sides
+   * field (engineer, harvester, mcv).
+   *
+   * **ONE MAP RATHER THAN A KEY SET PLUS A FACTION SIDE-TABLE**, because the
+   * membership test and the ownership test are two questions about the SAME
+   * row and two facts could disagree. `FallbackUnit.faction` is the source for
+   * both, gathered once in `index.ts`.
+   */
+  readonly unitFactions: ReadonlyMap<string, Faction>;
   /** Keys of `MAP_PRESETS`. */
   readonly mapPresets: ReadonlySet<string>;
   /** Every id in `UNLOCK_TAGS`. A roster may name these and nothing else. */
@@ -218,25 +228,82 @@ function checkSeat(seat: number, where: string, f: Faults, seats: number): void 
   }
 }
 
+/**
+ * The army a seat is fought with.
+ *
+ * SEAT 0 IS THE PLAYER AND EVERY OTHER SEAT IS THE FOE, and that is not a
+ * guess about seating order: `Bootstrap` pins `world.localPlayer` to slot 0,
+ * `Shell.applySetupToWorld` writes `setup.playerFaction` onto it, and
+ * `Shell.startOperation` fills every remaining slot from `op.foe`.
+ */
+function armyOfSeat(op: OperationDef, seat: number): Faction {
+  return seat === 0 ? op.faction : op.foe;
+}
+
 function checkEffect(
-  e: Effect, where: string, f: Faults, facts: CampaignFacts, seats: number,
+  e: Effect, where: string, f: Faults, facts: CampaignFacts, op: OperationDef,
 ): void {
+  const seats = op.map.armies;
   if (!EFFECT_SET.has(e.do)) {
     f.at(where, `unknown effect '${String(e.do)}'`);
     return;
   }
   switch (e.do) {
-    case 'spawnUnits':
-      if (!facts.unitKeys.has(e.key)) {
+    case 'spawnUnits': {
+      const owns = facts.unitFactions.get(e.key);
+      if (owns === undefined) {
         // The silent one. `Production.spawnUnit` reads `FALLBACK_UNITS` before
         // the def table and returns NONE with no console output at all, so the
         // wave simply never arrives.
         f.at(where, `spawnUnits key '${e.key}' has no FALLBACK_UNITS row — it would spawn nothing, silently`);
+      } else if (
+        owns !== Faction.Neutral
+        && Number.isInteger(e.player) && e.player >= 0 && e.player < seats
+        && owns !== armyOfSeat(op, e.player)
+      ) {
+        /*
+         * THE HULL AND THE FLAG MUST AGREE, AND NOTHING ELSE MAKES THEM.
+         *
+         * `EffectSink.spawnUnits` resolves through `ProductionCatalog.byKey`,
+         * which is faction-blind, and `ProductionService.spawnUnit` then calls
+         * `store.alloc(kind, entry.defId, p.id, p.faction, …)` — the DEF comes
+         * from the key and the COLOUR from the seat. So a `grizzly` on a Soviet
+         * seat is an Allied tank in Soviet paint, placed with no warning
+         * anywhere: not a console line, not a fault, not a `NONE` return.
+         *
+         * The layout path does not have this problem. `ScenarioBuilder.spawnUnit`
+         * runs every key through `keyFor`, so a layout's `grizzly` becomes the
+         * seated army's own main battle tank. Two spawn paths, two answers, and
+         * the operation files carry comments in BOTH directions about it.
+         *
+         * THIS RULE IS THE RECONCILIATION AND IT IS DELIBERATELY NOT A REMAP.
+         * An authored operation naming a hull means THAT hull — `t.rail` in
+         * `03-deep-sector` writes "LITERAL SOVIET KEYS" and means it — and a
+         * silent remap would rewrite an author's mistake into a working wave
+         * whose dialogue still named the wrong army, which is the same class of
+         * quiet falsehood as the defect this whole field exists to delete. It
+         * also could not do the job: `FACTION_KEY_MAP` covers ~30 ROLE keys and
+         * passes everything else through unchanged, so `rclGrinder` on an
+         * Allied seat would remap to itself and the disagreement would survive
+         * the fix. A build error covers EVERY key, because it reads the row's
+         * own declared army rather than a remap table's coverage.
+         *
+         * Neutral rows (engineer, harvester, mcv) are legal on any seat, which
+         * is exactly what `Faction.Neutral` means in `FallbackUnit.faction`.
+         * The seat range is re-tested here rather than assumed because
+         * `checkSeat` below only REPORTS an illegal seat, it does not stop this
+         * arm — and `armyOfSeat(op, 7)` would otherwise answer `foe` for a seat
+         * that does not exist and report a second fault for one mistake.
+         */
+        f.at(where, `spawnUnits key '${e.key}' is faction ${String(owns)} and seat `
+          + `${String(e.player)} fields faction ${String(armyOfSeat(op, e.player))} — `
+          + 'the authored hull would spawn flying the seat\'s colours');
       }
       if (!Number.isInteger(e.count) || e.count < 1) f.at(where, 'spawnUnits count must be at least 1');
       if (e.spread !== undefined && e.spread < 0) f.at(where, 'spawnUnits spread cannot be negative');
       checkSeat(e.player, where, f, seats);
       break;
+    }
     case 'orderTagged':
       if (!ORDER_SET.has(e.order)) f.at(where, `unknown order '${e.order}'`);
       if ((e.order === 'move' || e.order === 'attackMove') && e.at === undefined) {
@@ -273,6 +340,21 @@ function checkOperation(op: OperationDef, f: Faults, facts: CampaignFacts): void
   const seats = op.map.armies;
 
   if (!TYPE_SET.has(op.primaryType)) f.at(where, `unknown primaryType '${op.primaryType}'`);
+  /*
+   * A NEUTRAL FOE IS GAIA, AND GAIA IS ALLIED TO EVERYONE.
+   *
+   * `ScenarioBuilder.gaia` sets both directions of `allyMask` for the Neutral
+   * slot, so an operation seated against it would open with every trigger's
+   * `playerBeaten` false forever, nothing hostile to shoot, and
+   * `Shell.pollOutcome` — which skips allied seats — declaring victory at the
+   * ten-second grace. Refused here rather than discovered there. Everything
+   * else in the enum is a real army and a mirror match is a legal operation.
+   */
+  if (op.foe === Faction.Neutral) {
+    f.at(where, 'foe is Faction.Neutral — that seat is Gaia, allied to every player');
+  } else if (!Number.isInteger(op.foe as number) || (op.foe as number) < 0 || (op.foe as number) >= FACTION_COUNT) {
+    f.at(where, `foe ${String(op.foe)} is not a Faction`);
+  }
   if (!facts.mapPresets.has(op.map.preset)) f.at(where, `unknown map preset '${op.map.preset}'`);
   if (!Number.isInteger(seats) || seats < facts.minArmies || seats > facts.maxArmies) {
     f.at(where, `armies ${String(seats)} is outside ${facts.minArmies}..${facts.maxArmies}`);
@@ -322,7 +404,7 @@ function checkOperation(op: OperationDef, f: Faults, facts: CampaignFacts): void
 
     for (let i = 0; i < t.then.length; i++) {
       const e = t.then[i];
-      checkEffect(e, `${tw}[${i}]`, f, facts, seats);
+      checkEffect(e, `${tw}[${i}]`, f, facts, op);
       if (e.do === 'endOperation') {
         if (e.result === 'win') authoredWin = true;
         else authoredLoss = true;

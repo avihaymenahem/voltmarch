@@ -418,7 +418,17 @@ export type Effect =
   | {
     readonly do: 'spawnUnits';
     readonly player: number;
-    /** A `FALLBACK_UNITS` key, validated at import against the seat's faction. */
+    /**
+     * A `FALLBACK_UNITS` key, validated at import against the seat's faction.
+     *
+     * THAT SENTENCE WAS A PROMISE BEFORE IT WAS A FACT. `validateCampaign`
+     * checked membership only, and the sink resolves through
+     * `ProductionCatalog.byKey`, which is faction-blind — so an Allied
+     * `grizzly` on seat 1 spawned an Allied hull in seat 1's colours whoever
+     * seat 1 was. It is now checked against `faction` for seat 0 and `foe` for
+     * every other seat; `Faction.Neutral` rows (engineer, harvester, mcv) pass
+     * on any seat. The key is NOT remapped — see `runtime.ts#spawnUnits`.
+     */
     readonly key: string;
     readonly count: number;
     readonly at: Point;
@@ -495,6 +505,37 @@ export interface OperationDef {
   readonly id: string;
   readonly chapter: string;
   readonly faction: Faction;
+  /**
+   * The army every NON-PLAYER seat is fought against. `faction`'s twin.
+   *
+   * **REQUIRED, WITH NO DEFAULT, AND THE DEFAULT IT REPLACES WAS THE SKIRMISH
+   * LOBBY'S.** `Shell.startOperation` used to fill `opponents` from
+   * `this.setup.aiFaction`, so `soviets.02.common-standard` — whose dialogue
+   * says "Allied armour on the valley road" — was fought against the
+   * Reclamation whenever that was the last row the player touched on the
+   * skirmish screen. The player's army was authored; the enemy's was whatever
+   * happened to be lying around.
+   *
+   * It is a FIELD rather than a convention for the same reason `primaryType`
+   * is: an unresolvable value cannot be checked. `validateCampaign` refuses a
+   * `spawnUnits` naming a hull that belongs to a different army than the seat
+   * it spawns on, and that rule is only expressible because the seat's army is
+   * declared. Without it, `t.dig`'s Allied `gi`/`grizzly` in `03-deep-sector`
+   * and `t.plate`'s Soviet `conscript`/`rhino` in `01-sounding-line` are
+   * assertions no gate can read.
+   *
+   * **NO DEFAULT, ON PURPOSE**, and this is the argument CLAUDE.md already
+   * makes about `startPointsFor`'s seed parameter: a default silently
+   * relabels every existing row from one meaning to another and only the row
+   * that happens to break reports it. Every default available here is wrong
+   * for three of the four armies, and a wrong-but-quiet foe is precisely the
+   * defect this field exists to delete. Required means `tsc` names all five
+   * operation files, and all 37 when they exist.
+   *
+   * A mirror match (`foe === faction`) is legal — the lobby offers one — and
+   * `Faction.Neutral` is not: seat 1 would be Gaia, allied to everybody.
+   */
+  readonly foe: Faction;
   /** 1-based position within the chapter. */
   readonly index: number;
   readonly title: string;

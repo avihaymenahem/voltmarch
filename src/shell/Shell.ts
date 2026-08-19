@@ -1329,13 +1329,32 @@ export class Shell {
       personality: -1,
       startingCredits: op.map.credits,
       playerFaction: keyOf(op.faction as number) ?? this.setup.playerFaction,
+      /*
+       * THE ENEMY IS AUTHORED TOO, AND `aiFaction` HAS TO MOVE WITH IT.
+       *
+       * Both of these lines read `op.foe`. Setting only `opponents` would have
+       * looked right and changed nothing on the two-army operations, which is
+       * all five of them: `applySetupToWorld` seats through
+       * `effectiveOpponents`, whose whole documented job is re-asserting the
+       * singular `aiFaction`/`difficulty`/`personality` mirror ONTO ENTRY 0
+       * because "when they disagree the SINGULAR fields win". Seat 1 would
+       * have gone on taking the lobby's army with the array saying otherwise.
+       *
+       * Before this, `soviets.02.common-standard` — whose dialogue names the
+       * enemy "Allied" four times and whose relief waves spawn literal
+       * `grizzly`/`javelin` — was fought against whatever the player last
+       * selected on the skirmish screen. `difficulty` is deliberately still the
+       * lobby's: that is the player's choice about how hard the match is, and
+       * `armOperation` is already handed it for the medal.
+       */
+      aiFaction: keyOf(op.foe as number) ?? this.setup.aiFaction,
       // ONE OPPONENT PER EXTRA SEAT. `armyCount(setup)` is what `bootGame`
       // hands `setPlannedArmies` and what `saveContext` records, so a
       // four-seat operation whose setup says two would level ground for two —
       // the defect `SaveContext.armies` exists to close, reintroduced through
       // a different door.
       opponents: Array.from({ length: Math.max(1, op.map.armies - 1) }, () => ({
-        faction: this.setup.aiFaction,
+        faction: keyOf(op.foe as number) ?? this.setup.aiFaction,
         difficulty: this.setup.difficulty,
         personality: -1,
       })),

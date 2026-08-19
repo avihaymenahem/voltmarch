@@ -90,6 +90,10 @@ const op: OperationDef = {
   id: 'soviets.03.deep-sector',
   chapter: 'soviets',
   faction: Faction.Soviets,
+  // "The Allies have a survey camp on the near end of it", "the tap out past
+  // it with the Allies sitting on it", and Wend is intercepted on their net.
+  // `t.dig` and `t.contest` both spawn literal `gi`/`grizzly` onto seat 1.
+  foe: Faction.Allies,
   index: 3,
   title: 'Deep Sector',
   beat: 'The March runs past the last reading anybody has. The Allies are taking one.',
@@ -220,6 +224,11 @@ const op: OperationDef = {
      * LITERAL SOVIET KEYS. `EffectSink.spawnUnits` resolves through
      * `ProductionCatalog.byKey` and remaps nothing, unlike the layout's
      * `ScenarioBuilder.spawnUnit`, which runs every key through `keyFor`.
+     * That is still true and is now SAFE rather than merely survivable:
+     * `validateCampaign` checks every `spawnUnits` key against the army of
+     * the seat it lands on, seat 0 being `faction` and every other seat
+     * `foe`, so a literal key on the wrong seat is a build error instead of a
+     * Rhino in Allied paint.
      */
     {
       id: 't.rail',

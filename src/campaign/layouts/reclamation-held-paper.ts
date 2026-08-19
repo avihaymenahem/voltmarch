@@ -263,8 +263,9 @@ export default layout({
       garrison: false,
     });
     // Role key, so this is a Scrapjaw / Collector / Harvester according to
-    // whichever army the lobby seated as the opponent — `keyFor` resolves it
-    // and this file never learns the answer.
+    // whichever army the OPERATION seated as the opponent — `keyFor` resolves
+    // it and this file never learns the answer. It said "the lobby" until
+    // `OperationDef.foe` existed, which is the whole of what that field fixed.
     for (let i = 0; i < 2; i++) {
       b.spawnUnit('harvester', garrison, foe.x - px * 26 + nx * (i * 12 - 6),
         foe.z - pz * 26 + nz * (i * 12 - 6), { yawDeg: wrapDeg(foe.facingDeg + 180) });
@@ -335,11 +336,17 @@ export default layout({
      * is what keeps the cut an ADVANTAGE rather than an I-win button — the
      * compound still has teeth, it just stops having the good ones.
      *
-     * ROLE KEYS THROUGHOUT. The lobby's `aiFaction` decides who the
-     * garrison is and an operation cannot override it (`Shell.startOperation`
-     * fills `opponents` from `this.setup.aiFaction`), so nothing here may
-     * name an army's own def. `keyFor` turns `prismTower` into the seated
-     * faction's specialist tower and `radar` into its mast.
+     * ROLE KEYS THROUGHOUT, AND THE REASON CHANGED WITHOUT THE RULE
+     * CHANGING. This used to read "the lobby's `aiFaction` decides who the
+     * garrison is and an operation cannot override it" — true when it was
+     * written, false since `OperationDef.foe` landed: `Shell.startOperation`
+     * fills every opponent seat from `op.foe`, which for this operation is
+     * `Faction.Soviets`. Role keys stay anyway, because a LAYOUT is geometry
+     * authored once and `keyFor` is what makes the same compound legible for
+     * whichever army the operation names — turning `prismTower` into that
+     * army's specialist tower and `radar` into its mast. Naming a def here
+     * would pin the ground to one foe in a second place, and two places that
+     * have to agree are how they come to disagree.
      * ================================================================== */
     const officeAt = at(OFFICE);
     // Facing back down the road at the player. Every structure in the compound

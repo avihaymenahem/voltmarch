@@ -25,6 +25,12 @@ const op: OperationDef = {
   id: 'soviets.01.first-tap',
   chapter: 'soviets',
   faction: Faction.Soviets,
+  // "The Allies got there first", and the primary is "Destroy the Allied
+  // survey tap". `t.relief` spawns `grizzly` — the Allied main battle tank,
+  // literal and unremapped — onto seat 1, so this was already the only army
+  // the operation could mean; until now nothing said so anywhere a gate
+  // could read it.
+  foe: Faction.Allies,
   index: 1,
   title: 'First Tap',
   beat: 'The March surfaces in a new place. The Allies got there first.',

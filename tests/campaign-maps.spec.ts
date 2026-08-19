@@ -35,19 +35,26 @@
  * ========================================================================== */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import * as THREE from 'three';
 
 import { Terrain, setActiveTerrain } from '../src/world/Terrain';
 import { World } from '../src/core/world';
+import { Channels } from '../src/core/events';
 import { EntityKind, Faction, NONE } from '../src/core/types';
 import type { EntityId } from '../src/core/types';
 import {
-  MAP_SEAS, buildScenario, clearScenario, planScenario, setCampaignLayout,
+  MAP_SEAS, buildScenario, clearScenario, planScenario, resolveDefBinding, setCampaignLayout,
   setPlannedOperation, startPointsFor,
 } from '../src/game/Scenarios';
+import { ProductionCatalog, ProductionService, setProduction } from '../src/sim/Production';
 import { CAMPAIGNS, LAYOUTS } from '../src/campaign/index';
+import { TagRegistry, makeEffectSink } from '../src/campaign/runtime';
 import { tagsUsedByCondition } from '../src/campaign/validate';
 import type { OperationDef } from '../src/campaign/types';
+
+const ROOT = process.cwd();
 
 /* -- the harness ---------------------------------------------------------- */
 
@@ -84,7 +91,15 @@ function buildOperation(op: OperationDef): Built {
 
   const world = new World();
   world.addPlayer(FACTION_OF[op.chapter], 'Commander', true, true);
-  world.addPlayer(Faction.Allies, 'Opponent', false, false);
+  // SEATED FROM `op.foe`, EXACTLY AS `Shell.startOperation` NOW DOES.
+  // This was a hard-coded `Faction.Allies` — which was the shell's behaviour
+  // only by accident, because the shell took the opponent from the SKIRMISH
+  // LOBBY and the lobby's default happens to be an Allied/Soviet pair. So
+  // `reclamation.01.held-paper` was never once built against the army it is
+  // written for until this line changed.
+  for (let seat = 1; seat < op.map.armies; seat++) {
+    world.addPlayer(op.foe, 'Opponent', false, false);
+  }
   world.terrain = terrain;
 
   const tags = new Map<string, EntityId[]>();
@@ -257,6 +272,170 @@ describe('every operation builds a world its triggers can read', () => {
             expect(i, `${tag} handle does not resolve`).toBeGreaterThanOrEqual(0);
             expect(Number.isFinite(st.posX[i]) && Number.isFinite(st.posZ[i]), tag).toBe(true);
           }
+        }
+      });
+    });
+  }
+});
+
+/* ==========================================================================
+ * 3. THE FOE
+ *
+ * `OperationDef.foe` is the army every non-player seat is fought against.
+ * Before it existed, `Shell.startOperation` authored the PLAYER's army from
+ * `op.faction` and took the ENEMY's from `this.setup.aiFaction` — the skirmish
+ * lobby — so `soviets.02.common-standard`, whose dialogue names the enemy
+ * "Allied" four times, was fought against the Reclamation whenever that was the
+ * last row the player touched on the skirmish screen.
+ *
+ * Two halves, and they fail for different reasons:
+ *
+ *   - the SHELL has to put the declared army on the seat, which is source-gated
+ *     because `Shell.ts` builds DOM and cannot be imported under
+ *     `environment: 'node'` — the same shape and the same reason as
+ *     `tests/save-army-count.spec.ts`;
+ *   - the OPERATION has to author hulls that army actually fields, which is
+ *     measured on a real built world through the real catalog.
+ * ========================================================================== */
+
+describe('the shell seats the operation’s foe, not the lobby’s opponent', () => {
+  const src = readFileSync(join(ROOT, 'src/shell/Shell.ts'), 'utf8');
+
+  /** Lift one method's text out by brace matching. Same as `save-army-count`. */
+  const methodBody = (signature: string): string => {
+    const at = src.indexOf(signature);
+    expect(at, `Shell.ts no longer has ${signature}`).toBeGreaterThan(0);
+    let parens = 0;
+    let i = src.indexOf('(', at);
+    for (; i < src.length; i++) {
+      if (src[i] === '(') parens++;
+      else if (src[i] === ')' && --parens === 0) break;
+    }
+    let depth = 0;
+    for (i = src.indexOf('{', i); i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) return src.slice(at, i + 1);
+    }
+    throw new Error(`${signature} never closes`);
+  };
+
+  const body = methodBody('async startOperation(');
+
+  it('every opponent seat it creates takes its faction from `op.foe`', () => {
+    expect(
+      body,
+      'the `opponents` factory is what `armyCount` and `applySetupToWorld` read',
+    ).toMatch(/opponents:[\s\S]*keyOf\(op\.foe/);
+  });
+
+  it('AND `aiFaction` moves with it, or `effectiveOpponents` puts the lobby back', () => {
+    /*
+     * THE HALF THAT LOOKS REDUNDANT AND IS NOT, AND IT WOULD HAVE SHIPPED.
+     *
+     * `MatchSetup.aiFaction` is documented as a MIRROR of `opponents[0]`, and
+     * `effectiveOpponents` — which `applySetupToWorld` seats through — rebuilds
+     * entry 0 from the singular fields on every read, because "when they
+     * disagree the SINGULAR fields win". So setting only the array changes
+     * nothing at all on a two-army operation, which is all five of them: seat 1
+     * would go on taking the lobby's army with the array saying otherwise, and
+     * a test that read `setup.opponents` would agree the fix had worked.
+     */
+    expect(body).toMatch(/aiFaction:\s*keyOf\(op\.foe/);
+  });
+
+  it('and the lobby’s opponent survives only as the unreachable fallback', () => {
+    // `validateCampaign` refuses a Neutral or out-of-range `foe` and all four
+    // playable armies are in `playableFactions()`, so `keyOf` cannot miss. The
+    // `??` is kept for symmetry with `playerFaction`, which is why this asserts
+    // the SHAPE rather than the absence of the string.
+    expect(body).not.toMatch(/faction:\s*this\.setup\.aiFaction/);
+    expect(body).not.toMatch(/aiFaction:\s*this\.setup\.aiFaction\s*,/);
+  });
+});
+
+describe('the built world fields the operation’s foe, and only hulls that army has', () => {
+  const bindingPromise = resolveDefBinding();
+
+  for (const op of ALL) {
+    describe(op.id, () => {
+      const built = buildOperation(op);
+
+      it('every non-player seat carries the declared foe', () => {
+        const players = built.world.players.filter((p) => p.faction !== Faction.Neutral);
+        expect(players.length, 'the seated armies').toBe(op.map.armies);
+        expect(players[0].faction, 'seat 0 is the player').toBe(FACTION_OF[op.chapter]);
+        for (let seat = 1; seat < op.map.armies; seat++) {
+          expect(players[seat].faction, `seat ${seat} of ${op.id}`).toBe(op.foe);
+        }
+      });
+
+      it('a scripted spawn lands the authored hull, and it belongs to that seat’s army', async () => {
+        /*
+         * THE PROOF `validateCampaign`'s STATIC RULE CANNOT GIVE.
+         *
+         * The validator reads `FALLBACK_UNITS`. `EffectSink.spawnUnits` reads
+         * `ProductionCatalog.byKey`, then `ProductionService.spawnUnit` reads
+         * `FALLBACK_UNITS` again and calls `store.alloc(kind, entry.defId,
+         * p.id, p.faction, …)` — the DEF from the key, the COLOUR from the
+         * seat. Three tables and one allocation, and this drives all of them.
+         */
+        const waves = op.triggers.flatMap((t) => t.then.filter((e) => e.do === 'spawnUnits'));
+        if (waves.length === 0) return;
+
+        const binding = await bindingPromise;
+        const catalog = new ProductionCatalog(binding);
+        expect(catalog.bound, 'the catalog must be bound to the real def tables').toBe(true);
+        const channels = new Channels();
+        const svc = new ProductionService(built.world, channels, catalog);
+        svc.bindingTables = binding.tables;
+        const tags = new TagRegistry();
+        const faults: string[] = [];
+        const sink = makeEffectSink(built.world, channels, tags, [], {
+          onObjective: () => {},
+          onEnd: () => {},
+          onSpawnFault: (key, asked, placed, why) => faults.push(`${key} ${placed}/${asked}: ${why}`),
+        });
+
+        setProduction(svc);
+        try {
+          for (const w of waves) {
+            if (w.do !== 'spawnUnits') continue;
+            const army = w.player === 0 ? op.faction : op.foe;
+            const entry = catalog.byKey(w.key);
+            expect(entry, `'${w.key}' has no catalog entry — byKey returns null and the wave is empty`)
+              .not.toBeNull();
+            if (entry === null) continue;
+            // The catalog is a SECOND table from the one the validator reads
+            // and it carries its own `faction`. A row where the two disagree
+            // would pass validation and still put the wrong army's hull down.
+            expect(
+              entry.faction === Faction.Neutral || entry.faction === army,
+              `${op.id} spawns '${w.key}' (catalog faction ${String(entry.faction)}) `
+              + `on seat ${String(w.player)}, which fields faction ${String(army)}`,
+            ).toBe(true);
+
+            const probe = `probe.${w.key}.${String(w.player)}`;
+            const report = sink.spawnUnits(
+              w.player, w.key, w.count, w.at, w.spread ?? 0, w.facingDeg ?? 0, probe,
+            );
+            expect(report.placed, `'${w.key}' placed nothing: ${faults.join('; ')}`)
+              .toBeGreaterThan(0);
+
+            const st = built.world.store;
+            for (const id of tags.live(st, probe)) {
+              const i = st.index(id);
+              // THE AUTHORED HULL, UNREMAPPED. `keyFor` is deliberately not on
+              // this path — see `runtime.ts#spawnUnits` — so a `rhino` stays a
+              // Rhino whoever owns it. If this ever starts remapping, the
+              // authored key stops meaning the authored hull and this fails.
+              expect(st.defId[i], `'${w.key}' did not land as itself`).toBe(entry.defId);
+              // …and it flies the seat's colours, which is the other half of
+              // why the two have to agree in the first place.
+              expect(st.faction[i], `'${w.key}' on seat ${String(w.player)}`).toBe(army);
+            }
+          }
+        } finally {
+          setProduction(null);
         }
       });
     });
