@@ -218,10 +218,18 @@ with no number is untracked, and that is itself the bug.
     rule (stance is hashed world state) — deterministic, but it changes existing replays, and it
     wants measuring before it is taken. **Sim fix, if the above is not enough:** skip
     `Locomotor.Air` in `holdPost`'s chase branch.
-  - **The AI's air withdrawal.** `AiBrain.withdrawWounded` DOES reach aircraft — "the AI has no
-    aircraft micro" was a guess and it is false — but it has nothing air-aware: the measured window
-    under thirty percent is **2.07 s** against a 0.2 s poll that moves one hull per pass, rolls
-    against discipline, and lets any worse-off tank take the slot. In flight.
+  - ~~**The AI's air withdrawal.**~~ **CLOSED 2026-08-19 in 375d1fd.** `AI_RETREAT.airHpFraction`
+    0.5, a separate slot, and no rout cap. Measured firing in a real 30-minute four-army match with
+    the unlocks granted: 3 on Normal, 3 on Brutal, 0 on Easy — so `minDiscipline` holds in a match
+    and not only in a rig — against 1-6 airframes per brain, i.e. 1.0-1.4% of all withdrawals.
+    A ground-only match draws a byte-identical command stream, verified 12 ways against the
+    reverted build.
+
+    **Two questions it hands forward.** Both withdrawn Brutal aircraft died anyway, at minutes
+    three and five, so whether 50% is early enough for a 190 hp hull to cross the ground home is
+    unmeasured — and answering it needs a STAGED ENGAGEMENT, not a match A/B: the two matches
+    diverge completely from the first differing withdrawal. And the air pass spends the APM action
+    first, so with a budget of one the ground withdrawal silently fails that pass.
   - **The overhead blind cone is PER ROUND, not one number.** Bullet 8–10 m, Rocket 2–9 m,
     Beam/Tesla ~0. Only the exact zero-distance column fails for everything, which is degenerate.
     And the severity is bounded: the smallest standoff `approach` produces is 13.6 m of surface
