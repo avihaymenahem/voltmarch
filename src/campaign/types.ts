@@ -10,10 +10,19 @@
  * THE ENTRY CHUNK, so anything statically reachable from
  * `src/game/campaign.system.ts` is downloaded by every player before first
  * paint — on the title backdrop, on every `?shot=` boot, on a machine that
- * will never open the campaign. `campaign.system.ts` imports this file and
- * `policy.ts` and NOTHING ELSE; the Director, the operation table, the layouts
- * and the prose are all behind one `await import('./campaign-install')`.
- * `tests/campaign-bundle-isolation.spec.ts` fails when that is broken.
+ * will never open the campaign. `campaign.system.ts` imports `session.ts` and
+ * `policy.ts` AND NOTHING ELSE — it does not name this file at all; this file
+ * is reached THROUGH both of them, type-only in each case. (This paragraph read
+ * "imports this file and `policy.ts`" and was wrong in both directions: it
+ * missed `session.ts`, which carries the whole shell-facing surface, and it
+ * credited an import that does not exist.) The type-only hop is not an escape:
+ * `tests/campaign-bundle-isolation.spec.ts` follows `import type` when it builds
+ * its closure, deliberately, as the over-approximation that is SAFE for a rule
+ * which forbids things — so this file is inside it and the constraint above is
+ * enforced rather than merely intended.
+ * The Director, the operation table, the layouts and the prose are all behind
+ * one `await import('./campaign-install')`, and that spec fails when the
+ * boundary is crossed.
  *
  * ============================================================================
  * WHY A DECLARATIVE TABLE AND NOT A CALLBACK
@@ -60,7 +69,12 @@
  * `ScenarioBuilder.spawnBuilding`; structures reach the world through
  * `Production`'s placement path, which wants a build queue, a placement legality
  * test and a player who can afford it. A `placeStructureDirect` is 1–2 days of
- * real work and NOTHING IN THE 37-OPERATION TABLE NEEDS IT: every premise that
+ * real work and NOTHING IN THE THIRTEEN AUTHORED OPERATIONS NEEDS IT — nor did
+ * any premise in the 37 the plan describes, which is where that survey was
+ * taken. (This read "the 37-operation table" in the present tense; the table is
+ * 13 rows today, and stating a planned structure as a shipped one is the drift
+ * `docs/SPEC_DRIFT_AUDIT.md` catalogues and the `dialogue` block below is a
+ * worked example of.) Every premise that
  * looked like it did — a survey office to recover, a town's derricks to hold, a
  * yard that changes hands — is a structure that EXISTS IN THE LAYOUT and is
  * revealed, repaired or captured. Authoring it into the layout is also strictly
@@ -215,13 +229,22 @@ export interface OperationMap {
 /**
  * What the player and the AI may build.
  *
- * BOTH LISTS NAME `UNLOCK_TAGS` IDS AND NOTHING ELSE. An operation may
- * restrict only TAGGED content — `UNLOCK_TAGS` is 33 defs across 10 tags and
- * every other def is day-one open. Withholding an untagged Barracks would mean
- * editing the one module CLAUDE.md describes as importing nothing, plus a
- * `census`/`Production` re-derivation at launch, for a premise nothing in the
- * operation table needs. `validateCampaign` refuses an unknown id, and no
- * briefing may claim otherwise.
+ * BOTH LISTS NAME UNLOCK IDS AND NOTHING ELSE. An operation may restrict only
+ * TAGGED content — `UNLOCK_TAGS` is 33 defs across **13** tags (counted
+ * 2026-08-19; this line said 10, and the four per-army superweapon ids are the
+ * ones a coarser count folds together) and every other def is day-one open.
+ * Withholding an untagged Barracks would mean editing the one module CLAUDE.md
+ * describes as importing nothing, plus a `census`/`Production` re-derivation at
+ * launch, for a premise nothing in the operation table needs. `validateCampaign`
+ * refuses an unknown id, and no briefing may claim otherwise.
+ *
+ * **THE VALIDATOR IS LOOSER THAN THIS PARAGRAPH, AND KNOWINGLY SO.**
+ * `index.ts#campaignFacts` fills `unlockIds` from `Object.values(UNLOCKS)`,
+ * which is a SUPERSET of the 13 tag ids: it also holds `cosmetic.*` and `map.*`.
+ * So a roster naming `map.coral-shore` passes validation and then restricts
+ * nothing, because `UnlockGate`'s roster is an allow-list over `def.unlockedBy`
+ * and no def carries a map id. Author against the 13; do not read the
+ * validator's silence as agreement.
  *
  * The two lists differ because ASYMMETRY IS THE POINT: "the enemy has Tesla
  * Coils and you do not, go around them" is a mission, and it is expressed here
@@ -250,9 +273,13 @@ export interface OperationRoster {
  *     t+10 s for having no base;
  *   - a defecting militia, counted hostile forever.
  *
- * `ignoreSeats` is the fourth: a seat listed here is invisible to both tests,
- * which is how a neutral-turned-ally or a scripted third party stops deciding
- * the match.
+ * `ignoreSeats` is the fourth: a seat listed here is invisible to the VICTORY
+ * test, which is how a neutral-turned-ally or a scripted third party stops
+ * deciding the match. `seatIgnored` has exactly one call site — the enemies-left
+ * loop in `Shell.pollOutcome` — and this line said "invisible to both tests",
+ * which reads as if listing a seat could also stop a defeat. It cannot: the
+ * defeat test counts the LOCAL seat's assets and looks at no other seat at all,
+ * so listing one is inert there and listing your own changes nothing.
  */
 export interface OutcomePolicy {
   readonly annihilationWin: boolean;
@@ -260,7 +287,18 @@ export interface OutcomePolicy {
   readonly ignoreSeats: readonly number[];
 }
 
-/** One objective row. At most three are ever published at once. */
+/**
+ * One objective row.
+ *
+ * KEEP THREE ACTIVE AT ONCE, AND NOTHING ENFORCES IT. `MAX_VISIBLE_OBJECTIVES`
+ * in `ui/Objectives.ts` is 3, so a fourth active row is counted into the
+ * "+N more" line and is only readable once the player expands the panel
+ * (`MAX_EXPANDED_OBJECTIVES`, 12). This line read "at most three are ever
+ * published at once" as though it were a property; it is authoring guidance,
+ * `validateCampaign` does not check it, and `pact.02.long-count` already
+ * declares four — three plus a hidden one, which is the shape that stays inside
+ * the cap because the hidden row is not active yet.
+ */
 export interface ObjectiveDef {
   readonly id: string;
   readonly kind: 'primary' | 'secondary';
@@ -270,7 +308,11 @@ export interface ObjectiveDef {
    * Paid on completion, in-match, through `Economy.grant`.
    *
    * SECONDARIES ONLY. Paying for the primary is paying for playing, and
-   * `tests/campaign-wiring.spec.ts` refuses it. `grant` rather than `deposit`
+   * `validateCampaign` refuses it at import (`validate.ts#checkOperation`, the
+   * `o.kind === 'primary'` arm). **This line named `tests/campaign-wiring.spec.ts`
+   * and no such file exists** — it is a planned deliverable, `CAMPAIGN_BUILD_SPEC.md`
+   * §G8, cited here in the present tense. The rule is real; the citation was
+   * not. `grant` rather than `deposit`
    * because a scripted reward must never evaporate at a full silo; the
    * permanent `capFloor` lift is its accepted cost, and `oreWasted` is not
    * touched because that counter moves only for `CreditReason.Harvest`.
@@ -354,9 +396,15 @@ export type Condition =
   /**
    * No entity carrying `tag` is alive.
    *
-   * TRUE BEFORE THE TAG EVER EXISTS, which is a real trap and the reason
-   * `campaign-reachability.spec.ts` checks that every tag a condition names is
-   * PRODUCED by that operation's layout. `entityDead: 'convoy'` on an operation
+   * TRUE BEFORE THE TAG EVER EXISTS, which is a real trap and the reason every
+   * tag a condition names is checked against what that operation's layout
+   * actually produces. TWO gates, and the second is the one that measures:
+   * `validateCampaign` compares the trigger's tags against the layout's
+   * DECLARED `tags` set at import, and `tests/campaign-maps.spec.ts` builds
+   * every operation headless and compares the declaration against what landed,
+   * in both directions. **This line credited `campaign-reachability.spec.ts`,
+   * which does not exist** — it is a planned deliverable (`CAMPAIGN_BUILD_SPEC.md`
+   * §G2) named here in the present tense. `entityDead: 'convoy'` on an operation
    * whose layout forgot the tag fails the player on tick one.
    */
   | { readonly on: 'entityDead'; readonly tag: string }
@@ -434,7 +482,13 @@ export type Effect =
    *
    * `count` is a hard number and the sink COUNTS ITS FAILURES. `spawnUnit`
    * returns `NONE` on a missing `FALLBACK_UNITS` row and on an exhausted entity
-   * budget, and both existing sim callers treat that as a silent `continue`.
+   * budget, and FOUR OF ITS FIVE OTHER SIM CALLERS DROP THAT ON THE FLOOR:
+   * `Crates.ts` continues, `RepairSell.ts` breaks, and both `Production.ts`
+   * sites `return false`, none of them logging anything. (This said "both
+   * existing sim callers" and there are five — `Crates`, `Deploy`, `RepairSell`
+   * and two in `Production` — one of which is the counterexample: `Deploy.ts`
+   * says `EvaLine.CannotDeployHere` and increments `counters.refused`, so it is
+   * neither silent nor a `continue`. Recount the callers before quoting them.)
    * A reinforcement wave that silently spawns nothing is the most plausible way
    * an operation becomes unwinnable with every test still green.
    */
@@ -543,12 +597,19 @@ export type Effect =
    * PUNCTUATION RATHER THAN THE ONLY SOURCE.** `audio.system.ts` subscribes to
    * the ordinary game events and speaks `structureLost` on any local building
    * death, `buildingCaptured` on any capture, `baseUnderAttack` and
-   * `forcesUnderAttack` on any attack — which is every line the thirteen
-   * shipped operations script. So an `eva` fired at the moment the thing it
-   * describes actually happens is REDUNDANT, and it is only inaudible because
-   * `EVA_LINES` carries a per-line cooldown that swallows the second copy.
-   * Script one for a beat the game has no event for, or a moment before the
-   * event lands; do not narrate what the announcer will say anyway.
+   * `forcesUnderAttack` on any attack — which is FOUR of the FIVE distinct
+   * lines the thirteen shipped operations script. So an `eva` fired at the
+   * moment the thing it describes actually happens is REDUNDANT, and it is only
+   * inaudible because `EVA_LINES` carries a per-line cooldown that swallows the
+   * second copy. Script one for a beat the game has no event for, or a moment
+   * before the event lands; do not narrate what the announcer will say anyway.
+   *
+   * **THE FIFTH LINE IS `reinforcements`, SCRIPTED FOUR TIMES, AND IT IS THE
+   * ONE THAT EARNS ITS PLACE.** Nothing in `audio.system.ts` ever says it — a
+   * scripted wave is not an event the announcer has — so it is precisely the
+   * case the paragraph above recommends. This read "which is every line the
+   * thirteen shipped operations script", which counted four of five and made
+   * the one good example look like the rule it breaks.
    *
    * **IT SPEAKS AND IT DOES NOT CHIP.** `Shell.playCampaignBeat` calls the
    * announcer directly rather than emitting `eva:line`, so the HUD's
@@ -625,8 +686,10 @@ export interface OperationDef {
    * relabels every existing row from one meaning to another and only the row
    * that happens to break reports it. Every default available here is wrong
    * for three of the four armies, and a wrong-but-quiet foe is precisely the
-   * defect this field exists to delete. Required means `tsc` names all five
-   * operation files, and all 37 when they exist.
+   * defect this field exists to delete. Required means `tsc` names every
+   * operation file — five when this landed, THIRTEEN today, and all 37 when
+   * they exist. (The count was written as "all five" and left there, which is
+   * how a number in a comment becomes a claim about the table's size.)
    *
    * A mirror match (`foe === faction`) is legal — the lobby offers one — and
    * `Faction.Neutral` is not: seat 1 would be Gaia, allied to everybody.
@@ -642,7 +705,15 @@ export interface OperationDef {
   /**
    * Authored par, in SECONDS of match time.
    *
-   * `tests/campaign-length.spec.ts` asserts the sum clears the ten-hour claim.
+   * `tests/campaign-length.spec.ts` ARMS at 37 operations: only once the table
+   * is complete does it assert `sum(parSec) >= 36000`. At 13 of 37 it asserts
+   * something weaker and more useful — that the shortfall still divides into
+   * the rows left to author at a par inside the authored band — plus a
+   * per-operation band on every row. (This line said it "asserts the sum clears
+   * the ten-hour claim", full stop, which is what it will do and not what it
+   * does; a partial table cannot clear a total and a spec that pretended
+   * otherwise would be red from the first commit.)
+   *
    * This is the number that makes that claim falsifiable rather than
    * decorative, and it is authored BEFORE the operation is playable on purpose:
    * a par written afterwards is a description, not a target.
@@ -680,8 +751,13 @@ export interface ChapterDef {
 /* ==========================================================================
  * 8. RUNTIME STATE
  *
- * Everything here is saved in `CHUNK_CMPN` and every map is keyed by a stable
- * string id.
+ * `OperationState` is saved in `CHUNK_CMPN` — all eight fields, by
+ * `session.ts#captureCampaignState` — and every map in it is keyed by a stable
+ * string id. **`Medal` IS NOT**, and this header said "everything here is".
+ * A medal is PROFILE scope, not match scope: `campaign-store.ts` keeps it in
+ * localStorage next to the completion set, deliberately, because the best ever
+ * earned has to survive a save being deleted and has to be readable on the
+ * chapter screen with no match open.
  * ========================================================================== */
 
 export type ObjectiveStatus = 'hidden' | 'active' | 'complete' | 'failed';
@@ -714,11 +790,23 @@ export type Medal = 0 | 1 | 2 | 3;
 /* ==========================================================================
  * 9. THE PORTS
  *
- * The Director is `(state, WorldQuery, tick, rng) -> Effect[]` and touches the
- * world through nothing but these two interfaces. That is what makes it
- * testable without an engine, and what makes "the Director read something
- * presentation-side" a compile error rather than a replay divergence found by
- * a probe two phases late.
+ * The Director is
+ * `runDirector(op, state, WorldQuery, tick, out: Effect[]) -> number` and
+ * touches the world through nothing but these two interfaces. That is what
+ * makes it testable without an engine, and what makes "the Director read
+ * something presentation-side" a compile error rather than a replay divergence
+ * found by a probe two phases late.
+ *
+ * **THIS READ `(state, WorldQuery, tick, rng) -> Effect[]`, WHICH IS THE PLAN'S
+ * SIGNATURE AND NOT THE SHIPPED ONE** (`CAMPAIGN_BUILD_SPEC.md` §4.2's module
+ * table, quoted forward into a file authors reason from). Three differences,
+ * and the last two are the ones that would bite: it takes `op` first, because a
+ * state object does not carry its own trigger table; **there is no `rng`, and
+ * there never was** — nothing in `Director.ts` draws a random number, which is
+ * why `campaign-director.spec.ts` can source-gate the whole module against
+ * `Math.random`; and it FILLS a caller-supplied `out` and returns a COUNT
+ * rather than returning an array, because it runs inside `simTick` and the
+ * frame-loop allocation rule applies to it like everything else there.
  * ========================================================================== */
 
 export interface WorldQuery {

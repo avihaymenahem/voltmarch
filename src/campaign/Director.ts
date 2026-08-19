@@ -83,10 +83,15 @@ function holds(
       return q.aliveWithTag(c.tag) > 0;
 
     case 'entityDead':
-      // TRUE BEFORE THE TAG EXISTS. That is a real trap and it is why
-      // `campaign-reachability.spec.ts` requires every tag a condition names to
-      // be produced by that operation's layout — otherwise a `protect` fails on
-      // tick one, silently, in the player's favour-shaped direction.
+      // TRUE BEFORE THE TAG EXISTS. That is a real trap and it is why every tag
+      // a condition names is required to be produced by that operation's layout
+      // — otherwise a `protect` fails on tick one, silently, in the player's
+      // favour-shaped direction. `validateCampaign` checks the trigger's tags
+      // against the layout's declared set at import, and
+      // `tests/campaign-maps.spec.ts` builds every operation headless and checks
+      // the declaration against what actually landed. (This credited
+      // `campaign-reachability.spec.ts`, which does not exist — it is a planned
+      // deliverable, `CAMPAIGN_BUILD_SPEC.md` §G2, cited in the present tense.)
       return q.aliveWithTag(c.tag) === 0;
 
     case 'entityHpBelow': {

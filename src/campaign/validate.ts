@@ -13,9 +13,13 @@
  * ============================================================================
  * IT TAKES THE WORLD AS FACTS RATHER THAN IMPORTING IT
  * ============================================================================
- * `validateCampaign(chapters, facts)`. The caller gathers `FALLBACK_UNITS`
- * keys, `MAP_PRESETS` keys, `UNLOCK_TAGS` ids and the tag set each layout
- * stamps, and hands them over. Three things fall out of that:
+ * `validateCampaign(chapters, facts)`. The caller — `index.ts#campaignFacts` —
+ * gathers six things and hands them over: every `FALLBACK_UNITS` key mapped to
+ * the army its row declares, the keys of `MAP_PRESETS`, the keys of
+ * `EVA_LINES`, the tag set each layout stamps, the seat bounds, and
+ * **`Object.values(UNLOCKS)` for `unlockIds`**. That last one is NOT the
+ * `UNLOCK_TAGS` id set, which this paragraph used to say it was — see the field
+ * below. Three things fall out of the arrangement:
  *
  *   - this module imports nothing heavy, so it can run in a node test with no
  *     engine and no DOM;
@@ -30,19 +34,31 @@
  * Most of these exist because the equivalent mistake has already been made
  * somewhere in this repo and cost a cycle:
  *
- *   - **An operation with no authored win path and no authored lose path that
- *     also opts out of annihilation.** That is a match which cannot end. It is
- *     the single most expensive bug this feature can ship and it is entirely
- *     mechanical to detect.
+ *   - **An operation with no way to win, and — SEPARATELY — an operation with
+ *     no way to lose.** Two independent refusals, not one conjunction: no
+ *     authored `endOperation('win')` and `annihilationWin` off is a fault on
+ *     its own, and no authored `endOperation('loss')` and `assetLossDefeat` off
+ *     is another. (This was written as a single "no win path AND no lose path"
+ *     rule, which is what `policy.ts` and CLAUDE.md both say too; the code is
+ *     stricter than all three, and an author who satisfied the conjunction
+ *     would still be refused.) A match that cannot end is the single most
+ *     expensive bug this feature can ship and it is entirely mechanical to
+ *     detect.
  *   - **A tag a trigger names that its layout never stamps.** `entityDead` is
  *     TRUE before the tag exists, so a mistyped `protect` fails the player on
  *     tick one, in silence.
  *   - **A def key with no `FALLBACK_UNITS` row.** `Production.spawnUnit` reads
  *     that table BEFORE the def table and returns `NONE` with no warning, so
  *     the wave arrives empty and nothing anywhere says so.
- *   - **A restriction on an untagged def.** `UNLOCK_TAGS` is 33 defs; every
- *     other def is day-one open and the roster mechanism cannot express
- *     withholding one. An operation that tried would silently get everything.
+ *   - **A restriction on an id no `UNLOCKS` row produces.** `UNLOCK_TAGS` is 33
+ *     defs across 13 tags; every other def is day-one open and the roster
+ *     mechanism cannot express withholding one. An operation that tried would
+ *     silently get everything. **THE CHECK IS WIDER THAN THAT SENTENCE**: it
+ *     tests membership of `Object.values(UNLOCKS)`, which also holds the
+ *     `cosmetic.*` and `map.*` ids, so a roster naming `map.coral-shore` is
+ *     accepted here and then restricts nothing downstream. Narrowing it to the
+ *     13 tag ids is a real improvement and a behaviour change, so it is named
+ *     rather than made in passing.
  *   - **`primaryType` repeating adjacently within a chapter.** A chapter of
  *     nine assaults is the failure a beat grid cannot see from inside itself.
  *   - **`elapsedSinceArmed` under a `not`.** It reads true during the arming
@@ -71,7 +87,16 @@ export interface CampaignFacts {
   readonly unitFactions: ReadonlyMap<string, Faction>;
   /** Keys of `MAP_PRESETS`. */
   readonly mapPresets: ReadonlySet<string>;
-  /** Every id in `UNLOCK_TAGS`. A roster may name these and nothing else. */
+  /**
+   * Every VALUE of `UNLOCKS`. A roster may name these and nothing else.
+   *
+   * **NOT the `UNLOCK_TAGS` id set, which is what this line used to claim.**
+   * `UNLOCKS` is the wider table: 13 content tags plus the `cosmetic.*` and
+   * `map.*` reward ids. Everything a roster can USEFULLY name is in the first
+   * group — `UnlockGate`'s campaign roster is an allow-list over
+   * `def.unlockedBy`, and no def carries a cosmetic or a map id — so this set
+   * refuses typos and accepts a category of well-spelled no-ops.
+   */
   readonly unlockIds: ReadonlySet<string>;
   /**
    * Every key of `EVA_LINES`.
@@ -282,10 +307,11 @@ function checkEffect(
          * silent remap would rewrite an author's mistake into a working wave
          * whose dialogue still named the wrong army, which is the same class of
          * quiet falsehood as the defect this whole field exists to delete. It
-         * also could not do the job: `FACTION_KEY_MAP` covers ~30 ROLE keys and
-         * passes everything else through unchanged, so `rclGrinder` on an
-         * Allied seat would remap to itself and the disagreement would survive
-         * the fix. A build error covers EVERY key, because it reads the row's
+         * also could not do the job: `FACTION_KEY_MAP` covers 45 ROLE keys
+         * (counted 2026-08-19; this said "~30") and passes everything else
+         * through unchanged, so `rclGrinder` on an Allied seat would remap to
+         * itself and the disagreement would survive the fix. A build error
+         * covers EVERY key, because it reads the row's
          * own declared army rather than a remap table's coverage.
          *
          * Neutral rows (engineer, harvester, mcv) are legal on any seat, which

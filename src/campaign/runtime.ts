@@ -73,9 +73,12 @@ export class TagRegistry {
   /**
    * Live handles for a tag, pruned in place.
    *
-   * Returns the INTERNAL array. Callers in this file read it and discard it
-   * within the same statement; nothing retains it. That is deliberate — the
-   * alternative is an allocation per condition per tick.
+   * Returns the INTERNAL array. No caller in this file retains it past its own
+   * call, and none calls `live` twice with a first result still in hand — which
+   * is the property that matters and is weaker than "reads it within the same
+   * statement", which this used to claim and which `orderTagged` does not do:
+   * it holds the array across a loop. That is deliberate — the alternative is
+   * an allocation per condition per tick.
    */
   live(store: World['store'], tag: string): readonly EntityId[] {
     const list = this.byTag.get(tag);
@@ -279,6 +282,17 @@ function inside(x: number, z: number, area: Area, r2: number): boolean {
  * "writes nothing the sim reads, so `npm run soak`'s AI-vs-AI replays are
  * byte-identical with it loaded". A queue keeps that true and keeps the shell
  * half free to drop everything on a fast-forward without the world noticing.
+ *
+ * **IT IS DECLARED TWICE AND NOTHING IMPORTS THIS COPY.** `session.ts` carries
+ * a structurally identical `PresentationEvent`, and that is the one every
+ * consumer names — `campaign-install.ts`, `campaign.system.ts` and
+ * `Shell.playCampaignBeat`. `makeEffectSink`'s `present` parameter is typed
+ * against THIS one and the call site passes the OTHER one, which compiles only
+ * because the two shapes agree structurally. The duplication is the price of
+ * the bundle boundary: `session.ts` is entry-chunk reachable and may not import
+ * this file, and it declares `TagRegistry` structurally for the same reason and
+ * says so. **Add a field to one and you must add it to the other**, or the seam
+ * fails at `makeEffectSink`'s argument rather than anywhere near the change.
  */
 export interface PresentationEvent {
   readonly kind: 'dialogue' | 'eva' | 'camera' | 'objectives' | 'ended';
@@ -319,10 +333,19 @@ export function makeEffectSink(
      * REINFORCEMENTS, AND THE FAULT PATH IS THE POINT.
      *
      * `Production.spawnUnit` returns `NONE` on a missing `FALLBACK_UNITS` row
-     * and on an exhausted entity budget, and BOTH existing sim callers treat
-     * that as a silent `continue`. A wave that quietly arrives empty is the
-     * most plausible way an operation becomes unwinnable with every test green,
-     * so every miss is counted and raised.
+     * and on an exhausted entity budget, and FOUR of its five other sim callers
+     * throw that away in silence: `Crates.ts` continues, `RepairSell.ts` breaks,
+     * and both sites in `Production.ts` return false, none of them logging. A
+     * wave that quietly arrives empty is the most plausible way an operation
+     * becomes unwinnable with every test green, so every miss is counted and
+     * raised.
+     *
+     * **THIS SAID "BOTH existing sim callers" AND THERE ARE FIVE** — `Crates`,
+     * `Deploy`, `RepairSell` and two in `Production` — and the fifth is the
+     * counterexample rather than a fourth instance of the rule: `Deploy.ts` says
+     * `EvaLine.CannotDeployHere` and increments `counters.refused`, which is a
+     * refusal the player HEARS. Recount the callers before quoting them; the
+     * pair was true when the sink was written and nothing re-read it since.
      *
      * ======================================================================
      * `byKey` IS LITERAL AND DOES NOT GO THROUGH `keyFor`. THAT IS DECIDED,
@@ -344,9 +367,13 @@ export function makeEffectSink(
      *      table is authored against ONE foe, which `OperationDef.foe` now
      *      declares, so the remap has nothing left to resolve.
      *   2. **A remap could not do the job anyway.** `FACTION_KEY_MAP` covers
-     *      ~30 ROLE keys and returns everything else unchanged, so
-     *      `rclGrinder` on an Allied seat would remap to itself. Half a rule
-     *      is worse than none, because it reads as coverage.
+     *      45 ROLE keys (counted 2026-08-19; this said "~30", and the fourteen
+     *      naval and dock rows in that table are almost exactly the difference)
+     *      and returns everything else unchanged, so `rclGrinder` on an Allied
+     *      seat would remap to itself.
+     *      Half a rule is worse than none, because it reads as coverage — and
+     *      the count moving is the point: a coverage table that grows is one
+     *      nobody can quote a completeness argument from.
      *   3. **It would rewrite an authoring mistake into a working wave.** The
      *      dialogue would still name the wrong army and nothing would say so —
      *      the exact class of quiet falsehood `docs/SPEC_DRIFT_AUDIT.md`
@@ -436,8 +463,14 @@ export function makeEffectSink(
       if (eco === null || p === undefined) return;
       // `grant`, NOT `deposit`. A scripted reward must never evaporate at a
       // full silo; the permanent `capFloor` lift is its accepted cost, and
-      // `oreWasted` is untouched because that counter moves only for
-      // `CreditReason.Harvest` — so "Zero Waste" needs no re-derivation.
+      // `oreWasted` is untouched because `Economy` only adds to it under
+      // `CreditReason.Harvest` — so the end screen's "Ore Wasted" row stays a
+      // statement about mining and needs no re-derivation.
+      //
+      // THIS NAMED A MISSION CALLED "Zero Waste" AND THERE IS NO SUCH MISSION.
+      // `oreWasted` has exactly one reader in the product, `EndScreen.ts`'s
+      // stat row; no `MissionRule` reads it and none ever did. The consequence
+      // is unchanged and the citation was invented.
       eco.grant(p.id, amount, CreditReason.Bounty);
     },
 
