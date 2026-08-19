@@ -99,6 +99,25 @@ The house voice already exists in `Descriptions.ts` and the shipped mission titl
 
 Renaming costs more than the `name:` field: `Defs.ts` (~20), `Descriptions.ts` (36 kB, gated by `content-truthful.spec.ts`), four `wiki/Faction-*.md` roster tables (gated by `wiki-numbers.spec.ts`), two shipped manual pages that name Command & Conquer directly (`Base-Building.md:94`, `How-to-Play.md:6`, gated word-for-word by `manual.spec.ts`), ~40 argued comment blocks reasoning *by name*, and `RA3_LOOK_BIBLE.md`. `key:` strings do **not** change — they are in `store.defId` ordering, saves, replays and `UNLOCK_TAGS`.
 
+#### 2.5.1 The ~20 are not one thing, and the tiers have different urgency — surveyed 2026-08-19
+
+The list above reads as one uniform block of twenty, which makes the decision look bigger and flatter than it is. Counted against the 122 `name:` rows actually in `Defs.ts`:
+
+| Tier | What it is | Names | Who could object |
+|---|---|---|---|
+| 1 | **A live mark of a real company** | **MiG Fighter** | Mikoyan. Not Westwood's to have lent in the first place, so this one does not turn on any view about C&C. |
+| 2 | Coined by Westwood/EA, distinctive, strongly associated | Grizzly Tank · Rhino Tank · Apocalypse Tank · Prism Tank · Prism Tower · Multigunner IFV · Multigunner AA · Battle Lab · Iron Curtain Device · Chronosphere · Vindicator | EA |
+| 3 | Real-world terms Westwood *used* and nobody owns | Tesla Coil (Nikola Tesla's actual device) · Conscript · G.I. · Flak Trooper · Attack Dog · Dreadnought · Hydrofoil · Attack Submarine · Pillbox · Engineer · Barracks · Power Plant | nobody |
+| 4 | Genre idiom, now used across the whole RTS field | War Factory · Construction Yard · Ore Refinery · Ore Harvester · Ore Silo · Radar Dome · Naval Yard · Sentry Gun · Nuclear Missile Silo | nobody |
+
+**So option B is ~12 rows, not ~20**, and tier 1 is a single row that is arguably a separate decision with its own answer. Tiers 3 and 4 are the ones that make the list look long, and renaming them buys nothing — an RTS that refuses to say "Barracks" is not more original, it is harder to read.
+
+#### 2.5.2 The cost estimate has a precedent nobody quoted, and it is in this repo
+
+**Two of the four shipped factions are already named entirely from scratch: the Meridian Pact carries 31 original names and The Reclamation 30.** Arcspitter · Slaghurler · Sunlancer · Wayfarer · Solarch · Yardcrawler · Scrapjaw · Sandskiff · Heliograph · Helios Spire · Pharos · Crucible · Reliquary · Conclave · Chapterhouse · Hierarch · Rookery · Tidewalker · Kite Corvette · Argosy · Forgeyard · Stormworks — none of it borrowed, all of it in register, all of it already through `content-truthful.spec.ts` and the four `wiki/Faction-*.md` roster tables.
+
+Every borrowed name is confined to the Allied and Soviet rosters — verified per row, `faction:` field by `faction:` field, not inferred. So option B is *"do again, for twelve rows, the thing this project has already done twice for sixty-one"*, which is a materially different proposition from the open-ended rename §2.5 currently implies. It does not decide the question; it prices it honestly.
+
 > **UNDECIDED-1: rename (B), keep (A), or keep-and-acknowledge (C)? Recommend B. The author decides, and decides before a word of briefing prose is authored.** Renaming after 37 briefings exist is the expensive version of the same job.
 
 ---
