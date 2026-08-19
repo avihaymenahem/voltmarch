@@ -534,6 +534,17 @@ export class AiBrain {
   private focusOrders = 0;
   /** Hulls walked out of a fight. Its own number, for the same reason. */
   private withdrawals = 0;
+  /**
+   * How many of those were AIRCRAFT.
+   *
+   * A SEPARATE COUNTER BECAUSE THE COMMAND STREAM CANNOT ANSWER IT. A
+   * withdrawal is a single-entity `OrderKind.Move`, and so is every waypoint
+   * the scout is sent to — and `chooseScout` scores `sight * 0.6 + maxSpeed * 2
+   * - maxHp * 0.01`, which is a description of an airframe, so the AI's scout
+   * is frequently the very aircraft a probe is trying to count. Reading the
+   * stream would attribute a scouting run to this rule.
+   */
+  private airWithdrawals = 0;
   /* -- the second front (see `AI_RAID`) ----------------------------------- */
   /** Party members, rebuilt from the tags every pass. Never the source of truth. */
   private readonly raidIds = new Int32Array(AI_SQUAD_MAX * 2);
@@ -4313,6 +4324,19 @@ export class AiBrain {
     let striking = 0;
     let worst = NONE;
     let worstFrac: number = AI_RETREAT.hpFraction;
+    /*
+     * AIRCRAFT GET THEIR OWN SLOT, AND A HIGHER THRESHOLD. See
+     * `AI_RETREAT.airHpFraction` and `.maxFraction` for both arguments: the
+     * measured window under thirty percent is about two seconds, and a shared
+     * one-hull-per-pass slot hands that pass to whichever tank is worse off.
+     *
+     * A MATCH WITH NO AIRCRAFT DRAWS EXACTLY THE RNG SEQUENCE IT DREW BEFORE.
+     * The extra `chance` roll below is reached only when `worstAir` is set, so
+     * every existing trace is bit-identical — which is the property that keeps
+     * this from being an unmeasurable change to every AI match at once.
+     */
+    let worstAir = NONE;
+    let worstAirFrac: number = AI_RETREAT.airHpFraction;
 
     for (let a = 0; a < this.armyCount; a++) {
       const h = this.armyIds[a] as EntityId;
@@ -4328,11 +4352,36 @@ export class AiBrain {
         // reserve may be short, and `regroupSquads` is the one place that
         // decides which group a free hull belongs to.
         if (frac >= AI_RETREAT.rejoinHpFraction || home) this.groupTag.setAt(i, GROUP_NONE);
-        else withdrawing++;
+        // AND AN AIRCRAFT IS NOT COUNTED, because the exemption below is
+        // worthless if it holds only for the pass that issues the order.
+        // `maxFraction` governs the GROUND LINE's cohesion; a withdrawn
+        // airframe counted here spends one of the line's slots for as long as
+        // it is away, which is every pass after the first.
+        //
+        // MEASURED, one airframe against N wounded tanks, steady state over 60
+        // squad passes, ground hulls that reached the rally — first column with
+        // the aircraft at full health, second with it at 0.45 so it leaves:
+        //
+        //     N tanks      14      20      30      40
+        //     counted     3 -> 2  5 -> 4  7 -> 6  9 -> 8
+        //     not         3 -> 3  5 -> 5  7 -> 7  9 -> 9
+        //
+        // Exactly one ground withdrawal lost at every size, which is the whole
+        // of the double count and not a rounding effect.
+        else if (st.locomotor[i] !== Locomotor.Air) withdrawing++;
         continue;
       }
 
       if (tag !== GROUP_STRIKE) continue;
+      // THE DENOMINATOR DELIBERATELY STILL COUNTS AIRFRAMES, and the asymmetry
+      // is measured rather than untidy. Taking them out of `striking` as well
+      // reads more consistent and costs the property this whole feature rests
+      // on: it makes an aircraft that is merely PRESENT, at full health and
+      // never a candidate, move the ground line's cap — measured taking one rig
+      // from three ground withdrawals to two with nothing wounded but tanks.
+      // The numerator is about a hull that HAS left, so it can only differ in a
+      // match where this feature already fired; the denominator is about one
+      // standing in the line, so it would change every match that owns a plane.
       striking++;
       const f = st.flags[i];
       if ((f & ORDERABLE_REQUIRE) !== ORDERABLE_REQUIRE) continue;
@@ -4347,7 +4396,24 @@ export class AiBrain {
       // Strictly less than, so the FIRST of two equally hurt hulls in army
       // order wins. Ties have to break the same way on both machines of a
       // lockstep match, and roster order is the only ordering here that is.
+      if (st.locomotor[i] === Locomotor.Air) {
+        if (frac < worstAirFrac) { worstAirFrac = frac; worstAir = h; }
+        continue;
+      }
       if (frac < worstFrac) { worstFrac = frac; worst = h; }
+    }
+
+    // THE AIR PASS FIRST, and it is independent of everything below: no rout
+    // cap, and it does not consume the ground slot. The discipline roll is
+    // kept, because how OFTEN a rung micro-manages is what the ladder is for.
+    if (worstAir !== NONE && this.rng.chance(this.diff.discipline)) {
+      const ai = st.index(worstAir);
+      if (ai >= 0
+        && this.issueOrder(OrderKind.Move, this.one(worstAir), 1, this.rallyX, this.rallyZ, NONE)) {
+        this.groupTag.setAt(ai, GROUP_WITHDRAW);
+        this.withdrawals++;
+        this.airWithdrawals++;
+      }
     }
 
     if (worst === NONE) return;
@@ -5717,6 +5783,15 @@ export class AiBrain {
    * it could ever be non-zero.
    */
   get withdrawalCount(): number { return this.withdrawals; }
+  /**
+   * How many of those were aircraft — see `airWithdrawals`.
+   *
+   * The number this exists to answer is whether `AI_RETREAT.airHpFraction` ever
+   * fires in a real match at all, which is a different question from whether it
+   * works: a rule that is correct and never reached is inert.
+   * `tests/ai-air-withdraw-probe.spec.ts` is the instrument.
+   */
+  get airWithdrawalCount(): number { return this.airWithdrawals; }
   /** Raiding parties sent out. Its own number: a raid leaves no other trace. */
   get raidCount(): number { return this.raidsLaunched; }
   /** Command Posts owned or under construction. */

@@ -2192,6 +2192,29 @@ export const AI_RETREAT = {
    * as `AI_ECONOMY.harvesterThreatSec`.
    */
   underFireSeconds: 3.0,
+  /**
+   * The same threshold for an AIRCRAFT, and it is nearly twice as high.
+   *
+   * MEASURED, NOT PICKED. An aircraft parked over a defended target is under
+   * thirty percent health for **2.07 seconds** against eight G.I.s and 2.47
+   * against eight conscripts before it dies. `withdrawWounded` polls every
+   * 0.2 s, moves ONE hull per pass, and rolls against discipline each time —
+   * so against a two-second window the ground threshold is a coin flip, and
+   * the hull it is deciding about costs a thousand credits and has 190 hp.
+   *
+   * At 0.5 the decision happens while the hull can still cross the ground it
+   * needs to. `rejoinHpFraction` 0.75 is unchanged and still well clear of it,
+   * so this buys the earlier decision without reintroducing the oscillation
+   * that gap exists to prevent.
+   *
+   * THIS IS A BRAIN RULE AND THAT IS WHY IT IS SAFE. It only lowers the AI's
+   * willingness to leave a hull in a fight; it issues an ordinary
+   * `OrderKind.Move`, writes nothing a human's units read, and cannot desync a
+   * lockstep match. The player already has the same verb and it already works —
+   * measured, a move order pulls a parked aircraft out on the first try and it
+   * does not come back.
+   */
+  airHpFraction: 0.5,
   /** Discipline below which a rung never withdraws a unit. Easy stays out. */
   minDiscipline: 0.5,
   /**
@@ -2201,6 +2224,23 @@ export const AI_RETREAT = {
    * at the same moment and the wave evaporates instead of trading — which is
    * both worse play and, from the other side, far stranger to watch than the
    * AI simply losing the fight.
+   *
+   * **AIRCRAFT ARE EXEMPT FROM IT, AND FROM THE ONE-HULL-PER-PASS SLOT.** The
+   * cap is about a WAVE's cohesion — a ground line that dissolves all at once
+   * — and every army fields exactly one airframe, so an aircraft is never part
+   * of that line. Leaving it in the shared slot is worse than pointless: with
+   * one hull chosen per pass by worst health, an aircraft at forty-five percent
+   * loses every pass to a tank at twenty-five, which is precisely the pass it
+   * had two seconds to win.
+   *
+   * THAT EXEMPTION IS ENFORCED IN TWO PLACES AND THE SECOND IS EASY TO MISS.
+   * Skipping the cap when the order is ISSUED is only half of it: `withdrawing`
+   * is recounted from the tags on every later pass, so an airframe parked at
+   * the rally went on spending one of the ground line's slots for as long as it
+   * stayed there — one lost ground withdrawal at every strike-group size
+   * measured. The release branch in `AiBrain.withdrawWounded` carries the
+   * numbers. The DENOMINATOR still counts airframes, deliberately; see the note
+   * beside `striking++` for why the symmetric-looking version is worse.
    */
   maxFraction: 0.34,
 } as const;
