@@ -91,11 +91,14 @@ export interface CampaignFacts {
    * Every VALUE of `UNLOCKS`. A roster may name these and nothing else.
    *
    * **NOT the `UNLOCK_TAGS` id set, which is what this line used to claim.**
-   * `UNLOCKS` is the wider table: 13 content tags plus the `cosmetic.*` and
-   * `map.*` reward ids. Everything a roster can USEFULLY name is in the first
-   * group — `UnlockGate`'s campaign roster is an allow-list over
-   * `def.unlockedBy`, and no def carries a cosmetic or a map id — so this set
-   * refuses typos and accepts a category of well-spelled no-ops.
+   * `UNLOCKS` is the wider table: these 13 content tags plus the `cosmetic.*`
+   * and `map.*` reward ids. **`index.ts` used to pass that wider set**, so a
+   * roster naming `cosmetic.decal.star` validated clean and then restricted
+   * nothing — `UnlockGate`'s campaign roster is an allow-list over
+   * `def.unlockedBy`, and no def carries a cosmetic or a map id. A
+   * well-spelled no-op is worse than a typo, because the typo was refused and
+   * this was accepted. It is the 13 `UNLOCK_TAGS` values now, which is what
+   * the fault message below has always said.
    */
   readonly unlockIds: ReadonlySet<string>;
   /**

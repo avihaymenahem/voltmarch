@@ -25,7 +25,7 @@
  * throwing happens here, once, where the real tables are.
  * ========================================================================== */
 
-import { BUILDINGS, UNITS } from '../data/Defs';
+import { BUILDINGS, UNITS, UNLOCK_TAGS } from '../data/Defs';
 import { UNLOCKS } from '../data/Missions';
 import { MAP_PRESETS } from '../core/config';
 import { EVA_LINES } from '../audio/Eva';
@@ -160,7 +160,21 @@ export function campaignFacts(): CampaignFacts {
       Object.entries(FALLBACK_UNITS).map(([key, u]) => [key, u.faction] as const),
     ),
     mapPresets: new Set(Object.keys(MAP_PRESETS)),
-    unlockIds: new Set(Object.values(UNLOCKS)),
+    /*
+     * `UNLOCK_TAGS`, NOT `UNLOCKS`, AND THE OLD SET MADE THE FAULT MESSAGE A
+     * LIE. This was `Object.values(UNLOCKS)` — every id any mission pays,
+     * which includes `cosmetic.*` and `map.*` — while the fault it feeds reads
+     * *"is not an UNLOCK_TAGS id — an operation may restrict only tagged
+     * content"*. So a roster naming `cosmetic.decal.star` validated clean and
+     * then restricted nothing at all, because `UnlockGate`'s roster is an
+     * allow-list over `def.unlockedBy` and no def carries a cosmetic id.
+     *
+     * A well-spelled no-op is worse than a typo here: a typo is refused, and
+     * this was accepted and silently did nothing. The set is the 13 values of
+     * `UNLOCK_TAGS` now, which is what the message has always claimed and what
+     * `validate.ts`'s field doc has always promised.
+     */
+    unlockIds: new Set(Object.values(UNLOCK_TAGS)),
     evaLines: new Set(Object.keys(EVA_LINES)),
     layoutTags,
     minArmies: 2,
