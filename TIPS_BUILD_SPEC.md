@@ -3,7 +3,7 @@
 A situational in-match tips system: show a strategy tip suited to what is happening, let the player
 hide them.
 
-**DELETE THIS FILE when the last row of §6 is struck.** It is a plan, and a plan that outlives its
+**DELETE THIS FILE when the last row of §6 is struck.** Commit 1 is struck; 2 and 3 remain. It is a plan, and a plan that outlives its
 execution becomes the most misleading document in the repository — `TODO.md` has done that twice.
 Anything here that outlives the work belongs in `CLAUDE.md` or in the file it describes.
 
@@ -170,7 +170,7 @@ true". Reuse the three-file *split* (pure rules / DOM in the lazy chunk / thin s
 
 ## 6. THE WORK
 
-### Commit 1 — fix the tips that already ship. Zero new machinery.
+### Commit 1 — DONE 2026-08-19 (`570e780`). Fix the tips that already ship.
 
 Route the three key-naming entries in `Shell.TIPS` through `ActionCatalogue`. Add the digit ban. Add
 a key lint **written against these four strings as its own falsifier** — the tutorial's existing

@@ -44,8 +44,29 @@ with no number is untracked, and that is itself the bug.
 
 ## Multiplayer
 
-- **#52 — Teams (2v2, 1v3).** `allyMask` is wired end to end; what is missing is a *writer* and a
-  setup field. **Best value-per-effort on this list.**
+- **#52 — Teams (2v2, 1v3). DONE for skirmish**, and the value-per-effort claim held: one setup
+  field (`OpponentSetup.team`, `TEAM_PLAYER` is the human's, no `playerTeam` because the human's
+  team is a label), one writer (`src/game/Teams.ts#applyTeams`, called once from
+  `Shell.applySetupToWorld`), one chooser per opponent block. The outcome rules needed nothing but
+  a shared predicate: every loop already skipped an ally, so the victory test has always read "the
+  other team" and simply could not be told apart from "every other seat".
+
+  **THE RULE, DECIDED: a player is defeated when THEY are beaten, not when their team is.**
+  `Viability` is per player and the sell guard inside `simTick` reads the same survey, so a
+  team-wide rule would let somebody sell their last Construction Yard because an ally owns one —
+  the soft lock that file exists to prevent. Spectating is a feature (a camera with no owner, a HUD
+  with no production), not a poll.
+
+  **TWO THINGS THE SURVEY TURNED UP, both fixed here.** `isUsableRefinery` accepted an ALLY's
+  refinery and §DEED pays the refinery's owner, so a 2v2 would have quietly paid your economy into
+  your ally's bank — it is an owner test now, which is what it always meant. And `allyMask` is sim
+  state in `Checksum.hashPlayers`, so a replay of a team match re-seated as a free-for-all diverges
+  in a second; `ReplaySlot.allyMask` records it, optional, no format bump (see the field's note).
+
+  **NOT DONE, deliberately:** PvP is still exactly two hostile seats (#51); start placement does not
+  put team-mates near each other, and it must not be fixed by rotating the start table; a campaign
+  operation with three seats still makes its extra foes mutually hostile — an operation that grows
+  one should declare its alliances next to `foe`.
 - **#51 — 3-4 player PvP.** The merge layer is free; the drop rules and the removal signal are not.
   PvP seats exactly two today.
 - **#55 — LAN and self-hosted multiplayer.** The desktop shell makes it possible and it did not ship.
