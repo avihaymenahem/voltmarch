@@ -492,8 +492,37 @@ export type Effect =
    * could not be checked where every other authoring mistake is checked.
    */
   | { readonly do: 'dialogue'; readonly speaker: string; readonly text: string }
-  /** An `EvaLine` id. Reuses the announcer that already exists. */
+  /**
+   * An `EvaLine` id. Reuses the announcer that already exists.
+   *
+   * **THE ANNOUNCER IS ALREADY TALKING, SO MOST SCRIPTED LINES ARE
+   * PUNCTUATION RATHER THAN THE ONLY SOURCE.** `audio.system.ts` subscribes to
+   * the ordinary game events and speaks `structureLost` on any local building
+   * death, `buildingCaptured` on any capture, `baseUnderAttack` and
+   * `forcesUnderAttack` on any attack — which is every line the thirteen
+   * shipped operations script. So an `eva` fired at the moment the thing it
+   * describes actually happens is REDUNDANT, and it is only inaudible because
+   * `EVA_LINES` carries a per-line cooldown that swallows the second copy.
+   * Script one for a beat the game has no event for, or a moment before the
+   * event lands; do not narrate what the announcer will say anyway.
+   *
+   * **IT SPEAKS AND IT DOES NOT CHIP.** `Shell.playCampaignBeat` calls the
+   * announcer directly rather than emitting `eva:line`, so the HUD's
+   * `EVA_TOASTS` never sees it. That is deliberate: the beat almost always
+   * accompanies a `dialogue` effect, which already puts a toast on screen, and
+   * two chips for one moment is worse than none.
+   */
   | { readonly do: 'eva'; readonly line: string }
+  /**
+   * Pan the camera to a ground point, in WORLD metres — x and z, never x and y.
+   *
+   * It EASES rather than snapping (`CameraRig.setFocus` without its
+   * `immediate` argument), because a scripted beat that cuts reads as the map
+   * changing rather than as the camera being directed. It also takes the
+   * camera away from whatever the player was doing, so it is for a moment the
+   * operation genuinely needs them to look at — an arrival, a loss, a reveal —
+   * and not for punctuation.
+   */
   | { readonly do: 'cameraMove'; readonly at: Point };
 
 /** Every legal `Effect.do`. */
