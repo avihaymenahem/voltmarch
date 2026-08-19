@@ -57,6 +57,7 @@ import { HelpPanel } from './Help';
 import { MissionsPanel } from './Missions';
 import { SavePanel } from './LoadGame';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
+import { desktopBridge } from '../platform/desktop';
 import { campaignObjectiveView } from '../ui/objectives.system';
 import { readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
@@ -201,6 +202,36 @@ export class PauseMenuScreen implements Screen {
       nav.appendChild(button('Save Game', {
         iconName: 'folder',
         onClick: () => this.openSave(),
+      }));
+    }
+    /*
+     * MINIMISE, DESKTOP ONLY, AND IT SITS HERE RATHER THAN WITH THE LEAVING
+     * ACTIONS BECAUSE IT IS NOT ONE.
+     *
+     * Reported as "I don't have a way to minimize the game in desktop mode at
+     * all", and it was exactly true: the window is borderless in fullscreen —
+     * Chromium has no mode-setting path — and the application menu is
+     * deliberately null, so there was no titlebar button, no menu item and no
+     * accelerator. Alt+Tab switches away without minimising.
+     *
+     * "Step away for a minute" is a RESUMING intention, so it belongs beside
+     * Save Game and above Missions, not next to Restart and Quit. And it is
+     * safe from here specifically: the sim is already paused behind this
+     * panel, so nothing advances while the window is down. Minimising from
+     * play would not be — `backgroundThrottling` is false on purpose, because
+     * Chromium calls rAF zero times for a hidden document and a lockstep match
+     * would freeze for BOTH players.
+     *
+     * ABSENT, NOT DISABLED, in a browser — the same rule Save Game applies two
+     * buttons up. `desktopBridge()` returns null there, and a control that
+     * cannot do anything is worse than no control.
+     */
+    const desktop = desktopBridge();
+    if (desktop !== null) {
+      nav.appendChild(button('Minimize', {
+        iconName: 'monitor',
+        hint: 'Alt+Enter for windowed',
+        onClick: () => desktop.minimize(),
       }));
     }
     nav.appendChild(button('Missions', {

@@ -54,7 +54,7 @@
  * as off. Equality makes that degrade to web behaviour instead — no Display
  * section at all, which is visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 3;
+export const BRIDGE_VERSION = 4;
 
 export type WindowMode = 'windowed' | 'fullscreen';
 
@@ -167,6 +167,23 @@ export interface DesktopBridge {
   quit(): void;
   setFullscreen(on: boolean): Promise<void>;
   isFullscreen(): Promise<boolean>;
+  /**
+   * Send the window to the taskbar.
+   *
+   * **REPORTED AS "I don't have a way to minimize the game in desktop mode at
+   * all", AND IT WAS EXACTLY TRUE.** The window ships frameless-by-fullscreen —
+   * Chromium has no mode-setting path, so `setFullScreen(true)` is a borderless
+   * window sized to the monitor — and `Menu.setApplicationMenu(null)` removes
+   * the only other chrome. So in fullscreen there is no titlebar button, no
+   * menu, and no accelerator: the player's only exits were Alt+Tab, which
+   * switches away without minimising, and Options -> Graphics -> Display, which
+   * they have to already know about.
+   *
+   * `void`, not `Promise<void>`, and it rides `ipcRenderer.send` rather than
+   * `invoke` for `quit`'s reason: there is no answer worth awaiting, and a
+   * promise the caller must handle is a promise a caller will forget.
+   */
+  minimize(): void;
   revealUserData(): Promise<void>;
   displayState(): Promise<DesktopDisplayState>;
   setDisplayState(patch: DesktopDisplayPatch): Promise<DesktopDisplayState>;

@@ -358,6 +358,32 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  /*
+   * ALT+ENTER TOGGLES FULLSCREEN, AND IT IS THE ESCAPE HATCH OF LAST RESORT.
+   *
+   * The pause menu carries a Minimize button, which is the discoverable route.
+   * This is the one that works when the player cannot reach a menu at all —
+   * and it is the chord every game on this platform has used for thirty years,
+   * so it is the first thing they will try.
+   *
+   * `before-input-event` rather than a `Menu` accelerator: the application
+   * menu is deliberately null, and re-adding one to carry a single accelerator
+   * would put an Alt-triggered menu bar back on a game that binds Alt.
+   * `globalShortcut` is wrong for the opposite reason — it would capture
+   * Alt+Enter system-wide, including while VOLTMARCH is not focused.
+   *
+   * It fires per keystroke in the MAIN process, which is the cost. It is
+   * bounded: the two cheapest tests come first, so an ordinary key does one
+   * string compare and returns. Never `preventDefault` anything else — the
+   * renderer owns every other key, and `ActionCatalogue` is where they live.
+   */
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key !== 'Enter' || !input.alt) return;
+    event.preventDefault();
+    win.setFullScreen(!win.isFullScreen());
+  });
+
   win.once('ready-to-show', () => win.show());
 
   // Do not let a game session be interrupted by the display sleeping.
@@ -396,6 +422,30 @@ function installIpc(): void {
   ipcMain.handle('vm:is-fullscreen', (e) => BrowserWindow.fromWebContents(e.sender)?.isFullScreen() ?? false);
   ipcMain.handle('vm:reveal-user-data', () => shell.openPath(app.getPath('userData')));
   ipcMain.on('vm:quit', () => app.quit());
+  /*
+   * MINIMISE, AND THE HTML-FULLSCREEN CASE IS THE ONE THAT MADE THIS NECESSARY.
+   *
+   * Reported as "I don't have a way to minimize the game in desktop mode at
+   * all". Two independent routes into a window with no minimise affordance:
+   * the Display section's `mode: 'fullscreen'`, and `Shell.goFullscreen()`,
+   * which the game calls on every match launch. Both leave a borderless window
+   * with no titlebar, and `Menu.setApplicationMenu(null)` removed the only
+   * other chrome — deliberately, because an RTS has no use for a File menu.
+   *
+   * `leaveFullscreenThenMinimise` rather than a bare `win.minimize()`:
+   * Chromium owns the HTML-fullscreen state, and a window minimised while the
+   * DOCUMENT still believes it is fullscreen comes back fullscreen with the
+   * player no better off than before. Leaving first is also what makes the
+   * restored window carry a titlebar, which is the affordance they were
+   * missing. The window mode they CHOSE in Options is untouched — this is a
+   * one-shot exit, not a preference change, so the next match honours it.
+   */
+  ipcMain.on('vm:minimize', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win === null) return;
+    if (win.isFullScreen()) win.setFullScreen(false);
+    win.minimize();
+  });
 
   ipcMain.handle('vm:display-state', () => describeDisplay());
   ipcMain.handle('vm:display-set', (e, patch: unknown) => {

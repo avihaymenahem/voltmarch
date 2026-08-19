@@ -10,7 +10,7 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 3` is a VERSION, not a boolean, and the accessor in
+ * `bridge: 4` is a VERSION, not a boolean, and the accessor in
  * `src/platform/desktop.ts` tests it by equality. An older packaged preload
  * running against a newer bundle therefore degrades to WEB BEHAVIOUR rather
  * than calling a method that does not exist — the same discipline as
@@ -39,7 +39,7 @@ import type { DisplayPatch, DisplayState } from './display';
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 3,
+    bridge: 4,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -54,6 +54,10 @@ contextBridge.exposeInMainWorld(
     quit: (): void => ipcRenderer.send('vm:quit'),
     setFullscreen: (on: boolean): Promise<void> => ipcRenderer.invoke('vm:fullscreen', on === true),
     isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('vm:is-fullscreen'),
+    // `send`, not `invoke` — see the game-side declaration for why there is
+    // nothing to await. The main process decides whether leaving fullscreen
+    // first is necessary; the renderer must not have to know.
+    minimize: (): void => ipcRenderer.send('vm:minimize'),
 
     /** Open the folder replays and screenshots are written to. */
     revealUserData: (): Promise<void> => ipcRenderer.invoke('vm:reveal-user-data'),

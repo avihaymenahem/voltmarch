@@ -320,5 +320,61 @@ check(roundTrip.rejectsJunk, 'and a file that is not a profile is refused rather
 
 await fourth.app.close();
 
+/* -------------------------------------------------------------------------- *
+ * Run 5 — MINIMISE, WHICH IS THE ONE THING A PLAYER COULD NOT DO
+ *
+ * Reported as "I don't have a way to minimize the game in desktop mode at all",
+ * and it was exactly true: fullscreen is a borderless window (Chromium has no
+ * mode-setting path), `Menu.setApplicationMenu(null)` removed the only other
+ * chrome, and Alt+Tab switches away without minimising.
+ *
+ * THIS RUN EXISTS BECAUSE THE FIX CANNOT BE CHECKED ANY OTHER WAY. Whether
+ * `win.minimize()` does anything to a window Chromium is holding fullscreen is
+ * a platform question, not a code-reading question — and the handler
+ * deliberately leaves fullscreen FIRST on the theory that it does not. A unit
+ * test would only prove the IPC name is spelled the same on both sides, which
+ * `tests/desktop-shell.spec.ts` already does.
+ * -------------------------------------------------------------------------- */
+console.log(String.fromCharCode(10) + '=== run 5 (minimise out of fullscreen) ===');
+const fifth = await launch();
+await fifth.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
+
+const bridgeVersion = await fifth.page.evaluate(() => window.voltmarch?.bridge ?? null);
+check(bridgeVersion !== null, 'the preload bridge is exposed at all', `bridge=${bridgeVersion}`);
+const minKind = await fifth.page.evaluate(() => typeof window.voltmarch?.minimize);
+check(minKind === 'function', 'the bridge exposes minimize()', minKind);
+
+await fifth.page.evaluate(() => window.voltmarch.setFullscreen(true));
+await fifth.page.waitForTimeout(600);
+const wasFullscreen = await fifth.page.evaluate(() => window.voltmarch.isFullscreen());
+check(wasFullscreen === true, 'the window really was fullscreen before we asked');
+
+await fifth.page.evaluate(() => window.voltmarch.minimize());
+await fifth.page.waitForTimeout(900);
+
+const after = await fifth.app.evaluate(({ BrowserWindow }) => {
+  const w = BrowserWindow.getAllWindows()[0];
+  return { minimized: w.isMinimized(), fullscreen: w.isFullScreen() };
+});
+check(after.minimized === true,
+  'minimize() actually sends the window to the taskbar FROM FULLSCREEN',
+  JSON.stringify(after));
+check(after.fullscreen === false,
+  'and it left fullscreen, so the restored window has a titlebar to minimise with',
+  JSON.stringify(after));
+
+await fifth.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore());
+await fifth.page.waitForTimeout(600);
+const restored = await fifth.app.evaluate(({ BrowserWindow }) => {
+  const w = BrowserWindow.getAllWindows()[0];
+  const b = w.getBounds();
+  return { minimized: w.isMinimized(), w: b.width, h: b.height };
+});
+check(restored.minimized === false && restored.w > 400 && restored.h > 300,
+  'and restore() brings back a usable window', JSON.stringify(restored));
+
+await fifth.app.close();
+
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);
