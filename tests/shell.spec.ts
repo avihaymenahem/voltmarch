@@ -368,7 +368,12 @@ describe('free-for-all setup', () => {
     };
     const s = normalizeSetup(legacy, ROSTER);
     expect(armyCount(s)).toBe(2);
-    expect(s.opponents).toEqual([{ faction: 'reclaim', difficulty: 2, personality: 1 }]);
+    // `team` IS PART OF THE MIGRATION, and 2 is the whole of it: a blob with
+    // no `opponents` key described a free-for-all, because a free-for-all is
+    // the only thing the build that wrote it could express.
+    expect(s.opponents).toEqual([
+      { faction: 'reclaim', difficulty: 2, personality: 1, team: 2 },
+    ]);
     // …and every singular field it used to carry still says what it said.
     expect(s.playerFaction).toBe('meridian');
     expect(s.aiFaction).toBe('reclaim');
@@ -397,8 +402,12 @@ describe('free-for-all setup', () => {
     }, ROSTER);
     // Entry 0 is rebuilt from the singular fields, not read from the array —
     // they are the half an older build and a save row can reach.
-    expect(s.opponents[0]).toEqual({ faction: 'meridian', difficulty: 3, personality: 2 });
-    expect(s.opponents[1]).toEqual({ faction: 'reclaim', difficulty: 0, personality: -1 });
+    expect(s.opponents[0]).toEqual({
+      faction: 'meridian', difficulty: 3, personality: 2, team: 2,
+    });
+    expect(s.opponents[1]).toEqual({
+      faction: 'reclaim', difficulty: 0, personality: -1, team: 3,
+    });
   });
 
   it('clamps the army list to what the battlefield can seat', () => {

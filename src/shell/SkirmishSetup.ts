@@ -22,10 +22,24 @@
  * more than one answer — `MapChoice.players` is a real ceiling now — and it
  * sits above the opponent blocks because it decides how many of them exist.
  *
- * There is no team or alliance control, and that is not an omission: a
- * free-for-all is what `PlayerState.allyMask` already defaults to (allied with
- * yourself and nobody else), so "everyone hostile to everyone" needs no code and
- * no row. Teams would.
+ * THERE IS A TEAM CONTROL NOW, AND THIS HEADER USED TO EXPLAIN WHY THERE WAS
+ * NOT — "a free-for-all is what `PlayerState.allyMask` already defaults to …
+ * teams would [need code]". They did: `src/game/Teams.ts` is the writer that
+ * field never had, and `OpponentSetup.team` is the row that feeds it.
+ *
+ * ONE CHOOSER PER OPPONENT, IN THE OPPONENT'S OWN BLOCK, and not a match-type
+ * preset on the Sides row. The Sides row answers HOW MANY armies; which of them
+ * is fighting alongside you is a fact about that army, so it sits with its
+ * faction and its difficulty, in the block that already owns every other thing
+ * that army is. A `2v2 / 1v3 / FFA` preset would additionally have to name
+ * WHICH opponent joins you, which is the row it was trying to avoid.
+ *
+ * THE OPTION LIST IS WHAT KEEPS THE MATCH LEGAL. Putting every army on the
+ * player's team is a match with no enemy, which `outcome.system.ts` can never
+ * resolve — so `Your Team` is simply not OFFERED to the last opponent who is
+ * not already on it. `chooser` cycles the list it is given, so an option that
+ * is absent is unreachable; refusing the click afterwards would have been a
+ * control that silently ignores you.
  *
  * MIRROR MATCHES ARE LEGAL
  * ------------------------
@@ -76,11 +90,17 @@ import {
   MAX_ARMIES,
   PERSONALITIES,
   SPEEDS,
+  TEAM_PLAYER,
   armyCount,
   cloneSetup,
   defaultSetup,
+  defaultTeamFor,
+  describeTeams,
   mapById,
   rollSeed,
+  teamLabel,
+  teamsOf,
+  teamsPlayable,
   withArmyCount,
   type MatchSetup,
 } from './settings-store';
@@ -350,7 +370,12 @@ export class SkirmishSetupScreen implements Screen {
       armies.appendChild(row(
         'Sides',
         chooser(
-          seats.map((n) => ({ value: n, label: n === 2 ? '1 v 1' : `${n}-Way Free-For-All` })),
+          // THE LABEL IS A COUNT, NOT A SHAPE. It read `4-Way Free-For-All`,
+          // which stops being true the moment a Team row is touched — and a
+          // control announcing a match nobody is about to play is the exact
+          // quiet falsehood this project audits for. The shape belongs to the
+          // note below, where it is derived rather than assumed.
+          seats.map((n) => ({ value: n, label: n === 2 ? '1 v 1' : `${n} Armies` })),
           armyCount(this.setup),
           (v) => {
             this.setup = withArmyCount(this.setup, v, this.factions.map((f) => f.key));
@@ -358,7 +383,7 @@ export class SkirmishSetupScreen implements Screen {
             this.renderRight();
           },
         ),
-        'Everyone is hostile to everyone. The last army standing wins.',
+        this.shapeNote(),
       ));
     }
 
@@ -399,7 +424,69 @@ export class SkirmishSetupScreen implements Screen {
         ),
         i === 0 ? 'Biases the AI\'s strategy scoring, not its rules.' : undefined,
       ));
+      // ONLY WHERE THERE IS SOMETHING TO DECIDE. With two armies the one legal
+      // assignment is "the opponent is not on your team", so the row would be a
+      // control whose only value is the value it already has — the same rule
+      // the Sides row above is drawn under.
+      if (this.setup.opponents.length > 1) {
+        enemy.appendChild(row(
+          'Team',
+          chooser(
+            this.teamOptions(i).map((t) => ({ value: t, label: teamLabel(t) })),
+            spec.team,
+            (v) => {
+              spec.team = v;
+              this.mirrorFirst();
+              // REPAINT, unlike the three rows above. Every other opponent's
+              // option list depends on this value — taking the last enemy onto
+              // your side has to stop being offered the instant it would end
+              // the match — and the shape note under Sides is derived from all
+              // of them together.
+              this.renderLeft();
+              this.renderRight();
+            },
+          ),
+          i === 0
+            ? 'Armies on the same team share vision and never fire on each other.'
+            : undefined,
+        ));
+      }
     }
+  }
+
+  /**
+   * The teams opponent `i` may be moved to.
+   *
+   * `TEAM_PLAYER` is withheld from the LAST army that is not already on it,
+   * because a table where every army is on one team is a match with no enemy:
+   * `outcome.system.ts` guards its victory on `hostiles > 0`, so nothing would
+   * ever resolve it. The lobby refuses to offer that state and `normalizeSetup`
+   * repairs it if it arrives from disk — two independent guards, because this
+   * one lives in a click handler and the other one is what a stored blob meets.
+   *
+   * The current value is always in the list, whatever it is, so a team number
+   * off a wider setup renders as itself instead of falling back to whatever
+   * happens to sit at index 0.
+   */
+  private teamOptions(i: number): number[] {
+    const list = this.setup.opponents;
+    const wouldOrphan = !list.some((o, j) => j !== i && o.team !== TEAM_PLAYER);
+    const out = new Set<number>();
+    if (!wouldOrphan) out.add(TEAM_PLAYER);
+    for (let t = 2; t <= armyCount(this.setup); t++) out.add(t);
+    out.add(list[i]?.team ?? defaultTeamFor(i));
+    return [...out].sort((a, b) => a - b);
+  }
+
+  /** `2 v 2`, `1 v 3`, `1 v 1 v 1 v 1` — plus what sharing a team buys. */
+  private shapeNote(): string {
+    const teams = teamsOf(this.setup);
+    const allied = teams.length !== new Set(teams).size;
+    return allied
+      ? `${describeTeams(this.setup)}. Armies on the same team share vision and never fire `
+        + 'on each other.'
+      : `${describeTeams(this.setup)}. Everyone is hostile to everyone; the last army standing `
+        + 'wins.';
   }
 
   /**
@@ -464,6 +551,23 @@ export class SkirmishSetupScreen implements Screen {
     const max = Math.min(MAX_ARMIES, mapById(this.setup.map).players);
     if (armyCount(this.setup) > max) {
       this.setup = withArmyCount(this.setup, max, this.factions.map((f) => f.key));
+      moved = true;
+    }
+    /*
+     * A THIRD CORRECTION, AND IT IS THE ONE THE TWO ABOVE CAN CAUSE. Shrinking
+     * the table drops opponents from the END, so a 1v3 whose two hostile seats
+     * were the ones removed comes back as "you and your ally, against nobody" —
+     * a match `outcome.system.ts` can never resolve. The option lists in
+     * `teamOptions` cannot see it coming, because the seat that made the table
+     * legal no longer exists to be asked.
+     *
+     * Same repair as `normalizeSetup`, and for the same reason: the whole
+     * partition goes back to the free-for-all, because nothing here knows which
+     * army the player meant to fight and inventing one would paint a match they
+     * did not set up.
+     */
+    if (!teamsPlayable(teamsOf(this.setup))) {
+      this.setup.opponents.forEach((o, i) => { o.team = defaultTeamFor(i); });
       moved = true;
     }
     return moved;
@@ -617,14 +721,13 @@ export class SkirmishSetupScreen implements Screen {
     const summary = el('p', 'vm-body');
     summary.style.padding = '10px 18px 4px';
     const m = mapById(this.setup.map);
-    const n = armyCount(this.setup);
     // The difficulties are listed once when the table agrees and joined with a
     // slash when it does not — "Normal AI" over a Brutal and two Easies would
     // be the summary lying about the match it is summarising.
     const diffs = [...new Set(this.setup.opponents.map((o) => DIFFICULTIES[o.difficulty]))];
     summary.textContent =
       `${m.name} · ${m.biome} terrain · ` +
-      `${n === 2 ? '1 v 1' : `${n}-way free-for-all`} · ` +
+      `${describeTeams(this.setup)} · ` +
       `${diffs.join(' / ')} AI · ` +
       `${SPEEDS[this.setup.speed].toFixed(1)}× speed · ` +
       `${this.start === 'mcv' ? 'start from a construction vehicle' : 'start with a base'}`;
@@ -669,6 +772,11 @@ export class SkirmishSetupScreen implements Screen {
     // `normalizeSetup` resolves that disagreement in favour of the singular
     // field — so the army the screen painted is not the one that would launch.
     const foe = (others.length > 0 ? pick(others).key : player.key);
+    // THE ALLIANCES ARE KEPT, FOR THE ARMY COUNT'S OWN REASON. Randomise rolls
+    // the sides, the ground and the seed; a player who set up a 2v2 and pressed
+    // it is asking for a new 2v2, exactly as one who set up a four-way is
+    // asking for three new opponents rather than a duel.
+    const teams = this.setup.opponents.map((o) => o.team);
     this.setup = withArmyCount({
       ...d,
       playerFaction: player.key,
@@ -679,8 +787,11 @@ export class SkirmishSetupScreen implements Screen {
       startingCredits: this.setup.startingCredits,
       speed: this.setup.speed,
       seed: rollSeed(),
-      opponents: [{ faction: foe, difficulty, personality: -1 }],
+      opponents: [{ faction: foe, difficulty, personality: -1, team: teams[0] ?? defaultTeamFor(0) }],
     }, seats, this.factions.map((f) => f.key));
+    this.setup.opponents.forEach((o, i) => { o.team = teams[i] ?? o.team; });
+    // `reconcile` runs at the top of both renders and repairs a partition the
+    // rolled seat count left with no enemy in it.
     this.renderLeft();
     this.renderRight();
   }

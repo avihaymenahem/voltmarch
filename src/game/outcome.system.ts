@@ -90,6 +90,35 @@
  * for what it costs is `surveyViability` §HELD; the reproduction is
  * `tests/match-unfinishable.spec.ts`.
  *
+ * 4. TEAMS, AND WHY THIS FILE NEEDED ALMOST NOTHING
+ * -------------------------------------------------
+ * Every loop below already skipped a seat allied to the local player, so the
+ * victory rule has always read "every seat NOT ON MY SIDE has been beaten" —
+ * it simply could not be told from "every other seat" while `allyMask` had no
+ * writer. `src/game/Teams.ts` gave it one, and the five inline copies of
+ * "not Gaia and not allied to me" became one `isHostileSeat` at the same time,
+ * because a rule that is finally falsifiable is a rule whose copies can finally
+ * disagree.
+ *
+ * THE DEFEAT RULE IS DELIBERATELY UNCHANGED: A PLAYER IS BEATEN WHEN THEY ARE
+ * BEATEN, NOT WHEN THEIR TEAM IS. It is tempting to keep a wiped-out player in
+ * the match while an ally still holds a base, and it is wrong twice over:
+ *
+ *   - `Viability` IS PER PLAYER AND MUST STAY THAT WAY. The sell guard inside
+ *     `simTick` asks the identical question about the identical survey, and
+ *     nothing in this game is shared across a team — not the bank, not the
+ *     queues, not a single unit of control. "Your ally owns a Construction
+ *     Yard" would let a player sell their last one into a state where they can
+ *     neither build nor act, which is precisely the soft lock `Viability`'s own
+ *     header exists to make impossible.
+ *   - THE ALTERNATIVE IS A FEATURE, NOT A RULE. Watching your ally finish the
+ *     match is spectating: a camera with no owner, a HUD with no production and
+ *     an input layer whose every command is refused by ownership. That is a
+ *     screen, and this is a poll.
+ *
+ * So an ally's collapse ends nothing, your own ends your match, and the last
+ * enemy team standing wins. `tests/teams.spec.ts` drives all three.
+ *
  * TWO NEIGHBOURS THAT LOOK LIKE THE SAME BUG AND ARE NOT, so nobody re-derives
  * them from this header:
  *
@@ -121,7 +150,7 @@
  */
 
 import { defineSystem } from '../core/loop';
-import { Faction, RenderPhase } from '../core/types';
+import { RenderPhase } from '../core/types';
 import type { PlayerId, RenderContext } from '../core/types';
 
 import {
@@ -129,6 +158,7 @@ import {
 } from '../sim/Viability';
 
 import { ctx, hasGameContext } from './context';
+import { isHostileSeat } from './Teams';
 import { campaignRunning } from '../campaign/policy';
 
 /* ==========================================================================
@@ -333,8 +363,7 @@ function winnerOf(localWon: boolean): PlayerId {
 
   let alive: PlayerId | null = null;
   for (const p of world.players) {
-    if (p.faction === Faction.Neutral) continue;
-    if (world.areAllied(local, p.id)) continue;
+    if (!isHostileSeat(world, local, p)) continue;
     surveyViability(world, p.id, enemySurvey);
     if (!hasAssets(enemySurvey)) continue;
     if (!isBeaten(enemySurvey)) return p.id;
@@ -411,8 +440,7 @@ function inferLocalWon(): boolean {
   if (!hasAssets(localSurvey)) return false;
   let hostiles = 0;
   for (const p of world.players) {
-    if (p.faction === Faction.Neutral) continue;
-    if (world.areAllied(local, p.id)) continue;
+    if (!isHostileSeat(world, local, p)) continue;
     hostiles++;
     surveyViability(world, p.id, enemySurvey);
     if (hasAssets(enemySurvey)) return false;
@@ -462,8 +490,7 @@ function evaluate(shell: ShellHost, dt: number): void {
   let hostiles = 0;
   let hostilesBeaten = 0;
   for (const p of world.players) {
-    if (p.faction === Faction.Neutral) continue;
-    if (world.areAllied(local, p.id)) continue;
+    if (!isHostileSeat(world, local, p)) continue;
     hostiles++;
     surveyViability(world, p.id, enemySurvey);
     if (isBeaten(enemySurvey)) hostilesBeaten++;

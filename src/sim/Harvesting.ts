@@ -1824,12 +1824,17 @@ export class HarvesterController {
    *
    * WHAT WAS TRUE BEFORE, AND IT WAS NOT SO MUCH WRONG AS UNFALSIFIABLE. The
    * deposit was keyed on `store.owner[i]` — the HAULER. `isUsableRefinery`
-   * requires `areAllied`; the only alliance this game has is with yourself and
-   * with Gaia (`createPlayerState` seeds `allyMask` with the self bit and
-   * `Scenarios.addGaia` adds one more — nothing else writes that field); and no
-   * Gaia structure carries `EntityFlag.IsRefinery`. So "hauler's owner" and
-   * "refinery's owner" named the same player in every state the game could
-   * reach, and the requested feature had nowhere to live.
+   * required `areAllied`; the only alliance the game had was with yourself and
+   * with Gaia; and no Gaia structure carries `EntityFlag.IsRefinery`. So
+   * "hauler's owner" and "refinery's owner" named the same player in every
+   * state the game could reach, and the requested feature had nowhere to live.
+   *
+   * THAT PREMISE EXPIRED WITH TEAMS. `src/game/Teams.ts` writes `allyMask` from
+   * the lobby now, so an ally's refinery satisfies `areAllied` and the two
+   * names come apart on a live match rather than only on a capture.
+   * `isUsableRefinery` is an OWNER test for that reason — see its own note —
+   * which leaves this section describing exactly the case it was written for:
+   * a dock that changed hands under a hull already parked in it.
    *
    * THE RULE NOW: a load is sold at the dock that takes it, and the money goes
    * to whoever holds that building's deed. That is the same argument
@@ -2015,7 +2020,30 @@ export class HarvesterController {
    */
   private isUsableRefinery(ri: number, owner: number): boolean {
     if (!this.refineryCanTakeOre(ri)) return false;
-    return this.world.areAllied(owner as PlayerId, this.world.store.owner[ri] as PlayerId);
+    /*
+     * THE DEED, NOT THE ALLIANCE — AND THE DAY TEAMS SHIPPED THOSE STOPPED
+     * BEING THE SAME TEST.
+     *
+     * This read `areAllied`, and §DEED above says in as many words why that was
+     * safe: "the only alliance this game has is with yourself and with Gaia …
+     * nothing else writes that field". `src/game/Teams.ts` writes it now. With
+     * an ally on the field, `areAllied` lets a hauler pick the NEAREST allied
+     * refinery — and §DEED pays whoever holds that building's deed — so a
+     * player whose ally built closer to the ore would have watched their whole
+     * economy arrive in somebody else's bank, silently, with the hauler
+     * behaving perfectly.
+     *
+     * Nothing in this game is shared across a team: not the bank, not the
+     * queues, not one unit of control. So an owner test is what the choosing
+     * rule always MEANT, and it is behaviour-identical to what it did — Gaia is
+     * the only other member of any pre-teams mask and no Gaia structure carries
+     * `EntityFlag.IsRefinery`.
+     *
+     * `refineryCanTakeOre` is deliberately still ownership-blind: a hull ALREADY
+     * PARKED with its hopper emptying is grandfathered, which is the whole of
+     * §DEED and is not touched by this.
+     */
+    return this.world.store.owner[ri] === owner;
   }
 
   /** True if `holder` is still a live harvester actively using `ri`'s dock. */

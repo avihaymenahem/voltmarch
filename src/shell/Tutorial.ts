@@ -55,7 +55,9 @@ import './tutorial.css';
 
 import { isApplePlatform } from '../input/ActionCatalogue';
 import { computeUiScale } from '../ui/Chrome';
-import { codeLabel, type MatchSetup, type SettingsStore } from './settings-store';
+import {
+  codeLabel, defaultTeamFor, type MatchSetup, type SettingsStore,
+} from './settings-store';
 
 import {
   CameraProbe,
@@ -662,7 +664,11 @@ export function tutorialSetup(base: Readonly<MatchSetup>): MatchSetup {
     // base and a single threat axis, and `...base` would otherwise carry a
     // four-way lobby into it — three Easy Turtles is not the tutorial, and the
     // steps that say "the enemy" would have three answers.
-    opponents: [{ faction: base.aiFaction, difficulty: 0, personality: 0 }],
+    // …and hostile, for the same reason: a lobby left holding a 2v2 would
+    // otherwise carry the alliance in and make "the enemy" nobody at all.
+    opponents: [{
+      faction: base.aiFaction, difficulty: 0, personality: 0, team: defaultTeamFor(0),
+    }],
   };
 }
 

@@ -145,6 +145,28 @@ export interface ReplaySlot {
    * a different economy and diverge on the very first production decision.
    */
   credits: number;
+  /**
+   * `PlayerState.allyMask` at the opening tick — who this slot was allied to.
+   *
+   * SAME ARGUMENT AS `credits`, ONE FIELD ALONG. It is sim state written into
+   * the world from a LOBBY ROW (`MatchSetup.opponents[].team`), it is hashed by
+   * `Checksum.hashPlayers`, and `Targeting` reads it every tick — so a 2v2
+   * replayed on a browser whose lobby last held a free-for-all has both teams
+   * shooting their own allies and diverges immediately.
+   *
+   * OPTIONAL, AND `REPLAY_FORMAT_VERSION` DOES NOT MOVE FOR IT. Old file, new
+   * build: absence is a fact, that match WAS a free-for-all, and the default
+   * mask reproduces it exactly — nothing is guessed. New file, old build IS the
+   * dangerous direction the `campaign` note above names, and it is answered
+   * differently here because the failure is different: a campaign recording
+   * played back by a build that predates campaigns looks like a PLAUSIBLE
+   * skirmish and says nothing, whereas a team recording played back without its
+   * masks is announced by the checkpoint compare the replay bar already shows,
+   * within 30 ticks, in the product. A fourth version number crossed with the
+   * campaign's third buys a louder signal than the one already on screen; that
+   * is not enough to refuse every file a player owns.
+   */
+  allyMask?: number;
 }
 
 /**
@@ -339,6 +361,10 @@ export class ReplayRecorder {
       aiDifficulty: p.aiDifficulty,
       aiPersonality: p.aiPersonality,
       credits: p.credits,
+      // Taken on the FIRST SIM TICK, which is the only moment it is complete:
+      // `Shell.applySetupToWorld` writes the teams and the scenario adds Gaia's
+      // bit afterwards, so a mask read at `init()` would be missing both.
+      allyMask: p.allyMask,
     }));
   }
 

@@ -879,6 +879,53 @@ export interface OpponentSetup {
   difficulty: number;
   /** Index into PERSONALITIES, or -1 for "let the AI choose". */
   personality: number;
+  /**
+   * WHICH SIDE OF THE WAR THIS ARMY IS ON. Armies sharing a number are allied;
+   * every other number is an enemy. `TEAM_PLAYER` (1) is the human's team, so
+   * `team: 1` means "fights alongside me" and anything else means "fights me".
+   *
+   * A NUMBER PER ARMY, NOT A MODE ENUM. A `'ffa' | '2v2' | '1v3'` field
+   * enumerates PARTITIONS, and it cannot say the one thing a lobby has to say —
+   * WHICH opponent is the ally — nor survive the Sides row moving from four
+   * armies to three, where half its members stop meaning anything. A number per
+   * army IS a partition, is total at every seat count, and cannot get out of
+   * index-step with the army it describes: exactly the argument this interface
+   * already makes for being one shape rather than three parallel arrays.
+   *
+   * THERE IS DELIBERATELY NO `playerTeam` ON `MatchSetup`. The human's team is
+   * a LABEL, not a fact — every partition of the armies can be relabelled so
+   * the human's part is 1 — so a second field would carry no information and
+   * would only have to agree with this one, which is how two fields come to
+   * disagree. `teamsOf` is the one derivation and it seats the human at
+   * `TEAM_PLAYER` by construction.
+   *
+   * A STORED BLOB FROM ANY OLDER BUILD HAS NO `team` AND THAT IS A FACT, not a
+   * gap: every match that build could describe was a free-for-all, which is
+   * what `normalizeOpponent`'s default reproduces exactly. No schema version
+   * moves for this — a blob written HERE carries a key an older build ignores,
+   * and that build then reads the free-for-all it is able to play.
+   */
+  team: number;
+}
+
+/**
+ * The human's team. Opponents carrying it are allies; everything else is an
+ * enemy. `1` rather than `0` so that "no team set" (a `0` off a hand-written
+ * literal or a corrupt blob) clamps UP into a real team rather than silently
+ * meaning "allied with the player".
+ */
+export const TEAM_PLAYER = 1;
+
+/**
+ * The free-for-all team for opponent `index`: every army on its own side.
+ *
+ * `index + 2` — never `TEAM_PLAYER` — so the default the migration, the
+ * default setup and `withArmyCount` all reach for is the diplomacy this game
+ * has always had. `PlayerState.allyMask` defaults to self-only, so a setup
+ * built entirely out of these values makes the team writer a no-op.
+ */
+export function defaultTeamFor(index: number): number {
+  return index + 2;
 }
 
 /**
@@ -943,10 +990,89 @@ export function armyCount(setup: MatchSetup): number {
 export function effectiveOpponents(setup: MatchSetup): OpponentSetup[] {
   const list = setup.opponents.length > 0
     ? setup.opponents
-    : [{ faction: setup.aiFaction, difficulty: setup.difficulty, personality: setup.personality }];
+    : [{
+      faction: setup.aiFaction,
+      difficulty: setup.difficulty,
+      personality: setup.personality,
+      team: defaultTeamFor(0),
+    }];
   return list.map((o, i) => (i === 0
-    ? { faction: setup.aiFaction, difficulty: setup.difficulty, personality: setup.personality }
+    // `team` IS NOT PART OF THE MIRROR AND MUST SURVIVE THIS. The three
+    // singular fields are re-asserted because six things outside this file can
+    // reach them; NOTHING outside can reach a team, so rebuilding entry 0 from
+    // scratch here would silently drop the human's only ally on every launch —
+    // the campaign's `foe` defect exactly, which was "setting `opponents` alone
+    // fixes nothing" arriving from the other direction.
+    ? {
+      faction: setup.aiFaction,
+      difficulty: setup.difficulty,
+      personality: setup.personality,
+      team: o.team,
+    }
     : { ...o }));
+}
+
+/* --------------------------------------------------------------------------
+ * TEAMS
+ *
+ * The partition, seat-ordered, and the two questions asked about it. Pure and
+ * engine-free on purpose: the WRITER that turns this into `PlayerState`
+ * `allyMask` bits lives in `src/game/Teams.ts`, because it needs a `World` and
+ * this file must stay importable by a test with no engine in it.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Every seat's team in seat order: index 0 is the human, index `i + 1` is
+ * opponent `i` — the same order `Shell.applySetupToWorld` seats the table in.
+ *
+ * Read through `effectiveOpponents`, never straight off the field, for the
+ * reason that function documents.
+ */
+export function teamsOf(setup: MatchSetup): number[] {
+  return [TEAM_PLAYER, ...effectiveOpponents(setup).map((o) => o.team)];
+}
+
+/**
+ * Is there anybody left to fight?
+ *
+ * A table with ONE team is not a hard match, it is a match that cannot end:
+ * `outcome.system.ts` requires `hostiles > 0` before it will declare a victory
+ * and the local player is never their own enemy, so nothing would ever resolve
+ * it. The lobby's option lists refuse to offer that state and `normalizeSetup`
+ * repairs it if it arrives from disk, so it is unreachable in two independent
+ * ways rather than one.
+ */
+export function teamsPlayable(teams: readonly number[]): boolean {
+  return teams.some((t) => t !== teams[0]);
+}
+
+/** `Your Team`, `Team B`, `Team C`… — the lobby's name for one team number. */
+export function teamLabel(team: number): string {
+  if (team === TEAM_PLAYER) return 'Your Team';
+  // 2 -> B, 3 -> C, 4 -> D. Clamped so a value off a corrupt blob still names
+  // something rather than rendering a control character.
+  const n = Math.max(2, Math.min(26, Math.round(team)));
+  return `Team ${String.fromCharCode(64 + n)}`;
+}
+
+/**
+ * The shape of the match as a player says it out loud: `1 v 1`, `2 v 2`,
+ * `1 v 3`, `1 v 1 v 1 v 1`.
+ *
+ * The human's team is ALWAYS first, because the number a player looks for is
+ * their own. The rest follow in team-number order, which is stable under a
+ * repaint and does not reorder itself when an opponent's difficulty changes.
+ */
+export function describeTeams(setup: MatchSetup): string {
+  const teams = teamsOf(setup);
+  const size = new Map<number, number>();
+  for (const t of teams) size.set(t, (size.get(t) ?? 0) + 1);
+  const mine = size.get(TEAM_PLAYER) ?? 1;
+  const others = [...size.entries()]
+    .filter(([t]) => t !== TEAM_PLAYER)
+    .sort((a, b) => a[0] - b[0])
+    .map(([, n]) => n);
+  return [mine, ...others].join(' v ');
 }
 
 /* --------------------------------------------------------------------------
@@ -1054,7 +1180,7 @@ export function defaultSetup(): MatchSetup {
     startingCredits: 10000,
     speed: 1,
     seed: 0,
-    opponents: [{ faction: 'soviets', difficulty: 1, personality: -1 }],
+    opponents: [{ faction: 'soviets', difficulty: 1, personality: -1, team: defaultTeamFor(0) }],
   };
 }
 
@@ -1083,6 +1209,12 @@ export function withArmyCount(
       // to Normal: somebody who set Brutal meant it for the whole table.
       difficulty: next.opponents[0]?.difficulty ?? setup.difficulty,
       personality: -1,
+      // A NEW SEAT ARRIVES ON ITS OWN SIDE, never on the human's. Growing the
+      // table is a request for another OPPONENT — the row is called Sides — and
+      // an army that silently joined your team would be a free ally nobody
+      // asked for. Shrinking can still leave the survivors on one team, which
+      // is why `normalizeSetup` and the lobby's `reconcile` both re-check.
+      team: defaultTeamFor(next.opponents.length),
     });
   }
   return next;
@@ -1097,6 +1229,11 @@ function normalizeOpponent(
     faction: typeof r.faction === 'string' && keys.includes(r.faction) ? r.faction : d.faction,
     difficulty: Math.round(num(r.difficulty, 0, DIFFICULTIES.length - 1, d.difficulty)),
     personality: Math.round(num(r.personality, -1, PERSONALITIES.length - 1, d.personality)),
+    // Clamped to a real team, never dropped: `TEAM_PLAYER` is the floor so a
+    // stored `0` reads as "on my team" rather than as a fourth diplomacy state,
+    // and `MAX_ARMIES` is the ceiling because a partition of N armies never
+    // needs more than N labels.
+    team: Math.round(num(r.team, TEAM_PLAYER, MAX_ARMIES, d.team)),
   };
 }
 
@@ -1156,7 +1293,18 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
    * representations disagree and makes "which one is real" a question.
    */
   const rawList = Array.isArray(r.opponents) ? r.opponents : [];
-  const opponents: OpponentSetup[] = [{ faction: ai, difficulty, personality }];
+  // Entry 0's TEAM comes off the array even though its other three fields come
+  // off the singular mirror: there is no singular `team` and there must not be
+  // one, so the array is the only place it can have been written. A blob with
+  // no `opponents` at all reaches `defaultTeamFor(0)`, which is the free-for-all
+  // that blob described.
+  const firstRaw = isRecord(rawList[0]) ? rawList[0] : {};
+  const opponents: OpponentSetup[] = [{
+    faction: ai,
+    difficulty,
+    personality,
+    team: Math.round(num(firstRaw.team, TEAM_PLAYER, MAX_ARMIES, defaultTeamFor(0))),
+  }];
   // A map's seat count is a hard ceiling, not a preference: a stored four-way on
   // a battlefield with two authored starts must come back as the two-army match
   // the ground can actually hold.
@@ -1166,7 +1314,29 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
       faction: keys[i % keys.length],
       difficulty,
       personality: -1,
+      team: defaultTeamFor(i),
     }));
+  }
+
+  /*
+   * A MATCH WITH NO ENEMY IS NOT A MATCH, AND THE ONLY HONEST REPAIR IS THE
+   * FREE-FOR-ALL.
+   *
+   * Every opponent on `TEAM_PLAYER` leaves the local player with no hostile
+   * seat at all, and `outcome.system.ts` guards its victory on `hostiles > 0` —
+   * so that table can never be won and (short of being wiped out) never lost.
+   * It is unreachable from the lobby, whose option lists refuse to offer the
+   * last enemy a place on your team, so it can only arrive from a hand-edited
+   * blob or a seat count that shrank underneath a stored alliance.
+   *
+   * The whole partition is reset rather than one seat moved, because there is
+   * no way to know WHICH army the player meant to fight, and inventing one
+   * would launch a match nobody set up. The free-for-all is the state every
+   * build before teams produced, so a repaired setup is at worst the match the
+   * player would have got a version ago.
+   */
+  if (!teamsPlayable([TEAM_PLAYER, ...opponents.map((o) => o.team)])) {
+    for (let i = 0; i < opponents.length; i++) opponents[i].team = defaultTeamFor(i);
   }
 
   return {
