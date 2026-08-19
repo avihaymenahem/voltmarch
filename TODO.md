@@ -74,7 +74,19 @@ with no number is untracked, and that is itself the bug.
   was written. Fixed and pinned by `tests/sounding-line-clearance.spec.ts`; the general form wants
   a layout-level declaration and is deliberately not built for one caller.
 
-- **A SINGLE ENGINEER IN A SELECTION TURNS EVERY RIGHT-CLICK ON A BUILDING INTO A CAPTURE.**
+- ~~**A SINGLE ENGINEER IN A SELECTION TURNS EVERY RIGHT-CLICK ON A BUILDING INTO A CAPTURE.**~~
+  **CLOSED 2026-08-19.** Demoted per unit in `OrderExecutor.write`, above the existing
+  unarmed-Attack rule so its Attack falls through that one — which is what keeps a harvester a true
+  no-op and an empty transport a Move with no second copy of either rule. A hostile target gives
+  the escort `Attack` on the same building; a NEUTRAL or allied one gives `Move` with the target
+  cleared, so nobody's select-all opens fire on a civilian block. `Repair` rides the same OR
+  (`canRepair` IS `canCapture`) and can never produce an Attack, which is asserted rather than left
+  to happen not to arise. `tests/capture-selection.spec.ts` drives the REAL executor through
+  `issueOrder` + `tick()` — `attack-building.spec.ts` mirrors `write()` in a local helper and could
+  not have seen this — and 6 of its 7 go red with the demotion removed. The 7th is the
+  engineer-only no-regression control and passes both ways by design. The original text follows.
+
+  **A SINGLE ENGINEER IN A SELECTION TURNS EVERY RIGHT-CLICK ON A BUILDING INTO A CAPTURE.**
   `Commands.ts` computes `caps.canCapture` as an OR over the selection (`:462`) and both capture
   branches (`:752`, `:809`) read it for the whole group, so `resolveOrder` emits `OrderKind.Capture`
   for every selected unit. `Capture.simTick` walks `byKind[Infantry]` ONLY: non-engineer infantry

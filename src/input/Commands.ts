@@ -1271,6 +1271,62 @@ export class OrderExecutor {
      * case's reasoning exactly: it should still go where it was pointed, it
      * simply must not sit in a combat state it can never leave.
      * ==================================================================== */
+    /* ====================================================================
+     * AND THE SAME DEFECT A THIRD TIME: ONLY AN ENGINEER CAPTURES.
+     *
+     * `caps.canCapture` is an OR over the selection (line 462), and both
+     * capture branches of `resolveContextOrder` read it for the WHOLE group.
+     * So ONE engineer anywhere in the selection turns every right-click on a
+     * building into `OrderKind.Capture` for every unit in it — and an Allied
+     * player owns an engineer from t=0 (`buildAlliedBase` spawns one), so
+     * Ctrl+A and a right-click on the enemy base is the ordinary way to reach
+     * this rather than an exotic one.
+     *
+     * WHAT THE ORDER DID TO EACH KIND, BEFORE THIS:
+     *
+     *   INFANTRY. `sim/Capture.ts` is the ONLY consumer of the order anywhere
+     *   in `src/sim/**`, and its `simTick` walks `byKind[Infantry]` alone. A
+     *   non-engineer hits `if (!this.isEngineerSlot(i)) { this.clearOrder(i); }`
+     *   — the order is cancelled and the point rewritten to where the man
+     *   stands, so the squad stops dead one tick after the click.
+     *
+     *   VEHICLES. Never visited at all, because they are not in that list.
+     *   `Steering.finishOrder`'s own comment says `orderKind` "belongs to
+     *   Command and is deliberately left alone", so the tank drives to the
+     *   building's footprint carrying a `Capture` it can never discharge,
+     *   arrives, goes Idle, and only then acquires — i.e. it closes to point
+     *   blank instead of engaging at range, and the stale order sits in the
+     *   column for the rest of the match.
+     *
+     * Neither is "attack the building I clicked", which is what the player
+     * meant. Resolved PER UNIT here rather than in the cursor for the reason
+     * the Harvest case below gives: one command crosses the wire, and the
+     * executor is the last point at which the selection is still individuals.
+     *
+     * A NEUTRAL TARGET DEMOTES TO MOVE, NEVER TO ATTACK. `areAllied` answers
+     * TRUE for Gaia in both directions on purpose (`ScenarioBuilder.gaia`), so
+     * this test also catches an allied building — and the alternative would
+     * open a select-all group's fire on a civilian block the player was walking
+     * past. `Repair` takes the same demotion for the same reason: it is aimed
+     * at a friendly structure by construction, so `hostile` is false for it and
+     * the branch never produces an Attack.
+     *
+     * THE ORDER OF THESE TWO BLOCKS IS LOAD-BEARING. This one runs FIRST so an
+     * Attack it produces falls through the unarmed rule below — which is what
+     * makes a harvester in the group a true no-op and an empty transport a
+     * Move, with no second copy of either rule.
+     * ==================================================================== */
+    if ((order === OrderKind.Capture || order === OrderKind.Repair)
+      && !roles.canCapture(this.world, i)) {
+      const t = s.index(target as EntityId);
+      const hostile = order === OrderKind.Capture
+        && t >= 0
+        && (s.flags[t] & EntityFlag.NotATarget) === 0
+        && !this.world.areAllied(s.owner[i] as PlayerId, s.owner[t] as PlayerId);
+      order = hostile ? OrderKind.Attack : OrderKind.Move;
+      if (!hostile) target = NONE;
+    }
+
     if (!armed && (order === OrderKind.Attack || order === OrderKind.ForceAttack)) {
       if (harvester || !mobile) return;
       order = OrderKind.Move;
