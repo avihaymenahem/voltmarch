@@ -31,6 +31,13 @@
  * floor, and a case for a kind nothing pushes is dead code that will rot into a
  * false comfort.
  *
+ * Section 4 is the same rule at the OTHER end of the vocabulary. `EFFECT_KINDS`
+ * freezes eleven effects and `CampaignSession.apply` dispatches them through a
+ * `switch` whose `default` is `break` — the identical shape to the defect
+ * above, one level up. `validateCampaign` refuses an UNKNOWN effect; nothing
+ * asserted that every KNOWN one has an arm. All eleven do today, and that is
+ * now a fact a test holds rather than a fact somebody checked once.
+ *
  * Section 3 is the anti-stub clause. Section 2 alone passes against
  * `case 'eva': return;`, which is the defect wearing a case label — so each arm
  * is pinned to the seam it actually has to reach. THOSE THREE ASSERTIONS ARE
@@ -46,6 +53,7 @@ import { describe, expect, it } from 'vitest';
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { makeEffectSink, TagRegistry } from '../src/campaign/runtime';
+import { EFFECT_KINDS } from '../src/campaign/types';
 import type { PresentationEvent } from '../src/campaign/runtime';
 
 const src = (rel: string): string => readFileSync(join(__dirname, '..', rel), 'utf8');
@@ -215,5 +223,43 @@ describe('each arm reaches the seam it is supposed to reach', () => {
     // cut. Two arguments means the default, which eases.
     expect(a, 'a scripted cameraMove must not snap — pass x and z only')
       .not.toMatch(/setFocus\([^)]*,[^)]*,[^)]*\)/);
+  });
+});
+
+/* ==========================================================================
+ * 4. THE SAME RULE, ONE LEVEL UP: EVERY FROZEN EFFECT HAS A DISPATCH ARM
+ * ========================================================================== */
+
+describe('every effect the vocabulary declares is dispatched', () => {
+  /*
+   * `CampaignSession.apply` ends in `default: break;`. That is correct — an
+   * effect table is data and a malformed one must not crash a match — but it
+   * means an effect with no arm is applied by doing nothing at all, which is
+   * `playCampaignBeat`'s defect at the layer above.
+   *
+   * `validateCampaign` does NOT cover this. It refuses an effect whose `do` is
+   * not in `EFFECT_KINDS`, which is the opposite direction: it protects the
+   * dispatcher from unknown names and leaves known names free to go unhandled.
+   */
+  const install = stripComments(src('src/campaign/campaign-install.ts'));
+  const at = install.indexOf('private apply(e: Effect, sink: EffectSink)');
+  const body = install.slice(at, install.indexOf('private setObjective', at));
+  const dispatched = new Set([...body.matchAll(/case '([A-Za-z]+)':/g)].map((m) => m[1]));
+
+  it('found the dispatcher at all', () => {
+    expect(at, 'CampaignSession.apply was renamed — this spec reads its body').toBeGreaterThan(-1);
+    expect(dispatched.size, 'no case found in the dispatcher').toBeGreaterThan(0);
+    expect(EFFECT_KINDS.length, 'the frozen vocabulary is eleven effects').toBe(11);
+  });
+
+  it('dispatches all eleven, and nothing outside the eleven', () => {
+    const missing = EFFECT_KINDS.filter((k) => !dispatched.has(k));
+    expect(missing, `${missing.join(', ')} is in EFFECT_KINDS with no arm in `
+      + 'CampaignSession.apply, so an operation authoring it would validate, run, and do '
+      + 'nothing — the shell beat defect one level up').toEqual([]);
+
+    const extra = [...dispatched].filter((k) => !EFFECT_KINDS.includes(k));
+    expect(extra, `${extra.join(', ')} is dispatched but is not in EFFECT_KINDS, so no `
+      + 'operation can ever author it and no validator would accept one').toEqual([]);
   });
 });
