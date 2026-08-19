@@ -85,9 +85,26 @@
  * neutral, every neutral structure is captured outright at any health
  * (`Capture.ts` rule 1), and the capture CONSUMES the engineer — so a
  * right-click that lands on a hamlet instead of the earth beside it silently
- * spends a surveyor. The two masts this file places are the same hazard handled
- * rather than inherited: 34 m out from their head, 14 m clear of the disc, so
- * the natural click target inside the reading ground is bare earth.
+ * spends a surveyor.
+ *
+ * **THE TWO MASTS THIS FILE PLACES ARE THE SAME HAZARD, AND THIS PARAGRAPH USED
+ * TO UNDERSTATE IT BY HALF.** It read "34 m out from their head, 14 m clear of
+ * the disc, so the natural click target inside the reading ground is bare
+ * earth". 34 and 14 are the NOMINAL offset and the arithmetic `34 - 20`;
+ * `place()` snaps through `findClearFootprint` and the DEEP-head mast lands at
+ * (304, 312) — **27.66 m out, 7.66 m clear**. The control-head mast is fine at
+ * 38.95 / 18.95. Both measured on the built world; see `MAST_OFFSET`.
+ *
+ * 7.66 m is still outside the disc, so the sentence's CONCLUSION survives — the
+ * ground the surveyors stand on is bare earth. But it is half the margin the
+ * layout believed it had, on the head that decides the win, and the mast's own
+ * footprint eats into it further. **Clearance is not the real defence.** The
+ * real defence is refusing the capture, and it is not built yet: every neutral
+ * structure is taken outright at any health and the capture CONSUMES the
+ * engineer, so `t.lost` (`entityDead party`) is three loose clicks away from a
+ * stated loss. `CaptureService.addVeto` is the hook a fix would use — it is
+ * consulted inside `resolve()` BEFORE the neutral branch and `refuse()` does not
+ * consume the engineer, so a vetoed click costs a walk and nothing else.
  *
  * ============================================================================
  * TAGS
@@ -144,7 +161,36 @@ const LANE_Z = -0.642272;
 const SEAM_X = -LANE_Z;
 const SEAM_Z = LANE_X;
 
-/** Metres from a head to its Works mast. 14 m clear of the disc; see the header. */
+/**
+ * Metres from a head to its Works mast, NOMINALLY.
+ *
+ * **THE NOMINAL IS NOT WHAT LANDS, AND THIS COMMENT CLAIMED THE NOMINAL FOR ITS
+ * WHOLE LIFE.** It read "14 m clear of the disc", which is `34 - 20` — the
+ * offset minus the disc radius, computed on paper. `place()` runs
+ * `findClearFootprint` and the deep-head mast is snapped from a nominal
+ * (307.84, 317.06) to **(304, 312)**, which is **27.66 m** from `DEEP_HEAD` and
+ * therefore **7.66 m** clear, not 14. The control-head mast is untouched at
+ * 38.95 m / 18.95 m clear — snapped too, from a nominal (204.16, 194.94) to
+ * (200, 192), but AWAY from its head rather than toward it.
+ *
+ * Measured on the built world at the shipped seed: `buildOperation` from
+ * `tests/campaign-maps.spec.ts`, reading `store.posX/posZ` for every Alive
+ * Building within 60 m of each head. Pinned by
+ * `tests/sounding-line-clearance.spec.ts` so it cannot rot back into an
+ * unmeasured number.
+ *
+ * The block eleven lines below this one already knew `place()` moves things —
+ * it quotes the two guns at "19.2 m and 21.9 m out from the head AFTER
+ * `findClearFootprint` snapped them", and those two figures reproduce exactly
+ * (19.21 and 21.93). So the layout had the habit and applied it to the guns and
+ * not to the masts.
+ *
+ * **RAISING THIS IS NOT THE FIX AND WAS DELIBERATELY NOT DONE.** A larger
+ * nominal does not guarantee a larger placed distance — that is the whole point
+ * of the paragraph above — and clearance is mitigation for a hazard whose real
+ * answer is refusing the capture outright. See the `addCivilians` block in the
+ * header.
+ */
 const MAST_OFFSET = 34;
 /** Metres from the control head to each of the two guns dug in beside it. */
 const GUN_OFFSET = 20;
@@ -310,6 +356,33 @@ export default layout({
      * RATHER THAN INTENDED. The two guns land at (238, 206) and (206, 230) —
      * 19.2 m and 21.9 m out from the head after `findClearFootprint` snapped
      * them — against a 20 m disc.
+     *
+     * **AND ONE OF THEM IS INSIDE THE DISC, WHICH MAKES IT A SURVEYOR SINK.**
+     * The gun at (238, 206) is 19.21 m from the control head against a 20 m
+     * radius, so it stands on ground a surveyor has to occupy. An ENEMY
+     * structure above `CAPTURE.captureHpFrac` (0.5) does not flip when an
+     * engineer reaches it — `Capture.resolve` takes the SOFTEN branch, and that
+     * branch consumes the engineer exactly as the capture branch does:
+     *
+     *     pillbox 480 hp, soften 480 x 0.25 x ARMOR[HE][Concrete] 1.00
+     *     x globalMul 0.80 = 96 delivered per engineer
+     *     one   -> 384/480 = 80%, above 50%, surveyor dead
+     *     two   -> 288/480 = 60%, above 50%, `gradient` now unreachable
+     *     three -> 192/480 = 40%, capturable at last, and `t.lost` has fired
+     *
+     * So three right-clicks on the gun that is shooting at them loses the
+     * operation, and `src/input/Commands.ts` makes it worse rather than better:
+     * `caps.canCapture` is true if ANY selected unit can capture, so a
+     * select-all right-click on that gun issues `OrderKind.Capture` to the WHOLE
+     * selection — the escort stops shooting and the surveyors walk in.
+     *
+     * NOT MOVED, and the reason is that clearance is the wrong instrument. The
+     * gun's position is a measured coverage decision (see the paragraph above),
+     * and the hazard's real answer is `CaptureService.addVeto` — consulted
+     * inside `resolve()` ahead of BOTH branches, with `refuse()` not consuming
+     * the engineer, so a vetoed click costs a walk and nothing else. It is
+     * pinned as a declared, both-directions exception in
+     * `tests/sounding-line-clearance.spec.ts` until that exists.
      *
      * THE RANGE IS 22 M WHICHEVER ARMY HOLDS THE SEAT, and an earlier draft of
      * this block invented a second number. `pillbox` and `sentryGun` both fire
