@@ -50,6 +50,30 @@
  * refinery, instead of to an arithmetic edge in `SELL_REFUND` that nothing in
  * the product ever explained to them.
  *
+ * IT RUNS DURING A CAMPAIGN OPERATION TOO, DELIBERATELY, AND THAT ASYMMETRY IS
+ * NOT AN OVERSIGHT. `outcome.system.ts` consults `campaignRunning()` and this
+ * file does not, which reads like a missing import and was reported as one.
+ * The two are asking different questions. `outcome.system.ts` must stand down
+ * because an operation authors its OWN win and lose conditions and a skirmish
+ * rule firing over the top of them ends the match at the wrong moment. Nothing
+ * here ends anything.
+ *
+ * And the case for keeping it is STRONGER inside an operation than outside it.
+ * Every shipped operation sets `assetLossDefeat: false`, so a stranded
+ * campaign player cannot earn AND cannot lose: the skirmish version of this
+ * dead end at least terminates, while the campaign version is a frozen screen
+ * with no defeat and no exit — precisely the state this rule was written for,
+ * in its worst form.
+ *
+ * The designer's control is clause (4). The grant hangs off A FINISHED
+ * REFINERY STANDING, and an operation's layout decides whether the player has
+ * one. An author who does not want the rescue does not hand out a refinery —
+ * `soviets.02.common-standard` opens with a column and no base and can never
+ * reach this rule at all. That is a real lever, in the layout, where the rest
+ * of an operation's economy is already authored. **Do not "fix" this by
+ * gating it on `campaignRunning()`** without first showing an operation that
+ * both gives the player a refinery and wants them stranded with it.
+ *
  * DETERMINISM. `s.tick` only — no clock, no RNG. The survey is a pure read
  * (see `OreCrisis.ts`), the per-player counters are plain integers advanced by
  * the tick number, and the refinery chosen for the redemption is the first
