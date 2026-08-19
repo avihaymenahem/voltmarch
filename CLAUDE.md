@@ -398,6 +398,31 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   tick one, silently. That is why a layout DECLARES its tags and `validateCampaign` refuses a
   trigger naming one no layout produces — and why `campaign-maps.spec.ts` builds every operation
   headless and checks the declaration against what actually landed, in both directions.
+- **THE AUTHORING CONTRACT WAS AUDITED CLAIM BY CLAIM: 124 CHECKED, 24 FALSE.** `types.ts`,
+  `runtime.ts` and `validate.ts` are what every operation author reasons from, and one stale
+  sentence in the first of them had just cost four operations and eighteen defects. A 19% falsehood
+  rate is the number to keep — **the campaign's prose is not more reliable than its code, and it has
+  no gate**. Among them: `campaign.system.ts` does not import `types.ts` at all; `UNLOCK_TAGS` is 33
+  defs across THIRTEEN tags, not ten; `validate.ts` refuses a missing win path and a missing lose
+  path INDEPENDENTLY, so its own header, `policy.ts` and this file all understated it; §9's Director
+  signature had wrong parameters, a wrong return and an `rng` argument that never existed; and three
+  citations named specs that do not exist.
+
+  **THE FOUR REAL DEFECTS IT SHOOK OUT ARE THE REASON PROSE AUDITS ARE NOT TIDYING.**
+
+  - **`tests/campaign-data.spec.ts` DID NOT EXIST**, and `UnlockGate.ts` cites it as the mechanism
+    catching the roster hazard this file calls *"not fixable by changing the default"*. It exists
+    now: 33 defs across 13 tags pinned BY VALUE, failing in both directions, naming every operation
+    whose roster a new tag just narrowed.
+  - **`facts.unlockIds` was `Object.values(UNLOCKS)`** — including `cosmetic.*` and `map.*` — while
+    the fault it feeds says *"is not an UNLOCK_TAGS id"*. A roster naming `map.coral-shore`
+    validated clean and restricted nothing. **A well-spelled no-op is worse than a typo**, because
+    the typo was refused.
+  - **`ownerCount`'s TAGGED branch did not skip `UnderConstruction`** while its untagged branch did,
+    under a comment giving the reason — and tagging is the spelling the guidance recommends.
+  - **`PresentationEvent` is declared twice** and the duplication is forced by the bundle boundary,
+    but an OPTIONAL field added to one copy is assignable in both directions, so tsc could never
+    have caught the drift. Gated by text comparison, which is the only thing that sees it.
 - **`spawnUnits` IS A FIXED RING AND `spread` IS ITS RADIUS — THE TYPE SAID "SCATTER … DRAWN FROM
   `s.rng`" AND THAT ONE SENTENCE COST FOUR OPERATIONS.** Unit `i` of `count` lands at exactly
   `angle = i / count * 2π`, so a wave of four uses the four CARDINAL bearings every time, and
