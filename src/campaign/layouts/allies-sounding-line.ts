@@ -115,7 +115,8 @@ import type { Area } from '../types';
  * ========================================================================== */
 
 /**
- * The near head, and the enemy is already on it.
+ * Known ground, and the enemy is already dug in on it — 145.0 m from THEIR
+ * yard and 235.8 m from the player's on the shipped seed.
  *
  * `r` is 20 rather than the 12 a marker would want. The condition counts UNITS
  * INSIDE, and three men walking as a group spread further than that the moment
@@ -124,7 +125,10 @@ import type { Area } from '../types';
  */
 export const CONTROL_HEAD: Area = { x: 226, z: 221, r: 20 };
 
-/** The deep head. Nothing is placed on it — see `build`. */
+/**
+ * The deep sounding, and the primary. 145.0 m from the player's yard, bare ore,
+ * nothing placed on it — see `build` for why that emptiness is authored.
+ */
 export const DEEP_HEAD: Area = { x: 286, z: 291, r: 20 };
 
 /**
@@ -203,21 +207,53 @@ export default layout({
     const rad = home.facingDeg * (Math.PI / 180);
     const fx = Math.sin(rad);
     const fz = Math.cos(rad);
-    const partyX = home.x - fx * PARTY_SETBACK;
-    const partyZ = home.z - fz * PARTY_SETBACK;
+    /** A point `setback` behind the start spot and `lateral` across it. */
+    const behind = (setback: number, lateral: number): { x: number; z: number } => ({
+      x: home.x - fx * setback - fz * lateral,
+      z: home.z - fz * setback + fx * lateral,
+    });
+
+    const partyAt = behind(PARTY_SETBACK, 0);
     for (let i = 0; i < 3; i++) {
-      const lateral = (i - 1) * 5;
-      const id = b.spawnUnit(
-        'engineer', player,
-        partyX - fz * lateral, partyZ + fx * lateral,
-        { yawDeg: home.facingDeg },
-      );
+      const p = behind(PARTY_SETBACK, (i - 1) * 5);
+      const id = b.spawnUnit('engineer', player, p.x, p.z, { yawDeg: home.facingDeg });
       c.tag('party', id);
     }
     // Units reserve nothing for themselves, so `scatter` below is otherwise
     // free to drop a pine into the middle of the party. Same reason
     // `buildMcvStartFor` blocks around its escort.
-    b.block(partyX, partyZ, 14);
+    b.block(partyAt.x, partyAt.z, 14);
+
+    /* -- the escort, authored rather than inherited -----------------------
+     * THE BASE GARRISON IS NOT AN ESCORT AND THE TWO ARMIES' BASES ARE NOT THE
+     * SAME SIZE. Built and counted: `buildAlliedBase` lays down 4 Grizzlies, 2
+     * IFVs and 5 G.I.s, while the Soviet layout the opposing seat takes lays
+     * down 5 Rhinos, 9 Conscripts, 2 Attack Dogs and an Apocalypse. This
+     * operation asks the player to LEAVE that base and cross 279 m into the
+     * other one's half on a clock, so inheriting the smaller of two openings
+     * would be an authored disadvantage nobody authored.
+     *
+     * Three more hulls and four more riflemen, formed line abreast with the
+     * party so the opening frame reads as a column about to march rather than
+     * as a base with three engineers loitering behind it.
+     *
+     * ONLY UNGATED KEYS, AND THIS IS THE RULE RATHER THAN THE PREFERENCE.
+     * `roster: { player: [], ai: [] }` makes `isBuildable` an ALLOW-LIST, so
+     * anything carrying an `UNLOCK_TAGS` id is REFUSED for both seats and
+     * `spawnUnit` returns NONE without a word. `grizzly` and `gi` carry no tag;
+     * `ifv` carries `unit.raider`, which is why the base's two are not part of
+     * the escort this file counts on and must not be added to it.
+     */
+    const armour = behind(PARTY_SETBACK, 30);
+    b.formation('grizzly', player, armour.x, armour.z, 3, {
+      yawDeg: home.facingDeg, spacing: 8, columns: 3, jitter: 0.5,
+    });
+    b.block(armour.x, armour.z, 14);
+    const screen = behind(PARTY_SETBACK, -28);
+    b.formation('gi', player, screen.x, screen.z, 4, {
+      yawDeg: home.facingDeg, spacing: 5, columns: 4, jitter: 0.6,
+    });
+    b.block(screen.x, screen.z, 13);
 
     /* -- placement helper -------------------------------------------------
      * Widening-ring search for a legal footprint, then the nominal point as a

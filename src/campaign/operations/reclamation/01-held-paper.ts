@@ -224,10 +224,11 @@ const op: OperationDef = {
     },
 
     /* -- the compound, seen ----------------------------------------------
-     * The scouting payoff, and the only reveal in the file. 74 m is wider than
-     * a Scrap Picker's 22 m sight on purpose: this fires when the player has
-     * BROUGHT something to the office, not when they have seen it, because
-     * seeing it is what `revealArea` is for.
+     * The scouting payoff, and the only reveal in the file. 74 m is more than
+     * three times a Scrap Picker's 22 m sight, so this fires while the compound
+     * is still under shroud — which is exactly why the same trigger carries the
+     * `revealArea`. ARRIVING is what shows it to you; the trigger is not
+     * reacting to the player having seen something.
      *
      * Cregg names the mechanism outright. A hidden objective whose method the
      * player has to guess is a quiz, and the medal is the reward for using it

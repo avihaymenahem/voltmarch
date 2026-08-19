@@ -17,11 +17,13 @@
  * THE DECISION THIS OPERATION OWNS
  * ============================================================================
  * Minute three, and the column is on the road. The Works vehicle park is 157 m
- * off the line with two Allied tanks parked on it, and it holds two mothballed
- * hulls the column's own crews can start — the Works wrote the standard both
- * administrations still build to, which is the title and is also why a Soviet
- * crew can start an Allied-built machine. Taking it is +140 m of driving and a
- * tank fight; skipping it is two fewer mistakes for the rest of the operation.
+ * from the opening — 52 m BEHIND the line between the two starts, so the detour
+ * is backwards before it is forwards — with two Allied tanks on it, and it holds
+ * two mothballed hulls the column's own crews can start — the Works wrote the
+ * standard both administrations still build to, which is the title and is also
+ * why a Soviet crew can start an Allied-built machine. Taking it is +140 m of
+ * driving and a tank fight; skipping it is two fewer mistakes for the rest of
+ * the operation.
  *
  * No skirmish contains that trade, because in a skirmish two more tanks is a
  * button. Here they are the only two that exist.

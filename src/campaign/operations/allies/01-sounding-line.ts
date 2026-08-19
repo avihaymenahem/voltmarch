@@ -10,12 +10,16 @@
  * ============================================================================
  * They give up their half of the map, and the numbers are measured rather than
  * hoped for. The seam runs down the opening lane with a head at each end, 92.2
- * metres apart, symmetric about the map centre — and every seated pair is
- * symmetric about the map centre too, so the two heads land one per half, at
- * exactly the same distances reversed:
+ * metres apart and symmetric about the map centre; on this seed the seated slot
+ * pair is antipodal too, so the two heads land one per half at exactly the same
+ * distances reversed:
  *
  *     player yard  (402, 378)   ->  deep head 145.0 m   control head 235.8 m
  *     enemy yard   (110, 134)   ->  deep head 235.8 m   control head 145.0 m
+ *
+ * That mirror is a property of `simSeed`, not of the construction — two of the
+ * four entries in `START_PAIRS` are edge pairs and are not centre-symmetric.
+ * The layout's header carries the measurement and the warning.
  *
  * THE READING YOU MUST TAKE IS ON YOUR SIDE; THE READING YOU MAY TAKE IS ON
  * THEIRS. The deep head is bare ore 145 m from the player's yard and it is the
@@ -25,7 +29,7 @@
  *
  * So the decision arrives at about minute two and it is not a build order:
  *
- *   - march now, with the garrison the base was handed, cross 279 m, crack a
+ *   - march now, with the column the layout forms up, cross 279 m, crack a
  *     dug-in post on the enemy's doorstep and stand on it for forty-five
  *     seconds — then walk three unarmed men 92 m back across the lane and
  *     stand still for ninety more, with whatever escort came home; or
@@ -69,7 +73,7 @@
  * ninety seconds start again. That is the reason this is one long stand rather
  * than a chain of arrival checks: a corridor of `unitsInArea` checkpoints asks
  * the player to walk, and one hold that can be lost at eighty-nine seconds asks
- * them to decide what the escort dies for. Aubray says so out loud on `t.string`
+ * them to decide what the escort dies for. Aubray says so out loud on `t.plate`
  * — a rule the player can only learn by losing it is a rule badly told.
  *
  * ============================================================================
@@ -150,18 +154,25 @@ const op: OperationDef = {
     opening: 'base',
     // NOT THE SKIRMISH 10 000. That bank buys a second army inside the control
     // window and deletes the only decision this operation is made of; the
-    // starting garrison `buildBaseFor` lays down is meant to BE the escort.
-    // 2500 is one considered purchase, not a build order.
+    // column the layout forms up is meant to BE the escort, not a down payment
+    // on one. 2500 is a considered purchase, not a build order — and it binds
+    // the opposing seat identically, which is the lever CLAUDE.md names for the
+    // AI opening that has been reported as a prebuilt base twice.
     credits: 2_500,
   },
   layout: 'allies-sounding-line',
 
   outcome: { annihilationWin: false, assetLossDefeat: false, ignoreSeats: [] },
 
-  // Nothing withheld on either side. The difficulty here is a clock and two
-  // guns, and the player's answer to a dug-in post — armour, an IFV, riflemen —
-  // is day-one open in every army, so a roster restriction could only take away
-  // something this operation never asked them to bring.
+  // Nothing granted on either side, which is NOT the same as nothing withheld.
+  // Two empty lists make `isBuildable` an allow-list, so every tagged def is
+  // refused for both seats — no Battle Lab, no Tesla Coil, no Prism Tower, no
+  // IFV, no Attack Dog, no Apocalypse, in the opening bases or in the sidebar.
+  // That is the right shape for a first operation: what is left is the opening
+  // path, which is what the difficulty here is actually made of — a clock, two
+  // guns and ninety seconds of standing still. It is also SYMMETRIC and
+  // profile-independent, so the ground is the same on a finished account as on
+  // a fresh one, which a deny-list could not promise.
   roster: { player: [], ai: [] },
 
   objectives: [
@@ -300,10 +311,12 @@ const op: OperationDef = {
         },
         { do: 'dialogue', speaker: 'Wend', text: 'Post relief is moving off the control head.' },
         { do: 'revealArea', player: 0, area: { x: POST.x, z: POST.z, r: 44 } },
-        // Six and two against a base garrison of four tanks, two IFVs and five
-        // riflemen, minus whatever the control head cost. Enough to take the
-        // head off an escort that was spent getting there, not enough to be a
-        // second mission.
+        // Six and two against a counted opening of seven Grizzlies and nine
+        // G.I.s, minus whatever the control head cost and minus whatever is
+        // still standing over the ore. Enough to take the head off an escort
+        // that was spent getting there, not enough to be a second mission —
+        // and Soviet keys because the antagonist of this chapter is, even
+        // though nothing in `OperationDef` can pin the opposing seat's army.
         { do: 'spawnUnits', player: 1, key: 'conscript', count: 6, at: POST, spread: 18, tag: 'sortie' },
         { do: 'spawnUnits', player: 1, key: 'rhino', count: 2, at: POST, spread: 26, tag: 'sortie' },
         { do: 'orderTagged', tag: 'sortie', order: 'attackMove', at: { x: DEEP_HEAD.x, z: DEEP_HEAD.z } },

@@ -16,11 +16,15 @@
  *     minutes.
  *
  * The camp sits **111 m off the straight line from the player's opening to the
- * tap**, which is the number the whole fork rests on: far enough that a column
- * driving for the tap never comes into a pillbox's 22 m and never has to
- * fight, near enough that turning aside costs a minute rather than a detour.
- * One column can do one of them. That is the decision, and it is made in
- * minute three, against a rail column that lands at minute three.
+ * tap** — but the column does not start at the opening, it starts at the
+ * staging post, and **that is the line the claim has to be measured against**.
+ * From `STAGE` the gate is only **49.4 m** off the direct route to the tap and
+ * the nearer of the two gate guns is **45.0 m** off it. The conclusion holds —
+ * 45 is comfortably outside `pillboxMg`'s 22 m, so a column driving for the tap
+ * never has to fight — but it holds by 23 m rather than by 89, and the 111 was
+ * the wrong origin. Near enough that turning aside costs a minute rather than a
+ * detour; far enough that it costs something. That is the decision, and it is
+ * made in minute three, against a rail column that lands at minute three.
  *
  * ============================================================================
  * THE WORLD POINTS ARE EXPORTED CONSTANTS, AND THE OPERATION IMPORTS THEM
@@ -133,10 +137,13 @@ export const GATE: Point = { x: 398, z: 186 };
  * Where a trigger notices the player has come up to the wall.
  *
  * **40 m, AND IT HAS A CEILING RATHER THAN A TASTE.** The nearest man in the
- * forward column stands 57.5 m from the gate at t=0 — the front rank's outer
- * file, measured. A disc any wider fires the line on tick one, before anybody
- * has driven anywhere, and a beat that fires before the player acts is a beat
- * that teaches them the operation is not watching.
+ * forward column stands **60.00 m** from the gate at t=0 — read off a built
+ * world, not off the rank arithmetic, which gives 57.5 and is what an earlier
+ * draft of this comment quoted: `spawnUnit` clamps and settles every hull, so
+ * the authored offsets are not where anybody ends up. A disc any wider fires
+ * the line on tick one, before anybody has driven anywhere, and a beat that
+ * fires before the player acts is a beat that teaches them the operation is not
+ * watching.
  */
 export const GATE_WATCH: Area = { x: GATE.x, z: GATE.z, r: 40 };
 
@@ -180,9 +187,18 @@ const SEAM_RADIUS = 34;
 /** Half-length of the wall, metres. 120 m of concrete across one approach. */
 const WALL_HALF = 60;
 /**
- * Half-width of the gate: a 20 m opening, four clear cells between the inner
- * segments. Wide enough that a column drives through rather than files
- * through, narrow enough that both guns cover every metre of it.
+ * Half-width of the gate.
+ *
+ * **20 m NOMINAL IS 12 m REAL, AND THE REAL NUMBER IS THE ONE THAT MATTERS.**
+ * A segment is skipped only while `|t| < GATE_HALF`, so the two inner segments
+ * sit AT +/-10 m and each claims the whole 4 m cell it lands in. Read off the
+ * built world's occupancy grid, the opening is cells `98,46` `99,46` `100,46` —
+ * **three clear cells, 12 m**. That is still a corridor rather than a slot:
+ * `NAV_MIN_CORRIDOR_CELLS` is 2 for a tracked hull, and the free run across the
+ * gate is 3, so the planner routes through it instead of demoting it and
+ * walking the column 60 m round an end. Raising this to buy a fourth cell also
+ * moves the opening's edges out from under the two guns, which is the trade
+ * rather than a free improvement.
  */
 const GATE_HALF = 10;
 /**
@@ -198,7 +214,17 @@ const MAST_OFFSETS: readonly Point[] = [
   { x: 0, z: -24 }, { x: -22, z: 14 }, { x: 22, z: 14 },
 ];
 
-/** The camp's back guns, relative to `CAMP` — so going round an end is not free. */
+/**
+ * The camp's back guns, relative to `CAMP`.
+ *
+ * **THEY DO NOT MAKE GOING ROUND AN END COST ANYTHING, WHICH IS WHAT THIS
+ * COMMENT USED TO CLAIM.** Measured against `pillboxMg`'s 22 m: the west wall
+ * end is 76 m from the nearer of them, and the two masts an outflanker reaches
+ * first are 30.6 m and 47 m away. They cover the NORTHERN approach — the face
+ * the Allies would relieve the camp from — and nothing else. What actually
+ * punishes a flank is the pair at the gate: the west mast sits 18.1 m from gate
+ * gun 1, inside its 22, so the interior is covered even when the wall is not.
+ */
 const CAMP_REAR_GUNS: readonly Point[] = [
   { x: -34, z: -34 }, { x: 34, z: -34 },
 ];
@@ -275,6 +301,17 @@ export default layout({
      * second by a widening ring — a lone wall standing beside its own line.
      * A step of `CELL / 2` cannot jump a cell boundary on any bearing, so the
      * run has no holes; the dedupe means no cell is asked for twice.
+     *
+     * **THE WALL DELIBERATELY DOES NOT GO THROUGH `place`, AND THE BUILD SAYS
+     * SO OUT LOUD.** `auditConnectivity` prints "16 structures on ground
+     * isBuildable refuses (first: wall at 426,182)" on this layout, which is
+     * the exact line S1's header records having FIXED with `place`. It is
+     * correct here and it must not be "fixed": `findClearFootprint` walks a
+     * widening ring, so a segment on a slope would be relocated off the line
+     * and the run would stop being a run. A wall bedded into a snow bank is
+     * ugly; a wall with a hole in it is a different operation. The 28 segments
+     * were counted off the built world and the run is continuous either side of
+     * the gate.
      */
     {
       const ax = STAGE.x - CAMP.x;

@@ -19,6 +19,18 @@
  *     fifteen. Slower, pays 700, and the Allies then come for the ground
  *     instead — the second act only that route produces.
  *
+ * **THE TWO ARE NOT EXCLUSIVE AND NOTHING MAKES THEM SO, WHICH IS THE HONEST
+ * READING OF THE FORK.** Killing three undefended masts and THEN taking the tap
+ * pays 700 and a silver against the tap alone's bronze, so it dominates, and a
+ * player with a base, twenty-five hulls at t=0 and a rail column at minute
+ * three has time for both inside the nine. The consequence is that `t.contest`
+ * — the minute-nine wave this file argues hardest for — fires only for somebody
+ * who broke the survey and then FAILED to reach the tap by nine. **It is the
+ * behind-schedule act, not the reward act.** What the fork really sets is an
+ * ORDER OF OPERATIONS under one fuse, and the pressure is the fuse. Making it a
+ * true fork needs a cost the vocabulary cannot express today — the masts alive
+ * doing something to the player rather than only to the clock.
+ *
  * **THE FAST ROUTE IS THE ONE YOU CANNOT SAFELY TAKE, AND THAT IS GEOMETRY.**
  * The tap is 129 m from the Allied opening. Holding it for seventy-five
  * seconds at minute four means holding it on their doorstep with the column
@@ -43,9 +55,19 @@
  * every untagged unit the seat owns into the strike group or the reserve on its
  * next pass, so a scripted `guard` on an AI-driven seat survives about a
  * second: the effect would read as authored intent and be overwritten before
- * anyone saw it. The durable way to make an AI force hold ground is to put it
- * on that ground, which is why `APPROACH` is fifty metres short of the tap and
- * not somewhere a march order would have to carry it.
+ * anyone saw it.
+ *
+ * **AND SPAWNING THEM ON THE GROUND DOES NOT HOLD THEM THERE EITHER — THE SAME
+ * PASS TAKES THEM.** An earlier draft of this block said the durable answer was
+ * to put the force where it is meant to stand, which is the argument above
+ * refuting itself one paragraph later. What `APPROACH` actually buys is that
+ * these nine hulls JOIN THE ALLIED ARMY seventy-nine metres from its own base
+ * rather than materialising inside a holding player's formation — a schedule
+ * the opponent gets stronger on, not a garrison. Read the two waves as the
+ * Allies building faster than they could, and read Wend's line as what she
+ * INTENDS rather than as something the sim guarantees. A real garrison needs a
+ * fifth `GROUP_*` tag in `AI.ts`, which is engine work and not an operation's
+ * to do.
  * ========================================================================== */
 
 import { Faction } from '../../../core/types';
@@ -251,7 +273,16 @@ const op: OperationDef = {
       ],
     },
 
-    /* -- the column is the whole margin ----------------------------------- */
+    /* -- the column is the whole margin -----------------------------------
+     * `column` IS THE STARTING FORCE ONLY, AND `t.rail` DELIBERATELY DOES NOT
+     * STAMP IT. Tagging the rail wave would make this line strictly truer — it
+     * can fire today with nine rail hulls standing at the staging post — and it
+     * would cost the check that catches the failure that actually matters:
+     * `campaign-maps.spec.ts` skips "every declared tag landed on something"
+     * for any tag a `spawnUnits` produces, so a layout that stopped stamping
+     * `column` would go unnoticed. A slightly overstated line beats a silent
+     * hole in the ground check. Read it as: the force you were given is gone.
+     */
     {
       id: 't.columnGone',
       when: { on: 'ownerCount', player: 0, role: 'unit', tag: 'column', max: 0 },

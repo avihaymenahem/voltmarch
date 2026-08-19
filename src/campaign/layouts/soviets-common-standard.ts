@@ -98,8 +98,34 @@ export const PAD_POINT: Point = { x: CENTRE, z: CENTRE };
  */
 export const DEPOT: Area = { x: CENTRE, z: CENTRE + 176, r: 34 };
 
-/** Where the salvaged hulls appear. The park's own centre. */
-export const DEPOT_DROP: Point = { x: CENTRE, z: CENTRE + 176 };
+/**
+ * Where the salvaged hulls appear. NOT the park's centre, and the difference is
+ * a hull that cannot move.
+ *
+ * **`EffectSink.spawnUnits` DOES NOT SNAP TO STANDABLE GROUND.** Everything
+ * this file places goes through `ScenarioBuilder.spawnUnit`, which calls
+ * `connectedGround` and pulls the spot onto ground the locomotor can hold. The
+ * Director's `spawnUnits` calls `ProductionService.spawnUnit` instead, which
+ * clamps to the map, reads `heightAt` and allocates — it asks nothing. So a
+ * drop point on a ridge is a Rhino standing on a ridge, permanently, counting
+ * towards the `ownerCount` the loss threshold reads while being no use to
+ * anybody.
+ *
+ * (256, 432) was exactly that, and the ground here is not flat the way the
+ * distances above imply. Measured on this seed: the park's centre is a knoll at
+ * `heightAt` **14.78** against 8.96 twelve metres north, and `connectedGround`
+ * relocates Foot, Track, Wheel and Hover off it. `place()` had already carried
+ * the shed clear — it landed at (264, 426) — so nothing in the build reported a
+ * fault; the reward hulls simply had no equivalent, and the `spread: 11` ring
+ * put one of the two at (245, 432), on the same knoll.
+ *
+ * (248, 420) is standable and unoccupied at its centre AND at both spread-11
+ * ring points, 14.4 m from the park's centre so well inside `DEPOT`'s 34 m
+ * disc, and on the PAD side of the shed — the new hulls appear already pointing
+ * the way back. **Re-measure it if the seed moves**; this is the second piece
+ * of geometry on this map that is seed-specific.
+ */
+export const DEPOT_DROP: Point = { x: CENTRE - 8, z: CENTRE + 164 };
 
 /**
  * The valley road the Allied relief columns come up.
@@ -321,12 +347,27 @@ export default layout({
     /* -- dressing --------------------------------------------------------- */
     addStartOre(b, spots, b.sea);
     /*
-     * `addCivilians` IS DELIBERATELY NOT CALLED. It seats its hamlets off the
-     * midpoint of the lane between the two openings, which on a two-army map is
-     * within metres of Survey 40 — so it and the station above would be two
-     * independent placers competing for one clearing, and the winner decides
-     * how much of the pad is solid. The station IS this operation's civilian
-     * dressing; a hamlet on top of it is a pad nobody can park on.
+     * `addCivilians` IS DELIBERATELY NOT CALLED, AND THE FIRST VERSION OF THIS
+     * NOTE NAMED THE WRONG STRUCTURE.
+     *
+     * It said the hamlets land "within metres of Survey 40". They do not.
+     * `addCivilians` works off the lane midpoint — (256, 380) on this seed, the
+     * same point the `addStartOre` paragraph above quotes, and 124 m from the
+     * pad — and seats its hamlets `CIVILIAN_HAMLET_OFFSET` (62 m) out along the
+     * bisector, at (256, 318) and (256, 442). The second of those is 10 m from
+     * the vehicle park, which is a real collision and not the one that was
+     * claimed.
+     *
+     * What actually lands on the pad is the civilian ORE MINE. It walks
+     * `MINE_BISECTOR_OFFSETS` = [128, 112, 96] out from the midpoint and takes
+     * the first that fits, so it goes to (256, 252) — **4.0 m from Survey 40's
+     * centre**, inside the hold disc, placed by something that knows nothing
+     * about the station this file just stood there.
+     *
+     * So the reason to skip it holds and is stronger than it was written: two
+     * independent placers competing for one clearing, with the winner deciding
+     * how much of the pad is solid ground. The station IS this operation's
+     * civilian dressing.
      */
     b.setCameraFocus(home.x, home.z);
     b.scatter({ minX: cx - 130, minZ: cz - 130, maxX: cx + 130, maxZ: cz + 130 }, 150);
