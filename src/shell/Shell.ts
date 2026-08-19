@@ -52,6 +52,7 @@ import './shell.css';
 import { bootstrap, type BootOptions, type GameHandle } from '../game/Bootstrap';
 import { prepareRenderer } from '../render/renderer';
 import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
+import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
@@ -63,12 +64,15 @@ import {
   armyCount,
   buildMatchQuery,
   chordEquals,
+  codeLabel,
   cloneSetup,
   defaultSetup,
+  defaultTeamFor,
   effectiveOpponents,
   mapById,
   normalizeSetup,
   rollSeed,
+  teamsOf,
   touched,
   type Chord,
   type GraphicsSettings,
@@ -78,6 +82,16 @@ import {
 } from './settings-store';
 import { BriefingScreen, CampaignScreen } from './Campaign';
 import type { CampaignResult } from './EndScreen';
+
+/*
+ * The loading tip's key resolution. `actionKeyRow` is the tutorial's helper and
+ * `src/shell/tutorial-steps.ts` is already in the ENTRY chunk (it holds the
+ * classifier `tutorial.system.ts` reads), so this edge costs the entry bundle
+ * nothing — and the tip prose itself stays here, in the lazy shell chunk, where
+ * it has always been.
+ */
+import { actionKeyRow } from './tutorial-steps';
+import { isApplePlatform, type StoredBindings } from '../input/ActionCatalogue';
 
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
 import { targetMsForCap } from '../render/HardwareCalibration';
@@ -723,19 +737,93 @@ export interface ShellOptions {
   onError?: (title: string, detail: unknown) => void;
 }
 
-/** Loading-screen copy. Real advice, not lorem. */
-const TIPS: readonly string[] = [
+/* ==========================================================================
+ * 6a. LOADING-SCREEN TIPS
+ *
+ * NO TIP SPELLS A KEY, AND NO TIP CONTAINS A DIGIT. Both rules are mechanical
+ * (`tests/loading-tips.spec.ts`) because both were broken here for the whole
+ * life of the file — `docs/SPEC_DRIFT_AUDIT.md` #27.
+ *
+ * THE KEY RULE. Three of the ten strings hard-coded a REBINDABLE key: "Q and E
+ * rotate the camera", "Attack-move (A)…". `cam.rotateLeft`, `cam.rotateRight`
+ * and `ord.attackMove` are all `binding: 'rebindable'`, so a player who moved
+ * them was told the wrong key by their own loading screen — the exact failure
+ * `src/input/ActionCatalogue.ts`'s header exists to end, on a surface shown
+ * before every single match. A fourth named `Ctrl` for the control groups,
+ * which is `fixed` and cannot lie by rebinding; it is routed anyway, because a
+ * lint with a carve-out for "the fixed ones are fine" is a lint whose next
+ * reader has to re-derive which ones those are.
+ *
+ * So a tip's prose never names a key. `{some.action.id}` is a placeholder
+ * resolved AT DRAW TIME through `actionKeyRow` — the tutorial's helper, the
+ * same one `src/shell/Help.ts` renders its rows from, against the bindings the
+ * player has right now. Rebind Rotate Left and the next loading screen says so.
+ *
+ * WHY A TEMPLATE STRING RATHER THAN A STRUCTURED ROW. `TutorialStep` carries
+ * `body` plus a parallel `actions: string[]`, because a tutorial step draws its
+ * keys as CAPS in a separate strip. A tip has one line and the key belongs mid
+ * sentence, so the id can sit where the key goes — which also removes the one
+ * failure mode the parallel array has, prose and array disagreeing about how
+ * many keys there are. `tipActionIds` recovers the ids for the test.
+ *
+ * THE DIGIT RULE is `tests/build-descriptions.spec.ts` §4's, applied to the
+ * same class of copy: *"a figure retyped here is a second copy nothing
+ * compares"*. It binds the AUTHORED text only. A substituted key label may well
+ * contain digits — `sel.groupSet` renders `CTRL + 0 – 9` — and that is the
+ * point, because those digits come out of the catalogue rather than out of
+ * somebody's memory of it.
+ * ========================================================================== */
+
+/**
+ * `{action.id}` — one live key name, resolved when the tip is drawn.
+ *
+ * Module-level and global on purpose, and safe for both readers: `replace`
+ * resets `lastIndex` when it finishes, and `matchAll` runs against an internal
+ * clone. Nothing else may `exec` it.
+ */
+const TIP_KEY = /\{([a-z][A-Za-z0-9.]*)\}/g;
+
+/** Loading-screen copy. Real advice, not lorem. See the block above. */
+export const TIPS: readonly string[] = [
   'Harvesters are your entire economy. Escort them, and rebuild them first.',
   'A war factory with two refineries out-produces two war factories with one.',
   'Right-click cancels a build placement without losing the structure.',
-  'Ctrl+number stores a control group. Double-tap the number to jump the camera to it.',
+  '{sel.groupSet} stores a control group. Double-tap {sel.groupCentre} to jump the camera to it.',
   'Tesla and prism defences go dark in a brownout. Build the power plant first.',
-  'Q and E rotate the camera. The silhouette of a base reads differently from every angle.',
+  '{cam.rotateLeft} and {cam.rotateRight} rotate the camera. '
+    + 'The silhouette of a base reads differently from every angle.',
   'Engineers capture. One engineer into an enemy war factory is worth a tank column.',
-  'Attack-move (A) makes a column engage on the way instead of driving past the fight.',
+  'Attack-move ({ord.attackMove}) makes a column engage on the way '
+    + 'instead of driving past the fight.',
   'Sell a damaged structure before it dies — you keep half the cost.',
   'Heavy armour shrugs off small arms. Bring cannons to a tank fight.',
 ];
+
+/** Every catalogue action id a tip defers to, in the order it names them. */
+export function tipActionIds(text: string): string[] {
+  return [...text.matchAll(TIP_KEY)].map((m) => m[1]);
+}
+
+/**
+ * One tip, with every `{action.id}` replaced by the key the player has now.
+ *
+ * An id the catalogue does not know renders as the same em dash `actionKeyRow`
+ * uses for "no key at all", never as the raw id and never as a throw: this runs
+ * while the match boots, and a loading screen that can crash is worse than one
+ * that is briefly vague. The test is what makes it unreachable in shipped copy.
+ */
+export function resolveTip(
+  text: string,
+  bindings: StoredBindings,
+  mac: boolean,
+  labelFor: (code: string) => string,
+): string {
+  return text.replace(TIP_KEY, (_whole, id: string) => {
+    const row = actionKeyRow(id, bindings, mac, labelFor);
+    if (row === null) return '—';
+    return row.chips.map((c) => c.text).join(' ');
+  });
+}
 
 export class Shell {
   readonly settings: SettingsStore;
@@ -1017,7 +1105,9 @@ export class Shell {
       // `seatPvpPlayers` overwrites both slots from `info`. It is stated here so
       // a four-way skirmish left in the lobby cannot leak an army count into a
       // PvP boot, where the two clients would then disagree about the table.
-      opponents: [{ faction: this.setup.aiFaction, difficulty: 0, personality: -1 }],
+      // `defaultTeamFor(0)`: the two humans are enemies, and `seatPvpPlayers`
+      // never reaches the team writer in any case.
+      opponents: [{ faction: this.setup.aiFaction, difficulty: 0, personality: -1, team: defaultTeamFor(0) }],
     };
 
     // SUPPRESSED, NOT CLEARED. `setUnlockGate(null)` here does nothing: the
@@ -1202,10 +1292,15 @@ export class Shell {
     const others: OpponentSetup[] = header.players
       .map((p, i) => ({ p, i }))
       .filter(({ p, i }) => i !== header.localPlayer && p.faction !== (Faction.Neutral as number))
-      .map(({ p }) => ({
+      .map(({ p }, i) => ({
         faction: keyOf(p.faction) ?? this.setup.aiFaction,
         difficulty: p.aiDifficulty,
         personality: -1,
+        // The recording's OWN alliances are restored from the header by
+        // `seatReplayPlayers`, which runs instead of the team writer — this
+        // list exists to make `armyCount` and the results screen honest, so it
+        // carries the free-for-all default rather than a second opinion.
+        team: defaultTeamFor(i),
       }));
     const other = others[0];
 
@@ -1353,10 +1448,15 @@ export class Shell {
       // four-seat operation whose setup says two would level ground for two —
       // the defect `SaveContext.armies` exists to close, reintroduced through
       // a different door.
-      opponents: Array.from({ length: Math.max(1, op.map.armies - 1) }, () => ({
+      opponents: Array.from({ length: Math.max(1, op.map.armies - 1) }, (_, i) => ({
         faction: keyOf(op.foe as number) ?? this.setup.aiFaction,
         difficulty: this.setup.difficulty,
         personality: -1,
+        // NO TEAM, DELIBERATELY. Every shipped operation is two armies, so this
+        // is one seat and the question does not arise; an operation that grows
+        // a third should declare its own alliances next to `foe`, not inherit
+        // whatever the skirmish lobby was last left holding.
+        team: defaultTeamFor(i),
       })),
     };
 
@@ -1604,7 +1704,14 @@ export class Shell {
       this.activeSeed = seed;
       const map = mapById(this.setup.map);
 
-      this.show(new LoadingScreen(map.name, factionByKey(this.setup.playerFaction)?.name ?? ''), 'loading');
+      this.show(
+        new LoadingScreen(
+          map.name,
+          factionByKey(this.setup.playerFaction)?.name ?? '',
+          this.settings.get().controls.bindings,
+        ),
+        'loading',
+      );
       // Two frames so the loading screen is actually painted before the boot
       // blocks the main thread on shader compilation.
       await nextFrames(2);
@@ -2141,7 +2248,12 @@ export class Shell {
       // precisely so `armyCount` answers the recording's number.
       opponents: Array.from(
         { length: Math.max(1, c.armies - 1) },
-        () => ({ faction: c.aiFaction, difficulty: c.difficulty, personality: -1 }),
+        // The saved world's own `allyMask` is restored per player by
+        // `SaveGame`, on top of whatever this boot seated, so the teams a save
+        // was taken in survive without `SaveContext` growing a field.
+        (_, i) => ({
+          faction: c.aiFaction, difficulty: c.difficulty, personality: -1, team: defaultTeamFor(i),
+        }),
       ),
     }, { persist: false });
 
@@ -2280,7 +2392,7 @@ export class Shell {
     this.setHudVisible(false);
 
     if (!keepBackdrop || this.game === null) {
-      this.show(new LoadingScreen('Voltmarch', ''), 'loading');
+      this.show(new LoadingScreen('Voltmarch', '', this.settings.get().controls.bindings), 'loading');
       if (!firstBoot) await nextFrames(2);
       try {
         await this.bootGame(rollSeed(), true);
@@ -2585,10 +2697,31 @@ export class Shell {
       if (spec.personality >= 0) p.aiPersonality = spec.personality;
     }
 
+    /*
+     * AND THEN, ONCE, THE DIPLOMACY — THE ONLY WRITER `allyMask` HAS EVER HAD.
+     *
+     * It goes here because this is where seats exist and nowhere else is: the
+     * table is complete on the line above, the scenario has not read it yet,
+     * and the mask is sim state that `Checksum.hashPlayers` covers, so it must
+     * be standing before tick zero rather than arriving from a menu later.
+     *
+     * NOT FOR THE BACKDROP. The title screen is always a duel and always
+     * `?ai=off`, and a lobby left holding a 2v2 would otherwise put the menu's
+     * one opponent on the observer's own team — two armies with nothing to do,
+     * which is what the block above spends a paragraph refusing.
+     *
+     * The PvP and replay paths returned above and neither reaches this: PvP
+     * seats exactly two humans who are always enemies, and a replay restores
+     * the mask the recording carried, which outranks any lobby.
+     */
+    if (!backdrop) applyTeams(world, teamsOf(this.setup));
+
     if (wanted > 1) {
       console.info(
         `[shell] seated ${wanted + 1} armies: `
-        + world.players.map((p) => `p${p.id as number} ${p.name}`).join(', '),
+        + world.players.map(
+          (p) => `p${p.id as number} ${p.name} ally=0b${(p.allyMask >>> 0).toString(2)}`,
+        ).join(', '),
       );
     }
   }
@@ -2705,6 +2838,20 @@ export class Shell {
       p.isLocal = slot === header.localPlayer;
       p.aiDifficulty = rec.aiDifficulty;
       p.aiPersonality = rec.aiPersonality;
+      /*
+       * THE RECORDING'S DIPLOMACY, NOT THIS BROWSER'S LOBBY. `allyMask` is sim
+       * state — `Checksum.hashPlayers` covers it and `Targeting` reads it every
+       * tick — so a 2v2 replayed with the free-for-all mask a fresh boot seats
+       * has both teams open fire on their own allies and diverges inside a
+       * second. `|=` rather than `=`: Gaia's bit is written by the scenario in
+       * both directions and this must not take it back off.
+       *
+       * ABSENT ON EVERY FILE RECORDED BEFORE TEAMS EXISTED, and that absence is
+       * a FACT rather than a gap — those matches really were free-for-alls, and
+       * the default mask already says so. `REPLAY_FORMAT_VERSION` therefore
+       * does not move; see `ReplaySlot.allyMask` for what that costs.
+       */
+      if (rec.allyMask !== undefined) p.allyMask |= rec.allyMask;
       // NAMED BY THEIR ARMY, not "You" and "Opponent". A replay has no you.
       p.name = names.find((f) => (f.id as number) === rec.faction)?.name ?? `Slot ${slot + 1}`;
     }
@@ -2913,8 +3060,10 @@ export class Shell {
       if (!policy.annihilationWin) return;
       let enemiesLeft = 0;
       for (const p of world.players) {
-        if (p.faction === Faction.Neutral) continue;
-        if (world.areAllied(local, p.id)) continue;
+        // ONE DEFINITION OF ENEMY, shared with `outcome.system.ts`. On a team
+        // this is what makes the win condition "the other side", rather than
+        // "every other seat" — and an ally who is wiped out ends nothing.
+        if (!isHostileSeat(world, local, p)) continue;
         // A seat an operation declared invisible decides nothing — that is how
         // a scripted third party or a militia about to defect stops counting
         // as an enemy who must be killed.
@@ -3069,9 +3218,7 @@ export class Shell {
     // the same order — derived here rather than in two expressions, because a
     // name list and a difficulty list that disagreed about which seats they
     // covered would put the wrong setting under the right name.
-    const hostiles = world.players.filter(
-      (o) => o.faction !== Faction.Neutral && !world.areAllied(world.localPlayer, o.id),
-    );
+    const hostiles = world.players.filter((o) => isHostileSeat(world, world.localPlayer, o));
     return {
       won,
       durationSec: game.ctx.loop.simTime,
@@ -3308,7 +3455,18 @@ export class LoadingScreen implements Screen {
   readonly id = 'loading';
   private root: HTMLElement | null = null;
 
-  constructor(private readonly mapName: string, private readonly factionName: string) {}
+  /**
+   * `bindings` is REQUIRED and has no default, for `startPointsFor`'s reason:
+   * a defaulted `{}` resolves every tip against the DEFAULT chords, which is
+   * precisely the lie this screen shipped for its whole life, and it would do
+   * it silently at whichever call site forgot to pass one. Required makes the
+   * compiler name them instead — both are in `Shell` and both hold the store.
+   */
+  constructor(
+    private readonly mapName: string,
+    private readonly factionName: string,
+    private readonly bindings: StoredBindings,
+  ) {}
 
   mount(host: HTMLElement): void {
     host.classList.add('vm-load');
@@ -3329,7 +3487,10 @@ export class LoadingScreen implements Screen {
 
     inner.appendChild(el('div', 'vm-load-bar'));
     inner.appendChild(el('div', 'vm-load-status', 'Initialising'));
-    inner.appendChild(el('p', 'vm-load-tip', TIPS[Math.floor(Math.random() * TIPS.length)]));
+    const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
+    inner.appendChild(
+      el('p', 'vm-load-tip', resolveTip(tip, this.bindings, isApplePlatform(), codeLabel)),
+    );
 
     host.appendChild(inner);
   }

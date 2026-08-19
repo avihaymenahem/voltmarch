@@ -731,13 +731,29 @@ do nothing.**"* — and the handler is a plain `case` inside `switch (actionFor(
 invites a reader to "restore" the special case and silently re-break the rebind. That regression is
 confirmed case 9.
 
-### 27. Loading-screen tips hard-code rebindable keys — the exact failure `ActionCatalogue` exists to end — **LIVE**
+### 27. Loading-screen tips hard-code rebindable keys — the exact failure `ActionCatalogue` exists to end — **FIXED 2026-08-19**
 `ActionCatalogue.ts:9-13`: *"the moment a player moves Attack Move off `A`, any hand-written list of
 controls somewhere else in the product becomes a lie."* `Shell.ts:583-592` is a hand-written list
 rendered on every load: *"**Q and E** rotate the camera…"*, *"Attack-move (**A**) makes a column
 engage…"*. `cam.rotateLeft` / `rotateRight` (:320-336) and `ord.attackMove` (:628-637) are all
 `binding: 'rebindable'`. The Ctrl+digit row is genuinely `fixed` and fine.
 `tests/action-catalogue.spec.ts` knows nothing about `TIPS`.
+
+**FIXED.** No tip spells a key any more. A tip's prose carries `{action.id}` placeholders and
+`Shell.resolveTip` resolves each one through `actionKeyRow` — the tutorial's helper, reading the
+LIVE settings store, exactly as `Help.ts` does — when the loading screen is drawn. The Ctrl+digit
+row was routed too, despite this entry correctly calling it `fixed` and fine: a lint that carves out
+"the fixed ones" is a lint whose next reader has to re-derive which ones those are.
+
+The last clause is closed by a NEW file rather than by the one it names.
+`tests/action-catalogue.spec.ts` still knows nothing about `TIPS`; `tests/loading-tips.spec.ts`
+does, and it also carries the digit ban `tests/build-descriptions.spec.ts` §4 applies to the other
+class of in-game player copy. Its lint was written against the four key mentions in the pre-fix
+table as its own falsifier, and that mattered: the tutorial's existing `IMPERATIVE_THEN_KEY` /
+`NAMED_KEY_NOUN` regexes are GREEN on all three offending strings — they anchor on an imperative
+(*"press A"*) and these tips are declarative (*"Q and E rotate the camera"*) — so porting them
+verbatim would have shipped a passing test over the defect it was cited to close. That pin is §3 of
+the new file.
 
 ### 28. `PIXELS_PER_METRE_1440` is the *bible's* camera scale, not this game's — off by ~36% — **LATENT**
 `config.ts:4580-4581`: `export const PIXELS_PER_METRE_1440 = 207 / 7;` (= 29.57), sourced from *"207
