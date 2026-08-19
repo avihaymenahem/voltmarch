@@ -358,6 +358,27 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   way. **Move it ahead of the drain and every scripted order applies twice under playback** — trap 2
   in `Replay.ts`, avoided by a phase number rather than a flag. One `order` serves both phases and
   9000 is right on both sides; if they ever need to diverge, SPLIT THE MODULE.
+- **AN OPERATION DECLARES ITS OWN ENEMY — `OperationDef.foe`, REQUIRED, NO DEFAULT.** Until it
+  existed, `Shell.startOperation` authored the PLAYER's army from `op.faction` and took the ENEMY's
+  from `this.setup.aiFaction` — the skirmish lobby. So `soviets.02.common-standard`, whose dialogue
+  names the enemy "Allied" four times, was fought against the Reclamation if that is what the lobby
+  happened to hold. Required rather than defaulted for `startPointsFor`'s reason: every available
+  default is wrong for three of the four armies, and `tsc` naming all five operation files beats a
+  silent relabelling.
+
+  **SETTING `opponents` ALONE FIXES NOTHING, AND A TEST READING IT WOULD AGREE IT DID.**
+  `applySetupToWorld` seats through `effectiveOpponents`, which re-asserts the SINGULAR `aiFaction`
+  onto entry 0 — its own comment says "when they disagree the SINGULAR fields win". Every shipped
+  operation is two armies, so seat 1 goes on taking the lobby's faction while the array says
+  otherwise. `aiFaction` moves with `op.foe`; `difficulty` deliberately does not.
+
+  **A SCRIPTED `spawnUnits` KEY STAYS LITERAL AND IS VALIDATED, NEVER REMAPPED.** `EffectSink`
+  resolves through `catalog.byKey` with no `keyFor`, unlike `ScenarioBuilder.spawnUnit`. That is not
+  a bug to close by remapping: an authored operation naming a hull means THAT hull, and
+  `FACTION_KEY_MAP` covers ~30 ROLE keys only, so `rclGrinder` on an Allied seat remaps to itself
+  and the disagreement survives the "fix". `validateCampaign` refuses a key whose declared army is
+  neither Neutral nor the seat's, reading the row's own faction so it covers every key.
+
 - **THE BUNDLE BOUNDARY IS THE FIRST CONSTRAINT, NOT A CLEANUP.** `src/game/Systems.ts` globs
   `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK, so `campaign.system.ts` imports
   `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
