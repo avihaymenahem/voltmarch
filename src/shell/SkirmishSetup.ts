@@ -80,6 +80,38 @@
  * the in-page rebuild, and `?start=` on the URL so it also survives the hard
  * reload path (`Shell.hardLaunch`) and a `?skipmenu=1` boot, neither of which
  * runs this screen.
+ *
+ * ADVANCED IS ONE DISCLOSURE, AND WHAT IS OUTSIDE IT IS THE POINT
+ * --------------------------------------------------------------
+ * Reported as the lobby reading like a form: every row carried a two- or
+ * three-line grey note, and at 1600x1000 the Map Seed row and the summary line
+ * were both below the fold with no scrollbar hint that they existed.
+ *
+ * FIVE ROWS MOVED AND ONE DELIBERATELY DID NOT. `Personality`, `Starting
+ * Credits`, `Game Speed`, `Opponent Tech` and `Map Seed` are behind
+ * `Advanced`; `Starting Condition` stays in the open because it is the one row
+ * on this screen that changes what the match IS rather than how it runs — see
+ * its own section above, which has said exactly that since it was written.
+ * Burying the most consequential choice in order to tidy the screen is the
+ * trade this feature exists to avoid making. `Personality` goes in on its own
+ * row note's evidence: it "biases the AI's strategy scoring, not its rules",
+ * which is a row admitting it is tuning.
+ *
+ * PERSONALITY LEAVES THE OPPONENT BLOCK, which the header above argues the
+ * Team row must not do. The arguments differ: `Team` is only ever drawn when
+ * there is more than one opponent AND it changes the shape of the match, so it
+ * belongs with the army it describes. A personality is a dial on one army, it
+ * is drawn for every opponent whether or not anything else is, and the label
+ * carries the opponent's number when there is more than one — so nothing about
+ * WHICH army is being tuned is lost by the move.
+ *
+ * THE OPEN STATE IS NOT PERSISTED, and the field is on the screen instance
+ * rather than in `MatchSetup` or `localStorage` so that it cannot become
+ * persisted by accident. A disclosure that remembers is a second piece of
+ * state to get wrong — it can disagree with the rows it is hiding after a
+ * `normalizeSetup` correction — and nothing has asked for one. Leaving the
+ * lobby and coming back re-collapses it, which is the behaviour a player who
+ * never opens it should get every time.
  * ============================================================================
  */
 
@@ -270,6 +302,15 @@ export class SkirmishSetupScreen implements Screen {
   private right: HTMLElement | null = null;
   /** The opening. Persisted separately from `MatchSetup` — see the header. */
   private start: StartCondition;
+  /**
+   * Is the Advanced disclosure open?
+   *
+   * DELIBERATELY NOT PERSISTED and deliberately an instance field — see the
+   * header. It survives a repaint of the right column (the Starting Condition
+   * chooser causes one) because it lives on the screen rather than in the DOM,
+   * and it does not survive leaving the lobby, because the screen is rebuilt.
+   */
+  private advancedOpen = false;
 
   constructor(private readonly shell: Shell) {
     // `cloneSetup`, not a spread. `opponents` is an array, and a shallow copy
@@ -339,6 +380,46 @@ export class SkirmishSetupScreen implements Screen {
     s.appendChild(el('h3', 'vm-h3', title));
     parent.appendChild(s);
     return s;
+  }
+
+  /**
+   * A section whose rows are hidden behind a header the player presses.
+   *
+   * @returns the body to append rows to. Always populated, open or shut.
+   *
+   * THE ROWS ARE BUILT EITHER WAY AND THE HEADER TOGGLES `hidden`, rather than
+   * the handler calling `renderRight()`. Two reasons, and the second is the
+   * one that matters:
+   *
+   *  - a repaint destroys the header the player just pressed, so focus lands
+   *    back on `<body>` and a keyboard or gamepad player is thrown to the top
+   *    of the ring. `FocusRing.refresh` skips anything with no client rects,
+   *    so hiding the body is already enough to keep the hidden rows out of the
+   *    ring — the ring is re-derived on every `move`, `focusFirst` and resize.
+   *  - `hidden` is one attribute and one class; a repaint is every chooser on
+   *    the column rebuilt, and the seed readout has live state in it.
+   */
+  private disclosure(parent: HTMLElement, title: string, hint: string): HTMLElement {
+    const s = el('div', 'vm-section vm-disclose');
+    const body = el('div', 'vm-disclose-body');
+    body.id = 'vm-setup-advanced';
+    const head = button(title, { iconName: 'chevronRight', hint });
+    head.classList.add('vm-disclose-head');
+    head.setAttribute('aria-controls', body.id);
+    const apply = (): void => {
+      body.hidden = !this.advancedOpen;
+      head.setAttribute('aria-expanded', this.advancedOpen ? 'true' : 'false');
+      s.classList.toggle('is-open', this.advancedOpen);
+    };
+    head.addEventListener('click', () => {
+      this.advancedOpen = !this.advancedOpen;
+      apply();
+    });
+    apply();
+    s.appendChild(head);
+    s.appendChild(body);
+    parent.appendChild(s);
+    return body;
   }
 
   /** Sides and battlefield. */
@@ -415,15 +496,10 @@ export class SkirmishSetupScreen implements Screen {
         ),
         i === 0 ? 'Drives reaction time, actions per minute and wave size.' : undefined,
       ));
-      enemy.appendChild(row(
-        'Personality',
-        chooser(
-          [{ value: -1, label: 'Adaptive' }, ...PERSONALITIES.map((p, n) => ({ value: n, label: p }))],
-          spec.personality,
-          (v) => { spec.personality = v; this.mirrorFirst(); },
-        ),
-        i === 0 ? 'Biases the AI\'s strategy scoring, not its rules.' : undefined,
-      ));
+      // PERSONALITY IS NOT HERE. It lives in the Advanced disclosure in the
+      // other column — see the module header for why this one row leaves the
+      // block it describes while `Team` stays.
+      //
       // ONLY WHERE THERE IS SOMETHING TO DECIDE. With two armies the one legal
       // assignment is "the opponent is not on your team", so the row would be a
       // control whose only value is the value it already has — the same rule
@@ -651,8 +727,32 @@ export class SkirmishSetupScreen implements Screen {
     startNote.style.padding = '0 18px 10px';
     rules.appendChild(startNote);
 
+    /* -- advanced --------------------------------------------------------- *
+     * Everything below this line is TUNING: how the match runs, not what it
+     * is. Collapsed by default and rebuilt with the column, so a Starting
+     * Condition change still re-derives the credit ladder underneath it.     */
+    const adv = this.disclosure(
+      col, 'Advanced', 'Personality · Credits · Speed · Tech · Seed',
+    );
+
+    // ONE ROW PER OPPONENT, LABELLED BY NUMBER when there is more than one.
+    // The row was in the opponent's own block; the number is what carries the
+    // information that move would otherwise lose.
+    for (let i = 0; i < this.setup.opponents.length; i++) {
+      const spec = this.setup.opponents[i];
+      adv.appendChild(row(
+        this.setup.opponents.length > 1 ? `Opponent ${i + 1} Personality` : 'Personality',
+        chooser(
+          [{ value: -1, label: 'Adaptive' }, ...PERSONALITIES.map((p, n) => ({ value: n, label: p }))],
+          spec.personality,
+          (v) => { spec.personality = v; this.mirrorFirst(); },
+        ),
+        i === 0 ? 'Biases the AI\'s strategy scoring, not its rules.' : undefined,
+      ));
+    }
+
     this.setup.startingCredits = clampCreditsFor(this.start, this.setup.startingCredits);
-    rules.appendChild(row(
+    adv.appendChild(row(
       'Starting Credits',
       chooser(
         creditOptionsFor(this.start).map((c) => ({ value: c, label: c.toLocaleString() })),
@@ -664,7 +764,7 @@ export class SkirmishSetupScreen implements Screen {
           + `${MCV_MIN_CREDITS.toLocaleString()} is the smallest bank that can reach one.`
         : undefined,
     ));
-    rules.appendChild(row(
+    adv.appendChild(row(
       'Game Speed',
       chooser(
         SPEEDS.map((s, i) => ({ value: i, label: `${s.toFixed(1)}×` })),
@@ -678,7 +778,7 @@ export class SkirmishSetupScreen implements Screen {
     // (a stripped build, or the `?shot=` harness) the row would be a control
     // that changes nothing, which is worse than no control.
     if (gateInstalled()) {
-      rules.appendChild(row(
+      adv.appendChild(row(
         'Opponent Tech',
         chooser(
           [{ value: 1, label: 'Mirror Yours' }, { value: 0, label: 'Unrestricted' }],
@@ -715,7 +815,7 @@ export class SkirmishSetupScreen implements Screen {
     label.appendChild(el('span', 'vm-row-note', 'Same seed, same battle. Random rolls one at launch.'));
     seed.appendChild(label);
     seed.appendChild(seedRow);
-    rules.appendChild(seed);
+    adv.appendChild(seed);
 
     /* -- summary ---------------------------------------------------------- */
     const summary = el('p', 'vm-body');

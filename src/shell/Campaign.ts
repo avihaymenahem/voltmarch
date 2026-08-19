@@ -34,9 +34,35 @@
  * import, and an operation whose prerequisites are unfinished renders locked
  * with the reason on it rather than being hidden. A row a player cannot see is
  * a row they cannot plan toward.
+ *
+ * ============================================================================
+ * ONE CHAPTER'S OPERATIONS AT A TIME, WHICH IS WHAT THE HEADER ALWAYS SAID
+ * ============================================================================
+ * "Four chapter cards, an operation list under whichever is chosen" is the
+ * first line of this file and it was never true: `mount` rendered every
+ * chapter EXPANDED, so twenty operations stacked into a scroll in which
+ * nineteen rows read "Locked — complete X", and the panel was clipped at the
+ * bottom at 1600x1000. The description was of the screen somebody meant to
+ * build.
+ *
+ * THE SELECTION IS NOT PERSISTED AND IT IS NOT THE FIRST CARD.
+ * `landingChapter` opens on the first chapter with an unfinished operation,
+ * which is where the player actually is: chapter one on a fresh profile, and
+ * the Timetable for somebody halfway through it. Defaulting to index 0 would
+ * make every returning player's first act be a click, and storing the last
+ * selection would make it a click they cannot predict. A derived answer needs
+ * neither a migration nor a normaliser.
+ *
+ * A LOCKED ROW IS SHORTER AND LIGHTER, NOT HIDDEN. Locked rows are the
+ * majority of the screen and they were the same height as a playable one. They
+ * are one line now — number, title, and the reason, which the paragraph above
+ * argues must stay — with the medal and the par kept so the column reads
+ * continuously, and the Brief button replaced by a padlock because a button
+ * that refuses every press is the tallest thing on a row that cannot be
+ * pressed.
  * ========================================================================== */
 
-import { el, button, pageFrame, panel } from './Shell';
+import { el, button, focusable, icon, pageFrame, panel } from './Shell';
 import type { Screen, Shell } from './Shell';
 
 /* ==========================================================================
@@ -167,6 +193,42 @@ function parLabel(sec: number): string {
   return `${Math.round(sec / 60)} min`;
 }
 
+/**
+ * The chapter the screen should open on.
+ *
+ * THE FIRST ONE WITH AN OPERATION THAT IS NOT DONE — which is chapter one on a
+ * fresh profile and the chapter in progress for everybody else. Deliberately
+ * derived rather than stored: a persisted selection is a second piece of state
+ * that can disagree with the profile (a chapter finished on another machine,
+ * an operation renamed) and it needs a migration the moment the table grows.
+ *
+ * **THE FALLBACK IS THE FIRST CHAPTER, AND IT IS ONLY REACHED BY A PLAYER WHO
+ * HAS FINISHED EVERYTHING.** There is no better answer for a completed
+ * campaign — every chapter is equally "where they are" — and the first is the
+ * one the recommended-order line at the top of the screen points at. `null`
+ * only for an empty table, which `mount` already handles with its own copy.
+ *
+ * Exported so the rule has one home and can be asserted without a DOM;
+ * `mount` below is its only production caller. That is `briefingObjectives`'
+ * arrangement, for its stated reason.
+ */
+export function landingChapter(
+  // NARROWER THAN `ChapterView` ON PURPOSE: the rule reads two ids and nothing
+  // else, and a parameter that demanded the whole view would force every
+  // caller — including a test naming the cases — to author a `beat`, a
+  // `parSec` and an objective list that the function cannot look at.
+  chapters: readonly {
+    readonly id: string;
+    readonly operations: readonly { readonly id: string }[];
+  }[],
+  done: ReadonlyMap<string, number>,
+): string | null {
+  for (const ch of chapters) {
+    if (ch.operations.some((o) => !done.has(o.id))) return ch.id;
+  }
+  return chapters[0]?.id ?? null;
+}
+
 /* ==========================================================================
  * 3. THE CHAPTER SCREEN
  * ========================================================================== */
@@ -176,6 +238,14 @@ export class CampaignScreen implements Screen {
 
   private host: HTMLElement | null = null;
   private disposed = false;
+
+  /** Every chapter card, in table order, so a selection repaints no card. */
+  private cards: { readonly id: string; readonly node: HTMLElement }[] = [];
+  /** The one container the selection actually swaps. */
+  private opsHost: HTMLElement | null = null;
+  private chapters: readonly ChapterView[] = [];
+  private done: ReadonlyMap<string, number> = new Map();
+  private selected: string | null = null;
 
   constructor(private readonly shell: Shell) {}
 
@@ -201,12 +271,26 @@ export class CampaignScreen implements Screen {
     void loadCampaign().then((m) => {
       if (this.disposed) return;
       list.replaceChildren();
-      const done = completionOf();
-      if (m.CAMPAIGNS.length === 0) {
+      this.chapters = m.CAMPAIGNS;
+      this.done = completionOf();
+      if (this.chapters.length === 0) {
         list.appendChild(el('p', 'vm-camp-loading', 'No operations have been authored yet.'));
         return;
       }
-      for (const ch of m.CAMPAIGNS) list.appendChild(this.chapterCard(ch, done));
+
+      const cards = el('div', 'vm-camp-cards');
+      this.cards = [];
+      for (let i = 0; i < this.chapters.length; i++) {
+        const ch = this.chapters[i];
+        const node = this.chapterCard(ch, i);
+        this.cards.push({ id: ch.id, node });
+        cards.appendChild(node);
+      }
+      list.appendChild(cards);
+
+      this.opsHost = el('div', 'vm-camp-ops-host');
+      list.appendChild(this.opsHost);
+      this.select(landingChapter(this.chapters, this.done));
     }).catch((err: unknown) => {
       if (this.disposed) return;
       list.replaceChildren();
@@ -218,20 +302,66 @@ export class CampaignScreen implements Screen {
     });
   }
 
-  private chapterCard(ch: ChapterView, done: ReadonlyMap<string, number>): HTMLElement {
+  /**
+   * Show one chapter's operations and mark its card pressed.
+   *
+   * **THE CARDS ARE MUTATED, NOT REBUILT, AND THAT IS ABOUT FOCUS.** Rebuilding
+   * the row would destroy the very card the player just activated, dropping
+   * `document.activeElement` back to `<body>` and throwing a keyboard or
+   * gamepad player to the top of the ring. Only `opsHost` is replaced, and
+   * nothing in it is focused at the moment of the swap.
+   */
+  private select(id: string | null): void {
+    // Pressing the card that is already open rebuilds nothing. Cheap, and it
+    // keeps a repeated press from swapping the list out from under a pointer.
+    if (this.selected === id && this.opsHost !== null) return;
+    this.selected = id;
+    for (const c of this.cards) {
+      c.node.setAttribute('aria-pressed', c.id === id ? 'true' : 'false');
+    }
+    const host = this.opsHost;
+    if (host === null) return;
+    host.replaceChildren();
+    const ch = this.chapters.find((c) => c.id === id);
+    if (ch === undefined) return;
+    host.setAttribute('aria-label', ch.title);
     const card = panel('vm-camp-chapter');
-    const head = el('div', 'vm-camp-chapter-head');
-    head.appendChild(el('h3', 'vm-camp-chapter-title', ch.title));
-
-    const complete = ch.operations.filter((o) => done.has(o.id)).length;
-    head.appendChild(el('span', 'vm-camp-chapter-count',
-      `${complete} / ${ch.operations.length}`));
-    card.appendChild(head);
-    card.appendChild(el('p', 'vm-camp-chapter-blurb', ch.blurb));
-
     const ops = el('div', 'vm-camp-ops');
-    for (const op of ch.operations) ops.appendChild(this.operationRow(ch, op, done));
+    for (const op of ch.operations) ops.appendChild(this.operationRow(ch, op, this.done));
     card.appendChild(ops);
+    host.appendChild(card);
+  }
+
+  /**
+   * One chapter, as a card in the top row.
+   *
+   * THE MEDAL SUMMARY IS A GOLD COUNT AND IT IS THE ONLY ONE THE SCREEN CAN
+   * HONESTLY DRAW. `done` holds a medal tier per operation and nothing
+   * aggregates them; a chapter-level pip strip would have to invent a meaning
+   * for "the chapter's medal" (best? worst? mean?), and three of those three
+   * answers are wrong for somebody. A count of golds is a fact, it is omitted
+   * entirely when it is zero — a fresh profile's cards carry no dead chrome —
+   * and `x / y` beside it is the progress figure that was already computed.
+   */
+  private chapterCard(ch: ChapterView, index: number): HTMLElement {
+    const card = el('button', 'vm-card vm-camp-card');
+    card.type = 'button';
+    card.id = `vm-camp-card-${index}`;
+    card.setAttribute('aria-pressed', 'false');
+    card.appendChild(el('div', 'vm-card-stripe'));
+    card.appendChild(el('div', 'vm-card-name', ch.title));
+    card.appendChild(el('div', 'vm-card-blurb', ch.blurb));
+
+    const foot = el('div', 'vm-camp-card-foot');
+    const complete = ch.operations.filter((o) => this.done.has(o.id)).length;
+    foot.appendChild(el('span', 'vm-camp-chapter-count',
+      `${complete} / ${ch.operations.length}`));
+    const gold = ch.operations.filter((o) => (this.done.get(o.id) ?? 0) >= 3).length;
+    if (gold > 0) foot.appendChild(el('span', 'vm-camp-card-gold', `${gold} gold`));
+    card.appendChild(foot);
+
+    focusable(card);
+    card.addEventListener('click', () => { this.select(ch.id); });
     return card;
   }
 
@@ -250,11 +380,15 @@ export class CampaignScreen implements Screen {
     const text = el('div', 'vm-camp-op-text');
     text.appendChild(el('span', 'vm-camp-op-title', op.title));
     // LOCKED SAYS WHY. "Complete <the previous operation>" is a sentence a
-    // player can act on; a padlock is not.
-    const sub = locked
-      ? `Locked — complete ${missing.map((id) => titleOf(ch, id)).join(' and ')}`
-      : op.beat;
-    text.appendChild(el('span', 'vm-camp-op-beat', sub));
+    // player can act on; a padlock is not. It goes in its OWN class on a
+    // locked row, because that row is laid out as one line and the beat's
+    // block/ellipsis rules are the wrong ones for it.
+    if (locked) {
+      text.appendChild(el('span', 'vm-camp-op-lock',
+        `Locked — complete ${missing.map((id) => titleOf(ch, id)).join(' and ')}`));
+    } else {
+      text.appendChild(el('span', 'vm-camp-op-beat', op.beat));
+    }
     /*
      * THE BEAT IS FLAVOUR AND THE PRIMARY IS THE TASK, AND A ROW NEEDS BOTH.
      *
@@ -288,12 +422,29 @@ export class CampaignScreen implements Screen {
     rowEl.appendChild(el('span', 'vm-camp-op-par', parLabel(op.parSec)));
     rowEl.appendChild(medalPips(done.get(op.id) ?? 0));
 
-    const go = button(done.has(op.id) ? 'Replay' : 'Brief', {
-      variant: locked ? 'default' : 'primary',
-      disabled: locked,
+    /*
+     * A PADLOCK RATHER THAN A DISABLED BUTTON, ON LOCKED ROWS ONLY.
+     *
+     * The button was the tallest element on a row nobody can press — 34px of
+     * chrome plus the row's padding, on nineteen of twenty rows for a player
+     * who has just arrived. It carried no information the reason line does not
+     * already carry, and `setButtonEnabled` had already taken it out of the
+     * focus ring, so nothing about keyboard reach changes.
+     *
+     * The cell is kept and given a floor width so the par and the medals stay
+     * in one column down the list — the grid is per-row, not a subgrid, and
+     * these tracks line up only because their contents are the same size.
+     */
+    if (locked) {
+      const cell = el('span', 'vm-camp-op-lockcell');
+      cell.appendChild(icon('lock', 16));
+      rowEl.appendChild(cell);
+      return rowEl;
+    }
+    rowEl.appendChild(button(done.has(op.id) ? 'Replay' : 'Brief', {
+      variant: 'primary',
       onClick: () => { this.shell.openBriefing(op.id); },
-    });
-    rowEl.appendChild(go);
+    }));
     return rowEl;
   }
 
@@ -301,6 +452,11 @@ export class CampaignScreen implements Screen {
     this.disposed = true;
     this.host?.classList.remove('vm-page');
     this.host = null;
+    // Dropped rather than kept: the screen is rebuilt on the next visit, and
+    // holding detached nodes on a live instance is how a listener outlives the
+    // tree it was attached to.
+    this.opsHost = null;
+    this.cards = [];
   }
 
   onBack(): boolean {

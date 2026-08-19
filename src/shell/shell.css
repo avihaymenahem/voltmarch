@@ -836,6 +836,46 @@
   padding: 0 18px 8px;
 }
 
+/* -- a disclosure ---------------------------------------------------------- *
+ * A `.vm-section` whose header is a `.vm-btn` instead of an `.vm-h3`, so the
+ * only new thing on screen is the chevron. It is FULL-BLEED like a `.vm-row`
+ * and carries the same 18px internal inset, which is what puts its label on
+ * the same x as the labels of the rows it hides.
+ *
+ * The chevron ROTATES rather than swapping glyph: `ICON_PATHS` has no
+ * `chevronDown`, and `tests/shell-icons.spec.ts` fails an `iconName` that is
+ * not in the table — so a second icon would be a second thing to keep in step
+ * for no information the rotation does not already carry.                    */
+
+.vm-shell .vm-disclose {
+  padding: 6px 0 6px;
+  border-top: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-disclose-head {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  padding: 11px 18px;
+}
+
+.vm-shell .vm-disclose-head .vm-icon {
+  transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), color 120ms linear;
+}
+
+.vm-shell .vm-disclose.is-open .vm-disclose-head .vm-icon {
+  transform: rotate(90deg);
+}
+
+/* Explicit, not inherited: `[hidden]`'s UA rule is one of the weakest in the
+ * cascade and any `display` on this class would silently beat it. */
+.vm-shell .vm-disclose-body[hidden] {
+  display: none;
+}
+
+.vm-shell .vm-disclose-body {
+  padding-top: 4px;
+}
+
 /* -- setup layout ---------------------------------------------------------- */
 
 .vm-shell .vm-setup {
@@ -2946,6 +2986,59 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   opacity: 0.82;
 }
 
+/* -- the four chapter cards ------------------------------------------------ *
+ * `.vm-card` is the faction-card idiom from the lobby, reused rather than
+ * re-invented: the same notch, the same `aria-pressed` selected treatment and
+ * the same stripe, which falls back to `--vm-accent` when no `--vm-card-color`
+ * is set — so a chapter card needs no colour of its own.
+ *
+ * `minmax(0, 1fr)` rather than the lobby's `minmax(140px, 1fr)`: four chapters
+ * are a fixed set and they should stay on ONE row down to the 900px breakpoint
+ * where the setup grid folds. A `140px` floor lets them wrap to two rows and
+ * the "compact row of four" stops being a row.                               */
+
+.vm-shell .vm-camp-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.vm-shell .vm-camp-card {
+  gap: 5px;
+  padding: 12px 12px 11px;
+}
+
+/* Two lines, clamped. One line ellipses most of these blurbs mid-clause; two
+ * fits every shipped chapter at this width and keeps all four cards level. */
+.vm-shell .vm-camp-card .vm-card-blurb {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.9em;
+}
+
+.vm-shell .vm-camp-card-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* `--vm-accent`, NOT `--vm-gold`. Two reasons and either one settles it:
+ * `--vm-gold` is declared on `.vm-hud`, not `:root`, so it does not inherit
+ * into the shell at all and would compute to nothing here; and the accent is
+ * already this screen's medal colour — `.vm-camp-pip.is-on` is accent — so a
+ * gold-coloured tally would be a second medal colour on one screen. */
+.vm-shell .vm-camp-card-gold {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-accent);
+}
+
 .vm-shell .vm-camp-chapter { padding: 16px 18px; }
 
 .vm-shell .vm-camp-chapter-head {
@@ -2989,9 +3082,17 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
  * down the whole list however long a title is. `minmax(0, 1fr)` on the text
  * column is what stops a long beat line pushing the medals off the card.      */
 
+/* THE ACTION COLUMN IS A FIXED 112px, AND THAT IS WHAT PUTS THE PAR AND THE
+ * MEDALS IN ONE COLUMN. Each row is its own grid, not a subgrid, so the tracks
+ * line up only while their contents are the same width — and they were not:
+ * `Replay` is a wider word than `Brief`, and a locked row's padlock is
+ * narrower than either, so every row type sat at a different x. 112px clears
+ * the longest label (`Replay`, ~76px inside its own padding) with room, and
+ * `.vm-btn` is already `width: 100%` and `is-primary` centres its label. */
+
 .vm-shell .vm-camp-op {
   display: grid;
-  grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 2.2em minmax(0, 1fr) auto auto 112px;
   align-items: center;
   gap: 12px;
   padding: 9px 12px;
@@ -3000,7 +3101,56 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   background: var(--vm-glass-soft);
 }
 
-.vm-shell .vm-camp-op.is-locked { opacity: 0.55; }
+.vm-shell .vm-camp-op > .vm-btn {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* -- a locked row is a LIGHTER, SHORTER tier ------------------------------- *
+ * Nineteen of twenty rows are locked for a player who has just arrived, and
+ * they were the same height as a playable one. One line, half the padding, no
+ * background of its own, and the reason kept — `Campaign.ts`'s header argues
+ * that a row a player cannot see is a row they cannot plan toward, and that
+ * argument is about VISIBILITY, not about height.
+ *
+ * `.vm-camp-op-title` is `display: block`, which is exactly what a flex item
+ * wants; the two spans sit on one baseline and the reason takes the ellipsis
+ * because the title is what the row IS.                                      */
+
+.vm-shell .vm-camp-op.is-locked {
+  opacity: 0.62;
+  padding: 3px 12px;
+  border-color: transparent;
+  background: none;
+}
+
+.vm-shell .vm-camp-op.is-locked .vm-camp-op-text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vm-shell .vm-camp-op.is-locked .vm-camp-op-title {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-camp-op-lock {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--vm-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-op-lockcell {
+  display: flex;
+  justify-content: center;
+  color: var(--vm-text-faint);
+}
 
 .vm-shell .vm-camp-op-index {
   font-variant-numeric: tabular-nums;
@@ -3120,6 +3270,15 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
  * Under 720px the operation row stops trying to be one line: the beat and the
  * par fold under the title rather than being ellipsed to nothing.             */
 
+@media (max-width: 900px) {
+  /* Four across stops being a row and starts being four slivers. Two by two
+   * keeps the whole set on screen without a scroll, which is the property the
+   * card row exists for. */
+  .vm-shell .vm-camp-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .vm-shell .vm-camp-op {
     grid-template-columns: 2.2em minmax(0, 1fr) auto;
@@ -3128,6 +3287,18 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
   .vm-shell .vm-camp-op-par { grid-column: 2; }
   .vm-shell .vm-camp-op-beat { white-space: normal; }
+
+  /* The locked row keeps its one-line shape only while there is a line to
+   * keep it on: at this width the reason wraps under the title instead of
+   * being ellipsed away, which is the same trade the beat makes above. */
+  .vm-shell .vm-camp-op.is-locked .vm-camp-op-text {
+    display: block;
+  }
+
+  .vm-shell .vm-camp-op-lock {
+    display: block;
+    white-space: normal;
+  }
 }
 
 /* -- the operation result, on the end screen ------------------------------- *
