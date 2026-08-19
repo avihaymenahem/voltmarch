@@ -57,6 +57,7 @@ import { HelpPanel } from './Help';
 import { MissionsPanel } from './Missions';
 import { SavePanel } from './LoadGame';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
+import { campaignObjectiveView } from '../ui/objectives.system';
 import { readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
   button,
@@ -92,7 +93,34 @@ interface Overlay {
  * absence of assumptions about the progression module being present.
  */
 export function currentObjectives(): readonly ActiveObjective[] {
-  const p = readProgression();
+  /*
+   * THE CAMPAIGN VIEW OUTRANKS THE PROFILE, AND IT DID NOT UNTIL 2026-08-19.
+   *
+   * `readProgression()` answers with `__vmProgression` — the SKIRMISH mission
+   * tracker — so during a campaign operation the pause menu listed the
+   * player's skirmish mission chain under the heading "Objectives". That is
+   * the wrong answer to the one question this block exists for: its own
+   * comment names it as *"what was I supposed to be doing"*, and the operation
+   * is what they were supposed to be doing. The profile is also DEAF for the
+   * duration (`suppressProgression`), so every row it offered was a row that
+   * could not move while the player read it.
+   *
+   * `campaignObjectiveView` is the same provider the in-match panel has always
+   * used — `objectives.system.ts` injects it on the frame an operation
+   * appears — so the two surfaces now answer from one source rather than from
+   * two that agree by accident. It returns null when no operation is armed, so
+   * a skirmish is bit-identical.
+   *
+   * `EndScreen` also calls this, and is unaffected: it suppresses this block
+   * outright for a campaign result and draws `campaignObjectiveList` from the
+   * published result instead. `completedObjectiveCount` calls it too, which
+   * means the autosave scheduler's event trigger now fires on a campaign
+   * objective completing rather than never firing at all — a strict
+   * improvement, and the reason that function's doc mentions the degraded
+   * case.
+   */
+  const campaign = campaignObjectiveView();
+  const p = campaign ?? readProgression();
   if (p === null) return [];
   try {
     return p.activeObjectives();

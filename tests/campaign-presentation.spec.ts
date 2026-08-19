@@ -48,12 +48,17 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { makeEffectSink, TagRegistry } from '../src/campaign/runtime';
 import { EFFECT_KINDS } from '../src/campaign/types';
+import { adoptPreparedOperation, detachOperation, prepareOperation } from '../src/campaign/session';
+import type { CampaignSession, ObjectiveRow } from '../src/campaign/session';
+import { CAMPAIGNS } from '../src/campaign/index';
+import { newOperationState } from '../src/campaign/Director';
+import { currentObjectives } from '../src/shell/PauseMenu';
 import type { PresentationEvent } from '../src/campaign/runtime';
 
 const src = (rel: string): string => readFileSync(join(__dirname, '..', rel), 'utf8');
@@ -261,5 +266,75 @@ describe('every effect the vocabulary declares is dispatched', () => {
     const extra = [...dispatched].filter((k) => !EFFECT_KINDS.includes(k));
     expect(extra, `${extra.join(', ')} is dispatched but is not in EFFECT_KINDS, so no `
       + 'operation can ever author it and no validator would accept one').toEqual([]);
+  });
+});
+
+/* ==========================================================================
+ * 5. THE PAUSE MENU ASKS THE OPERATION, NOT THE PROFILE
+ * ========================================================================== */
+
+/**
+ * A session that answers `rows()` and nothing else.
+ *
+ * `campaignObjectiveView` reads `session.rows()` and no other member, so every
+ * other member here is a stub — and the cast is confined to this one function
+ * with the read set named, rather than sprayed through the assertions. If the
+ * view starts reading a second member this fake will return a stub for it and
+ * the test will say something false, which is the honest risk of a fake and
+ * the reason the read set is written down.
+ */
+function installSession(rows: readonly ObjectiveRow[]): void {
+  const op = CAMPAIGNS[0].operations[0];
+  const fake = {
+    op,
+    state: newOperationState(op, 0),
+    tags: { snapshot: () => [], restore: () => { /* stub */ } },
+    simTick: () => { /* stub */ },
+    drainPresentation: () => 0,
+    rows: () => rows,
+    outcome: null,
+    reason: '',
+    medal: () => 0,
+    dispose: () => { /* stub */ },
+  } as unknown as CampaignSession;
+  prepareOperation(fake);
+  adoptPreparedOperation();
+}
+
+describe('the pause menu lists the operation, not the skirmish mission chain', () => {
+  afterEach(() => { detachOperation(); prepareOperation(null); });
+
+  it('falls through to the profile when no operation is armed', () => {
+    // THE FALLBACK IS THE HALF THAT MUST NOT REGRESS. With no session and no
+    // `__vmProgression` installed, `readProgression()` is null and the answer
+    // is the empty list — which is exactly what a headless skirmish gives, so
+    // this pins that a skirmish is unchanged by the campaign branch.
+    detachOperation();
+    expect(currentObjectives()).toEqual([]);
+  });
+
+  it('answers with the operation objectives while one is armed', () => {
+    installSession([
+      { id: 'tap', title: 'Silence the survey tap', kind: 'primary', status: 'active' },
+      { id: 'town', title: 'Leave the derricks standing', kind: 'secondary', status: 'complete' },
+    ]);
+    const out = currentObjectives();
+    expect(out.map((o) => o.title), 'the pause menu read the profile instead of the operation')
+      .toEqual(['Silence the survey tap', 'Leave the derricks standing']);
+    // The completion flag is what `completedObjectiveCount` — and therefore the
+    // autosave scheduler's event trigger — reads. It was permanently 0 during
+    // an operation before this.
+    expect(out.filter((o) => o.progress.complete).length, 'one objective is complete').toBe(1);
+  });
+
+  it('never shows a hidden objective, because that is the point of hiding it', () => {
+    // A hidden objective is one the briefing deliberately does not mention.
+    // Listing it on the pause screen would disclose it, which is the defect
+    // `briefingObjectives()` already exists to prevent on the briefing screen.
+    installSession([
+      { id: 'seen', title: 'Hold the seam', kind: 'primary', status: 'active' },
+      { id: 'secret', title: 'The thing nobody told you', kind: 'secondary', status: 'hidden' },
+    ]);
+    expect(currentObjectives().map((o) => o.id)).toEqual(['seen']);
   });
 });

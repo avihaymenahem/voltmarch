@@ -929,7 +929,6 @@ export class Shell {
   private campaignResult: CampaignResult | null = null;
 
   /** The last objective rows the campaign published. Read by the end screen. */
-  private campaignRows: readonly CampaignObjectiveRow[] = [];
 
   private rafHandle = 0;
   private lastFrameMs = 0;
@@ -1483,15 +1482,9 @@ export class Shell {
   async abandonOperation(): Promise<void> {
     if (this.operation === null) return;
     this.operation = null;
-    this.campaignRows = [];
     suppressProgression(false);
     const install = await import('../campaign/campaign-install');
     install.disarmOperation();
-  }
-
-  /** Objective rows the campaign published this frame, for the HUD. */
-  publishCampaignObjectives(rows: readonly CampaignObjectiveRow[]): void {
-    this.campaignRows = rows;
   }
 
   /** The finished operation. Pushed immediately before `endMatch`; see there. */

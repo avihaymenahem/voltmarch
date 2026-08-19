@@ -72,8 +72,25 @@ import type { ObjectiveRow, PresentationEvent } from '../campaign/session';
 interface CampaignShellHost {
   getState(): string;
   endMatch(result: { won: boolean; reason?: string }): void;
-  /** Objective rows for the panel. Optional: an older shell simply shows none. */
-  publishCampaignObjectives?(rows: readonly ObjectiveRow[]): void;
+  /*
+   * THERE IS NO `publishCampaignObjectives`, AND THERE WAS ONE UNTIL
+   * 2026-08-19. It pushed the objective rows at the shell whenever their
+   * fingerprint changed; the shell stored them in a private field READ BY
+   * NOBODY. The objectives panel has always taken its rows from
+   * `campaignObjectiveView()` in `ui/objectives.system.ts`, which reads
+   * `campaignSession()` directly, and the pause menu reads that same provider
+   * now rather than the skirmish profile. So this was a second channel for one
+   * fact — and the fingerprint that decided whether to feed it was a string
+   * CONCATENATED PER FRAME, an allocation in the frame loop for a consumer
+   * that did not exist.
+   *
+   * Its doc block had also come adrift and was sitting above `difficultyOf`'s,
+   * describing a function two declarations away — which is how a comment ends
+   * up outliving the thing it explains.
+   *
+   * If a surface ever needs pushing rather than polling, add it back knowing
+   * that: one provider, and the poll is why the panel needs no subscription.
+   */
   /** Dialogue, EVA and camera. Optional for the same reason. */
   playCampaignBeat?(event: PresentationEvent): void;
   /**
@@ -107,21 +124,13 @@ function shellHost(): CampaignShellHost | null {
 
 /** Reused, so the drain allocates nothing per frame. */
 const beats: PresentationEvent[] = [];
-let lastRowsVersion = '';
 let ended = false;
 
 function resetShellState(): void {
   beats.length = 0;
-  lastRowsVersion = '';
   ended = false;
 }
 
-/**
- * A cheap fingerprint of the objective rows, so the panel is republished only
- * when something moved. Objectives change a handful of times per operation and
- * the panel rebuild walks the DOM; a per-frame republish would be the whole
- * cost of this feature on the render side.
- */
 /**
  * The difficulty the medal is graded against.
  *
@@ -135,12 +144,6 @@ function difficultyOf(): number {
   const g = globalThis as unknown as { __vmShell?: { matchDifficulty?: () => number } };
   const d = g.__vmShell?.matchDifficulty?.();
   return typeof d === 'number' && Number.isFinite(d) ? d : 1;
-}
-
-function rowsVersion(rows: readonly ObjectiveRow[]): string {
-  let s = '';
-  for (const r of rows) s += `${r.id}:${r.status};`;
-  return s;
 }
 
 /* ==========================================================================
@@ -194,13 +197,6 @@ export default defineSystem({
     if (session.drainPresentation(beats) > 0) {
       for (const b of beats) shell.playCampaignBeat?.(b);
       beats.length = 0;
-    }
-
-    const rows = session.rows();
-    const version = rowsVersion(rows);
-    if (version !== lastRowsVersion) {
-      lastRowsVersion = version;
-      shell.publishCampaignObjectives?.(rows);
     }
 
     if (session.outcome !== null && !ended) {
