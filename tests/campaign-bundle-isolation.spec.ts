@@ -3,10 +3,11 @@
  * CAMPAIGN BUNDLE ISOLATION — a skirmish player must not download the campaign.
  * ============================================================================
  * `src/game/Systems.ts` globs `'../**\/*.system.ts'` with `eager: true`, and it
- * does that FROM THE ENTRY CHUNK. So every module statically reachable from
- * `src/game/campaign.system.ts` is fetched, parsed and executed before the
- * first paint — by a player who opens a skirmish, by a player who opens the
- * main menu and quits, and by `npm run shots`, thirteen times.
+ * does that FROM THE ENTRY CHUNK. So every module statically reachable from any
+ * of the fifty system modules — `src/game/campaign.system.ts` among them, but
+ * `src/progression/progression.system.ts` just as much — is fetched, parsed and
+ * executed before the first paint: by a player who opens a skirmish, by a player
+ * who opens the main menu and quits, and by `npm run shots`, thirteen times.
  *
  * The campaign is the largest body of authored content in the product after the
  * manual: a Director, an operation table, a validator, 37 layouts and every word
@@ -17,6 +18,45 @@
  * types stay sound, every campaign test still passes, and the only symptom is
  * that first paint got slower for everyone.
  *
+ * ── THE ROOT SET IS THE WHOLE ENTRY CHUNK, NOT ONE MODULE ───────────────────
+ * MEASURED 2026-08-19, AND THIS FILE FAILED IT. Adding
+ * `import { CAMPAIGNS } from './index'` to `src/campaign/campaign-store.ts` —
+ * which IS entry-chunk-reachable, because `src/progression/progression.system.ts`
+ * statically imports `recordOperation` from it — left every source tier here
+ * GREEN at 26/26. Three structural reasons, all now closed:
+ *
+ *   1. §1's sweep skipped every file under `campaign/`, which exempted the one
+ *      campaign file that is on the wrong side of the boundary.
+ *   2. §1 rooted its transitive closure at `campaign.system.ts` ALONE.
+ *      `progression.system.ts` is the counterexample: it is in the entry chunk
+ *      for exactly the same reason and `campaign.system.ts` never reaches it.
+ *   3. Only §4 could see it, and §4 is `runIf(distIsCurrent())`.
+ *
+ * So the closure is rooted at `src/main.ts` — the real entry — and expands
+ * EAGER `import.meta.glob` as the static import it is, which is what pulls all
+ * fifty `*.system.ts` in through `src/game/Systems.ts`. Measured 2026-08-19 it
+ * holds 228 of the 267 `.ts` files under `src/` (plus 7 ids for the `.css`
+ * imports, which resolve to no file and are counted by nothing), with the
+ * campaign's heavy half, `gpu-path-install` and every `*-nodes.ts`,
+ * `manual-corpus.ts`, `TurnRelay.ts`, `textureWorker.ts` and the two modules
+ * nothing in `src/` imports at all — `art/Wrecks.ts`, `sim/LandRoutes.ts` —
+ * outside it. And the rule stopped being about where a file LIVES: a static
+ * edge into the heavy half is legal only from a module that is under
+ * `src/campaign/` **and** outside that closure.
+ *
+ * **IT IS AN OVER-APPROXIMATION OF THE SHIPPED ENTRY CHUNK, NOT A MODEL OF
+ * IT**, and a draft of this header claimed it "reproduces the shipped chunk
+ * boundaries exactly". It does not, by its own next sentence: the closure
+ * follows `import type`, so `main.ts`'s `import type { Shell }` is erased at
+ * build time and still drags the whole shell graph in here — `shell/Shell.ts`
+ * and `data/Defs.ts` are both in this closure and both ship as their own
+ * chunks (`Shell-*.js` 193 kB, `Defs-*.js` 54 kB). That is the SAFE direction
+ * for a rule that FORBIDS things: a module wrongly believed to be in the entry
+ * chunk is refused a heavy edge it might have been allowed. Do not read
+ * `ENTRY` as an answer to "what does a player download" — §4 is that answer.
+ * Every failure prints the witness path, so a type-only first hop is visible
+ * rather than mysterious.
+ *
  * ── WHY BOTH A SOURCE SCAN AND A `dist/` SCAN ───────────────────────────────
  * `tests/webgpu-bundle-isolation.spec.ts` is the in-tree precedent and this
  * file is deliberately its shape. `npm test` does not build, and a test that
@@ -25,6 +65,17 @@
  * INVARIANTS that produce the property, in source, where they are always
  * checkable; §4 reads the real emitted chunks when a CURRENT `dist/` happens to
  * be on disk, which is the measurement rather than a substitute for the rule.
+ *
+ * **§4 IS STILL THE ONLY TIER THAT CAN SEE ONE CLASS OF VIOLATION, AND IT
+ * SKIPS ON MOST TREES.** §1–§3 read what the SOURCE declares; they cannot
+ * predict what rollup DOES with it. A dynamic `import()` that the bundler
+ * decides to inline, or campaign code hoisted into a shared chunk that the
+ * entry statically pulls in, is invisible to every source rule in this file and
+ * shows up only in §4 — which runs `runIf(distIsCurrent())` and therefore skips
+ * for the whole of any session in which somebody is editing `src/`. **This file
+ * is a complete guard against the DECLARATIONS and a best-effort one against
+ * the emitted graph.** If a chunking change is what you are worried about,
+ * build first, then run this.
  *
  * ── THE HALF THAT MAKES THIS WORTH WRITING ──────────────────────────────────
  * Every assertion here is an ABSENCE, and an absence assertion passes just as
@@ -59,8 +110,9 @@ const SRC = join(ROOT, 'src');
  * tree reports SIX dynamic importers of `campaign-install` where there are two,
  * and no static ones either way — the static forms never appear in prose here.
  *
- * WHAT IT STILL CANNOT SEE IS `import.meta.glob`, WHICH IS ALSO A STATIC
- * IMPORT. That gap has its own section: §3b.
+ * WHAT IT CANNOT SEE IS `import.meta.glob`, WHICH IS ALSO A STATIC IMPORT.
+ * §0b parses that form — the entry-chunk closure in §0c cannot be computed
+ * without it — and §3b holds the rule about where one may be written.
  * ========================================================================== */
 
 const BACKSLASH = String.fromCharCode(92);
@@ -148,10 +200,29 @@ function dynamicSpecifiers(file: string): string[] {
   return out;
 }
 
-/** Resolve a relative specifier the way the bundler does. Bare ids answer null. */
+/**
+ * Resolve a specifier the way the bundler does. Bare package ids answer null.
+ *
+ * **`@/x` IS `src/x` AND A RELATIVE-ONLY RESOLVER IS A RULE ONE KEYSTROKE
+ * WIDE.** The alias is declared TWICE — `resolve.alias` in `vite.config.ts`
+ * and `paths` in `tsconfig.json` — so an aliased import builds and typechecks
+ * exactly like a relative one. MEASURED 2026-08-19: with
+ * `import { CAMPAIGNS } from '@/campaign/index'` USED in `campaign-store.ts`,
+ * `campaign-install-*.js` collapsed 48.94 kB -> 9.08 kB, the entry chunk grew
+ * 2730.99 kB -> 2825.08 kB, and every fingerprint in §4 turned up in the entry
+ * chunk — while §1-§3 stayed green at 31/31, because the resolver returned
+ * null for the specifier and the edge never existed. The relative spelling of
+ * the same import fails §1 by name. Nothing in `src/` uses the alias today,
+ * which is exactly why the resolver has to know about it before something
+ * does.
+ */
 function resolveSpecifier(from: string, spec: string): string | null {
-  if (!spec.startsWith('.')) return null;
-  const base = resolve(dirname(from), spec);
+  const base = spec.startsWith('@/')
+    ? join(SRC, spec.slice(2))
+    : spec.startsWith('.')
+      ? resolve(dirname(from), spec)
+      : null;
+  if (base === null) return null;
   for (const cand of [`${base}.ts`, join(base, 'index.ts')]) {
     if (existsSync(cand) && statSync(cand).isFile()) return cand;
   }
@@ -176,6 +247,152 @@ function staticClosure(entry: string): Set<string> {
   return seen;
 }
 
+/* --------------------------------------------------------------------------
+ * 0b. THE SECOND STATIC IMPORT FORM — `import.meta.glob`
+ *
+ * Lives here rather than beside its own rule in §3b because the entry-chunk
+ * closure below CANNOT BE COMPUTED WITHOUT IT: `src/game/Systems.ts` reaches
+ * all fifty `*.system.ts` by an eager glob and by nothing else, so a closure
+ * that ignores globs stops at `Systems.ts` and never sees a system module at
+ * all. §3b keeps the rule; §0b owns the parsing.
+ * -------------------------------------------------------------------------- */
+
+/** Regex metacharacters that can appear in a path or a glob and must be literal. */
+const REGEX_SPECIALS = '^$+?.()|[]{}';
+
+/**
+ * Pattern -> matcher, with vite's semantics for the two wildcards: `*` stays
+ * inside one segment, `/**\/` spans any number of segments INCLUDING ZERO.
+ *
+ * THE ZERO CASE IS ASSERTED ON THIS FUNCTION AND NOT THROUGH THE TREE, and the
+ * reason is worth a line: every operation today sits one directory down
+ * (`operations/soviets/01-first-tap.ts`), so a naive `/.*\/` matches all of
+ * them and every tree-shaped control below stays green. Measured — swapping the
+ * zero case out fails nothing here. It would first be felt as a silent miss the
+ * day an operation is added directly under `operations/`.
+ */
+function globToRegExp(pattern: string): RegExp {
+  let out = '';
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern.startsWith('/**/', i)) { out += '/(?:.*/)?'; i += 4; continue; }
+    if (pattern.startsWith('**', i)) { out += '.*'; i += 2; continue; }
+    const c = pattern[i];
+    if (c === '*') out += '[^/]*';
+    else if (REGEX_SPECIALS.includes(c)) out += `${BACKSLASH}${c}`;
+    else out += c;
+    i++;
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/** Every `.ts` file under `src/` that `pattern`, written in `file`, pulls in. */
+function globMatches(file: string, pattern: string): string[] {
+  // Resolved to an ABSOLUTE pattern first. Matching relative paths is wrong:
+  // `Systems.ts`'s `'../**\/*.system.ts'` covers its own directory, and a
+  // sibling reached by `relative()` carries no `../` for the pattern to meet.
+  const abs = resolve(dirname(file), pattern).split(sep).join('/');
+  const re = globToRegExp(abs);
+  return FILES.filter((f) => re.test(f.split(sep).join('/'))).map(rel);
+}
+
+/**
+ * `{ pattern, eager }` for every `import.meta.glob` call in `file`.
+ *
+ * **EAGERNESS IS NOT COSMETIC AND IT IS NOT A COMMENT.** `{ eager: true }` is a
+ * static import of every match; without it the call is a record of loaders and
+ * the matches SPLIT into their own chunks. `game/Scenarios.ts` globs
+ * `../data/**\/*.ts` lazily and `game/Systems.ts` globs `../**\/*.system.ts`
+ * eagerly, and reading those two the same way is the difference between a
+ * closure of 235 modules and one of 141.
+ */
+function globSites(file: string): { pattern: string; eager: boolean }[] {
+  const s = STRIPPED.get(file)!;
+  const out: { pattern: string; eager: boolean }[] = [];
+  const needle = 'import.meta.glob';
+  let at = s.indexOf(needle);
+  while (at !== -1) {
+    // The call's `(` may sit past a type argument — `glob<Record<string, unknown>>(`.
+    const open = s.indexOf('(', at);
+    if (open !== -1) {
+      const m = /^[ \t\r\n]*(['"])([^'"]+)\1/.exec(s.slice(open + 1));
+      if (m !== null) {
+        // The options object is the rest of the call, so scan to the matching
+        // `)` rather than to the end of the line — `campaign/index.ts` puts
+        // `{ eager: true }` two lines below its pattern.
+        let depth = 0;
+        let end = s.length;
+        for (let j = open; j < s.length; j++) {
+          if (s[j] === '(') depth++;
+          else if (s[j] === ')') { depth--; if (depth === 0) { end = j; break; } }
+        }
+        out.push({ pattern: m[2], eager: /\beager[ \t\r\n]*:[ \t\r\n]*true\b/.test(s.slice(open, end)) });
+      }
+    }
+    at = s.indexOf(needle, at + needle.length);
+  }
+  return out;
+}
+
+function globPatterns(file: string): string[] {
+  return globSites(file).map((g) => g.pattern);
+}
+
+const GLOB_SITES: readonly { readonly file: string; readonly pattern: string; readonly eager: boolean }[] =
+  FILES.flatMap((f) => globSites(f).map((g) => ({ file: f, ...g })));
+
+/* --------------------------------------------------------------------------
+ * 0c. THE ENTRY CHUNK, AS A SET OF MODULES WITH A WITNESS PATH FOR EACH
+ * -------------------------------------------------------------------------- */
+
+/** `index.html` loads exactly one module, and this is it. */
+const ENTRY_ROOT = join(SRC, 'main.ts');
+
+/**
+ * Every module in the entry chunk, mapped to the shortest path that puts it
+ * there. Breadth-first, so the recorded path is the shortest one and a failure
+ * message names the edge worth deleting rather than a random detour.
+ *
+ * ROOTED AT `main.ts` AND NOWHERE ELSE. Rooting at `campaign.system.ts` is what
+ * this file used to do and it is the bug in the header: a system module is only
+ * ONE of the fifty things the entry chunk holds, and the file that actually
+ * leaked — `campaign-store.ts`, reached through `progression.system.ts` — is
+ * not reachable from it. Everything a `*.system.ts` contributes arrives here
+ * anyway, because `main.ts` reaches `game/Systems.ts` and its glob is expanded
+ * below.
+ */
+function entryClosure(): Map<string, readonly string[]> {
+  const paths = new Map<string, readonly string[]>([[rel(ENTRY_ROOT), [rel(ENTRY_ROOT)]]]);
+  const queue: string[] = [ENTRY_ROOT];
+  for (let head = 0; head < queue.length; head++) {
+    const f = queue[head];
+    const here = paths.get(rel(f))!;
+    const reached: string[] = [];
+    for (const spec of staticSpecifiers(f)) {
+      const r = resolveSpecifier(f, spec);
+      if (r !== null) reached.push(r);
+    }
+    for (const { pattern, eager } of globSites(f)) {
+      if (!eager) continue;
+      for (const id of globMatches(f, pattern)) reached.push(join(SRC, id));
+    }
+    for (const r of reached) {
+      const id = rel(r);
+      if (paths.has(id)) continue;
+      paths.set(id, [...here, id]);
+      if (SOURCE.has(r)) queue.push(r);
+    }
+  }
+  return paths;
+}
+
+const ENTRY = entryClosure();
+
+/** `main.ts -> game/Bootstrap.ts -> ...`, for a failure message. */
+const witness = (id: string): string => (ENTRY.get(id) ?? [id]).join(' -> ');
+
+const SYSTEM_FILES = FILES.filter((f) => f.endsWith('.system.ts')).sort();
+
 describe('the import parser can be trusted with the rest of this file', () => {
   it('never loses an import statement to the comment stripper', () => {
     /*
@@ -194,6 +411,27 @@ describe('the import parser can be trusted with the rest of this file', () => {
     // And it must be finding a real graph, not zero edges everywhere.
     expect(FILES.length).toBeGreaterThan(200);
     expect(staticSpecifiers(join(SRC, 'campaign/campaign-install.ts')).length).toBeGreaterThan(8);
+  });
+
+  it('resolves the `@/` alias, which is a second spelling of every path here', () => {
+    /*
+     * FALSIFIER FOR THE ALIAS BRANCH IN `resolveSpecifier`. Nothing in `src/`
+     * writes `@/` today, so the branch has no live case in the tree and would
+     * rot silently — and it is the branch that decides whether the whole rule
+     * below can be evaded by typing eight characters differently. Both
+     * spellings of the SAME edge must resolve to the same file.
+     */
+    const store = join(SRC, 'campaign/campaign-store.ts');
+    expect(resolveSpecifier(store, './index')).toBe(join(SRC, 'campaign/index.ts'));
+    expect(resolveSpecifier(store, '@/campaign/index')).toBe(join(SRC, 'campaign/index.ts'));
+    expect(resolveSpecifier(store, '@/campaign/Director')).toBe(join(SRC, 'campaign/Director.ts'));
+    // A bare package id is still not an edge into `src/`.
+    expect(resolveSpecifier(store, 'three')).toBeNull();
+    expect(resolveSpecifier(store, 'three/webgpu')).toBeNull();
+    // Nothing in `src/` writes `@/` today, which is why this test asserts the
+    // FUNCTION rather than pointing at a file. It is deliberately not a rule
+    // against using the alias — an aliased `@/core/types` is perfectly fine,
+    // and the sweep below now sees it either way.
   });
 
   it('reads a specifier written inside a banner comment as prose, not as an edge', () => {
@@ -232,6 +470,35 @@ const HEAVY = [
 
 const isHeavy = (id: string): boolean =>
   HEAVY.includes(id) || id.startsWith('campaign/layouts/') || id.startsWith('campaign/operations/');
+
+/** Every static edge anywhere in `src/` that lands on the heavy half. */
+const HEAVY_EDGES: readonly { readonly from: string; readonly to: string }[] = FILES.flatMap((f) =>
+  [...new Set(
+    staticSpecifiers(f)
+      .map((s) => resolveSpecifier(f, s))
+      .filter((p): p is string => p !== null)
+      .map(rel)
+      .filter(isHeavy),
+  )].sort().map((to) => ({ from: rel(f), to })),
+);
+
+/**
+ * THE RULE, AND IT IS A CONJUNCTION RATHER THAN A PREFIX SKIP.
+ *
+ * A static edge into the heavy half is legal only from a module that is BOTH
+ * under `src/campaign/` AND outside the entry-chunk closure — i.e. one that
+ * already lives on the far side of `await import('./campaign-install')`, where
+ * the whole point is that these files import each other freely.
+ *
+ * The version this replaced was `if (id.startsWith('campaign/')) continue`,
+ * which is the first half alone. That reads as "intra-campaign imports are
+ * fine", which is true of every campaign file EXCEPT the ones the entry chunk
+ * can already reach — `campaign-store.ts`, `policy.ts`, `session.ts` and
+ * `types.ts`, four files that are deliberately light precisely so a system
+ * module may import them. Exempting them by the directory they sit in is
+ * exempting the only four that matter.
+ */
+const mayImportHeavy = (id: string): boolean => id.startsWith('campaign/') && !ENTRY.has(id);
 
 describe('campaign.system.ts reaches only the light seam', () => {
   const direct = staticSpecifiers(CAMPAIGN_SYSTEM)
@@ -305,28 +572,144 @@ describe('campaign.system.ts reaches only the light seam', () => {
     expect(hits).toEqual(['campaign/Director.ts', 'campaign/index.ts', 'campaign/runtime.ts']);
   });
 
-  it('is the only module outside src/campaign that names any heavy campaign file', () => {
-    // The seam is one-way. If `Shell.ts` or a UI panel imported `index.ts`
-    // statically the campaign would land in the shell chunk instead of its own,
-    // which is smaller than the entry-chunk failure and still not the design.
-    const bad: string[] = [];
-    for (const f of FILES) {
-      const id = rel(f);
-      if (id.startsWith('campaign/')) continue;
-      for (const spec of staticSpecifiers(f)) {
-        const r = resolveSpecifier(f, spec);
-        if (r !== null && isHeavy(rel(r))) bad.push(`${id} -> ${rel(r)}`);
-      }
+  it('lets nothing name a heavy campaign file except the lazy half of the campaign itself', () => {
+    /*
+     * THE SWEEP, over every file in `src/` with no directory exempt from it.
+     * Two ways to fail and the message says which:
+     *
+     *   - the importer is in the entry chunk, so the campaign is in front of
+     *     first paint for everyone. This is what `campaign-store.ts` did.
+     *   - the importer is outside `src/campaign/` and lazy, so the campaign
+     *     lands in whatever chunk holds it — the shell chunk, usually. Smaller
+     *     than the entry-chunk failure and still not the design.
+     */
+    const offenders = HEAVY_EDGES.filter(({ from }) => !mayImportHeavy(from));
+    const lines = offenders.map(({ from, to }) => (
+      ENTRY.has(from)
+        ? `${from} -> ${to}  [IN THE ENTRY CHUNK: ${witness(from)}]`
+        : `${from} -> ${to}  [outside src/campaign, so it rides in that file's chunk]`
+    ));
+    expect(
+      lines,
+      "static edges into the campaign's heavy half. Reach it through "
+      + "`await import('../campaign/campaign-install')` instead, or make the importing module "
+      + `lazy: ${NEWLINE}  ${lines.join(`${NEWLINE}  `)}`,
+    ).toEqual([]);
+  });
+
+  it('applies that rule to campaign-store.ts, which the old prefix skip exempted', () => {
+    /*
+     * THE FALSIFIER FOR THE SWEEP ABOVE, and the permanent record of the defect
+     * that motivated it. Three named files, one per branch of the conjunction —
+     * so the predicate cannot quietly become "true" or "false" everywhere and
+     * leave an absence assertion certifying nothing.
+     *
+     * `campaign-store.ts` is the interesting one: it is under `campaign/`, so
+     * the old rule waved it through, and it IS in the entry chunk, because
+     * `progression.system.ts` imports `recordOperation` from it and
+     * `game/Systems.ts` globs every `*.system.ts` eagerly from there. Its own
+     * header says an `import { CAMPAIGNS } from './index'` here puts the whole
+     * campaign in front of every player's first paint; this is the line that
+     * makes that a build failure instead of a promise.
+     */
+    expect(mayImportHeavy('campaign/campaign-store.ts'), witness('campaign/campaign-store.ts')).toBe(false);
+    // The measured route, 2026-08-19: main.ts -> game/Bootstrap.ts ->
+    // game/Systems.ts -> progression/progression.system.ts ->
+    // campaign/campaign-store.ts. Only the two ends and the system module are
+    // pinned — a second importer would legitimately shift the tie-break, and a
+    // spec that failed for that would be pinning the search, not the finding.
+    const route = ENTRY.get('campaign/campaign-store.ts') ?? [];
+    expect(route[0]).toBe('main.ts');
+    expect(route[route.length - 1]).toBe('campaign/campaign-store.ts');
+    expect(route).toContain('progression/progression.system.ts');
+    // Under `campaign/` and lazy — the one shape that is allowed.
+    expect(mayImportHeavy('campaign/campaign-install.ts')).toBe(true);
+    // Lazy but not under `campaign/` — refused, because it would take the
+    // campaign into whatever chunk it lands in.
+    expect(ENTRY.has('shell/manual-corpus.ts')).toBe(false);
+    expect(mayImportHeavy('shell/manual-corpus.ts')).toBe(false);
+    // And the sweep above is reading a real graph, not an empty one: the
+    // campaign's own internals are full of heavy edges and every one of them is
+    // legal, which is the state the rule has to permit.
+    expect(HEAVY_EDGES.length).toBeGreaterThan(5);
+    expect([...new Set(HEAVY_EDGES.map(({ to }) => to))].length).toBeGreaterThan(2);
+  });
+});
+
+/* ==========================================================================
+ * 1b. THE ENTRY CHUNK THE RULE ABOVE IS ARGUED FROM
+ * ========================================================================== */
+
+describe('the entry-chunk closure is the real one', () => {
+  it('reaches every *.system.ts, which is only true if eager globs are expanded', () => {
+    /*
+     * THE FALSIFIER FOR `mayImportHeavy`'s SECOND HALF. `!ENTRY.has(id)` is an
+     * absence test, so a closure that came back small — an eager-detector stuck
+     * on false, a glob matcher answering `[]` on Windows separators — would make
+     * the sweep pass green while checking almost nothing.
+     *
+     * MEASURED 2026-08-19: with glob expansion switched off, 44 of the 50 are
+     * unreachable and this fails loudly. **It is 44 and not 50, and that is
+     * worth knowing rather than rounding.** Six system modules have a SECOND
+     * route, by ordinary static import off the shell — `game/replay.system.ts`,
+     * `net/net.system.ts`, `progression/progression.system.ts`,
+     * `render/adaptive-res.system.ts`, `render/calibration.system.ts` and
+     * `shell/unlockall.system.ts`. `progression/progression.system.ts` is on
+     * that list, so the leak at the top of this file was reachable from
+     * `main.ts` WITHOUT the glob at all
+     * (`main.ts -> shell/Shell.ts -> shell/Settings.ts ->
+     * shell/unlockall.system.ts -> progression/progression.system.ts ->
+     * campaign/campaign-store.ts`). Expanding the glob is what makes the rule
+     * TOTAL over the other 44; do not credit it with catching that one.
+     */
+    expect(ENTRY.has('main.ts')).toBe(true);
+    expect(ENTRY.has('game/Systems.ts')).toBe(true);
+    const missing = SYSTEM_FILES.map(rel).filter((id) => !ENTRY.has(id));
+    expect(missing, `system modules missing from the entry closure: ${missing.join(', ')}`).toEqual([]);
+    expect(SYSTEM_FILES.length).toBeGreaterThanOrEqual(48);
+  });
+
+  it('stops at every dynamic boundary in the tree, so it is not just every file', () => {
+    /*
+     * THE OTHER FALSIFIER. A closure that swallowed the whole tree would answer
+     * false from `mayImportHeavy` for everything, the sweep would fail loudly on
+     * the campaign's own internals, and somebody would "fix" it by putting the
+     * prefix skip back. These are the shipped lazy boundaries — the
+     * campaign, the WebGPU node graph, the manual, the relay and the texture
+     * worker — and each is documented in CLAUDE.md as its own chunk.
+     */
+    for (const id of [
+      'campaign/campaign-install.ts', 'campaign/index.ts', 'campaign/Director.ts',
+      'campaign/layout.ts', 'campaign/runtime.ts', 'campaign/validate.ts',
+      'render/gpu-path-install.ts', 'shell/manual-corpus.ts',
+      'net/TurnRelay.ts', 'core/workers/textureWorker.ts',
+    ]) {
+      expect(ENTRY.has(id), `${id} should be behind a dynamic import, not in the entry chunk`).toBe(false);
     }
-    expect(bad, `static edges into the campaign's heavy half: ${bad.join(', ')}`).toEqual([]);
+    expect(ENTRY.size).toBeLessThan(FILES.length);
+    expect(ENTRY.size).toBeGreaterThan(FILES.length / 2);
+  });
+
+  it('holds exactly the four campaign modules that are deliberately light', () => {
+    /*
+     * A ROSTER RATHER THAN A RULE, and deliberately so: this is the whole
+     * surface the entry chunk is allowed to see of the campaign, it is four
+     * files, and each one is light BY DESIGN with its reason in its own header.
+     * A fifth arriving is the event this file exists to report, whether or not
+     * it happens to carry a heavy edge on the day it lands.
+     */
+    expect([...ENTRY.keys()].filter((id) => id.startsWith('campaign/')).sort()).toEqual([
+      'campaign/campaign-store.ts',
+      'campaign/policy.ts',
+      'campaign/session.ts',
+      'campaign/types.ts',
+    ]);
   });
 });
 
 /* ==========================================================================
  * 2. NO SYSTEM MODULE STATICALLY IMPORTS THE SHELL
  * ========================================================================== */
-
-const SYSTEM_FILES = FILES.filter((f) => f.endsWith('.system.ts')).sort();
 
 /**
  * DECLARED LEAKS — and this table is NOT empty, which is the finding.
@@ -502,89 +885,42 @@ describe('campaign-install is reached only by dynamic import, only from the shel
  *     const LEAK = import.meta.glob('../campaign/operations/**\/*.ts',
  *                                   { eager: true });
  *
- * puts every operation in the entry chunk and leaves §1, §2 and §3 GREEN — all
- * twenty-two of them. Only §4 sees it, and §4 is `runIf(distIsCurrent())`,
- * which skips for the whole of any session in which somebody is editing `src/`.
- * So the second import mechanism gets a rule of its own, in source, where it is
- * always checkable.
+ * puts every operation in the entry chunk and left §1, §2 and §3 GREEN — all
+ * twenty-two of them at the time. Only §4 saw it, and §4 is
+ * `runIf(distIsCurrent())`, which skips for the whole of any session in which
+ * somebody is editing `src/`. So the second import mechanism gets a rule of its
+ * own, in source, where it is always checkable. The parsing moved to §0b once
+ * the entry-chunk closure came to depend on it; the RULE is still here.
  * ========================================================================== */
 
 /**
- * Every `import.meta.glob` in `src/`, keyed `<file> <pattern>`, with what it
- * costs. Pinned for the same reason `DYNAMIC_IMPORTERS` is: this is the one
- * import form nothing else in this file can see, so a new one is declared here
- * rather than merged in silence.
- */
-const DECLARED_GLOBS: Readonly<Record<string, string>> = {
-  'campaign/index.ts ./operations/**/*.ts':
-    'the operation table. Eager, but `index.ts` is reachable only through `campaign-install`, '
-    + 'so the cost lands in the campaign chunk',
-  'campaign/index.ts ./layouts/*.ts': 'the layouts, same chunk and same reason',
-  'game/Scenarios.ts ../data/**/*.ts': 'NOT eager — a record of loaders, so it splits rather than inlines',
-  'game/Systems.ts ../**/*.system.ts': 'EAGER, and the premise of this entire file',
-  'shell/manual-corpus.ts ../../wiki/*.md':
-    'eager over the wiki, but `manual-corpus.ts` is itself behind a dynamic import — '
-    + 'the ~320 kB manual chunk `tests/manual.spec.ts` gates',
-};
-
-/** Regex metacharacters that can appear in a path or a glob and must be literal. */
-const REGEX_SPECIALS = '^$+?.()|[]{}';
-
-/**
- * Pattern -> matcher, with vite's semantics for the two wildcards: `*` stays
- * inside one segment, `/**\/` spans any number of segments INCLUDING ZERO.
+ * Every `import.meta.glob` in `src/`, keyed `<file> <pattern>`, with whether it
+ * is eager and what it costs. Pinned for the same reason `DYNAMIC_IMPORTERS`
+ * is: this is the one import form §0's parser cannot see, so a new one is
+ * declared here rather than merged in silence.
  *
- * THE ZERO CASE IS ASSERTED ON THIS FUNCTION AND NOT THROUGH THE TREE, and the
- * reason is worth a line: every operation today sits one directory down
- * (`operations/soviets/01-first-tap.ts`), so a naive `/.*\/` matches all of
- * them and every tree-shaped control below stays green. Measured — swapping the
- * zero case out fails nothing here. It would first be felt as a silent miss the
- * day an operation is added directly under `operations/`.
+ * `eager` is checked against the source rather than taken on trust, because
+ * §0c's closure follows the eager ones and nothing else in this file would
+ * notice a detector that had stopped answering true.
  */
-function globToRegExp(pattern: string): RegExp {
-  let out = '';
-  let i = 0;
-  while (i < pattern.length) {
-    if (pattern.startsWith('/**/', i)) { out += '/(?:.*/)?'; i += 4; continue; }
-    if (pattern.startsWith('**', i)) { out += '.*'; i += 2; continue; }
-    const c = pattern[i];
-    if (c === '*') out += '[^/]*';
-    else if (REGEX_SPECIALS.includes(c)) out += `\\${c}`;
-    else out += c;
-    i++;
-  }
-  return new RegExp(`^${out}$`);
-}
-
-/** Every `.ts` file under `src/` that `pattern`, written in `file`, pulls in. */
-function globMatches(file: string, pattern: string): string[] {
-  // Resolved to an ABSOLUTE pattern first. Matching relative paths is wrong:
-  // `Systems.ts`'s `'../**\/*.system.ts'` covers its own directory, and a
-  // sibling reached by `relative()` carries no `../` for the pattern to meet.
-  const abs = resolve(dirname(file), pattern).split(sep).join('/');
-  const re = globToRegExp(abs);
-  return FILES.filter((f) => re.test(f.split(sep).join('/'))).map(rel);
-}
-
-function globPatterns(file: string): string[] {
-  const s = STRIPPED.get(file)!;
-  const out: string[] = [];
-  const needle = 'import.meta.glob';
-  let at = s.indexOf(needle);
-  while (at !== -1) {
-    // The call's `(` may sit past a type argument — `glob<Record<string, unknown>>(`.
-    const open = s.indexOf('(', at);
-    if (open !== -1) {
-      const m = /^[ \t\r\n]*(['"])([^'"]+)\1/.exec(s.slice(open + 1));
-      if (m !== null) out.push(m[2]);
-    }
-    at = s.indexOf(needle, at + needle.length);
-  }
-  return out;
-}
-
-const GLOB_SITES: readonly { readonly file: string; readonly pattern: string }[] =
-  FILES.flatMap((f) => globPatterns(f).map((pattern) => ({ file: f, pattern })));
+const DECLARED_GLOBS: Readonly<Record<string, { readonly eager: boolean; readonly why: string }>> = {
+  'campaign/index.ts ./operations/**/*.ts': {
+    eager: true,
+    why: 'the operation table. Eager, but `index.ts` is reachable only through `campaign-install`, '
+      + 'so the cost lands in the campaign chunk',
+  },
+  'campaign/index.ts ./layouts/*.ts': { eager: true, why: 'the layouts, same chunk and same reason' },
+  'game/Scenarios.ts ../data/**/*.ts': {
+    eager: false,
+    why: 'NOT eager — a record of loaders, so it splits rather than inlines',
+  },
+  'game/Systems.ts ../**/*.system.ts': { eager: true, why: 'EAGER, and the premise of this entire file' },
+  'shell/manual-corpus.ts ../../wiki/*.md': {
+    eager: true,
+    why: 'eager over the wiki, but `manual-corpus.ts` is itself behind a dynamic import — '
+      + 'the ~320 kB manual chunk `tests/manual.spec.ts` gates',
+  },
+};
 
 describe('import.meta.glob is fenced too, because the parser above is blind to it', () => {
   it('finds every glob in src/, so a new one cannot arrive unannounced', () => {
@@ -595,6 +931,30 @@ describe('import.meta.glob is fenced too, because the parser above is blind to i
       + 'matches and no other test in this file can see one, so declare it in DECLARED_GLOBS '
       + 'with what it costs and which chunk pays.',
     ).toEqual(Object.keys(DECLARED_GLOBS).sort());
+  });
+
+  it('reads eagerness off the call, and the two answers are both present in the tree', () => {
+    /*
+     * THE FALSIFIER FOR §0c. `{ eager: true }` is what makes a glob a static
+     * import, so a detector stuck on `false` shrinks the entry closure from 235
+     * modules to 141 — no system modules in it at all — and every absence test
+     * built on `ENTRY` goes quietly green. A detector stuck on `true` would pull
+     * `data/**` in and is caught by the same table from the other side.
+     *
+     * `Scenarios.ts` is the only lazy glob in the tree and it is the control:
+     * without it, "eager" could be a constant and this table would agree.
+     */
+    const wrong = GLOB_SITES
+      .map(({ file, pattern, eager }) => ({ key: `${rel(file)} ${pattern}`, eager }))
+      .filter(({ key, eager }) => DECLARED_GLOBS[key] !== undefined && DECLARED_GLOBS[key].eager !== eager)
+      .map(({ key, eager }) => `${key} reads eager=${String(eager)}`);
+    expect(wrong, `eagerness disagrees with DECLARED_GLOBS: ${wrong.join(', ')}`).toEqual([]);
+    expect(GLOB_SITES.some(({ eager }) => eager)).toBe(true);
+    expect(GLOB_SITES.some(({ eager }) => !eager)).toBe(true);
+    // The options object sits two lines below the pattern in `campaign/index.ts`,
+    // so a line-scoped read would answer false here.
+    expect(globSites(join(SRC, 'campaign/index.ts')).map((g) => g.eager)).toEqual([true, true]);
+    expect(globSites(join(SRC, 'game/Scenarios.ts')).map((g) => g.eager)).toEqual([false]);
   });
 
   it('reads a glob written inside a banner comment as prose, not as a site', () => {

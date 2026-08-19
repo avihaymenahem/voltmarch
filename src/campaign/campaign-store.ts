@@ -25,15 +25,21 @@
  * `recordOperation` from here, and `src/game/Systems.ts` globs every
  * `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK.
  *
- * **AND NO TEST NOTICES.** This said "`tests/campaign-bundle-isolation.spec.ts`
- * is the file that notices" and that is false, measured rather than reasoned:
- * `import { CAMPAIGNS } from './index'` was added here and that spec passed
- * 26/26. Its §1 sweep for heavy edges skips every file under `campaign/`, and
- * its transitive closure is rooted at `campaign.system.ts`, which never reaches
- * this file; only its §4 `dist/` scan would see it, and §4 is
- * `runIf(distIsCurrent())`. So the boundary here is held up by the two functions
- * below TAKING THE CHAPTER TABLE AS A PARAMETER, and by nothing else. Keep it
- * that way, or close the gap in that spec first.
+ * **A TEST NOTICES NOW, AND FOR TWO RELEASES IT DID NOT.** This once said
+ * "`tests/campaign-bundle-isolation.spec.ts` is the file that notices"; that was
+ * false, measured rather than reasoned — `import { CAMPAIGNS } from './index'`
+ * was added here and the spec passed 26/26. Its sweep for heavy edges skipped
+ * every file under `campaign/`, and its transitive closure was rooted at
+ * `campaign.system.ts`, which never reaches this file; only its §4 `dist/` scan
+ * could see it, and §4 is `runIf(distIsCurrent())`.
+ *
+ * That spec now roots its closure at `src/main.ts`, expands eager
+ * `import.meta.glob` (which is the only route from there to a `*.system.ts`),
+ * and allows a heavy edge only from a module that is under `src/campaign/` AND
+ * outside that closure. This file is inside it, so the import above fails §1 by
+ * name, with the route printed. The other half of the boundary is still worth
+ * keeping deliberately: the two functions below TAKE THE CHAPTER TABLE AS A
+ * PARAMETER rather than importing it.
  *
  * ============================================================================
  * THE MEDAL IS MONOTONIC, AND THAT IS THE LOAD-BEARING RULE
