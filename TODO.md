@@ -43,14 +43,10 @@ with no number is untracked, and that is itself the bug.
 - **#66 — Phases 6-7.** The remaining 32 operations. **180-320 person-hours, roughly 3-5× the
   engine**, of which ~35 hours is human play no agent can do. That ratio is the single most
   important fact about the campaign.
-- **The briefing screen SPOILS hidden objectives.** `BriefingScreen.render` in
-  `src/shell/Campaign.ts` lists them, while its own header says it must not — *"a briefing that
-  listed a hidden objective would be the operation spoiling its own turn"*. It structurally cannot
-  obey: the `OperationView.objectives` type in that file declares `{ id; kind; title }` with no
-  `hidden` field to filter on. `reclamation.01.held-paper` ships a hidden secondary, so this is
-  LIVE, and `wiki/Campaign.md` currently documents the behaviour rather than the intent — fixing it
-  moves two bullets on that page. *(untracked — the task tool was disconnected when this was found;
-  needs a number)*
+- **THE MERIDIAN PACT HAS NO CHAPTER AT ALL.** Three chapters exist — Soviets (3 operations), Allies
+  (1), Reclamation (1). One of the four playable armies has zero campaign content against a planned
+  nine. Shipping three chapters of four reads as an omission rather than a partial release, so this
+  is a SHIPPING gate in a way that "9 of 9 Soviet operations" is not.
 
 ---
 
