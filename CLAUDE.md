@@ -398,6 +398,25 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   tick one, silently. That is why a layout DECLARES its tags and `validateCampaign` refuses a
   trigger naming one no layout produces — and why `campaign-maps.spec.ts` builds every operation
   headless and checks the declaration against what actually landed, in both directions.
+- **`spawnUnits` IS A FIXED RING AND `spread` IS ITS RADIUS — THE TYPE SAID "SCATTER … DRAWN FROM
+  `s.rng`" AND THAT ONE SENTENCE COST FOUR OPERATIONS.** Unit `i` of `count` lands at exactly
+  `angle = i / count * 2π`, so a wave of four uses the four CARDINAL bearings every time, and
+  `ProductionService.spawnUnit` writes the point VERBATIM — no `connectedGround`, no egress search.
+  Believing the type, three separate layout headers justified their spawn points by SAMPLING a ring
+  (*"8 of 12 samples on an 18 m ring"*, *"7 of 8 samples of the spawn ring"*), which measures a
+  distribution the engine never draws from; all three passed their own sample and failed the real
+  bearings. 18 drops on closed ground across four operations, each one a hull that starts the fight
+  wedged and waits on `Movement`'s cliff branch and `Steering`'s pocket rescue.
+
+  **`reclamation.01.held-paper` IS THE CASE THAT PROVES `spread` IS NOT THE KNOB.** Its mercy column
+  ringed the Foundry, which backs onto relief no wheeled hull can cross: of the four bearings a wave
+  of four uses, only the westward one is open, **at every radius from 8 m to 44 m**. Move the SPAWN
+  POINT. `tests/campaign-spawn-ground.spec.ts` checks every point of every scripted wave against
+  that wave's own locomotor — resolved through the same three tables `spawnUnit` reads, honouring
+  `waterOnly → Naval` and `amphibious → Hover`, because `mrdSolarch` is hover and asking `passGrid`
+  the wrong bit answers a different question in both directions. **The ring formula is source-gated
+  against `runtime.ts` rather than re-derived**, since a re-implemented formula nobody checks is the
+  same defect wearing the other hat.
 - **`Shell.playCampaignBeat` IS THE ONLY CONSUMER OF `PresentationEvent`, AND IT HANDLED ONE OF THE
   THREE KINDS THAT ARE PRODUCED.** `EffectSink` pushes `dialogue`, `eva` and `camera`;
   `campaign.system.ts` drains all three every frame and hands every one to that method, whose body
