@@ -2932,10 +2932,10 @@ export const UNIT_GEOMETRY = {
   chamferMinMeters: 0.035,
   /** Hard clamp so a chamfer can never round the part into a pill. */
   chamferMaxFractionOfMin: 0.30,
-  /** Bible 5.5: cylinders 12-16 radial segments, never 32. Spheres 16x12. */
-  cylSegments: 14,
-  sphereSegments: 16,
-  sphereRings: 12,
+  /** V3 buys smooth primary forms; 20-24 remains cheap beside world geometry. */
+  cylSegments: 20,
+  sphereSegments: 24,
+  sphereRings: 16,
   /** Tracks protrude 8-14% of hull width outboard, 18-25% of unit height. */
   trackOutboardFraction: 0.11,
   trackHeightFraction: 0.22,
@@ -2994,7 +2994,8 @@ export const UNIT_VALIDATION = {
   dominantCentreMin: 0.60,
   dominantCentreMax: 0.70,
   turretWidthMin: 0.75,
-  turretWidthMax: 0.95,
+  /** Broad modern casemates may reach the hull shoulders; never overhang them. */
+  turretWidthMax: 1.00,
   /** R-T1: team colour as a fraction of surface area. */
   teamFractionVehicle: [0.08, 0.14] as readonly [number, number],
   teamFractionInfantry: [0.20, 0.28] as readonly [number, number],
@@ -5567,11 +5568,11 @@ export const BUILDING_GEOMETRY = {
   /** Absolute floor in metres. Never zero -- a razor edge is an automatic fail. */
   chamferMinMeters: 0.06,
   chamferMaxFractionOfMin: 0.28,
-  /** Bible 5.5 / scorecard #40: stacks and tanks are 12-16 facets, never 32. */
-  cylSegments: 14,
-  /** A fat capsule corner rail reads at 16; it is the most-looked-at cylinder. */
-  railSegments: 16,
-  sphereRings: 12,
+  /** V3 spends geometry on primary curvature: smooth at close gameplay zoom. */
+  cylSegments: 20,
+  /** Corner rails and vessels are silhouette masses, not faceted greebles. */
+  railSegments: 20,
+  sphereRings: 16,
 
   /* -- ALLIED 1..6 -------------------------------------------------------- */
   /** Base flares 1.25-1.4x wider than the top. */
@@ -5579,8 +5580,8 @@ export const BUILDING_GEOMETRY = {
   /** Open-topped crown: 0.45-0.55x base width, 0.30x total height. */
   alliedCrownWidth: 0.50,
   alliedCrownHeight: 0.30,
-  /** 3-5 banding strips of alternating depth (+/-3%). */
-  alliedBandCount: 4,
+  /** Two broad seams beat four noisy stripes at the game camera. */
+  alliedBandCount: 2,
   alliedBandDepth: 0.03,
 
   /* -- SOVIET 1..7 -------------------------------------------------------- */

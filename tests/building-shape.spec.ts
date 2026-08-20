@@ -407,17 +407,17 @@ describe('the shape pass costs no geometry', () => {
    * both `MassRole.Greeble`, and the mean came back to 2499.9. `MAX_MEAN_
    * TRIANGLES` stayed at 2500 through that content addition.
    *
-   * V2 ART REBASE — SAME ROSTER, FOUR REPLACEMENT SIGNATURES.
-   * -------------------------------------------------------
-   * The four vehicle factories now carry a faction-specific primary assembly:
-   * swept ceramic flight shells, a casting bridge and pressure bank, suspended
-   * solar sails/halo, and an offset breaker crane with lifting coil. This is
-   * 1,736 triangles over the whole 70-structure roster (+0.99%), with the same
-   * 140 merged parts and therefore no new normal-play draw calls. It is an
-   * explicit art-budget purchase under `ART_DIRECTION_V2.md` §7, not slack for
-   * later structures; the exact total below and the rounded 2,525 mean pin it.
+   * V3 ART REBASE — PRIMARY SILHOUETTES, NOT DECORATION.
+   * --------------------------------------------------
+   * The four vehicle factories are now purpose-built faction structures rather
+   * than decorated shared shells, and the global Soviet/allied shell curves use
+   * enough radial resolution to hold a clean highlight. The 5,644-triangle
+   * roster increase (+3.19%) is the measured cost of that visible geometry.
+   * Parts remain pinned separately below, so this buys silhouette quality but
+   * no extra normal-play draw calls. The exact total prevents future edits from
+   * quietly treating this user-approved art spend as slack.
    */
-  const BASELINE_TRIANGLES = 176_732;
+  const BASELINE_TRIANGLES = 182_376;
   const BASELINE_PARTS = 140;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
@@ -453,11 +453,12 @@ describe('the shape pass costs no geometry', () => {
    * structure bloating, the mean catches the whole roster drifting, and neither
    * substitutes for the other.
    *
-   * 2525 is the V2 measured 2524.74 over 70 with the decimals thrown away,
-   * which is the same discipline as every other number in this block.
+   * 2610 is just above the V3 measured 2605.37 over 70. The per-structure
+   * ceiling likewise rounds above the 5818-triangle Sub Pen after primary
+   * cylinder resolution increased; neither number is an open-ended allowance.
    */
-  const MAX_STRUCTURE_TRIANGLES = 5_300;
-  const MAX_MEAN_TRIANGLES = 2_525;
+  const MAX_STRUCTURE_TRIANGLES = 6_000;
+  const MAX_MEAN_TRIANGLES = 2_610;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);

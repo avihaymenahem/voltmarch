@@ -109,8 +109,8 @@ type V3 = readonly [number, number, number];
  * structure.
  */
 export const RECLAIM_STRUCTURE_PALETTE: UnitPalette = {
-  base: '#4E4956',
-  shadow: '#1C1922',
+  base: '#686270',
+  shadow: '#29242F',
   /** Arc violet, straight off the hull palette. The armies must match. */
   team: '#9B18D8',
   teamSecondary: '#5E0E86',
@@ -120,9 +120,9 @@ export const RECLAIM_STRUCTURE_PALETTE: UnitPalette = {
   hullNumber: 3312,
   emissive: '#E27BFF',
   /** Warm grey-brown, per bible 5.4 (S <= 0.26). Never blue steel. */
-  bareMetal: '#6A6258',
-  trackLink: '#241F2A',
-  glass: '#2A1E34',
+  bareMetal: '#80776A',
+  trackLink: '#332D38',
+  glass: '#382642',
   stencil: '#D8CFC0',
   hazard: '#E5CB43',
   /** Welded and torch-cut, not bolted. The Soviets keep the rivet ring. */
@@ -908,58 +908,81 @@ function rookery(): StructureMassList {
  */
 function breakerYard(): StructureMassList {
   const f = fp('warFactory');
-  const s = reclaimFrame(f.w, f.h, f.height, { bodyFraction: 0.48, team: 1.22 });
+  const w = f.w * CELL * 0.94;
+  const d = f.h * CELL * 0.94;
+  const deckH = f.height * 0.16;
+  const frameTop = f.height * 0.58;
   const railY = f.height - 0.32;
-  s.masses.push(
+  const masses: M[] = [...slagApron(f.w, f.h, f.height)];
+  masses.push(
+    // An exposed work deck and cage replace the old clad building completely.
+    // The vehicle bay is the empty space inside the frame, not a door texture
+    // on the front of another box.
+    pri('deck', MassRole.Primary, [w * 0.94, deckH, d * 0.90],
+      [0, deckH * 0.5, -d * 0.02], 'paintMed', {
+        plan: 'cutBox', cornerCut: 0.20, capSlot: 'tread', chamfer: 0.10,
+      }),
+    ...cage(w, d, frameTop),
+    // One crooked armour spine protects the machinery without enclosing it.
+    {
+      name: 'spine', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [w * 0.26, frameTop * 0.82, d * 0.72],
+      anchor: [-w * 0.20, deckH + frameTop * 0.40, -d * 0.05],
+      slot: 'paintMed', capSlot: 'grille', chamfer: 0.10,
+      rot: [0, 0, -0.09], shape: { topScaleX: 0.54, topScaleZ: 0.86, shear: d * 0.05 },
+    },
     {
       name: 'rail', primitive: 'taperedBox', role: MassRole.Primary,
-      size: [s.w * 0.88, 0.64, 0.56], anchor: [0, railY, -s.d * 0.06],
+      size: [w * 0.90, 0.70, 0.64], anchor: [w * 0.03, railY, -d * 0.10],
       slot: 'bareMetal', capSlot: 'grille', chamfer: 0.08,
-      shape: { topScaleX: 0.96, topScaleZ: 0.66 },
+      shape: { topScaleX: 0.95, topScaleZ: 0.58, shear: 0.22 },
     },
-    girder('rail.leg', [0.46, railY - s.frameTop + 0.4, 0.46],
-      [s.w * 0.40, (railY + s.frameTop) * 0.5 - 0.2, -s.d * 0.06], { mirrorX: true, group: 'rail' }),
-    box('rail.trolley', MassRole.Greeble, [1.00, 0.80, 1.00], [-s.w * 0.18, railY - 0.92, -s.d * 0.06], 'hatch', {
+    girder('rail.leg', [0.50, railY - frameTop + 0.4, 0.50],
+      [w * 0.40, (railY + frameTop) * 0.5 - 0.2, -d * 0.10], { mirrorX: true, group: 'rail' }),
+    box('rail.trolley', MassRole.Greeble, [1.10, 0.82, 1.05], [-w * 0.12, railY - 0.94, -d * 0.10], 'hatch', {
       group: 'rail', chamfer: 0.06,
     }),
-    // The bay. Anchored 0.12 m inside the wall line so its own section still
-    // leaves it within the footprint — a lintel hung proud of a 0.60 m frame
-    // overhangs the cell and the placement grid quietly disagrees with the model.
-    box('bay.lintel', MassRole.Primary, [s.w * 0.60, 0.60, 0.60], [0, s.roofY * 0.72, s.d * 0.5 - 0.12], 'stripe', {
-      chamfer: 0.08,
+    // A free-standing portal marks the open bay; there is no wall behind it.
+    girder('bay.lintel', [w * 0.62, 0.62, 0.62], [0, frameTop * 0.72, d * 0.42], {
+      group: 'bay', slot: 'stripe',
     }),
-    girder('bay.jamb', [0.46, s.roofY * 0.70, 0.52], [s.w * 0.30, s.roofY * 0.35, s.d * 0.5 - 0.12], {
+    girder('bay.jamb', [0.48, frameTop * 0.70, 0.54], [w * 0.30, frameTop * 0.35, d * 0.42], {
       mirrorX: true, group: 'bay', slot: 'stripe',
     }),
-    box('bay.door', MassRole.Greeble, [s.w * 0.54, s.roofY * 0.64, 0.34], [0, s.roofY * 0.32, s.d * 0.5 - 0.04], 'hatch', {
-      group: 'bay', feature: Feature.Door, anim: s.roofY * 0.68, chamfer: 0.05,
-    }),
+    box('bay.ramp', MassRole.Greeble, [w * 0.54, 0.16, d * 0.20],
+      [0, deckH + 0.04, d * 0.36], 'tread', { group: 'bay', chamfer: 0.04 }),
     // The cutting torch, which is the only warm light on a Reclamation building.
-    conduit('lit.torch', [0.30, 0.30, 0.30], [-s.w * 0.30, s.roofY * 0.50, s.d * 0.5 - 0.02]),
+    conduit('lit.torch', [0.30, 0.30, 0.30], [-w * 0.30, frameTop * 0.50, d * 0.44]),
     // V2 WEAPONISED SALVAGE: the working jib is kicked hard to one flank and
     // overhangs the bay. The centred travelling rail remains the load-bearing
     // structure; this visibly improvised second crane is the faction tell.
-    girder('breaker.jib', [0.52, 0.62, s.d * 0.72],
-      [s.w * 0.29, railY - 0.76, s.d * 0.10], {
+    girder('breaker.jib', [0.56, 0.66, d * 0.76],
+      [w * 0.29, railY - 0.78, d * 0.08], {
         rot: [0.05, 0, -0.24], group: 'breakerJib',
         shape: { topScaleX: 0.58, topScaleZ: 0.74, shear: 0.18 },
       }),
-    girder('breaker.stay', [0.20, 2.4, 0.20],
-      [s.w * 0.34, railY - 1.65, -s.d * 0.20], {
+    girder('breaker.stay', [0.22, 2.5, 0.22],
+      [w * 0.34, railY - 1.68, -d * 0.21], {
         rot: [0.48, 0, -0.18], group: 'breakerJib',
       }),
     // The magnetic lifting coil hangs below the offset trolley. It repeats the
     // same coil grammar used by Reclamation weapons at architectural scale.
-    ...arcCoil('breakerMagnet', s.w * 0.28, s.roofY + 0.72, s.d * 0.24, 1.36, 1.28),
-    ...hungClad('breaker.shield', s.roofY * 0.54, s.d * 0.34,
-      [-s.w * 0.43, s.roofY * 0.58, s.d * 0.12], -0.14, 'paintSmall'),
-    conduit('breaker.arc', [0.16, s.roofY * 0.62, 0.14],
-      [s.w * 0.40, s.roofY * 0.56, -s.d * 0.18], { group: 'breakerJib' }),
+    ...arcCoil('breakerMagnet', w * 0.27, deckH + 1.10, d * 0.22, 1.70, 1.55),
+    ...hungClad('breaker.shield', frameTop * 0.58, d * 0.34,
+      [-w * 0.43, frameTop * 0.56, d * 0.12], -0.16, 'paintSmall'),
+    teamPanel('team.deck', [w * 0.30, 0.16, d * 0.16], [w * 0.08, deckH + 0.06, -d * 0.04]),
+    teamPanel('team.spine', [0.18, frameTop * 0.46, d * 0.34],
+      [-w * 0.32, deckH + frameTop * 0.43, -d * 0.03]),
+    teamPanel('team.rail', [w * 0.26, 0.16, 0.66], [w * 0.12, railY + 0.20, -d * 0.10]),
+    conduit('breaker.arc', [0.18, frameTop * 0.66, 0.16],
+      [w * 0.40, frameTop * 0.54, -d * 0.18], { group: 'breakerJib' }),
+    conduit('breaker.floor', [w * 0.30, 0.14, 0.14], [-w * 0.10, deckH + 0.10, d * 0.34]),
+    insignia(w * 0.16, [-w * 0.30, frameTop * 0.50, d * 0.44]),
   );
-  return list('reclaim_breakeryard', 'Breaker Yard', 'warFactory', s.masses, [
-    ...baseSockets(s.d, s.roofY + 1.2, -s.w * 0.12, -s.d * 0.24),
-    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
-    { part: PartId.Crane, pos: [-s.w * 0.18, railY - 1.4, -s.d * 0.06] },
+  return list('reclaim_breakeryard', 'Breaker Yard', 'warFactory', masses, [
+    ...baseSockets(d, frameTop + 1.2, -w * 0.12, -d * 0.24),
+    { part: PartId.Door, pos: [0, 0.2, d * 0.5 + 0.4] },
+    { part: PartId.Crane, pos: [-w * 0.12, railY - 1.4, -d * 0.10] },
   ]);
 }
 

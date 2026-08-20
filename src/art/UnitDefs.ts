@@ -492,7 +492,7 @@ function infantry(o: InfantryOpts): UnitMassList {
       // SOVIET: a greatcoat. A revolve flared at the hem — no flat wall anywhere
       // on it, and the flare is the single loudest Conscript cue.
       ? primary('coat', 'revolve', [W * 0.94, torsoH * 1.06, W * 0.88], [0, torsoY - torsoH * 0.03, 0], 'paintMed', {
-        shape: { profile: COAT_PROFILE, segments: 12 },
+        shape: { profile: COAT_PROFILE, segments: 20 },
       })
       // ALLIED: a plated chest rig. A convex hull with a raised sternum, chined
       // flanks and a shoulder shelf; wider at the shoulders than at the waist,
@@ -511,10 +511,11 @@ function infantry(o: InfantryOpts): UnitMassList {
         },
       }),
 
-    // Helmet: a low-segment revolve, never a smooth sphere (scorecard #40).
+    // Helmet: enough radial resolution for a clean gameplay highlight without
+    // changing the authored brim/dome profile into a featureless sphere.
     primary('helmet', 'revolve', [W * (coat ? 0.62 : 0.56), H * 0.145, W * (coat ? 0.66 : 0.60)],
       [0, legTop + torsoH + H * 0.048, 0.01], 'paintSmall', {
-        shape: { profile: coat ? BRIM_PROFILE : DOME_PROFILE, segments: 14 },
+        shape: { profile: coat ? BRIM_PROFILE : DOME_PROFILE, segments: 20 },
       }),
 
     primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
@@ -904,13 +905,16 @@ function tank(o: TankOpts): UnitMassList {
 
   // Bible 5.3: chassis is a thin 35-45% base, superstructure is the top 55-65%.
   const trackH = H * UNIT_LADDER.chassisHeightFraction * 0.55;
-  const hullH = H * 0.215;
+  // V3 lowers the fighting compartment and spends the height on width and
+  // length. The legacy 0.50H turret was the main reason tanks read as toy
+  // blocks: half the vehicle was a single upright mass.
+  const hullH = H * 0.255;
   const hullY = trackH + hullH * 0.5;
-  const turretH = H * 0.50;
-  const turretY = H * 0.655;                        // -> dominantCentreY 0.655
+  const turretH = H * 0.46;
+  const turretY = H * 0.625;
   const turretW = W * UNIT_LADDER.turretWidthOverHull;
   const turretL = L * 0.74;
-  const turretZ = -L * 0.04;
+  const turretZ = -L * 0.06;
   const deckY = trackH + hullH;
   const turretRoof = turretY + turretH * 0.5;
   const gunY = turretY + turretH * 0.06;
@@ -926,27 +930,59 @@ function tank(o: TankOpts): UnitMassList {
     // `shear` is the important field. Sliding the top face aft turns the front
     // wall into a real sloped glacis, which is the most recognisable line on an
     // RA3 tank and the reason this mass measures 0% flat wall instead of 100%.
-    primary('hull', 'taperedBox', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
-      shape: v2Style === 'precision'
-        ? { topScaleX: 0.68, topScaleZ: 0.82, shear: -L * 0.12, cornerCut: W * 0.12 }
-        : v2Style === 'dominion'
-          ? { topScaleX: 0.94, topScaleZ: 0.88, shear: -L * 0.025, cornerCut: W * 0.13 }
-          : o.brutalist
+    v2Style === 'precision'
+      // Coalition hull: one continuous aerospace shell with a spear prow,
+      // pinched waist and clipped stern. These are real convex-hull planes,
+      // not plates laid over the rectangular legacy chassis.
+      ? primary('hull', 'hull', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+        shape: {
+          points: [
+            [0, 0.34, 0.50], [0.32, 0.28, 0.42], [-0.32, 0.28, 0.42],
+            [0.48, 0.08, 0.20], [-0.48, 0.08, 0.20],
+            [0.40, 0.26, -0.46], [-0.40, 0.26, -0.46],
+            [0.26, 0.42, -0.50], [-0.26, 0.42, -0.50],
+            [0, -0.48, 0.46], [0.48, -0.40, 0.18], [-0.48, -0.40, 0.18],
+            [0.42, -0.46, -0.46], [-0.42, -0.46, -0.46],
+          ],
+          chamfer: 0.055,
+        },
+      })
+      : v2Style === 'dominion'
+        // Dominion hull: a broad cast wedge with hammerhead shoulders and a
+        // narrower engine tail. Its outline is intentionally heavier than the
+        // Coalition spear, but it is no longer a beveled rectangular block.
+        ? primary('hull', 'hull', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+          shape: {
+            points: [
+              [0.34, 0.34, 0.50], [-0.34, 0.34, 0.50],
+              [0.50, 0.18, 0.34], [-0.50, 0.18, 0.34],
+              [0.46, 0.30, -0.28], [-0.46, 0.30, -0.28],
+              [0.34, 0.40, -0.50], [-0.34, 0.40, -0.50],
+              [0.42, -0.46, 0.46], [-0.42, -0.46, 0.46],
+              [0.50, -0.42, 0.22], [-0.50, -0.42, 0.22],
+              [0.36, -0.48, -0.50], [-0.36, -0.48, -0.50],
+            ],
+            chamfer: 0.05,
+          },
+        })
+        : primary('hull', 'taperedBox', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+          shape: o.brutalist
             ? { topScaleX: 0.90, topScaleZ: 0.94, shear: -L * 0.045, cornerCut: W * 0.075 }
             : { topScaleX: 0.86, topScaleZ: 0.90, shear: -L * 0.065, cornerCut: W * 0.055 },
-    }),
+        }),
 
     /* -- 3. turret: lathed, 14 facets, no flat side at all --------------- */
     v2Style === 'precision'
-      ? primary('turret', 'hull', [turretW * 1.07, turretH, turretL * 1.04], [0, turretY, turretZ], 'paintLarge', {
+        ? primary('turret', 'hull', [turretW * 1.22, turretH, turretL * 1.10], [0, turretY, turretZ], 'paintLarge', {
         turret: true, capSlot: 'paintLarge',
         shape: {
           points: [
-            [0, 0.48, 0.34], [0.34, 0.34, 0.28], [-0.34, 0.34, 0.28],
-            [0.50, 0.04, 0.12], [-0.50, 0.04, 0.12],
-            [0.40, -0.42, 0.30], [-0.40, -0.42, 0.30],
-            [0.46, -0.34, -0.34], [-0.46, -0.34, -0.34],
-            [0.30, 0.26, -0.48], [-0.30, 0.26, -0.48],
+            [0, 0.42, 0.38], [0.38, 0.32, 0.30], [-0.38, 0.32, 0.30],
+            [0.52, 0.00, 0.12], [-0.52, 0.00, 0.12],
+            [0.45, -0.42, 0.34], [-0.45, -0.42, 0.34],
+            [0.48, -0.38, -0.36], [-0.48, -0.38, -0.36],
+            [0.34, 0.20, -0.50], [-0.34, 0.20, -0.50],
+            [0, 0.34, -0.46],
           ],
           chamfer: 0.05,
         },
@@ -955,11 +991,11 @@ function tank(o: TankOpts): UnitMassList {
         // A cast, slab-shouldered gun house. The previous revolved turret made
         // the Soviet silhouette a rounder version of the Allied one; this puts
         // the mass in broad cheeks, a low roof and a visibly sheared rear.
-        ? primary('turret', 'taperedBox', [turretW * 1.13, turretH * 0.94, turretL * 0.98],
+        ? primary('turret', 'taperedBox', [turretW * 1.18, turretH, turretL * 1.08],
           [0, turretY, turretZ], 'paintLarge', {
             turret: true, capSlot: 'paintLarge',
             shape: {
-              topScaleX: 0.78, topScaleZ: 0.72,
+              topScaleX: 0.82, topScaleZ: 0.68,
               bottomScaleX: 1.04, bottomScaleZ: 0.98,
               shear: -turretL * 0.09, cornerCut: turretW * 0.10,
             },
@@ -978,10 +1014,10 @@ function tank(o: TankOpts): UnitMassList {
       // One continuous shoulder fairing per flank. It hides the top half of the
       // running gear and gives the Coalition its aerospace silhouette before
       // colour or panel work is visible.
-      primary('trackFairing', 'taperedBox', [W * 0.18, trackH * 0.96, L * 0.80],
-        [W * 0.53, trackH * 0.78, -L * 0.02], 'paintMed', {
+      primary('trackFairing', 'taperedBox', [W * 0.22, trackH * 1.02, L * 0.90],
+        [W * 0.54, trackH * 0.77, -L * 0.01], 'paintMed', {
           mirrorX: true, group: 'fairings',
-          shape: { topScaleX: 0.56, topScaleZ: 0.84, shear: -L * 0.055, cornerCut: 0.16 },
+          shape: { topScaleX: 0.48, topScaleZ: 0.80, shear: -L * 0.07, cornerCut: 0.20 },
         }),
       armour('noseWing', taperOutline(W * 0.78, L * 0.22, 0.28), 0.10,
         [0, deckY + 0.04, L * 0.36], [-0.16, 0, 0], 'paintMed', 'nose shell'),
@@ -999,9 +1035,9 @@ function tank(o: TankOpts): UnitMassList {
         [0, deckY + turretH * 0.10, turretZ], 'bareMetal', {
           shape: { profile: DRUM_PROFILE, segments: 16 }, group: 'turret collar',
         }),
-      greeble('engineDrum', 'revolve', [W * 0.26, H * 0.24, W * 0.26],
+      greeble('engineDrum', 'revolve', [W * 0.30, H * 0.28, W * 0.30],
         [W * 0.30, deckY + H * 0.10, -L * 0.34], 'bareMetal', {
-          mirrorX: true, group: 'power pack', shape: { profile: DRUM_PROFILE, segments: 12 },
+          mirrorX: true, group: 'power pack', shape: { profile: DRUM_PROFILE, segments: 20 },
         }),
       greeble('exhaustStack', 'cone', [0.24, H * 0.34, 0.24],
         [W * 0.36, deckY + H * 0.15, -L * 0.30], 'bareMetal', {

@@ -1607,11 +1607,10 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   // `w` is the assembly's whole X footprint; `bw` is the band inside it.
   const w = Math.max(0.05, p.width);
   const bw = w * UNIT_GEOMETRY.trackBandFraction;
-  // Segment counts are held down hard. A track run costs ~950 triangles and
-  // there are two of them on every tracked vehicle, so this single number is
-  // most of a tank's budget. 6 end-facets already reads as a round track end at
-  // the RTS zoom; 12 does not read any better and costs twice as much.
-  const segs = Math.max(4, Math.round(p.segments ?? 6));
+  // The track is a primary silhouette, not background garnish. Six facets were
+  // visible as a hexagon in close tactical shots; ten keeps the stadium ends
+  // round while remaining far below a film-resolution tread assembly.
+  const segs = Math.max(6, Math.round(p.segments ?? 10));
   const b = new ShapeBuilder();
 
   // The band: a stadium plan extruded along X. Built in plan space (x = Z,
@@ -1647,7 +1646,7 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   for (let i = 0; i < wheels; i++) {
     const t = wheels === 1 ? 0.5 : i / (wheels - 1);
     const z = -run * 0.5 + run * t;
-    b.merge(latheMesh({ profile: discProfile(wheelR, wheelT), segments: 6, group: 'wheel' }),
+    b.merge(latheMesh({ profile: discProfile(wheelR, wheelT), segments: 12, group: 'wheel' }),
       compose(translation(hub, -h * 0.5 + wheelR, z), rotationZ(Math.PI * 0.5)));
   }
 
@@ -1657,9 +1656,9 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
     { z: len * 0.5 - sprocketR, group: 'idler' },
   ];
   for (const end of hubs) {
-    b.merge(latheMesh({ profile: discProfile(sprocketR, sprocketT), segments: 10, group: end.group }),
+    b.merge(latheMesh({ profile: discProfile(sprocketR, sprocketT), segments: 16, group: end.group }),
       compose(translation(hub, -h * 0.5 + sprocketR, end.z), rotationZ(Math.PI * 0.5)));
-    const teeth = 5;
+    const teeth = 8;
     // Centred on the sprocket's MID-plane, not on its outer face. Centring them
     // on the face let them stand 0.45 * wheelT proud of the sprocket; that was
     // invisible while the whole hub was buried, and would read as a mistake now
@@ -1684,7 +1683,7 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   for (let i = 0; i < rollers; i++) {
     const t = rollers === 1 ? 0.5 : i / (rollers - 1);
     const z = -run * 0.34 + run * 0.68 * t;
-    b.merge(latheMesh({ profile: discProfile(h * 0.16, wheelT * 0.7), segments: 6, group: 'roller' }),
+    b.merge(latheMesh({ profile: discProfile(h * 0.16, wheelT * 0.7), segments: 10, group: 'roller' }),
       compose(translation(hub, h * 0.5 - h * 0.20, z), rotationZ(Math.PI * 0.5)));
   }
 

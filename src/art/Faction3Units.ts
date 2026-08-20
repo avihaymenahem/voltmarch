@@ -338,7 +338,7 @@ function plenumSkirt(hullWidth: number, skirtHeight: number, length: number, fan
     out.push(greeble(`fan${i}`, 'lathe', [r, skirtHeight * 0.42, r], [hullWidth * 0.36, skirtHeight * 0.30, z], 'bareMetal', {
       // The fan run is ONE readable object, so all of them share a group and
       // cost a single slot against bible 5.3's 6-12 detail budget.
-      mirrorX: true, profile: 'disc', segments: 12, group: 'liftFans',
+      mirrorX: true, profile: 'disc', segments: 18, group: 'liftFans',
     }));
   }
   return out;
@@ -510,7 +510,7 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     // no flat wall at any segment count, so this mass was never part of the
     // problem and is left on the legacy `lathe` builder that already draws it.
     primary('helmet', 'lathe', [W * 0.58, H * 0.150, W * 0.60], [0, legTop + torsoH + H * 0.050, 0.01], 'paintSmall', {
-      profile: 'cone', segments: 12, topRadius: 0.34,
+      profile: 'cone', segments: 20, topRadius: 0.34,
     }),
     // The other half of the fix. This was a DEAD STRAIGHT box — four vertical
     // walls, no taper, 0.387 axis-aligned, and doubled because it is mirrored.
@@ -672,12 +672,12 @@ function pactTank(o: PactTankOpts): UnitMassList {
   const W = o.hullWidth;
 
   const skirtH = H * UNIT_LADDER.chassisHeightFraction * 0.55;
-  const hullH = H * 0.215;
+  const hullH = H * 0.255;
   const hullY = skirtH + hullH * 0.5;
-  const turretH = H * 0.50;
-  const turretY = H * 0.655;
+  const turretH = H * 0.46;
+  const turretY = H * 0.625;
   const turretW = W * UNIT_LADDER.turretWidthOverHull;
-  const turretL = L * 0.74;
+  const turretL = L * 0.72;
   const deckY = skirtH + hullH;
   const turretRoof = turretY + turretH * 0.5;
 
@@ -704,8 +704,8 @@ function pactTank(o: PactTankOpts): UnitMassList {
     }),
     // Lathed drum turret, tapering to a smaller crown. Deliberately oversized
     // at 1.02x the hull box (bible 5.3 — a real MBT is 0.55 and RA3 is not real).
-    primary('turret', 'lathe', [turretW, turretH, turretL], [0, turretY, -L * 0.04], 'paintLarge', {
-      turret: true, profile: 'cyl', segments: 14, topRadius: 0.76, capSlot: 'paintMed',
+    primary('turret', 'lathe', [turretW * 1.08, turretH, turretL], [0, turretY, -L * 0.04], 'paintLarge', {
+      turret: true, profile: 'cyl', segments: 24, topRadius: 0.70, capSlot: 'paintMed',
     }),
   ];
 
@@ -753,7 +753,7 @@ function pactTank(o: PactTankOpts): UnitMassList {
     // degrees adds 0.36 m to `bounds[1]` — and `bounds[1]` is the divisor in the
     // top-heavy check, so a vane on the roof pushes the dominant mass centre
     // out of R8's 0.60-0.70 band and rejects the whole hull.
-    ...mirrorVane('vane', W * 0.46, L * 0.16, [-W * 0.20, deckY + 0.34, -L * 0.32], -0.55),
+    ...mirrorVane('vane', W * 0.68, L * 0.24, [-W * 0.18, deckY + 0.38, -L * 0.30], -0.48),
     greeble('mantlet', 'lathe', [turretW * 0.42, turretH * 0.66, turretW * 0.42], [0, gunY, turretL * 0.46], 'bareMetal', {
       turret: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], group: 'mantlet',
     }),

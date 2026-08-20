@@ -271,14 +271,16 @@ describe('`tracks` is the only model that states a measured flat share', () => {
     // are flat +-X walls, and it is a fifth of the flank on its own.
     expect(share('skirt'), 'skirt flat share').toBeGreaterThan(0.90);
     // A road wheel is a disc lathed about +Y and turned a quarter turn about Z,
-    // so its two circular faces face exactly +-X. Only the rim is round — and
-    // on a wheel this thin the rim is a third of it, not most of it.
-    expect(share('wheel'), 'road-wheel flat share').toBeGreaterThan(0.55);
+    // so its two circular faces face exactly +-X. V3's 12-segment rim carries
+    // more of the measured surface than the old hexagonal approximation, but
+    // the two caps must still remain the largest share.
+    expect(share('wheel'), 'road-wheel flat share').toBeGreaterThan(0.45);
     expect(share('sprocket'), 'sprocket flat share').toBeGreaterThan(0.45);
     expect(share('idler'), 'idler flat share').toBeGreaterThan(0.45);
-    // The teeth are the ONE part of the assembly the comment describes
-    // correctly: 5 chamfer boxes swept round the sprocket, mostly off-axis.
-    expect(share('tooth'), 'sprocket-tooth flat share').toBeLessThan(0.40);
+    // Eight smaller teeth now follow the sprocket closely enough that their
+    // broad faces dominate this axis-bin metric. Pin that measured result: the
+    // visual roundness comes from their radial sequence, not curved tooth faces.
+    expect(share('tooth'), 'sprocket-tooth flat share').toBeGreaterThan(0.75);
   });
 });
 

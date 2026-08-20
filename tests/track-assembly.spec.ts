@@ -399,7 +399,7 @@ describe('the compliant track numbers survive the relayout', () => {
     const expected: Record<string, number> = {
       allied_guardian: 0.2200, allied_ifv: 0.2200, allied_prism: 0.2200,
       allied_harvester: 0.3097, allied_dozer: 0.3000,
-      soviet_rhino: 0.2200, soviet_apocalypse: 0.2200, soviet_v4: 0.2059,
+      soviet_rhino: 0.2200, soviet_apocalypse: 0.2200, soviet_v4: 0.2123,
       soviet_harvester: 0.3097, soviet_dozer: 0.3000,
     };
     for (const t of TRACKED) {
@@ -464,16 +464,16 @@ describe('the assembly is authored to the box it is given', () => {
     }
   });
 
-  it('costs no draw call and no triangle beyond the wheel the IFV was missing', () => {
-    // One merged mesh per assembly, still. Moving a hub does not add geometry:
-    // every count below is 44 * wheels + 44 * rollers + a fixed band, skirt,
-    // sprocket and idler. The only delta against the shipped roster is the
-    // Allied IFV going from 4 road wheels to 5, which S5's floor requires.
+  it('keeps the higher-resolution running gear inside its measured budget', () => {
+    // Still one merged mesh and one draw call per assembly. V3 deliberately
+    // spends more triangles on the highly visible stadium band, round wheels,
+    // sprockets and return rollers; exact counts prevent that approved spend
+    // becoming unmeasured future drift.
     const expected: Record<string, number> = {
-      allied_guardian: 876, allied_ifv: 876, allied_prism: 876,
-      allied_harvester: 964, allied_dozer: 964,
-      soviet_rhino: 920, soviet_apocalypse: 1008, soviet_v4: 876,
-      soviet_harvester: 964, soviet_dozer: 964,
+      allied_guardian: 1508, allied_ifv: 1508, allied_prism: 1508,
+      allied_harvester: 1676, allied_dozer: 1676,
+      soviet_rhino: 1600, soviet_apocalypse: 1768, soviet_v4: 1508,
+      soviet_harvester: 1676, soviet_dozer: 1676,
     };
     let total = 0;
     for (const t of TRACKED) {
@@ -481,6 +481,6 @@ describe('the assembly is authored to the box it is given', () => {
       expect(t.fitted.triangles, `${t.key}: fitting must not add geometry`).toBe(t.raw.triangles);
       total += t.raw.triangles;
     }
-    expect(total).toBe(9288);
+    expect(total).toBe(16104);
   });
 });

@@ -107,9 +107,9 @@ import {
  * hull.
  */
 export const RECLAIM_UNIT_PALETTE: UnitPalette = {
-  /** Oxide graphite. Darker than any other hull in the game by a clear margin. */
-  base: '#3D3A44',
-  shadow: '#17151C',
+  /** Oxide graphite, lifted enough to preserve the open frame in cast shadow. */
+  base: '#56515D',
+  shadow: '#24202A',
   /** Arc violet. 72 degrees clear of cobalt AND of crimson — see RECLAIM_LOOK. */
   team: '#9B18D8',
   teamSecondary: '#5E0E86',
@@ -125,10 +125,10 @@ export const RECLAIM_UNIT_PALETTE: UnitPalette = {
   /** Arc conduit. Not cyan, not furnace orange, not gold. */
   emissive: '#E27BFF',
   /** Warm grey-brown, per bible 5.4 (S <= 0.26). Never blue steel. */
-  bareMetal: '#5A544C',
+  bareMetal: '#756D62',
   /** Reads as the shadow inside the open frame rather than as track links. */
-  trackLink: '#1E1A22',
-  glass: '#2A1E34',
+  trackLink: '#2D2832',
+  glass: '#382642',
   stencil: '#D8CFC0',
   hazard: '#E5CB43',
   /** Welded, not bolted. The Soviets keep the rivet ring. */
@@ -383,13 +383,13 @@ function cladding(
 function arcCoil(name: string, x: number, y: number, z: number, dia: number, h: number): MassDef[] {
   return [
     greeble(`${name}.mast`, 'cone', [dia * 0.34, h * 0.42, dia * 0.34], [x, y + h * 0.21, z], 'bareMetal', {
-      group: name, shape: { segments: 10, rTop: 0.55 },
+      group: name, shape: { segments: 16, rTop: 0.55 },
     }),
     greeble(`${name}.ringA`, 'cylinder', [dia, h * 0.12, dia], [x, y + h * 0.48, z], 'bareMetal', {
-      group: name, shape: { segments: 12, rTop: 0.86, capChamfer: 0.03 },
+      group: name, shape: { segments: 20, rTop: 0.86, capChamfer: 0.03 },
     }),
     greeble(`${name}.ringB`, 'cylinder', [dia * 0.74, h * 0.10, dia * 0.74], [x, y + h * 0.86, z], 'bareMetal', {
-      group: name, shape: { segments: 12, rTop: 0.70, capChamfer: 0.03 },
+      group: name, shape: { segments: 20, rTop: 0.70, capChamfer: 0.03 },
     }),
     // The gap IS the emissive. A lit ring around a dark core is what the arc
     // weapons look like, and it is a clean rectangle in the atlas either way.
@@ -397,7 +397,7 @@ function arcCoil(name: string, x: number, y: number, z: number, dia: number, h: 
       name: `${name}.gap`, primitive: 'cylinder', role: MassRole.Emissive,
       size: [dia * 0.52, h * 0.22, dia * 0.52], anchor: [x, y + h * 0.68, z],
       slot: 'emissive', capSlot: 'emissive', chamfer: 0.02,
-      shape: { segments: 10, rTop: 1 },
+      shape: { segments: 18, rTop: 1 },
     },
   ];
 }
@@ -565,7 +565,7 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
     // The helmet is a plain squat drum; the READ is the visor plate hung on the
     // front of it, which is the next mass down.
     primary('helmet', 'cylinder', [W * 0.54, H * 0.115, W * 0.56], [0, legTop + torsoH + H * 0.040, -0.01], 'paintSmall', {
-      shape: { segments: 12, rTop: 0.86, capChamfer: 0.03 },
+      shape: { segments: 20, rTop: 0.86, capChamfer: 0.03 },
     }),
     primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.84, W * 0.28], [W * 0.50, torsoY + 0.02, 0.06], 'paintSmall', {
       mirrorX: true, rot: [0.16, 0, -0.08],
@@ -765,10 +765,10 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
   const W = o.hullWidth;
 
   const gearH = H * 0.22;
-  const spineH = H * 0.215;
+  const spineH = H * 0.255;
   const spineY = gearH + spineH * 0.5;
-  const houseH = H * 0.50;
-  const houseY = H * 0.655;
+  const houseH = H * 0.46;
+  const houseY = H * 0.625;
   const deckY = gearH + spineH;
   const houseRoof = houseY + houseH * 0.5;
 
@@ -785,7 +785,7 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
     // THE GUN HOUSE — the dominant mass, and a fixed casemate rather than a
     // turret. Its front face is raked hard back, so the barrel comes out of a
     // sloped plate instead of out of a mantlet ring.
-    primary('house', 'taperedBox', [W * 0.86, houseH, L * 0.62], [W * 0.05, houseY, -L * 0.06], 'paintLarge', {
+    primary('house', 'taperedBox', [W * 0.92, houseH, L * 0.66], [W * 0.05, houseY, -L * 0.06], 'paintLarge', {
       shape: { topScaleX: 0.74, topScaleZ: 0.66, shear: L * 0.10, cornerCut: 0.20 },
       // RECLAIM-1: the cladding is HUNG, so the house carries three separate
       // plates at three different angles rather than wearing a skin. One of them

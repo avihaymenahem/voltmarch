@@ -559,55 +559,89 @@ function cistern(): StructureMassList {
 
 function forgeyard(): StructureMassList {
   const f = fp('warFactory');
-  const s = pactShell(f.w, f.h, f.height, { bodyFraction: 0.56, team: 1.0, lightCount: 4 });
-  s.masses.push(
-    // The bay frame is anchored 0.10 m INSIDE the wall line so its own depth
-    // still leaves it inside the footprint. A lintel hung 0.10 m proud of a
-    // 0.58 m section overhangs the cell by 0.19 m and trips the footprint check.
-    box('bay.lintel', MassRole.Primary, [s.w * 0.62, 0.58, 0.58], [0, s.roofY * 0.70, s.d * 0.5 - 0.10], 'stripe', { chamfer: 0.08 }),
-    box('bay.jamb', MassRole.Greeble, [0.42, s.roofY * 0.68, 0.50], [s.w * 0.29, s.roofY * 0.34, s.d * 0.5 - 0.10], 'stripe', {
-      mirrorX: true, group: 'bay', chamfer: 0.06,
-    }),
-    box('bay.door', MassRole.Greeble, [s.w * 0.56, s.roofY * 0.64, 0.32], [0, s.roofY * 0.32, s.d * 0.5 - 0.02], 'hatch', {
-      group: 'bay', feature: Feature.Door, anim: s.roofY * 0.68, chamfer: 0.05,
-    }),
-    // The overhead assembly rail carries the roofline.
-    box('rail', MassRole.Primary, [s.w * 0.86, 0.42, 0.42], [0, f.height - 0.85, -s.d * 0.10], 'bareMetal', { chamfer: 0.07 }),
-    cyl('rail.leg', MassRole.Greeble, [0.34, f.height - s.crownTop + 0.4, 0.34],
-      [s.w * 0.40, (f.height + s.crownTop) * 0.5 - 0.2, -s.d * 0.10], 'bareMetal', {
-        mirrorX: true, group: 'rail', chamfer: 0.05, capSlot: 'grille', topRadius: 0.80, segments: 10,
+  const w = f.w * CELL * 0.94;
+  const d = f.h * CELL * 0.94;
+  const deckY = f.height * 0.18;
+  const haloY = f.height * 0.60;
+  const masses: M[] = [...pactPad(f.w, f.h, f.height)];
+  masses.push(
+    // The Forgeyard is a levitating instrument, not a decorated warehouse.
+    // A low twelve-metre hex deck leaves the upper two thirds of the silhouette
+    // completely open and gives the cast shadow a clean, readable outline.
+    pri('forge.deck', MassRole.Primary, [w * 0.92, deckY, d * 0.84],
+      [0, deckY * 0.5 + 0.30, -d * 0.03], 'paintMed', {
+        plan: 'hexagon', capSlot: 'paintSmall', chamfer: 0.12,
       }),
-    box('rail.trolley', MassRole.Greeble, [0.85, 0.65, 0.85], [-s.w * 0.16, f.height - 1.45, -s.d * 0.10], 'hatch', { group: 'rail' }),
-    box('flue', MassRole.Greeble, [s.w * 0.15, 1.05, s.d * 0.18], [-s.w * 0.34, s.roofY + 0.52, -s.d * 0.28], 'vent', { group: 'flue' }),
-    // V2 SOLAR LEVITATION: paired hex mirror-sails lift above the closed shell.
-    // Their upward cant and gold centreline are the opposite of a gantry's
-    // horizontal dead weight even though both buildings produce vehicles.
-    pri('forge.sail', MassRole.Primary, [s.w * 0.34, 0.24, s.d * 0.42],
-      [s.w * 0.23, f.height - 0.78, -s.d * 0.02], 'paintMed', {
-        mirrorX: true, plan: 'hexagon', capSlot: 'paintSmall', rot: [-0.10, 0, -0.16],
-        group: 'solarSails', chamfer: 0.06,
+    cyl('forge.levitation', MassRole.Primary, [w * 0.70, 0.62, w * 0.70],
+      [0, deckY + 0.35, -d * 0.03], 'bareMetal', {
+        segments: 24, topRadius: 0.82, capSlot: 'grille', group: 'levitationRing',
       }),
-    // The forge aperture stands on edge: from the RTS camera it reads as a
-    // luminous halo suspended between the sails, not another roof turret.
-    cyl('forge.halo', MassRole.Primary, [s.w * 0.30, 0.34, s.w * 0.30],
-      [0, f.height - 0.86, s.d * 0.05], 'bareMetal', {
-        rot: [Math.PI * 0.5, 0, 0], segments: 16, topRadius: 0.78,
-        capSlot: 'grille', group: 'forgeHalo', chamfer: 0.05,
+    // Two obelisks carry a vertical solar aperture. Nothing closes the space
+    // between them; sky is part of the model.
+    cyl('forge.obelisk', MassRole.Primary, [w * 0.11, f.height * 0.62, w * 0.11],
+      [w * 0.30, deckY + f.height * 0.31, -d * 0.12], 'paintMed', {
+        mirrorX: true, topRadius: 0.22, capSlot: 'paintSmall', segments: 12,
       }),
-    cyl('forge.sun', MassRole.Emissive, [s.w * 0.16, 0.20, s.w * 0.16],
-      [0, f.height - 0.86, s.d * 0.05], 'emissive', {
-        rot: [Math.PI * 0.5, 0, 0], segments: 14, topRadius: 0.72,
+    cyl('forge.halo', MassRole.Primary, [w * 0.42, 0.42, w * 0.42],
+      [0, haloY, -d * 0.10], 'bareMetal', {
+        rot: [Math.PI * 0.5, 0, 0], segments: 24, topRadius: 0.72,
+        capSlot: 'grille', group: 'forgeHalo', chamfer: 0.07,
+      }),
+    cyl('forge.sun', MassRole.Emissive, [w * 0.22, 0.24, w * 0.22],
+      [0, haloY, -d * 0.10], 'emissive', {
+        rot: [Math.PI * 0.5, 0, 0], segments: 20, topRadius: 0.66,
         capSlot: 'emissive', group: 'forgeHalo', feature: Feature.Window,
       }),
-    box('forge.spine', MassRole.Emissive, [0.14, 0.12, s.d * 0.54],
-      [0, s.roofY + 0.34, -s.d * 0.02], 'emissive', {
+    // Four broad mirror sails form the roofline and point at the aperture.
+    pri('forge.sail', MassRole.Primary, [w * 0.34, 0.28, d * 0.34],
+      [w * 0.25, f.height - 0.52, -d * 0.08], 'paintMed', {
+        mirrorX: true, plan: 'hexagon', capSlot: 'paintSmall', rot: [-0.12, 0, -0.20],
+        group: 'solarSails', chamfer: 0.08,
+      }),
+    // A shallow launch mouth is the only enclosed element.
+    pri('bay.canopy', MassRole.Primary, [w * 0.56, 0.48, d * 0.24],
+      [0, deckY * 0.92, d * 0.34], 'paintMed', {
+        plan: 'wedge', capSlot: 'paintSmall', rot: [-0.10, 0, 0], chamfer: 0.09,
+      }),
+    box('bay.door', MassRole.Greeble, [w * 0.42, deckY * 0.68, 0.26],
+      [0, deckY * 0.42, d * 0.405], 'hatch', {
+        group: 'bay', feature: Feature.Door, anim: deckY * 0.72, chamfer: 0.06,
+      }),
+    teamPanel('forge.team', [w * 0.60, 0.18, d * 0.22], [0, deckY + 0.36, d * 0.18]),
+    box('forge.spine', MassRole.Emissive, [0.16, 0.12, d * 0.58],
+      [0, deckY + 0.42, -d * 0.02], 'emissive', {
         group: 'forgeSpine', feature: Feature.Window, chamfer: 0.03,
       }),
+    box('forge.light', MassRole.Emissive, [w * 0.34, 0.12, 0.14],
+      [0, deckY * 0.86, d * 0.415], 'emissive', {
+        group: 'bay', feature: Feature.Window, chamfer: 0.03,
+      }),
+    box('forge.coupler', MassRole.Greeble, [0.26, f.height * 0.24, 0.26],
+      [w * 0.30, deckY + f.height * 0.24, -d * 0.12], 'bareMetal', {
+        mirrorX: true, group: 'obeliskCouplers', chamfer: 0.05,
+      }),
+    box('forge.bus', MassRole.Greeble, [w * 0.36, 0.24, 0.30],
+      [0, deckY + 0.28, -d * 0.29], 'bareMetal', {
+        group: 'energyBus', chamfer: 0.06,
+      }),
+    cyl('forge.capacitor', MassRole.Greeble, [0.44, 0.72, 0.44],
+      [w * 0.16, deckY + 0.36, -d * 0.28], 'glass', {
+        mirrorX: true, segments: 18, topRadius: 0.76, group: 'capacitorBank',
+      }),
+    box('forge.sailRoot', MassRole.Greeble, [w * 0.18, 0.34, d * 0.15],
+      [w * 0.25, f.height - 1.02, -d * 0.08], 'bareMetal', {
+        mirrorX: true, group: 'solarSails', chamfer: 0.07,
+      }),
+    box('forge.guide', MassRole.Greeble, [w * 0.10, 0.20, d * 0.34],
+      [w * 0.24, deckY + 0.22, d * 0.16], 'paintSmall', {
+        mirrorX: true, group: 'launchGuides', chamfer: 0.05,
+      }),
+    insignia(w * 0.15, [w * 0.30, deckY * 0.62, d * 0.405]),
   );
-  return list('meridian_forgeyard', 'Forgeyard', 'warFactory', s.masses, [
-    ...baseSockets(s.d, s.roofY + 1.1, -s.w * 0.34, -s.d * 0.28),
-    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
-    { part: PartId.Crane, pos: [-s.w * 0.16, f.height - 1.9, -s.d * 0.10] },
+  return list('meridian_forgeyard', 'Forgeyard', 'warFactory', masses, [
+    ...baseSockets(d, f.height, -w * 0.30, -d * 0.12),
+    { part: PartId.Door, pos: [0, 0.2, d * 0.5 + 0.4] },
+    { part: PartId.Crane, pos: [0, haloY, -d * 0.10] },
   ]);
 }
 

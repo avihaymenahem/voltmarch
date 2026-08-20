@@ -451,11 +451,13 @@ describe('the Reclamation walks — measured off the built mesh', () => {
     }
   });
 
-  it('adds no triangles — the swing is metadata, not geometry', () => {
+  it('keeps the gait inside the measured infantry art budget', () => {
     // Infantry are ~57 px on screen against a tank's 2900 (task #26). The whole
     // argument for a vertex-shader gait over a skeleton is that it is free here.
+    // V3 raises helmet radial resolution, so the ceiling follows the measured
+    // art mesh while the gait itself continues to add no geometry.
     for (const { key, model } of built) {
-      expect(model.stats.triangles, key).toBeLessThan(1600);
+      expect(model.stats.triangles, key).toBeLessThan(1800);
     }
   });
 });

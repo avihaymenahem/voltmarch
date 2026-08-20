@@ -126,35 +126,35 @@ export function buildTerrainShowcase(b: ScenarioBuilder, cx: number, cz: number)
 
 export function buildUnitParade(b: ScenarioBuilder, cx: number, cz: number): void {
   const FACTIONS = [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim] as const;
-  // 19.5 m clears the widest factory pad with a real lane between columns and
-  // still keeps both outside factions inside the 62 m camera's trapezoid.
-  const SPACING = 19.5;
-  const half = (FACTIONS.length - 1) * 0.5;
 
   for (let i = 0; i < FACTIONS.length; i++) {
     const owner = b.ownerForFaction(FACTIONS[i]);
-    const x = cx + (i - half) * SPACING;
+    // Keep equivalent roles on straight comparison rows. The slightly tighter
+    // spacing leaves safe margins for the wide Reclamation crane and Allied
+    // wings while every spawn clears the map scatter beneath itself.
+    const x = cx + (i - 1.5) * 17.5;
+    const buildingZ = cz - 10;
+    const unitZ = cz + 3;
+    const facing = 0;
 
-    // The factory is the backdrop, the tank owns the middle row, and three
-    // infantry put the smallest gameplay silhouette against clear ground.
-    b.spawnBuilding('warFactory', owner, x, cz - 11, { yawDeg: 0 });
-    b.spawnUnit('grizzly', owner, x, cz + 2, {
-      yawDeg: 20,
+    b.spawnBuilding('warFactory', owner, x, buildingZ, { yawDeg: facing });
+    b.spawnUnit('grizzly', owner, x, unitZ, {
+      yawDeg: facing + 20,
       state: UnitState.Idle,
       stance: Stance.HoldGround,
       veterancy: i === 0 ? 2 : i === 1 ? 1 : 0,
     });
     for (let n = 0; n < 3; n++) {
-      b.spawnUnit('gi', owner, x + (n - 1) * 2.4, cz + 7.5, {
-        yawDeg: 18 + n * 2,
+      b.spawnUnit('gi', owner, x + (n - 1) * 2.2, cz + 8.5, {
+        yawDeg: facing + 18 + n * 2,
         state: UnitState.Idle,
         stance: Stance.HoldGround,
       });
     }
-    b.block(x, cz - 1, 11);
+    b.block(x, cz - 1, 10);
   }
 
-  b.scatter({ minX: cx - 48, minZ: cz - 29, maxX: cx + 48, maxZ: cz + 24 }, 42);
+  b.scatter({ minX: cx - 38, minZ: cz - 28, maxX: cx + 38, maxZ: cz + 23 }, 6);
 }
 
 /* ==========================================================================

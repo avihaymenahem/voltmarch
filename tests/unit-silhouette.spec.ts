@@ -151,12 +151,11 @@ describe('the Allied and Soviet roster is gated like the other two', () => {
       // the numbers that missed it.
       expect(m.stats.errors, formatStats(m.stats)).toEqual([]);
       expect(m.stats.warnings, formatStats(m.stats)).toEqual([]);
-      // Perf: 200+ units at 60 fps means a hull is a few thousand triangles,
-      // not tens of thousands. Set ABOVE the heaviest hull rather than at it,
-      // the way `faction4-art.spec.ts` sets the Reclamation's — the Dreadnought
-      // is ~4.8k and the two harvesters ~4.6k, so a small edit is not a red
-      // test but a doubling is.
-      expect(m.stats.triangles, l.key).toBeLessThan(5500);
+      // Perf: 200+ units at 60 fps still means a hull is a few thousand
+      // triangles, not tens of thousands. V3 deliberately spends more on the
+      // visible running gear and primary curves; this ceiling sits just above
+      // that measured roster and still catches an accidental doubling.
+      expect(m.stats.triangles, l.key).toBeLessThan(6500);
     });
   }
 
