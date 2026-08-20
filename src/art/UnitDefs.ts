@@ -973,7 +973,7 @@ function tank(o: TankOpts): UnitMassList {
 
     /* -- 3. turret: lathed, 14 facets, no flat side at all --------------- */
     v2Style === 'precision'
-        ? primary('turret', 'hull', [turretW * 1.22, turretH, turretL * 1.10], [0, turretY, turretZ], 'paintLarge', {
+        ? primary('turret', 'hull', [turretW * 1.24, turretH, turretL * 1.12], [0, turretY, turretZ], 'paintLarge', {
         turret: true, capSlot: 'paintLarge',
         shape: {
           points: [
@@ -1049,13 +1049,24 @@ function tank(o: TankOpts): UnitMassList {
   /* -- 4. armament -------------------------------------------------------- */
   const muzzleZ = turretL * 0.5 + L * 0.40;
   switch (o.gun) {
-    case 'twinCannon':
+    case 'twinCannon': {
+      const barrelLength = L * 0.66;
       masses.push(
-        barrelMass('barrel', 0.30, L * 0.66, [W * 0.16, gunY, turretZ + turretL * 0.36], { turret: true, mirrorX: true }),
+        // Derive the barrel centre from the muzzle socket. The old anchor left
+        // more than a metre of daylight between the visible tube and the flash.
+        barrelMass('barrel', 0.30, barrelLength, [W * 0.16, gunY, muzzleZ - barrelLength * 0.5], { turret: true, mirrorX: true }),
         armour('turret.gunShield', taperOutline(turretW * 0.86, turretH * 0.66, 0.74), 0.10,
           [0, gunY, turretZ + turretL * 0.44], [-1.42, 0, 0], 'bareMetal', 'turret armour', { turret: true }),
+        // Broad, ported Dominion brakes: square enough to read as heavy weapon
+        // hardware, with a dark front face instead of a capped metal rod.
+        greeble('muzzleBrake', 'taperedBox', [0.58, 0.48, L * 0.10],
+          [W * 0.16, gunY, muzzleZ - L * 0.05], 'bareMetal', {
+            turret: true, mirrorX: true, group: 'muzzles', faceSlots: { pz: 'grille' },
+            shape: { topScaleX: 0.82, topScaleZ: 0.88, cornerCut: 0.08 },
+          }),
       );
       break;
+    }
     case 'prism':
       masses.push(
         primary('prismHousing', 'revolve', [W * 0.44, L * 0.46, W * 0.44], [0, gunY + 0.10, turretZ + turretL * 0.34], 'paintMed', {
@@ -1100,9 +1111,37 @@ function tank(o: TankOpts): UnitMassList {
         }),
       );
       break;
-    default:
-      masses.push(barrelMass('barrel', 0.42, L * 0.70, [0, gunY, turretZ + turretL * 0.38], { turret: true }));
+    default: {
+      const barrelLength = L * 0.70;
+      masses.push(
+        // The visible tube now terminates at the same point the projectile and
+        // muzzle flash use. Previously it stopped 1.3-1.4 m behind the socket,
+        // which made both faction MBTs look snub-nosed from gameplay height.
+        barrelMass('barrel', 0.42, barrelLength, [0, gunY, muzzleZ - barrelLength * 0.5], { turret: true }),
+        // A real bore evacuator: the stepped sleeve is a major modern-tank cue
+        // at exactly the screen scale where panel texture has disappeared.
+        greeble('boreEvacuator', 'cylinder',
+          [v2Style === 'dominion' ? 0.64 : 0.56, L * (v2Style === 'dominion' ? 0.16 : 0.14), v2Style === 'dominion' ? 0.64 : 0.56],
+          [0, gunY, muzzleZ - L * 0.25], 'bareMetal', {
+            turret: true, rot: [HALF_PI, 0, 0], group: 'muzzles',
+            shape: { segments: v2Style === 'dominion' ? 12 : 14, rTop: 0.92, capChamfer: 0.035 },
+          }),
+      );
+      if (v2Style === 'dominion') {
+        masses.push(greeble('muzzleBrake', 'taperedBox', [0.76, 0.58, L * 0.11],
+          [0, gunY, muzzleZ - L * 0.055], 'bareMetal', {
+            turret: true, group: 'muzzles', faceSlots: { pz: 'grille' },
+            shape: { topScaleX: 0.80, topScaleZ: 0.86, cornerCut: 0.10 },
+          }));
+      } else {
+        masses.push(greeble('muzzleCollar', 'cone', [0.58, L * 0.08, 0.58],
+          [0, gunY, muzzleZ - L * 0.04], 'bareMetal', {
+            turret: true, rot: [HALF_PI, 0, 0], group: 'muzzles',
+            shape: { segments: 14, rTop: 0.82, capChamfer: 0.028 },
+          }));
+      }
       break;
+    }
   }
 
   /* -- 5. layered armour: the hi-tech surface read ------------------------ */

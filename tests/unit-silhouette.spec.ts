@@ -152,10 +152,10 @@ describe('the Allied and Soviet roster is gated like the other two', () => {
       expect(m.stats.errors, formatStats(m.stats)).toEqual([]);
       expect(m.stats.warnings, formatStats(m.stats)).toEqual([]);
       // Perf: 200+ units at 60 fps still means a hull is a few thousand
-      // triangles, not tens of thousands. V3 deliberately spends more on the
-      // visible running gear and primary curves; this ceiling sits just above
-      // that measured roster and still catches an accidental doubling.
-      expect(m.stats.triangles, l.key).toBeLessThan(6500);
+      // triangles, not tens of thousands. V4 deliberately spends more on real
+      // track shoes, primary curves and main-gun hardware; the 7.5k ceiling
+      // sits above the measured 7.1k heavy tank and still catches a doubling.
+      expect(m.stats.triangles, l.key).toBeLessThan(7500);
     });
   }
 
