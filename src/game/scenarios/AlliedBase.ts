@@ -35,6 +35,7 @@
 import { OrderKind, Stance, UnitState } from '../../core/types';
 import type { EntityId, PlayerId } from '../../core/types';
 import { DEG2RAD } from '../../core/math';
+import { AUTO_BASE_APRON_RADIUS } from '../../core/config';
 import type { ScenarioBuilder } from '../Scenarios';
 
 /* -------------------------------------------------------------------------- */
@@ -59,23 +60,26 @@ export interface StructurePlacement {
  * economy on the ore side (+X), the yard in the middle of the front row, power
  * and tech in the back row where nothing shoots at them.
  *
- * FRAME BUDGET — the whole layout lives inside x ∈ [-32, +34], z ∈ [-22, +20],
- * which is the 33 x 21 m half-extent `layoutBudget(62, 24)` allows. The 8-10 m
- * gaps are not slack: a base packed edge to edge renders as one continuous
- * mass, and the negative space between buildings is what makes a screenshot
- * read as a base rather than as a wall.
+ * APRON BUDGET — the structural grid lives inside x ∈ [-40, +40],
+ * z ∈ [-30, +24], including footprint half-extents. Its farthest corner is
+ * inside `AUTO_BASE_APRON_RADIUS` (52 m), the exact clearing the road router
+ * protects. The gaps are not slack: a base packed edge to edge renders as one
+ * continuous mass, and the negative space is what makes it read as a base.
  *
- * Every offset is on the 4 m cell grid.
+ * Every row uses 12 or 24 m centres. That is deliberate footprint arithmetic:
+ * a 3-cell production building gets 12 m of clear apron before the next one,
+ * while a 2-cell support building gets 4 m. Older 9-11 m centres left model
+ * pads almost touching and made a generated base read as one tangled mesh.
  */
 const ALLIED_CORE: readonly StructurePlacement[] = [
-  // Front row, z ∈ [-8, +4]. 8 m lanes either side of the yard.
-  { key: 'warFactory', dx: -20, dz: -2 },
-  { key: 'conyard', dx: 0, dz: -2 },
-  { key: 'refinery', dx: 20, dz: -2 },
+  // Front row: three 12 m-wide anchors with a full 12 m apron between them.
+  { key: 'warFactory', dx: -24, dz: -4 },
+  { key: 'conyard', dx: 0, dz: -4 },
+  { key: 'refinery', dx: 24, dz: -4 },
 
   // Silos hard against the ore side, clear of the harvester approach lane.
-  { key: 'oreSilo', dx: 29, dz: 3 },
-  { key: 'oreSilo', dx: 29, dz: 9 },
+  { key: 'oreSilo', dx: 36, dz: 4 },
+  { key: 'oreSilo', dx: 36, dz: 12 },
 
   /*
    * THE POWER COLUMN, and it is not decoration.
@@ -86,18 +90,17 @@ const ALLIED_CORE: readonly StructurePlacement[] = [
    * These two put the base at +120, which is the margin a player needs to add
    * one more building before they have to think about power.
    *
-   * Mirrors the silo column on the far side, inside the same x ∈ [−32, +34]
-   * frame budget the header quotes.
+   * Mirrors the silo column on the far side, inside the apron budget above.
    */
-  { key: 'powerPlant', dx: -31, dz: 3, secondary: true },
-  { key: 'powerPlant', dx: -31, dz: 9, secondary: true },
+  { key: 'powerPlant', dx: -36, dz: 4, secondary: true },
+  { key: 'powerPlant', dx: -36, dz: 16, secondary: true },
 
-  // Back row, z ∈ [+10, +18], on 11 m centres.
-  { key: 'barracks', dx: -22, dz: 14 },
-  { key: 'powerPlant', dx: -11, dz: 14 },
-  { key: 'powerPlant', dx: 0, dz: 14, secondary: true },
-  { key: 'radar', dx: 11, dz: 14, optional: true },
-  { key: 'battleLab', dx: 22, dz: 14, optional: true },
+  // Back row: 2x2 buildings on 12 m centres, leaving one whole cell between.
+  { key: 'barracks', dx: -24, dz: 20 },
+  { key: 'powerPlant', dx: -12, dz: 20 },
+  { key: 'powerPlant', dx: 0, dz: 20, secondary: true },
+  { key: 'radar', dx: 12, dz: 20, optional: true },
+  { key: 'battleLab', dx: 24, dz: 20, optional: true },
 ];
 
 /**
@@ -105,15 +108,15 @@ const ALLIED_CORE: readonly StructurePlacement[] = [
  * a wall behind it with a 20 m gate so the armour can actually sortie.
  */
 const ALLIED_DEFENCE: readonly StructurePlacement[] = [
-  { key: 'pillbox', dx: -18, dz: -14 },
-  { key: 'pillbox', dx: -6, dz: -16 },
-  { key: 'prismTower', dx: 8, dz: -16 },
-  { key: 'pillbox', dx: 20, dz: -14 },
+  { key: 'pillbox', dx: -24, dz: -20 },
+  { key: 'pillbox', dx: -8, dz: -20 },
+  { key: 'prismTower', dx: 8, dz: -20 },
+  { key: 'pillbox', dx: 24, dz: -20 },
 ];
 
 /** Wall segment centres along the threat face, leaving a 20 m gate at x ≈ -2. */
-const ALLIED_WALL_X: readonly number[] = [-28, -24, -20, -16, 8, 12, 16, 20, 24];
-const ALLIED_WALL_Z = -20;
+const ALLIED_WALL_X: readonly number[] = [-32, -28, -24, -20, 12, 16, 20, 24, 28, 32];
+const ALLIED_WALL_Z = -28;
 
 /* -------------------------------------------------------------------------- */
 
@@ -145,6 +148,18 @@ function toWorld(
 }
 
 /**
+ * Snap an authored threat bearing to the same four facings the placement UI
+ * supports. The occupancy grid stores axis-aligned rectangles; rotating a 3x2
+ * factory to an arbitrary 37 degrees while keeping a rectangular claim is a
+ * visual overlap waiting to happen. A generated base therefore chooses the
+ * nearest legal quarter turn once and rotates its whole local grid as a unit.
+ */
+export function cardinalBaseFacing(facingDeg: number): number {
+  const quarter = Math.round(facingDeg / 90);
+  return ((quarter % 4) + 4) % 4 * 90;
+}
+
+/**
  * Build a full Allied base centred on (cx, cz).
  *
  * Returns the Construction Yard handle so a caller can hang a build radius, a
@@ -157,12 +172,17 @@ export function buildAlliedBase(
   options: BaseOptions = {},
 ): EntityId {
   const owner = options.owner ?? b.allies;
-  const facing = (options.facingDeg ?? 0) * DEG2RAD;
+  const yawDeg = cardinalBaseFacing(options.facingDeg ?? 0);
+  const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
   const garrison = options.garrison !== false;
   const defended = options.defended !== false;
-  const yawDeg = options.facingDeg ?? 0;
+
+  // Reserve the COMPOUND, not just each footprint. Scenario scatter otherwise
+  // fills the legal negative space with trees and rocks and visually destroys
+  // the grid this layout just established.
+  b.block(cx, cz, AUTO_BASE_APRON_RADIUS);
 
   let conyard: EntityId = 0 as EntityId;
 
@@ -211,7 +231,7 @@ function buildAlliedGarrison(
 ): void {
   // Armour: a loose line in the muster ground between the yard and the wall,
   // guns pointing at the threat, sitting on the gate so the sortie reads.
-  const [ax, az] = toWorld(cx, cz, -2, -9, cos, sin);
+  const [ax, az] = toWorld(cx, cz, -2, -36, cos, sin);
   b.formation('grizzly', owner, ax, az, 4, {
     yawDeg: yawDeg + 180,
     columns: 4,
@@ -221,7 +241,7 @@ function buildAlliedGarrison(
     veterancy: 1,
   });
 
-  const [ix, iz] = toWorld(cx, cz, 21, -9, cos, sin);
+  const [ix, iz] = toWorld(cx, cz, 20, -36, cos, sin);
   b.formation('ifv', owner, ix, iz, 2, {
     yawDeg: yawDeg + 195,
     columns: 2,
@@ -230,7 +250,7 @@ function buildAlliedGarrison(
   });
 
   // Infantry: a squad loitering outside the barracks door, not in a neat grid.
-  const [gx, gz] = toWorld(cx, cz, -26, 6, cos, sin);
+  const [gx, gz] = toWorld(cx, cz, -32, 10, cos, sin);
   b.formation('gi', owner, gx, gz, 5, {
     yawDeg: yawDeg + 150,
     columns: 3,
@@ -239,20 +259,20 @@ function buildAlliedGarrison(
     state: UnitState.Guarding,
   });
 
-  const [ex, ez] = toWorld(cx, cz, -10, 7, cos, sin);
+  const [ex, ez] = toWorld(cx, cz, -18, 10, cos, sin);
   b.spawnUnit('engineer', owner, ex, ez, { yawDeg: yawDeg + 40 });
 
   // Economy in motion: one harvester docked at the refinery unloading, one
   // rolling out toward the ore on the +X side.
-  const [dx, dz] = toWorld(cx, cz, 20, 7, cos, sin);
+  const [dx, dz] = toWorld(cx, cz, 24, 7, cos, sin);
   b.spawnUnit('harvester', owner, dx, dz, {
     yawDeg: yawDeg + 90,
     state: UnitState.Docked,
     cargoFrac: 0.85,
   });
 
-  const [hx, hz] = toWorld(cx, cz, 36, -10, cos, sin);
-  const [ox, oz] = toWorld(cx, cz, 56, -6, cos, sin);
+  const [hx, hz] = toWorld(cx, cz, 42, -10, cos, sin);
+  const [ox, oz] = toWorld(cx, cz, 62, -6, cos, sin);
   b.spawnUnit('harvester', owner, hx, hz, {
     yawDeg: yawDeg + 100,
     state: UnitState.SeekOre,
@@ -261,9 +281,9 @@ function buildAlliedGarrison(
   });
 
   // Wear: burnt-out hulks outside the wall say a wave already came through.
-  const [wx, wz] = toWorld(cx, cz, 2, -25, cos, sin);
+  const [wx, wz] = toWorld(cx, cz, 4, -46, cos, sin);
   b.spawnWreck(wx, wz, b.world.player(owner).faction, false);
-  const [w2x, w2z] = toWorld(cx, cz, -14, -27, cos, sin);
+  const [w2x, w2z] = toWorld(cx, cz, -16, -48, cos, sin);
   b.spawnWreck(w2x, w2z, b.world.player(owner).faction, true);
 }
 
@@ -279,10 +299,10 @@ export function buildAlliedOutpost(
   options: BaseOptions = {},
 ): EntityId {
   const owner = options.owner ?? b.allies;
-  const facing = (options.facingDeg ?? 0) * DEG2RAD;
+  const yawDeg = cardinalBaseFacing(options.facingDeg ?? 0);
+  const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
-  const yawDeg = options.facingDeg ?? 0;
 
   // Kept inside x ∈ [-18, +18], z ∈ [-11, +15] so it still reads whole at the
   // 36 m dolly the placement shot uses.

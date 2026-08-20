@@ -32,10 +32,11 @@ import { defineSystem } from '../core/loop';
 import { EntityFlag, EntityKind, Locomotor, Phase, RenderPhase } from '../core/types';
 import type { RenderContext } from '../core/types';
 import {
-  DECAL_POOL_STATIC, DECAL_POOL_TRACKS, MAX_ENTITIES, TERRAIN_SEED,
+  AUTO_BASE_APRON_RADIUS, DECAL_POOL_STATIC, DECAL_POOL_TRACKS, MAX_ENTITIES, TERRAIN_SEED,
   TREAD_GAUGE_FRACTION, TREAD_INTERVAL_METRES,
 } from '../core/config';
 import { ctx } from '../game/context';
+import { plannedStartPoints } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { DecalField, layScorch, setActiveDecals, setActiveTrackDecals } from './Decals';
 import { RoadNetwork, getRoads, setActiveRoads } from './Roads';
@@ -161,6 +162,9 @@ export default defineSystem({
       seed: roadSeed(),
       anisotropy: handle.capabilities.anisotropy,
       decals: staticDecals,
+      exclusions: plannedStartPoints().map((p) => ({
+        x: p.x, z: p.z, radius: AUTO_BASE_APRON_RADIUS,
+      })),
     });
     network.generate();
     setActiveRoads(network);

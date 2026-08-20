@@ -318,6 +318,31 @@ describe('RoadNetwork — end to end', () => {
     other.dispose();
   });
 
+  it('routes the complete road corridor around reserved base aprons', () => {
+    const scene2 = new THREE.Scene();
+    const radius = 52;
+    const protectedNet = new RoadNetwork({
+      scene: scene2,
+      terrain,
+      seed: 0x1234abc,
+      decals: null,
+      stampTerrain: false,
+      exclusions: [{ x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5, radius }],
+    });
+    protectedNet.generate();
+    expect(protectedNet.stats().chains).toBeGreaterThan(0);
+    const metresPerTexel = MAP_SIZE / ROAD_MASK_N;
+    for (let tz = 0; tz < ROAD_MASK_N; tz++) {
+      const z = (tz + 0.5) * metresPerTexel;
+      for (let tx = 0; tx < ROAD_MASK_N; tx++) {
+        const x = (tx + 0.5) * metresPerTexel;
+        if (Math.hypot(x - MAP_SIZE * 0.5, z - MAP_SIZE * 0.5) > radius) continue;
+        expect(protectedNet.mask[tz * ROAD_MASK_N + tx]).toBe(RoadSurface.None);
+      }
+    }
+    protectedNet.dispose();
+  });
+
   it('disposes cleanly', () => {
     const scene3 = new THREE.Scene();
     const throwaway = new RoadNetwork({

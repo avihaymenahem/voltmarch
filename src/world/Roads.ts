@@ -1609,6 +1609,15 @@ export interface RoadNetworkOptions {
   decals?: DecalField | null;
   /** Stamp the terrain splat and lower costGrid under the carriageway. */
   stampTerrain?: boolean;
+  /** Finished road surface may not enter these world-space clearings. */
+  exclusions?: readonly RoadExclusion[];
+}
+
+export interface RoadExclusion {
+  readonly x: number;
+  readonly z: number;
+  /** Radius of ground that must remain free of carriageway, kerb and paving. */
+  readonly radius: number;
 }
 
 export interface RoadStats {
@@ -1670,6 +1679,7 @@ export class RoadNetwork {
   private readonly decals: DecalField | null;
   private readonly stampTerrain: boolean;
   private readonly anisotropy: number;
+  private readonly exclusions: readonly RoadExclusion[];
 
   private readonly root = new THREE.Group();
   private readonly nodes: RoadNodeRec[] = [];
@@ -1751,6 +1761,7 @@ export class RoadNetwork {
     this.decals = options.decals ?? null;
     this.stampTerrain = options.stampTerrain !== false;
     this.anisotropy = options.anisotropy ?? 8;
+    this.exclusions = options.exclusions ?? [];
 
     this.root.name = 'Roads';
     this.root.matrixAutoUpdate = false;
@@ -1829,7 +1840,23 @@ export class RoadNetwork {
     if (cx < 0 || cz < 0 || cx >= MAP_CELLS || cz >= MAP_CELLS) return false;
     if (this.terrain.isWater(cx, cz)) return false;
     if ((this.terrain.passGrid[cz * MAP_CELLS + cx] & PASS_TRACK) === 0) return false;
+    if (this.insideExclusion(x, z)) return false;
     return Math.tan(this.terrain.slopeAt(x, z)) <= ROAD_MAX_SLOPE;
+  }
+
+  /**
+   * True when a road CENTRE here would let any part of its widest possible
+   * corridor enter a reserved clearing. Routing works before a chain knows
+   * whether it will be a street or arterial, so the arterial envelope is the
+   * only honest conservative answer.
+   */
+  private insideExclusion(x: number, z: number): boolean {
+    const roadReach = corridorHalfWidth(RoadClass.Arterial);
+    for (const e of this.exclusions) {
+      const r = Math.max(0, e.radius) + roadReach;
+      if ((x - e.x) * (x - e.x) + (z - e.z) * (z - e.z) < r * r) return true;
+    }
+    return false;
   }
 
   /**
@@ -1870,6 +1897,7 @@ export class RoadNetwork {
         const ok = x >= m && z >= m && x <= MAP_SIZE - m && z <= MAP_SIZE - m
           && !this.terrain.isWater(cx, cz)
           && (this.terrain.passGrid[i] & PASS_TRACK) !== 0
+          && !this.insideExclusion(x, z)
           && Math.tan(this.terrain.cellSlope[i]) <= ROAD_MAX_SLOPE;
         legal[i] = ok ? 1 : 0;
       }

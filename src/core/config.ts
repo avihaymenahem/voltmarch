@@ -278,6 +278,13 @@ export function infantryLegibilityScale(
 /** One building storey in metres. Every structure height is a multiple-ish. */
 export const STOREY = 3.2;
 
+/**
+ * Road- and prop-free apron around an automatically generated opening base.
+ * The structural layouts fit inside 46 m; one extra build cell keeps kerbs,
+ * trees and rocks out of the lanes a player reads as part of the compound.
+ */
+export const AUTO_BASE_APRON_RADIUS = 52;
+
 /** FROZEN building footprints (cells) and heights (metres). */
 export const BUILDING_DIMENSIONS = {
   conYard:     { w: 3, h: 3, height: 11.0 },  // crane arm roofline

@@ -39,10 +39,12 @@
 
 import { defineSystem } from '../core/loop';
 import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '../core/types';
-import { CELL, MAP_CELLS, MAX_DRAW_CALLS, SCATTER_SEED } from '../core/config';
+import {
+  AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS, SCATTER_SEED,
+} from '../core/config';
 import { clamp, Rng, TAU } from '../core/math';
 import { ctx } from '../game/context';
-import { activeScenario, plannedScenario } from '../game/Scenarios';
+import { activeScenario, plannedScenario, plannedStartPoints } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
 import { DecalKind, groundDecals } from './Decals';
@@ -110,6 +112,13 @@ export default defineSystem({
      * exclusions are about CLEARANCE, not collision: a base needs room to
      * deploy into, a harvester needs a clear run to the ore, and the build
      * ghost must not be sitting in a hedge.                                  */
+
+    // One shared procedural-base apron for every world-dressing layer. The
+    // road router already protects these discs; without the same mask here its
+    // newly clear lanes simply filled with instanced trees on the next phase.
+    for (const p of plannedStartPoints()) {
+      scatter.addExclusion(p.x, p.z, AUTO_BASE_APRON_RADIUS);
+    }
 
     const store = world.store;
     for (let n = 0; n < store.count; n++) {

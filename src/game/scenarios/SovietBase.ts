@@ -9,12 +9,13 @@
  * expressed with the opposite personality, because the faction read has to
  * survive even when both sides are drawn as grey placeholder boxes:
  *
- *   - **Denser.** Structures sit 3-4 m closer together. A Soviet base looks
- *     crammed; an Allied base looks laid out.
+ *   - **Heavier.** Six repeated industrial masses and an extra reactor make
+ *     the Soviet skyline denser without forcing foundations into each other.
  *   - **Deeper defence.** Three tesla coils on the line plus two flame towers
  *     behind them, rather than one hard point.
- *   - **Off-axis.** Every structure carries a few degrees of its own rotation.
- *     Allied buildings are square to each other; Soviet ones are not.
+ *   - **Industrial rhythm.** Soviet rows are tighter in massing and carry far
+ *     more repeated power machinery. Their silhouettes provide the disorder;
+ *     their poured foundations still obey the player's construction grid.
  *   - **More power.** Three reactors, because tesla coils are the most
  *     power-hungry thing either side fields, and the extra stacks are half the
  *     Soviet skyline.
@@ -27,7 +28,9 @@
 import { NONE, OrderKind, Stance, UnitState } from '../../core/types';
 import type { EntityId, PlayerId } from '../../core/types';
 import { DEG2RAD } from '../../core/math';
+import { AUTO_BASE_APRON_RADIUS } from '../../core/config';
 import type { ScenarioBuilder } from '../Scenarios';
+import { cardinalBaseFacing } from './AlliedBase';
 import type { BaseOptions, StructurePlacement } from './AlliedBase';
 
 /* -------------------------------------------------------------------------- */
@@ -38,12 +41,12 @@ import type { BaseOptions, StructurePlacement } from './AlliedBase';
  */
 const SOVIET_CORE: readonly StructurePlacement[] = [
   // Front row. Ore is on -X so a mirrored pair of bases both face the middle.
-  { key: 'refinery', dx: -20, dz: -2, yawDeg: 2 },
-  { key: 'conyard', dx: 0, dz: -2, yawDeg: -3 },
-  { key: 'warFactory', dx: 20, dz: -2, yawDeg: 4 },
+  { key: 'refinery', dx: -24, dz: -4 },
+  { key: 'conyard', dx: 0, dz: -4 },
+  { key: 'warFactory', dx: 24, dz: -4 },
 
-  { key: 'oreSilo', dx: -29, dz: 3 },
-  { key: 'oreSilo', dx: -29, dz: 9 },
+  { key: 'oreSilo', dx: -36, dz: 4 },
+  { key: 'oreSilo', dx: -36, dz: 12 },
 
   /*
    * THE REACTOR COLUMN. The Soviet layout is the expensive one — three Tesla
@@ -52,31 +55,31 @@ const SOVIET_CORE: readonly StructurePlacement[] = [
    * Coil dark, radar offline, on the first frame. Three more reactors put it
    * at +105. Symmetric with the silo column on −X, inside the same budget.
    */
-  { key: 'powerPlant', dx: 29, dz: 3, secondary: true, yawDeg: -5 },
-  { key: 'powerPlant', dx: 29, dz: 9, secondary: true, yawDeg: 4 },
-  { key: 'powerPlant', dx: 29, dz: 15, secondary: true, yawDeg: -3 },
+  { key: 'powerPlant', dx: 36, dz: 4, secondary: true },
+  { key: 'powerPlant', dx: 36, dz: 16, secondary: true },
+  { key: 'powerPlant', dx: 36, dz: 28, secondary: true },
 
-  // Back row — 9 m centres instead of the Allied 11, and three reactors
-  // because the tesla line is expensive. The extra stacks ARE the skyline.
-  { key: 'barracks', dx: 22, dz: 13, yawDeg: -6 },
-  { key: 'powerPlant', dx: 12, dz: 14, yawDeg: 5 },
-  { key: 'powerPlant', dx: 3, dz: 13, secondary: true, yawDeg: -4 },
-  { key: 'powerPlant', dx: -6, dz: 14, secondary: true, yawDeg: 7 },
-  { key: 'radar', dx: -16, dz: 13, optional: true, yawDeg: -8 },
-  { key: 'battleLab', dx: -25, dz: 14, optional: true, yawDeg: 6 },
+  // Back row — the same honest 12 m construction rhythm, but six repeated
+  // industrial masses instead of the Allied five-building campus.
+  { key: 'battleLab', dx: -30, dz: 20, optional: true },
+  { key: 'radar', dx: -18, dz: 20, optional: true },
+  { key: 'powerPlant', dx: -6, dz: 20, secondary: true },
+  { key: 'powerPlant', dx: 6, dz: 20, secondary: true },
+  { key: 'powerPlant', dx: 18, dz: 20 },
+  { key: 'barracks', dx: 30, dz: 20 },
 ];
 
 /** Tesla on the line, flame towers as the second layer behind the gate. */
 const SOVIET_DEFENCE: readonly StructurePlacement[] = [
-  { key: 'teslaCoil', dx: -16, dz: -14 },
-  { key: 'teslaCoil', dx: 0, dz: -16 },
-  { key: 'teslaCoil', dx: 18, dz: -14 },
-  { key: 'flameTower', dx: -8, dz: -9 },
-  { key: 'flameTower', dx: 10, dz: -9 },
+  { key: 'teslaCoil', dx: -24, dz: -20 },
+  { key: 'teslaCoil', dx: 0, dz: -20 },
+  { key: 'teslaCoil', dx: 24, dz: -20 },
+  { key: 'flameTower', dx: -12, dz: -14 },
+  { key: 'flameTower', dx: 12, dz: -14 },
 ];
 
-const SOVIET_WALL_X: readonly number[] = [-28, -24, -20, -16, 8, 12, 16, 20, 24];
-const SOVIET_WALL_Z = -20;
+const SOVIET_WALL_X: readonly number[] = [-32, -28, -24, -20, 12, 16, 20, 24, 28, 32];
+const SOVIET_WALL_Z = -28;
 
 /* -------------------------------------------------------------------------- */
 
@@ -101,12 +104,14 @@ export function buildSovietBase(
   options: BaseOptions = {},
 ): EntityId {
   const owner = options.owner ?? b.soviets;
-  const facing = (options.facingDeg ?? 0) * DEG2RAD;
+  const yawDeg = cardinalBaseFacing(options.facingDeg ?? 0);
+  const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
   const garrison = options.garrison !== false;
   const defended = options.defended !== false;
-  const yawDeg = options.facingDeg ?? 0;
+
+  b.block(cx, cz, AUTO_BASE_APRON_RADIUS);
 
   let conyard: EntityId = NONE;
 
@@ -150,7 +155,7 @@ function buildSovietGarrison(
   yawDeg: number,
   owner: PlayerId,
 ): void {
-  const [rx, rz] = toWorld(cx, cz, 0, -9, cos, sin);
+  const [rx, rz] = toWorld(cx, cz, 0, -36, cos, sin);
   b.formation('rhino', owner, rx, rz, 5, {
     yawDeg: yawDeg + 180,
     columns: 3,
@@ -160,7 +165,7 @@ function buildSovietGarrison(
     veterancy: 1,
   });
 
-  const [ax, az] = toWorld(cx, cz, 19, -9, cos, sin);
+  const [ax, az] = toWorld(cx, cz, 20, -36, cos, sin);
   b.spawnUnit('apocalypse', owner, ax, az, {
     yawDeg: yawDeg + 172,
     state: UnitState.Guarding,
@@ -168,7 +173,7 @@ function buildSovietGarrison(
     veterancy: 2,
   });
 
-  const [c1x, c1z] = toWorld(cx, cz, 28, 6, cos, sin);
+  const [c1x, c1z] = toWorld(cx, cz, 34, 10, cos, sin);
   b.formation('conscript', owner, c1x, c1z, 6, {
     yawDeg: yawDeg + 200,
     columns: 3,
@@ -177,7 +182,7 @@ function buildSovietGarrison(
     state: UnitState.Guarding,
   });
 
-  const [dgx, dgz] = toWorld(cx, cz, -12, -9, cos, sin);
+  const [dgx, dgz] = toWorld(cx, cz, -16, -36, cos, sin);
   b.formation('attackDog', owner, dgx, dgz, 2, {
     yawDeg: yawDeg + 165,
     columns: 2,
@@ -186,15 +191,15 @@ function buildSovietGarrison(
   });
 
   // Economy: one harvester docked, one out on the ore run to -X.
-  const [dx, dz] = toWorld(cx, cz, -20, 7, cos, sin);
+  const [dx, dz] = toWorld(cx, cz, -24, 7, cos, sin);
   b.spawnUnit('harvester', owner, dx, dz, {
     yawDeg: yawDeg - 90,
     state: UnitState.Docked,
     cargoFrac: 0.7,
   });
 
-  const [hx, hz] = toWorld(cx, cz, -36, -10, cos, sin);
-  const [ox, oz] = toWorld(cx, cz, -56, -6, cos, sin);
+  const [hx, hz] = toWorld(cx, cz, -42, -10, cos, sin);
+  const [ox, oz] = toWorld(cx, cz, -62, -6, cos, sin);
   b.spawnUnit('harvester', owner, hx, hz, {
     yawDeg: yawDeg - 100,
     state: UnitState.ReturnToRefinery,
@@ -202,7 +207,7 @@ function buildSovietGarrison(
     order: { kind: OrderKind.Harvest, x: ox, z: oz },
   });
 
-  const [wx, wz] = toWorld(cx, cz, -4, -26, cos, sin);
+  const [wx, wz] = toWorld(cx, cz, -4, -46, cos, sin);
   b.spawnWreck(wx, wz, b.world.player(owner).faction, true);
 }
 
@@ -217,15 +222,15 @@ export function buildSovietOutpost(
   options: BaseOptions = {},
 ): EntityId {
   const owner = options.owner ?? b.soviets;
-  const facing = (options.facingDeg ?? 0) * DEG2RAD;
+  const yawDeg = cardinalBaseFacing(options.facingDeg ?? 0);
+  const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
-  const yawDeg = options.facingDeg ?? 0;
 
   const layout: readonly StructurePlacement[] = [
-    { key: 'conyard', dx: 12, dz: 2, yawDeg: -4 },
-    { key: 'refinery', dx: -6, dz: 0, yawDeg: 3 },
-    { key: 'powerPlant', dx: 12, dz: 13, yawDeg: 5 },
+    { key: 'conyard', dx: 12, dz: 2 },
+    { key: 'refinery', dx: -6, dz: 0 },
+    { key: 'powerPlant', dx: 12, dz: 13 },
     { key: 'oreSilo', dx: -14, dz: 9 },
     { key: 'teslaCoil', dx: 2, dz: -10 },
   ];

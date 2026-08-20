@@ -76,6 +76,7 @@ import {
 } from '../core/math';
 import { MoveClass, TerrainRegions } from '../sim/Flowfield';
 import { setMoveClass } from '../sim/Movement';
+import { facedFootprintH, facedFootprintW, yawToFacing } from '../sim/Placement';
 import { getTerrain } from '../world/Terrain';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
 // and `isBuildable` answers "yes" when no gate has been installed.
@@ -2821,8 +2822,16 @@ export class ScenarioBuilder {
      * is installed, which is the state of the `?shot=` harness and every test.  */
     if (!isBuildable(def, this.world.player(owner))) return NONE;
 
-    const fw = def?.footprintW ?? fb.footprintW;
-    const fh = def?.footprintH ?? fb.footprintH;
+    const localW = def?.footprintW ?? fb.footprintW;
+    const localH = def?.footprintH ?? fb.footprintH;
+    const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
+    const facing = yawToFacing(yaw);
+    // Scenario structures use the same world-space footprint convention as
+    // player placement. A 3x2 War Factory at 90 degrees is a 2x3 rectangle;
+    // keeping 3x2 here made the renderer visibly spill into a neighbour even
+    // though the occupancy pass claimed the layout was clear.
+    const fw = facedFootprintW(localW, localH, facing);
+    const fh = facedFootprintH(localW, localH, facing);
     snapFootprintToGrid(x, z, fw, fh, scratch2);
     let px = clampWorld(scratch2[0], fw * CELL);
     let pz = clampWorld(scratch2[1], fh * CELL);
@@ -2899,7 +2908,6 @@ export class ScenarioBuilder {
       }
     }
 
-    const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
     const py = this.world.terrain.heightAt(px, pz);
     const faction = this.world.player(owner).faction;
 
