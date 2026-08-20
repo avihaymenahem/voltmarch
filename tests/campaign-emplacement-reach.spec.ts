@@ -504,6 +504,69 @@ const GUNS: Readonly<Record<string, string>> = {
   // Delete the empty list and three of them appear on a map whose entire
   // objective is walking engineers up to buildings.
   'reclamation.07.payment-in-kind': 'flameTower x2, sentryGun x3',
+  // THREE from the Meridian opening and TWO the layout stands on the district
+  // road, either side of the counting apron. `op.foe` is Meridian, so the
+  // layout's `pillbox` role key resolves through `keyFor` to the GLAIVE POST —
+  // `glaiveRepeater`, 24 m, `chainCount` 0 — so §2 is satisfied by the row not
+  // chaining at all rather than by distance. One pull is
+  // `5 x 12 x ARMOR_MATRIX[SmallArms][Infantry] 1.00 x 0.80` = 48.00 against an
+  // 85 hp `rclPicker`: a real gun and a survivable one.
+  //
+  // NEITHER LAYOUT POST IS IN §2's SCOPE, and that is measured rather than
+  // incidental: they stand 55.8 m and 212.2 m from the nearest `stack` and
+  // 65.1 m and 219.7 m from the nearest `lot`, which are the only two tags this
+  // operation's `when` clauses name, against a 24 m gun. What they cover is the
+  // ROAD, and the layout measures that by exclusion — closing both discs moves
+  // the cheapest route to the counting apron by up to 18.9 m.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `mrdHelios` OFF THIS ROW — the row would
+  // otherwise read `mrdGlaive x5, mrdHelios x1`, which is what
+  // `reclamation.05.closing-entry` reads on the same opening — AND THE SPIRE IS
+  // NOT WHY THE LIST IS EMPTY. `heliosLance` is range 33 with `chainCount` 0, so
+  // §2 is satisfied either way, and a Spire only ever stands where
+  // `ALLIED_DEFENCE`'s `prismTower` slot puts it: the Meridian opening, 127.56 m
+  // from the nearest routable cell of the counting apron against an acquisition
+  // envelope of 33 x 1.08 + 2.880 = 38.52 m of centre distance. It is 89 m short
+  // of the ground this operation actually asks the player to hold.
+  //
+  // What the empty list buys is `mrdReliquary`, which is not an emplacement and
+  // so is not on this row at all: `mrdZenith` is `unit.specialist` with prereqs
+  // `['mrdForgeyard', 'mrdReliquary']`, and it is the only hull on that seat
+  // that answers a Slaghurler in kind. See the operation's `roster` block.
+  'reclamation.08.contra-entry': 'mrdGlaive x5',
+  // THREE from `ALLIED_DEFENCE`'s doctrinal opening and TWO the layout stands
+  // either side of the Allied valuation desk. `op.foe` is Allied, so the
+  // layout's `pillbox` role key resolves through `keyFor` to ITSELF —
+  // `pillboxMg`, 22 m, `chainCount` 0 — so §2 is satisfied by the row not
+  // chaining at all rather than by distance. The two desk posts ARE in §2's
+  // scope, and correctly: they stand 18.00 and 20.88 m of centre distance from
+  // the `desk` tag, which a secondary names — 10.79 and 13.67 m of SURFACE for a
+  // 3 x 2 `civApartments` (`hitRadius` 7.211) — and covering the objective is
+  // what an emplacement is for.
+  //
+  // THEY COVER NOTHING ELSE, AND THE MARGIN IS ONE THIRD OF A CELL RATHER THAN
+  // THE TEN METRES A CENTRE-AGAINST-RANGE READING GIVES (trap 28). §2's own test
+  // is a centre distance against the raw range, and `pillboxMg` never reaches it
+  // (`chainCount` 0 early-returns first) — but the question the layout is really
+  // answering is acquisition, and `Targeting.isValidTarget` tests
+  // `hypot(dx, dz) - hitRadius(target)` against
+  // `max(reachOf(i, w), range * COMBAT_TARGETING.acquireRangeMul)`, with
+  // `reachOf` returning 0 for a structure. So the envelope is 22 x 1.08 = 23.76 m
+  // of surface, and the nearest `lot` — a 3 x 2 `rclSorter`, `hitRadius` 7.211 —
+  // sits at 32.31 m of centre and 25.10 m of surface: clear by 1.34 m. The other
+  // two are 78.70 and 113.20 m of surface. The three outlying lots this operation
+  // asks the player to run and then break up are therefore never under an
+  // emplacement, but barely, and moving `LOT_THREE`'s offset spends that against
+  // a `place()` ring step of 6 m. The two `taken` lots on the Allied compound
+  // carry no post at all, deliberately, because a temptation with a wall in front
+  // of it is a wall rather than a decision.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `prismTower` OFF THIS ROW.
+  // `ALLIED_DEFENCE` seeds one at the Allied start; `prismTowerBeam` is 34 m and
+  // 101.2 per pull against `ArmorClass.Infantry`, and every man who matters on
+  // this seat is 85 hit points — `rclPicker`, and the `rclTinker` the `held`
+  // secondary is priced around. Delete the empty list and one appears here.
+  'reclamation.09.book-value': 'pillbox x5',
 };
 
 describe('§1 the guns every operation points at the player', () => {

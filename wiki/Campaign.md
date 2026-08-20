@@ -117,12 +117,14 @@ its operations you have finished; each operation is a row with its par time and 
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 | 06 | In Duplicate | Salvage Rights | 18 | 3 | 1 |
 | 07 | Payment in Kind | Salvage Rights | 19 | 2 | 2 |
+| 08 | Contra Entry | Salvage Rights | 20 | 1 | 2 |
+| 09 | Book Value | Salvage Rights | 21 | 2 | 2 |
 
-**That is 34 of a planned 37 operations, and this page will not pretend otherwise.** The
-thirty-four add up to 574 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 36 of a planned 37 operations, and this page will not pretend otherwise.** The
+thirty-six add up to 615 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
 screen — and **three are complete at nine**: Hold the Seam, The Timetable and The Crust
-all play end to end, Soviets first. Only Salvage Rights is short, at seven of ten.
+all play end to end, Soviets first. Only Salvage Rights is short, at nine of ten.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -137,10 +139,10 @@ Every operation has at least one **primary** objective — what the operation is
 nothing else.
 
 - **A bonus may pay credits into that match**, immediately, straight into your bank. The ones that
-  pay are worth 400 to 1000 credits and they are granted rather than deposited, so a full silo
+  pay are worth 400 to 1200 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Sixteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Eighteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.

@@ -124,13 +124,13 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 5721 across 229 files (+4 opt-in probes)
+npm test             # vitest, currently 6050 across 241 files (+4 opt-in probes)
                      #   11 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across `manual`, `webgpu-bundle-isolation` and
                      #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 5710 and skips 15. Re-measure BOTH numbers rather than
+                     #   reports 6039 and skips 15. Re-measure BOTH numbers rather than
                      #   adjusting them by hand — run it once, `npm run build`, run it
-                     #   again. The gated set has held at 11 across three re-measures;
+                     #   again. The gated set has held at 11 across four re-measures;
                      #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
@@ -388,7 +388,7 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
   layouts and the prose arrive through ONE `await import('../campaign/campaign-install')` in
   `Shell.startOperation`. Measured at the time: entry +3.31 kB, campaign chunk 23.1 kB, Shell chunk +7.5 kB. **The
-  chunk figure is a snapshot of ONE operation, not a budget** — it is 150 kB at seventeen, and it
+  chunk figure is a snapshot of ONE operation, not a budget** — it is 390 kB at thirty-six, and it
   is meant to grow. The entry delta is the number that must not move, and
   `campaign-bundle-isolation.spec.ts` is what holds it.
   **Never `import` anything under `src/campaign/` from a `*.system.ts` except those three.**
