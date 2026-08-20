@@ -22,6 +22,13 @@ describe('perimeter HUD composition', () => {
     expect(CSS).toMatch(/\.vm-command-deck\s*\{[\s\S]*?right:\s*var\(--vm-edge\);[\s\S]*?bottom:\s*var\(--vm-edge\)/);
   });
 
+  it('keeps the performance overlay in the left information rail', () => {
+    expect(CSS).toMatch(
+      /\.vm-perf\s*\{[\s\S]*?top:\s*calc\(var\(--vm-rail-top\) \+ var\(--vm-obj-max-h\) \+ var\(--vm-panel-gap\)\);[\s\S]*?left:\s*var\(--vm-edge\)/,
+    );
+    expect(CSS).not.toContain("left: calc(50% - 75 * var(--vm-u))");
+  });
+
   it('renders named production cards rather than anonymous cameos', () => {
     expect(SIDEBAR).toContain("'vm-slot-name'");
     expect(SIDEBAR).toContain('slot.nameNode.nodeValue = c.name');

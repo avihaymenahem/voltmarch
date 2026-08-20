@@ -459,7 +459,9 @@
   color: var(--vm-faint);
 }
 
-/* Toasts and diagnostics use the open centre corridor. */
+/* Toasts use the open centre corridor. Diagnostics belong to the information
+   rail: a persistent instrument in the middle of the battlefield obscures the
+   exact units and ground it is meant to help diagnose. */
 .vm-hud[data-layout='perimeter'] .vm-toasts {
   top: calc(var(--vm-top-h) + 20 * var(--vm-u));
   left: 50%;
@@ -473,12 +475,13 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-perf {
-  top: calc(var(--vm-top-h) + 22 * var(--vm-u));
-  left: calc(50% - 75 * var(--vm-u));
+  top: calc(var(--vm-rail-top) + var(--vm-obj-max-h) + var(--vm-panel-gap));
+  left: var(--vm-edge);
+  right: auto;
 }
 
 .vm-hud[data-layout='perimeter'].vm-perf-on .vm-toasts {
-  top: calc(var(--vm-top-h) + 184 * var(--vm-u));
+  top: calc(var(--vm-top-h) + 20 * var(--vm-u));
 }
 
 /* ----------------------------------------------------------------------- */
