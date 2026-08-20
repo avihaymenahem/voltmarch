@@ -94,6 +94,9 @@ import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 /** The sidebar's two modal tools. Read by src/input/input.system.ts. */
 export type ArmedMode = 'none' | 'repair' | 'sell';
 
+/** The five primary verbs exposed by the perimeter command deck. */
+export type HudCommandAction = 'move' | 'attack' | 'guard' | 'stop' | 'scatter';
+
 /**
  * Abstract UI sounds. The HUD refuses to invent a sound and the audio module
  * refuses to reach into the HUD; `hud.system.ts` owns the four-line mapping.
@@ -583,6 +586,8 @@ export interface SidebarCallbacks {
   fireSuperweapon(key: string): void;
   /** A commander power row was clicked. `key` is `CommanderPowerRow.key`. */
   usePower(key: string): void;
+  /** A primary battlefield command was clicked. Input owns the gesture. */
+  command(action: HudCommandAction): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -1014,7 +1019,7 @@ export class ResourceStrip {
 
     /* -- telltales ------------------------------------------------------ */
     this.armyNode = textNode(this.buildTell('army', 'Army'), '0');
-    this.baseNode = textNode(this.buildTell('base', 'Base'), '0');
+    this.baseNode = textNode(this.buildTell('base', 'Structures'), '0');
     this.incomeEl = this.buildTell('trend', 'Income / min');
     this.incomeNode = textNode(this.incomeEl, '0');
   }
@@ -2123,6 +2128,7 @@ const BLOCK_WORDS: Readonly<Record<Exclude<BlockKind, ''>, string>> = {
 interface BuildSlot {
   root: HTMLButtonElement;
   icon: SVGSVGElement;
+  nameNode: Text;
   costNode: Text;
   keyEl: HTMLElement;
   keyNode: Text;
@@ -2479,6 +2485,9 @@ class BuildPanel {
     cameoCanvas.hidden = true;
     root.appendChild(cameoCanvas);
 
+    const nameEl = el('span', 'vm-slot-name', root);
+    const nameNode = textNode(nameEl);
+
     const queueEl = el('span', 'vm-slot-queue vm-num', root);
     const queueNode = textNode(queueEl);
     queueEl.hidden = true;
@@ -2519,7 +2528,7 @@ class BuildPanel {
     progress.style.transform = 'scaleX(0)';
 
     const slot: BuildSlot = {
-      root, icon, costNode, keyEl, keyNode, queueEl, queueNode, readyEl,
+      root, icon, nameNode, costNode, keyEl, keyNode, queueEl, queueNode, readyEl,
       etaEl, etaNode, cameoCanvas, ownedEl, ownedNode, flagEl, flagNode, progress,
       cameo: null, sig: '', key: '', buildTime: 0,
       lastProgress: -1, lastAt: 0, rate: 0,
@@ -2844,6 +2853,7 @@ class BuildPanel {
           `${c.name}, ${c.cost} credits${i < SLOT_HOTKEY_LABELS.length ? `, key ${SLOT_HOTKEY_LABELS[i]}` : ''}`,
         );
         slot.root.tabIndex = 0;
+        slot.nameNode.nodeValue = c.name;
         setIcon(slot.icon, iconForCameo(c, this.activeTab));
         this.bindCameo(slot, c);
         slot.costNode.nodeValue = String(c.cost);
@@ -3244,6 +3254,87 @@ export class CommanderPowerBar {
 
 /* ========================================================================== */
 
+const COMMAND_DECK: ReadonlyArray<readonly [
+  HudCommandAction, IconName, string, string,
+]> = [
+  ['move', 'move', 'Move', 'RMB'],
+  ['attack', 'attack', 'Attack', 'A'],
+  ['guard', 'guard', 'Guard', 'G'],
+  ['stop', 'stop', 'Stop', 'S'],
+  ['scatter', 'scatter', 'Scatter', 'X'],
+];
+
+/**
+ * The large, selection-aware command surface from the perimeter HUD.
+ *
+ * It deliberately does not issue commands itself. A click crosses the same
+ * input seam as a key binding, and input decides whether the verb arms a
+ * target cursor or can execute immediately. The HUD only owns presentation.
+ */
+class CommandDeck {
+  readonly root: HTMLElement;
+  private readonly buttons: HTMLButtonElement[] = [];
+  private active: HudCommandAction | 'none' = 'none';
+  private lastState = '';
+
+  constructor(parent: HTMLElement, cb: SidebarCallbacks) {
+    this.root = panel(parent, 'vm-command-deck', 'diag-rev');
+    this.root.setAttribute('role', 'toolbar');
+    this.root.setAttribute('aria-label', 'Unit commands');
+
+    for (const [action, icon, labelText, hotkey] of COMMAND_DECK) {
+      const control = button(this.root, 'vm-command', labelText);
+      control.dataset.command = action;
+      control.appendChild(makeIcon(icon, 'vm-icon vm-command-icon'));
+      label(control, 'vm-command-label', labelText);
+      label(control, 'vm-command-key', hotkey);
+      control.setAttribute('aria-pressed', 'false');
+      control.addEventListener('click', () => {
+        if (control.disabled) return;
+        cb.sound('click');
+        cb.command(action);
+      });
+      control.addEventListener('pointerenter', () => cb.sound('hover'));
+      this.buttons.push(control);
+    }
+  }
+
+  update(view: SelectionView): void {
+    const hasSelection = view.count > 0;
+    const canMove = hasSelection && view.stanceEnabled;
+    const canAttack = canMove && view.damage !== '' && view.damage !== '—';
+    const state = `${hasSelection ? 1 : 0}${canMove ? 1 : 0}${canAttack ? 1 : 0}`;
+    if (state === this.lastState) return;
+    this.lastState = state;
+    this.root.classList.toggle('is-idle', !hasSelection);
+
+    for (let i = 0; i < COMMAND_DECK.length; i++) {
+      const action = COMMAND_DECK[i][0];
+      const enabled = action === 'move' || action === 'scatter'
+        ? canMove
+        : action === 'attack'
+          ? canAttack
+          : hasSelection;
+      this.buttons[i].disabled = !enabled;
+      this.buttons[i].setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    }
+  }
+
+  setActive(action: HudCommandAction | 'none'): void {
+    if (action === this.active) return;
+    this.active = action;
+    for (let i = 0; i < COMMAND_DECK.length; i++) {
+      const on = COMMAND_DECK[i][0] === action;
+      this.buttons[i].classList.toggle('is-active', on);
+      this.buttons[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+
+  dispose(): void { this.root.remove(); }
+}
+
+/* ========================================================================== */
+
 export class Sidebar {
   readonly root: HTMLElement;
   /** The minimap's glass panel. `Minimap` draws into `minimapCanvas`. */
@@ -3256,6 +3347,7 @@ export class Sidebar {
   private readonly build: BuildPanel;
   private readonly supers: SuperweaponBar;
   private readonly powers: CommanderPowerBar;
+  private readonly commands: CommandDeck;
   private readonly titleEl: HTMLElement;
   private readonly offlineEl: HTMLElement;
   private readonly mapHintEl: HTMLElement;
@@ -3351,6 +3443,7 @@ export class Sidebar {
     const railStack = el('div', 'vm-rail-stack', this.root);
     this.powers = new CommanderPowerBar(railStack, opts.callbacks);
     this.supers = new SuperweaponBar(railStack, opts.callbacks);
+    this.commands = new CommandDeck(this.root, opts.callbacks);
     // AFTER the build panel, because it is the one that constructs the
     // renderer. Null in any headless build, where both panels keep their glyphs.
     this.selection.setCameos(this.build.cameoRenderer);
@@ -3449,6 +3542,11 @@ export class Sidebar {
 
   get armedMode(): ArmedMode { return this.build.armedMode; }
 
+  /** Mirror input's armed cursor state into the command deck. */
+  setCommandActive(action: HudCommandAction | 'none'): void {
+    this.commands.setActive(action);
+  }
+
   /** Flag the sell tool as the thing to press. See `BuildPanel.setUrgentSell`. */
   setUrgentSell(on: boolean): void { this.build.setUrgentSell(on); }
 
@@ -3482,6 +3580,7 @@ export class Sidebar {
     this.build.update(snap);
     this.supers.update(supers);
     this.powers.update(powers);
+    this.commands.update(view);
   }
 
   /** Raise the credits flyout. Driven by `economy:credits`. */
@@ -3500,6 +3599,7 @@ export class Sidebar {
     this.resources.dispose();
     this.supers.dispose();
     this.powers.dispose();
+    this.commands.dispose();
     this.root.remove();
   }
 }

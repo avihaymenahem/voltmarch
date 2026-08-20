@@ -222,6 +222,8 @@ export const enum CommandMode {
   ForceAttack = 2,
   /** 'Y': the next click moves the rally flag of the selected factories. */
   Rally = 3,
+  /** HUD Move button: the next click is always a plain ground move. */
+  Move = 4,
 }
 
 /** What a click at a point would do. Pooled by the caller; never retained. */
@@ -681,6 +683,14 @@ export function resolveContextOrder(
   }
 
   /* -- 1. armed modes ---------------------------------------------------- */
+  if (mode === CommandMode.Move && caps.mobileCount > 0) {
+    out.order = OrderKind.Move;
+    out.x = wx;
+    out.z = wz;
+    out.cursor = CursorKind.Move;
+    out.valid = true;
+    return out;
+  }
   if (mode === CommandMode.Rally && caps.factoryCount > 0) {
     out.order = OrderKind.SetRally;
     out.x = wx;

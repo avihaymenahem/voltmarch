@@ -118,6 +118,47 @@ let projector: RigProjector | null = null;
 /** The armed mode. Cleared by Escape, by a right-click, or by using it. */
 let mode: CommandMode = CommandMode.None;
 
+type HudCommandAction = 'move' | 'attack' | 'guard' | 'stop' | 'scatter';
+
+function commandActionFor(modeValue: CommandMode): HudCommandAction | 'none' {
+  if (modeValue === CommandMode.Move) return 'move';
+  if (modeValue === CommandMode.AttackMove) return 'attack';
+  return 'none';
+}
+
+/** One writer for modal command state, so the cursor and command deck agree. */
+function setCommandMode(modeValue: CommandMode): void {
+  mode = modeValue;
+  hud()?.setCommandMode?.(commandActionFor(modeValue));
+}
+
+function invokeHudCommand(action: HudCommandAction): boolean {
+  if (selection === null || input === null) return false;
+  refreshResolution();
+  switch (action) {
+    case 'move':
+      setCommandMode(caps.mobileCount > 0 ? CommandMode.Move : CommandMode.None);
+      return true;
+    case 'attack':
+      setCommandMode(caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None);
+      return true;
+    case 'guard':
+      setCommandMode(CommandMode.None);
+      issueImmediate(OrderKind.Guard);
+      return true;
+    case 'stop':
+      setCommandMode(CommandMode.None);
+      issueImmediate(OrderKind.Stop);
+      return true;
+    case 'scatter':
+      setCommandMode(CommandMode.None);
+      issueImmediate(OrderKind.Scatter);
+      return true;
+  }
+}
+
+const HUD_COMMAND_SERVICE = { invoke: invokeHudCommand };
+
 /** Last digit pressed and when, for the double-tap-to-centre rule. */
 let lastGroupKey = -1;
 let lastGroupTime = -1e9;
@@ -866,7 +907,7 @@ const handlers = {
       if (mode !== CommandMode.None) {
         refreshResolution();
         executeResolved(resolution, p.shift || waypointLatched());
-        if (!p.shift) mode = CommandMode.None;
+        if (!p.shift) setCommandMode(CommandMode.None);
         return;
       }
       const id = p.worldValid
@@ -885,7 +926,7 @@ const handlers = {
       if (clearArmedPower()) { refreshResolution(); return; }
       if (clearArmedTool()) return;
       if (mode !== CommandMode.None) {
-        mode = CommandMode.None;
+        setCommandMode(CommandMode.None);
         refreshResolution();
         return;
       }
@@ -988,7 +1029,7 @@ const handlers = {
   },
 
   onBlur(): void {
-    mode = CommandMode.None;
+    setCommandMode(CommandMode.None);
     panning = false;
   },
 
@@ -1036,7 +1077,7 @@ const handlers = {
         return true;
 
       case 'ord.attackMove':
-        mode = caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None;
+        setCommandMode(caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None);
         return true;
 
       case 'ord.stop':
@@ -1069,11 +1110,11 @@ const handlers = {
         return true;
 
       case 'ord.forceAttack':
-        mode = caps.canAttack ? CommandMode.ForceAttack : CommandMode.None;
+        setCommandMode(caps.canAttack ? CommandMode.ForceAttack : CommandMode.None);
         return true;
 
       case 'ord.rally':
-        mode = caps.factoryCount > 0 ? CommandMode.Rally : CommandMode.None;
+        setCommandMode(caps.factoryCount > 0 ? CommandMode.Rally : CommandMode.None);
         return true;
 
       case 'ord.stance':
@@ -1103,7 +1144,7 @@ const handlers = {
         // mode, then the selection itself. One Escape undoes one thing.
         if (clearArmedPower()) { /* the power reticle goes first */ }
         else if (clearArmedTool()) { /* then the sidebar tool */ }
-        else if (mode !== CommandMode.None) mode = CommandMode.None;
+        else if (mode !== CommandMode.None) setCommandMode(CommandMode.None);
         else selection.clear();
         refreshResolution();
         return true;
@@ -1296,6 +1337,8 @@ interface HudBridge {
   sidebar: { setArmed(mode: 'none' | 'repair' | 'sell'): void };
   readonly armedMode: 'none' | 'repair' | 'sell';
   waypointMode: boolean;
+  /** Keep the perimeter command deck in sync with the armed cursor. */
+  setCommandMode?(action: HudCommandAction | 'none'): void;
   /**
    * THE COMMANDER POWER ON THE CURSOR, or 0. The HUD's power bar arms it and
    * this module spends it, which is the identical division of labour
@@ -1449,6 +1492,7 @@ function chooseCursor(): CursorKind {
   if (armed === 'repair') return CursorKind.Repair;
   if (armed === 'sell') return CursorKind.Sell;
 
+  if (mode === CommandMode.Move) return CursorKind.Move;
   if (mode === CommandMode.AttackMove) return CursorKind.AttackMove;
   if (mode === CommandMode.ForceAttack) return CursorKind.ForceAttack;
   if (mode === CommandMode.Rally) return CursorKind.Rally;
@@ -1477,6 +1521,8 @@ export default defineSystem({
     selection = new Selection(world, channels);
     executor = new OrderExecutor(world, channels);
     overlay = new Overlay(sceneRig.scene);
+    (globalThis as unknown as { __vmInputCommands?: typeof HUD_COMMAND_SERVICE })
+      .__vmInputCommands = HUD_COMMAND_SERVICE;
 
     // Resolve the order hotkeys against the live settings store, and keep
     // resolving them: a rebind on the Options screen takes effect on the next
@@ -1571,7 +1617,13 @@ export default defineSystem({
     overlay = null;
     executor = null;
     projector = null;
-    mode = CommandMode.None;
+    setCommandMode(CommandMode.None);
+    const commandGlobal = globalThis as unknown as {
+      __vmInputCommands?: typeof HUD_COMMAND_SERVICE;
+    };
+    if (commandGlobal.__vmInputCommands === HUD_COMMAND_SERVICE) {
+      delete commandGlobal.__vmInputCommands;
+    }
     panning = false;
   },
 });

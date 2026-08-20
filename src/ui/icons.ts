@@ -76,8 +76,8 @@ export type IconName =
   /* -- stances ---------------------------------------------------------- */
   | 'stanceAggressive' | 'stanceDefensive' | 'stanceHoldFire' | 'stanceHoldGround'
   /* -- verbs ------------------------------------------------------------ */
-  | 'repair' | 'sell' | 'primary' | 'cancel' | 'deploy' | 'stop' | 'scatter'
-  | 'waypoint' | 'guard'
+  | 'repair' | 'sell' | 'primary' | 'cancel' | 'deploy' | 'move' | 'attack'
+  | 'stop' | 'scatter' | 'waypoint' | 'guard'
   /* -- alerts ----------------------------------------------------------- */
   | 'alert' | 'warning' | 'info' | 'ready'
   /* -- identity ---------------------------------------------------------- */
@@ -684,6 +684,24 @@ export const ICONS: Readonly<Record<IconName, IconDef>> = {
   /** Stop. */
   stop: {
     paths: [{ d: 'M6.4 6.4h11.2v11.2H6.4z' }],
+  },
+
+  /** Move: a ground reticle with a forward vector. */
+  move: {
+    paths: [
+      { d: 'M12 21a9 9 0 1 1 9-9' },
+      { d: 'M12 3v9h9' },
+      { d: 'm16.5 7.5 4.5 4.5-4.5 4.5' },
+    ],
+  },
+
+  /** Attack-move: crossed targeting strokes inside a reticle. */
+  attack: {
+    paths: [
+      { d: 'M12 3v3M12 18v3M3 12h3M18 12h3' },
+      { d: 'M7.5 7.5 16.5 16.5M16.5 7.5 7.5 16.5' },
+      { d: 'M12 8a4 4 0 1 1-4 4' },
+    ],
   },
 
   /** Scatter: four arrows radiating. */

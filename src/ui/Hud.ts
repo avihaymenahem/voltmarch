@@ -108,6 +108,7 @@ import {
   type CommanderPowerRow,
   type CommanderPowerView,
   type GarrisonAction,
+  type HudCommandAction,
   type HudSoundCue,
   type HudTelemetry,
   type SelectionCard,
@@ -128,6 +129,7 @@ import { iconForUnitKey, makeIcon, type IconName } from './icons';
 import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
 
 import './hud.css';
+import './hud-redesign.css';
 
 /* ==========================================================================
  * SECTION 0 — THE LIVE BINDING TABLE
@@ -145,6 +147,16 @@ import './hud.css';
 
 interface SettingsBridge {
   get(): { controls?: { bindings?: StoredBindings } };
+}
+
+/** Optional input-owned command surface. The HUD never issues sim orders. */
+interface InputCommandBridge {
+  invoke(action: HudCommandAction): boolean;
+}
+
+function inputCommands(): InputCommandBridge | null {
+  const g = globalThis as unknown as { __vmInputCommands?: InputCommandBridge };
+  return g.__vmInputCommands ?? null;
 }
 
 function liveBindings(): StoredBindings | undefined {
@@ -994,6 +1006,7 @@ export class Hud {
 
     /* -- shell ---------------------------------------------------------- */
     this.root = el('div', 'vm-hud', opts.mount);
+    this.root.dataset.layout = 'perimeter';
     applyTheme(this.root, this.faction);
 
     const overlayCanvas = el('canvas', 'vm-world', this.root);
@@ -1042,6 +1055,7 @@ export class Hud {
         selfDestruct: () => this.selfDestructSelection(),
         fireSuperweapon: (key) => this.armSuperweapon(key),
         usePower: (key) => this.armPower(key),
+        command: (action) => this.invokeCommand(action),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -1428,6 +1442,17 @@ export class Hud {
 
   setSoundHook(fn: ((cue: HudSoundCue) => void) | null): void {
     this.soundHook = fn;
+  }
+
+  /** Hand a command-deck click to input, which owns selection and gestures. */
+  private invokeCommand(action: HudCommandAction): void {
+    if (inputCommands()?.invoke(action) === true) return;
+    this.toast('warn', 'command-unavailable', 'Command unavailable', 'Input is not ready yet');
+  }
+
+  /** Called by input whenever a target command is armed or cancelled. */
+  setCommandMode(action: HudCommandAction | 'none'): void {
+    this.sidebar.setCommandActive(action);
   }
 
   /** Raise an event chip. Public so any module can post one. */

@@ -490,6 +490,17 @@ describe('resolveContextOrder', () => {
     expect(r.order).toBe(OrderKind.AttackMove);
   });
 
+  it('is a plain Move in the HUD move mode, even over an enemy', () => {
+    const rig = makeRig();
+    rig.sel.select(tank(rig, rig.me, 10, 10), SelectMode.Replace);
+    const foe = tank(rig, rig.foe, 60, 60);
+    const r = resolveAt(rig, foe, 60, 60, { shift: false, ctrl: false, alt: false },
+      CommandMode.Move);
+    expect(r.order).toBe(OrderKind.Move);
+    expect(r.target).toBe(NONE);
+    expect(r.cursor).toBe(CursorKind.Move);
+  });
+
   it('does nothing with an empty selection', () => {
     const rig = makeRig();
     const r = resolveAt(rig, NONE, 60, 60);
