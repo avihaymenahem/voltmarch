@@ -326,6 +326,25 @@ const GUNS: Readonly<Record<string, string>> = {
   'allies.03.ground-truth': 'mrdGlaive x17',
   'allies.04.misclosure': 'flameTower x2, sentryGun x2',
   'allies.05.forced-closure': 'flameTower x2, sentryGun x3',
+  // THREE from the Reclamation opening and THREE the layout stands on the far
+  // half of the tramway. `op.foe` is Reclamation, so the layout's `pillbox`
+  // resolves through `keyFor` to the ARCSPITTER POST — `postCoil`, 20 m, and it
+  // DOES chain (`chainCount` 1), which is why this row is worth reading twice:
+  // one pull is 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the
+  // second link is 26.11 against a G.I.'s 120 hp, so §2 is satisfied with room
+  // rather than by the row not chaining at all. The empty `roster.ai` is what
+  // keeps `rclPylon` (28 m, chain 3, 120.32 a pull against a 90 hp engineer)
+  // off this row and therefore off the two open capture stands the operation is
+  // walked through; deleting either empty list puts a Pylon here and closes them.
+  'allies.06.machine-time': 'rclSpitpost x6',
+  // THREE from the Meridian opening and TWO the layout stands on the arc head.
+  // `op.foe` is Meridian, so the layout's `pillbox` resolves through `keyFor` to
+  // the GLAIVE POST — 24 m against a Sentry Gun's 22, `needsPower` where the
+  // Sentry Gun draws nothing, and no chain either way. The empty `roster.ai` is
+  // what keeps `mrdHelios` (33 m, `struct.defence.specialist`) off this row and
+  // therefore off the four capture stands the operation's primaries are walked
+  // to; deleting either empty list puts a Spire here and closes them.
+  'allies.07.fair-copy': 'mrdGlaive x5',
   'pact.01.shallow-road': 'pillbox x5, prismTower x2',
   'pact.02.long-count': 'flameTower x2, sentryGun x3',
   'pact.03.concession': 'rclSpitpost x5',
