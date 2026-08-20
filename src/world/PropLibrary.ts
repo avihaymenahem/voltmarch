@@ -40,18 +40,16 @@
  *    The custom depth material carries the identical displacement, so a swaying
  *    canopy never casts a frozen shadow.
  *
- * 4. CYLINDERS ARE 12-16 FACETS AND SPHERES ARE FACETED TOO (scorecard #40).
- *    Every ring count below is inside that band. A smooth 32-segment tube is a
- *    different engine.
+ * 4. HARD-SURFACE PROPS KEEP FACETED EDGES; FOLIAGE DOES NOT. Cylinders,
+ *    kerbs, rocks and manufactured props remain deliberately planar, while
+ *    canopy ellipsoids carry analytic smooth normals over a moderately denser
+ *    mesh. The split matters: a twelve-sided lamp post reads as authored metal,
+ *    but the same shading on a five-metre crown reads as an old low-poly game.
  *
- *    ...and because they are faceted AND flat shaded, foliage pays nothing for
- *    PER-FACET paint variation: `PropMesh.facetJitter` re-rolls the albedo once
- *    per triangle/quad on canopy blobs, conifer tiers and shrub lobes (+-14% V,
- *    +-6 deg H off the builder's seeded stream). That is scorecard #34 — Sobel
- *    |grad|>25 coverage, the one metric failing on all thirteen fixtures — and
- *    it is NOT the banned per-pixel noise: a canopy facet is ~2.7 m, ~80 px at
- *    gameplay zoom, bounded by a real geometric crease, and every vertex inside
- *    it carries the identical colour. See the doc comment on `facetJitter`.
+ *    Foliage still gets seeded PER-FACET colour variation through
+ *    `PropMesh.facetJitter`, but the range is restrained. Geometry and smooth
+ *    lighting now describe the volume; colour variation only stops adjacent
+ *    lobes merging into one green mass.
  *
  * ONE GEOMETRY PER KEY. A `PropDef` bakes exactly one mesh; where two looks
  * must coexist on the same map (summer vs autumn foliage, golden vs green
@@ -138,7 +136,7 @@ function hsvToHex(h: number, s: number, v: number): string {
  * `color()` goes through hex because every authored literal in this file is a
  * hex from the bible and `linear()` memoises on that string. The facet jitter
  * cannot: it produces a fresh colour per triangle, so a hex cache would only
- * grow, and quantising a +-14% value swing to 8 bits throws away the small
+ * grow, and quantising the restrained value swing to 8 bits throws away the small
  * steps that are the whole point. Same transfer function either way —
  * `linearColorTriple` calls this same `srgbToLinear`.
  */
@@ -267,22 +265,18 @@ export class PropMesh {
    * PRIMITIVE and every vertex of that primitive gets the identical colour, so
    * there is no gradient inside a facet and nothing to alias.
    *
-   * WHY IT IS FREE. Props are flat shaded — `vertex()` never shares a vertex
-   * across faces (see the section header) — so a per-facet colour needs no new
-   * attribute, no new draw call and no new triangle. It is the same `color`
-   * buffer the paint already rides in.
+   * WHY IT IS FREE. Vertices are deliberately split across primitives even on
+   * the smooth organic meshes, so a per-facet colour needs no new attribute,
+   * draw call or triangle. It is the same `color` buffer the paint already
+   * rides in; only the authored normals decide whether lighting is hard or soft.
    *
-   * THE BAND. `value` +-0.14 and `hueDeg` +-6 for foliage. Bible §6.5 asks for
-   * value +-18% / hue +-8 deg PER INSTANCE and the scatter system already does
-   * that; this is deliberately tighter one level down. Note the interaction with
-   * the tone-ladder rule in section 3: the temperate leaf ladder spans 1.29x
-   * across its three lobes, and +-14% adds up to 1.33x facet-to-facet, so the
-   * worst-case within-canopy span is ~1.71x rather than the 1.40x the ladder
-   * rule quotes. That rule is about LOBE-scale alternation, which reads as
-   * blotches because a lobe is a whole mass; facet-scale variation is the
-   * greeble scale the bible asks for in §5.3 ("every greeble >= 3 px"). If a
-   * capture ever shows canopies reading as confetti, lower the value swing —
-   * do not reach for the hue.
+   * THE BAND. The caller owns the exact range. Shipping foliage uses only
+   * +-1.5% value and +-0.8 degrees hue, comfortably inside the bible's +-18% / +-8
+   * degrees PER INSTANCE band because the scatter system already supplies that
+   * larger-scale variation. This tighter primitive-scale layer prevents a
+   * smooth canopy from becoming a single plastic colour without turning it
+   * into confetti. If a capture ever reads as speckled, lower value first — do
+   * not reach for more hue.
    *
    * DETERMINISM. Draws come from the builder's own seeded stream, which is a
    * fresh `Rng` per prop def, so jittering one archetype cannot move another.
@@ -419,6 +413,60 @@ export class PropMesh {
     this.vertex(x1, y1, z1, nx, ny, nz, bevelPaint);
     this.vertex(x2, y2, z2, nx, ny, nz, bevelPaint);
     this.vertex(x3, y3, z3, nx, ny, nz, bevelPaint);
+    if (flip) this.idxArr.push(base, base + 3, base + 2, base, base + 2, base + 1);
+    else this.idxArr.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    this.triangles += 2;
+  }
+
+  /**
+   * A triangle with authored vertex normals. Used only by organic ellipsoids:
+   * hard-surface primitives continue through `tri()` and remain flat shaded.
+   * The vertices are intentionally still split per facet so seeded canopy
+   * colour remains constant inside each triangle.
+   */
+  private smoothTri(
+    p0: readonly [number, number, number], n0: readonly [number, number, number],
+    p1: readonly [number, number, number], n1: readonly [number, number, number],
+    p2: readonly [number, number, number], n2: readonly [number, number, number],
+  ): void {
+    this.rollFacet();
+    SCRATCH_A[0] = p1[0] - p0[0]; SCRATCH_A[1] = p1[1] - p0[1]; SCRATCH_A[2] = p1[2] - p0[2];
+    SCRATCH_B[0] = p2[0] - p0[0]; SCRATCH_B[1] = p2[1] - p0[1]; SCRATCH_B[2] = p2[2] - p0[2];
+    const cx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
+    const cy = SCRATCH_A[2] * SCRATCH_B[0] - SCRATCH_A[0] * SCRATCH_B[2];
+    const cz = SCRATCH_A[0] * SCRATCH_B[1] - SCRATCH_A[1] * SCRATCH_B[0];
+    const flip = cx * (n0[0] + n1[0] + n2[0]) + cy * (n0[1] + n1[1] + n2[1])
+      + cz * (n0[2] + n1[2] + n2[2]) < 0;
+    const base = this.posArr.length / 3;
+    this.vertex(p0[0], p0[1], p0[2], n0[0], n0[1], n0[2], false);
+    this.vertex(p1[0], p1[1], p1[2], n1[0], n1[1], n1[2], false);
+    this.vertex(p2[0], p2[1], p2[2], n2[0], n2[1], n2[2], false);
+    if (flip) this.idxArr.push(base, base + 2, base + 1);
+    else this.idxArr.push(base, base + 1, base + 2);
+    this.triangles++;
+  }
+
+  /** Two smooth triangles with one seeded paint roll per visible quad. */
+  private smoothQuad(
+    p0: readonly [number, number, number], n0: readonly [number, number, number],
+    p1: readonly [number, number, number], n1: readonly [number, number, number],
+    p2: readonly [number, number, number], n2: readonly [number, number, number],
+    p3: readonly [number, number, number], n3: readonly [number, number, number],
+  ): void {
+    this.rollFacet();
+    SCRATCH_A[0] = p2[0] - p0[0]; SCRATCH_A[1] = p2[1] - p0[1]; SCRATCH_A[2] = p2[2] - p0[2];
+    SCRATCH_B[0] = p3[0] - p1[0]; SCRATCH_B[1] = p3[1] - p1[1]; SCRATCH_B[2] = p3[2] - p1[2];
+    const cx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
+    const cy = SCRATCH_A[2] * SCRATCH_B[0] - SCRATCH_A[0] * SCRATCH_B[2];
+    const cz = SCRATCH_A[0] * SCRATCH_B[1] - SCRATCH_A[1] * SCRATCH_B[0];
+    const flip = cx * (n0[0] + n1[0] + n2[0] + n3[0])
+      + cy * (n0[1] + n1[1] + n2[1] + n3[1])
+      + cz * (n0[2] + n1[2] + n2[2] + n3[2]) < 0;
+    const base = this.posArr.length / 3;
+    this.vertex(p0[0], p0[1], p0[2], n0[0], n0[1], n0[2], false);
+    this.vertex(p1[0], p1[1], p1[2], n1[0], n1[1], n1[2], false);
+    this.vertex(p2[0], p2[1], p2[2], n2[0], n2[1], n2[2], false);
+    this.vertex(p3[0], p3[1], p3[2], n3[0], n3[1], n3[2], false);
     if (flip) this.idxArr.push(base, base + 3, base + 2, base, base + 2, base + 1);
     else this.idxArr.push(base, base + 1, base + 2, base, base + 2, base + 3);
     this.triangles += 2;
@@ -572,16 +620,28 @@ export class PropMesh {
   }
 
   /**
-   * A faceted ellipsoid centred on (cx,cy,cz). Canopies, boulder masses,
-   * flower heads. `squashBottom` (0..1) lifts the lower hemisphere so a canopy
-   * blob reads as a dome sitting on a trunk rather than a floating sphere.
+   * An ellipsoid centred on (cx,cy,cz). `squashBottom` (0..1) lifts the lower
+   * hemisphere so a canopy blob reads as a dome sitting on a trunk rather than
+   * a floating sphere. `smooth` supplies analytic ellipsoid normals without
+   * sharing vertices, preserving per-facet paint and deterministic topology.
    */
   blob(
     cx: number, cy: number, cz: number,
     rx: number, ry: number, rz: number,
-    segs: number, rings: number, squashBottom = 0, yaw = 0,
+    segs: number, rings: number, squashBottom = 0, yaw = 0, smooth = false,
   ): void {
     const n = Math.max(4, Math.round(segs)), m = Math.max(2, Math.round(rings));
+    const point = (c: number, s: number, y: number): [number, number, number] =>
+      [cx + c * rx, cy + y * ry, cz + s * rz];
+    const normal = (c: number, s: number, y: number): [number, number, number] => {
+      let nx = c / Math.max(rx, 1e-4);
+      const sy = y < 0 ? 1 - squashBottom : 1;
+      let ny = y / Math.max(ry * sy * sy, 1e-4);
+      let nz = s / Math.max(rz, 1e-4);
+      const len = Math.max(1e-6, Math.hypot(nx, ny, nz));
+      nx /= len; ny /= len; nz /= len;
+      return [nx, ny, nz];
+    };
     for (let j = 0; j < m; j++) {
       const p0 = Math.PI * (j / m), p1 = Math.PI * ((j + 1) / m);
       const y0raw = -Math.cos(p0), y1raw = -Math.cos(p1);
@@ -593,6 +653,16 @@ export class PropMesh {
         const c0 = Math.cos(a0), z0 = Math.sin(a0), c1 = Math.cos(a1), z1 = Math.sin(a1);
         const sm = (s0 + s1) * 0.5;
         const ox = (c0 + c1) * 0.5 * sm, oz = (z0 + z1) * 0.5 * sm, oy = (y0 + y1) * 0.5;
+        if (smooth) {
+          const p00 = point(c0 * s0, z0 * s0, y0), n00 = normal(c0 * s0, z0 * s0, y0);
+          const p01 = point(c1 * s0, z1 * s0, y0), n01 = normal(c1 * s0, z1 * s0, y0);
+          const p11 = point(c1 * s1, z1 * s1, y1), n11 = normal(c1 * s1, z1 * s1, y1);
+          const p10 = point(c0 * s1, z0 * s1, y1), n10 = normal(c0 * s1, z0 * s1, y1);
+          if (j === 0) this.smoothTri(p00, n00, p10, n10, p11, n11);
+          else if (j === m - 1) this.smoothTri(p00, n00, p01, n01, p11, n11);
+          else this.smoothQuad(p00, n00, p01, n01, p11, n11, p10, n10);
+          continue;
+        }
         if (j === 0) {
           this.tri(
             cx, cy + y0 * ry, cz,
@@ -1036,8 +1106,8 @@ function chamferFor(minDim: number): number {
  * fronds, shrub twigs): a blade is 0.20 m wide, ~6 px on screen, and a colour
  * step across a 6 px card is the per-pixel noise the rule forbids.
  */
-const FOLIAGE_FACET_VALUE = 0.14;
-const FOLIAGE_FACET_HUE_DEG = 6;
+const FOLIAGE_FACET_VALUE = 0.015;
+const FOLIAGE_FACET_HUE_DEG = 0.8;
 
 /* ---- canopy -------------------------------------------------------------- */
 
@@ -1082,24 +1152,20 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
    *              hull fill      enclosed sky      triangles
    *   before     98.7-100%      0.0% on EVERY      688
    *   branches   55.2-79.7%     3.1-18.8%          920-1088
-   *   current    same topology  same open crown    1454-1664
+   *   branch pass same topology same open crown    1454-1664
    *
    * "Enclosed sky" is empty silhouette area the border flood-fill cannot
    * reach — a hole you see the sky through, not a notch in the rim. Before,
    * there was not one on any seed, which is what convex-by-construction means.
    *
-   * Lobe facets are ~2*pi*0.85/7 = 0.76 m, ~25 px at 01 — still a crisp,
-   * crease-bounded shape carrying one flat colour, but no longer a visibly
-   * hexagonal crown at the close terrain camera. Four vertical rings soften
-   * the horizon line while preserving enough facets for `facetJitter` to model
-   * broad leaf planes. Do NOT smooth these normals: shared vertices delete the
-   * jitter and a smooth-shaded lobe in one flat olive is the balloon this
-   * replaced.
+   * The modern pass keeps the open branch topology but raises each lobe to
+   * twelve sides and seven rings with analytic ellipsoid normals. Vertices stay split,
+   * so the restrained seeded paint variation survives without turning the
+   * lighting into a low-poly checkerboard.
    *
-   * Current cost, including the branch-whorl conifer below: the seed-3
-   * temperate library moves 20 118 -> 23 052 triangles (+14.6%) and adds zero
-   * draw calls — same InstancedMeshes, same material, same program. That is the
-   * explicit quality trade the higher-detail vegetation pass takes.
+   * The modern lobes spend additional triangles only in the shared source mesh
+   * and add zero draw calls — same InstancedMeshes, same material, same program.
+   * That is the explicit quality trade the higher-detail vegetation pass takes.
    */
   const cy = trunkH + canopyR * 0.62;
   const crownRy = canopyR * 0.88;
@@ -1181,7 +1247,15 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
       // are for — form, not confetti.
       const t = (ly - (cy - crownRy)) / (2 * crownRy);
       m.color(tones[t > 0.66 ? 0 : t > 0.38 ? 1 : 2]);
-      m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr, 7, 4, 0, a + k * 0.73);
+      // A small seeded yaw break keeps neighbouring high-resolution lobes from
+      // landing facet-for-facet on one plane when their crowns interpenetrate.
+      // The overlap is desirable; co-planar triangles (and their z-fighting)
+      // are not.
+      // Keep each cluster mildly anisotropic. Besides producing a less
+      // spherical crown, the non-matching curvature prevents intersecting
+      // lobes from sharing a depth plane over a visible patch.
+      m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr * rng.range(0.84, 0.98), 12, 7, 0,
+        a + k * 0.73 + rng.range(-0.13, 0.13), true);
     }
     m.noFacetJitter();
   }
@@ -1258,7 +1332,7 @@ function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
           padR * rng.range(1.05, 1.28),
           padR * rng.range(0.42, 0.60),
           padR * rng.range(0.82, 1.08),
-          7, 3, 0.18, a + pad * 0.91 + tier * 0.43,
+          10, 6, 0.18, a + pad * 0.91 + tier * 0.43, true,
         );
       }
     }
@@ -1278,7 +1352,7 @@ function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
       height - 1.45 + t * 1.25,
       Math.sin(a) * r * 0.32,
       r, r * 0.78, r,
-      7, 3, 0.12, a,
+      10, 6, 0.12, a, true,
     );
   }
   m.noFacetJitter();
@@ -1308,7 +1382,8 @@ function buildPalm(m: PropMesh, rng: Rng, p: PropPalette): void {
   m.color(p.trunkDark).sway(SCATTER_WIND.canopyAmplitude * 0.6, height * 0.5, height);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU;
-    m.blob(x + Math.cos(a) * 0.28, height - 0.22, Math.sin(a) * 0.28, 0.22, 0.22, 0.22, 8, 4, 0);
+    m.blob(x + Math.cos(a) * 0.28, height - 0.22, Math.sin(a) * 0.28,
+      0.22, 0.22, 0.22, 10, 5, 0, 0, true);
   }
 }
 
@@ -1330,7 +1405,7 @@ function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
     m.blob(
       Math.cos(a) * d, h * (i === 0 ? 0.46 : rng.range(0.34, 0.78)), Math.sin(a) * d,
       lr * rng.range(0.8, 1.25), h * rng.range(0.30, 0.50), lr * rng.range(0.8, 1.25),
-      8, 4, 0.5,
+       12, 7, 0.5, 0, true,
     );
   }
   // Long twigs breaking the outline. These are what stop a shrub from reading
@@ -1364,7 +1439,7 @@ function buildHedge(m: PropMesh, rng: Rng, p: PropPalette): void {
   for (let i = 0; i < n; i++) {
     const t = (i + 0.5) / n;
     m.blob((t - 0.5) * len, h + rng.range(-0.06, 0.10), rng.range(-w * 0.28, w * 0.28),
-      rng.range(0.20, 0.34), rng.range(0.12, 0.22), rng.range(0.20, 0.32), 6, 3, 0.4);
+      rng.range(0.20, 0.34), rng.range(0.12, 0.22), rng.range(0.20, 0.32), 10, 6, 0.4, 0, true);
   }
 }
 

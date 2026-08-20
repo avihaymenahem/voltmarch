@@ -71,14 +71,15 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
     const tree = lib.get('tree')!;
     const autumn = lib.get('treeAutumn')!;
     const conifer = lib.get('conifer')!;
-    // Broadleaf lobes use seven sides and four vertical rings; dropping back
-    // to the old six-by-three blobs lands around 1000 triangles.
-    expect(tree.triangles).toBeGreaterThan(1400);
-    expect(autumn.triangles).toBeGreaterThan(1400);
+    // Modern broadleaf lobes use twelve sides, seven rings and smooth analytic
+    // normals. The open branch layout still carries the silhouette; the extra
+    // geometry removes the polygonal lighting visible in the close camera.
+    expect(tree.triangles).toBeGreaterThan(4000);
+    expect(autumn.triangles).toBeGreaterThan(4000);
     // The old four-cone conifer was under 100 triangles. Branch whorls, woody
     // limbs and separated needle pads are intentionally a real hero mesh.
-    expect(conifer.triangles).toBeGreaterThan(1800);
-    expect(conifer.triangles).toBeLessThan(2400);
+    expect(conifer.triangles).toBeGreaterThan(5000);
+    expect(conifer.triangles).toBeLessThan(8000);
   });
 
   it('gives every type geometry with all five attributes and an index', () => {
@@ -98,17 +99,26 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
     }
   });
 
-  it('is FLAT shaded — no smooth 32-segment tubes (scorecard #40)', () => {
-    for (const pg of lib.all()) {
+  it('keeps hard props faceted while foliage uses smooth organic normals', () => {
+    const flat = (pg: ReturnType<PropLibrary['get']>): boolean => {
+      if (pg === undefined) return false;
       const idx = pg.geometry.getIndex()!;
       const nrm = pg.geometry.getAttribute('normal');
-      // Sample the first 200 triangles; all three corners must share a normal.
-      const tris = Math.min(200, idx.count / 3);
+      const tris = idx.count / 3;
       for (let t = 0; t < tris; t++) {
         const a = idx.getX(t * 3), b = idx.getX(t * 3 + 1), c = idx.getX(t * 3 + 2);
-        expect(nrm.getX(a), pg.def.key).toBeCloseTo(nrm.getX(b), 5);
-        expect(nrm.getY(a), pg.def.key).toBeCloseTo(nrm.getY(c), 5);
+        if (Math.abs(nrm.getX(a) - nrm.getX(b)) > 1e-5
+          || Math.abs(nrm.getY(a) - nrm.getY(c)) > 1e-5
+          || Math.abs(nrm.getZ(b) - nrm.getZ(c)) > 1e-5) return false;
       }
+      return true;
+    };
+
+    for (const key of ['streetLamp', 'boulder', 'crateStack', 'barrel']) {
+      expect(flat(lib.get(key)), key).toBe(true);
+    }
+    for (const key of ['tree', 'treeAutumn', 'conifer', 'bush']) {
+      expect(flat(lib.get(key)), key).toBe(false);
     }
   });
 

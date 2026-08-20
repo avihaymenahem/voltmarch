@@ -271,7 +271,7 @@ export type BiomeName = 'temperate' | 'desert' | 'snow' | 'urban';
 /**
  * TEMPERATE — the shipping default.
  *
- * Grass `#6E6814` is hue 56, saturation 0.82, value 0.43 — inside all three
+ * Grass `#746F18` is hue 57, saturation 0.79, value 0.45 — inside all three
  * of scorecard #9's bands (hue 55-75 / S 0.78-0.90 / V 0.30-0.55) and, unlike
  * the old `#5E6418`, on the RED side of the hue so the blue hemisphere fill
  * and the blue-grey fog cannot walk it into the emerald window. It looks
@@ -300,21 +300,26 @@ const TEMPERATE: BiomeDef = {
 
   rockSlope: 0.30,
   sandBandMetres: 1.5,
-  sandPatchAmount: 0.10,
+  // Temperate ground is a grass field with authored wear, not three equal
+  // camouflage colours. Sand stays near water and appears only as rare dry
+  // drifts inland; dirt supplies the quieter secondary mass.
+  sandPatchAmount: 0.04,
   dirtPatchMetres: 17,
-  dirtPatchAmount: 0.22,
+  dirtPatchAmount: 0.14,
   dirtAltitude: 0.20,
 
   macroMetres: 34,
-  macroStrength: 0.13,
+  // Keep the 34 m layer as regional breakup; the non-repeating splat and the
+  // mesoscale surface field now carry the material-sized visible variation.
+  macroStrength: 0.08,
   macroTint: '#544A26',
   warpMetres: 11.0,
   warpAmplitude: 0.55,
-  cellJitter: 0.038,
+  cellJitter: 0.018,
 
   layers: [
     // 0 Ground — lawn. THE hue-locked layer. r > g by design; see the header.
-    { label: 'grass',    albedo: '#6E6814', shade: '#5E5A12', accent: '#7C761A',
+    { label: 'grass',    albedo: '#746F18', shade: '#615E15', accent: '#837D20',
       roughness: 0.95, tileMetres: 8.0, surface: 'field',
       variation: 0.045, patch: 0.30, seed: 1101 },
     // 1 Dirt — bare earth. Broad damp/dry blotches, no grain.
@@ -344,7 +349,7 @@ const TEMPERATE: BiomeDef = {
 
   cliff: {
     base: '#7A7258', shade: '#463F30', highlight: '#9E9578',
-    capColor: '#6E6814', capMetres: 0.75,
+    capColor: '#746F18', capMetres: 0.75,
     striationMetres: 0.46, courseMetres: 0, relief: 0.55,
     roughness: 0.85, skirtMetres: 1.3,
   },
@@ -508,20 +513,20 @@ const URBAN: BiomeDef = {
 
   rockSlope: 0.34,
   sandBandMetres: 0,
-  sandPatchAmount: 0.09,
+  sandPatchAmount: 0.04,
   dirtPatchMetres: 16,
-  dirtPatchAmount: 0.18,
+  dirtPatchAmount: 0.14,
   dirtAltitude: 0.14,
 
   macroMetres: 28,
-  macroStrength: 0.12,
+  macroStrength: 0.085,
   macroTint: '#4E4A3E',
   warpMetres: 10.0,
   warpAmplitude: 0.45,
-  cellJitter: 0.042,
+  cellJitter: 0.020,
 
   layers: [
-    { label: 'grass',    albedo: '#6E6814', shade: '#5E5A12', accent: '#7C761A',
+    { label: 'grass',    albedo: '#746F18', shade: '#615E15', accent: '#837D20',
       roughness: 0.95, tileMetres: 7.0, surface: 'field',
       variation: 0.045, patch: 0.30, seed: 4101 },
     { label: 'dirt',     albedo: '#9C7B52', shade: '#8A6C48', accent: '#AC8B60',
