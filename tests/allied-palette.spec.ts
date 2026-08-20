@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   RA3_ALLIES, RA3_ALLIED_STRUCTURE, RA3_SOVIET_STRUCTURE, RA3_PAD_PALETTE,
-  UNIT_GREEBLE,
+  UNIT_GREEBLE, UNIT_MATERIAL,
 } from '../src/core/config';
 
 /** Value channel of a `#rrggbb` string, 0..1 — HSV's V, i.e. max(r,g,b). */
@@ -105,6 +105,12 @@ describe('Allied unit ceramic retains shape under the noon key', () => {
   it('keeps core masses behind their applied armour without crushing them', () => {
     expect(UNIT_GREEBLE.primaryMassTint).toBeGreaterThanOrEqual(0.86);
     expect(UNIT_GREEBLE.primaryMassTint).toBeLessThanOrEqual(0.92);
+  });
+
+  it('keeps the geometry-only silhouette lift narrow and subordinate', () => {
+    expect(UNIT_MATERIAL.rimStrength).toBeGreaterThanOrEqual(0.08);
+    expect(UNIT_MATERIAL.rimStrength).toBeLessThanOrEqual(0.18);
+    expect(UNIT_MATERIAL.rimPower).toBeGreaterThanOrEqual(3.5);
   });
 });
 

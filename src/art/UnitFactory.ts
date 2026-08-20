@@ -53,6 +53,7 @@ import {
   unitBounds, validateUnit,
   MassRole, type MassDef, type MassStats, type SlotAreas, type UnitMassList,
 } from './MassList';
+import { applyUnitRim } from './unit-rim';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -650,9 +651,10 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
   mat.onBeforeCompile = (shader) => {
     declareGaitPhase(shader);
     applyGait(shader);
+    applyUnitRim(shader);
     applyShroudTint(shader);
   };
-  mat.customProgramCacheKey = () => 'vm.unit.gait.shroud.v1';
+  mat.customProgramCacheKey = () => 'vm.unit.gait.rim.shroud.v2';
 
   return mat;
 }

@@ -33,6 +33,7 @@ import { BUILDING_ANIM, PROP_MATERIAL, SCATTER_WIND, UNIT_MATERIAL } from '../sr
 import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR } from '../src/art/structure-anim';
 import { createStructureNodeMaterial } from '../src/art/StructureNodeMaterial';
 import { createUnitNodeMaterial } from '../src/art/UnitNodeMaterial';
+import { UNIT_RIM_NODE_MARKER } from '../src/art/unit-rim-nodes';
 import { createPropNodeMaterial } from '../src/world/PropNodeMaterial';
 import { PROP_WIND } from '../src/world/prop-wind';
 import { DITHER_SHIFT_LITERAL } from '../src/render/dither-nodes';
@@ -460,6 +461,16 @@ describe('the unit node material', () => {
     const { vertex, fragment } = compile(mat, 'glsl');
     expect(vertex).toContain(SHROUD_NODE_VARYING);
     expect(fragment).toContain(SHROUD_NODE_VARYING);
+    mat.dispose();
+  });
+
+  it('adds the same geometry-normal silhouette rim as the shipping material', () => {
+    const mat = createUnitNodeMaterial(fakeAtlas(), 'unit.rim');
+    const { fragment } = compile(mat, 'glsl');
+    expect(fragment).toContain(UNIT_RIM_NODE_MARKER);
+    // The perturbed atlas normal would make every seam glow; the geometry
+    // normal keeps this treatment confined to the actual silhouette.
+    expect(fragment).toMatch(/normalViewGeometry/);
     mat.dispose();
   });
 });

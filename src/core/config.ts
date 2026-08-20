@@ -2863,6 +2863,15 @@ export const UNIT_MATERIAL = {
   clearcoat: 0.14,
   clearcoatRoughness: 0.38,
   envMapIntensity: 0.58,
+  /**
+   * A narrow sky-coloured Fresnel lift on the GEOMETRIC silhouette. This is
+   * deliberately separate from the environment specular: it survives on dark
+   * hulls and in crowded battles, but uses the unperturbed normal so panel and
+   * rivet normals never turn into glowing texture noise.
+   */
+  rimColor: '#A9CBE4',
+  rimStrength: 0.18,
+  rimPower: 3.5,
   /** Barrels, tracks, rollers. 12-20% of surface. */
   bareMetalRoughness: 0.38,
   bareMetalMetalness: 0.72,

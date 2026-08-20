@@ -48,6 +48,7 @@ import { applyGaitNodes } from '../render/gait-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import type { GreebleAtlas } from './Greeble';
 import { assertUnitMaterialRuling } from './UnitFactory';
+import { unitRim } from './unit-rim-nodes';
 
 type Vec3N = Node<'vec3'>;
 type Vec4N = Node<'vec4'>;
@@ -143,7 +144,7 @@ class UnitStandardNodeMaterial extends MeshPhysicalNodeMaterial {
   }
 
   override setupOutput(builder: NodeBuilder, outputNode: Vec4N): Vec4N {
-    const out = super.setupOutput(builder, shroudTint(outputNode)) as Vec4N;
+    const out = super.setupOutput(builder, shroudTint(unitRim(outputNode))) as Vec4N;
     return this.dithering === true ? ditherOutput(out) : out;
   }
 }
