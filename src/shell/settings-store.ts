@@ -28,6 +28,8 @@
  * ============================================================================
  */
 
+import { persistentStorage } from '../platform/storage';
+
 /* ==========================================================================
  * 1. SHAPES
  * ========================================================================== */
@@ -1442,7 +1444,7 @@ export function rollSeed(rand: () => number = Math.random): number {
  * 7. THE STORE
  * ========================================================================== */
 
-/** The two localStorage methods this file uses, and nothing else. */
+/** The two platform-storage methods this file uses, and nothing else. */
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -1458,7 +1460,8 @@ export function memoryStorage(): StorageLike {
 }
 
 /**
- * `localStorage` where it exists and is writable, memory otherwise.
+ * Native userData storage in Electron, browser storage on the web, memory
+ * otherwise. The old export name remains for compatibility.
  *
  * The write probe is not paranoia: Safari in private mode exposes
  * `localStorage` and throws `QuotaExceededError` on the first `setItem`, and
@@ -1466,12 +1469,7 @@ export function memoryStorage(): StorageLike {
  */
 export function browserStorage(): StorageLike {
   try {
-    const ls = globalThis.localStorage;
-    if (ls === undefined || ls === null) return memoryStorage();
-    const probe = '__vm_probe__';
-    ls.setItem(probe, '1');
-    ls.removeItem(probe);
-    return ls;
+    return persistentStorage();
   } catch {
     return memoryStorage();
   }

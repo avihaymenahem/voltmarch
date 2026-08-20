@@ -113,6 +113,7 @@
 
 import { el, svgEl } from './Chrome';
 import { makeIcon } from './icons';
+import { persistentStorage } from '../platform/storage';
 
 import './objectives.css';
 
@@ -472,8 +473,8 @@ function isView(value: unknown): value is ObjectivesView {
 
 export function readStoredView(): ObjectivesView {
   try {
-    const store = globalThis.localStorage;
-    const raw = store?.getItem(OBJECTIVES_VIEW_KEY);
+    const store = persistentStorage();
+    const raw = store.getItem(OBJECTIVES_VIEW_KEY);
     if (isView(raw)) return raw;
     if (store?.getItem(OBJECTIVES_LEGACY_COLLAPSE_KEY) === '1') return 'collapsed';
   } catch {
@@ -484,7 +485,7 @@ export function readStoredView(): ObjectivesView {
 
 export function writeStoredView(view: ObjectivesView): void {
   try {
-    globalThis.localStorage?.setItem(OBJECTIVES_VIEW_KEY, view);
+    persistentStorage().setItem(OBJECTIVES_VIEW_KEY, view);
   } catch {
     /* The fold still works this session; it just will not survive a reload. */
   }

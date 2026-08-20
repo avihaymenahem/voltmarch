@@ -8,7 +8,7 @@
  * both: `dev.mjs` points Electron at Vite so an edit is on screen without a
  * rebuild, and this one runs the shipped path — `dist/` served over the custom
  * scheme, exactly as the packaged app does. Use this to check something that
- * only exists on the real path: the CSP, the `app://` storage origin, code
+ * only exists on the real path: the CSP, the `app://` origin, code
  * caching, first-paint timing, or simply that the build works.
  *
  * ----------------------------------------------------------------------------

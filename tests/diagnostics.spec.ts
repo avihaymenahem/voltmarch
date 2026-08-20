@@ -30,8 +30,6 @@
  * ============================================================================
  */
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -67,7 +65,8 @@ import {
 } from '../src/shell/Diagnostics';
 
 import unlockAllSystem, {
-  setSessionUnlockAll, unlockAllActive, unlockAllFromBootFlag,
+  UNLOCK_ALL_STORAGE_KEY, readPersistedUnlockAll, setSessionUnlockAll,
+  unlockAllActive, unlockAllFromBootFlag,
 } from '../src/shell/unlockall.system';
 import progressionSystem from '../src/progression/progression.system';
 import { UnlockGate, isBuildable, setUnlockGate } from '../src/progression/UnlockGate';
@@ -587,8 +586,8 @@ describe('flag decoding', () => {
  * 5b. UNLOCK EVERYTHING
  *
  * `?unlockall` reachable without a URL bar. The interesting properties are all
- * about LIFETIME: it must reach the gate, it must survive a match boot, and it
- * must not survive the page.
+ * about LIFETIME: it must reach the gate, survive a match boot, and persist as
+ * an explicit preference without contaminating earned progression.
  * ========================================================================== */
 
 describe('the unlock-everything toggle', () => {
@@ -650,18 +649,18 @@ describe('the unlock-everything toggle', () => {
     expect(gate.isUnrestricted).toBe(false);
   });
 
-  it('writes nothing anywhere — the safety argument is that it dies with the page', () => {
-    /*
-     * A PERSISTED version of this is `suppressUnlockGate`'s documented leak
-     * with a settings row on it: one match left every later skirmish ungated,
-     * silently. Asserted against the source because the failure would be an
-     * ADDED storage call, and there is no runtime signal for "somebody started
-     * persisting this".
-     */
-    const src = readFileSync(
-      fileURLToPath(new URL('../src/shell/unlockall.system.ts', import.meta.url)), 'utf8',
-    ).replace(/\/\*[\s\S]*?\*\//g, ' ');
-    expect(src).not.toMatch(/localStorage|sessionStorage|settings\.patch|SettingsStore/);
+  it('persists the explicit preference without writing earned progression', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string): string | null => values.get(key) ?? null,
+      setItem: (key: string, value: string): void => { values.set(key, value); },
+      removeItem: (key: string): void => { values.delete(key); },
+    };
+    setSessionUnlockAll(true, storage);
+    expect(values.get(UNLOCK_ALL_STORAGE_KEY)).toBe('1');
+    expect(readPersistedUnlockAll(storage)).toBe(true);
+    setSessionUnlockAll(false, storage);
+    expect(values.has(UNLOCK_ALL_STORAGE_KEY)).toBe(false);
   });
 
   it('is reported in the export, because it changes what game is being described', () => {

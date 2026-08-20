@@ -10,7 +10,7 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 4` is a VERSION, not a boolean, and the accessor in
+ * `bridge: 5` is a VERSION, not a boolean, and the accessor in
  * `src/platform/desktop.ts` tests it by equality. An older packaged preload
  * running against a newer bundle therefore degrades to WEB BEHAVIOUR rather
  * than calling a method that does not exist — the same discipline as
@@ -36,10 +36,18 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { DisplayPatch, DisplayState } from './display';
 
+interface SyncReply<T = undefined> { ok: boolean; value?: T; error?: string }
+
+function sync<T>(channel: string, ...args: unknown[]): T {
+  const reply = ipcRenderer.sendSync(channel, ...args) as SyncReply<T>;
+  if (reply?.ok !== true) throw new Error(reply?.error ?? 'Desktop storage failed.');
+  return reply.value as T;
+}
+
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 4,
+    bridge: 5,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -61,6 +69,17 @@ contextBridge.exposeInMainWorld(
 
     /** Open the folder replays and screenshots are written to. */
     revealUserData: (): Promise<void> => ipcRenderer.invoke('vm:reveal-user-data'),
+
+    /** Native userData storage. Synchronous because existing stores hydrate at construction. */
+    storageGet: (key: string): string | null => sync<string | null>('vm:storage-get', key),
+    storageSet: (key: string, value: string): void => { sync('vm:storage-set', key, value); },
+    storageRemove: (key: string): void => { sync('vm:storage-remove', key); },
+
+    /** Binary snapshots live as files, never IndexedDB values. */
+    saveWrite: (slot: string, bytes: Uint8Array): Promise<void> =>
+      ipcRenderer.invoke('vm:save-write', slot, bytes),
+    saveRead: (slot: string): Promise<Uint8Array | null> => ipcRenderer.invoke('vm:save-read', slot),
+    saveRemove: (slot: string): Promise<void> => ipcRenderer.invoke('vm:save-remove', slot),
 
     /*
      * WINDOW MODE, SIZE, MONITOR AND THE TWO SWITCH-BACKED SETTINGS.

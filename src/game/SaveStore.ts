@@ -5,7 +5,7 @@
  * WHERE THE BYTES LIVE.
  *
  * ----------------------------------------------------------------------------
- * DESIGN CALL 2 — INDEXEDDB FOR THE BLOB, localStorage FOR THE INDEX
+ * WEB FALLBACK — INDEXEDDB FOR THE BLOB, localStorage FOR THE INDEX
  * ----------------------------------------------------------------------------
  * The request said "localStorage or something". The measured numbers say the
  * split below, and the reasoning is worth keeping because the obvious answer is
@@ -30,7 +30,9 @@
  * JSON document in `localStorage`, read synchronously, and `list()` is a plain
  * function that returns immediately. Only opening a save touches the database.
  *
- * Both halves degrade. No IndexedDB (private browsing, an old WebView) falls
+ * Electron does not use either half: its preload exposes native files under
+ * `userData/storage`, selected before browser capability detection. The web
+ * target still degrades. No IndexedDB (private browsing, an old WebView) falls
  * back to base64 in `localStorage`; no `localStorage` either (the Node test
  * environment) falls back to memory. `backendName` reports which, and the game
  * says so in the boot log rather than silently losing saves.
@@ -46,6 +48,8 @@
  */
 
 import type { SaveMeta, SaveResult } from './SaveGame';
+import { desktopBridge, type DesktopBridge } from '../platform/desktop';
+import { persistentStorage, type PersistentStorage } from '../platform/storage';
 
 /* ==========================================================================
  * 1. SLOT NAMING
@@ -118,7 +122,7 @@ export interface SaveSlotInfo {
   extra: unknown;
 }
 
-export type SaveBackendName = 'indexeddb' | 'localstorage' | 'memory';
+export type SaveBackendName = 'filesystem' | 'indexeddb' | 'localstorage' | 'memory';
 
 /** The blob half. Async because the good implementation is. */
 export interface SaveBackend {
@@ -130,7 +134,7 @@ export interface SaveBackend {
 
 /** The index half. Synchronous, because the load screen must render at once. */
 export interface IndexStorage {
-  readonly name: 'localstorage' | 'memory';
+  readonly name: 'filesystem' | 'localstorage' | 'memory';
   load(): string | null;
   store(json: string): void;
 }
@@ -291,11 +295,54 @@ export class IndexedDbBackend implements SaveBackend {
   }
 }
 
+/** Electron userData files. Browser storage is consulted only to migrate an old slot. */
+export class DesktopFileBackend implements SaveBackend {
+  readonly name: SaveBackendName = 'filesystem';
+  private legacy: SaveBackend | null | undefined;
+
+  constructor(
+    private readonly bridge: DesktopBridge,
+    private readonly legacyFactory: (() => SaveBackend) | null = null,
+  ) {}
+
+  private legacyStore(): SaveBackend | null {
+    if (this.legacy === undefined) this.legacy = this.legacyFactory?.() ?? null;
+    return this.legacy;
+  }
+
+  async write(slot: string, bytes: Uint8Array): Promise<void> {
+    await this.bridge.saveWrite(slot, bytes);
+  }
+
+  async read(slot: string): Promise<Uint8Array | null> {
+    const native = await this.bridge.saveRead(slot);
+    const legacy = native === null ? this.legacyStore() : null;
+    if (native !== null || legacy === null) return native;
+    const old = await legacy.read(slot);
+    if (old !== null) {
+      await this.bridge.saveWrite(slot, old);
+      await legacy.remove(slot);
+    }
+    return old;
+  }
+
+  async remove(slot: string): Promise<void> {
+    await this.bridge.saveRemove(slot);
+  }
+}
+
 class LocalStorageIndex implements IndexStorage {
   readonly name = 'localstorage' as const;
   constructor(private readonly ls: Storage) {}
   load(): string | null { return this.ls.getItem(LS_INDEX_KEY); }
   store(json: string): void { this.ls.setItem(LS_INDEX_KEY, json); }
+}
+
+class DesktopFileIndex implements IndexStorage {
+  readonly name = 'filesystem' as const;
+  constructor(private readonly storage: PersistentStorage) {}
+  load(): string | null { return this.storage.getItem(LS_INDEX_KEY); }
+  store(json: string): void { this.storage.setItem(LS_INDEX_KEY, json); }
 }
 
 class MemoryIndex implements IndexStorage {
@@ -328,8 +375,7 @@ function indexedDbOrNull(): IDBFactory | null {
   }
 }
 
-/** Pick the best available blob backend. */
-export function detectBackend(): SaveBackend {
+function detectWebBackend(): SaveBackend {
   const idb = indexedDbOrNull();
   if (idb !== null) return new IndexedDbBackend(idb);
   const ls = localStorageOrNull();
@@ -337,8 +383,17 @@ export function detectBackend(): SaveBackend {
   return new MemoryBackend();
 }
 
+/** Pick the best available blob backend. Native files always win on desktop. */
+export function detectBackend(): SaveBackend {
+  const desktop = desktopBridge();
+  return desktop !== null
+    ? new DesktopFileBackend(desktop, detectWebBackend)
+    : detectWebBackend();
+}
+
 /** Pick the best available index storage. */
 export function detectIndexStorage(): IndexStorage {
+  if (desktopBridge() !== null) return new DesktopFileIndex(persistentStorage());
   const ls = localStorageOrNull();
   return ls !== null ? new LocalStorageIndex(ls) : new MemoryIndex();
 }

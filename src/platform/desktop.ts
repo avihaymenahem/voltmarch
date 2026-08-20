@@ -37,8 +37,8 @@
  */
 
 /**
- * 1 -> 2 when the display methods landed; 2 -> 3 when `alwaysOnTop` joined
- * `DesktopDisplayState` and `DesktopDisplayPatch`.
+ * 1 -> 2 when display methods landed; 2 -> 3 when `alwaysOnTop` joined;
+ * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage.
  *
  * BUMP THIS whenever a method is added, removed or CHANGES SHAPE, and bump the
  * matching literal in `desktop/src/preload.ts`. They are checked against each
@@ -54,7 +54,7 @@
  * as off. Equality makes that degrade to web behaviour instead — no Display
  * section at all, which is visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 5;
 
 export type WindowMode = 'windowed' | 'fullscreen';
 
@@ -185,6 +185,12 @@ export interface DesktopBridge {
    */
   minimize(): void;
   revealUserData(): Promise<void>;
+  storageGet(key: string): string | null;
+  storageSet(key: string, value: string): void;
+  storageRemove(key: string): void;
+  saveWrite(slot: string, bytes: Uint8Array): Promise<void>;
+  saveRead(slot: string): Promise<Uint8Array | null>;
+  saveRemove(slot: string): Promise<void>;
   displayState(): Promise<DesktopDisplayState>;
   setDisplayState(patch: DesktopDisplayPatch): Promise<DesktopDisplayState>;
   relaunch(): void;

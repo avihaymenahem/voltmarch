@@ -41,11 +41,8 @@ that puts desktop into CI, and not before. This is the identical trap CLAUDE.md 
 **1. `app://`, not `file://`.** A custom scheme registered `standard + secure + supportFetchAPI +
 codeCache`. Each privilege is load-bearing and each failure is silent:
 
-- `standard` — Electron disables `localStorage`/`indexedDB` for non-standard schemes, and those APIs
-  appear 66 times across 20 files here. Without it `SaveStore.detectBackend()` returns an
-  `IndexedDbBackend` that throws at *write* time (it only checks the global exists, it never calls
-  `open()`), while `detectIndexStorage()` — which has no IndexedDB tier at all — falls to
-  `MemoryIndex`. Signature: **saves error on write, and the save list is empty next launch.**
+- `standard` — gives the custom scheme normal origin semantics and lets bridge v5 import old
+  renderer state once. Active desktop persistence no longer uses that origin.
 - `secure` — `navigator.gpu` is `[SecureContext]`-gated. Without it `?gpu=webgpu` is permanently
   unreachable through `raiseGpuFailure`, i.e. the 1.74–1.89× faster renderer is dead on desktop.
 - `supportFetchAPI` — the 184 Ogg files. A failure degrades to the synthesised bank, not to silence.
@@ -83,6 +80,11 @@ and downloads nothing extra.
 
 Two things about that section are worth knowing before changing it.
 
+All renderer-owned persistent state uses the native bridge. Small versioned records share
+`userData/storage/state.json`; binary snapshots are individual files under
+`userData/storage/saves/`. The browser build keeps localStorage/IndexedDB as its web fallback.
+Electron selects `filesystem` first and only consults the old stores to import a pre-v5 value.
+
 **There are two window modes, not three, and it is a platform fact.** Chromium has no
 mode-setting path, so `setFullScreen(true)` is a borderless window sized to the monitor. Offering
 both "Fullscreen" and "Borderless Windowed" would be two labels for one behaviour, so the UI ships
@@ -114,7 +116,7 @@ anything on the allowlist in `src/app-url.ts`. Unknown flags are dropped.
 `npm test` covers the decision modules and the import boundary with **no Electron binary** — that is
 deliberate, because the desktop target is outside CI and tests needing the binary are the ones that
 rot. `npm run desktop:smoke` covers what only a real Electron can: that the scheme serves the module
-bundle, that IndexedDB `open()` *and its write transaction* complete, that data survives a relaunch,
+bundle, that native state and binary save files survive a relaunch,
 that the texture worker did not silently disable itself, that no CSP violation fired, and that the
 main process and the renderer **agree** about which GPU is active.
 

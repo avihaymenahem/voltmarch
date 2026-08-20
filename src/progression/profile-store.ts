@@ -4,7 +4,7 @@
  * ============================================================================
  * THE PLAYER PROFILE: what has been unlocked, how far every mission has got,
  * and the lifetime record. Follows `src/shell/settings-store.ts` exactly — one
- * localStorage key, one versioned JSON blob, injected storage, and a
+ * platform-storage key, one versioned JSON blob, injected storage, and a
  * normalisation function that is TOTAL: it returns a complete, in-range profile
  * for any input including `null`, a string, an array, or a blob written by a
  * build that does not exist yet.
@@ -57,6 +57,8 @@
  * do not.
  * ============================================================================
  */
+
+import { persistentStorage } from '../platform/storage';
 
 /* ==========================================================================
  * 1. SHAPES
@@ -195,18 +197,12 @@ export function memoryStorage(): StorageLike {
 }
 
 /**
- * `localStorage` where it exists and is writable, memory otherwise. The write
- * probe is not paranoia: Safari in private mode exposes `localStorage` and
- * throws on the first `setItem`.
+ * Native userData storage in Electron, browser storage on the web, memory as a
+ * final fallback. Kept under the historical name for callers outside this file.
  */
 export function browserStorage(): StorageLike {
   try {
-    const ls = (globalThis as { localStorage?: StorageLike }).localStorage;
-    if (ls === undefined || ls === null) return memoryStorage();
-    const probe = '__vm_profile_probe__';
-    ls.setItem(probe, '1');
-    ls.removeItem?.(probe);
-    return ls;
+    return persistentStorage();
   } catch {
     return memoryStorage();
   }

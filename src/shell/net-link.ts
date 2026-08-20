@@ -26,6 +26,7 @@
  */
 
 import { CODE_LENGTH, PROTOCOL_VERSION } from '../net/protocol';
+import { persistentStorage } from '../platform/storage';
 
 /** Length of an invite code, for the input's `maxLength`. */
 export const CODE_LENGTH_HINT = CODE_LENGTH;
@@ -45,7 +46,7 @@ function fromQuery(): string {
 
 function fromStorage(): string {
   try {
-    return localStorage.getItem(STORAGE_KEY) ?? '';
+    return persistentStorage().getItem(STORAGE_KEY) ?? '';
   } catch {
     // Private mode, or storage disabled. Not worth reporting.
     return '';
@@ -110,8 +111,8 @@ export function unavailableReason(): string {
 /** Point this build at a relay, persistently. Used from the console. */
 export function setRelayUrl(url: string): void {
   try {
-    if (url === '') localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, url);
+    if (url === '') persistentStorage().removeItem(STORAGE_KEY);
+    else persistentStorage().setItem(STORAGE_KEY, url);
   } catch {
     // Nothing to do; the query flag still works.
   }

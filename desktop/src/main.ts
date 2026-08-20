@@ -48,6 +48,7 @@ import {
   windowBounds,
 } from './display';
 import type { DisplayInfo, DisplayPatch, DisplayPrefs, DisplayState } from './display';
+import { NativeStorage } from './storage';
 
 /* -------------------------------------------------------------------------- */
 /* 1. Where the web build lives                                                */
@@ -149,6 +150,12 @@ const launchedWith: DesktopSettings = loadSettings();
 /** Mutable current values. `launchedWith` deliberately does not track these. */
 let settings: DesktopSettings = { ...launchedWith };
 let display: DisplayPrefs = loadDisplay();
+let nativeStorage: NativeStorage | null = null;
+
+function storage(): NativeStorage {
+  nativeStorage ??= new NativeStorage(path.join(app.getPath('userData'), 'storage'));
+  return nativeStorage;
+}
 
 /* -------------------------------------------------------------------------- */
 /* 3. Switches — BEFORE ready, or they are a silent no-op                      */
@@ -173,15 +180,10 @@ for (const sw of switchesFor(settings)) {
  * can be called only once", so it belongs at module top level.
  *
  * Every privilege here is load-bearing:
- *   standard        - a real origin. Electron's protocol docs: "By default web
- *                     storage apis (localStorage, sessionStorage, webSQL,
- *                     indexedDB, cookies) are disabled for non standard
- *                     schemes." Those appear 66 times across 20 files here.
- *                     Without it, SaveStore's IndexedDB backend is returned by
- *                     `detectBackend()` and then throws at open() time, while
- *                     `detectIndexStorage()` — which has no IndexedDB tier at
- *                     all — silently falls to MemoryIndex. Signature: saves
- *                     error on write, and the save LIST is empty next launch.
+ *   standard        - a real origin for URL semantics and the one-time import
+ *                     of state from desktop builds that predate native storage.
+ *                     Current settings, profiles and saves use Electron
+ *                     `userData` files and do not depend on Chromium quotas.
  *   secure          - `navigator.gpu` is [SecureContext]-gated. Without it the
  *                     desktop build ships with `?gpu=webgpu` permanently
  *                     unreachable through `raiseGpuFailure` — i.e. the faster
@@ -421,6 +423,21 @@ function installIpc(): void {
   });
   ipcMain.handle('vm:is-fullscreen', (e) => BrowserWindow.fromWebContents(e.sender)?.isFullScreen() ?? false);
   ipcMain.handle('vm:reveal-user-data', () => shell.openPath(app.getPath('userData')));
+  ipcMain.on('vm:storage-get', (e, key: unknown) => {
+    try { e.returnValue = { ok: true, value: storage().getItem(key) }; }
+    catch (err) { e.returnValue = { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.on('vm:storage-set', (e, key: unknown, value: unknown) => {
+    try { storage().setItem(key, value); e.returnValue = { ok: true }; }
+    catch (err) { e.returnValue = { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.on('vm:storage-remove', (e, key: unknown) => {
+    try { storage().removeItem(key); e.returnValue = { ok: true }; }
+    catch (err) { e.returnValue = { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle('vm:save-write', (_e, slot: unknown, bytes: unknown) => storage().writeSave(slot, bytes));
+  ipcMain.handle('vm:save-read', (_e, slot: unknown) => storage().readSave(slot));
+  ipcMain.handle('vm:save-remove', (_e, slot: unknown) => storage().removeSave(slot));
   ipcMain.on('vm:quit', () => app.quit());
   /*
    * MINIMISE, AND THE HTML-FULLSCREEN CASE IS THE ONE THAT MADE THIS NECESSARY.
@@ -602,15 +619,13 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     /*
-     * WHICH ORIGIN, ON EVERY BOOT. Dev mode uses a different STORAGE origin, so
-     * saves, replays and progression live in a separate profile from the
-     * packaged app — usually what you want while developing, and baffling if
-     * you forget. Same reasoning as logging the GPU adapter rather than
-     * trusting the switch: state the thing that is easy to be wrong about.
+     * WHICH ORIGIN, ON EVERY BOOT. Native persistence is shared between dev
+     * and packaged mode through `userData/storage`; the origin only affects
+     * transient web state and legacy import now.
      */
     console.log(
       devOrigin !== null
-        ? `[vm] DEV MODE: loading ${devOrigin} (HMR on, separate save profile, no CSP)`
+        ? `[vm] DEV MODE: loading ${devOrigin} (HMR on, native save profile, no CSP)`
         : `[vm] loading ${ORIGIN} from ${DIST}`,
     );
 

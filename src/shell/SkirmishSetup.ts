@@ -71,7 +71,7 @@
  * that file is owned by another workstream this cycle, and `normalizeSetup`
  * drops fields it does not know about, so routing the choice through it today
  * would silently lose it on the next load. Instead it gets its own
- * `localStorage` key and its own two-line normaliser, both of which are a
+ * platform-storage key and its own two-line normaliser, both of which are a
  * deletion away once `MatchSetup` grows a `startCondition` field: move the
  * default into `defaultSetup()`, read `this.setup.startCondition`, and drop
  * `readStartCondition` / `writeStartCondition` below.
@@ -136,6 +136,7 @@ import {
   withArmyCount,
   type MatchSetup,
 } from './settings-store';
+import { persistentStorage } from '../platform/storage';
 
 import {
   button,
@@ -229,7 +230,7 @@ export function clampCreditsFor(start: StartCondition, credits: number): number 
 /** Read the persisted choice. Total: any failure is the default. */
 export function readStartCondition(): StartCondition {
   try {
-    const raw = globalThis.localStorage?.getItem(START_STORAGE_KEY) ?? null;
+    const raw = persistentStorage().getItem(START_STORAGE_KEY);
     return resolveStartCondition(raw, START_CONDITION_DEFAULT);
   } catch {
     return START_CONDITION_DEFAULT;
@@ -239,7 +240,7 @@ export function readStartCondition(): StartCondition {
 /** Persist the choice. Storage being unavailable is not an error worth raising. */
 export function writeStartCondition(value: StartCondition): void {
   try {
-    globalThis.localStorage?.setItem(START_STORAGE_KEY, value);
+    persistentStorage().setItem(START_STORAGE_KEY, value);
   } catch {
     /* Private mode, full disk, or a webview with storage off. */
   }

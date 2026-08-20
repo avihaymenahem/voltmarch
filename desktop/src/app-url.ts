@@ -114,13 +114,12 @@ export function appUrl(query: URLSearchParams, devOrigin: string | null = null):
  *   - `secure`  — `http://localhost` is a "potentially trustworthy origin" per
  *                 the W3C definition, so it is a SecureContext and
  *                 `navigator.gpu` still exists. `?gpu=webgpu` works in dev.
- *   - `standard`— a real origin, so `localStorage` and `indexedDB` work, which
- *                 is what `SaveStore` needs.
+ *   - `standard`— normal URL semantics and a one-time migration source for
+ *                 desktop builds that predate native userData persistence.
  *
- * WHAT IT COSTS: the storage ORIGIN differs, so dev-mode saves, replays and
- * progression live in a separate profile from the packaged app. That is
- * usually what you want while developing and is occasionally baffling if you
- * forget, so `main.ts` logs the origin on every boot.
+ * Native state and saves are origin-independent now: dev and packaged mode use
+ * the same Electron `userData/storage` directory. The origin only separates
+ * transient web data and the legacy migration source.
  *
  * The response-header CSP is applied by `protocol.handle`, which the dev server
  * bypasses entirely — so dev mode runs WITHOUT the CSP the packaged app

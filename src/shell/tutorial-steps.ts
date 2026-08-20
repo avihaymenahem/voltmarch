@@ -71,6 +71,7 @@ import {
   type ActionDef,
   type StoredBindings,
 } from '../input/ActionCatalogue';
+import { persistentStorage } from '../platform/storage';
 
 /* ==========================================================================
  * 1. THE OBSERVATION RECORD
@@ -725,7 +726,7 @@ export function stepKeyRows(
 /* ==========================================================================
  * 6. PERSISTENCE
  *
- * One key, versioned, in `localStorage` — the same treatment the objectives
+ * One versioned key in platform storage — the same treatment the objectives
  * panel gives its collapse state and for the same reason: the settings store
  * lives in a chunk the HUD is not allowed to depend on, and this is one small
  * record that has to survive a reload.
@@ -791,7 +792,7 @@ export function encodeProgress(p: TutorialProgress): string {
 /** Read the stored record. Storage being unavailable is not an error. */
 export function readTutorialProgress(): TutorialProgress {
   try {
-    return decodeProgress(globalThis.localStorage?.getItem(TUTORIAL_STORAGE_KEY) ?? null);
+    return decodeProgress(persistentStorage().getItem(TUTORIAL_STORAGE_KEY));
   } catch {
     return emptyProgress();
   }
@@ -800,7 +801,7 @@ export function readTutorialProgress(): TutorialProgress {
 /** Write it back. Private mode and a full quota both fail silently. */
 export function writeTutorialProgress(p: TutorialProgress): void {
   try {
-    globalThis.localStorage?.setItem(TUTORIAL_STORAGE_KEY, encodeProgress(p));
+    persistentStorage().setItem(TUTORIAL_STORAGE_KEY, encodeProgress(p));
   } catch {
     /* The tutorial still runs; only the menu hint forgets. */
   }

@@ -42,6 +42,7 @@
 
 import { readProgression, type ProgressionView } from '../ui/Objectives';
 import { unlockGate } from '../progression/UnlockGate';
+import { persistentStorage } from '../platform/storage';
 
 /* ==========================================================================
  * 1. THE CONTROL HALF
@@ -160,8 +161,7 @@ const MIRROR_AI_KEY = 'vm.ai.mirrorUnlocks';
 /** Total: any storage failure (private mode, harness, node) reads as default. */
 function readStoredFlag(key: string, fallback: boolean): boolean {
   try {
-    if (typeof localStorage === 'undefined') return fallback;
-    const raw = localStorage.getItem(key);
+    const raw = persistentStorage().getItem(key);
     return raw === null ? fallback : raw === '1';
   } catch {
     return fallback;
@@ -176,7 +176,7 @@ export function aiMirrorsUnlocks(): boolean {
 /** Set the policy and push it at the live gate immediately. */
 export function setAiMirrorsUnlocks(on: boolean): void {
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(MIRROR_AI_KEY, on ? '1' : '0');
+    persistentStorage().setItem(MIRROR_AI_KEY, on ? '1' : '0');
   } catch {
     // A profile that cannot persist still gets the setting for this session.
   }

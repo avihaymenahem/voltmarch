@@ -109,7 +109,7 @@ export interface RequiredWorld {
  * one, and none of them throw.
  */
 export interface SaveApi {
-  /** Where the bytes go: 'indexeddb', 'localstorage' or 'memory'. */
+  /** Where the bytes go: native 'filesystem' on desktop, web fallback otherwise. */
   readonly backend: SaveBackendName;
 
   /** False before `init()` has finished, or after `dispose()`. */

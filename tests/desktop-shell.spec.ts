@@ -20,8 +20,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 
 import {
   DEFAULT_SETTINGS,
@@ -53,9 +54,32 @@ import {
 } from '../desktop/src/display';
 import type { DisplayInfo } from '../desktop/src/display';
 import { BRIDGE_VERSION } from '../src/platform/desktop';
+import { NativeStorage } from '../desktop/src/storage';
 
 const DESKTOP_SRC = path.resolve(__dirname, '..', 'desktop', 'src');
 const REPO = path.resolve(__dirname, '..');
+
+describe('native desktop storage', () => {
+  it('persists key/value state and opaque save bytes on the filesystem', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'voltmarch-storage-'));
+    try {
+      const a = new NativeStorage(root);
+      a.setItem('voltmarch.settings.v1', '{"version":1}');
+      a.setItem('voltmarch.settings.v1', '{"version":2}');
+      a.writeSave('../manual-slot', new Uint8Array([7, 11, 19]));
+
+      const b = new NativeStorage(root);
+      expect(b.getItem('voltmarch.settings.v1')).toBe('{"version":2}');
+      expect(Array.from(b.readSave('../manual-slot') ?? [])).toEqual([7, 11, 19]);
+      b.removeSave('../manual-slot');
+      expect(b.readSave('../manual-slot')).toBeNull();
+      b.removeItem('voltmarch.settings.v1');
+      expect(new NativeStorage(root).getItem('voltmarch.settings.v1')).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 /* ========================================================================== *
  * 1. FLAGS — the switch policy

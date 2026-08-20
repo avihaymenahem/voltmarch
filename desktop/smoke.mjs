@@ -10,12 +10,9 @@
  *
  * Every check here exists because its failure mode is SILENT:
  *
- *   - A non-`standard` scheme does not throw. `SaveStore.indexedDbOrNull()`
- *     tests only that the global EXISTS — it never calls open() — so
- *     detectBackend() hands back an IndexedDbBackend that throws at write
- *     time, while detectIndexStorage() (which has no IndexedDB tier at all)
- *     falls to MemoryIndex. Signature: saves error on write, and the save LIST
- *     is empty next launch. So this opens a real database.
+ *   - Desktop persistence must use Electron userData rather than Chromium's
+ *     origin-scoped localStorage/IndexedDB. So this writes through the preload,
+ *     closes the process, and verifies both state and save bytes after relaunch.
  *   - A module worker that fails to load does NOT throw from the constructor;
  *     it fires an error event, and TexturePool disables itself. A probe that
  *     checks `spawnTextureWorker() !== null` reports a healthy worker on a
@@ -77,32 +74,21 @@ const secure = await page.evaluate(() => ({
 check(secure.isSecureContext === true, 'renderer is a secure context', secure.origin);
 check(secure.hasGpu === true, 'navigator.gpu is present');
 
-// 3. THE STORAGE GUARD. Open a real database, do not merely observe the global.
+// 3. THE STORAGE GUARD. Exercise the native bridge, including opaque save bytes.
 const storage = await page.evaluate(async () => {
-  const out = { localStorage: false, idbOpen: false, error: '' };
+  const out = { keyValue: false, saveFile: false, backend: '', error: '' };
   try {
-    localStorage.setItem('vm.smoke', '1');
-    out.localStorage = localStorage.getItem('vm.smoke') === '1';
-  } catch (e) { out.error += `localStorage: ${e.message}; `; }
-  try {
-    await new Promise((resolve, reject) => {
-      const req = indexedDB.open('vm-smoke', 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('kv');
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('kv', 'readwrite');
-        tx.objectStore('kv').put(new Uint8Array([1, 2, 3]), 'probe');
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror = () => reject(tx.error ?? new Error('tx failed'));
-      };
-      req.onerror = () => reject(req.error ?? new Error('open failed'));
-    });
-    out.idbOpen = true;
-  } catch (e) { out.error += `indexedDB: ${e.message}`; }
+    window.voltmarch.storageSet('vm.smoke', 'native');
+    out.keyValue = window.voltmarch.storageGet('vm.smoke') === 'native';
+    await window.voltmarch.saveWrite('smoke-slot', new Uint8Array([1, 2, 3]));
+    const bytes = await window.voltmarch.saveRead('smoke-slot');
+    out.saveFile = bytes instanceof Uint8Array && bytes.length === 3 && bytes[2] === 3;
+    out.backend = 'userData/storage';
+  } catch (e) { out.error = e.message; }
   return out;
 });
-check(storage.localStorage, 'localStorage reads and writes');
-check(storage.idbOpen, 'IndexedDB open() + write TRANSACTION COMPLETES', storage.error);
+check(storage.keyValue, 'native userData key/value storage reads and writes', storage.error);
+check(storage.saveFile, 'native save file write + read completes', storage.error);
 
 // 4. The engine actually reached a running state.
 await page.evaluate(() => window.__VM.ready());
@@ -147,24 +133,18 @@ const second = await launch();
 await second.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
 
 const persisted = await second.page.evaluate(async () => {
-  const out = { localStorage: false, idb: false };
-  try { out.localStorage = localStorage.getItem('vm.smoke') === '1'; } catch { /* reported below */ }
+  const out = { keyValue: false, saveFile: false };
   try {
-    out.idb = await new Promise((resolve) => {
-      const req = indexedDB.open('vm-smoke', 1);
-      req.onsuccess = () => {
-        const db = req.result;
-        const get = db.transaction('kv', 'readonly').objectStore('kv').get('probe');
-        get.onsuccess = () => { const v = get.result; db.close(); resolve(v instanceof Uint8Array && v.length === 3); };
-        get.onerror = () => { db.close(); resolve(false); };
-      };
-      req.onerror = () => resolve(false);
-    });
+    out.keyValue = window.voltmarch.storageGet('vm.smoke') === 'native';
+    const bytes = await window.voltmarch.saveRead('smoke-slot');
+    out.saveFile = bytes instanceof Uint8Array && bytes.length === 3 && bytes[0] === 1;
+    window.voltmarch.storageRemove('vm.smoke');
+    await window.voltmarch.saveRemove('smoke-slot');
   } catch { /* reported below */ }
   return out;
 });
-check(persisted.localStorage, 'localStorage SURVIVED a relaunch');
-check(persisted.idb, 'IndexedDB blob SURVIVED a relaunch');
+check(persisted.keyValue, 'native key/value state SURVIVED a relaunch');
+check(persisted.saveFile, 'native save file SURVIVED a relaunch');
 
 await second.app.close();
 

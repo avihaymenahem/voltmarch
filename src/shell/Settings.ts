@@ -561,12 +561,12 @@ export class SettingsScreen implements Screen {
           this.shell.settings.patch({
             graphics: { perfOverlay: defaultSettings().graphics.perfOverlay },
           });
-          // The rest of this tab is session state rather than settings, and it
-          // is restored here anyway: "Restore Defaults" is the obvious place a
+          // Restore Defaults is the obvious place a
           // player looks for the way out of Unlock Everything, and leaving the
           // one control that changes what the game DOES untouched by the button
           // labelled "put it back" would be the wrong surprise. A no-op when
-          // `?unlockall` is on the URL, which the row already says.
+          // `?unlockall` is on the URL, which the row already says. The stored
+          // preference is removed by the same call.
           setSessionUnlockAll(false);
           this.diagFull = false;
           this.renderTab();
@@ -976,11 +976,8 @@ export class SettingsScreen implements Screen {
       /*
        * THREE THINGS IN THE HELP TEXT, AND ALL THREE ARE LOAD-BEARING.
        *
-       *   1. IT ENDS WITH THE SESSION. Not persisted, anywhere — see the header
-       *      of `unlockall.system.ts` for why a saved version of this is the
-       *      `suppressUnlockGate` leak with a settings row on it. A player has
-       *      to be told, or they will assume it stuck and wonder later why the
-       *      padlocks came back.
+       *   1. IT PERSISTS. The player explicitly asked for the setting to survive
+       *      a desktop restart; the toggle is the visible authority for it.
        *   2. THE AI GETS IT TOO. `UnlockGate.mirrorAI` resolves the opponent
        *      against the HUMAN's profile, so this is symmetric by construction
        *      and not a bug — but a player who turns it on and is met with an
@@ -993,8 +990,8 @@ export class SettingsScreen implements Screen {
       bootFlag
         ? 'Forced on by the ?unlockall boot flag on this URL — the toggle cannot turn it off. '
           + 'Reload without the flag to get your real progression back.'
-        : 'Turns off every progression gate for THIS SESSION ONLY — nothing is saved and '
-          + 'nothing is earned, so restarting the game restores your real progression exactly. '
+        : 'Turns off every progression gate and saves that preference for future launches. '
+          + 'Nothing is earned or written into your progression profile. '
           + 'It applies to the AI as well, because the opponent is resolved against your '
           + 'unlocks: expect it to start fielding things you have not seen. On a fresh profile '
           + 'neither side can build a superweapon at all, so this is how you see that content.',
@@ -1323,7 +1320,7 @@ export class SettingsScreen implements Screen {
         iconName: 'info',
         onClick: () => void desktopBridge()?.revealUserData(),
       }),
-      'Saves, replays and the desktop settings file.',
+      'Native profile, settings and save files stored under Electron userData.',
     ));
   }
 

@@ -2109,20 +2109,20 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   which breaks `HardwareCalibration`'s `not-fill-rate-bound` guard — the property CLAUDE.md already
   calls "what makes it safe to ship on hardware nobody here owns" — and `graphics.calibrated` is
   sticky, so the damage persists. `--enable-zero-copy` is not a Chromium switch at all.
-- **`app://`, NEVER `file://`, and `standard: true` is what keeps saves alive.** Electron disables
-  web storage for non-standard schemes. Without it `SaveStore.detectBackend()` hands back an
-  `IndexedDbBackend` that throws at WRITE time — `indexedDbOrNull()` only tests that the global
-  exists, it never calls `open()` — while `detectIndexStorage()` has no IndexedDB tier and falls to
-  `MemoryIndex`. Signature: saves error on write and the list is empty next launch. `secure: true` is
-  equally load-bearing: `navigator.gpu` is `[SecureContext]`-gated, so without it `?gpu=webgpu` is
-  permanently unreachable and the faster renderer is dead on desktop.
+- **`app://`, NEVER `file://`; persistence itself is native as of bridge v5.** `standard: true`
+  remains for normal origin semantics and one-time migration from older desktop builds, but active
+  desktop state is `userData/storage/state.json` and save snapshots are `.vms` files under
+  `userData/storage/saves/`. `SaveStore` selects `filesystem` before it probes IndexedDB or
+  localStorage; those are web fallbacks only. `secure: true` is still load-bearing:
+  `navigator.gpu` is `[SecureContext]`-gated, so without it `?gpu=webgpu` is permanently unreachable
+  and the faster renderer is dead on desktop.
 - **A DENY-ALL `will-navigate` HANDLER BREAKS STARTING A MATCH.** `Shell.hardLaunch` calls
   `location.assign`, and the GPU-failure panel's two buttons call `location.replace`. All three are
   renderer-initiated, so they DO fire the event. And never compare `.origin` — Node's URL parser
   returns the string `'null'` for `app://voltmarch/x`, because it knows nothing about a
   privileged-scheme registration.
 - **THE DESKTOP TARGET IS OUTSIDE CI, SO EVERY DECISION LIVES OUTSIDE `main.ts`.**
-  `desktop/src/{flags,app-url,paths,display}.ts` import no electron and are tested by
+  `desktop/src/{flags,app-url,paths,display,storage}.ts` import no electron and are tested by
   `tests/desktop-shell.spec.ts` in the ordinary gate, including the path-traversal guard and an
   import-boundary check that fails if the shell ever reaches into `src/`. Only the wiring needs a
   binary, and that is `npm run desktop:smoke`.
@@ -2140,7 +2140,8 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   `desktop/`, so the IPC shapes are declared on both sides and `tests/desktop-shell.spec.ts`
   compares the two declarations rather than letting an import paper over the boundary.
 
-  **`bridge` is a VERSION and the check is EQUALITY** — it went 1 → 2 with these methods. A bump on
+  **`bridge` is a VERSION and the check is EQUALITY** — v5 added native key/value and binary-save
+  capabilities. A bump on
   one side only makes the game fall silently back to web behaviour: no Display section, no error,
   nothing in the console. Correct at runtime, awful to debug, so the two literals are checked
   against each other in the gate. The accessor the preload's own header had been describing since
@@ -2164,9 +2165,10 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
 -  **WHAT THE WRAPPER DOES NOT BUY, so nobody re-derives it.** Electron 43 is Chromium M150 — the
   same V8, the same ANGLE, the same Dawn — so there is no "native performance" here and **adapter
   selection is the only real speed lever**. `performance.now()` is clamped to 100 µs in BOTH
-  targets. There is no exclusive fullscreen to get. The 5 MB localStorage quota was already
-  escaped: `SaveStore` puts blobs in IndexedDB, and the real storage win is a folder the player
-  can open, not headroom. Shader-cache warming is real but small, because `Bootstrap.ts` already
+  targets. There is no exclusive fullscreen to get. Native userData storage now removes Chromium
+  quota/eviction semantics from the desktop target and gives saves a folder the player can open;
+  it is a reliability win, not a render-performance one. Shader-cache warming is real but small,
+  because `Bootstrap.ts` already
   front-loads compilation with `.compile()` — **do not put a number on it in any doc until
   somebody times boot-to-curtain-drop with the cache deleted against warm.** And one risk runs the
   other way: **Electron's Chromium lags Chrome by two to three majors even when fully current**,

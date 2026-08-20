@@ -15,25 +15,13 @@
  * it is not a tool.
  *
  * ----------------------------------------------------------------------------
- * IT IS SESSION STATE, IN MEMORY, AND THAT IS THE WHOLE SAFETY ARGUMENT.
+ * IT IS AN EXPLICIT, PERSISTED PLAYER PREFERENCE.
  * ----------------------------------------------------------------------------
- * Not persisted. Not in `SettingsStore`, not in `localStorage`, not next to the
- * profile. One module-level boolean that dies with the page.
- *
- * The alternative was considered and rejected on a documented precedent.
- * `suppressUnlockGate` — the PvP hammer — leaked exactly once, and the symptom
- * was that ONE multiplayer match left EVERY LATER SKIRMISH ungated for the rest
- * of the session, silently, with nothing on screen to say so.
- * `Shell.startMatch` now clears it for that reason. A PERSISTED "unlock
- * everything" is that same bug with a settings row on it and a lifetime of
- * forever: a player who forgot they flipped it would go on playing an ungated
- * game across reboots, would never be shown a locked cameo again, and the only
- * evidence would be a toggle six clicks deep on a tab they opened once.
- *
- * Memory-only makes the failure mode self-correcting — restart the app and the
- * real profile is back — and it matches `?unlockall`'s own contract, which
- * `progression.system.ts` states as "Nothing is persisted, so nothing has to be
- * cleaned up".
+ * The setting is visible in Diagnostics and is intentionally stored separately
+ * from earned progression: enabling it changes what the gate answers, never
+ * writes unlock rewards into the profile. On desktop the preference lives in
+ * Electron userData through the native storage bridge; the web build uses its
+ * platform fallback. Restore Defaults turns it off and removes the key.
  *
  * ----------------------------------------------------------------------------
  * WHY THIS IS A SYSTEM MODULE AND NOT TWO LINES IN THE OPTIONS SCREEN.
@@ -68,9 +56,17 @@ import { Phase } from '../core/types';
 
 import { unlockGate } from '../progression/UnlockGate';
 import { isUnlockAll } from '../progression/progression.system';
+import { persistentStorage, type PersistentStorage } from '../platform/storage';
 
-/** Set by the Diagnostics tab. Dies with the page, by design. */
-let session = false;
+export const UNLOCK_ALL_STORAGE_KEY = 'vm.settings.unlockAll';
+
+export function readPersistedUnlockAll(storage: PersistentStorage = persistentStorage()): boolean {
+  try { return storage.getItem(UNLOCK_ALL_STORAGE_KEY) === '1'; }
+  catch { return false; }
+}
+
+/** Hydrated before the first gate is created. */
+let session = readPersistedUnlockAll();
 
 /**
  * Is everything unlocked right now, and for either reason?
@@ -100,8 +96,17 @@ export function unlockAllFromBootFlag(): boolean {
  * so a session booted with `?unlockall` cannot be half-disarmed into a state
  * neither the flag nor the toggle describes.
  */
-export function setSessionUnlockAll(on: boolean): void {
+export function setSessionUnlockAll(
+  on: boolean,
+  storage: PersistentStorage = persistentStorage(),
+): void {
   session = on;
+  try {
+    if (on) storage.setItem(UNLOCK_ALL_STORAGE_KEY, '1');
+    else storage.removeItem(UNLOCK_ALL_STORAGE_KEY);
+  } catch {
+    // The live session still follows the switch even if disk is unavailable.
+  }
   unlockGate()?.setUnrestricted(unlockAllActive());
 }
 
@@ -116,9 +121,9 @@ export default defineSystem({
     if (!session) return;
     unlockGate()?.setUnrestricted(true);
     console.warn(
-      '[unlockall] Unlock Everything is ON for this session (Options -> Diagnostics). '
+      '[unlockall] Unlock Everything is ON (Options -> Diagnostics). '
       + 'Every gated unit, structure and battlefield is available to you AND to the AI. '
-      + 'Nothing is written to your profile; restart the game to get your real progression back.',
+      + 'The preference is saved, but no unlock reward is written to your profile.',
     );
   },
 });
