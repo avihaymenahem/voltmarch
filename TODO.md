@@ -228,11 +228,12 @@ with no number is untracked, and that is itself the bug.
     **THE FREE ANSWER IS TAKEN (da8e058) AND IT WAS A BIGGER JOB THAN "a wiki line".** Defensive
     already keeps a short retreat (measured: stayed at 28.5 m), so telling players so was the fix —
     but the manual was not silent on stances, it was WRONG about them in four places, and
-    How-to-Play.md contradicted the other three.  was read nowhere when those
-    sentences were written and v2.3.0 wired it. All four are corrected, the aircraft band (31.6 to
-    36.4 m across the four airframes) is on the page, and section 14 of 
-    derives every number instead of the  carve-out that used to protect the false
-    one by citing , which has never existed.
+    How-to-Play.md contradicted the other three. `GUARD_LEASH` was read nowhere when
+    those sentences were written and v2.3.0 wired it. All four are corrected, the aircraft band
+    (31.6 to 36.4 m across the four airframes) is on the page, and section 14 of
+    `wiki-numbers.spec.ts` derives every number instead of the `UNCHECKED_CLAIMS`
+    carve-out that used to protect the false one by citing `tests/stances.spec.ts`,
+    which has never existed.
 
     What is still open here is the two CODE answers. **Cheaper and untested:** make Defensive the SPAWN
     default for `Locomotor.Air` in `Production.ts`; `approach` closes on an explicit attack order
