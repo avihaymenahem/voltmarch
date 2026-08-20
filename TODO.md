@@ -225,9 +225,16 @@ with no number is untracked, and that is itself the bug.
     = **36.4 m**, dragging it to 21.5 m and holding it there. At 25 m and 60 m it stays put. So the
     natural gesture fails and the player must move it past ~36 m in ONE order.
 
-    Two answers and the cheap one may be enough. **Free:** Defensive already keeps a short retreat
-    (measured: stayed at 28.5 m), so the fix is telling players Defensive is the aircraft stance —
-    a wiki line or a tip row, not code. **Cheaper still and untested:** make Defensive the SPAWN
+    **THE FREE ANSWER IS TAKEN (da8e058) AND IT WAS A BIGGER JOB THAN "a wiki line".** Defensive
+    already keeps a short retreat (measured: stayed at 28.5 m), so telling players so was the fix —
+    but the manual was not silent on stances, it was WRONG about them in four places, and
+    How-to-Play.md contradicted the other three.  was read nowhere when those
+    sentences were written and v2.3.0 wired it. All four are corrected, the aircraft band (31.6 to
+    36.4 m across the four airframes) is on the page, and section 14 of 
+    derives every number instead of the  carve-out that used to protect the false
+    one by citing , which has never existed.
+
+    What is still open here is the two CODE answers. **Cheaper and untested:** make Defensive the SPAWN
     default for `Locomotor.Air` in `Production.ts`; `approach` closes on an explicit attack order
     in every stance but `HoldGround`, so the hull loses nothing but the auto-chase. That is a sim
     rule (stance is hashed world state) — deterministic, but it changes existing replays, and it
