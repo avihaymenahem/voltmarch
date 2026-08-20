@@ -26,11 +26,11 @@ with no number is untracked, and that is itself the bug.
 
 ## Campaign
 
-- **#66 — Phases 6-7. 24 of a planned 37 operations are authored; 13 remain.** Chapters run
-  9 / 5 / 5 / 5 (Soviets, Allies, Pact, Reclamation) for 379 minutes of authored par against a
+- **#66 — Phases 6-7. 26 of a planned 37 operations are authored; 11 remain.** Chapters run
+  9 / 7 / 5 / 5 (Soviets, Allies, Pact, Reclamation) for 416 minutes of authored par against a
   10-hour table. **Hold the Seam is COMPLETE at nine**, so the Soviet campaign — the one the
   campaign screen recommends starting with — can be played end to end. Targets are 9 / 9 / 9 / 10,
-  so what remains is 4 Allied, 4 Pact and 5 Reclamation. **180-320 person-hours for the whole
+  so what remains is 2 Allied, 4 Pact and 5 Reclamation. **180-320 person-hours for the whole
   table, roughly 3-5x the engine**, of which ~35 hours is human play no agent can do. That ratio
   is the single most important fact about the campaign.
 
@@ -39,7 +39,7 @@ with no number is untracked, and that is itself the bug.
   that can be taken LAST, after the table is timed. `tests/campaign-length.spec.ts` arms itself at
   the 37th row and will force the question then regardless.
 
-- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Twenty-three are authored, adversarially verified
+- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Twenty-five are authored, adversarially verified
   and gate-green; exactly one has a play time. Every par past S1 is an author's estimate, and
   `tools/op-harness.mjs`'s header now records how far a harness figure sits from a play time (11:00
   against 15:09.7 on the one operation where both exist). This is not a defect and it is not
