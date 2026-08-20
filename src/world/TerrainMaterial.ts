@@ -138,12 +138,6 @@ export interface TerrainUniforms {
   uMacroScale: { value: number };
   uMacroStrength: { value: number };
   uMacroTint: { value: THREE.Vector3 };
-  /** Ground-space repeat of the packed material-detail field in `uMacro.a`. */
-  uDetailScale: { value: number };
-  /** Apparent relief height, in metres, used by the derivative normal. */
-  uDetailNormal: { value: number };
-  /** Peak-to-peak roughness breakup from the packed material-detail field. */
-  uDetailRoughness: { value: number };
   uWarpScale: { value: number };
   uWarpAmp: { value: number };
   uCellSize: { value: number };
@@ -203,9 +197,6 @@ function createUniforms(): TerrainUniforms {
     uMacroScale: { value: S.uMacroScale },
     uMacroStrength: { value: S.uMacroStrength },
     uMacroTint: { value: v3(TERRAIN_VEC3_DEFAULTS.uMacroTint) },
-    uDetailScale: { value: S.uDetailScale },
-    uDetailNormal: { value: S.uDetailNormal },
-    uDetailRoughness: { value: S.uDetailRoughness },
     uWarpScale: { value: S.uWarpScale },
     uWarpAmp: { value: S.uWarpAmp },
     uCellSize: { value: S.uCellSize },
@@ -273,9 +264,6 @@ uniform float uInvMapSize;
 uniform float uMacroScale;
 uniform float uMacroStrength;
 uniform vec3  uMacroTint;
-uniform float uDetailScale;
-uniform float uDetailNormal;
-uniform float uDetailRoughness;
 uniform float uWarpScale;
 uniform float uWarpAmp;
 uniform float uCellSize;
@@ -370,19 +358,6 @@ float raCrossLen = length( raCross );
 vec3 raFace = raCrossLen > 1e-7 ? raCross / raCrossLen : raSmoothN;
 if ( dot( raFace, raSmoothN ) < 0.0 ) raFace = - raFace;
 bool raIsCliff = raFace.y < uCliffNy && raSmoothN.y < uCliffNy + 0.18;
-
-// MATERIAL RESPONSE, packed into the support texture's previously-unused
-// alpha channel. The derivatives are evaluated before the coherent cliff
-// branch, then converted into a world-space bump normal with the same
-// cotangent-frame construction three uses for a conventional bump map.
-float raDetail = texture2D( uMacro, raXZ / uDetailScale ).a;
-float raDetailH = ( raDetail - 0.5 ) * uDetailNormal;
-vec3 raR1 = cross( raDy, raSmoothN );
-vec3 raR2 = cross( raSmoothN, raDx );
-float raDet = dot( raDx, raR1 );
-float raDetSign = raDet < 0.0 ? -1.0 : 1.0;
-vec3 raGrad = raDetSign * ( dFdx( raDetailH ) * raR1 + dFdy( raDetailH ) * raR2 );
-vec3 raGroundN = normalize( abs( raDet ) * raSmoothN - raGrad );
 
 vec3 raCol = vec3( 0.5 );
 float raRough = 0.9;
@@ -516,10 +491,7 @@ if ( raIsCliff ) {
   raAlbedo *= 1.0 + ( raCell - 0.5 ) * 2.0 * uCellJitter - step( 0.965, raCell ) * uCellJitter * 1.1;
 
   raCol = raAlbedo;
-  // A dry ridge catches a tighter highlight than a packed hollow. Keeping the
-  // travel inside 0.48..0.99 preserves the authored material family while
-  // breaking the single plastic sheet that used to cover the whole map.
-  raRough = clamp( raR + ( raDetail - 0.5 ) * uDetailRoughness, 0.48, 0.99 );
+  raRough = raR;
 
 }
 
@@ -532,8 +504,6 @@ const FRAG_NORMAL = /* glsl */ `
 if ( raIsCliff ) {
   normal = normalize( mix( normal,
     normalize( ( viewMatrix * vec4( raShadeN, 0.0 ) ).xyz ), uFaceMix ) );
-} else {
-  normal = normalize( ( viewMatrix * vec4( raGroundN, 0.0 ) ).xyz );
 }
 `;
 
@@ -823,7 +793,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
   // Bumped with every change to the injected GLSL above. three caches compiled
   // programs by this string, so leaving it stale after editing a chunk hands
   // you the OLD shader in any session that already compiled one.
-  material.customProgramCacheKey = () => 'ra-terrain-v4';
+  material.customProgramCacheKey = () => 'ra-terrain-v3';
 
   function applyBiome(biome: BiomeDef): void {
     applyTerrainBiome(biome, biomeSink);
