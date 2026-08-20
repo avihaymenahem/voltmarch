@@ -46,9 +46,7 @@ import { describe, expect, it } from 'vitest';
 
 import { World } from '../src/core/world';
 import { EntityFlag, EntityKind, Faction } from '../src/core/types';
-import {
-  AUTO_BASE_APRON_RADIUS, CELL, MCV_START_SCATTER_CLEAR_RADIUS,
-} from '../src/core/config';
+import { AUTO_BASE_APRON_RADIUS, CELL, MCV_START_SCATTER_CLEAR_RADIUS } from '../src/core/config';
 import {
   FALLBACK_PROPS, START_CLEAR_RADIUS, START_ESCORT_CLEAR_RADIUS,
   buildScenario, clearScenario, clearDefBindingCache, resolveDefBinding,
