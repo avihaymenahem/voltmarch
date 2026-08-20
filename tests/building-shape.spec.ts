@@ -436,8 +436,16 @@ describe('the shape pass costs no geometry', () => {
    * Parts remain pinned separately below, so this buys silhouette quality but
    * no extra normal-play draw calls. The exact total prevents future edits from
    * quietly treating this user-approved art spend as slack.
+   *
+   * V4 ROOFLINE REBASE — WORKING MACHINERY, NOT ROOF CRATES.
+   * --------------------------------------------------------
+   * The four shared shell families replace their anonymous box vents with
+   * faction-readable mechanisms: Allied turbine nacelles, Soviet paired cast
+   * exhausts, Pact faceted capacitors and Reclamation gantry winches. The
+   * measured +5,972 triangles (+3.27%) is almost entirely radial silhouette;
+   * parts stay at two and all machinery remains below the frozen roofline.
    */
-  const BASELINE_TRIANGLES = 182_376;
+  const BASELINE_TRIANGLES = 188_348;
   const BASELINE_PARTS = 140;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
@@ -473,12 +481,12 @@ describe('the shape pass costs no geometry', () => {
    * structure bloating, the mean catches the whole roster drifting, and neither
    * substitutes for the other.
    *
-   * 2610 is just above the V3 measured 2605.37 over 70. The per-structure
-   * ceiling likewise rounds above the 5818-triangle Sub Pen after primary
-   * cylinder resolution increased; neither number is an open-ended allowance.
+   * 2695 is just above the V4 measured 2690.69 over 70. The per-structure
+   * ceiling likewise rounds above the 6050-triangle Sub Pen after its paired
+   * roof exhausts landed; neither number is an open-ended allowance.
    */
-  const MAX_STRUCTURE_TRIANGLES = 6_000;
-  const MAX_MEAN_TRIANGLES = 2_610;
+  const MAX_STRUCTURE_TRIANGLES = 6_100;
+  const MAX_MEAN_TRIANGLES = 2_695;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);

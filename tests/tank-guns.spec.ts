@@ -7,11 +7,19 @@
 import { describe, expect, it } from 'vitest';
 
 import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
+import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
+import { RECLAIM_UNIT_MASS_LISTS } from '../src/art/Faction4Units';
 import type { MassDef, UnitMassList } from '../src/art/MassList';
 import { PartId } from '../src/core/types';
 
+const ALL_UNITS = [
+  ...UNIT_MASS_LISTS,
+  ...MERIDIAN_UNIT_MASS_LISTS,
+  ...RECLAIM_UNIT_MASS_LISTS,
+] as const;
+
 function unit(key: string): UnitMassList {
-  const list = UNIT_MASS_LISTS.find((u) => u.key === key);
+  const list = ALL_UNITS.find((u) => u.key === key);
   if (list === undefined) throw new Error(`missing unit art '${key}'`);
   return list;
 }
@@ -72,5 +80,43 @@ describe('tracked-tank main-gun geometry', () => {
     expect(barrel.anchor[2] + barrel.size[2] * 0.5).toBeCloseTo(muzzleZ(sledge), 9);
     expect(brake.anchor[2] + brake.size[2] * 0.5).toBeCloseTo(muzzleZ(sledge), 9);
     expect(sledge.sockets.some((s) => s.part === PartId.MuzzleB)).toBe(true);
+  });
+});
+
+describe('Meridian hover-tank weapon geometry', () => {
+  it.each([
+    ['meridian_solarch', 'lance', 'lanceCollar'],
+    ['meridian_skiff', 'barrel', 'muzzleRing'],
+    ['meridian_zenith', 'emitterCrystal', 'emitterCrystal'],
+  ] as const)('%s weapon and muzzle hardware reach the live socket', (key, weaponName, tipName) => {
+    const list = unit(key);
+    const weapon = mass(list, weaponName);
+    const tip = mass(list, tipName);
+    // Meridian gun pieces are authored along local Y and rotated 90 degrees
+    // into +Z, so size[1] is their visible longitudinal length.
+    expect(weapon.anchor[2] + weapon.size[1] * 0.5,
+      `${key}: visible weapon stops behind the muzzle`).toBeCloseTo(muzzleZ(list), 9);
+    expect(tip.anchor[2] + tip.size[1] * 0.5,
+      `${key}: muzzle hardware overshoots or undershoots the socket`).toBeCloseTo(muzzleZ(list), 9);
+  });
+
+  it('joins the Zenith housing directly to the crystal instead of leaving a gap', () => {
+    const zenith = unit('meridian_zenith');
+    const housing = mass(zenith, 'emitterHousing');
+    const crystal = mass(zenith, 'emitterCrystal');
+    expect(housing.anchor[2] + housing.size[1] * 0.5)
+      .toBeCloseTo(crystal.anchor[2] - crystal.size[1] * 0.5, 9);
+  });
+});
+
+describe('Reclamation casemate muzzle hardware', () => {
+  it.each([
+    ['reclaim_grinder', 'emitterRing'],
+    ['reclaim_spitter', 'coilShroud'],
+  ] as const)('%s outer shroud terminates at the live socket', (key, name) => {
+    const list = unit(key);
+    const tip = mass(list, name);
+    expect(tip.anchor[2] + tip.size[1] * 0.5).toBeCloseTo(muzzleZ(list), 9);
+    expect(tip.group).toBe('muzzles');
   });
 });

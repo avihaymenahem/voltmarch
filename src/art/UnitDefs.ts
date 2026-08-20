@@ -526,6 +526,21 @@ function infantry(o: InfantryOpts): UnitMassList {
       gait: { limb: 'arm', pivotY: torsoY + torsoH * 0.30 },
       shape: { topScaleX: 1.14, topScaleZ: 1.10, bottomScaleX: 0.80, bottomScaleZ: 0.84 },
     }),
+    // Hands used to disappear into the ends of the arm prisms, leaving both
+    // factions with the same blunt "peg arm" silhouette.  These ride the arm
+    // pivot so they remain attached throughout the gait.  The Allied cuff is a
+    // compact articulated glove; the Soviet gets a wider, round field gauntlet.
+    coat
+      ? greeble('gauntlet', 'revolve', [W * 0.31, torsoH * 0.18, W * 0.32],
+        [W * 0.52, torsoY - torsoH * 0.37, 0.12], 'bareMetal', {
+          mirrorX: true, group: 'gauntlets', gait: { limb: 'arm', pivotY: torsoY + torsoH * 0.30 },
+          shape: { profile: DRUM_PROFILE, segments: 10 },
+        })
+      : greeble('gauntlet', 'taperedBox', [W * 0.27, torsoH * 0.17, W * 0.30],
+        [W * 0.52, torsoY - torsoH * 0.37, 0.12], 'paintTiny', {
+          mirrorX: true, group: 'gauntlets', gait: { limb: 'arm', pivotY: torsoY + torsoH * 0.30 },
+          shape: { topScaleX: 0.82, topScaleZ: 0.88, bottomScaleX: 1.08, bottomScaleZ: 1.12, shear: 0.02 },
+        }),
   ];
 
   /* -- weapon ------------------------------------------------------------- */
@@ -679,9 +694,13 @@ function infantry(o: InfantryOpts): UnitMassList {
         mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
         shape: { topScaleX: 0.60, topScaleZ: 1.16, shear: W * 0.14 },
       })
-      : greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+      : greeble('boot', 'taperedBox',
+        coat ? [W * 0.46, 0.19, W * 0.70] : [W * 0.38, 0.15, W * 0.60],
+        [W * 0.24, coat ? 0.095 : 0.075, coat ? 0.08 : 0.055], 'paintTiny', {
         mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
-        shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
+        shape: coat
+          ? { topScaleX: 1.18, topScaleZ: 0.96, bottomScaleX: 0.92, bottomScaleZ: 1.08, cornerCut: 0.08 }
+          : { topScaleX: 0.94, topScaleZ: 0.84, bottomScaleX: 1.06, bottomScaleZ: 1.10, shear: -0.05 },
       }),
     plateMass('webbing', MassRole.Greeble, taperOutline(W * 0.90, W * 0.66, 0.86), 0.12,
       [0, torsoY - torsoH * 0.34, 0], undefined, 'paintTiny', { group: 'webbing' }),

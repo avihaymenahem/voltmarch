@@ -600,6 +600,15 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
       gait: { limb: 'arm', pivotY: shoulderY },
       shape: { topScaleX: 0.8, topScaleZ: 0.86 },
     }),
+    // A heavy salvaged wrist clamp gives this faction a mechanical fist rather
+    // than the same anonymous arm ending as the other armies. It rides the
+    // shoulder pivot with the arm and deliberately leans forward.
+    greeble('gauntlet', 'taperedBox', [W * 0.33, torsoH * 0.19, W * 0.35],
+      [W * 0.50, torsoY - torsoH * 0.36, 0.14], 'bareMetal', {
+        mirrorX: true, group: 'gauntlets', gait: { limb: 'arm', pivotY: shoulderY },
+        rot: [0.16, 0, -0.08],
+        shape: { topScaleX: 0.72, topScaleZ: 0.76, bottomScaleX: 1.12, bottomScaleZ: 1.18, shear: 0.04, cornerCut: 0.10 },
+      }),
   ];
 
   // THE VISOR. A canted plate across the face, and the single thing that
@@ -851,7 +860,7 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
           mirrorX: true, rot: [Math.PI * 0.5, 0, 0],
           shape: { segments: 10, rTop: 0.82, capChamfer: 0.03 },
         }),
-        greeble('coilShroud', 'cone', [0.30, 0.26, 0.30], [W * 0.13, gunY, L * 0.48], 'bareMetal', {
+        greeble('coilShroud', 'cone', [0.30, 0.26, 0.30], [W * 0.13, gunY, muzzleZ - 0.13], 'bareMetal', {
           mirrorX: true, rot: [Math.PI * 0.5, 0, 0], group: 'muzzles',
           shape: { segments: 10, rTop: 0.60 },
         }),
@@ -883,7 +892,7 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
         primary('barrel', 'cone', [0.30, L * 0.54, 0.30], [W * 0.05, gunY, L * 0.28], 'bareMetal', {
           rot: [Math.PI * 0.5, 0, 0], shape: { segments: 12, rTop: 0.78 },
         }),
-        greeble('emitterRing', 'cylinder', [0.44, 0.20, 0.44], [W * 0.05, gunY, L * 0.50], 'bareMetal', {
+        greeble('emitterRing', 'cylinder', [0.44, 0.20, 0.44], [W * 0.05, gunY, muzzleZ - 0.10], 'bareMetal', {
           rot: [Math.PI * 0.5, 0, 0], group: 'muzzles',
           shape: { segments: 12, rTop: 0.84, capChamfer: 0.04 },
         }),

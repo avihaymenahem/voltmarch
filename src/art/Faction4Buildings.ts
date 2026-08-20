@@ -533,8 +533,12 @@ function reclaimFrame(fw: number, fh: number, height: number, o: FrameOpts): Fra
   // atlas and they are the honest way to buy back the drawn detail the flat
   // team slabs cost.
   masses.push(
-    box('flue', MassRole.Greeble, [w * 0.16, mainH * 0.44, d * 0.13], [-w * 0.12, deckH + mainH * 1.02, -d * 0.24], 'vent', {
-      group: 'flue', chamfer: 0.06,
+    // A battered, leaning exhaust rather than another square roof box. The
+    // flare and shear are deliberately unlike the Soviet cast stacks: this is
+    // a salvaged duct propped against the frame.
+    girder('flue', [w * 0.17, mainH * 0.48, d * 0.14], [-w * 0.12, deckH + mainH * 1.00, -d * 0.24], {
+      group: 'flue', slot: 'vent', capSlot: 'grille', rot: [0.08, 0, -0.10],
+      shape: { topScaleX: 1.18, topScaleZ: 1.12, bottomScaleX: 0.72, bottomScaleZ: 0.78, shear: 0.06 },
     }),
     // RCL-3, AND IT WAS BROKEN HERE. The rule says the columns and the ties
     // mirror "and NOTHING ELSE DOES"; the header then lists the exemption the
@@ -550,9 +554,22 @@ function reclaimFrame(fw: number, fh: number, height: number, o: FrameOpts): Fra
     box('service', MassRole.Greeble, [w * 0.16, deckH * 0.66, 0.28], [-w * 0.22, deckH * 0.36, d * 0.42], 'stencil', {
       group: 'service', chamfer: 0.05,
     }),
-    box('lamp.hood', MassRole.Greeble, [0.34, 0.22, 0.20], [w * 0.30, deckH + mainH * 0.92, d * 0.40], 'bareMetal', {
-      rot: [0.34, 0, 0], group: 'lamps', chamfer: 0.04,
-    }),
+    // The former lamp hood was another tiny box. A horizontal winch drum hung
+    // below the gantry gives the open frame an identifiable working mechanism
+    // and a circular counter-form against all the girders.
+    cyl('gantry.winch', MassRole.Greeble, [0.62, w * 0.16, 0.62],
+      [w * 0.28, gantryY - 0.30, -d * 0.16], 'bareMetal', {
+        rot: [0, 0, Math.PI * 0.5], segments: 10, topRadius: 0.88,
+        capSlot: 'tread', group: 'jib', chamfer: 0.05,
+      }),
+    box('gantry.cable', MassRole.Greeble, [0.09, mainH * 0.34, 0.09],
+      [w * 0.28, gantryY - mainH * 0.20, -d * 0.16], 'bareMetal', {
+        group: 'jib', chamfer: 0.02,
+      }),
+    box('gantry.hook', MassRole.Greeble, [0.28, 0.38, 0.24],
+      [w * 0.28, gantryY - mainH * 0.38, -d * 0.16], 'hatch', {
+        rot: [0, 0, 0.18], group: 'jib', chamfer: 0.05,
+      }),
   );
 
   // R-T3, and the one place this file was measurably wrong on the first pass.

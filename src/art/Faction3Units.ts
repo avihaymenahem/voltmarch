@@ -546,6 +546,18 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
       mirrorX: true, rot: [0.12, 0, -0.06], gait: shoulder,
       shape: { topScaleX: 1.20, topScaleZ: 1.12, bottomScaleX: 0.74, bottomScaleZ: 0.82 },
     }),
+    // A faceted ceramic gauntlet carries the Pact's hexagonal language into
+    // the hand silhouette. It shares the shoulder pivot with the forearm so it
+    // cannot shear loose when the procedural gait swings.
+    greeble('gauntlet', 'planPrism', [W * 0.29, torsoH * 0.18, W * 0.32],
+      [W * 0.52, torsoY - torsoH * 0.37, 0.12], 'paintTiny', {
+        mirrorX: true, group: 'gauntlets', gait: shoulder, capSlot: 'bareMetal',
+        shape: {
+          plan: hexPlan(W * 0.29, W * 0.32),
+          topScaleX: 0.80, topScaleZ: 0.84,
+          bottomScaleX: 1.08, bottomScaleZ: 1.12,
+        },
+      }),
   ];
 
   if (o.weapon === 'lance') {
@@ -563,10 +575,18 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
       plan: 'hexagon', capSlot: 'paintTiny', group: 'tool',
     }));
   } else {
-    masses.push(greeble('carbine', 'box', [0.10, 0.16, 0.94], [W * 0.44, torsoY - 0.04, 0.24], 'bareMetal', {
-      rot: [0.18, 0.06, 0], group: 'carbine',
+    masses.push(greeble('carbine', 'planPrism', [0.12, 0.17, 0.94], [W * 0.44, torsoY - 0.04, 0.24], 'bareMetal', {
+      rot: [0.18, 0.06, 0], group: 'carbine', capSlot: 'paintTiny',
+      shape: {
+        plan: hexPlan(0.12, 0.94),
+        topScaleX: 0.88, topScaleZ: 0.74,
+        bottomScaleX: 1.04, bottomScaleZ: 1.00,
+        shear: 0.02,
+      },
     }));
-    masses.push(greeble('cell', 'box', [0.09, 0.20, 0.13], [W * 0.44, torsoY - 0.20, 0.16], 'paintTiny', { group: 'carbine' }));
+    masses.push(greeble('cell', 'prism', [0.12, 0.22, 0.16], [W * 0.44, torsoY - 0.20, 0.16], 'paintTiny', {
+      plan: 'hexagon', capSlot: 'emissive', group: 'carbine',
+    }));
   }
 
   if (o.pack === 'cells') {
@@ -574,8 +594,13 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
       plan: 'hexagon', capSlot: 'paintTiny', group: 'pack',
     }));
   } else if (o.pack === 'kit') {
-    masses.push(greeble('kit', 'box', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
-      group: 'pack', chamfer: 0.05,
+    masses.push(greeble('kit', 'planPrism', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
+      group: 'pack', capSlot: 'paintTiny',
+      shape: {
+        plan: hexPlan(W * 0.62, 0.22),
+        topScaleX: 0.92, topScaleZ: 0.86,
+        bottomScaleX: 1.04, bottomScaleZ: 1.02,
+      },
     }));
   } else if (o.pack === 'gills') {
     // A LATHED BELL, not the twin bottles the other three armies' divers wear.
@@ -589,7 +614,15 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
       plan: 'hexagon', capSlot: 'bareMetal', group: 'pack',
     }));
   } else {
-    masses.push(greeble('collector', 'box', [W * 0.52, 0.40, 0.20], [0, torsoY + 0.10, -W * 0.42], 'paintSmall', { group: 'pack' }));
+    masses.push(greeble('collector', 'planPrism', [W * 0.52, 0.40, 0.20], [0, torsoY + 0.10, -W * 0.42], 'paintSmall', {
+      group: 'pack', capSlot: 'bareMetal',
+      shape: {
+        plan: hexPlan(W * 0.52, 0.20),
+        topScaleX: 0.86, topScaleZ: 0.82,
+        bottomScaleX: 1.06, bottomScaleZ: 1.04,
+        shear: -0.02,
+      },
+    }));
   }
   // The faction cue, at infantry scale: a folded vane over the shoulder.
   masses.push(...mirrorVane('vane', W * 0.66, 0.34, [0, torsoY + 0.44, -W * 0.30], -0.55));
@@ -606,14 +639,25 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     // and group as well as its pivot — `RIDES_THE_LEG` in
     // `tests/infantry-gait-rosters.spec.ts` is keyed on the name.
     o.pack === 'gills'
-      ? greeble('boot', 'box', [W * 0.42, 0.13, W * 1.18], [W * 0.24, 0.066, W * 0.24], 'paintTiny', {
-        mirrorX: true, group: 'boots', gait: hip, taper: [0.60, 1.16, W * 0.14],
-      })
-      : greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+      ? greeble('boot', 'taperedBox', [W * 0.42, 0.13, W * 1.18], [W * 0.24, 0.066, W * 0.24], 'paintTiny', {
         mirrorX: true, group: 'boots', gait: hip,
+        shape: { topScaleX: 0.60, topScaleZ: 1.16, shear: W * 0.14, cornerCut: 0.08 },
+      })
+      : greeble('boot', 'planPrism', [W * 0.42, 0.16, W * 0.64], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: hip, capSlot: 'bareMetal',
+        shape: {
+          plan: hexPlan(W * 0.42, W * 0.64),
+          topScaleX: 0.82, topScaleZ: 0.80,
+          bottomScaleX: 1.02, bottomScaleZ: 1.08,
+          shear: -0.04,
+        },
       }),
-    greeble('belt', 'box', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', { group: 'belt' }),
-    greeble('gorget', 'box', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', { group: 'gorget' }),
+    greeble('belt', 'planPrism', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', {
+      group: 'belt', shape: { plan: hexPlan(W * 0.90, W * 0.66), topScaleX: 0.96, topScaleZ: 0.94 },
+    }),
+    greeble('gorget', 'prism', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', {
+      group: 'gorget', plan: 'hexagon', capSlot: 'bareMetal',
+    }),
   );
 
   if (o.officer === true) {
@@ -703,6 +747,9 @@ function pactTank(o: PactTankOpts): UnitMassList {
   const turretY = H * 0.625;
   const turretW = W * UNIT_LADDER.turretWidthOverHull;
   const turretL = L * 0.72;
+  // The beam emitter needs a deeper gun house to cradle its long power head.
+  // Width stays on the shared faction ratio; only the longitudinal bustle grows.
+  const turretShellL = turretL * (o.gun === 'emitter' ? 1.12 : 1.0);
   const deckY = skirtH + hullH;
   const turretRoof = turretY + turretH * 0.5;
 
@@ -729,45 +776,57 @@ function pactTank(o: PactTankOpts): UnitMassList {
     }),
     // Lathed drum turret, tapering to a smaller crown. Deliberately oversized
     // at 1.02x the hull box (bible 5.3 — a real MBT is 0.55 and RA3 is not real).
-    primary('turret', 'lathe', [turretW * 1.08, turretH, turretL], [0, turretY, -L * 0.04], 'paintLarge', {
+    primary('turret', 'lathe', [turretW * 1.08, turretH, turretShellL], [0, turretY, -L * 0.04], 'paintLarge', {
       turret: true, profile: 'cyl', segments: 24, topRadius: 0.70, capSlot: 'paintMed',
     }),
   ];
 
   /* -- armament ---------------------------------------------------------- */
-  const muzzleZ = turretL * 0.5 + L * 0.40;
+  // Keep the live socket on the visible weapon, but do not stretch the Pact's
+  // compact energy heads into Allied long-gun proportions. The old 0.40L
+  // socket sat 1.7 m beyond a Solarch's bow and forced aligned geometry to
+  // overwhelm the turret silhouette; 0.24L leaves a clear 0.6-0.7 m projection.
+  const muzzleZ = turretL * 0.5 + L * 0.24;
   const gunY = turretY + turretH * 0.04;
   switch (o.gun) {
-    case 'repeater':
+    case 'repeater': {
+      const barrelLength = L * 0.58;
       masses.push(
-        primary('barrel', 'lathe', [0.24, L * 0.58, 0.24], [W * 0.15, gunY, turretL * 0.32], 'bareMetal', {
+        primary('barrel', 'lathe', [0.24, barrelLength, 0.24], [W * 0.15, gunY, muzzleZ - barrelLength * 0.5], 'bareMetal', {
           turret: true, mirrorX: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.88,
         }),
-        greeble('muzzleRing', 'lathe', [0.34, 0.26, 0.34], [W * 0.15, gunY, turretL * 0.32 + L * 0.29], 'bareMetal', {
+        greeble('muzzleRing', 'lathe', [0.34, 0.26, 0.34], [W * 0.15, gunY, muzzleZ - 0.13], 'bareMetal', {
           turret: true, mirrorX: true, profile: 'disc', segments: 12, rot: [Math.PI * 0.5, 0, 0], group: 'muzzles',
         }),
       );
       break;
-    case 'emitter':
+    }
+    case 'emitter': {
+      const crystalLength = 0.44;
+      const housingLength = L * 0.46;
+      const crystalBase = muzzleZ - crystalLength;
       masses.push(
-        primary('emitterHousing', 'lathe', [W * 0.46, L * 0.46, W * 0.46], [0, gunY + 0.10, turretL * 0.30], 'paintMed', {
+        primary('emitterHousing', 'lathe', [W * 0.46, housingLength, W * 0.46], [0, gunY + 0.10, crystalBase - housingLength * 0.5], 'paintMed', {
           turret: true, profile: 'cyl', segments: 14, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.70,
         }),
-        greeble('emitterCrystal', 'lathe', [W * 0.28, 0.44, W * 0.28], [0, gunY + 0.10, turretL * 0.30 + L * 0.23], 'emissive', {
+        greeble('emitterCrystal', 'lathe', [W * 0.28, crystalLength, W * 0.28], [0, gunY + 0.10, muzzleZ - crystalLength * 0.5], 'emissive', {
           turret: true, profile: 'cone', segments: 8, topRadius: 0.22, rot: [Math.PI * 0.5, 0, 0], group: 'muzzles',
         }),
       );
       break;
-    default:
+    }
+    default: {
+      const lanceLength = L * 0.66;
       masses.push(
-        primary('lance', 'lathe', [0.34, L * 0.66, 0.34], [0, gunY, turretL * 0.34], 'bareMetal', {
+        primary('lance', 'lathe', [0.34, lanceLength, 0.34], [0, gunY, muzzleZ - lanceLength * 0.5], 'bareMetal', {
           turret: true, profile: 'cyl', segments: 14, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.80,
         }),
-        greeble('lanceCollar', 'lathe', [0.48, 0.34, 0.48], [0, gunY, turretL * 0.34 + L * 0.30], 'bareMetal', {
+        greeble('lanceCollar', 'lathe', [0.48, 0.34, 0.48], [0, gunY, muzzleZ - 0.17], 'bareMetal', {
           turret: true, profile: 'cyl', segments: 14, topRadius: 0.78, rot: [Math.PI * 0.5, 0, 0], group: 'muzzles',
         }),
       );
       break;
+    }
   }
 
   /* -- greebles ---------------------------------------------------------- */

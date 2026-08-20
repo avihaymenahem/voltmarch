@@ -594,12 +594,22 @@ function alliedShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
 
   masses.push(insignia(Math.min(w, d) * 0.20, [w * 0.24, bodyH * 0.66, d * 0.5 + 0.02]));
   masses.push(...windowSet(w, d, bodyH, o.windowCount ?? 6, 0.085, 0.26));
-  // Roof plant. Both of these are on every Allied roof in the references, and
-  // both push scorecard #34 up: the vent tile is the highest-frequency surface
-  // in the atlas at 74% coverage.
+  // Roof plant. This used to be two shallow boxes, which read as crates rather
+  // than machinery from the game camera. The nacelle is now a transverse
+  // aerospace turbine with a real round intake and a raised collar. It is broad
+  // enough to cut the roof silhouette without competing with the command keel.
+  const turbineD = Math.min(w, d) * 0.13;
   masses.push(
-    box('roof.vent', MassRole.Greeble, [w * 0.22, 0.55, d * 0.18], [-w * 0.26, bodyH + 0.28, -d * 0.22], 'vent', { group: 'roofPlant' }),
-    box('roof.hatch', MassRole.Greeble, [w * 0.16, 0.24, d * 0.16], [w * 0.28, bodyH + 0.12, -d * 0.24], 'hatch', { group: 'roofPlant', chamfer: 0.05 }),
+    cyl('roof.turbine', MassRole.Greeble, [turbineD, w * 0.23, turbineD],
+      [-w * 0.24, bodyH + turbineD * 0.34, -d * 0.22], 'vent', {
+        rot: [0, 0, HALF_PI], segments: 12, topRadius: 0.88,
+        capSlot: 'grille', group: 'roofPlant', chamfer: 0.06,
+      }),
+    cyl('roof.turbineCollar', MassRole.Greeble, [turbineD * 1.10, w * 0.045, turbineD * 1.10],
+      [-w * 0.24, bodyH + turbineD * 0.34, -d * 0.22], 'bareMetal', {
+        rot: [0, 0, HALF_PI], segments: 12, topRadius: 0.96,
+        capSlot: 'grille', group: 'roofPlant', chamfer: 0.05,
+      }),
     // Intake banks up both flanks. Real Allied plant, and the honest way to
     // buy back the scorecard #34 points the glass band and the flat team slabs
     // cost: the grille tile is the highest-frequency surface in the atlas.
@@ -675,9 +685,21 @@ function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
 
   masses.push(insignia(Math.min(w, d) * 0.24, [-w * 0.24, bodyH * 0.62, d * 0.5 + 0.02]));
   masses.push(...windowSet(w, d, bodyH, o.windowCount ?? 5, 0.085, 0.28));
+  // Twin cast exhausts replace the old roof crates. Their paired vertical
+  // silhouette and oversized collars belong to the Soviet pressure-vessel
+  // language; the Allied roof now reads horizontal while this one reads up.
+  const exhaustD = Math.min(w, d) * 0.105;
   masses.push(
-    box('roof.vent', MassRole.Greeble, [w * 0.20, 0.60, d * 0.16], [w * 0.28, bodyH + 0.30, -d * 0.24], 'vent', { group: 'roofPlant' }),
-    box('roof.hatch', MassRole.Greeble, [w * 0.14, 0.26, d * 0.14], [-w * 0.30, bodyH + 0.13, -d * 0.26], 'hatch', { group: 'roofPlant', chamfer: 0.05 }),
+    cyl('roof.exhaust', MassRole.Greeble, [exhaustD, bodyH * 0.34, exhaustD],
+      [w * 0.24, bodyH + bodyH * 0.13, -d * 0.24], 'rivetPlate', {
+        mirrorX: true, segments: 10, topRadius: 0.70,
+        capSlot: 'grille', group: 'roofPlant', chamfer: 0.06,
+      }),
+    cyl('roof.exhaustCollar', MassRole.Greeble, [exhaustD * 1.22, bodyH * 0.055, exhaustD * 1.22],
+      [w * 0.24, bodyH + bodyH * 0.29, -d * 0.24], 'bareMetal', {
+        mirrorX: true, segments: 10, topRadius: 0.90,
+        capSlot: 'grille', group: 'roofPlant', chamfer: 0.05,
+      }),
   );
 
   return { masses, w, d, roofY: bodyH };

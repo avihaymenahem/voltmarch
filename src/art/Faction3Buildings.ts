@@ -394,12 +394,20 @@ function pactShell(fw: number, fh: number, height: number, o: ShellOpts): Shell 
   masses.push(insignia(Math.min(w, d) * 0.20, [w * 0.24, plinthH + mainH * 0.56, d * 0.5 + 0.02]));
   masses.push(...lightSet(w, d, bodyH, o.lightCount ?? 6, 0.085, 0.24));
 
-  // Roof and flank plant. The vent and grille tiles are the highest-frequency
-  // surfaces in the atlas, and they are the honest way to buy back the drawn-
-  // detail the flat team slabs and the glass visor cost.
+  // Roof and flank plant. The two old rectangular roof boxes fought the
+  // collector ring's ceremonial silhouette. A faceted capacitor and shallow
+  // lens now repeat the Pact's octagon/cone grammar at a smaller scale, offset
+  // from the crown like an auxiliary shrine rather than an HVAC crate.
+  const capacitorD = Math.min(w, d) * 0.15;
   masses.push(
-    box('roof.vent', MassRole.Greeble, [w * 0.20, 0.52, d * 0.16], [-w * 0.30, bodyH + 0.26, -d * 0.26], 'vent', { group: 'roofPlant' }),
-    box('roof.hatch', MassRole.Greeble, [w * 0.15, 0.24, d * 0.15], [w * 0.30, bodyH + 0.12, -d * 0.26], 'hatch', { group: 'roofPlant', chamfer: 0.05 }),
+    pri('roof.capacitor', MassRole.Greeble, [capacitorD, 0.58, capacitorD],
+      [-w * 0.29, bodyH + 0.29, -d * 0.25], 'paintSmall', {
+        plan: 'octagon', capSlot: 'vent', group: 'roofPlant', chamfer: 0.06,
+      }),
+    cyl('roof.lens', MassRole.Greeble, [capacitorD * 0.72, 0.18, capacitorD * 0.72],
+      [-w * 0.29, bodyH + 0.66, -d * 0.25], 'glass', {
+        segments: 10, topRadius: 0.38, capSlot: 'emissive', group: 'roofPlant', chamfer: 0.05,
+      }),
     box('intake', MassRole.Greeble, [0.32, mainH * 0.42, d * 0.40], [w * 0.46, plinthH + mainH * 0.30, -d * 0.10], 'grille', {
       mirrorX: true, group: 'intakes', chamfer: 0.05,
     }),

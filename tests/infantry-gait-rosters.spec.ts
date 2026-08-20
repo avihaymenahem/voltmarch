@@ -106,7 +106,7 @@ const infantryOf = (r: Roster): UnitMassList[] => r.lists.filter((l) => l.cls ==
 
 /** The masses that ride a limb, by name. Everything else is welded. */
 const RIDES_THE_LEG = new Set(['leg', 'boot', 'kneePad', 'thighBand', 'thighWrap']);
-const RIDES_AN_ARM = new Set(['arm']);
+const RIDES_AN_ARM = new Set(['arm', 'gauntlet']);
 
 /* ==========================================================================
  * 2. THE GLOB ITSELF
@@ -454,10 +454,12 @@ describe('the Reclamation walks — measured off the built mesh', () => {
   it('keeps the gait inside the measured infantry art budget', () => {
     // Infantry are ~57 px on screen against a tank's 2900 (task #26). The whole
     // argument for a vertex-shader gait over a skeleton is that it is free here.
-    // V3 raises helmet radial resolution, so the ceiling follows the measured
-    // art mesh while the gait itself continues to add no geometry.
+    // V3 raises helmet radial resolution and V4 adds a paired wrist silhouette,
+    // so the ceiling follows the measured art mesh while the gait itself
+    // continues to add no geometry. 1900 still leaves comfortable room below
+    // even one vehicle tread assembly and catches accidental mass duplication.
     for (const { key, model } of built) {
-      expect(model.stats.triangles, key).toBeLessThan(1800);
+      expect(model.stats.triangles, key).toBeLessThan(1900);
     }
   });
 });
