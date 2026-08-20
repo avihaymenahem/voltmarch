@@ -71,6 +71,7 @@ import {
   type Chord,
   type PanelBlurChoice,
   type PointerDeviceChoice,
+  type TrackpadScrollChoice,
   type Settings,
   type ShadowChoice,
 } from './settings-store';
@@ -265,11 +266,17 @@ export function applySettings(
     if (game !== null) {
       game.ctx.cameraRig.setNavigation({
         pointerDevice: p.pointerDevice,
+        trackpadScroll: p.trackpadScroll,
         // One "pan sensitivity" slider drives every pan surface, because a
         // player who finds the trackpad too fast finds the drag too fast too.
         trackpadPanSensitivity: p.panSensitivity,
         dragPanSensitivity: p.panSensitivity,
         wheelZoomSensitivity: p.zoomSensitivity,
+        // Two constants, one slider, same shape as the pinch row below it.
+        // `trackpadZoomSensitivity` is DERIVED rather than measured — nobody
+        // here has a Mac — so the slider has to reach it: a player can correct
+        // a 3x error at 0.25-3x without waiting for a build.
+        trackpadZoomSensitivity: CAMERA_NAV.trackpadZoomSensitivity * p.zoomSensitivity,
         pinchZoomSensitivity: CAMERA_NAV.pinchZoomSensitivity * p.zoomSensitivity,
         invertPanX: p.invertPanX,
         invertPanY: p.invertPanY,
@@ -1768,7 +1775,8 @@ export class SettingsScreen implements Screen {
     const how = el('p', 'vm-body');
     how.style.padding = '2px 18px 10px';
     how.textContent =
-      'Trackpad: two fingers pan, pinch zooms. Mouse: the wheel zooms toward the cursor. ' +
+      'Trackpad: two fingers zoom, Shift + two fingers pans, pinch zooms. ' +
+      'Mouse: the wheel zooms toward the cursor. ' +
       'Drag to pan with the middle button, with Space held, or with the right button — a right-click ' +
       'that does not move is still an order. H centres on your base.';
     body.appendChild(how);
@@ -1786,8 +1794,23 @@ export class SettingsScreen implements Screen {
         p.pointerDevice,
         (v: PointerDeviceChoice) => set({ pointerDevice: v }),
       ),
-      'Auto reads the shape of the scroll events. Force one if a two-finger swipe ' +
-      'zooms instead of panning, or a wheel notch pans instead of zooming.',
+      'Auto reads the shape of the scroll events. With Trackpad Scroll set to Zoom ' +
+      'both kinds dolly, so this changes little; set to Pan and it decides whether a ' +
+      'plain scroll pans or zooms.',
+    ));
+
+    nav.appendChild(row(
+      'Trackpad Scroll',
+      chooser(
+        [
+          { value: 'zoom' as const, label: 'Zoom' },
+          { value: 'pan' as const, label: 'Pan' },
+        ],
+        p.trackpadScroll,
+        (v: TrackpadScrollChoice) => set({ trackpadScroll: v }),
+      ),
+      'Two fingers dolly the camera, as the mouse wheel does. Set to Pan for the ' +
+      'macOS maps convention — pinch, Ctrl + scroll and Alt + scroll still zoom either way.',
     ));
 
     nav.appendChild(row(
@@ -1806,7 +1829,7 @@ export class SettingsScreen implements Screen {
         format: mult,
         onChange: (v) => set({ zoomSensitivity: v }),
       }),
-      'Wheel notches and pinch.',
+      'Wheel notches, two-finger scroll and pinch.',
     ));
     nav.appendChild(row(
       'Zoom To Cursor',

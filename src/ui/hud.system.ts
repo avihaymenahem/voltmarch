@@ -26,12 +26,15 @@
 import { defineSystem } from '../core/loop';
 import { RenderPhase, type RenderContext } from '../core/types';
 import { ctx } from '../game/context';
+import type { CameraRig } from '../render/camera';
 
 import { Hud } from './Hud';
 import type { HudSoundCue } from './Sidebar';
 
 /** Live instance, for `dispose` and for the console handle. */
 let hud: Hud | null = null;
+/** What `init` handed the rig, so `dispose` hands back exactly that. */
+let wheelSurface: { rig: CameraRig; mount: HTMLElement } | null = null;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -51,6 +54,28 @@ export default defineSystem({
       console.warn('[hud] #hud-root is missing; the HUD will not mount');
       return;
     }
+
+    /*
+     * THE HUD WAS A WHEEL DEAD ZONE — ~20-26% OF A MacBook VIEWPORT.
+     *
+     * `#hud-root` is `pointer-events: none`, but `.vm-hud .vm-panel` sets
+     * `pointer-events: auto` and that is the generic class on every panel. A
+     * wheel over one therefore has a target outside the canvas, so the camera
+     * rig's `ownsEvent` filter refused it; and `#hud-root` is a SIBLING of
+     * `#app > canvas`, so `InputManager`'s canvas listener was not on the
+     * propagation path either. Neither handler ran. Measured live in Chromium:
+     * 25.95% of 1440x900, 23.79% of 1280x700, 21.24% of 1440x789, 19.91% of
+     * 1512x850 — one pointer position in five, on every platform.
+     *
+     * The registration lives HERE rather than in `camera.ts` because this is
+     * the module that owns that root; the rig hard-coding `#hud-root` would be
+     * the render layer reaching into the UI layer for one string.
+     * `CameraRig.ownsWheel` still declines anything with a genuinely scrollable
+     * ancestor, which is what keeps `.vm-grid` (the cameo list) and
+     * `.vm-sel-cards` scrolling.
+     */
+    cameraRig.addWheelSurface(mount);
+    wheelSurface = { rig: cameraRig, mount };
 
     hud = new Hud({
       mount,
@@ -126,6 +151,12 @@ export default defineSystem({
   },
 
   dispose(): void {
+    // Hand the wheel back before the DOM goes: a rig that outlived this module
+    // would keep claiming events for a root nothing renders into any more.
+    // Held from `init` rather than re-resolved, so dispose cannot depend on the
+    // context still being live or on the element still being in the document.
+    wheelSurface?.rig.removeWheelSurface(wheelSurface.mount);
+    wheelSurface = null;
     hud?.dispose();
     hud = null;
     globalThis.__vmHud = undefined;

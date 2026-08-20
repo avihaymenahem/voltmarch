@@ -74,6 +74,7 @@ import {
 } from '../core/types';
 import type { DefTables, EntityId, RenderContext } from '../core/types';
 import {
+  CAMERA_NAV,
   GROUP_DOUBLE_TAP_MS, MAX_SELECTION, ORDER_ATTACK_COLOR, ORDER_MARKER_POOL,
   ORDER_MARKER_POP, ORDER_MARKER_RADIUS, ORDER_MARKER_SECONDS, ORDER_MOVE_COLOR,
   ORDER_SPECIAL_COLOR, OVERLAY_LIFT,
@@ -442,6 +443,20 @@ function updateCamera(dt: number): void {
   if (held('cam.panDown', 'ArrowDown')) mz += 1;
   if (held('cam.rotateLeft', '')) rig.setYaw(rig.targetYaw + cfg.yawSpeed * DEG2RAD * d);
   if (held('cam.rotateRight', '')) rig.setYaw(rig.targetYaw - cfg.yawSpeed * DEG2RAD * d);
+
+  // THE ONLY ZOOM WITH NO POINTER IN IT. Reported from a Mac trackpad as "cant
+  // zoom or scroll on z"; before this, `rig.zoomBy` had two callers and both
+  // were wheel-driven, so every route to the dolly went through a `wheel`
+  // event. `zoomBy` is multiplicative, so `zoomBy(rate * d)` composes to
+  // `zoomStep^(rate * t)` whatever the frame rate — held for one second at
+  // 60 fps and at 240 fps land on the same distance, which is a test.
+  //
+  // No arrow alias: the arrows are the pan fallback and `held`'s second
+  // argument is that alias, not a second binding. A cleared row here really is
+  // cleared, and the wheel and the pinch remain.
+  const zoomRate = CAMERA_NAV.keyZoomNotchesPerSecond * d;
+  if (held('cam.zoomIn', '')) rig.zoomBy(-zoomRate);
+  if (held('cam.zoomOut', '')) rig.zoomBy(zoomRate);
 
   if (mx !== 0 || mz !== 0) {
     const inv = 1 / Math.hypot(mx, mz);

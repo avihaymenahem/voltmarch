@@ -22,8 +22,11 @@ than printing the defaults.
 | `→` | Pan right | Rebindable |
 | `Q` | Rotate left | Rebindable |
 | `E` | Rotate right | Rebindable |
+| `=` | Zoom in | Rebindable |
+| `-` | Zoom out | Rebindable |
 | `H` | Centre on base | Rebindable |
-| Two-finger swipe | Trackpad pan | Gesture |
+| Two-finger swipe | Zoom, on a trackpad | Gesture |
+| `Shift` + two-finger swipe | Trackpad pan | Gesture |
 | Pinch · `Ctrl`+wheel · `Alt`+wheel | Zoom | Gesture |
 | Mouse wheel | Zoom toward the cursor | Gesture |
 | `Shift` + wheel | Pan sideways | Gesture |
@@ -37,6 +40,15 @@ Notes that matter:
 - **The arrow keys always pan**, whatever the four pan rows are bound to. Clearing them cannot
   leave you without a camera. `W A S D` also pan as the camera rig's own fallback, which is why
   none of those four letters is available as an order key.
+- **`=` and `-` zoom, and they are the only zoom that needs no pointing device.** Hold them; they
+  are polled while down, like the pan keys. If a scroll gesture is behaving strangely on your
+  machine, these still work.
+- **On a trackpad, two fingers zoom.** That is the default. Hold `Shift` to pan with two fingers
+  instead, or swipe mostly sideways, which pans without any modifier. If you would rather have the
+  macOS convention — two fingers pan, only a pinch zooms — set **Trackpad Scroll** to **Pan** on the
+  Controls tab. Pinch, `Ctrl` + scroll and `Alt` + scroll zoom under either setting.
+- **`Shift` + wheel pans instead of zooming.** On a mouse that means sideways, which is the only
+  horizontal pan a wheel with no tilt can reach.
 - **Pan speed scales with zoom.** The further out you are, the faster a keypress moves you.
 - **Right-drag is both a camera drag and an order.** The button becomes a drag only once it has
   travelled a few pixels; a right-click that never moves is still an order.
@@ -197,9 +209,10 @@ Above the key list on the same tab:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Pointing device | Auto | Reads the shape of your scroll events. Force one if a two-finger swipe zooms instead of panning, or a wheel notch pans instead of zooming |
+| Pointing device | Auto | Reads the shape of your scroll events. Both kinds zoom on a plain scroll, so this only changes how far one goes |
+| Trackpad scroll | Zoom | What two fingers do on their own. Pan is the macOS maps convention; pinch, `Ctrl` + scroll and `Alt` + scroll zoom either way |
 | Pan sensitivity | 100% | Trackpad swipe and drag pan. 100% means the ground tracks your fingers exactly |
-| Zoom sensitivity | 100% | Wheel notches and pinch |
+| Zoom sensitivity | 100% | Wheel notches, two-finger scroll and pinch |
 | Zoom to cursor | 75% | How strongly a zoom pulls the point under the cursor toward the centre |
 | Keyboard pan speed | 42 m/s | Arrow keys and WASD at the default zoom; scales as you pull back |
 | Pan momentum | On | The camera carries a little inertia and settles instead of stopping dead |
@@ -212,7 +225,7 @@ Above the key list on the same tab:
 
 The **Gameplay** tab carries Tooltips, Floating Damage Numbers, EVA Subtitles and a Screen Shake
 slider. Camera and navigation are deliberately *not* there — they are on Controls, which is where
-you would go looking for "why does my trackpad zoom instead of pan".
+you would go looking for "why does my trackpad pan instead of zoom".
 
 ---
 

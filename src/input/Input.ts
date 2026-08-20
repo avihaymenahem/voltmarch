@@ -611,9 +611,30 @@ export class InputManager {
 
   private onWheel = (e: WheelEvent): void => {
     this.readModifiers(e);
-    // We own the zoom now (the rig's listeners are detached), so the page must
-    // not scroll underneath. Normalise deltaMode so a Firefox line-scroll and a
-    // Chrome pixel-scroll report the same number of notches.
+    /*
+     * THIS PATH IS DEAD DURING A MATCH, AND THE COMMENT THAT USED TO SIT HERE
+     * SAID THE OPPOSITE. It read "we own the zoom now (the rig's listeners are
+     * detached)"; `input.system.ts` calls `detachInput()`, whose default is
+     * `{ keepNavigation: true }`, so the rig KEEPS its wheel listener — bound
+     * on `window` at CAPTURE with `passive: false`, where it calls
+     * `preventDefault()` and then `stopPropagation()` on every event it owns.
+     * `CameraRig.handleWheel` returns true on every branch reachable from that
+     * listener, so nothing survives to this canvas listener. Measured live in
+     * Chromium: 0 calls over a match.
+     *
+     * It is live in exactly one place — `?shot=`, where `Bootstrap` builds the
+     * rig with `attachInput: false` and `detachInput` refuses to escalate. That
+     * is the reverse of what the old comment claimed, and the reason the naive
+     * arithmetic below never mattered: `delta / 100` makes a trackpad sample of
+     * 1-10 px worth 0.01-0.1 notches, i.e. nothing visible. Do NOT "fix" that
+     * by copying the rig's classifier here — one wheel owner is the design; if
+     * this path ever needs to be right, forward to `rig.handleWheel(e)`, which
+     * is public for exactly that.
+     *
+     * The page must still not scroll underneath, hence the preventDefault.
+     * Normalise deltaMode so a Firefox line-scroll and a Chrome pixel-scroll
+     * report the same number of notches.
+     */
     e.preventDefault();
     let delta = e.deltaY;
     if (e.deltaMode === 1) delta *= 16;

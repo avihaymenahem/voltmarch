@@ -373,6 +373,44 @@ export const ACTIONS: readonly ActionDef[] = [
     binding: 'rebindable',
     defaultChord: chord('KeyE'),
   },
+  /* THE ONLY ZOOM THAT NEEDS NO POINTER AT ALL.
+   *
+   * Reported as *"Im trying to play from mac using a trackpad, and cant zoom or
+   * scroll on z"*. Until these two rows there were FIFTEEN `cam.*` actions and
+   * not one of them touched the dolly: `CameraRig.zoomBy` had exactly two
+   * callers and both were wheel-driven, so every route to the zoom went through
+   * a `wheel` event arriving with the shape the browser is documented to send.
+   * A player whose events were being classified or routed wrongly had no way
+   * out, and no support answer either.
+   *
+   * `=` and `-` are the genre convention and both were free — the whole
+   * default scheme is arrows, Q, E, H, A, D, F, G, S, X, Y, Z, Backslash,
+   * Escape, F3, F12 — so `findConflicts` has nothing to flag.
+   *
+   * POLLED WHILE HELD (`surface: 'camera'` puts them in `CAMERA_KEY_IDS`), not
+   * dispatched, so `CAMERA_NAV.keyZoomNotchesPerSecond` is a RATE. See the
+   * frame-rate-independence argument on `CameraRig.zoomBy`. */
+  {
+    id: 'cam.zoomIn',
+    label: 'Zoom In',
+    description:
+      'Dolly the camera closer, for as long as the key is held. The only zoom that ' +
+      'needs no pointing device at all — it works identically on a mouse, a trackpad ' +
+      'and a machine whose scroll events the game reads wrongly.',
+    category: 'camera',
+    surface: 'camera',
+    binding: 'rebindable',
+    defaultChord: chord('Equal'),
+  },
+  {
+    id: 'cam.zoomOut',
+    label: 'Zoom Out',
+    description: 'Dolly the camera back out. Held, not tapped, exactly like the pan keys.',
+    category: 'camera',
+    surface: 'camera',
+    binding: 'rebindable',
+    defaultChord: chord('Minus'),
+  },
   {
     id: 'cam.home',
     label: 'Centre On Base',
@@ -388,8 +426,22 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'cam.trackpadPan',
     label: 'Trackpad Pan',
     description:
-      'Two fingers on the trackpad drag the ground. This is the primary pan gesture ' +
-      'on a laptop; sensitivity and inversion are on the Controls tab.',
+      'Shift held with two fingers on the trackpad drags the ground, and a mostly ' +
+      'sideways swipe pans without any modifier. Set Trackpad Scroll to Pan on the ' +
+      'Controls tab to make two fingers pan on their own again, as they used to.',
+    category: 'camera',
+    surface: 'pointer',
+    binding: 'gesture',
+    defaultChord: null,
+    gesture: 'Shift + two-finger swipe',
+  },
+  {
+    id: 'cam.trackpadZoom',
+    label: 'Trackpad Zoom',
+    description:
+      'Two fingers on the trackpad dolly the camera, the way a mouse wheel does. ' +
+      'This is the default; Trackpad Scroll on the Controls tab switches it back to ' +
+      'panning, and pinch still zooms either way.',
     category: 'camera',
     surface: 'pointer',
     binding: 'gesture',
@@ -422,15 +474,16 @@ export const ACTIONS: readonly ActionDef[] = [
   },
   {
     id: 'cam.wheelPanX',
-    label: 'Pan Sideways',
+    label: 'Pan Instead Of Zoom',
     description:
-      'Shift held while scrolling pans horizontally instead — the only sideways pan ' +
-      'available on a mouse with no tilt wheel.',
+      'Shift held while scrolling pans instead of zooming — sideways on a mouse, ' +
+      'which is the only horizontal pan a wheel with no tilt can reach, and across ' +
+      'both axes on a trackpad, which already has two.',
     category: 'camera',
     surface: 'pointer',
     binding: 'gesture',
     defaultChord: null,
-    gesture: 'Shift + wheel',
+    gesture: 'Shift + wheel · Shift + two-finger swipe',
   },
   {
     id: 'cam.dragPan',

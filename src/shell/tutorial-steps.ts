@@ -376,7 +376,20 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
       'The battlefield is several times wider than the screen. Slide the view across it, ' +
       'and dolly the camera in and out — you fight zoomed in and you read the map zoomed out. ' +
       'Do both before moving on.',
-    actions: ['cam.panUp', 'cam.panLeft', 'cam.wheelZoom', 'cam.trackpadPan', 'cam.dragPan'],
+    /* THE ZOOM HALF OF THIS STEP WAS UNWINNABLE ON A TRACKPAD. The goal gates
+     * on `camZoomTravel >= 0.3`, and the only zoom this list named was
+     * `cam.wheelZoom` — so a laptop player was shown a chip reading "Mouse
+     * wheel", plus two chips for gestures that PAN, and asked to dolly. Every
+     * zoom route the game has is named here now, keyboard first, because
+     * `stepKeyRows` renders one chip per listed action and the first thing a
+     * stuck player reads should be one they can definitely perform.
+     * `tests/tutorial.spec.ts` holds the RULE — this step must name a zoom that
+     * needs no wheel — rather than the list, because a literal list is how the
+     * gap shipped. */
+    actions: [
+      'cam.panUp', 'cam.panLeft', 'cam.zoomIn', 'cam.zoomOut',
+      'cam.wheelZoom', 'cam.trackpadZoom', 'cam.pinchZoom', 'cam.trackpadPan', 'cam.dragPan',
+    ],
     spotlight: [],
     goals: [
       { label: 'Slide the view across the field', fact: 'camPanTravel', delta: 30 },

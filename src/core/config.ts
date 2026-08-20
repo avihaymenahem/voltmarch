@@ -441,6 +441,39 @@ export const CAMERA_NAV = {
    * is deliberately ~30x the plain-wheel scale.
    */
   pinchZoomSensitivity: 0.035,
+  /**
+   * Notches of zoom per 100 px of a TRACKPAD two-finger scroll, when
+   * `trackpadScroll` is `'zoom'` (the shipping default — see the block below
+   * `NavigationOptions.trackpadScroll` in `src/render/camera.ts`).
+   *
+   * IT IS 1.0, WHICH IS `wheelZoomSensitivity` EXACTLY, AND THE EQUALITY IS
+   * LOAD-BEARING RATHER THAN LAZY. `wheelZoom` normalises by /100 before this
+   * multiplies, so a 10 px trackpad sample is already a tenth of a notch
+   * against a 100 px detent's whole one. With the two constants equal, the
+   * device verdict decides NOTHING about a vertical scroll — the same gesture
+   * dollies by the same amount whether `classifyWheelEvent` called it a mouse
+   * or a trackpad. That is what makes the classifier's one known permanent
+   * failure (an axis-locked integer flick of |deltaY| >= 50 saturates to
+   * `mouse` and never recovers; see `wheelEvidence`) cost nothing at all.
+   * `tests/camera-nav.spec.ts` pins the equality with that consequence in its
+   * failure message.
+   *
+   * DERIVED, NOT MEASURED ON A MAC — nobody here has one. The dolly is
+   * ln(140/30)/ln(1.14) = 11.757 notches end to end. A comfortable macOS swipe
+   * including the inertia tail is 300-800 px, which at 1.0 is 3-8 notches, i.e.
+   * a third to two thirds of the range per gesture, and `maxNotchesPerEvent`
+   * (3) catches a coalesced flick. The tail alone (~130 px of decaying events
+   * after the fingers lift) is 1.3 notches, x1.19 of distance — a coast, not a
+   * lurch. This is the ONE number in the trackpad-zoom change that a real Mac
+   * could move, which is why Options' Zoom Sensitivity slider (0.25-3x)
+   * multiplies it: a player can correct a 3x error without a build.
+   *
+   * DO NOT reuse `pinchZoomSensitivity` here. It is 0.035 PER PIXEL, sized for
+   * pinch deltas of 0.5-3; against a 130 px scroll tail it is 4.5 notches,
+   * which is the whole 55 -> 30 m span arriving after the player stopped
+   * moving.
+   */
+  trackpadZoomSensitivity: 1.0,
   /** Hard clamp on notches applied by any single wheel event. */
   maxNotchesPerEvent: 3,
 
@@ -498,6 +531,23 @@ export const CAMERA_NAV = {
    * "smooth acceleration" has to mean for a key that is either down or up.
    */
   keyAccelRate: 9.0,
+  /**
+   * Notches of zoom per second while a zoom key is HELD (`cam.zoomIn` /
+   * `cam.zoomOut`, `=` and `-` by default).
+   *
+   * THE WHOLE DOLLY IS 11.757 NOTCHES — ln(140/30)/ln(1.14) — so 4/s crosses
+   * it in 2.9 s, which is the same order as `panSpeed`'s 42 m/s crossing a
+   * 512 m map. Not a taste: it is the only figure that makes a held key feel
+   * like the pan keys beside it.
+   *
+   * Reported as *"cant zoom or scroll on z"* from a Mac trackpad. Before this,
+   * `zoomBy` had exactly TWO callers and both were wheel-driven: there was no
+   * keyboard route to the dolly anywhere in the game, so a player whose wheel
+   * events were being classified or routed wrongly had no way out at all. A
+   * keyboard zoom is immune to every trackpad unknown, which is why it landed
+   * first and alone would have closed the report.
+   */
+  keyZoomNotchesPerSecond: 4.0,
 
   /* -- edge pan (only reachable when the player turns it on) --------------- */
 

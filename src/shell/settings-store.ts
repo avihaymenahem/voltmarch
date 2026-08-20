@@ -186,6 +186,19 @@ export interface AudioSettings {
  */
 export type PointerDeviceChoice = 'auto' | 'mouse' | 'trackpad';
 
+/**
+ * What a plain two-finger trackpad scroll does. **`'zoom'` is the default.**
+ *
+ * The camera shipped with `'pan'` — the macOS maps convention, two fingers move
+ * the document and only a pinch scales it. Reported by a Mac player as
+ * *"cant zoom or scroll on z"*: an RTS is not a map, scroll-to-zoom is close to
+ * universal in the genre, and the product offered no way to get it. `'pan'` is
+ * kept rather than deleted because the convention is real; neither value can
+ * take a gesture away, since Shift + two fingers and a sideways swipe pan in
+ * both, and pinch / Ctrl / Alt zoom in both.
+ */
+export type TrackpadScrollChoice = 'zoom' | 'pan';
+
 export interface GameplaySettings {
   /**
    * Screen-edge panning. **Off by default.** See `CAMERA.edgePanPixels` in
@@ -203,6 +216,13 @@ export interface GameplaySettings {
   /* -- pointer / trackpad navigation ------------------------------------- */
 
   pointerDevice: PointerDeviceChoice;
+  /**
+   * Two-finger trackpad scroll: dolly (default) or pan. See
+   * `TrackpadScrollChoice`. No `SETTINGS_VERSION` bump — this row has never
+   * existed on disk, so "fill in the default" reaches every stored blob, which
+   * is exactly the case the version gate is NOT for.
+   */
+  trackpadScroll: TrackpadScrollChoice;
   /** Multiplier on trackpad two-finger pan and drag pan. 0.25 .. 3. */
   panSensitivity: number;
   /** Multiplier on wheel dolly and pinch zoom. 0.25 .. 3. */
@@ -345,6 +365,15 @@ export const KEYBINDS: readonly KeybindDef[] = [
   { id: 'cam.panRight', label: 'Pan Right', category: 'Camera', scope: 'camera', def: chord('ArrowRight') },
   { id: 'cam.rotateLeft', label: 'Rotate Left', category: 'Camera', scope: 'camera', def: chord('KeyQ') },
   { id: 'cam.rotateRight', label: 'Rotate Right', category: 'Camera', scope: 'camera', def: chord('KeyE') },
+  /* No `advisory`. These are polled live by `input.system.ts` exactly as the
+   * pan and rotate rows above are, and `tests/action-catalogue.spec.ts` checks
+   * `a.live === false` against `k.advisory === true` in BOTH directions — so a
+   * stray flag here is a red test rather than a row that lies. No
+   * `SETTINGS_VERSION` bump either: a blob written before these rows existed
+   * has no entry for them, and `normalizeSettings` fills in the default, which
+   * is the whole distinction the version gate exists to draw. */
+  { id: 'cam.zoomIn', label: 'Zoom In', category: 'Camera', scope: 'camera', def: chord('Equal') },
+  { id: 'cam.zoomOut', label: 'Zoom Out', category: 'Camera', scope: 'camera', def: chord('Minus') },
   { id: 'cam.home', label: 'Centre On Base', category: 'Camera', scope: 'command', def: chord('KeyH') },
 
   /* -- orders ------------------------------------------------------------- */
@@ -535,6 +564,7 @@ export function defaultSettings(): Settings {
       panSpeed: 42,
       zoomToCursor: 0.75,
       pointerDevice: 'auto',
+      trackpadScroll: 'zoom',
       panSensitivity: 1.0,
       zoomSensitivity: 1.0,
       invertPanX: false,
@@ -582,6 +612,7 @@ function oneOf<T extends string>(v: unknown, allowed: readonly T[], fallback: T)
 const QUALITY_CHOICES: readonly QualityChoice[] = ['auto', 'low', 'medium', 'high', 'ultra'];
 const SHADOW_CHOICES: readonly ShadowChoice[] = ['low', 'medium', 'high', 'ultra'];
 export const POINTER_DEVICE_CHOICES: readonly PointerDeviceChoice[] = ['auto', 'mouse', 'trackpad'];
+export const TRACKPAD_SCROLL_CHOICES: readonly TrackpadScrollChoice[] = ['zoom', 'pan'];
 export const PANEL_BLUR_CHOICES: readonly PanelBlurChoice[] = ['auto', 'on', 'off'];
 
 /** Frame caps offered in the UI. 0 is "vsync / uncapped". */
@@ -710,6 +741,7 @@ export function normalizeSettings(raw: unknown): Settings {
       panSpeed: num(p.panSpeed, 10, 120, d.gameplay.panSpeed),
       zoomToCursor: num(p.zoomToCursor, 0, 1, d.gameplay.zoomToCursor),
       pointerDevice: oneOf(p.pointerDevice, POINTER_DEVICE_CHOICES, d.gameplay.pointerDevice),
+      trackpadScroll: oneOf(p.trackpadScroll, TRACKPAD_SCROLL_CHOICES, d.gameplay.trackpadScroll),
       panSensitivity: num(p.panSensitivity, 0.25, 3, d.gameplay.panSensitivity),
       zoomSensitivity: num(p.zoomSensitivity, 0.25, 3, d.gameplay.zoomSensitivity),
       invertPanX: bool(p.invertPanX, d.gameplay.invertPanX),
