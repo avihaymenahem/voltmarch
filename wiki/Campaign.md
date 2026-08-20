@@ -108,18 +108,19 @@ its operations you have finished; each operation is a row with its par time and 
 | 05 | The Open Count | The Crust | 17 | 2 | 2 |
 | 06 | Common Ground | The Crust | 18 | 2 | 2 |
 | 07 | The Thin Place | The Crust | 19 | 2 | 2 |
+| 08 | Struck Off | The Crust | 20 | 2 | 2 |
+| 09 | Vacant Possession | The Crust | 22 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
 | 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 
-**That is 30 of a planned 37 operations, and this page will not pretend otherwise.** The
-thirty add up to 495 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 32 of a planned 37 operations, and this page will not pretend otherwise.** The
+thirty-two add up to 537 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
-screen — and **two are complete at nine**: Hold the Seam and The Timetable can both be
-played end to end, Soviets first. The Crust stands at seven of nine and Salvage Rights at
-five of ten.
+screen — and **three are complete at nine**: Hold the Seam, The Timetable and The Crust
+all play end to end, Soviets first. Only Salvage Rights is short, at five of ten.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -137,7 +138,7 @@ nothing else.
   pay are worth 400 to 1000 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Ten shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Fourteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.

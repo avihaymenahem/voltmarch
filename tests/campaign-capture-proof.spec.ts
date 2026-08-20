@@ -637,10 +637,10 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
  * 7. THE SHIPPED TABLE — the six, by name, in both directions
  * ========================================================================== */
 
-describe('exactly six operations declare captureProof', () => {
+describe('exactly eight operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the six whose headers say so', () => {
+  it('and they are the eight whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -667,6 +667,43 @@ describe('exactly six operations declare captureProof', () => {
      * this does NOT close: `GarrisonService.enter` calls `captureBuilding()`
      * directly and consults no `CaptureService` veto, which is
      * `allies.07.fair-copy`'s finding.
+     *
+     * `pact.08.struck-off` is the seventh and it is the third shape again, on
+     * the SAME three Gaia holdings — it is P7's parcel nine days later, on P7's
+     * seeds, so the terrace, the well and the infirmary land on the same three
+     * points. What is new is WHO can spend themselves on those doors. The eleven
+     * households the operation exists to walk off the crust are spawned with the
+     * `engineer` key — `Faction.Neutral`, unarmed, and therefore carrying
+     * `canCapture` — on a 16 m ring around the three buildings they come out of.
+     * Without the veto, a commander who box-selects a lift and right-clicks the
+     * terrace to shelter them spends a household outright (rule 1 takes a
+     * neutral structure at ANY health, and `consume` writes `UnitState.Selling`
+     * and `markDead`), and the primary's threshold of nine moves out of reach
+     * three clicks later, silently. `refuse()` is the only branch that hands the
+     * man back.
+     *
+     * `pact.09.vacant-possession` is the eighth and it is the FIRST of a fourth
+     * shape: the veto is not a hazard note, it is the operation's own thesis
+     * written as a field. Its two primaries are that four unarmed men stand on
+     * the Conclave's reading floor at the hour and that no gun of the Order's is
+     * inside the precinct when they do — the Order takes possession of NOTHING —
+     * and an `mrdArtificer` walking into the `mrdOculus` on that floor to put the
+     * deed back in Pact hands is the exact move the operation exists to refuse.
+     *
+     * ITS FLOOR IS GAIA'S, WHICH MAKES THIS THE §4 SHAPE AT FULL PRICE RATHER
+     * THAN THE `soviets.06` ONE. That layout owns the instrument on the Neutral
+     * slot because `Targeting.isValidTarget` refuses only ALLIES and the player's
+     * own opening column deleted a Sept-held Oculus in 4.37 s from a 22 m ring —
+     * measured in a real Targeting/Weapons/Projectiles/Damage rig, with the same
+     * column around an OWN Oculus and the same column on Hold Fire as controls.
+     * A neutral owner is exactly why the veto is load-bearing here: rule 1 takes
+     * a neutral structure OUTRIGHT AT ANY HEALTH, no soften ladder and no
+     * `captureHpFrac` gate, so without `captureProof` the operation's whole
+     * thesis is one right-click for the price of one reader out of four. The play
+     * is available — the operation opens with four artificers and the floor is
+     * the one door on the map that the arithmetic does not already refuse (see
+     * its header's capture block, where one capture is affordable and two are
+     * not) — and `refuse()` is the branch that hands the man back.
      */
     const declared = ALL
       .filter((o) => o.captureProof !== undefined)
@@ -677,6 +714,8 @@ describe('exactly six operations declare captureProof', () => {
       'pact.02.long-count = count',
       'pact.04.in-the-clear = mast',
       'pact.07.thin-place = terrace,well,infirmary',
+      'pact.08.struck-off = terrace,well,infirmary',
+      'pact.09.vacant-possession = floor',
       'reclamation.05.closing-entry = house,ledger',
       'soviets.06.demolition-order = infirmary',
     ]);

@@ -416,6 +416,60 @@ const GUNS: Readonly<Record<string, string>> = {
   // office is the second secondary's target and three coils on that line would
   // make the assault a different question.
   'pact.07.thin-place': 'flameTower x2, sentryGun x1',
+  // THREE from the Reclamation opening and TWO the layout stands on the works
+  // cradle, 17.20 and 19.80 m off the head on opposite bearings. `op.foe` is
+  // Reclamation, so the layout's `pillbox` resolves through `keyFor` to the
+  // ARCSPITTER POST — `postCoil`, 20 m, `power: 0` so no brownout opens it — and
+  // it DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a `mrdWayfarer`'s 110 hp and an `mrdArtificer`'s 95. So §2
+  // is satisfied with room rather than by the row not chaining at all.
+  //
+  // BOTH POSTS ARE IN §2's SCOPE, because `head` is the tag the operation's own
+  // primary reads and they stand inside a 20 m gun of it. That is deliberate —
+  // the operation's doctrine beat is about which TARGET the player names. A
+  // Solarch ordered at a POST parks at 26 x 0.80 + hitRadius(1x1) 2.8284 =
+  // 23.6284 m of centre distance against `postCoil`'s reach of 20 + the hull's
+  // own 2.79 = 22.7900, so it stands off by 0.8384 m and walks 102.7 m to get
+  // there with 0.0 m of the approach inside either gun. Ordered at the HEAD it
+  // parks on the ordinary route instead — `Targeting.approach()` writes the
+  // target's CENTRE as the goal and never picks a cell — and the five reachable
+  // park cells carry -8.37 m to +0.53 m of margin. Attack-moved at the ground it
+  // walks 137.5 m with 32.0 m inside a post. A gun that covers the objective is
+  // the point; a gun that deletes two riflemen per trigger is what §2 forbids,
+  // and this one does not.
+  //
+  // THE THREE `rclPicker` THE LAYOUT STANDS ON THE COLLAR ARE NOT ON THIS ROW
+  // and that is correct rather than an omission: this roster pins EMPLACEMENTS,
+  // and they are units. They are documented in the layout's §4 and in the
+  // operation's picket block, where the exposure figures above are derived.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and under
+  // `opening: 'force'` that is the whole balance of the operation: 28 m of
+  // `pylonArc`, `chainCount` 3, 120.32 on the first link — lethal to the 110 hp
+  // Wayfarers AND to the 90 hp `engineer` households the primary is counted in —
+  // against eighteen hulls that cannot be replaced. Delete either empty list and
+  // a Pylon appears here.
+  'pact.08.struck-off': 'rclSpitpost x5',
+  // THREE from the Meridian opening and THREE this layout stands on the Conclave
+  // precinct and its approach: two `mrdGlaive` the Sept has put on the Order's
+  // own gate, 19.799 m either side of the reading floor, and one on the Sept's
+  // forward chapterhouse. `op.foe` is Meridian — this is the chapter's second
+  // mirror — so the layout's explicit `mrdGlaive` keys resolve through `keyFor`
+  // to THEMSELVES, and `glaiveRepeater` carries `chainCount` 0, so §2 is
+  // satisfied by the row not chaining at all rather than by distance. The two
+  // gate posts ARE in §2's scope: they cover the `gate` tag they carry and the
+  // `floor` tag at 19.8 m, both of which the trigger table names.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `mrdHelios` OFF THIS ROW, and here that
+  // is the whole operation rather than a margin: `heliosLance` is range 33 and
+  // the two radii the win clause rests on are `PRECINCT_R` 40 minus `FLOOR_R`
+  // 14 = 26, which is `focusLance`'s range exactly. A Spire founded on the
+  // forward chapterhouse's ground — `PLACEMENT.adjacencyRadius` 20 plus its own
+  // radius, so about 26 m out, 34 m from the floor — covers the near half of the
+  // reading floor from OUTSIDE the precinct, which is ground the operation never
+  // asks the player to take. Delete either empty list and a Spire appears here.
+  'pact.09.vacant-possession': 'mrdGlaive x6',
   // WAS `sentryGun x2, teslaCoil x5` UNTIL 2026-08-19. Two of those five were
   // the compound's flank towers, authored as `prismTower` and resolved to a
   // Tesla Coil by `op.foe`; they are `pillbox`-role posts now. The three that
