@@ -3338,3 +3338,467 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   text-transform: uppercase;
   color: var(--vm-text-faint);
 }
+
+/* ==========================================================================
+ * 18. COMMAND-SURFACE PASS
+ *
+ * The perimeter HUD moved from pale sheets of glass to deep instrument wells,
+ * but the front end was still using the older, low-contrast material.  These
+ * rules deliberately sit last: every title route and every lazy sub-screen
+ * keeps its own layout, while the common primitives now read as one product.
+ *
+ * Two constraints are load-bearing here:
+ *   - the page header and footer never scroll, only `.vm-page-body` does;
+ *   - the nine-entry title menu fits the desktop minimum at 720px high.
+ * ========================================================================== */
+
+.vm-shell {
+  --vm-accent-rgb: 53, 200, 240;
+  --vm-glass: rgba(4, 8, 17, 0.91);
+  --vm-glass-strong: rgba(3, 6, 14, 0.975);
+  --vm-glass-soft: rgba(12, 21, 35, 0.78);
+  --vm-line: rgba(126, 184, 220, 0.23);
+  --vm-line-soft: rgba(126, 184, 220, 0.11);
+  --vm-text: #f2f7fb;
+  --vm-text-dim: #afbdcb;
+  --vm-text-faint: #718398;
+}
+
+.vm-shell .vm-screen.is-modal {
+  background: radial-gradient(ellipse 105% 92% at 50% 42%,
+    rgba(3, 7, 14, 0.62) 0%, rgba(2, 4, 10, 0.91) 100%);
+}
+
+.vm-shell .vm-panel {
+  background:
+    linear-gradient(180deg, rgba(27, 40, 59, 0.28), rgba(3, 7, 15, 0.10) 38%),
+    var(--vm-glass);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.vm-shell .vm-panel::before {
+  background: linear-gradient(135deg,
+    rgba(var(--vm-accent-rgb), 0.58),
+    var(--vm-line) 24%,
+    var(--vm-line) 76%,
+    rgba(var(--vm-accent-rgb), 0.38));
+}
+
+.vm-shell .vm-btn {
+  min-height: 42px;
+  border: 1px solid var(--vm-line-soft);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.035), transparent 58%),
+    rgba(10, 18, 30, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition:
+    transform 140ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 120ms linear,
+    background-color 120ms linear,
+    border-color 120ms linear;
+}
+
+.vm-shell .vm-btn:hover,
+.vm-shell .vm-btn:focus-visible,
+.vm-shell .vm-btn.is-focus {
+  transform: translateX(3px);
+  border-color: rgba(var(--vm-accent-rgb), 0.43);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.16), rgba(var(--vm-accent-rgb), 0.035) 68%),
+    rgba(10, 18, 30, 0.9);
+}
+
+.vm-shell .vm-btn.is-icon:hover,
+.vm-shell .vm-btn.is-icon:focus-visible,
+.vm-shell .vm-btn.is-icon.is-focus,
+.vm-shell .vm-page-foot .vm-btn:hover,
+.vm-shell .vm-page-foot .vm-btn:focus-visible,
+.vm-shell .vm-page-foot .vm-btn.is-focus {
+  transform: translateY(-1px);
+}
+
+.vm-shell .vm-btn.is-primary {
+  border-color: rgba(var(--vm-accent-rgb), 0.42);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.19), rgba(var(--vm-accent-rgb), 0.08)),
+    rgba(8, 18, 30, 0.92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 0 24px rgba(var(--vm-accent-rgb), 0.08);
+}
+
+.vm-shell .vm-btn[disabled] {
+  opacity: 0.55;
+  border-color: rgba(126, 184, 220, 0.07);
+  background: rgba(6, 11, 20, 0.66);
+}
+
+.vm-shell .vm-btn[disabled]:hover {
+  transform: none;
+}
+
+/* Title screen ------------------------------------------------------------ */
+
+.vm-shell .vm-menu::before {
+  background:
+    linear-gradient(90deg, rgba(2, 5, 11, 0.98) 0%, rgba(3, 7, 14, 0.90) 30%, rgba(3, 7, 14, 0.36) 53%, transparent 72%),
+    linear-gradient(180deg, rgba(2, 5, 11, 0.22), transparent 38%, rgba(2, 5, 11, 0.32));
+}
+
+.vm-shell .vm-menu-inner {
+  width: min(470px, 44vw);
+  gap: clamp(14px, 2.3vh, 24px);
+  padding: clamp(24px, 4vh, 44px) clamp(28px, 4vw, 58px) 56px;
+}
+
+.vm-shell .vm-menu-brand {
+  gap: 8px;
+}
+
+.vm-shell .vm-logo {
+  width: min(100%, 380px);
+  filter:
+    drop-shadow(0 10px 18px rgba(0, 0, 0, 0.52))
+    drop-shadow(0 0 20px rgba(var(--vm-accent-rgb), 0.25));
+}
+
+.vm-shell .vm-menu-brand .vm-rule {
+  margin-top: -4px;
+}
+
+.vm-shell .vm-menu-nav {
+  counter-reset: vm-menu-item;
+  gap: 4px;
+  padding-top: 20px;
+  position: relative;
+}
+
+.vm-shell .vm-menu-nav::before {
+  content: 'COMMAND DECK // SELECT OPERATION';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  color: var(--vm-accent-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+}
+
+.vm-shell .vm-menu-nav > .vm-btn {
+  counter-increment: vm-menu-item;
+  min-height: 38px;
+  padding: 8px 13px;
+  gap: 10px;
+}
+
+.vm-shell .vm-menu-nav > .vm-btn::before {
+  content: counter(vm-menu-item, decimal-leading-zero);
+  flex: 0 0 18px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--vm-text-faint);
+  text-align: center;
+}
+
+.vm-shell .vm-menu-nav > .vm-btn:hover::before,
+.vm-shell .vm-menu-nav > .vm-btn:focus-visible::before,
+.vm-shell .vm-menu-nav > .vm-btn.is-focus::before {
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-menu-nav .vm-btn-label {
+  font-size: 13px;
+}
+
+.vm-shell .vm-menu-nav .vm-btn-hint {
+  font-size: 9px;
+}
+
+.vm-shell .vm-menu-foot {
+  padding-block: 10px;
+  border-top: 1px solid rgba(126, 184, 220, 0.08);
+  background: linear-gradient(90deg, rgba(3, 7, 14, 0.76), rgba(3, 7, 14, 0.14) 55%, transparent);
+}
+
+.vm-shell .vm-chip {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    rgba(4, 9, 18, 0.86);
+  border-color: var(--vm-line-soft);
+}
+
+/* Shared page and modal frame -------------------------------------------- */
+
+.vm-shell .vm-page {
+  padding: clamp(12px, 3.2vh, 38px) clamp(12px, 3.4vw, 52px);
+}
+
+.vm-shell .vm-page-panel {
+  width: min(1160px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  min-height: 0;
+}
+
+.vm-shell .vm-page-head {
+  min-height: 60px;
+  padding: 12px 16px;
+  border-bottom-color: rgba(var(--vm-accent-rgb), 0.28);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.09), transparent 36%),
+    rgba(4, 9, 18, 0.64);
+}
+
+.vm-shell .vm-page-head::after {
+  content: 'VOLTMARCH // COMMAND INTERFACE';
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  color: var(--vm-text-faint);
+  white-space: nowrap;
+}
+
+.vm-shell .vm-page-head .vm-h2 {
+  flex: 0 1 auto;
+  color: var(--vm-text);
+  letter-spacing: 0.34em;
+}
+
+.vm-shell .vm-page-body {
+  min-width: 0;
+  scrollbar-gutter: stable;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 13, 0.28), transparent 70px),
+    rgba(3, 7, 14, 0.24);
+}
+
+.vm-shell .vm-page-foot {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border-top-color: rgba(var(--vm-accent-rgb), 0.22);
+  background: rgba(3, 7, 14, 0.88);
+  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.vm-shell .vm-page-foot .vm-btn {
+  min-height: 40px;
+  min-width: 142px;
+}
+
+.vm-shell .vm-tabs {
+  flex: 0 0 auto;
+  min-height: 42px;
+  gap: 4px;
+  padding: 0 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: rgba(3, 8, 16, 0.48);
+}
+
+.vm-shell .vm-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.vm-shell .vm-tab {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 10px 14px;
+}
+
+.vm-shell .vm-tab[aria-selected='true'] {
+  background: linear-gradient(180deg, rgba(var(--vm-accent-rgb), 0.09), transparent);
+}
+
+.vm-shell .vm-tab::after {
+  left: 8px;
+  right: 8px;
+  box-shadow: 0 0 10px rgba(var(--vm-accent-rgb), 0.36);
+}
+
+.vm-shell .vm-section {
+  padding-top: 18px;
+}
+
+.vm-shell .vm-section > .vm-h3 {
+  padding-bottom: 9px;
+  color: var(--vm-accent-dim);
+}
+
+.vm-shell .vm-row {
+  min-width: 0;
+  padding: 10px 18px;
+  transition: background-color 120ms linear;
+}
+
+.vm-shell .vm-row:hover,
+.vm-shell .vm-row.is-focus {
+  background: linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.075), transparent 72%);
+}
+
+.vm-shell .vm-row-label {
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-row-note {
+  max-width: 58em;
+  line-height: 1.32;
+  color: #788a9f;
+}
+
+.vm-shell .vm-chooser-value,
+.vm-shell .vm-bind {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    rgba(7, 13, 24, 0.92);
+  border-color: var(--vm-line-soft);
+}
+
+.vm-shell .vm-toggle {
+  background: rgba(5, 11, 20, 0.9);
+  border-color: var(--vm-line);
+}
+
+.vm-shell .vm-toggle[aria-checked='true'] {
+  box-shadow: 0 0 14px rgba(var(--vm-accent-rgb), 0.14);
+}
+
+.vm-shell .vm-card,
+.vm-shell .vm-mapitem,
+.vm-shell .vm-mp-card,
+.vm-shell .vm-mp-room,
+.vm-shell .vm-camp-op {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.025), transparent 52%),
+    rgba(6, 12, 23, 0.74);
+}
+
+.vm-shell .vm-card:hover,
+.vm-shell .vm-card.is-focus,
+.vm-shell .vm-mapitem:hover,
+.vm-shell .vm-mapitem.is-focus {
+  border-color: rgba(var(--vm-accent-rgb), 0.4);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-accent-rgb), 0.09), transparent 62%),
+    rgba(6, 12, 23, 0.9);
+}
+
+.vm-shell .vm-card[aria-pressed='true'],
+.vm-shell .vm-mapitem[aria-pressed='true'] {
+  box-shadow:
+    inset 3px 0 0 var(--vm-accent),
+    0 0 20px rgba(var(--vm-accent-rgb), 0.07);
+}
+
+.vm-shell .vm-pause-panel {
+  width: min(430px, calc(100vw - 28px));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+}
+
+.vm-shell .vm-pause-head {
+  background: linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.10), transparent 74%);
+  border-bottom-color: rgba(var(--vm-accent-rgb), 0.26);
+}
+
+/* Keep the full command deck and every modal exit inside short desktop
+ * windows.  This is deliberately height-driven: a 1280x720 Electron window is
+ * wide but still needs the compact rhythm. */
+@media (max-height: 760px) {
+  .vm-shell .vm-menu-inner {
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: 14px;
+    padding-bottom: 48px;
+  }
+
+  .vm-shell .vm-menu-brand {
+    gap: 4px;
+  }
+
+  .vm-shell .vm-logo {
+    width: min(88%, 330px);
+  }
+
+  .vm-shell .vm-subtitle {
+    font-size: 9px;
+  }
+
+  .vm-shell .vm-menu-nav {
+    gap: 3px;
+    padding-top: 16px;
+  }
+
+  .vm-shell .vm-menu-nav > .vm-btn {
+    min-height: 34px;
+    padding-block: 6px;
+  }
+
+  .vm-shell .vm-menu-foot {
+    padding-block: 7px;
+  }
+
+  .vm-shell .vm-page-head {
+    min-height: 52px;
+    padding-block: 8px;
+  }
+
+  .vm-shell .vm-page-foot {
+    padding-block: 9px;
+  }
+}
+
+@media (max-width: 760px) {
+  .vm-shell .vm-menu::before {
+    background: linear-gradient(90deg, rgba(2, 5, 11, 0.96), rgba(3, 7, 14, 0.82));
+  }
+
+  .vm-shell .vm-menu-inner {
+    width: 100%;
+    max-width: 500px;
+    margin-inline: auto;
+    padding-inline: 18px;
+  }
+
+  .vm-shell .vm-menu-foot {
+    padding-inline: 18px;
+  }
+
+  .vm-shell .vm-page-panel {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .vm-shell .vm-page-head::after {
+    display: none;
+  }
+
+  .vm-shell .vm-page-foot {
+    flex-wrap: wrap;
+  }
+
+  .vm-shell .vm-page-foot .vm-btn {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .vm-shell .vm-menu-foot > .vm-load-meta {
+    display: none;
+  }
+
+  .vm-shell .vm-menu-foot {
+    justify-content: flex-end;
+  }
+
+  .vm-shell .vm-row {
+    padding-inline: 14px;
+  }
+
+  .vm-shell .vm-tabs {
+    padding-inline: 8px;
+  }
+}
