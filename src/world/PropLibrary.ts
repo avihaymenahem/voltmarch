@@ -579,7 +579,7 @@ export class PropMesh {
   blob(
     cx: number, cy: number, cz: number,
     rx: number, ry: number, rz: number,
-    segs: number, rings: number, squashBottom = 0,
+    segs: number, rings: number, squashBottom = 0, yaw = 0,
   ): void {
     const n = Math.max(4, Math.round(segs)), m = Math.max(2, Math.round(rings));
     for (let j = 0; j < m; j++) {
@@ -589,7 +589,7 @@ export class PropMesh {
       const y1 = y1raw < 0 ? y1raw * (1 - squashBottom) : y1raw;
       const s0 = Math.sin(p0), s1 = Math.sin(p1);
       for (let i = 0; i < n; i++) {
-        const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU;
+        const a0 = yaw + (i / n) * TAU, a1 = yaw + ((i + 1) / n) * TAU;
         const c0 = Math.cos(a0), z0 = Math.sin(a0), c1 = Math.cos(a1), z1 = Math.sin(a1);
         const sm = (s0 + s1) * 0.5;
         const ox = (c0 + c1) * 0.5 * sm, oz = (z0 + z1) * 0.5 * sm, oy = (y0 + y1) * 0.5;
@@ -1080,23 +1080,26 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
    * Re-measured with the same instrument, 7 seeds x both keys:
    *
    *              hull fill      enclosed sky      triangles
-   *   before     98.7-100%      0.0% on EVERY     688
-   *   after      55.2-79.7%     3.1-18.8%         920-1088 (mean ~1010)
+   *   before     98.7-100%      0.0% on EVERY      688
+   *   branches   55.2-79.7%     3.1-18.8%          920-1088
+   *   current    same topology  same open crown    1454-1664
    *
    * "Enclosed sky" is empty silhouette area the border flood-fill cannot
    * reach — a hole you see the sky through, not a notch in the rim. Before,
    * there was not one on any seed, which is what convex-by-construction means.
    *
-   * Lobe facets are ~2*pi*0.85/6 = 0.89 m, ~29 px at 01 — still a crisp,
-   * crease-bounded shape carrying one flat colour, so `facetJitter` stays
-   * legal under the "no per-pixel noise" rule and stays ON. Do NOT smooth
-   * these normals: shared vertices delete the jitter and a smooth-shaded lobe
-   * in one flat olive is the green balloon this replaced.
+   * Lobe facets are ~2*pi*0.85/7 = 0.76 m, ~25 px at 01 — still a crisp,
+   * crease-bounded shape carrying one flat colour, but no longer a visibly
+   * hexagonal crown at the close terrain camera. Four vertical rings soften
+   * the horizon line while preserving enough facets for `facetJitter` to model
+   * broad leaf planes. Do NOT smooth these normals: shared vertices delete the
+   * jitter and a smooth-shaded lobe in one flat olive is the balloon this
+   * replaced.
    *
-   * Cost: +47% triangles on two of 31 prop types, +3.3% on the whole roster
-   * (19 738 -> 20 394), and 0 extra draw calls — same InstancedMesh, same
-   * material, same program. Triangles are not the constraint here; the colour
-   * pass runs 51-77 draws against a budget of 130.
+   * Current cost, including the branch-whorl conifer below: the seed-3
+   * temperate library moves 20 118 -> 23 052 triangles (+14.6%) and adds zero
+   * draw calls — same InstancedMeshes, same material, same program. That is the
+   * explicit quality trade the higher-detail vegetation pass takes.
    */
   const cy = trunkH + canopyR * 0.62;
   const crownRy = canopyR * 0.88;
@@ -1178,7 +1181,7 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
       // are for — form, not confetti.
       const t = (ly - (cy - crownRy)) / (2 * crownRy);
       m.color(tones[t > 0.66 ? 0 : t > 0.38 ? 1 : 2]);
-      m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr, 6, 3, 0);
+      m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr, 7, 4, 0, a + k * 0.73);
     }
     m.noFacetJitter();
   }
@@ -1190,26 +1193,93 @@ function buildTreeAutumn(m: PropMesh, rng: Rng, p: PropPalette): void { broadlea
 function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
   const height = rng.range(9, 13);
   const baseR = rng.range(2.1, 2.9);
-  const trunkH = height * 0.15;
+  const trunkH = height * 0.18;
   m.ao(0.40, 0, height * 0.4).sway(0, 0, 1);
-  m.color(p.trunkDark).cyl(0, 0, 0, 0.34, 0.24, trunkH * 1.7, 10, 0.05);
+  m.color(p.trunkDark).cyl(0, 0, 0, 0.38, 0.17, height * 0.94, 10, 0.05);
 
-  // 4 stacked cones, each ~0.74x the one below. The stepped silhouette is what
-  // separates a conifer from a green traffic cone at RTS distance.
+  /*
+   * BRANCH WHORLS, NOT STACKED CONES.
+   *
+   * Four twelve-sided cones were cheap, but the silhouette was still four
+   * traffic cones pushed through each other — a solid triangular cut-out with
+   * horizontal skirts. At the live terrain camera those skirts were among the
+   * largest, darkest polygons in the frame and made every forest read like an
+   * early-2000s asset pack.
+   *
+   * Five irregular whorls now carry 5-6 bowed limbs apiece. Two flattened
+   * needle masses sit along each limb, leaving real sky gaps between branches
+   * while their shrinking reach preserves the strong conifer triangle at RTS
+   * distance. It is more geometry, but still one baked mesh, one instance
+   * buffer and one draw call for every conifer on the map.
+   */
   m.sway(SCATTER_WIND.canopyAmplitude * 0.55, trunkH, height);
   m.ao(0.52, trunkH, height);
-  // A cone is 12 tall triangles that differ only by their normal, and a conifer
-  // is the darkest thing on the map — the shading spread across those 12 is
-  // small enough in absolute terms that the whole tier reads as one silhouette.
+  const whorls = 5;
+  const crownSpan = height - trunkH;
+  const phase = rng.next() * TAU;
+  for (let tier = 0; tier < whorls; tier++) {
+    const t = tier / (whorls - 1);
+    const y = trunkH + crownSpan * (0.08 + t * 0.68);
+    const reach = baseR * (1 - t * 0.68);
+    const branchN = 5 + (tier & 1);
+    const tierPhase = phase + tier * 0.61 + rng.range(-0.16, 0.16);
+    const tone = tier < 2 ? p.coniferDark : p.conifer;
+
+    for (let branch = 0; branch < branchN; branch++) {
+      const a = tierPhase + (branch / branchN) * TAU + rng.range(-0.10, 0.10);
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const branchReach = reach * rng.range(0.86, 1.08);
+      const droop = branchReach * rng.range(0.10, 0.18) * (1 - t * 0.45);
+      const tipX = ca * branchReach;
+      const tipY = y - droop;
+      const tipZ = sa * branchReach;
+
+      // The woody line remains visible between needle pads and is the cue that
+      // these are branches carrying foliage rather than disconnected blobs.
+      m.noFacetJitter();
+      m.color(p.trunkDark);
+      m.limb(
+        ca * 0.12, y + 0.08, sa * 0.12,
+        tipX, tipY, tipZ,
+        0.11 * (1 - t * 0.35), 0.035,
+        3, 2, branchReach * 0.035,
+      );
+
+      m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
+      m.color(tone);
+      for (let pad = 0; pad < 2; pad++) {
+        const f = pad === 0 ? rng.range(0.48, 0.62) : rng.range(0.78, 0.94);
+        const padR = Math.max(0.30, reach * (pad === 0 ? 0.24 : 0.19));
+        const px = tipX * f - sa * rng.range(-0.12, 0.12);
+        const py = y + (tipY - y) * f + rng.range(-0.06, 0.10);
+        const pz = tipZ * f + ca * rng.range(-0.12, 0.12);
+        m.blob(
+          px, py, pz,
+          padR * rng.range(1.05, 1.28),
+          padR * rng.range(0.42, 0.60),
+          padR * rng.range(0.82, 1.08),
+          7, 3, 0.18, a + pad * 0.91 + tier * 0.43,
+        );
+      }
+    }
+  }
+
+  // A broken, tapered leader closes the crown without returning to a cone.
+  // Its four small masses overlap enough to read as a spire, but gaps remain
+  // around the trunk from every camera yaw.
   m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
-  let y = trunkH;
-  let r = baseR;
   for (let i = 0; i < 4; i++) {
-    const h = (height - trunkH) * (0.38 - i * 0.035);
-    m.color(i % 2 === 0 ? p.conifer : p.coniferDark);
-    m.cone(0, y, 0, r, h * 2.0, 12, i === 0);
-    y += h * 0.90;
-    r *= 0.74;
+    const t = i / 3;
+    const a = phase + i * 1.73;
+    const r = baseR * (0.30 - t * 0.16);
+    m.color(i < 2 ? p.conifer : p.coniferDark);
+    m.blob(
+      Math.cos(a) * r * 0.32,
+      height - 1.45 + t * 1.25,
+      Math.sin(a) * r * 0.32,
+      r, r * 0.78, r,
+      7, 3, 0.12, a,
+    );
   }
   m.noFacetJitter();
 }

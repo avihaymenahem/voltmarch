@@ -179,14 +179,13 @@ export function coplanarOverlapArea(geo: THREE.BufferGeometry): number {
 }
 
 /**
- * THE THREE SURVIVORS, AND WHY EACH ONE STAYS.
+ * THE ONE SURVIVOR, AND WHY IT STAYS.
  *
  * Every fixed case was TWO HAND-AUTHORED NUMBERS that happened to agree, and is
  * therefore present on every seed, every biome and every map. Every row below
  * is the other kind: an overlap that falls out of a SEEDED PLACEMENT, present
- * on some seeds and absent on others (`treeAutumn` is clean on four of the five
- * seeds swept here). Removing one means moving props about, which changes what
- * every map looks like for a defect smaller than the change.
+ * on some seeds and absent on others. Removing it means moving props about,
+ * which changes what every map looks like for a defect smaller than the change.
  *
  * `PropDef.build` is the boundary that makes this table safe to have: these are
  * budgets on foliage and on a barrel cluster, not a licence for a new flush
@@ -209,34 +208,19 @@ const DECLARED: ReadonlyMap<string, { readonly max: number; readonly why: string
         + 'Luminance gap between the surviving pairs: 0.000-0.002, i.e. this '
         + 'one is invisible as well as small.',
     }],
-    ['tree', {
-      max: 0.60,
-      why: 'canopy lobes. `PropMesh.blob` has no yaw, so every lobe shares one '
-        + 'angular lattice and two of them need only a centre offset lying in '
-        + 'a facet plane to tie. Worst measured 0.3928 m2 of ~10 m canopy at '
-        + 'seed 4242; zero at three of the five seeds swept. Giving `blob` a '
-        + 'yaw would fix it and would also move the canopy hull fill and the '
-        + 'enclosed-sky fraction that `broadleaf` documents as measured, so it '
-        + 'is a change with its own re-measurement and not a drive-by.',
-    }],
-    ['treeAutumn', {
-      max: 0.60,
-      why: 'the same canopy, the same cause — `broadleaf` builds both keys.',
-    }],
   ]);
 
 /**
  * FIVE seeds, because a builder that places by seeded RNG can be clean on one
- * of them by luck — `treeAutumn` is clean on four of these and `tree` on three.
- * Every DECLARED row above is seed-dependent by nature, which is exactly what
- * puts it in the table rather than in the fixed set, so one seed is not
- * evidence in either direction. The authored cases this gate exists for are
- * seed-INDEPENDENT and would fail on any one of them.
+ * of them by luck. Every DECLARED row above is seed-dependent by nature, which
+ * is exactly what puts it in the table rather than in the fixed set, so one
+ * seed is not evidence in either direction. The authored cases this gate
+ * exists for are seed-INDEPENDENT and would fail on any one of them.
  */
 const SEEDS: readonly number[] = [0x5eed_1234, 7, 99, 12345, 4242];
 
 describe('props draw no surface twice at one depth', () => {
-  it('is clean on every prop in every biome, bar three declared placements', () => {
+  it('is clean on every prop in every biome, bar one declared placement', () => {
     const worst = new Map<string, number>();
     for (const seed of SEEDS) {
       for (const biome of BIOME_NAMES) {

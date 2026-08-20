@@ -67,6 +67,20 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
     expect(expected).toBeGreaterThanOrEqual(24);
   });
 
+  it('gives hero vegetation enough geometry to escape cone-and-ball silhouettes', () => {
+    const tree = lib.get('tree')!;
+    const autumn = lib.get('treeAutumn')!;
+    const conifer = lib.get('conifer')!;
+    // Broadleaf lobes use seven sides and four vertical rings; dropping back
+    // to the old six-by-three blobs lands around 1000 triangles.
+    expect(tree.triangles).toBeGreaterThan(1400);
+    expect(autumn.triangles).toBeGreaterThan(1400);
+    // The old four-cone conifer was under 100 triangles. Branch whorls, woody
+    // limbs and separated needle pads are intentionally a real hero mesh.
+    expect(conifer.triangles).toBeGreaterThan(1800);
+    expect(conifer.triangles).toBeLessThan(2400);
+  });
+
   it('gives every type geometry with all five attributes and an index', () => {
     for (const pg of lib.all()) {
       const g = pg.geometry;
