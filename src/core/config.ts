@@ -7190,6 +7190,26 @@ export const VFX_SMOKE = {
   damageScanSlice: 6,
 } as const;
 
+/**
+ * Low-frequency life around COMPLETE, HEALTHY structures. These are single
+ * puffs and tiny process sparks, never damage columns: the purpose is to make
+ * a base feel occupied without turning every roof into a wreck or consuming a
+ * meaningful share of the particle budget.
+ */
+export const VFX_BUILDING_LIFE = {
+  minHpFraction: 0.82,
+  /** Base milliseconds between emissions; per-entity seed adds +/-25%. */
+  alliedIntervalMs: 3600,
+  sovietIntervalMs: 2100,
+  meridianIntervalMs: 2600,
+  reclaimIntervalMs: 1700,
+  /** Roof socket approximation from the authored footprint. */
+  roofBaseM: 3.2,
+  roofPerCellM: 1.1,
+  steamLifeMs: 1900,
+  steamRiseMps: 1.15,
+} as const;
+
 /* ---- ground FX (bible §8.10) -------------------------------------------- */
 
 export const VFX_GROUND = {

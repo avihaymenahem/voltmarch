@@ -74,6 +74,10 @@ export const STRUCTURE_ANIM = {
    */
   doorCloseFraction: BUILDING_ANIM.doorOpenFraction + 0.14,
 
+  /* ---- healthy machinery ---------------------------------------------- */
+  /** Slow industrial travel shared by valves, collector lenses and hooks. */
+  pistonRadians: 0.56 * STRUCTURE_TAU,
+
   /* ---- damage ----------------------------------------------------------- */
   /** Bible 8.8: a hurt structure soots, it does not recolour. */
   damageOnsetLo: BUILDING_ANIM.damageOnset * 0.3,
@@ -140,4 +144,6 @@ export const STRUCTURE_FEATURE = {
   door: 2,
   /** A radar sweep, about the model Y axis. */
   spin: 3,
+  /** A healthy mechanical part travelling vertically by `anim` metres. */
+  piston: 5,
 } as const;

@@ -47,7 +47,7 @@ import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
 import {
-  MAX_ENTITIES, VFX_EXPLOSION, VFX_GROUND, VFX_LIGHT_POOL, VFX_LIGHT_POOL_BY_TIER,
+  MAX_ENTITIES, VFX_BUILDING_LIFE, VFX_EXPLOSION, VFX_GROUND, VFX_LIGHT_POOL, VFX_LIGHT_POOL_BY_TIER,
   VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE, WATER_LEVEL,
 } from '../core/config';
 import {
@@ -56,7 +56,7 @@ import {
 import { DecalKind as WorldDecalKind, layDecal } from '../world/Decals';
 import type { EntityId, RenderContext } from '../core/types';
 import { ctx } from '../game/context';
-import { socketWorld } from '../render/RenderBridge';
+import { renderBridge, socketWorld } from '../render/RenderBridge';
 
 import {
   clearFlashBudget, glareAttenuatedCount, glareSpotCount, stepFlashBudget,
@@ -67,8 +67,9 @@ import { BeamSystem, setBeamSystem } from './Beams';
 import { TracerSystem, setTracerSystem, spawnMuzzleFlash, spawnTrail } from './Tracers';
 import {
   clearExplosions, hasScorchSink, setGroundHeightFn, setMetresPerPixel,
-  setShakeSink, spawnDamageFire, spawnDamageWisp, spawnDust, spawnExplosion,
-  spawnImpact, spawnSmokeColumn, spawnSplash, stepExplosions,
+  setShakeSink, spawnCollectorMote, spawnDamageFire, spawnDamageWisp, spawnDust,
+  spawnExplosion, spawnImpact, spawnMachineSparks, spawnSmokeColumn, spawnSplash,
+  spawnSteamPuff, stepExplosions,
 } from './Explosions';
 
 /* -------------------------------------------------------------------------- */
@@ -124,6 +125,10 @@ const _camPos = new THREE.Vector3();
  */
 const damageTimer = new Float32Array(MAX_ENTITIES);
 const dustTimer = new Float32Array(MAX_ENTITIES);
+/** Negative means an eligible building has not received its seeded first delay. */
+const buildingLifeTimer = new Float32Array(MAX_ENTITIES);
+/** Generation stamp prevents a recycled entity slot inheriting an old vent cycle. */
+const buildingLifeGen = new Uint16Array(MAX_ENTITIES);
 /** Rolling cursor for the round-robin damage scan. */
 let scanCursor = 0;
 
@@ -363,6 +368,81 @@ function oreSparkle(x: number, y: number, z: number, scale: number): void {
 /* Damage states and tread dust                                               */
 /* -------------------------------------------------------------------------- */
 
+function buildingLifeInterval(faction: Faction): number {
+  switch (faction) {
+    case Faction.Allies: return VFX_BUILDING_LIFE.alliedIntervalMs;
+    case Faction.Soviets: return VFX_BUILDING_LIFE.sovietIntervalMs;
+    case Faction.Meridian: return VFX_BUILDING_LIFE.meridianIntervalMs;
+    case Faction.Reclaim: return VFX_BUILDING_LIFE.reclaimIntervalMs;
+    default: return 0;
+  }
+}
+
+/**
+ * Low-frequency, healthy building activity. Damage smoke owns unhealthy
+ * structures; this path explicitly excludes them and never emits a column.
+ */
+function buildingLife(i: number, hpFraction: number, chargedMs: number): void {
+  const { world } = ctx();
+  const s = world.store;
+  const flags = s.flags[i];
+  const faction = s.faction[i] as Faction;
+  if (buildingLifeGen[i] !== s.gen[i]) {
+    buildingLifeGen[i] = s.gen[i];
+    buildingLifeTimer[i] = -1;
+  }
+  const interval = buildingLifeInterval(faction);
+  const substantial = s.footprintW[i] >= 2 || s.footprintH[i] >= 2;
+  const unpowered = (flags & EntityFlag.NeedsPower) !== 0 && (flags & EntityFlag.Powered) === 0;
+  const hidden = renderBridge()?.visibility?.isRenderHiddenAt(i) ?? false;
+  if (
+    interval <= 0 || !substantial || unpowered || hidden
+    || hpFraction < VFX_BUILDING_LIFE.minHpFraction
+    || (flags & (EntityFlag.UnderConstruction | EntityFlag.Burning)) !== 0
+    || s.buildProgress[i] < 1
+  ) {
+    buildingLifeTimer[i] = -1;
+    return;
+  }
+
+  // First contact seeds a quiet delay rather than making every structure puff
+  // during the six scan slices immediately after a match loads.
+  const seed = s.seed[i];
+  const stagger = interval * (0.55 + seed * 0.70);
+  if (buildingLifeTimer[i] < 0) {
+    buildingLifeTimer[i] = stagger;
+    return;
+  }
+  buildingLifeTimer[i] -= chargedMs;
+  if (buildingLifeTimer[i] > 0) return;
+  buildingLifeTimer[i] = interval * (0.75 + ((seed * 17.13) % 1) * 0.50);
+
+  const yaw = s.yaw[i];
+  const c = Math.cos(yaw), sn = Math.sin(yaw);
+  const lx = s.footprintW[i] * 4 * 0.22;
+  const lz = -s.footprintH[i] * 4 * 0.17;
+  const x = s.posX[i] + lx * c + lz * sn;
+  const z = s.posZ[i] - lx * sn + lz * c;
+  const y = s.posY[i] + VFX_BUILDING_LIFE.roofBaseM
+    + Math.max(s.footprintW[i], s.footprintH[i]) * VFX_BUILDING_LIFE.roofPerCellM;
+
+  switch (faction) {
+    case Faction.Allies:
+      spawnSteamPuff(x, y, z, 0.62);
+      break;
+    case Faction.Soviets:
+      spawnSteamPuff(x, y, z, 0.92);
+      break;
+    case Faction.Meridian:
+      spawnCollectorMote(x, y + 0.25, z, 0.90);
+      break;
+    case Faction.Reclaim:
+      spawnMachineSparks(x, y - 0.35, z, 0.92);
+      if (seed > 0.62) spawnSteamPuff(x - 0.35, y - 0.15, z + 0.20, 0.58);
+      break;
+  }
+}
+
 /**
  * Bible §8.8. Health 65–33% gets a thin grey wisp every 600 ms; 32–1% gets a
  * black column every 220 ms plus 2–4 flame tongues and a flickering ember
@@ -416,6 +496,8 @@ function damageScan(dtMs: number): void {
     } else {
       damageTimer[i] = 0;
     }
+
+    if (kind === EntityKind.Building) buildingLife(i, frac, charged);
 
     // TREAD DUST IS A GROUND EFFECT. `EntityKind.Vehicle` covers every ship and
     // every hovercraft in the game — `EntityKind` has no naval member — so
@@ -638,6 +720,8 @@ export default defineSystem({
 
     damageTimer.fill(0);
     dustTimer.fill(0);
+    buildingLifeTimer.fill(-1);
+    buildingLifeGen.fill(0);
     scanCursor = 0;
     drainedTotal = 0;
     probeReported = false;
@@ -853,6 +937,7 @@ export default defineSystem({
 
 export {
   spawnExplosion, spawnImpact, spawnSmokeColumn, spawnSplash, spawnDust,
+  spawnSteamPuff, spawnMachineSparks, spawnCollectorMote,
   spawnDamageWisp, spawnDamageFire, sparkBurst,
   setScorchSink, setGroundHeightFn, setShakeSink, hasScorchSink,
   type ScorchSink, type ExplosionKind, type ImpactSurface,

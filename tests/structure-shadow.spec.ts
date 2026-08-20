@@ -82,7 +82,7 @@ describe('the structure depth material', () => {
     expect(mat.isMeshDepthMaterial).toBe(true);
     // Without a key of its own, three serves it the program it built for its
     // OWN stock depth material and the injection is silently a no-op.
-    expect(mat.customProgramCacheKey()).toBe('ra3.structure.depth.v1');
+    expect(mat.customProgramCacheKey()).toBe('ra3.structure.depth.v2');
     mat.dispose();
   });
 
@@ -114,12 +114,13 @@ describe('the structure depth material', () => {
     const mat = createStructureDepthMaterial();
     const { vert, frag, uniforms } = compile(mat);
     expect(vert).toContain('raSink = (1.0 - bp) * aFeature.y * rises;');
-    expect(vert).toContain('transformed.y -= raSink + raDoor;');
+    expect(vert).toContain('transformed.y += raLift - raSink - raDoor;');
     expect(frag).toContain('if (vRaClip < 0.0) discard;');
     // The door and the radar sweep move the silhouette too, so the shadow has
     // to follow them or a bay door casts through its own opening.
     expect(vert).toContain('raDoor = isDoor * aFeature.z * open;');
     expect(vert).toContain('mat2(raSpinC, raSpinS, -raSpinS, raSpinC)');
+    expect(vert).toContain('raLift = isPiston * aFeature.z * sin(');
     // Same clock as the colour pass, or the two disagree about door phase.
     expect(uniforms.uTime).toBeDefined();
     mat.dispose();
@@ -179,7 +180,7 @@ describe('the colour and depth programs share one copy of the maths', () => {
     // unchanged key is served the OLD program. THIS ASSERTION IS MEANT TO NEED
     // EDITING: a pin somebody has to consciously move is the mechanism, and a
     // regex over the version number would quietly accept never bumping it.
-    expect(stripComments(SRC)).toContain("'ra3.structure.rim.v6'");
+    expect(stripComments(SRC)).toContain("'ra3.structure.rim.v7'");
   });
 });
 

@@ -406,7 +406,8 @@ function pactShell(fw: number, fh: number, height: number, o: ShellOpts): Shell 
       }),
     cyl('roof.lens', MassRole.Greeble, [capacitorD * 0.72, 0.18, capacitorD * 0.72],
       [-w * 0.29, bodyH + 0.66, -d * 0.25], 'glass', {
-        segments: 10, topRadius: 0.38, capSlot: 'emissive', group: 'roofPlant', chamfer: 0.05,
+        segments: 10, topRadius: 0.38, capSlot: 'emissive', group: 'roofPlant',
+        feature: Feature.Piston, anim: 0.16, chamfer: 0.05,
       }),
     box('intake', MassRole.Greeble, [0.32, mainH * 0.42, d * 0.40], [w * 0.46, plinthH + mainH * 0.30, -d * 0.10], 'grille', {
       mirrorX: true, group: 'intakes', chamfer: 0.05,

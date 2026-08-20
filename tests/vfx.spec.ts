@@ -36,7 +36,10 @@ import {
 } from '../src/vfx/Particles';
 import { BeamSystem, TeslaBolt, setBeamSystem } from '../src/vfx/Beams';
 import { TracerSystem, setTracerSystem, spawnTrail } from '../src/vfx/Tracers';
-import { setGroundHeightFn, setScorchSink, spawnExplosion } from '../src/vfx/Explosions';
+import {
+  setGroundHeightFn, setScorchSink, spawnCollectorMote, spawnExplosion,
+  spawnMachineSparks, spawnSteamPuff,
+} from '../src/vfx/Explosions';
 
 /* ========================================================================== */
 /* Helpers                                                                    */
@@ -65,6 +68,25 @@ function makeParticles(): ParticleSystem {
   setParticleSystem(p);
   return p;
 }
+
+describe('healthy structure activity', () => {
+  it('uses tiny bounded recipes instead of damage-sized smoke columns', () => {
+    const P = makeParticles();
+    spawnSteamPuff(0, 5, 0, 1);
+    expect(P.lit.liveCount).toBeGreaterThanOrEqual(1);
+    expect(P.lit.liveCount).toBeLessThanOrEqual(2);
+
+    spawnMachineSparks(0, 5, 0, 1);
+    expect(P.additive.liveCount).toBeGreaterThanOrEqual(2);
+    expect(P.additive.liveCount).toBeLessThanOrEqual(4);
+
+    const before = P.additive.liveCount;
+    spawnCollectorMote(0, 5, 0, 1);
+    expect(P.additive.liveCount).toBe(before + 1);
+    P.dispose();
+    setParticleSystem(null);
+  });
+});
 
 /* ========================================================================== */
 /* 1. THE ORDERING BUG — the one thing that had to be proven empirically      */

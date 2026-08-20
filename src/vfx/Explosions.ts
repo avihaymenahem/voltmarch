@@ -38,6 +38,7 @@
 
 import {
   VFX_EXPLOSION,
+  VFX_BUILDING_LIFE,
   VFX_GLARE,
   VFX_GROUND,
   VFX_GUNS,
@@ -719,6 +720,77 @@ export function spawnSmokeColumn(
     e.alpha = S.opacityBase + (S.opacityTop - S.opacityBase) * f;
     emitLit(e);
   }
+}
+
+/**
+ * One restrained clean vent cycle from healthy industrial plant. This is
+ * deliberately 1-2 small lobes, not `spawnSmokeColumn`: a working building
+ * must not read as damaged at a glance.
+ */
+export function spawnSteamPuff(x: number, y: number, z: number, scale = 1): void {
+  const P = particles();
+  if (P !== null && P.lit.pressure > VFX_LIT_PRESSURE_CUTOFF) return;
+  const rng = presentationRng;
+  const count = rng.int(1, 2);
+  for (let i = 0; i < count; i++) {
+    const e = resetEmit();
+    e.x = x + rng.range(-0.12, 0.12) * scale;
+    e.y = y + i * 0.08;
+    e.z = z + rng.range(-0.12, 0.12) * scale;
+    e.vx = rng.range(-0.22, 0.22) * scale;
+    e.vy = VFX_BUILDING_LIFE.steamRiseMps * rng.range(0.85, 1.18);
+    e.vz = rng.range(-0.22, 0.22) * scale;
+    e.drag = 0.38;
+    e.delayMs = i * 130;
+    e.lifeMs = VFX_BUILDING_LIFE.steamLifeMs * rng.range(0.84, 1.16);
+    e.size0 = 0.30 * scale;
+    e.size1 = 1.05 * scale;
+    e.sizeEase = 0.76;
+    e.ramp = VFX_RAMP.vapour;
+    e.tA = 0.08; e.tB = 1;
+    e.tile = i === 0 ? VFX_TILE.puffAlt : VFX_TILE.billow;
+    e.rot = rng.range(0, Math.PI * 2);
+    e.rotVel = rng.range(-0.18, 0.18);
+    e.alpha = 0.32;
+    emitLit(e);
+  }
+}
+
+/** Tiny maintenance activity for exposed Reclamation machinery. */
+export function spawnMachineSparks(x: number, y: number, z: number, scale = 1): void {
+  const rng = presentationRng;
+  const count = rng.int(2, 4);
+  for (let i = 0; i < count; i++) {
+    const th = rng.range(0, Math.PI * 2);
+    const e = resetEmit();
+    e.x = x; e.y = y; e.z = z;
+    e.vx = Math.cos(th) * rng.range(0.5, 1.5) * scale;
+    e.vy = rng.range(0.5, 1.8) * scale;
+    e.vz = Math.sin(th) * rng.range(0.5, 1.5) * scale;
+    e.gravity = 3.8;
+    e.lifeMs = rng.range(260, 520);
+    e.size0 = 0.07 * scale; e.size1 = 0.018 * scale;
+    e.ramp = VFX_RAMP.spark; e.tA = 0; e.tB = 0.9;
+    e.tile = VFX_TILE.spark;
+    e.i0 = 1.8; e.i1 = 0.1;
+    e.alpha = 0.72;
+    emitAdditive(e);
+  }
+}
+
+/** One ceremonial collector mote for Meridian architecture. */
+export function spawnCollectorMote(x: number, y: number, z: number, scale = 1): void {
+  const e = resetEmit();
+  e.x = x; e.y = y; e.z = z;
+  e.vy = 0.62 * scale;
+  e.lifeMs = 1100;
+  e.size0 = 0.10 * scale; e.size1 = 0.34 * scale;
+  e.sizeEase = 0.62;
+  e.ramp = VFX_RAMP.spark; e.tA = 0; e.tB = 1;
+  e.tile = VFX_TILE.flare;
+  e.i0 = 1.25; e.i1 = 0;
+  e.alpha = 0.58;
+  emitAdditive(e);
 }
 
 /** One damage wisp: the 65–33% health state. Cheap, called on a timer. */

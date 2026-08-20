@@ -107,6 +107,8 @@ interface Solved {
   spinS: FloatN;
   /** Sink plus door, in metres of model space, both downward. */
   drop: FloatN;
+  /** Healthy mechanical travel, in metres of model space, upward-positive. */
+  lift: FloatN;
 }
 
 /**
@@ -150,10 +152,16 @@ function solve(): Solved {
     .mul(step(code, STRUCTURE_FEATURE.spin + 0.5));
   const ang = uTime.mul(aFeature.z).mul(isSpin).toVar('ang');
 
+  const isPiston = step(STRUCTURE_FEATURE.piston - 0.5, code)
+    .mul(step(code, STRUCTURE_FEATURE.piston + 0.5));
+  const lift = sin(uTime.mul(S.pistonRadians).add(aFeature.w.mul(6.28318)))
+    .mul(aFeature.z).mul(isPiston);
+
   return {
     spinC: ang.cos().toVar('raSpinC'),
     spinS: ang.sin().toVar('raSpinS'),
     drop: sink.add(door).toVar('raDrop'),
+    lift: lift.toVar('raLift'),
   };
 }
 
@@ -172,13 +180,13 @@ function solve(): Solved {
  * because a transposed rotation spins the dish backwards and nothing catches it.
  */
 function applyStructureVertex(): void {
-  const { spinC, spinS, drop } = solve();
+  const { spinC, spinS, drop, lift } = solve();
 
   const x = positionLocal.x.toVar('raPx');
   const z = positionLocal.z.toVar('raPz');
   positionLocal.assign(vec3(
     spinC.mul(x).sub(spinS.mul(z)),
-    positionLocal.y.sub(drop),
+    positionLocal.y.add(lift).sub(drop),
     spinS.mul(x).add(spinC.mul(z)),
   ));
 

@@ -568,7 +568,7 @@ function reclaimFrame(fw: number, fh: number, height: number, o: FrameOpts): Fra
       }),
     box('gantry.hook', MassRole.Greeble, [0.28, 0.38, 0.24],
       [w * 0.28, gantryY - mainH * 0.38, -d * 0.16], 'hatch', {
-        rot: [0, 0, 0.18], group: 'jib', chamfer: 0.05,
+        rot: [0, 0, 0.18], group: 'jib', feature: Feature.Piston, anim: 0.20, chamfer: 0.05,
       }),
   );
 

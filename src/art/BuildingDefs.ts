@@ -598,7 +598,9 @@ function alliedShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
   // than machinery from the game camera. The nacelle is now a transverse
   // aerospace turbine with a real round intake and a raised collar. It is broad
   // enough to cut the roof silhouette without competing with the command keel.
-  const turbineD = Math.min(w, d) * 0.13;
+  // Broader than the old HVAC-sized barrel: this is the Allied signature
+  // machine at game distance, paired with a clean low-volume vapour cycle.
+  const turbineD = Math.min(w, d) * 0.15;
   masses.push(
     cyl('roof.turbine', MassRole.Greeble, [turbineD, w * 0.23, turbineD],
       [-w * 0.24, bodyH + turbineD * 0.34, -d * 0.22], 'vent', {
@@ -698,7 +700,7 @@ function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
     cyl('roof.exhaustCollar', MassRole.Greeble, [exhaustD * 1.22, bodyH * 0.055, exhaustD * 1.22],
       [w * 0.24, bodyH + bodyH * 0.29, -d * 0.24], 'bareMetal', {
         mirrorX: true, segments: 10, topRadius: 0.90,
-        capSlot: 'grille', group: 'roofPlant', chamfer: 0.05,
+        capSlot: 'grille', group: 'roofPlant', feature: Feature.Piston, anim: 0.11, chamfer: 0.05,
       }),
   );
 

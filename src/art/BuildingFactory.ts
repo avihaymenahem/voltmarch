@@ -139,6 +139,8 @@ export const enum Feature {
   Spinner = 3,
   /** Rises; its emissive goes to interior fire when the structure is burning. */
   Window = 4,
+  /** Rises, then travels vertically by `anim` metres while healthy. */
+  Piston = 5,
 }
 
 /** Which merged geometry a mass lands in. */
@@ -787,7 +789,8 @@ const STRUCTURE_ANIM_PARS = `
         float raSpinC = 1.0;
         float raSpinS = 0.0;
         float raSink = 0.0;
-        float raDoor = 0.0;`;
+        float raDoor = 0.0;
+        float raLift = 0.0;`;
 
 /** Solve sink / door / spin for this vertex. Touches nothing but the globals. */
 const STRUCTURE_ANIM_SOLVE = `
@@ -809,12 +812,19 @@ const STRUCTURE_ANIM_SOLVE = `
           float ang = uTime * aFeature.z * isSpin;
           raSpinC = cos(ang);
           raSpinS = sin(ang);
+          // Small healthy machinery: pressure valves, collector lenses and
+          // gantry hooks travel in place. aFeature.w staggers every mass so a
+          // whole base never breathes in lockstep.
+          float isPiston = step(4.5, code) * step(code, 5.5);
+          raLift = isPiston * aFeature.z * sin(
+            uTime * ${f(STRUCTURE_ANIM.pistonRadians)} + aFeature.w * 6.28318
+          );
         }`;
 
 /** Move `transformed` and publish the ground cut. Identical in both programs. */
 const STRUCTURE_ANIM_APPLY = `
         transformed.xz = mat2(raSpinC, raSpinS, -raSpinS, raSpinC) * transformed.xz;
-        transformed.y -= raSink + raDoor;
+        transformed.y += raLift - raSink - raDoor;
         // A static pad is never clipped (its skirt is BELOW the origin on
         // purpose); everything else is cut at the ground plane.
         vRaClip = (abs(aFeature.x - 1.0) < 0.5) ? 1.0 : transformed.y;`;
@@ -930,9 +940,11 @@ function applyStructureShader(
   // handful of literals gained trailing zeroes and the SOURCE changed again.
   // v5: structure bodies gained a geometry-normal silhouette lift. Pads keep a
   // separate key because they are ground and deliberately omit that branch.
+  // v7: healthy machinery gained shader-driven vertical travel, including the
+  // shared depth program so moving parts and their shadows remain one shape.
   mat.customProgramCacheKey = () => silhouetteRim
-    ? 'ra3.structure.rim.v6'
-    : 'ra3.structure.pad.v6';
+    ? 'ra3.structure.rim.v7'
+    : 'ra3.structure.pad.v7';
   mat.needsUpdate = true;
 }
 
@@ -992,7 +1004,7 @@ export function createStructureDepthMaterial(): THREE.MeshDepthMaterial {
   // compiled for its OWN stock depth material — same shader id, same
   // parameters — and the injection would silently do nothing. That is the
   // failure the colour material's key exists to prevent, one pass over.
-  mat.customProgramCacheKey = () => 'ra3.structure.depth.v1';
+  mat.customProgramCacheKey = () => 'ra3.structure.depth.v2';
   mat.needsUpdate = true;
   return mat;
 }
