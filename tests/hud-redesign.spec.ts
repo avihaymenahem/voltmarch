@@ -34,6 +34,14 @@ describe('perimeter HUD composition', () => {
     expect(SIDEBAR).toContain('slot.nameNode.nodeValue = c.name');
     expect(CSS).toContain('.vm-slot-name');
   });
+
+  it('restores the four explicit formation controls above the command deck', () => {
+    for (const shape of ['line', 'box', 'wedge', 'triangle']) {
+      expect(SIDEBAR).toContain(`['${shape}',`);
+    }
+    expect(CSS).toContain('.vm-formation-row');
+    expect(INPUT).toContain('invokeHudFormation');
+  });
 });
 
 describe('command deck behavior', () => {

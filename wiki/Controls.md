@@ -90,6 +90,7 @@ Notes that matter:
 | `Shift` + `F` | Commander ability | Rebindable |
 | `Z` | Cycle stance | Rebindable |
 | Click a stance icon | Set that stance directly | Gesture |
+| Click a formation diagram | Arrange the selected group as Line, Rectangle, V, or Triangle | Gesture |
 | Right-click | Cancel an armed order | Gesture |
 
 What each of the letters actually does:

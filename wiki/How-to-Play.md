@@ -152,6 +152,10 @@ over it. On the right of the head row you get, depending on what is selected:
   [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)
 - **Evacuate** — for any selected structures with somebody garrisoned inside
 
+The command deck adds four formation diagrams whenever at least two mobile units are selected:
+**Line**, **Rectangle**, **V**, and **Triangle**. Clicking one immediately arranges the group around
+its current centre. Later group moves preserve the resulting shape; **Scatter** deliberately breaks it.
+
 ### Objectives (top right) and toasts (top left)
 
 The objectives panel lists optional side goals — *Ore Quota*, *Draw Blood*, *Field Promotion* and

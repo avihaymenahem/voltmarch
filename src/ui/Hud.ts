@@ -116,6 +116,7 @@ import {
   type SuperweaponRow,
   type SuperweaponView,
 } from './Sidebar';
+import type { FormationShape } from '../input/Formations';
 import { readProgression } from './Objectives';
 // THE ONE STATIC EDGE FROM src/ui INTO src/data, and it is safe for the reason
 // rule 1 in this file's header cares about: `Descriptions.ts` imports NOTHING.
@@ -152,6 +153,7 @@ interface SettingsBridge {
 /** Optional input-owned command surface. The HUD never issues sim orders. */
 interface InputCommandBridge {
   invoke(action: HudCommandAction): boolean;
+  formation(shape: FormationShape): boolean;
 }
 
 function inputCommands(): InputCommandBridge | null {
@@ -1056,6 +1058,7 @@ export class Hud {
         fireSuperweapon: (key) => this.armSuperweapon(key),
         usePower: (key) => this.armPower(key),
         command: (action) => this.invokeCommand(action),
+        formation: (shape) => this.invokeFormation(shape),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -1448,6 +1451,12 @@ export class Hud {
   private invokeCommand(action: HudCommandAction): void {
     if (inputCommands()?.invoke(action) === true) return;
     this.toast('warn', 'command-unavailable', 'Command unavailable', 'Input is not ready yet');
+  }
+
+  /** Arrange the mobile selection through input's replay-safe command path. */
+  private invokeFormation(shape: FormationShape): void {
+    if (inputCommands()?.formation(shape) === true) return;
+    this.toast('warn', 'formation-unavailable', 'Formation unavailable', 'Input is not ready yet');
   }
 
   /** Called by input whenever a target command is armed or cancelled. */

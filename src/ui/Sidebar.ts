@@ -61,6 +61,7 @@ import {
   BUILD_TAB_HOTKEYS,
   BUILD_TAB_HOTKEY_LABELS,
 } from '../input/ActionCatalogue';
+import type { FormationShape } from '../input/Formations';
 // The power table, for the cameo glyph. `src/progression/powers.ts` imports
 // nothing, so the shell chunk and a node test both keep loading this file.
 import { powerByContentKey } from '../progression/powers';
@@ -588,6 +589,8 @@ export interface SidebarCallbacks {
   usePower(key: string): void;
   /** A primary battlefield command was clicked. Input owns the gesture. */
   command(action: HudCommandAction): void;
+  /** Arrange the selected mobile group into one of the explicit shapes. */
+  formation(shape: FormationShape): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -3264,6 +3267,27 @@ const COMMAND_DECK: ReadonlyArray<readonly [
   ['scatter', 'scatter', 'Scatter', 'X'],
 ];
 
+const FORMATIONS: ReadonlyArray<readonly [FormationShape, string, readonly number[]]> = [
+  ['line', 'Line formation', [4,9, 10,9, 16,9, 22,9]],
+  ['box', 'Rectangle formation', [7,5, 15,5, 7,13, 15,13]],
+  ['wedge', 'V formation', [4,4, 8,8, 12,12, 16,8, 20,4]],
+  ['triangle', 'Triangle formation', [12,3, 8,8, 16,8, 4,13, 12,13, 20,13]],
+];
+
+function formationGlyph(points: readonly number[]): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 18');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('vm-formation-icon');
+  for (let i = 0; i < points.length; i += 2) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', String(points[i])); dot.setAttribute('cy', String(points[i + 1]));
+    dot.setAttribute('r', '1.65'); dot.setAttribute('fill', 'currentColor');
+    svg.appendChild(dot);
+  }
+  return svg;
+}
+
 /**
  * The large, selection-aware command surface from the perimeter HUD.
  *
@@ -3281,6 +3305,20 @@ class CommandDeck {
     this.root = panel(parent, 'vm-command-deck', 'diag-rev');
     this.root.setAttribute('role', 'toolbar');
     this.root.setAttribute('aria-label', 'Unit commands');
+
+    const formationRow = el('div', 'vm-formation-row', this.root);
+    label(formationRow, 'vm-formation-label', 'Formation');
+    for (const [shape, name, points] of FORMATIONS) {
+      const control = button(formationRow, 'vm-formation', name);
+      control.dataset.formation = shape;
+      control.title = name;
+      control.appendChild(formationGlyph(points));
+      control.addEventListener('click', () => {
+        if (control.disabled) return;
+        cb.sound('click'); cb.formation(shape);
+      });
+      control.addEventListener('pointerenter', () => cb.sound('hover'));
+    }
 
     for (const [action, icon, labelText, hotkey] of COMMAND_DECK) {
       const control = button(this.root, 'vm-command', labelText);
@@ -3307,6 +3345,10 @@ class CommandDeck {
     if (state === this.lastState) return;
     this.lastState = state;
     this.root.classList.toggle('is-idle', !hasSelection);
+    for (const control of this.root.querySelectorAll<HTMLButtonElement>('.vm-formation')) {
+      control.disabled = !canMove || view.count < 2;
+      control.setAttribute('aria-disabled', !control.disabled ? 'false' : 'true');
+    }
 
     for (let i = 0; i < COMMAND_DECK.length; i++) {
       const action = COMMAND_DECK[i][0];

@@ -16,7 +16,7 @@
   --vm-selection-w: calc(370 * var(--vm-u));
   --vm-selection-h: calc(84 * var(--vm-u));
   --vm-command-w: calc(320 * var(--vm-u));
-  --vm-command-h: calc(76 * var(--vm-u));
+  --vm-command-h: calc(108 * var(--vm-u));
   --vm-rail-w: calc(230 * var(--vm-u));
   --vm-rail-top: calc(64 * var(--vm-u));
   --vm-obj-max-h: calc(190 * var(--vm-u));
@@ -392,8 +392,60 @@
   box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: calc(27 * var(--vm-u)) 1fr;
   pointer-events: auto;
   z-index: 5;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(3 * var(--vm-u));
+  min-width: 0;
+  padding: 0 calc(4 * var(--vm-u)) calc(5 * var(--vm-u));
+  border-bottom: 1px solid var(--vm-hairline-soft);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation-label {
+  margin-right: auto;
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--vm-faint);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation {
+  width: calc(34 * var(--vm-u));
+  height: calc(22 * var(--vm-u));
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(154, 133, 169, 0.26);
+  background: rgba(4, 6, 15, 0.78);
+  color: #bbb2c3;
+  cursor: pointer;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation:hover,
+.vm-hud[data-layout='perimeter'] .vm-formation:focus-visible {
+  color: #eb9cff;
+  border-color: rgba(198, 97, 241, 0.72);
+  background: rgba(115, 42, 151, 0.25);
+  outline: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-formation-icon {
+  width: calc(25 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
+  overflow: visible;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-command-deck.is-idle {
@@ -547,7 +599,7 @@
 .vm-hud[data-layout='perimeter'] {
   --vm-top-h: calc(52 * var(--vm-u));
   --vm-selection-h: calc(110 * var(--vm-u));
-  --vm-command-h: calc(80 * var(--vm-u));
+  --vm-command-h: calc(112 * var(--vm-u));
   --vm-obj-max-h: calc(220 * var(--vm-u));
 
   --vm-accent: #a84cff !important;
@@ -1103,7 +1155,7 @@
   box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(59, 229, 122, 0.34);
 }
 
-/* Command deck: five distinct armoured keys, matching the reference cadence. */
+/* Command deck: four formation shapes over five distinct armoured keys. */
 .vm-hud[data-layout='perimeter'] .vm-command-deck {
   padding: calc(6 * var(--vm-u));
   gap: calc(2 * var(--vm-u));
@@ -1192,7 +1244,7 @@
   .vm-hud[data-layout='perimeter'] {
     --vm-selection-w: calc(300 * var(--vm-u));
     --vm-selection-h: calc(96 * var(--vm-u));
-    --vm-command-h: calc(70 * var(--vm-u));
+    --vm-command-h: calc(98 * var(--vm-u));
   }
 
   .vm-hud[data-layout='perimeter'] .vm-command-icon {

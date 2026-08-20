@@ -104,6 +104,7 @@ import {
   CAMERA_KEY_IDS, COMMAND_ACTION_IDS, defaultCameraCodes, defaultCommandChords,
   type ActionChord,
 } from './ActionCatalogue';
+import { planFormation, type FormationShape } from './Formations';
 
 /* ==========================================================================
  * 1. MODULE STATE
@@ -157,7 +158,37 @@ function invokeHudCommand(action: HudCommandAction): boolean {
   }
 }
 
-const HUD_COMMAND_SERVICE = { invoke: invokeHudCommand };
+/** Put the current mobile selection into a deliberate, replay-safe shape. */
+function invokeHudFormation(shape: FormationShape): boolean {
+  if (selection === null || input === null) return false;
+  const { world, channels } = ctx();
+  const n = gatherOwnOrderable(true);
+  if (n < 2) {
+    hud()?.toast?.('info', 'formation:selection', 'Formation needs a group', 'Select at least two mobile units');
+    return n === 1;
+  }
+
+  // Stable handle order: the visible result cannot depend on whether these
+  // units entered the local selection through a drag or a control group.
+  for (let i = 1; i < n; i++) {
+    const v = ORDER_IDS[i];
+    let j = i - 1;
+    while (j >= 0 && ORDER_IDS[j] > v) { ORDER_IDS[j + 1] = ORDER_IDS[j]; j--; }
+    ORDER_IDS[j + 1] = v;
+  }
+  const dest = planFormation(world.store, ORDER_IDS, n, shape);
+  for (let i = 0; i < n; i++) {
+    ONE_ID[0] = ORDER_IDS[i];
+    issueOrder(
+      world, channels, world.localPlayer, OrderKind.Move, ONE_ID, 1,
+      dest[i * 2], dest[i * 2 + 1], NONE, false,
+    );
+  }
+  feedback(OrderKind.Move, dest[0], dest[1]);
+  return true;
+}
+
+const HUD_COMMAND_SERVICE = { invoke: invokeHudCommand, formation: invokeHudFormation };
 
 /** Last digit pressed and when, for the double-tap-to-centre rule. */
 let lastGroupKey = -1;
