@@ -416,6 +416,48 @@ describe('Scatter — placement', () => {
     scatter.dispose();
   });
 
+  it('publishes composition centres and paints sparse habitat patches beneath them', () => {
+    const { scatter } = rig('temperate', 0.25, 1.0);
+    scatter.generate();
+    scatter.paintGroundComposition();
+    const out = new Float32Array(2048 * 3);
+    const n = scatter.compositionCenters(out);
+    expect(n).toBeGreaterThan(20);
+    expect(scatter.groundPatches).toBeGreaterThan(4);
+    expect(scatter.groundPatches).toBeLessThanOrEqual(36);
+    for (let i = 0; i < n; i++) {
+      expect(out[i * 3]).toBeGreaterThanOrEqual(0);
+      expect(out[i * 3]).toBeLessThanOrEqual(MAP_SIZE);
+      expect(out[i * 3 + 1]).toBeGreaterThanOrEqual(0);
+      expect(out[i * 3 + 1]).toBeLessThanOrEqual(MAP_SIZE);
+      expect(out[i * 3 + 2]).toBeGreaterThanOrEqual(0);
+    }
+    scatter.dispose();
+  });
+
+  it('spends the photographed-area boost on extra clumps, not uniform singles', () => {
+    const make = (focusBoost: number): Scatter => {
+      const scene = new THREE.Scene();
+      const terrain = new Terrain({ scene, seed: 0x7e44a1, biome: 'temperate', anisotropy: 1 });
+      return new Scatter({
+        scene, terrain, biome: 'temperate', seed: 0x5ca77e,
+        urban: 0.25, densityScale: 1,
+        preferred: ['tree', 'bush', 'rock'],
+        focus: { minX: 128, minZ: 128, maxX: 384, maxZ: 384 },
+        focusBoost,
+      });
+    };
+    const plain = make(0);
+    const focused = make(0.35);
+    plain.generate();
+    focused.generate();
+    const a = plain.compositionCenters(new Float32Array(4096 * 3));
+    const b = focused.compositionCenters(new Float32Array(4096 * 3));
+    expect(b).toBeGreaterThan(a);
+    plain.dispose();
+    focused.dispose();
+  });
+
   it('respects the draw-call budget', () => {
     for (const biome of BIOMES) {
       const { scatter } = rig(biome, 0.95, 1.4);

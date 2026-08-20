@@ -106,7 +106,7 @@ import {
   SCATTER_CHUNK_METRES, SCATTER_CLUSTER, SCATTER_COVERAGE, SCATTER_DENSITY,
   SCATTER_JITTER, SCATTER_LIMITS,
 } from '../core/config';
-import { clamp, clamp01, DEG2RAD, fbm2, Rng, TAU } from '../core/math';
+import { clamp, clamp01, DEG2RAD, fbm2, Rng, smoothstep, TAU } from '../core/math';
 import { SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
 import { isCarriageway } from './Roads';
@@ -630,6 +630,16 @@ export class Scatter {
    * and turns generate() into a 2.4 s stall on a dense map.
    */
   private readonly clumpBuckets: number[][] = [];
+  /**
+   * Every accepted natural composition centre as (x, z, familyCode).
+   *
+   * The spatial buckets above exist to make spacing cheap. This deliberately
+   * redundant flat view exists for the terrain-composition pass: broad ground
+   * variation should collect under copses and rock fields, not be sprayed by
+   * an unrelated noise field. Generation-time only, so the small duplication
+   * costs less than making the rendering pass understand the bucket layout.
+   */
+  private readonly compositionAnchors: number[] = [];
   /** Budget this generate() was given, so the top-up passes can respect it. */
   private budget = 0;
 
@@ -657,6 +667,8 @@ export class Scatter {
   /* ---- reported numbers -------------------------------------------------- */
 
   generateMs = 0;
+  /** Broad natural-material patches painted beneath selected prop clusters. */
+  groundPatches = 0;
   visibleInstances = 0;
   visibleChunks = 0;
   lastReport: CoverageReport | null = null;
@@ -1072,6 +1084,8 @@ export class Scatter {
     this.disposeMeshes();
     this.placements.length = 0;
     this.clumpBuckets.length = 0;
+    this.compositionAnchors.length = 0;
+    this.groundPatches = 0;
     this.clearedProps = 0;
     this.lastClearScanned = 0;
     this.lastClearCount = 0;
@@ -1245,12 +1259,16 @@ export class Scatter {
       const fillers = avail.filter((t) => t.def.mode === 'clump' || t.def.mode === 'field');
       if (fillers.length > 0) {
         const fRng = rng.fork();
-        for (let a = 0; a < extra * 6 && this.placements.length < SCATTER_LIMITS.maxProps; a++) {
+        let added = 0;
+        let stalled = 0;
+        while (added < extra && stalled < 160
+          && this.placements.length < SCATTER_LIMITS.maxProps) {
           const pick = fRng.pick(fillers);
-          const x = fRng.range(focus.minX, focus.maxX);
-          const z = fRng.range(focus.minZ, focus.maxZ);
-          if (!this.legal(pick.def, x, z)) continue;
-          if (this.place(pick.defIndex, pick.def, x, z, fRng)) pick.count++;
+          const n = this.placeFocusClump(pick, focus, fRng);
+          if (n <= 0) { stalled++; continue; }
+          pick.count += n;
+          added += n;
+          stalled = 0;
         }
       }
     }
@@ -1378,6 +1396,40 @@ export class Scatter {
   }
 
   /**
+   * Put one complete clump inside the scenario's photographed box.
+   *
+   * The previous focus pass placed unrelated singles at uniform random. It
+   * increased the number on screen but flattened its composition — exactly
+   * the procedural tell the main clump pass works to avoid. Spending the same
+   * boost a clump at a time produces dense islands and preserves clear ground
+   * between them.
+   */
+  private placeFocusClump(
+    type: ScatterType,
+    focus: { minX: number; minZ: number; maxX: number; maxZ: number },
+    rng: Rng,
+  ): number {
+    const def = type.def;
+    const family = FAMILY_CODE.indexOf(def.family);
+    for (let a = 0; a < 40; a++) {
+      const cx = rng.range(focus.minX, focus.maxX);
+      const cz = rng.range(focus.minZ, focus.maxZ);
+      if (!this.legal(def, cx, cz)) continue;
+      if (this.tooClose(cx, cz, def.spacing)) continue;
+      const gap = rng.range(
+        SCATTER_CLUSTER.betweenClumpsMin,
+        SCATTER_CLUSTER.betweenClumpsMax,
+      );
+      if (this.clumpClash(family, cx, cz, gap)) continue;
+      const n = this.placeClump(type.defIndex, def, cx, cz, rng);
+      if (n <= 0) continue;
+      this.addClumpCentre(family, cx, cz);
+      return n;
+    }
+    return 0;
+  }
+
+  /**
    * Clump centres are drawn against the same fbm habitat field the 'field' mode
    * uses, and are pushed 20-50 m apart FROM OTHER CENTRES OF THE SAME FAMILY —
    * bible §6.5. Without that separation copses merge into one forest and the
@@ -1436,6 +1488,90 @@ export class Scatter {
     let list = this.clumpBuckets[k];
     if (list === undefined) { list = []; this.clumpBuckets[k] = list; }
     list.push(x, z);
+    this.compositionAnchors.push(x, z, family);
+  }
+
+  /**
+   * Paint broad, irregular natural-material zones beneath selected clumps.
+   *
+   * These are deliberately sparse and several cells wide. Fine noise is left
+   * to the material shader; doing it here would recreate the repeating grain
+   * layer this pass is replacing. A two-octave field only distorts each soft
+   * outline, while a rotated ellipse prevents the circles-from-space look.
+   */
+  paintGroundComposition(): number {
+    if (this.compositionAnchors.length === 0 || this.groundPatches > 0) {
+      return this.groundPatches;
+    }
+    const rng = new Rng((this.opts.seed ^ 0x47a8d31b) >>> 0);
+    const noiseSeed = (this.opts.seed ^ 0x196e4d27) >>> 0;
+    let patches = 0;
+    let stamped = 0;
+
+    for (let i = 0; i < this.compositionAnchors.length && patches < 36; i += 3) {
+      const x = this.compositionAnchors[i];
+      const z = this.compositionAnchors[i + 1];
+      const family = this.compositionAnchors[i + 2];
+      // Tree copses earn the strongest soil relationship. Grass is already a
+      // ground treatment, so only an occasional grass field gets another one.
+      const chance = family === FAMILY_CANOPY ? 0.30
+        : family === FAMILY_ROCK ? 0.24
+          : family === FAMILY_SHRUB ? 0.17
+            : family === FAMILY_GRASS ? 0.05 : 0.08;
+      if (rng.next() > chance) continue;
+
+      const radius = rng.range(7.0, family === FAMILY_CANOPY ? 12.5 : 11.0);
+      const aspect = rng.range(0.58, 0.88);
+      const yaw = rng.next() * TAU;
+      const cos = Math.cos(yaw), sin = Math.sin(yaw);
+      const rx = radius;
+      const rz = radius * aspect;
+      const reach = Math.ceil(radius / CELL) + 1;
+      const ccx = Math.floor(x / CELL), ccz = Math.floor(z / CELL);
+      // Rock fields expose more stone; all other clusters wear back to soil.
+      const layer = family === FAMILY_ROCK ? SurfaceId.Rock : SurfaceId.Dirt;
+      let patchCells = 0;
+
+      for (let dz = -reach; dz <= reach; dz++) {
+        const cz = ccz + dz;
+        if (cz < 0 || cz >= MAP_CELLS) continue;
+        for (let dx = -reach; dx <= reach; dx++) {
+          const cx = ccx + dx;
+          if (cx < 0 || cx >= MAP_CELLS) continue;
+          const ci = cz * MAP_CELLS + cx;
+          const surface = this.terrain.surface[ci];
+          if (surface === SurfaceId.Concrete || surface === SurfaceId.Paving) continue;
+          if (this.terrain.isWater(cx, cz) || this.terrain.isCliff(cx, cz)) continue;
+
+          const wx = (cx + 0.5) * CELL - x;
+          const wz = (cz + 0.5) * CELL - z;
+          const lx = wx * cos - wz * sin;
+          const lz = wx * sin + wz * cos;
+          const ellipse = Math.sqrt((lx * lx) / (rx * rx) + (lz * lz) / (rz * rz));
+          // Outline displacement is broad (about 20-35 m wavelengths), never
+          // per-texel grit. Different anchors sample different parts of one
+          // coherent field, so neighbouring patches can visually relate.
+          const warp = fbm2(
+            (x + wx) * 0.038,
+            (z + wz) * 0.038,
+            2, 2.0, 0.5, noiseSeed,
+          ) - 0.5;
+          const edge = ellipse + warp * 0.34;
+          if (edge >= 1.04) continue;
+          const core = smoothstep(1.04, 0.12, edge);
+          const weight = (family === FAMILY_ROCK ? 0.12 : 0.10)
+            + core * (family === FAMILY_ROCK ? 0.20 : 0.24);
+          this.terrain.stampSurface(cx, cz, layer, weight);
+          patchCells++;
+          stamped++;
+        }
+      }
+      if (patchCells > 0) patches++;
+    }
+
+    if (stamped > 0) this.terrain.commitSplat();
+    this.groundPatches = patches;
+    return this.groundPatches;
   }
 
   /**
@@ -2142,6 +2278,13 @@ export class Scatter {
     return n;
   }
 
+  /** Natural composition anchors as (x, z, familyCode) triples. */
+  compositionCenters(out: Float32Array): number {
+    const n = Math.min((out.length / 3) | 0, (this.compositionAnchors.length / 3) | 0);
+    for (let i = 0; i < n * 3; i++) out[i] = this.compositionAnchors[i];
+    return n;
+  }
+
   /** Props inside a world-space box, as indices into the placement list. */
   countInBox(minX: number, minZ: number, maxX: number, maxZ: number): number {
     let n = 0;
@@ -2530,6 +2673,7 @@ export class Scatter {
     this.disposeMeshes();
     this.types = [];
     this.placements.length = 0;
+    this.compositionAnchors.length = 0;
     this.liveProps = 0;
     this.scene.remove(this.root);
     this.materials.dispose();
@@ -2544,6 +2688,10 @@ export class Scatter {
 /** Family -> integer, so the clump-centre list stays a flat number array. */
 const FAMILY_CODE: readonly string[] =
   ['canopy', 'shrub', 'grass', 'rock', 'street', 'yard', 'civic'];
+const FAMILY_CANOPY = 0;
+const FAMILY_SHRUB = 1;
+const FAMILY_GRASS = 2;
+const FAMILY_ROCK = 3;
 
 /** Clump-centre bucket size. Must exceed SCATTER_CLUSTER.betweenClumpsMax (50). */
 const CLUMP_BUCKET_METRES = 64;

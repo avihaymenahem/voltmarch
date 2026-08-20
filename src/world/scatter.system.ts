@@ -39,11 +39,13 @@
 
 import { defineSystem } from '../core/loop';
 import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '../core/types';
-import { MAX_DRAW_CALLS, SCATTER_SEED } from '../core/config';
+import { CELL, MAP_CELLS, MAX_DRAW_CALLS, SCATTER_SEED } from '../core/config';
+import { clamp, Rng, TAU } from '../core/math';
 import { ctx } from '../game/context';
 import { activeScenario, plannedScenario } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
+import { DecalKind, groundDecals } from './Decals';
 
 declare const globalThis: { __vmScatter?: Scatter } & typeof window;
 
@@ -97,7 +99,10 @@ export default defineSystem({
       densityScale: plan.preset.scatter * numFlag('scatterdensity', 1),
       preferred: plan.preset.props,
       focus: spec !== null ? spec.framed : null,
-      focusBoost: 0.35,
+      // Clusters carry far more visual mass than the old uniform singles did.
+      // A smaller count produces the same richness without closing the combat
+      // lanes in the photographed box.
+      focusBoost: 0.18,
     });
 
     /* -- masks ------------------------------------------------------------ *
@@ -116,8 +121,12 @@ export default defineSystem({
         // the structure reads against ground, and so a scatter prop never
         // blocks the vehicle exit.
         scatter.addExclusion(store.posX[i], store.posZ[i], Math.max(store.radius[i], 6) + 7);
-      } else if (kind === EntityKind.Vehicle || kind === EntityKind.Infantry) {
-        scatter.addExclusion(store.posX[i], store.posZ[i], store.radius[i] + 2.5);
+      } else if (kind === EntityKind.Vehicle) {
+        // Clear the canopy, not merely the trunk: a technically legal tree
+        // whose crown covers a tank still damages battlefield readability.
+        scatter.addExclusion(store.posX[i], store.posZ[i], store.radius[i] + 5.5);
+      } else if (kind === EntityKind.Infantry) {
+        scatter.addExclusion(store.posX[i], store.posZ[i], store.radius[i] + 4.0);
       }
     }
 
@@ -136,6 +145,51 @@ export default defineSystem({
     }
 
     scatter.generate();
+    /*
+     * Presentation follows generation instead of living inside it. Scatter's
+     * placement contract promises that calling generate() twice is identical;
+     * splat paint is intentionally persistent, so putting this call inside
+     * generate() would let the first run change the input surface of the next.
+     */
+    scatter.paintGroundComposition();
+
+    /* -- selective base wear -------------------------------------------- *
+     * A pad that ends exactly at the wall reads like a model placed on top of
+     * the world. Give a minority of structures one broad, asymmetric dust
+     * stain outside their footprint: enough to imply service traffic and
+     * disturbed soil, sparse enough that it never becomes a repeated halo.
+     * This uses the existing pooled decal field, so the whole layer is still
+     * one draw call and permanent marks remain oldest-evicted.               */
+    const decals = groundDecals();
+    const wearRng = new Rng((plan.seed ^ 0x6b512d09) >>> 0);
+    let baseWear = 0;
+    if (decals !== null) {
+      for (let n = 0; n < store.count; n++) {
+        const i = store.alive[n];
+        if ((store.flags[i] & EntityFlag.Alive) === 0
+          || store.kind[i] !== EntityKind.Building
+          || wearRng.next() > 0.43) continue;
+
+        const angle = wearRng.next() * TAU;
+        const distance = Math.max(store.radius[i], 5) + wearRng.range(2.5, 6.0);
+        const x = clamp(store.posX[i] + Math.cos(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
+        const z = clamp(store.posZ[i] + Math.sin(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
+        const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+        if (terrain.isWater(cx, cz) || terrain.isCliff(cx, cz)) continue;
+
+        decals.spawn(
+          DecalKind.Dust,
+          x, z,
+          wearRng.range(2.8, 5.2),
+          wearRng.range(5.5, 10.0),
+          angle + wearRng.range(-0.45, 0.45),
+          0,
+          wearRng.range(0.22, 0.34),
+        );
+        baseWear++;
+      }
+    }
+
     setActiveScatter(scatter);
     globalThis.__vmScatter = scatter;
     // `flag('shot')`, not just `spec.frozen`. The intent above — "two captures
@@ -153,7 +207,8 @@ export default defineSystem({
       `%c[scatter]%c ${terrain.biome.name} — ${s.props} props of ${s.types} types ` +
       `(${s.propsPerHectare.toFixed(0)}/ha over ${(report?.walkableHectares ?? 0).toFixed(1)} ha), ` +
       `${scatter.library.totalTriangles} tris in the library, ` +
-      `${(scatter.library.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place`,
+      `${(scatter.library.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place, ` +
+      `${scatter.groundPatches} habitat patches + ${baseWear} base-wear marks`,
       'color:#7fd', 'color:inherit',
     );
     console.info(
@@ -201,6 +256,8 @@ export default defineSystem({
 
     debug.setCounter('props', s.props);
     debug.setCounter('propTypes', s.types);
+    debug.setCounter('groundPatches', scatter.groundPatches);
+    debug.setCounter('baseWear', baseWear);
   },
 
   frame(r: RenderContext): void {
