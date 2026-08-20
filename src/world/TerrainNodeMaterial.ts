@@ -159,6 +159,9 @@ function createUniformNodes(
     uMacroScale: uniform(S.uMacroScale),
     uMacroStrength: uniform(S.uMacroStrength),
     uMacroTint: uniform(v3(TERRAIN_VEC3_DEFAULTS.uMacroTint)),
+    uDetailScale: uniform(S.uDetailScale),
+    uDetailNormal: uniform(S.uDetailNormal),
+    uDetailRoughness: uniform(S.uDetailRoughness),
     uWarpScale: uniform(S.uWarpScale),
     uWarpAmp: uniform(S.uWarpAmp),
     uCellSize: uniform(S.uCellSize),
@@ -713,7 +716,10 @@ export function createTerrainNodeMaterials(
         .sub(step(0.965, raCell).mul(U.uCellJitter).mul(1.1)));
 
       raCol.assign(raAlbedo);
-      raRough.assign(raR);
+      const raDetail = U.uMacro.sample(raXZ.div(U.uDetailScale)).a.toVar('raDetailR');
+      raRough.assign(clamp(
+        raR.add(raDetail.sub(0.5).mul(U.uDetailRoughness)), 0.48, 0.99,
+      ));
 
     });
 
@@ -734,6 +740,24 @@ export function createTerrainNodeMaterials(
   const raNormal = Fn(() => {
     const raFace = raFaceNormal().toVar('raFaceN');
     const base = normalize(normalWorldGeometry).toVar('raBaseWorldN');
+
+    /*
+     * Flat-ground material relief from `uMacro.a`. This is the TSL expression
+     * of the GLSL cotangent-frame bump calculation: one packed texture sample,
+     * screen derivatives, no tangent attribute and no additional material.
+     */
+    const raDetailH = U.uMacro.sample(positionWorld.xz.div(U.uDetailScale)).a
+      .sub(0.5).mul(U.uDetailNormal).toVar('raDetailH');
+    const raDx = positionWorld.dFdx().toVar('raDetailDx');
+    const raDy = positionWorld.dFdy().toVar('raDetailDy');
+    const raR1 = cross(raDy, base).toVar('raDetailR1');
+    const raR2 = cross(base, raDx).toVar('raDetailR2');
+    const raDet = dot(raDx, raR1).toVar('raDetailDet');
+    const raSign = raDet.lessThan(0.0).select(float(-1.0), float(1.0));
+    const raGrad = raR1.mul(raDetailH.dFdx()).add(raR2.mul(raDetailH.dFdy()))
+      .mul(raSign).toVar('raDetailGrad');
+    const raGroundN = normalize(base.mul(raDet.abs()).sub(raGrad)).toVar('raGroundN');
+
     const basis = raStriaBasis(raFace).toVar('raBasisN');
     const raBand = basis.y;
     const raSub = basis.z;
@@ -745,7 +769,9 @@ export function createTerrainNodeMaterials(
 
     const worldN = mix(base, raShadeN, U.uFaceMix).toVar('raMixedWorldN');
     const out = normalize(cameraViewMatrix.mul(vec4(worldN, 0.0)).xyz).toVar('raOutViewN');
-    return raIsCliffOf(raFace).select(out, normalize(cameraViewMatrix.mul(vec4(base, 0.0)).xyz));
+    return raIsCliffOf(raFace).select(
+      out, normalize(cameraViewMatrix.mul(vec4(raGroundN, 0.0)).xyz),
+    );
   });
 
   /* ----------------------------------------------------------------------

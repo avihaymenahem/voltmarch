@@ -6,17 +6,14 @@
  *
  * THREE RULES, ALL OF THEM SCORED
  * -------------------------------
- * 1. **Muzzle flashes are WHITE/CREAM and they are LARGE** (scorecard #29:
- *    "white/cream core, ≥4× barrel diameter long"). The bible's closing note
- *    for §8 is "do not shrink the muzzle flashes", and a 0.3 m MBT barrel with
- *    the 3.0 m heavy flash here comes out at 10× — deliberately past the bar,
- *    because the reference frames put a heavy flash at roughly half a hull
- *    length. An orange, tasteful, unit-sized flash is the failure mode.
+ * 1. **Flash LENGTH describes calibre; bloom describes importance.** Every
+ *    weapon keeps the scored ≥4×-barrel silhouette, while routine guns remain
+ *    below the bloom threshold. Only heavy ordnance receives a second hot core.
  *
  * 2. **Tracers are tapered lozenges, never uniform lines** — bright rounded
- *    head, tail tapering to a point, ratio ≈14:1, and only ~1 in 3 rounds is
- *    visible. They draw through the ribbon batch so their 2.5–4 px width is
- *    real pixels at any zoom.
+ *    head, tail tapering to a point, and only a readable sample of rounds is
+ *    visible. They draw through the ribbon batch so their width remains real
+ *    pixels at any zoom.
  *
  * 3. **Trails are BEAD CHAINS, never ribbons** (scorecard #31: a scanline
  *    along a rocket trail must show ≥6 luminance oscillations of ≥25 L). So
@@ -62,10 +59,9 @@ export type FlashSize = 0 | 1 | 2;
 /**
  * A muzzle flash at a world point, thrown along `(dx,dy,dz)`.
  *
- * The flash is three things at once, which is why a single sprite always looks
- * cheap: a big cream 4-point star / kite oriented down the barrel, a small
- * white-hot core disc that CLIPS and feeds the bloom threshold, and a
- * `PointLight` so the ground under the tank goes warm for 90 ms.
+ * Every flash has a warm star / kite and a short-lived light. Heavy guns add a
+ * separate white-hot core; small and medium weapons keep the white point baked
+ * into their ramp so a firing line does not stack two additive quads per shot.
  */
 export function spawnMuzzleFlash(
   x: number, y: number, z: number,
@@ -121,17 +117,21 @@ export function spawnMuzzleFlash(
   e.i0 = cfg.intensity * glare; e.i1 = 0.2 * glare;
   emitAdditive(e);
 
-  // The white-hot core. This is the pixel that must clip to #FFFFFF.
-  e = resetEmit();
-  e.x = cx; e.y = cy; e.z = cz;
-  e.lifeMs = cfg.lifeMs * 0.62;
-  e.size0 = len * G.flashCoreFrac * 0.55;
-  e.size1 = len * G.flashCoreFrac;
-  e.sizeEase = 0.3;
-  e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = 1;
-  e.tile = VFX_TILE.core;
-  e.i0 = G.flashCoreIntensity * glare; e.i1 = 0.5 * glare;
-  emitAdditive(e);
+  // Only heavy ordnance receives a second white-hot core. The muzzle ramp on
+  // lighter weapons already has a white ignition point; duplicating it was the
+  // main source of the pearl-string haze in formation combat.
+  if (size === 2) {
+    e = resetEmit();
+    e.x = cx; e.y = cy; e.z = cz;
+    e.lifeMs = cfg.lifeMs * 0.56;
+    e.size0 = len * G.flashCoreFrac * 0.55;
+    e.size1 = len * G.flashCoreFrac;
+    e.sizeEase = 0.3;
+    e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = 1;
+    e.tile = VFX_TILE.core;
+    e.i0 = G.flashCoreIntensity * glare; e.i1 = 0.5 * glare;
+    emitAdditive(e);
+  }
 
   // A thin smoke ribbon off the barrel — bible §8.5, alpha 0.25.
   if (size > 0) {

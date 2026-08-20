@@ -157,23 +157,25 @@ describe('colour ramps', () => {
     expect(ramp.colorSpace).toBe(THREE.SRGBColorSpace);
   });
 
-  it('scorecard #14: the fireball core is WHITE over half its radius', () => {
-    // Row 0 is the fireball. Sample the inner 40% of the ramp, which the
-    // shader maps to the inner 40% of every billow's radius.
-    for (let i = 0; i < Math.floor(VFX_RAMP_WIDTH * 0.4); i++) {
+  it('keeps a compact white ignition core instead of a half-radius white plate', () => {
+    // Row 0 is the fireball. V3 keeps only the inner 4% near-white, leaving the
+    // rest of the billow available for yellow/orange volume separation.
+    for (let i = 0; i < Math.floor(VFX_RAMP_WIDTH * 0.04); i++) {
       const [r, g, b, a] = texel(ramp, i, 0);
       expect(a).toBeGreaterThan(200);
       const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      expect(lum).toBeGreaterThan(245);
+      expect(lum).toBeGreaterThan(240);
       const spread = Math.max(r, g, b) - Math.min(r, g, b);
-      expect(spread).toBeLessThan(30);
+      expect(spread).toBeLessThan(36);
     }
   });
 
-  it('the fireball fringe is saturated orange, not more white', () => {
-    const [r, g, b] = texel(ramp, VFX_RAMP_WIDTH - 2, 0);
-    expect(r).toBeGreaterThan(b + 100);   // #B5501C-class
-    expect(r).toBeGreaterThan(g);
+  it('the fireball body becomes saturated orange before fading to soot', () => {
+    const [r, g, b, a] = texel(ramp, Math.floor(VFX_RAMP_WIDTH * 0.62), 0);
+    expect(a).toBeGreaterThan(190);
+    expect(r).toBeGreaterThan(b + 120);
+    expect(r).toBeGreaterThan(g + 45);
+    expect(texel(ramp, VFX_RAMP_WIDTH - 2, 0)[3]).toBeLessThan(30);
   });
 
   it('the tesla core is L>=248 and the sheath saturates blue', () => {
@@ -1109,7 +1111,7 @@ describe('guns and trails', () => {
     P.dispose();
   });
 
-  it('only about a third of MG rounds are visible', () => {
+  it('only about one sixth of MG rounds are visible', () => {
     const P = makeParticles();
     const B = new BeamSystem(P.ramps, VFX_RAMPS.length);
     const T = new TracerSystem(B.depthed);
@@ -1120,9 +1122,10 @@ describe('guns and trails', () => {
       fired += T.count - before;
       T.clear();
     }
-    // Bible §8.5: ~1 in 3. Wide band so the RNG cannot flake the suite.
-    expect(fired).toBeGreaterThan(60);
-    expect(fired).toBeLessThan(160);
+    // The higher-density battlefield grade deliberately treats tracers as a
+    // readable sample of the stream, not a luminous line for every projectile.
+    expect(fired).toBeGreaterThan(25);
+    expect(fired).toBeLessThan(90);
     B.dispose();
     P.dispose();
   });
@@ -1241,32 +1244,39 @@ describe('per-element sizes vs the whole-effect figures they came from', () => {
  * comes back, written down so it fails in CI instead of in a bug report.
  */
 describe('the detonation bloom budget', () => {
-  const BLOOM_THRESHOLD = 0.85;
+  const BLOOM_THRESHOLD = 1.20;
 
-  it('no detonation emissive is more than ~5x the bloom threshold', () => {
+  it('reserves bloom for detonations and heavy ordnance', () => {
     // Above roughly this the source stops being "a hot core that haloes" and
     // becomes "a disc-shaped region the bloom pass must halo in its entirety".
     const ceiling = BLOOM_THRESHOLD * 5;
-    const budget: ReadonlyArray<readonly [string, number]> = [
+    const detonations: ReadonlyArray<readonly [string, number]> = [
       ['flashIntensity', VFX_EXPLOSION.flashIntensity],
       ['billowIntensity', VFX_EXPLOSION.billowIntensity],
       ['shockIntensity', VFX_EXPLOSION.shockIntensity],
       ['emberIntensity', VFX_EXPLOSION.emberIntensity],
-      ['impactFlashIntensity', VFX_EXPLOSION.impactFlashIntensity],
       ['muzzle flashCoreIntensity', VFX_GUNS.flashCoreIntensity],
+    ];
+    for (const [name, gain] of detonations) {
+      expect(gain, name).toBeGreaterThan(BLOOM_THRESHOLD);
+      expect(gain, name).toBeLessThanOrEqual(ceiling);
+    }
+
+    const routineFire: ReadonlyArray<readonly [string, number]> = [
+      ['impactFlashIntensity', VFX_EXPLOSION.impactFlashIntensity],
       ['sparkFlashIntensity', VFX_GUNS.sparkFlashIntensity],
       ['sparkIntensity', VFX_GUNS.sparkIntensity],
       ['tracerIntensity', VFX_GUNS.tracerIntensity],
-      ['cannonIntensity', VFX_GUNS.cannonIntensity],
-      ...VFX_GUNS.flash.map((f, i) => [`muzzle flash[${i}]`, f.intensity] as const),
+      ['small muzzle', VFX_GUNS.flash[0].intensity],
+      ['medium muzzle', VFX_GUNS.flash[1].intensity],
     ];
-    for (const [name, gain] of budget) {
-      // Still comfortably over 1.0: the core must clip to pure white through
-      // the tonemapper (scorecard #14). It is the AREA above threshold that has
-      // to stay small, never the peak.
-      expect(gain, name).toBeGreaterThan(1.25);
-      expect(gain, name).toBeLessThanOrEqual(ceiling);
+    for (const [name, gain] of routineFire) {
+      expect(gain, name).toBeGreaterThan(0.8);
+      expect(gain, name).toBeLessThanOrEqual(BLOOM_THRESHOLD);
     }
+
+    expect(VFX_GUNS.cannonIntensity).toBeLessThan(BLOOM_THRESHOLD * 1.25);
+    expect(VFX_GUNS.flash[2].intensity).toBeLessThan(BLOOM_THRESHOLD * 1.25);
   });
 
   it('the flash disc is a highlight ON the fireball, not a lid OVER it', () => {

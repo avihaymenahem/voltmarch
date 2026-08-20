@@ -531,15 +531,12 @@ const SUN_NOON = {
   /**
    * Direct sun strength in the HDR buffer, pre-tonemap.
    *
-   * Nudged up from 3.1, and only because the ambient fill below was cut by
-   * roughly half at the same time: a lit surface ends up close to where it was,
-   * a SHADOWED surface ends up much darker, and that widening is the whole of
-   * scorecard #6's contrast complaint. Pushing this on its own is bible risk R5
-   * and was measured doing exactly what R5 predicts — at 4.2 with the same fill
-   * cut, 18% of `01-establishing-base` clipped to paper white and the frame
-   * median luminance ran 0.515 against RA3's 0.342.
+   * V3 lowers the previous 3.4 key so white ceramic keeps its bevel and panel
+   * response instead of flattening against the ACES shoulder. Direction and
+   * colour still carry the warm daylight read; exposure no longer has to spend
+   * the whole highlight range on the lightest faction.
    */
-  intensity: 3.4,
+  intensity: 3.0,
   /*
    * `shadowColor: '#2A3550'` USED TO SIT HERE AND IT WAS WIRED TO NOTHING.
    * It was declared on `SunLook` and on `SunConfig`, written in three tables and
@@ -763,7 +760,7 @@ const ATMOSPHERE_NOON = {
    * shadowed surface (see `hemiSkyIntensity`) and all of what puts a silhouette
    * rim on a hull (scorecard #23).
    */
-  envIntensity: 0.76,
+  envIntensity: 0.64,
 };
 
 /* ==========================================================================
@@ -795,22 +792,22 @@ const TONE_NOON = {
    * highlights by the same factor, so it can only move the whole histogram;
    * `contrast` below is what widens it.
    */
-  exposure: 0.90,
+  exposure: 0.84,
   /**
    * GAMMA contrast about scene-linear 0.18 (see GRADE_PIVOT in post.ts). 1.0 is
    * a no-op, higher steepens. Because the pivot is a gamma and not an offset,
    * black stays black and mid-grey stays put — all of the extra range lands in
    * the highlights, where scorecard #6 needs it.
    */
-  contrast: 1.32,
+  contrast: 1.18,
   /**
    * Chroma gain. This alone can never CREATE saturation (a neutral grey has no
    * hue to amplify) — the accent masses in §6 and §20 do that — but with ACES
    * carrying chroma through the mids there is now something here to amplify.
    */
-  saturation: 1.02,
+  saturation: 0.96,
   /** Shadows desaturate slightly — a filmic trick that reads as "graded". */
-  shadowSaturation: 0.94,
+  shadowSaturation: 0.92,
   /**
    * 3-way colour balance: cool shadows, cool mids, warm highlights.
    *
@@ -901,9 +898,9 @@ const TONE_NOON = {
    * neutral and on the right side of 120, which is why 08 ends up with a LOWER
    * leak and a HIGHER vivid fraction (0.396) than it started with.
    */
-  shadowTint: '#565665',
-  midTint: '#818C9C',
-  highlightTint: '#FFF0D2',
+  shadowTint: '#5B6070',
+  midTint: '#90959D',
+  highlightTint: '#FFE7C8',
   /**
    * Lift raises the black point. Dropped further toward zero: RA3's own p1
    * luminance measures 0.023 and the scorecard's black-point band tops out at
@@ -917,7 +914,7 @@ const TONE_NOON = {
    * boxes down and the corners are mostly far-field ground, which reads as the
    * aerial haze scorecard #12 just banned.
    */
-  vignette: 0.20,
+  vignette: 0.08,
   vignetteSoftness: 0.62,
   /**
    * OFF. Both of these are on the bible's §1 standing ban list and on
@@ -953,12 +950,11 @@ const TONE_NOON = {
   grainSize: 1.4,
   chromaticAberration: 0,
   /**
-   * Post-sharpen, applied in HDR before the tonemap. Raised: scorecard #34
-   * measures Sobel |grad| > 25 coverage and RA3 runs 0.66-0.79 against our
-   * 0.22-0.40. Geometry detail is other agents' work, but an unsharp mask on
-   * the detail that IS there is free contrast at the pixel level.
+   * Post-sharpen, applied in HDR before the tonemap. Kept deliberately light:
+   * material normals and geometry should carry detail, while a hard unsharp
+   * mask turns foliage, road markings and HUD type into brittle white edges.
    */
-  sharpen: 0.40,
+  sharpen: 0.16,
   /** Edge length of the baked colour LUT (32^3 = one texture fetch). */
   lutSize: 32,
 };
@@ -1591,18 +1587,23 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
    */
   dusk: {
     sun: {
-      elevationDeg: 12, azimuthDeg: 288,
-      color: '#FF9E5A', intensity: 4.4,
+      elevationDeg: 16, azimuthDeg: 288,
+      color: '#FFB06A', intensity: 2.7,
     },
     atmosphere: {
-      fogColor: '#E8A05C', fogDensity: 0.0060, fogStart: 120,
-      aerialPerspective: 0.10,
-      skyZenith: '#2A4A78', skyHorizon: '#F0A868',
-      /** Warm, not lilac: a saturated fill re-creates the mould cast at dusk. */
-      hemiSky: '#C8A88C', hemiSkyIntensity: 0.24,
-      hemiGround: '#7A5838', hemiGroundIntensity: 0.16,
+      fogColor: '#8D8792', fogDensity: 0.0025, fogStart: 150,
+      aerialPerspective: 0.05,
+      skyZenith: '#243B62', skyHorizon: '#E8A56C',
+      /** Cool skylight preserves material colour against the warm low key. */
+      hemiSky: '#9AA8BC', hemiSkyIntensity: 0.30,
+      hemiGround: '#684B38', hemiGroundIntensity: 0.15,
+      envIntensity: 0.54,
     },
-    tone: { exposure: 1.06, shadowTint: '#241A38', highlightTint: '#FFD8A8' },
+    bloom: { threshold: 1.08, strength: 0.48, emissiveBoost: 1.55 },
+    tone: {
+      exposure: 0.88, contrast: 1.14, saturation: 0.94,
+      shadowTint: '#56627A', midTint: '#8F929A', highlightTint: '#FFD5A6',
+    },
   },
 
   /** Emissives carry the whole image. Bloom threshold drops so panels glow. */
@@ -2856,9 +2857,9 @@ export const UNIT_MATERIAL = {
   /** Painted hull. 60-75% of a unit's surface. */
   paintRoughness: 0.58,
   paintMetalness: 0.0,
-  clearcoat: 0.18,
-  clearcoatRoughness: 0.46,
-  envMapIntensity: 0.65,
+  clearcoat: 0.14,
+  clearcoatRoughness: 0.38,
+  envMapIntensity: 0.58,
   /** Barrels, tracks, rollers. 12-20% of surface. */
   bareMetalRoughness: 0.38,
   bareMetalMetalness: 0.72,
@@ -2878,10 +2879,10 @@ export const UNIT_MATERIAL = {
    * visible. The height field is now structural — panel seams, rivet rings,
    * grilles — and at 0.85 those read as embossed rubber: every seam throws a
    * lit lip and a dark trough two or three times deeper than the 1-2 mm of real
-   * relief they stand for. 0.45 keeps the seam, loses the puffiness, and halves
-   * the amplitude of the ambient-fill tint on tilted texels.
+   * relief they stand for. 0.36 keeps the seam, loses the puffiness, and still
+   * gives the rebuilt panels more light response than the previous 0.28.
    */
-  normalScale: 0.28,
+  normalScale: 0.36,
 } as const;
 
 /** Canvas-greeble tuning. Every number here changes pixels in the atlas. */
@@ -5985,11 +5986,10 @@ export const VFX_LIGHT_DECAY = 1.28;
  * rather than by eye — the light will do more work on a darker frame, so this
  * number should come down, not up.
  *
- * The per-source values in VFX_LIGHTS stay at the bible's authored numbers on
- * purpose: their RATIOS are the art direction (an explosion is 2.3x a muzzle
- * flash) and only the shared exposure factor is in question here.
+ * The shared scale is intentionally conservative because the grade now
+ * preserves more highlight contrast. Per-source ratios still carry hierarchy.
  */
-export const VFX_LIGHT_INTENSITY_SCALE = 5.0;
+export const VFX_LIGHT_INTENSITY_SCALE = 3.2;
 
 /**
  * Bible §8.9, verbatim except where noted. `range` in metres (the bible's
@@ -6042,7 +6042,7 @@ export const VFX_LIGHTS = {
   explosion:   { color: '#FFB05A', peak: 5, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
   // Cut with the rest of the table so the ordering invariant at
   // tests/vfx.spec.ts:1190 (explosion must out-light muzzle) still holds.
-  muzzle:      { color: '#FFD28A', peak: 3, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
+  muzzle:      { color: '#FFD28A', peak: 2.0, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
   // peak 3.5 -> 1.4, range 24.5 -> 13. The impact's own light was measured at
   // 1.09pp of the 1.78pp the whole starburst contributes at four hits — the
   // largest single piece of it. Same reasoning as `teslaArc`: peak is how
@@ -6117,7 +6117,7 @@ export const VFX_LIGHTS = {
   // equivalent brighter than the Soviet one the player complained about would
   // just be the next report.
   prism:       { color: '#A7F5F9', peak: 2.4, range: 11.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
-  impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
+  impact:      { color: '#FFE0A0', peak: 3.5, range: 8.5, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
 } as const;
 
 /**
@@ -6427,19 +6427,19 @@ export type VfxRampStop = readonly [number, string, number];
 /**
  * Row order IS the shader's ramp index — append only, never reorder.
  *
- * The fireball ramp holds `#FFFAFF` all the way to 0.52 because scorecard #14
- * measures the brightest 40% of the fireball at L>245 and the bible states the
- * white core occupies 50–55% of the RADIUS. The remaining stops are the bible's
- * list remapped into 0.52..1.00.
+ * V3 keeps a genuinely white ignition point but moves into yellow, orange and
+ * soot quickly. A half-radius white core was technically bright and visually
+ * flat: overlapping billows merged into one plate and erased the object that
+ * exploded. Colour separation now carries volume while the centre still clips.
  */
 export const VFX_RAMPS: readonly { readonly name: string; readonly stops: readonly VfxRampStop[] }[] = [
   { name: 'fireball', stops: [
-    [0.00, '#FFFAFF', 1.00], [0.52, '#FFFAFF', 1.00], [0.68, '#FFFFAF', 1.00],
-    [0.75, '#FEF5B0', 0.98], [0.81, '#FDC578', 0.95], [0.87, '#FF9350', 0.88],
-    [0.92, '#FE8149', 0.74], [0.96, '#DB6D2E', 0.46], [1.00, '#B5501C', 0.00],
+    [0.00, '#FFF8EE', 1.00], [0.14, '#FFF0B0', 1.00], [0.32, '#FFD05A', 0.98],
+    [0.50, '#FF9A34', 0.95], [0.68, '#F06A24', 0.86], [0.82, '#B74418', 0.68],
+    [0.92, '#6F2A14', 0.42], [1.00, '#241612', 0.00],
   ] },
   { name: 'flash', stops: [
-    [0.00, '#FFFFFF', 1.00], [0.55, '#FFFDF4', 0.92], [0.80, '#FFF3C0', 0.42], [1.00, '#FFC940', 0.00],
+    [0.00, '#FFFFFF', 1.00], [0.18, '#FFF1B8', 0.94], [0.52, '#FFC34A', 0.68], [1.00, '#E87218', 0.00],
   ] },
   { name: 'smokeDark', stops: [
     [0.00, '#1A1A1A', 0.90], [0.30, '#2A2622', 0.80], [0.70, '#3A3632', 0.45], [1.00, '#4A4A4A', 0.00],
@@ -6474,7 +6474,7 @@ export const VFX_RAMPS: readonly { readonly name: string; readonly stops: readon
     [0.00, '#6A6560', 0.70], [0.45, '#7A756E', 0.48], [1.00, '#8A857E', 0.00],
   ] },
   { name: 'muzzle', stops: [
-    [0.00, '#FFFFFF', 1.00], [0.22, '#FFF3C0', 1.00], [0.58, '#FFC940', 0.85], [1.00, '#E8871E', 0.00],
+    [0.00, '#FFFFFF', 1.00], [0.10, '#FFF0B0', 1.00], [0.42, '#FFC13A', 0.82], [1.00, '#D96514', 0.00],
   ] },
   { name: 'tracerWarm', stops: [
     [0.00, '#FFFFFF', 1.00], [0.16, '#FFD26A', 1.00], [0.55, '#FF9A2E', 0.80], [1.00, '#E8781C', 0.00],
@@ -6648,7 +6648,7 @@ export const VFX_EXPLOSION = {
    * fireball — the exact failure the `flashIntensity` note records from an
    * earlier attempt, which matched 818 sprites instead of 20.
    */
-  outputGain: 0.40,
+  outputGain: 0.30,
   /**
    * How far the flash ramp is stretched across the disc's RADIUS.
    *
@@ -6687,9 +6687,8 @@ export const VFX_EXPLOSION = {
    * orange in it at all — the exact opposite failure to the one scorecard #14
    * guards against, and it looks like fog.
    *
-   * 1.18 puts the ramp's `#FFFAFF` -> colour transition (t=0.52) at 45% of the
-   * quad, which is ~52% of the VISIBLE billow radius: the bible's "white core
-   * occupies 50-55% of the fireball radius", measured where it can be seen.
+   * 1.18 keeps the dark orange/soot tail inside the visible portion of the
+   * billow tile, which is what lets overlapping sprites retain separate volume.
    */
   billowRadialSpan: 1.18,
 
@@ -6829,13 +6828,11 @@ export const VFX_EXPLOSION = {
    * The brief hot flash on a ground/concrete impact — even a dirt hit is a
    * detonation. Diameters in metres at `scale = 1`, gain in scene-linear.
    *
-   * These were literals at the call site and they were on the same 7.0-class
-   * budget as the death flash, which is wrong by a whole order of importance: a
-   * firefight lands dozens of impacts per second and each one was seeding the
-   * bloom chain. Halved with everything else.
+   * A firefight lands dozens of these per second, so the impact sits at the
+   * bloom threshold rather than sharing the death flash's emissive class.
    */
   impactFlashSize0M: 0.8, impactFlashSize1M: 1.5,
-  impactFlashIntensity: 1.7, impactFlashLifeMs: 110,
+  impactFlashIntensity: 1.2, impactFlashLifeMs: 90,
 
   /** Structure death: the separate flash above, then 3-6 cook-offs at 250 ms. */
   cookOffMin: 3, cookOffMax: 6, cookOffIntervalMs: 250, cookOffTL: 1.2,
@@ -7009,64 +7006,52 @@ export const VFX_GUNS = {
   /**
    * Muzzle flashes, small / medium / heavy.
    *
-   * The SIZES are the bible's and are staying: scorecard #29 measures a heavy
-   * flash at >= 4x a 0.30 m barrel and these shapes are the silhouette of the
-   * effect. The GAINS came down with the explosion budget (5.0/5.6/6.4 ->
-   * 2.8/3.1/3.6). A firefight fires several of these per second per unit, and
-   * against a 0.85 bloom threshold a 6.4-linear source haloes across its whole
-   * quad — twenty guns firing was a second, continuous screen-wide bloom feed
-   * underneath the explosions this pass was called in to fix.
+   * Length keeps the calibre read and the >=4x-barrel contract. Width, lifetime
+   * and gain are restrained by weapon class: small and medium shots live below
+   * noon bloom, while heavy shots are allowed a compact halo.
    */
   flash: [
-    { lenM: 1.20, widM: 0.62, lifeMs:  70, intensity: 2.8, tile: 4 },  // small: 4-point star
-    { lenM: 2.00, widM: 1.40, lifeMs:  90, intensity: 3.1, tile: 13 }, // medium: kite
-    { lenM: 3.00, widM: 1.75, lifeMs: 110, intensity: 3.6, tile: 4 },  // heavy: big star
+    { lenM: 1.20, widM: 0.50, lifeMs: 50, intensity: 0.95, tile: 4 }, // small: 4-point star
+    { lenM: 2.00, widM: 1.00, lifeMs: 65, intensity: 1.10, tile: 13 }, // medium: kite
+    { lenM: 3.00, widM: 1.30, lifeMs: 80, intensity: 1.45, tile: 4 },  // heavy: big star
   ] as const,
   /** Scale curve: 0 -> 1.0 at 15 ms -> 0.85 -> 0. */
   flashPeakMs: 15, flashSustain: 0.85,
   /**
    * White-hot core disc riding inside the flash, as a fraction of its length.
    *
-   * 9.0 was the single hottest emissive in the game — hotter than the death
-   * flash it sits next to — for a 1 m disc that fires many times a second. 4.0
-   * still clips to white through the tonemapper; it just stops dragging a halo
-   * the size of the turret with it. It is the top of the budget the
-   * `detonation bloom budget` suite enforces, which is where it belongs: this
-   * is the hottest thing a normal frame contains.
+   * Heavy guns alone add this second core. Routine weapons already carry a
+   * white ignition point in the muzzle ramp and must not double their additive
+   * layer in formation combat.
    */
-  flashCoreFrac: 0.38, flashCoreIntensity: 4.0,
+  flashCoreFrac: 0.18, flashCoreIntensity: 1.8,
   /** Barrel smoke ribbon: #8A8078 at alpha 0.25 for the first 30% of flight. */
   barrelSmokeAlpha: 0.25,
 
   /**
-   * MG tracer: tapered lozenge 25-65 px x 2.5-4 px, ratio ~14:1.
-   *
-   * Gain cut with the rest of the budget (4.0 -> 2.6). A tracer is thin, so its
-   * own bloom footprint is small — but there are up to 320 of them live at once
-   * and their halos merge into a haze over the engagement.
+   * MG tracer: a slim tapered lozenge. Its gain remains below noon bloom because
+   * hundreds can be live at once; motion and colour provide the read.
    */
-  tracerLenPx: [25, 65] as const, tracerWidthPx: [2.5, 4.0] as const,
-  tracerHeadWidthMul: 1.35, tracerIntensity: 2.6,
-  /** Cannon tracer: 95-130 px x 7-9 px head, tapering over the last 40%. */
-  cannonLenPx: [95, 130] as const, cannonWidthPx: [7, 9] as const,
-  cannonIntensity: 3.0,
+  tracerLenPx: [20, 50] as const, tracerWidthPx: [1.8, 3.0] as const,
+  tracerHeadWidthMul: 1.12, tracerIntensity: 1.05,
+  /** Cannon tracer: longer and wider than MG fire, tapering over the last 40%. */
+  cannonLenPx: [72, 105] as const, cannonWidthPx: [5, 7] as const,
+  cannonIntensity: 1.35,
   /** Travel speed in metres/sec (bible: ~14 TL/s for the main gun). */
   tracerSpeed: 190, cannonSpeed: 98,
-  /** Only ~1 in 3 MG rounds is visible. */
-  tracerVisibleFrac: 0.34,
+  /** About one in six MG rounds is visible in a dense engagement. */
+  tracerVisibleFrac: 0.16,
 
-  /** Armour impact: 30-45 straight streaks, 140 deg upward-biased fan. */
-  sparkMin: 30, sparkMax: 45,
-  sparkLenPx: [60, 180] as const, sparkWidthPx: 2,
+  /** Armour impact: 20-32 straight streaks, 140 deg upward-biased fan. */
+  sparkMin: 20, sparkMax: 32,
+  sparkLenPx: [45, 130] as const, sparkWidthPx: 1.6,
   sparkFanDeg: 140, sparkLifeMs: 420, sparkSpeed: [9, 26] as const,
-  sparkGravity: 14, sparkIntensity: 2.4,
+  sparkGravity: 14, sparkIntensity: 1.1,
   /**
-   * Plus a small white flash disc for 60 ms — the bible's 20 px, at the gain
-   * class the rest of this pass settled on (6.0 -> 3.0). It is emitted RADIAL
-   * for the same reason the death flash is: a flat high-gain disc, however
-   * small, is a disc-shaped bloom source rather than a point one.
+   * Plus a compact radial flash. It stays beneath bloom so repeated armour hits
+   * read as contact points rather than a chain of white discs.
    */
-  sparkFlashPx: 20, sparkFlashMs: 60, sparkFlashIntensity: 3.0,
+  sparkFlashPx: 12, sparkFlashMs: 45, sparkFlashIntensity: 1.15,
 } as const;
 
 /* ---- trails (bible §8.6) ------------------------------------------------ */

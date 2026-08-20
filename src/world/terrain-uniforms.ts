@@ -113,6 +113,17 @@ export const TERRAIN_SCALAR_DEFAULTS = {
   uInvMapSize: 1 / MAP_SIZE,
   uMacroScale: 34,
   uMacroStrength: 0.13,
+  /**
+   * Ground-space repeat of the packed material-detail channel in `uMacro.a`.
+   * The tile itself is band-limited to features >= 28 texels, so at 5.6 m the
+   * shortest relief is about 0.61 m: broad enough to read as soil structure,
+   * never per-pixel sandpaper.
+   */
+  uDetailScale: 5.6,
+  /** Metres of apparent height used to perturb the flat-ground normal. */
+  uDetailNormal: 0.075,
+  /** Peak-to-peak roughness travel driven by the same material-detail field. */
+  uDetailRoughness: 0.16,
   uWarpScale: 11,
   uWarpAmp: 0.55,
   uCellSize: CELL,

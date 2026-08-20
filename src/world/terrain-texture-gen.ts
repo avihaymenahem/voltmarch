@@ -128,10 +128,19 @@ export function buildMacroBytes(seed: number): Uint8Array {
       const a = fbm2(x * f, y * f, 2, 2, 0.5, seed) * 0.5 + 0.5;
       const b = fbm2(x * f * 1.4 + 3.1, y * f * 1.4 - 5.4, 2, 2, 0.5, seed + 421) * 0.5 + 0.5;
       const c = simplex2(x * f * 0.6, y * f * 0.6, seed + 88) * 0.5 + 0.5;
+      /*
+       * A is the MATERIAL band, not another colour octave. `budgetedNoise`
+       * makes it exactly periodic and forbids wavelengths below 28 texels, so
+       * the shader can turn its derivatives into soil/grass relief without
+       * resurrecting the per-pixel normal noise this generator removed. The
+       * channel rides in the alpha byte the support tile previously left at
+       * 255, so it costs no texture, sampler, upload or draw call.
+       */
+      const detail = 0.5 + budgetedNoise(x, y, N, 28, 0.5, seed + 733, 0.5);
       data[o] = Math.round(Math.max(0, Math.min(1, a)) * 255);
       data[o + 1] = Math.round(Math.max(0, Math.min(1, b)) * 255);
       data[o + 2] = Math.round(Math.max(0, Math.min(1, c)) * 255);
-      data[o + 3] = 255;
+      data[o + 3] = Math.round(Math.max(0, Math.min(1, detail)) * 255);
     }
   }
   return data;
@@ -903,7 +912,7 @@ export interface TerrainTextureData {
  * `BIOMES[key]` is the single source of the rest.
  */
 export function terrainTextureKey(biomeKey: string, size: number, seed: number): string {
-  return `terrain-tex:${biomeKey}:${size}:${seed | 0}`;
+  return `terrain-tex-v2:${biomeKey}:${size}:${seed | 0}`;
 }
 
 /**

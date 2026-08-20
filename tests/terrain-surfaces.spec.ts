@@ -27,8 +27,8 @@ import { describe, it, expect } from 'vitest';
 import { checkNoiseBudget, type Surface } from '../src/core/assets';
 import { BIOMES, BIOME_NAMES, SURFACE_COUNT, type SurfaceLayerDef } from '../src/world/Biomes';
 import {
-  FIELD_DRIFT_CAP, FIELD_MIN_WAVELENGTH, buildFieldSurface, buildLayerSurface,
-  buildLayerArrayTexture,
+  FIELD_DRIFT_CAP, FIELD_MIN_WAVELENGTH, MACRO_N, buildFieldSurface, buildLayerSurface,
+  buildLayerArrayTexture, buildMacroBytes,
 } from '../src/world/TerrainMaterial';
 
 /** Small enough to keep the suite fast, large enough for the drift wavelengths. */
@@ -261,5 +261,16 @@ describe('buildLayerArrayTexture', () => {
       }
       tex.dispose();
     }
+  });
+
+  it('packs a real material-detail field into the support texture alpha', () => {
+    const data = buildMacroBytes(0x51a7);
+    let lo = 255, hi = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      lo = Math.min(lo, data[i]);
+      hi = Math.max(hi, data[i]);
+    }
+    expect(data.length).toBe(MACRO_N * MACRO_N * 4);
+    expect(hi - lo).toBeGreaterThan(96);
   });
 });

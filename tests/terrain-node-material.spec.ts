@@ -309,6 +309,9 @@ describe('the uniform block', () => {
     expect(TERRAIN_LAYER_ROUGH_DEFAULT).toEqual([0.95, 0.92, 0.9, 0.85, 0.7, 0.68]);
     expect(TERRAIN_SCALAR_DEFAULTS.uMacroScale).toBe(34);
     expect(TERRAIN_SCALAR_DEFAULTS.uMacroStrength).toBe(0.13);
+    expect(TERRAIN_SCALAR_DEFAULTS.uDetailScale).toBe(5.6);
+    expect(TERRAIN_SCALAR_DEFAULTS.uDetailNormal).toBe(0.075);
+    expect(TERRAIN_SCALAR_DEFAULTS.uDetailRoughness).toBe(0.16);
     expect(TERRAIN_SCALAR_DEFAULTS.uWarpScale).toBe(11);
     expect(TERRAIN_SCALAR_DEFAULTS.uWarpAmp).toBe(0.55);
     expect(TERRAIN_SCALAR_DEFAULTS.uCellJitter).toBe(0.038);
@@ -410,7 +413,8 @@ describe('a biome means the same numbers on both materials', () => {
     expect(n.uLayerRough.array).toEqual(g.uLayerRough.value);
 
     const scalars = [
-      'uMacroScale', 'uMacroStrength', 'uWarpScale', 'uWarpAmp', 'uCellJitter',
+      'uMacroScale', 'uMacroStrength', 'uDetailScale', 'uDetailNormal',
+      'uDetailRoughness', 'uWarpScale', 'uWarpAmp', 'uCellJitter',
       'uCliffCapM', 'uCliffSkirtM', 'uStriationM', 'uCourseM', 'uCourseOn',
       'uCliffRelief', 'uCliffRough', 'uCliffGrainMean', 'uStepHeight',
       'uInvMapSize', 'uCellSize', 'uSplatSharpen', 'uCliffNy', 'uFaceMix',
@@ -587,7 +591,7 @@ describe('program caching', () => {
     /*
      * `customProgramCacheKey` STILL FIRES on node materials — it is the half of
      * the old mechanism that survives `onBeforeCompile`'s silent death. The
-     * shipping GLSL material returns `'ra-terrain-v3'`, a string a human has to
+     * shipping GLSL material returns `'ra-terrain-v4'`, a string a human has to
      * remember to bump whenever the injected GLSL changes. There is no injected
      * GLSL on this path, so that string could only ever be stale, and a stale
      * key hands back the previous program with nothing thrown and nothing
@@ -597,8 +601,8 @@ describe('program caching', () => {
     const glsl = createTerrainMaterials({
       biome: BIOMES.temperate, layerTextureSize: LAYER_SIZE, seed: SEED,
     });
-    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v3');
-    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v3');
+    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v4');
+    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v4');
     node.dispose();
     glsl.dispose();
   });

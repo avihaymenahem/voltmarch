@@ -71,7 +71,7 @@ describe('ArtBridge — core/config.ts -> render/RENDER_CONFIG', () => {
   it('resolves a mood on top of the shipping look without mutating it', () => {
     const noonElevation = DEFAULT_ART.sun.elevationDeg;
     const dusk = resolveArt('dusk');
-    expect(dusk.sun.elevationDeg).toBe(12);
+    expect(dusk.sun.elevationDeg).toBe(MOODS.dusk!.sun!.elevationDeg);
     // The patched value comes from MOODS, not from a literal copied into the
     // test — a grade retune must not have to edit an assertion to stay green.
     // What is being asserted is that the override HAPPENED and differs from
