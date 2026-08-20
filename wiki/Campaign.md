@@ -99,6 +99,8 @@ its operations you have finished; each operation is a row with its par time and 
 | 05 | Forced Closure | The Timetable | 17 | 1 | 2 |
 | 06 | Machine Time | The Timetable | 18 | 2 | 2 |
 | 07 | Fair Copy | The Timetable | 19 | 2 | 1 |
+| 08 | Standing Order | The Timetable | 20 | 1 | 2 |
+| 09 | Made Good | The Timetable | 22 | 2 | 1 |
 | 01 | The Shallow Road | The Crust | 13 | 1 | 2 |
 | 02 | The Long Count | The Crust | 14 | 2 | 2 |
 | 03 | The Concession | The Crust | 15 | 2 | 2 |
@@ -110,12 +112,11 @@ its operations you have finished; each operation is a row with its par time and 
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 
-**That is 26 of a planned 37 operations, and this page will not pretend otherwise.** The
-twenty-six add up to 416 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 28 of a planned 37 operations, and this page will not pretend otherwise.** The
+twenty-eight add up to 458 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
-screen — and **Hold the Seam is complete at nine**, which makes the Soviet campaign the one
-chapter you can play end to end. The Timetable stands at seven of nine; The Crust and
-Salvage Rights at five each.
+screen — and **two are complete at nine**: Hold the Seam and The Timetable can both be
+played end to end, Soviets first. The Crust and Salvage Rights stand at five each.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -130,10 +131,10 @@ Every operation has at least one **primary** objective — what the operation is
 nothing else.
 
 - **A bonus may pay credits into that match**, immediately, straight into your bank. The ones that
-  pay are worth 400 to 700 credits and they are granted rather than deposited, so a full silo
+  pay are worth 400 to 1000 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Eight shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Ten shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.

@@ -345,6 +345,37 @@ const GUNS: Readonly<Record<string, string>> = {
   // therefore off the four capture stands the operation's primaries are walked
   // to; deleting either empty list puts a Spire here and closes them.
   'allies.07.fair-copy': 'mrdGlaive x5',
+  // THREE from the Reclamation opening and TWO the layout stands on the salvage
+  // house's oil derrick, 17.20 m off it on one integer offset and its exact
+  // negation. `op.foe` is Reclamation, so the layout's `pillbox` resolves
+  // through `keyFor` to the SPITPOST — `postCoil`, 20 m, `power: 0`, so unlike
+  // A7's Glaive Posts there is no grid-deficit route to opening them — and it
+  // DOES chain (`chainCount` 1): one pull is
+  // `34 x ARMOR_MATRIX[Tesla][Infantry] 1.60 x 0.80` = 43.52 and the second
+  // link is 26.11 against a G.I.'s 120 hp, so §2 is satisfied with room rather
+  // than by the row not chaining at all. The `retainer` tag those two cover is
+  // what the operation's secondary reads, which is what puts them in §2's scope.
+  // The empty `roster.ai` is what keeps `rclPylon` (28 m, chain 3, 120.32 a
+  // pull — lethal to a 120 hp G.I. and to the 90 hp engineer the secondary is
+  // bought with) off this row and therefore off the derrick's eight capture
+  // stands; deleting either empty list puts a Pylon here and closes them.
+  'allies.08.standing-order': 'rclSpitpost x5',
+  // THREE from the Reclamation opening on island 1 and TWO the layout stands on
+  // Bench Nine, one beside the sorting floor and one beside the breaking yard.
+  // `op.foe` is Reclamation, so the layout's `pillbox` resolves through `keyFor`
+  // to the ARCSPITTER POST — `postCoil`, 20 m, `power: 0` so a brownout does not
+  // silence it, and it DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a G.I.'s 120 hp and an engineer's 90. §2 is therefore
+  // satisfied with room rather than by the row not chaining.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and here that
+  // is the difference between a reachable secondary and an unreachable one: 28 m,
+  // `chainCount` 3, 120.32 on the first link, against the 90 hp engineer who is
+  // the ONLY route to the bore head — no vehicle in any army carries
+  // `canCapture`. Delete either empty list and a Pylon founded within 28 m of the
+  // head kills that man on the first link and his relief on the second.
+  'allies.09.made-good': 'rclSpitpost x5',
   'pact.01.shallow-road': 'pillbox x5, prismTower x2',
   'pact.02.long-count': 'flameTower x2, sentryGun x3',
   'pact.03.concession': 'rclSpitpost x5',
