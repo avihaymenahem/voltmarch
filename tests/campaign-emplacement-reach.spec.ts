@@ -305,6 +305,22 @@ const GUNS: Readonly<Record<string, string>> = {
   'soviets.05.short-allocation': 'pillbox x5',
   'soviets.06.demolition-order': 'pillbox x5, prismTower x2',
   'soviets.07.right-of-entry': 'pillbox x7',
+  // Three from `buildAlliedBase` plus TWO the layout plants on the shoulders of
+  // the haul corridor, 14.14 m either side of `PICKET`, close enough that every
+  // shortest Foot route to the working spends 38.63 m inside a 22 m gun. `pillbox`
+  // carries no `unlockedBy`, so the empty `roster.ai` cannot refuse them —
+  // deliberate: this operation's asymmetry is the Refractor Tanks the fourth
+  // movement SPAWNS, which never pass through `isBuildable` and never stand up
+  // as structures.
+  'soviets.08.carriage-forward': 'pillbox x5',
+  // Three from the Allied opening and three on the establishment's field office
+  // — two `pillbox` and the `prismTower` that makes taking the office a decision
+  // rather than a walk. `op.foe` is Allied, so `keyFor` resolves `prismTower` to
+  // ITSELF; on a Soviet seat the same key is a Tesla Coil, which is R1's defect
+  // and this file's whole subject. Neither row chains, and the nearest gun to
+  // anything the trigger table names is 31.6 m from a seam head against a 22 m
+  // reach.
+  'soviets.09.nil-return': 'pillbox x5, prismTower x2',
   'allies.01.sounding-line': 'flameTower x2, sentryGun x2',
   'allies.02.instrument-room': 'flameTower x2, sentryGun x5',
   'allies.03.ground-truth': 'mrdGlaive x17',

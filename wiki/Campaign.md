@@ -90,6 +90,8 @@ its operations you have finished; each operation is a row with its par time and 
 | 05 | Short Allocation | Hold the Seam | 17 | 1 | 2 |
 | 06 | Demolition Order | Hold the Seam | 18 | 1 | 2 |
 | 07 | Right of Entry | Hold the Seam | 19 | 1 | 2 |
+| 08 | Carriage Forward | Hold the Seam | 20 | 1 | 2 |
+| 09 | Nil Return | Hold the Seam | 22 | 1 | 2 |
 | 01 | Sounding Line | The Timetable | 13 | 2 | 1 |
 | 02 | Instrument Room | The Timetable | 14 | 2 | 1 |
 | 03 | Ground Truth | The Timetable | 15 | 1 | 1 |
@@ -106,10 +108,11 @@ its operations you have finished; each operation is a row with its par time and 
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 
-**That is 22 of a planned 37 operations, and this page will not pretend otherwise.** The
-twenty-two add up to 337 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 24 of a planned 37 operations, and this page will not pretend otherwise.** The
+twenty-four add up to 379 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
-screen — but none of them is finished, and the shortest is five operations long.
+screen — and **Hold the Seam is complete at nine**, which makes the Soviet campaign the one
+chapter you can play end to end. The other three stand at five each.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
