@@ -4563,10 +4563,18 @@ export const HUD_OVERLAY = {
   chevronH: 10,
   /** Ground selection ellipse opacity. Never a filled disc, never a bracket. */
   ellipseAlpha: 0.35,
+  /**
+   * Above this selection size, healthy-unit bars are suppressed and the
+   * ground ellipses switch to their compact group treatment. Damage and hover
+   * still reveal an individual bar immediately.
+   */
+  groupDetailLimit: 6,
   /** Seconds a health bar stays up after the last damage tick. */
   damageBarSeconds: 4.0,
   /** Seconds a floating damage/credit number lives. */
   floaterSeconds: 1.1,
+  /** Hits on one entity inside this window roll into one tactical readout. */
+  floaterMergeSeconds: 0.28,
   /** Design px a floater rises over its life. */
   floaterRise: 26,
   /** Simultaneous floaters. Pooled; never allocated in the frame loop. */
@@ -7041,6 +7049,12 @@ export const VFX_GUNS = {
   tracerSpeed: 190, cannonSpeed: 98,
   /** About one in six MG rounds is visible in a dense engagement. */
   tracerVisibleFrac: 0.16,
+  /**
+   * Maximum simultaneous MG/cannon streaks drawn by the ribbon batch. The
+   * simulation may keep more rounds alive; this is a presentation budget that
+   * prevents two firing lines from turning into a white wireframe cage.
+   */
+  tracerDrawBudget: 28,
 
   /** Armour impact: 20-32 straight streaks, 140 deg upward-biased fan. */
   sparkMin: 20, sparkMax: 32,

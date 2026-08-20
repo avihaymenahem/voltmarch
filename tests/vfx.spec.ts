@@ -1129,6 +1129,22 @@ describe('guns and trails', () => {
     B.dispose();
     P.dispose();
   });
+
+  it('caps the drawn tracer stream without deleting live rounds', () => {
+    const P = makeParticles();
+    const B = new BeamSystem(P.ramps, VFX_RAMPS.length);
+    const T = new TracerSystem(B.depthed);
+    for (let i = 0; i < VFX_GUNS.tracerDrawBudget + 17; i++) {
+      T.spawn(i * 0.1, 2, 0, 1, 0, 0, 'mg', false, 100);
+    }
+    const alive = T.count;
+    T.step(1, 0.036);
+    expect(T.count).toBe(alive);
+    // Each visible tracer emits a tapered body and a rounded head.
+    expect(B.depthed.quadCount).toBe(VFX_GUNS.tracerDrawBudget * 2);
+    B.dispose();
+    P.dispose();
+  });
 });
 
 /* ========================================================================== */

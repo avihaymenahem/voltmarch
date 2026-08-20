@@ -499,6 +499,10 @@ interface Floater {
   age: number;
   text: string;
   color: string;
+  /** Entity handle used to combine rapid hits; NONE leaves the floater unique. */
+  key: EntityId;
+  /** Numeric damage accumulated into this readout. */
+  value: number;
   /** Design px of horizontal drift, so two hits on one tank do not stack. */
   drift: number;
 }
@@ -610,7 +614,10 @@ export class Overlay {
     this.accent = accentFor(opts.faction);
 
     for (let i = 0; i < HUD_OVERLAY.floaterPool; i++) {
-      this.floaters.push({ active: false, x: 0, y: 0, z: 0, age: 0, text: '', color: '#fff', drift: 0 });
+      this.floaters.push({
+        active: false, x: 0, y: 0, z: 0, age: 0, text: '', color: '#fff',
+        key: NONE, value: 0, drift: 0,
+      });
     }
     for (let i = 0; i < ORDER_MARKER_POOL; i++) {
       this.markers.push({ active: false, x: 0, y: 0, z: 0, age: 0, kind: 'move' });
@@ -762,8 +769,27 @@ export class Overlay {
     this.hoveredId = id;
   }
 
-  /** Spawn a floating number at a world position. Silently drops when full. */
-  floater(x: number, y: number, z: number, text: string, color: string): void {
+  /**
+   * Spawn a floating number at a world position. Rapid damage against the same
+   * entity rolls into one number instead of painting a vertical receipt; pass
+   * no key/value for a unique, non-damage floater.
+   */
+  floater(
+    x: number, y: number, z: number, text: string, color: string,
+    key: EntityId = NONE, value = 0,
+  ): void {
+    if (key !== NONE && value > 0) {
+      for (const f of this.floaters) {
+        if (!f.active || f.key !== key || f.age > HUD_OVERLAY.floaterMergeSeconds) continue;
+        f.x = x; f.y = y; f.z = z;
+        f.value += value;
+        f.text = `-${Math.round(f.value)}`;
+        // Do not restart from zero forever under sustained fire. Pull the
+        // readout back into its opaque phase while preserving upward motion.
+        f.age = Math.min(f.age, HUD_OVERLAY.floaterMergeSeconds * 0.55);
+        return;
+      }
+    }
     for (const f of this.floaters) {
       if (f.active) continue;
       f.active = true;
@@ -773,6 +799,8 @@ export class Overlay {
       f.age = 0;
       f.text = text;
       f.color = color;
+      f.key = key;
+      f.value = value;
       // Deterministic-looking spread without an RNG: hash the position.
       f.drift = (((x * 7.3 + z * 13.1) % 2) - 1) * 9;
       return;
@@ -936,8 +964,9 @@ export class Overlay {
 
   /**
    * A flat ground ellipse under everything selected, plus a dimmer one under
-   * whatever the cursor is over. The ring breathes very slightly — 4% of its
-   * radius at 0.8 Hz — which is what separates "selected" from "a decal".
+   * whatever the cursor is over. Small selections retain a crisp hero read;
+   * large groups use a tighter, quieter treatment so overlapping ellipses do
+   * not become the brightest geometry in a firefight.
    */
   private drawSelectionRings(): void {
     const store = this.world.store;
@@ -945,7 +974,9 @@ export class Overlay {
     const ctx = this.ctx;
     const u = this.scale / this.dpr;
 
-    const pulse = 1 + 0.04 * Math.sin(this.time * Math.PI * 1.6);
+    const grouped = sel.count > HUD_OVERLAY.groupDetailLimit;
+    const pulse = (grouped ? 0.88 : 1)
+      * (1 + (grouped ? 0.018 : 0.035) * Math.sin(this.time * Math.PI * 1.6));
 
     // ONE projection pass for the whole selection, then three stroke passes
     // that replay it. See the RING_XY block at the top of this file for why the
@@ -963,19 +994,22 @@ export class Overlay {
       // Allied roof or inside a fireball is not a ring, it is a rumour; a
       // wider dark pass beneath it means the ring reads on every surface the
       // grade can produce, and costs one extra stroke per selected unit.
-      ctx.lineWidth = Math.max(2, 3.2 * u);
-      ctx.strokeStyle = 'rgba(3,6,10,0.62)';
+      ctx.lineWidth = Math.max(1.5, (grouped ? 2.25 : 2.8) * u);
+      ctx.strokeStyle = grouped ? 'rgba(3,6,10,0.46)' : 'rgba(3,6,10,0.60)';
       for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
 
-      ctx.lineWidth = Math.max(1, 1.5 * u);
-      ctx.strokeStyle = rgba(this.accent, 0.95);
+      ctx.lineWidth = Math.max(1, (grouped ? 1.0 : 1.25) * u);
+      ctx.strokeStyle = rgba(
+        this.accent,
+        grouped ? HUD_OVERLAY.ellipseAlpha : Math.min(0.72, HUD_OVERLAY.ellipseAlpha * 1.85),
+      );
       for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
 
       // A second, wider, very faint ring gives the affordance depth without a
       // glow filter — the canvas has no cheap blur and a shadowBlur here costs
       // more than every other overlay pass combined.
-      ctx.lineWidth = Math.max(1, 4 * u);
-      ctx.strokeStyle = rgba(this.accent, 0.16);
+      ctx.lineWidth = Math.max(1, (grouped ? 2.4 : 3.2) * u);
+      ctx.strokeStyle = rgba(this.accent, grouped ? 0.055 : 0.11);
       for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
     }
 
@@ -1538,11 +1572,18 @@ export class Overlay {
 
       const selected = (flags & EntityFlag.Selected) !== 0;
       const hovered = (flags & EntityFlag.Hovered) !== 0;
-      const hurt = store.hp[e] < store.maxHp[e]
+      const damaged = store.hp[e] < store.maxHp[e];
+      const hurt = damaged
         && now - store.lastHitTime[e] < HUD_OVERLAY.damageBarSeconds;
       const owned = (store.owner[e] as PlayerId) === local;
       const mending = owned && isRegenerating(store, e, now);
-      if (!selected && !hovered && !hurt && !mending && !(this.showAllyBars && owned)) continue;
+      // In a large selection the ellipse already says "these are mine". A
+      // full bar over every healthy soldier repeats that information and hides
+      // the silhouettes we worked to improve. Damaged units keep their bar
+      // for triage, and hover always drills back down to individual detail.
+      const selectedDetail = selected
+        && (this.world.selection.count <= HUD_OVERLAY.groupDetailLimit || damaged);
+      if (!selectedDetail && !hovered && !hurt && !mending && !(this.showAllyBars && owned)) continue;
 
       // LAST, because it is the only test that leaves this file. A bar is a live
       // reading and lives are only readable in the light: `canSee` answers true

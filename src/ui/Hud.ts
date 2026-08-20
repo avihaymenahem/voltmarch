@@ -1338,6 +1338,7 @@ export class Hud {
       this.overlay.floater(
         e.x, 2.4, e.z, `-${Math.round(e.amount)}`,
         mine ? SEMANTIC.danger : SEMANTIC.text,
+        e.id, e.amount,
       );
     }));
 

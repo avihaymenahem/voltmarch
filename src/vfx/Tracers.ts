@@ -406,7 +406,12 @@ export class TracerSystem {
       this.pz[i] += this.vz[i] * dt;
     }
 
-    for (let k = 0; k < this.liveCount; k++) {
+    // Tracers are a sampled visual stream, not one line per simulated round.
+    // Keep the newest streaks when a large engagement exceeds the presentation
+    // budget; the oldest rounds continue travelling and can still retire
+    // normally, they simply stop contributing to the white line pile.
+    const firstDraw = Math.max(0, this.liveCount - VFX_GUNS.tracerDrawBudget);
+    for (let k = firstDraw; k < this.liveCount; k++) {
       const i = this.live[k];
       const speed = Math.hypot(this.vx[i], this.vy[i], this.vz[i]);
       if (speed < 1e-4) continue;

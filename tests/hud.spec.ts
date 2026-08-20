@@ -418,10 +418,14 @@ describe('HUD — world overlay geometry (§2.11)', () => {
   it('keeps the selection ellipse subtle enough to stay a hint (I15)', () => {
     expect(HUD_OVERLAY.ellipseAlpha).toBeGreaterThan(0.2);
     expect(HUD_OVERLAY.ellipseAlpha).toBeLessThanOrEqual(0.4);
+    expect(HUD_OVERLAY.groupDetailLimit).toBeGreaterThanOrEqual(4);
+    expect(HUD_OVERLAY.groupDetailLimit).toBeLessThanOrEqual(8);
   });
 
   it('pools floaters rather than allocating them per hit', () => {
     expect(HUD_OVERLAY.floaterPool).toBeGreaterThanOrEqual(24);
+    expect(HUD_OVERLAY.floaterMergeSeconds).toBeGreaterThan(0.15);
+    expect(HUD_OVERLAY.floaterMergeSeconds).toBeLessThan(0.4);
   });
 });
 
