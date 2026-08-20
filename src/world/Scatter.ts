@@ -415,6 +415,12 @@ export interface ScatterOptions {
   /** The box a scenario actually photographs. Density is boosted inside it. */
   readonly focus?: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
   readonly focusBoost?: number;
+  /**
+   * Multiplier on the normal 20-50 m same-family gap inside `focus` only.
+   * Values below one create a richer hero area without changing the broader
+   * wilderness rhythm or the spacing between members of an individual clump.
+   */
+  readonly focusClumpGapScale?: number;
 }
 
 /* One live prop type: a def, its baked geometry, and its instance columns. */
@@ -623,6 +629,12 @@ export class Scatter {
 
   /** Exclusion discs added by scenarios/bases. Triples of (x, z, r). */
   private readonly exclusions: number[] = [];
+  /**
+   * Discs that reject every family except low, non-blocking grass.
+   * MCV openings use these to keep trunks and boulders out of the deploy lane
+   * without turning the lane into a visibly mown rectangle.
+   */
+  private readonly lowProfileExclusions: number[] = [];
 
   /**
    * Accepted clump centres, bucketed by (family, 64 m cell) so the 20-50 m
@@ -718,16 +730,33 @@ export class Scatter {
     this.exclusions.push(x, z, radius);
   }
 
+  /** A clearance where grass may remain but trees, shrubs and props may not. */
+  addLowProfileExclusion(x: number, z: number, radius: number): void {
+    this.lowProfileExclusions.push(x, z, radius);
+  }
+
   /** Rectangular exclusion, expressed as the disc that covers it. */
   addExclusionRect(minX: number, minZ: number, maxX: number, maxZ: number): void {
     const cx = (minX + maxX) * 0.5, cz = (minZ + maxZ) * 0.5;
     this.addExclusion(cx, cz, Math.hypot(maxX - cx, maxZ - cz));
   }
 
-  clearExclusions(): void { this.exclusions.length = 0; }
+  clearExclusions(): void {
+    this.exclusions.length = 0;
+    this.lowProfileExclusions.length = 0;
+  }
 
   private inExclusion(x: number, z: number, pad: number): boolean {
     const e = this.exclusions;
+    for (let i = 0; i < e.length; i += 3) {
+      const dx = x - e[i], dz = z - e[i + 1], r = e[i + 2] + pad;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  }
+
+  private inLowProfileExclusion(x: number, z: number, pad: number): boolean {
+    const e = this.lowProfileExclusions;
     for (let i = 0; i < e.length; i += 3) {
       const dx = x - e[i], dz = z - e[i + 1], r = e[i + 2] + pad;
       if (dx * dx + dz * dz < r * r) return true;
@@ -817,6 +846,11 @@ export class Scatter {
     // centre clears an exclusion by 0.1 m can still host a prop 2.8 m inside
     // it. Cheap fast-reject above, exact test here.
     if (this.exclusions.length > 0 && this.inExclusion(x, z, 0)) return false;
+    // A dressed opening still has a clearance hierarchy. Grass tufts are
+    // visual-only, crush-proof ground cover; everything with a trunk, canopy,
+    // rock or authored yard footprint stays outside the unit/deploy pockets.
+    if (def.family !== 'grass' && this.lowProfileExclusions.length > 0
+      && this.inLowProfileExclusion(x, z, 0)) return false;
     /*
      * NOTHING STANDS IN THE ROAD.
      *
@@ -1411,14 +1445,15 @@ export class Scatter {
   ): number {
     const def = type.def;
     const family = FAMILY_CODE.indexOf(def.family);
+    const gapScale = clamp(this.opts.focusClumpGapScale ?? 1, 0.25, 1);
     for (let a = 0; a < 40; a++) {
       const cx = rng.range(focus.minX, focus.maxX);
       const cz = rng.range(focus.minZ, focus.maxZ);
       if (!this.legal(def, cx, cz)) continue;
       if (this.tooClose(cx, cz, def.spacing)) continue;
       const gap = rng.range(
-        SCATTER_CLUSTER.betweenClumpsMin,
-        SCATTER_CLUSTER.betweenClumpsMax,
+        SCATTER_CLUSTER.betweenClumpsMin * gapScale,
+        SCATTER_CLUSTER.betweenClumpsMax * gapScale,
       );
       if (this.clumpClash(family, cx, cz, gap)) continue;
       const n = this.placeClump(type.defIndex, def, cx, cz, rng);

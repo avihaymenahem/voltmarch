@@ -102,10 +102,14 @@ export default defineSystem({
       densityScale: plan.preset.scatter * numFlag('scatterdensity', 1),
       preferred: plan.preset.props,
       focus: spec !== null ? spec.framed : null,
-      // Clusters carry far more visual mass than the old uniform singles did.
-      // A smaller count produces the same richness without closing the combat
-      // lanes in the photographed box.
-      focusBoost: 0.18,
+      // An MCV opening is the first landscape the player studies, not an
+      // already-busy base photograph. Spend substantially more of the bounded
+      // instance budget there and let same-family islands sit closer together:
+      // grass/shrub carpets become continuous compositions and trees form a
+      // perimeter instead of three lonely stamps. Hard exclusions still own
+      // the deploy pocket and the escort lane, and maxProps remains unchanged.
+      focusBoost: plan.start === 'mcv' ? 0.55 : 0.18,
+      focusClumpGapScale: plan.start === 'mcv' ? 0.55 : 1,
     });
 
     /* -- masks ------------------------------------------------------------ *
@@ -124,7 +128,8 @@ export default defineSystem({
       ? MCV_START_SCATTER_CLEAR_RADIUS
       : AUTO_BASE_APRON_RADIUS;
     for (const p of plannedStartPoints()) {
-      scatter.addExclusion(p.x, p.z, startApron);
+      if (plan.start === 'mcv') scatter.addLowProfileExclusion(p.x, p.z, startApron);
+      else scatter.addExclusion(p.x, p.z, startApron);
     }
 
     const store = world.store;
@@ -140,9 +145,19 @@ export default defineSystem({
       } else if (kind === EntityKind.Vehicle) {
         // Clear the canopy, not merely the trunk: a technically legal tree
         // whose crown covers a tank still damages battlefield readability.
-        scatter.addExclusion(store.posX[i], store.posZ[i], store.radius[i] + 5.5);
+        const radius = store.radius[i] + 5.5;
+        if (plan.start === 'mcv') {
+          scatter.addLowProfileExclusion(store.posX[i], store.posZ[i], radius);
+        } else {
+          scatter.addExclusion(store.posX[i], store.posZ[i], radius);
+        }
       } else if (kind === EntityKind.Infantry) {
-        scatter.addExclusion(store.posX[i], store.posZ[i], store.radius[i] + 4.0);
+        const radius = store.radius[i] + 4.0;
+        if (plan.start === 'mcv') {
+          scatter.addLowProfileExclusion(store.posX[i], store.posZ[i], radius);
+        } else {
+          scatter.addExclusion(store.posX[i], store.posZ[i], radius);
+        }
       }
     }
 

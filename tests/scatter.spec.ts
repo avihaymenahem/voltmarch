@@ -440,6 +440,25 @@ describe('Scatter — placement', () => {
     scatter.dispose();
   });
 
+  it('keeps low-profile opening clearances dressed with grass only', () => {
+    const { scatter } = rig('temperate', 0.25, 1.0);
+    scatter.addLowProfileExclusion(256, 256, 40);
+    scatter.generate();
+    const out = new Float32Array(scatter.propCount * 4);
+    const n = scatter.positions(out);
+    let inside = 0;
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(out[i * 4] - 256, out[i * 4 + 2] - 256);
+      if (d >= 39.9) continue;
+      const def = PROP_DEFS[out[i * 4 + 3]];
+      expect(def?.family, `non-low prop ${def?.key ?? 'unknown'} inside dressed clearance`)
+        .toBe('grass');
+      inside++;
+    }
+    expect(inside, 'the dressed clearance remained completely empty').toBeGreaterThan(8);
+    scatter.dispose();
+  });
+
   it('publishes composition centres and paints sparse habitat patches beneath them', () => {
     const { scatter } = rig('temperate', 0.25, 1.0);
     scatter.generate();
@@ -460,7 +479,7 @@ describe('Scatter — placement', () => {
   });
 
   it('spends the photographed-area boost on extra clumps, not uniform singles', () => {
-    const make = (focusBoost: number): Scatter => {
+    const make = (focusBoost: number, focusClumpGapScale = 1): Scatter => {
       const scene = new THREE.Scene();
       const terrain = new Terrain({ scene, seed: 0x7e44a1, biome: 'temperate', anisotropy: 1 });
       return new Scatter({
@@ -469,6 +488,7 @@ describe('Scatter — placement', () => {
         preferred: ['tree', 'bush', 'rock'],
         focus: { minX: 128, minZ: 128, maxX: 384, maxZ: 384 },
         focusBoost,
+        focusClumpGapScale,
       });
     };
     const plain = make(0);
@@ -480,6 +500,29 @@ describe('Scatter — placement', () => {
     expect(b).toBeGreaterThan(a);
     plain.dispose();
     focused.dispose();
+  });
+
+  it('can compose a deliberately richer opening without changing the map budget', () => {
+    const make = (gapScale: number): Scatter => {
+      const scene = new THREE.Scene();
+      const terrain = new Terrain({ scene, seed: 0x7e44a1, biome: 'temperate', anisotropy: 1 });
+      return new Scatter({
+        scene, terrain, biome: 'temperate', seed: 0x5ca77e,
+        urban: 0.25, densityScale: 1,
+        preferred: ['tree', 'bush', 'rock'],
+        focus: { minX: 192, minZ: 192, maxX: 320, maxZ: 320 },
+        focusBoost: 0.55,
+        focusClumpGapScale: gapScale,
+      });
+    };
+    const normal = make(1);
+    const rich = make(0.55);
+    normal.generate();
+    rich.generate();
+    expect(rich.propCount).toBeGreaterThan(normal.propCount);
+    expect(rich.propCount).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
+    normal.dispose();
+    rich.dispose();
   });
 
   it('respects the draw-call budget', () => {
