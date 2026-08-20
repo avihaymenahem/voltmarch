@@ -33,7 +33,7 @@ import {
 import { structureAtlasSpec, padAtlasSpec } from '../src/art/BuildingFactory';
 import { specForPalette } from '../src/art/UnitFactory';
 import {
-  RA3_PAD_PALETTE, RA3_STRUCTURE_PALETTE, RA3_UNIT_PALETTE, UNIT_GREEBLE,
+  DEFAULT_ART, RA3_PAD_PALETTE, RA3_STRUCTURE_PALETTE, RA3_UNIT_PALETTE, UNIT_GREEBLE,
 } from '../src/core/config';
 
 /** A Soviet-flavoured spec: riveted plating is the busier of the two branches. */
@@ -63,14 +63,19 @@ function rectOf(slot: SlotName, size: number): { x: number; y: number; w: number
 
 const hull = generateGreebleAtlas(HULL);
 const structure = generateGreebleAtlas(STRUCTURE);
+const foundation = generateGreebleAtlas({
+  ...STRUCTURE, key: 'test.foundation', surfaceClass: 'foundation',
+});
 
 function differs(i: number): boolean {
   const o = i * 3;
   for (let c = 0; c < 3; c++) {
     if (Math.abs(hull.surface.albedo[o + c] - structure.surface.albedo[o + c]) > 1e-6) return true;
   }
-  return Math.abs(hull.surface.roughness[i] - structure.surface.roughness[i]) > 1e-6
-    || Math.abs(hull.surface.height[i] - structure.surface.height[i]) > 1e-9;
+  // Material-class roughness and coat masks now differ deliberately between a
+  // hull and architecture. Rust confinement is an albedo/relief claim: a
+  // stain may recolour pipework but must not reach another tile or normal.
+  return Math.abs(hull.surface.height[i] - structure.surface.height[i]) > 1e-9;
 }
 
 describe('rust is confined to structures', () => {
@@ -102,6 +107,29 @@ describe('rust is confined to structures', () => {
       }
       expect(`${slot}:${diff}`).toBe(`${slot}:0`);
     }
+  });
+});
+
+describe('architecture consumes the surface-class table', () => {
+  function centre(atlas: typeof structure, slot: SlotName): number {
+    const r = rectOf(slot, atlas.size);
+    return (r.y + Math.floor(r.h * 0.5)) * atlas.size + r.x + Math.floor(r.w * 0.5);
+  }
+
+  it('constrains painted panels and concrete foundations to their declared roughness bands', () => {
+    const panel = structure.surface.roughness[centre(structure, 'paintLarge')];
+    const concrete = foundation.surface.roughness[centre(foundation, 'paintLarge')];
+    expect(panel).toBeGreaterThanOrEqual(DEFAULT_ART.surfaces.buildingPanel.roughnessMin);
+    expect(panel).toBeLessThanOrEqual(DEFAULT_ART.surfaces.buildingPanel.roughnessMax);
+    expect(concrete).toBeGreaterThanOrEqual(DEFAULT_ART.surfaces.buildingConcrete.roughnessMin);
+    expect(concrete).toBeLessThanOrEqual(DEFAULT_ART.surfaces.buildingConcrete.roughnessMax);
+  });
+
+  it('keeps the faction coat on paint and removes it from machinery and concrete', () => {
+    expect(structure.surface.alpha[centre(structure, 'paintLarge')]).toBe(1);
+    expect(structure.surface.alpha[centre(structure, 'bareMetal')]).toBe(0);
+    expect(structure.surface.alpha[centre(structure, 'grille')]).toBe(0);
+    expect(foundation.surface.alpha[centre(foundation, 'paintLarge')]).toBe(0);
   });
 });
 
@@ -159,7 +187,7 @@ describe('a hull carries no rust at all', () => {
         panelDensity: 3.4, seed: 3, padSeed: 4,
       };
       expect(structureAtlasSpec(`${faction}.structure`, p, 512).surfaceClass).toBe('structure');
-      expect(padAtlasSpec(`${faction}.pad`, p, 512).surfaceClass).toBe('structure');
+      expect(padAtlasSpec(`${faction}.pad`, p, 512).surfaceClass).toBe('foundation');
     }
   });
 });

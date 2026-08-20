@@ -190,13 +190,22 @@ describe('terrain layer surfaces', () => {
     }
   });
 
-  it('field tiles are exactly flat in height', () => {
+  it('field tiles carry restrained structural response without sharp texel steps', () => {
     for (const [id, L] of cases) {
       if (L.surface !== 'field') continue;
       const s = buildLayerSurface(L, SIZE);
-      for (let i = 0; i < s.size * s.size; i++) {
-        expect(s.height[i], `${id} height at ${i}`).toBe(0.5);
+      let lo = 1, hi = 0, maxStep = 0;
+      for (let y = 0; y < s.size; y++) {
+        for (let x = 0; x < s.size; x++) {
+          const i = y * s.size + x;
+          lo = Math.min(lo, s.height[i]);
+          hi = Math.max(hi, s.height[i]);
+          if (x > 0) maxStep = Math.max(maxStep, Math.abs(s.height[i] - s.height[i - 1]));
+          if (y > 0) maxStep = Math.max(maxStep, Math.abs(s.height[i] - s.height[i - s.size]));
+        }
       }
+      expect(hi - lo, `${id} response range`).toBeGreaterThan(0.002);
+      expect(maxStep, `${id} response step`).toBeLessThan(0.02);
     }
   });
 

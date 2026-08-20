@@ -62,7 +62,8 @@
  */
 
 import {
-  NOISE_BUDGET, budgetedNoise, createSurface, generateSurface, packAlbedo,
+  NOISE_BUDGET, b8, budgetedNoise, createSurface, generateSurface, packAlbedo,
+  packNormalStructural,
   resolveParams, surfaceKey, type Surface, type TextureKind, type TextureRequest,
 } from '../core/surfaces';
 import { clamp01, fbm2, lerp, simplex2, smoothstep } from '../core/math';
@@ -750,11 +751,22 @@ export function buildFieldSurface(L: SurfaceLayerDef, size: number): Surface {
         s.albedo[o + c] = clamp01(v);
       }
 
-      // Exactly flat. Nothing on natural ground is geometry at this scale, and
-      // a constant height field is the guarantee that no packer can turn this
-      // tile back into a sandpaper normal map.
-      s.height[i] = 0.5;
-      s.roughness[i] = clamp01(L.roughness);
+      /*
+       * SURFACE RESPONSE, NOT ALBEDO NOISE. `m` and `drift` are both
+       * band-limited fields whose shortest wavelength is 48 texels; reusing
+       * them here creates broad compressed-soil / turf undulation instead of
+       * the old 5-texel sandpaper. The structural normal packer below filters
+       * once more and dead-bands the remaining sub-structural gradient.
+       *
+       * Height is deliberately shallow. It is not displacement and cannot
+       * move a silhouette — it only gives the key light a few-degree normal
+       * change over roughly 1.5-4 m of ground. Roughness moves in the opposite
+       * direction to the dry high patches so the response remains visible
+       * when the albedo happens to be locally even.
+       */
+      const response = clamp01(0.5 + drift * 0.70 + (m - 0.5) * 0.10);
+      s.height[i] = response;
+      s.roughness[i] = clamp01(L.roughness + (0.5 - response) * 0.16);
       s.metalness[i] = 0;
       s.ao[i] = 1;
       s.teamMask[i] = 0;
@@ -871,6 +883,42 @@ export function buildLayerArrayBytes(biome: BiomeDef, size: number): Uint8Array 
 }
 
 /**
+ * Pack the material-response twin of `buildLayerArrayBytes`.
+ *
+ *   R/G = signed tangent normal X/Y, encoded 0..1
+ *   B   = roughness
+ *   A   = cavity / ambient occlusion
+ *
+ * One array sampler serves all six layers. Keeping albedo and response in
+ * separate arrays lets the colour texture stay sRGB while this one stays
+ * linear, and costs one binding rather than the twelve bindings six ordinary
+ * normal/roughness textures would require.
+ */
+export function buildLayerResponseArrayBytes(biome: BiomeDef, size: number): Uint8Array {
+  const layerBytes = size * size * 4;
+  const data = new Uint8Array(layerBytes * SURFACE_COUNT);
+  for (let layer = 0; layer < SURFACE_COUNT; layer++) {
+    const surface = buildLayerSurface(biome.layers[layer], size);
+    const normal = packNormalStructural(surface, 1.35, 4);
+    const base = layerBytes * layer;
+    for (let i = 0; i < size * size; i++) {
+      const src = i * 4;
+      const dst = base + src;
+      data[dst] = normal[src];
+      data[dst + 1] = normal[src + 1];
+      // Store a signed delta around 0.5 rather than an absolute value. The
+      // live biome roughness uniform remains authoritative and console biome
+      // edits keep working without rebuilding this texture.
+      data[dst + 2] = b8(clamp01(
+        0.5 + (surface.roughness[i] - biome.layers[layer].roughness) * 2,
+      ));
+      data[dst + 3] = normal[src + 2];
+    }
+  }
+  return data;
+}
+
+/**
  * Every tile `createTerrainMaterials` would otherwise build on the main thread.
  *
  * `layerSize` travels WITH the bytes rather than being re-derived on the far
@@ -884,6 +932,8 @@ export interface TerrainTextureData {
   readonly key: string;
   /** Six RGBA8 layers back to back, `layerSize²·4·SURFACE_COUNT` bytes. */
   readonly layers: Uint8Array;
+  /** Six linear RGBA8 response layers, packed beside `layers`. */
+  readonly responses: Uint8Array;
   readonly layerSize: number;
   /** RGBA8 splat-warp tile, `WARP_N²·4` bytes. */
   readonly warp: Uint8Array;
@@ -903,7 +953,7 @@ export interface TerrainTextureData {
  * `BIOMES[key]` is the single source of the rest.
  */
 export function terrainTextureKey(biomeKey: string, size: number, seed: number): string {
-  return `terrain-tex:${biomeKey}:${size}:${seed | 0}`;
+  return `terrain-tex:v2:${biomeKey}:${size}:${seed | 0}`;
 }
 
 /**
@@ -923,6 +973,7 @@ export function generateTerrainTextures(
   return {
     key: terrainTextureKey(biome.key, size, seed),
     layers: buildLayerArrayBytes(biome, size),
+    responses: buildLayerResponseArrayBytes(biome, size),
     layerSize: size,
     warp: buildWarpBytes(warpSeed(seed)),
     macro: buildMacroBytes(macroSeed(seed)),
@@ -943,7 +994,7 @@ export function macroSeed(seed: number): number {
 /** The buffers a reply owns, for `postMessage`'s transfer list. */
 export function terrainTextureTransfers(d: TerrainTextureData): ArrayBuffer[] {
   const out: ArrayBuffer[] = [];
-  for (const a of [d.layers, d.warp, d.macro]) {
+  for (const a of [d.layers, d.responses, d.warp, d.macro]) {
     const buf = a.buffer;
     if (buf instanceof ArrayBuffer && !out.includes(buf)) out.push(buf);
   }

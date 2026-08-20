@@ -36,8 +36,9 @@
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, attribute, clamp, float, materialColor, materialEmissive, max, mix, normalLocal,
-  positionLocal, select, sin, smoothstep, step, uniform, varyingProperty, vec3, vec4,
+  Fn, attribute, clamp, float, materialClearcoat, materialColor, materialEmissive,
+  max, mix, normalLocal, positionLocal, select, sin, smoothstep, step, texture,
+  uniform, uv, varyingProperty, vec3, vec4,
 } from 'three/tsl';
 import { castShadowPosition } from '../render/cast-shadow-nodes';
 import { ditherOutput } from '../render/dither-nodes';
@@ -312,6 +313,11 @@ export function createStructureNodeMaterial(
   mat.clearcoat = c.clearcoat;
   mat.clearcoatRoughness = c.clearcoatRoughness;
   mat.envMapIntensity = c.envMapIntensity;
+  // GLSL multiplies the same ORM alpha into PhysicalMaterial.clearcoat after
+  // the stock material setup. `materialClearcoat` is that stock scalar on the
+  // node path; overriding the node preserves one procedural class mask across
+  // both backends without another atlas texture.
+  mat.clearcoatNode = materialClearcoat.mul(texture(atlas.ormMap, uv()).a);
 
   /*
    * `materialColor` is `color * map` — exactly what `diffuseColor` holds when

@@ -62,7 +62,7 @@ export interface GreebleAtlas {
   /** Tangent-space XY + cavity in B + curvature in A. STRUCTURAL: a flat plate
    *  comes out exactly (0, 0, 1) with no ripple to catch a specular. */
   normalMap: THREE.DataTexture;
-  /** AO / roughness / metalness + emissive mask in alpha. */
+  /** AO / roughness / metalness + architecture clearcoat factor in alpha. */
   ormMap: THREE.DataTexture;
   /** Pre-multiplied emissive colour. */
   emissiveMap: THREE.DataTexture;

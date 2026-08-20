@@ -393,10 +393,23 @@ describe('the mesoscale term keeps the ground safe', () => {
       .map((L) => [`${name}/${L.label}`, L] as const),
   );
 
-  it('still writes height EXACTLY 0.5 — no normal map can be packed from this', () => {
+  it('writes only shallow, broad structural relief for the response normal', () => {
     for (const [id, L] of cases) {
       const s = buildFieldSurface(L, SIZE);
-      for (let i = 0; i < SIZE * SIZE; i++) expect(s.height[i], `${id} @ ${i}`).toBe(0.5);
+      let lo = 1, hi = 0, maxStep = 0;
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const i = y * SIZE + x;
+          lo = Math.min(lo, s.height[i]);
+          hi = Math.max(hi, s.height[i]);
+          if (x > 0) maxStep = Math.max(maxStep, Math.abs(s.height[i] - s.height[i - 1]));
+          if (y > 0) maxStep = Math.max(maxStep, Math.abs(s.height[i] - s.height[i - SIZE]));
+        }
+      }
+      expect(hi - lo, `${id} response range`).toBeGreaterThan(0.002);
+      expect(lo, `${id} response floor`).toBeGreaterThanOrEqual(0.40);
+      expect(hi, `${id} response ceiling`).toBeLessThanOrEqual(0.60);
+      expect(maxStep, `${id} adjacent response step`).toBeLessThan(0.02);
     }
   });
 

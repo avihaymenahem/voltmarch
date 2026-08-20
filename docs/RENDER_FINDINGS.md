@@ -1558,21 +1558,18 @@ gain path, which is the only thing that can move those numbers.
 Extracted 2026-08-18. Six of the plan’s eight scheduled items shipped in v2.12.0 and wrote
 their measurements into the files they changed; these are the findings that had no other home.
 
-### P1-10 — the mechanism behind the road-vs-terrain detail gap is a texture set
+### P1-10 — CLOSED: terrain now carries a structural material-response array
 
-**The mechanism behind §3's road-vs-terrain gap is a texture set, and it is one line to state.**
-`Roads.ts:1389-1408` builds its material from `materialTextureSet` — `map` + `normalMap` +
-`roughnessMap` + `aoMap`. `TerrainMaterial.ts` builds albedo plus a single scalar per splat layer
-(`TERRAIN_LAYER_ROUGH_DEFAULT`, six numbers, blended by splat weight at `:472`), and has no
-`normalMap` and no `roughnessMap` at all — the cliff normal is analytic, and the height channel of
-every field tile is written exactly 0.5 so that no future packer can resurrect the sandpaper
-specular. So there is **no specular breakup anywhere on 60-75% of the frame**, which is why a road
-measures 0.2100 edge coverage two hundred pixels from ground measuring 0.0000 in the same capture.
-Adding a normal map and spatial roughness through the existing `surfaces.ts` packer is the open
-route, and it is **structure only** — soil patches, wear paths, gravel, ruts. Anything amounting
-to raising per-pixel variance is the TV-static build again and is banned. One input to this has
-already moved: P0-1's splat fix means layer 0 is no longer ~96% of open temperate ground, so the
-roughness constant is no longer literally uniform. The missing maps are.
+The diagnosed gap was a texture set, and the fix keeps that shape without spending six ordinary
+normal maps. `terrain-texture-gen.ts#buildLayerResponseArrayBytes` packs six slices of normal XY,
+roughness delta and cavity into one linear `DataArrayTexture`; `TerrainMaterial.ts` and its node
+twin splat that beside the existing six-layer albedo array. Field response is derived only from
+the already band-limited 1.5-4 m drift and patch fields, then passed through
+`packNormalStructural`, so the old 5-texel sandpaper cannot re-enter through the normal channel.
+A 14 m world-space roughness term breaks the response repeat at range. Cost: one sampler binding,
+six compact response fetches, zero materials and zero draw calls. Worker generation, transfer,
+adoption, biome swaps and both render backends share the same bytes and are pinned by the terrain
+and worker specs.
 
 ### P2-12 — the team-colour validator counts one surface out of four; this OVERTURNS a live §3 claim
 
@@ -1595,33 +1592,25 @@ The camera pitch explains part of the discrepancy; this explains the rest, and i
 is fixable without re-deriving thirteen shot poses and `tests/shot-camera.spec.ts`. **Fix the
 accounting. Do not touch the pitch.**
 
-### P1-6 — clearcoat is a whole-model scalar, and the obvious fix is forbidden by R10
+### P1-6 — CLOSED: clearcoat is masked per procedural atlas class
 
-**Clearcoat is a material scalar and there is no `clearcoatMap` in the tree.** `STRUCTURE_COATS`
-(`BuildingFactory.ts:1029`) is four presets — glaze / field / stone / scrap — each applied to a
-whole model, so **one uniform specular lobe sits over the grille, the rivet plate, the vent
-louvres and the hazard stripe alike**. That is the "moulded plastic" read on architecture. `grep
--rn "clearcoatMap\|clearcoatRoughnessMap" src/` returns nothing.
+The four faction coats remain the authored top-level finish, but they no longer cover every texel.
+`greeble-gen.ts#applyArchitectureSurfaceClasses` writes a normalized coat factor into the unused
+alpha channel of the existing ORM atlas: painted panels keep the faction coat, while concrete,
+bare metal, treads, vents, grilles and emissive machinery remove it. `BuildingFactory.ts` consumes
+that channel inside `PhysicalMaterial.clearcoat`; `StructureNodeMaterial.ts` consumes the same byte
+through `clearcoatNode`. This is a real per-texel mask with no fifth atlas texture, no material
+split and no draw call. Pads remain fully matte by class rather than by accident.
 
-**The obvious remedy is refused, and the refusal is doctrine rather than taste.** Zeroing
-clearcoat on the non-paint tile classes is what an earlier plan proposed; R10 names a fully matte
-structure as its own failure, the four presets are a deliberate spread around ruling #3's 0.30 @
-0.38 / env 0.80, and `BuildingFactory.ts:1024` states that no branch may reach zero. The only fix
-that does not trade one wrong lobe for another is a real `clearcoatMap` packed into the atlas the
-greeble generator already writes — which is the same authoring work as wiring `SURFACES`.
+### P1-7 — PARTLY CLOSED: architecture now consumes SURFACES
 
-### P1-7 — wiring SURFACES is the priority claim, and it is the same job as the clearcoat map
-
-**`ArtDirection.surfaces` is the largest unwired specification in the project, and it is a
-MATERIAL system rather than a table of taste.** `config.ts:1301` declares
-`Record<SurfaceArchetype, SurfaceLook>` with per-class `roughnessMin/Max/variance, metalness,
-edgeWear, grime, clearcoat, rust, sheen`, including `buildingConcrete` and `buildingPanel`;
-`RA3_LOOK_BIBLE.md`’s `materialPresets` table defines eighteen classes (`CONCRETE_PAD` rough 0.90 clearcoat 0,
-`DECK_STEEL` metal 0.55, `TRACK_RUBBER` 0.85, `GLASS_CANOPY`, `GLOW_AMBER`). `SPEC_DRIFT_AUDIT.md`
-records that it has no readers. What that entry does not say is that **wiring it and fixing the
-uniform clearcoat lobe are the same work** — a `clearcoatMap` has to be authored from a
-per-tile-class material table, which is what this is — so they are one item, and doing them
-separately means authoring the class split twice.
+`ArtDirection.surfaces.buildingPanel`, `buildingConcrete`, `vehicleGlass` and `vehicleTread` now
+drive the procedural architecture atlas. Painted walls and concrete pads are constrained to their
+declared roughness bands, and the class clearcoat values author the ORM-alpha mask described above.
+This closes the building-material request and overturns the old "no readers" claim. The wider
+table is not declared globally complete: edge wear, grime and several non-architecture archetypes
+still have their older dedicated implementations, so those rows remain specifications rather than
+universal runtime controls.
 
 ### P0-2 — how the 0.47 shadow/lit ratio splits between the multiplier and the hemisphere
 

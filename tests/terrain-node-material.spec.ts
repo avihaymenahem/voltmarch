@@ -172,7 +172,7 @@ describe('the TSL terrain graph compiles', () => {
  * ========================================================================== */
 
 describe('the translated shader keeps the GLSL structures', () => {
-  it('samples the six layers through ONE array binding, not six', () => {
+  it('samples six albedos and six responses through two array bindings, not twelve', () => {
     /*
      * The whole reason the splat fits a draw-call budget: six albedos through
      * one array sampler, because a WebGL2 fragment shader has 16 samplers
@@ -183,7 +183,7 @@ describe('the translated shader keeps the GLSL structures', () => {
     const set = makeSet();
     const { fragment } = compile(set.material, 'glsl');
     const arrayBindings = fragment.match(/uniform\s+(highp|mediump|lowp)?\s*sampler2DArray/g) ?? [];
-    expect(arrayBindings.length).toBe(1);
+    expect(arrayBindings.length).toBe(2);
     set.dispose();
   });
 
@@ -504,6 +504,7 @@ describe('the layer array texture', () => {
         generateMs: 0,
         layerSize: LAYER_SIZE,
         layers: new Uint8Array(LAYER_SIZE * LAYER_SIZE * 4 * SURFACE_COUNT),
+        responses: new Uint8Array(LAYER_SIZE * LAYER_SIZE * 4 * SURFACE_COUNT),
         warp: new Uint8Array(0),
         macro: new Uint8Array(0),
       },
@@ -587,7 +588,7 @@ describe('program caching', () => {
     /*
      * `customProgramCacheKey` STILL FIRES on node materials — it is the half of
      * the old mechanism that survives `onBeforeCompile`'s silent death. The
-     * shipping GLSL material returns `'ra-terrain-v3'`, a string a human has to
+     * shipping GLSL material returns `'ra-terrain-v4'`, a string a human has to
      * remember to bump whenever the injected GLSL changes. There is no injected
      * GLSL on this path, so that string could only ever be stale, and a stale
      * key hands back the previous program with nothing thrown and nothing
@@ -597,8 +598,8 @@ describe('program caching', () => {
     const glsl = createTerrainMaterials({
       biome: BIOMES.temperate, layerTextureSize: LAYER_SIZE, seed: SEED,
     });
-    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v3');
-    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v3');
+    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v4');
+    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v4');
     node.dispose();
     glsl.dispose();
   });

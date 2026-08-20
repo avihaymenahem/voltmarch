@@ -837,11 +837,14 @@ const STRUCTURE_CLIP_FRAGMENT = `
  * its own `MeshDepthMaterial` for the shadow map and that material never ran
  * this `onBeforeCompile`.
  */
-function applyStructureShader(mat: THREE.MeshPhysicalMaterial, silhouetteRim: boolean): void {
+function applyStructureShader(
+  mat: THREE.MeshPhysicalMaterial, atlas: GreebleAtlas, silhouetteRim: boolean,
+): void {
   const S = STRUCTURE_ANIM;
   const SLIN = STRUCTURE_ANIM_LINEAR;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = buildingTime;
+    shader.uniforms.uSurfaceClassMap = { value: atlas.ormMap };
 
     // THE SHROUD SELF-TINT, and specifically THE EDIT THAT PRESERVES REMEMBERED
     // BUILDINGS. This assignment overwrites the hook `createUnitMaterial`
@@ -869,11 +872,18 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial, silhouetteRim: bo
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uTime;
+        uniform sampler2D uSurfaceClassMap;
         varying vec4 vRaState;
         varying vec3 vRaTeam;
         varying float vRaClip;`)
       .replace('#include <clipping_planes_fragment>',
         `#include <clipping_planes_fragment>${STRUCTURE_CLIP_FRAGMENT}`)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+        #ifdef USE_CLEARCOAT
+          // ORM alpha is the procedural surface-class mask: painted panels
+          // keep the faction coat, exposed machinery and concrete lose it.
+          material.clearcoat *= texture2D(uSurfaceClassMap, vMapUv).a;
+        #endif`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         {
           // DAMAGE. Bible 8.8: a hurt structure soots, it does not recolour.
@@ -921,8 +931,8 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial, silhouetteRim: bo
   // v5: structure bodies gained a geometry-normal silhouette lift. Pads keep a
   // separate key because they are ground and deliberately omit that branch.
   mat.customProgramCacheKey = () => silhouetteRim
-    ? 'ra3.structure.rim.v5'
-    : 'ra3.structure.pad.v5';
+    ? 'ra3.structure.rim.v6'
+    : 'ra3.structure.pad.v6';
   mat.needsUpdate = true;
 }
 
@@ -1087,7 +1097,7 @@ export function createStructureMaterial(
   mat.clearcoat = c.clearcoat;
   mat.clearcoatRoughness = c.clearcoatRoughness;
   mat.envMapIntensity = c.envMapIntensity;
-  applyStructureShader(mat, true);
+  applyStructureShader(mat, atlas, true);
   return mat;
 }
 
@@ -1102,7 +1112,7 @@ export function createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Mesh
   mat.clearcoat = 0;
   mat.clearcoatRoughness = 1;
   mat.envMapIntensity = 0.35;
-  applyStructureShader(mat, false);
+  applyStructureShader(mat, atlas, false);
   return mat;
 }
 
@@ -1792,10 +1802,10 @@ export function padAtlasSpec(
     atlasSize * (BUILDING_GREEBLE.padAtlasSize / BUILDING_GREEBLE.atlasSize)));
   return {
     ...specForPalette(key, p.pad, padSize, p.padSeed),
-    // Architecture too, and honest to say so — though no pad mass samples
-    // `bareMetal` (they take paintSmall / grille / stripe / insignia), so this
-    // is a classification rather than a visual change.
-    surfaceClass: 'structure',
+    // A foundation is authored by the architecture atlas generator but obeys
+    // the concrete surface row: high roughness and zero clearcoat. Keeping it
+    // distinct stops a painted-wall retune from glazing the apron beneath it.
+    surfaceClass: 'foundation',
     panelDensity: BUILDING_GREEBLE.padPanelDensity,
     rivetPitchPx: BUILDING_GREEBLE.padRivetPitchPx,
   };

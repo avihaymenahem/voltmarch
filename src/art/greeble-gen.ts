@@ -106,11 +106,11 @@
  */
 
 import {
-  createSurface, decalPolygons, packAlbedo, packNormalStructural, packOrm,
+  b8, createSurface, decalPolygons, packAlbedo, packNormalStructural, packOrm,
   type DecalPath, type Surface,
 } from '../core/surfaces';
 import { clamp01, hexToRgb, lerp, Rng, TAU } from '../core/math';
-import { UNIT_GREEBLE, UNIT_MATERIAL } from '../core/config';
+import { DEFAULT_ART, UNIT_GREEBLE, UNIT_MATERIAL } from '../core/config';
 
 /* ==========================================================================
  * 1. THE ATLAS LAYOUT
@@ -523,7 +523,7 @@ export interface GreebleSpec {
    * and scaffolding. One generator serves both, so without this field the
    * stricter rule silently won everywhere. See the header, and `rustPipework`.
    */
-  surfaceClass: 'hull' | 'structure';
+  surfaceClass: 'hull' | 'structure' | 'foundation';
   /**
    * Paint gloss, 0 = matte primer .. 1 = wet lacquer. ROUGHNESS ONLY — it must
    * never become texture. RA3's painted-toy read is a clear coat over a broad
@@ -1630,6 +1630,65 @@ export function speckleRatio(s: Surface): number {
  * 8. PACKING + THE FACTORY
  * ========================================================================== */
 
+/**
+ * Apply the material-class half of `ArtDirection.surfaces` to architecture.
+ *
+ * The atlas already knew which tile was paint, glass, tread or machinery, but
+ * only the albedo painter used that fact. A whole building then received one
+ * clearcoat scalar, including its concrete, grille and oxidised pipework. This
+ * pass keeps the authored detail inside each tile and constrains its roughness
+ * to the class range. The normal ORM alpha channel is unused by Three's AO /
+ * roughness / metalness readers, so it carries a normalized coat mask at zero
+ * extra texture or draw-call cost.
+ */
+function applyArchitectureSurfaceClasses(s: Surface, spec: GreebleSpec): void {
+  if (spec.surfaceClass === 'hull') return;
+
+  const panel = DEFAULT_ART.surfaces.buildingPanel;
+  const concrete = DEFAULT_ART.surfaces.buildingConcrete;
+  const glass = DEFAULT_ART.surfaces.vehicleGlass;
+  const tread = DEFAULT_ART.surfaces.vehicleTread;
+  const panelCoat = Math.max(panel.clearcoat, 1e-4);
+  const mechanical = new Set<SlotName>(['bareMetal', 'tread', 'vent', 'grille', 'emissive']);
+
+  for (const slot of SLOT_NAMES) {
+    const r = tileRect(slot, s.size);
+    const look = spec.surfaceClass === 'foundation'
+      ? concrete
+      : slot === 'glass'
+        ? glass
+        : slot === 'tread'
+          ? tread
+          : panel;
+    // Paint keeps the faction's coat. Concrete and exposed machinery do not;
+    // glass stays coated but is separated mainly by its 0.08 roughness.
+    const coatLook = spec.surfaceClass === 'foundation' || mechanical.has(slot)
+      ? tread
+      : look;
+    const coatScale = clamp01(coatLook.clearcoat / panelCoat);
+
+    for (let y = 0; y < r.h; y++) {
+      for (let x = 0; x < r.w; x++) {
+        const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
+        // Bare metal keeps its authored turned-metal roughness; every other
+        // architectural class is bound by its declared range.
+        if (slot !== 'bareMetal') {
+          s.roughness[i] = Math.max(look.roughnessMin,
+            Math.min(look.roughnessMax, s.roughness[i]));
+        }
+        s.alpha[i] = coatScale;
+      }
+    }
+  }
+}
+
+/** AO / roughness / metalness + architecture clearcoat factor in alpha. */
+function packGreebleOrm(s: Surface): Uint8Array {
+  const out = packOrm(s);
+  for (let i = 0; i < s.size * s.size; i++) out[i * 4 + 3] = b8(s.alpha[i]);
+  return out;
+}
+
 /** RGB = emissiveColour x mask. `three` samples emissiveMap in RGB, not alpha. */
 function packEmissive(s: Surface, hex: string): Uint8Array {
   hexToRgb(hex, RGB_TMP);
@@ -1771,6 +1830,8 @@ export function generateGreebleAtlas(spec: GreebleSpec, elapsedMs = 0): GreebleA
     record(tileRect(slot, size));
   }
 
+  applyArchitectureSurfaceClasses(s, spec);
+
   const relief = UNIT_GREEBLE.normalRelief;
 
   let paintDetail = 0, paintEdge = 0;
@@ -1798,7 +1859,7 @@ export function generateGreebleAtlas(spec: GreebleSpec, elapsedMs = 0): GreebleA
     // sub-structural gradient dead-bands to exactly zero, so a flat plate is a
     // flat plate and cannot pick up a marbled specular.
     normal: packNormalStructural(s, relief, UNIT_GREEBLE.cavityRadiusPx),
-    orm: packOrm(s),
+    orm: packGreebleOrm(s),
     emissive: packEmissive(s, spec.emissiveColor),
     surface: s,
     structure,

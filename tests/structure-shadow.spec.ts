@@ -179,7 +179,7 @@ describe('the colour and depth programs share one copy of the maths', () => {
     // unchanged key is served the OLD program. THIS ASSERTION IS MEANT TO NEED
     // EDITING: a pin somebody has to consciously move is the mechanism, and a
     // regex over the version number would quietly accept never bumping it.
-    expect(stripComments(SRC)).toContain("'ra3.structure.rim.v5'");
+    expect(stripComments(SRC)).toContain("'ra3.structure.rim.v6'");
   });
 });
 

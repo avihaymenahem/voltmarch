@@ -71,10 +71,10 @@
  *     NONE of the mesoscale treatment — mottling concrete is how you get back
  *     to static.
  *
- * Height is written EXACTLY 0.5 on every field tile. Nothing reads it — the
- * terrain material has no normalMap, the cliff normal is analytic — but a flat
- * height field is the guarantee that no future packer can resurrect the
- * sandpaper specular from these tiles.
+ * Field height now carries only the same band-limited 1.5-4 m structure used
+ * by the colour drift. A second six-layer array packs its structural normal,
+ * roughness delta and cavity; the high-frequency generators remain banned, so
+ * this restores soil/turf response without resurrecting sandpaper specular.
  *
  * THE PURGE LEFT A HOLE, AND 3B-bis FILLS IT
  * ------------------------------------------
@@ -100,7 +100,8 @@
 import * as THREE from 'three';
 import { SURFACE_COUNT, type BiomeDef } from './Biomes';
 import {
-  MACRO_N, WARP_N, buildLayerArrayBytes, buildMacroBytes, buildWarpBytes,
+  MACRO_N, WARP_N, buildLayerArrayBytes, buildLayerResponseArrayBytes,
+  buildMacroBytes, buildWarpBytes,
   macroSeed, terrainTextureKey, warpSeed, type TerrainTextureData,
 } from './terrain-texture-gen';
 import {
@@ -122,6 +123,8 @@ import {
 export interface TerrainUniforms {
   /** sampler2DArray, six albedo layers. */
   uLayers: { value: THREE.DataArrayTexture | null };
+  /** sampler2DArray, normal XY / roughness delta / cavity for all six layers. */
+  uResponses: { value: THREE.DataArrayTexture | null };
   /** RGBA weights for layers 0..3. */
   uSplat0: { value: THREE.DataTexture | null };
   /** RG weights for layers 4..5. */
@@ -185,6 +188,7 @@ function createUniforms(): TerrainUniforms {
   const v3 = (c: readonly number[]): THREE.Vector3 => new THREE.Vector3(c[0], c[1], c[2]);
   return {
     uLayers: { value: null },
+    uResponses: { value: null },
     uSplat0: { value: null },
     uSplat1: { value: null },
     uWarp: { value: null },
@@ -254,6 +258,7 @@ vRaTop = aTop;
 /** Injected into `<common>` in the fragment shader. */
 const FRAG_COMMON = /* glsl */ `
 uniform sampler2DArray uLayers;
+uniform sampler2DArray uResponses;
 uniform sampler2D uSplat0;
 uniform sampler2D uSplat1;
 uniform sampler2D uWarp;
@@ -471,11 +476,25 @@ if ( raIsCliff ) {
 
   vec3 raAlbedo = vec3( 0.0 );
   float raR = 0.0;
+  vec2 raNxy = vec2( 0.0 );
+  float raCavity = 0.0;
   for ( int i = 0; i < 6; i ++ ) {
     float w = raW[ i ] * raNorm;
     raAlbedo += texture( uLayers, vec3( raXZ / uLayerScale[ i ], float( i ) ) ).rgb * w;
-    raR += uLayerRough[ i ] * w;
+    vec4 response = texture( uResponses,
+      vec3( raXZ / uLayerScale[ i ], float( i ) ) );
+    raNxy += ( response.rg * 2.0 - 1.0 ) * w;
+    raR += clamp( uLayerRough[ i ] + ( response.b - 0.5 ) * 0.5,
+      0.55, 1.0 ) * w;
+    raCavity += response.a * w;
   }
+
+  // The response tiles describe material structure; this broad world-space
+  // term stops their specular response revealing the repeat at long range.
+  float raRoughMacro = raValue2( raXZ / 14.0 + vec2( 17.0, 43.0 ) );
+  raR = clamp( raR + ( raRoughMacro - 0.5 ) * 0.045, 0.55, 1.0 );
+  raShadeN = normalize( raSmoothN + vec3( raNxy.x, 0.0, raNxy.y ) * 0.52 );
+  raAlbedo *= mix( 0.965, 1.0, raCavity );
 
   // 2. Regional breakup.
   raAlbedo = raMacro( raAlbedo, raXZ );
@@ -498,12 +517,14 @@ if ( raIsCliff ) {
 diffuseColor.rgb *= max( raCol, vec3( 0.0 ) );
 `;
 
-/** Swap in the cliff's face normal after three has built the shading normal. */
+/** Swap in the authored surface normal after three has built the shading normal. */
 const FRAG_NORMAL = /* glsl */ `
 #include <normal_fragment_begin>
 if ( raIsCliff ) {
   normal = normalize( mix( normal,
     normalize( ( viewMatrix * vec4( raShadeN, 0.0 ) ).xyz ), uFaceMix ) );
+} else {
+  normal = normalize( ( viewMatrix * vec4( raShadeN, 0.0 ) ).xyz );
 }
 `;
 
@@ -539,6 +560,7 @@ export {
   MESO_FINE_WEIGHT, MESO_WIDE_WEIGHT, MESO_PULL_GAIN, MESO_PULL_MAX,
   WARP_N, MACRO_N,
   buildFieldSurface, buildLayerSurface, buildLayerArrayBytes,
+  buildLayerResponseArrayBytes,
   buildWarpBytes, buildMacroBytes,
   mesoWaveSet, mesoCycles, mesoWavelengthMetres, mesoFieldRow, mesoField, mesoPull,
   generateTerrainTextures, terrainTextureKey, terrainTextureTransfers,
@@ -602,6 +624,25 @@ function layerArrayTexture(
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Linear material-response twin of `layerArrayTexture`. */
+function responseArrayTexture(
+  data: Uint8Array, size: number, biomeKey: string,
+): THREE.DataArrayTexture {
+  const tex = new THREE.DataArrayTexture(data, size, size, SURFACE_COUNT);
+  tex.name = `terrain.responses.${biomeKey}`;
+  tex.format = THREE.RGBAFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = THREE.LinearFilter;
@@ -717,6 +758,8 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
     && pre.key === terrainTextureKey(options.biome.key, layerSize, options.seed)
     && pre.layerSize === layerSize
     && pre.layers.length === layerSize * layerSize * 4 * SURFACE_COUNT
+    && pre.responses instanceof Uint8Array
+    && pre.responses.length === layerSize * layerSize * 4 * SURFACE_COUNT
     && pre.warp.length === WARP_N * WARP_N * 4
     && pre.macro.length === MACRO_N * MACRO_N * 4;
 
@@ -739,8 +782,10 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
    * is not held alive for the whole match.
    */
   let pendingLayers: Uint8Array | null = adopted && pre !== null ? pre.layers : null;
+  let pendingResponses: Uint8Array | null = adopted && pre !== null ? pre.responses : null;
 
   let layers: THREE.DataArrayTexture | null = null;
+  let responses: THREE.DataArrayTexture | null = null;
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -793,7 +838,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
   // Bumped with every change to the injected GLSL above. three caches compiled
   // programs by this string, so leaving it stale after editing a chunk hands
   // you the OLD shader in any session that already compiled one.
-  material.customProgramCacheKey = () => 'ra-terrain-v3';
+  material.customProgramCacheKey = () => 'ra-terrain-v4';
 
   function applyBiome(biome: BiomeDef): void {
     applyTerrainBiome(biome, biomeSink);
@@ -802,12 +847,19 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
     // `pendingLayers` is non-null only on the first pass, and only when the
     // prewarm's key named this exact biome.
     const bytes = pendingLayers ?? buildLayerArrayBytes(biome, layerSize);
+    const responseBytes = pendingResponses ?? buildLayerResponseArrayBytes(biome, layerSize);
     pendingLayers = null;
+    pendingResponses = null;
     const next = layerArrayTexture(bytes, layerSize, biome.key);
+    const nextResponses = responseArrayTexture(responseBytes, layerSize, biome.key);
     const prev = layers;
+    const prevResponses = responses;
     layers = next;
+    responses = nextResponses;
     uniforms.uLayers.value = next;
+    uniforms.uResponses.value = nextResponses;
     prev?.dispose();
+    prevResponses?.dispose();
   }
 
   applyBiome(options.biome);
@@ -829,6 +881,10 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
         layers.anisotropy = a;
         layers.needsUpdate = true;
       }
+      if (responses) {
+        responses.anisotropy = a;
+        responses.needsUpdate = true;
+      }
     },
 
     dispose(): void {
@@ -836,7 +892,9 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
       warp.dispose();
       macro.dispose();
       layers?.dispose();
+      responses?.dispose();
       layers = null;
+      responses = null;
     },
   };
 }

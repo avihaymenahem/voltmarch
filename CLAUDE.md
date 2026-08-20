@@ -2321,11 +2321,10 @@ Allied pad and facade albedo in `config.ts`, the rust rule split in `greeble-gen
 prop-type cap in `config.ts`, the lobe canopy in `PropLibrary.ts`. The two that did not are
 `RENDER_FINDINGS.md` §6b (`shadowIntensity` is banned by the bible and still cannot be raised on
 its own) and §6c (terrain `envMapIntensity` is inert). **What is still open is in
-`RENDER_FINDINGS.md` §3 and §4**, and it is the same short list it has always been: the ground
-carries no normal map and one scalar roughness per layer while roads carry a full texture set;
-`ArtDirection.surfaces` specifies eighteen material classes and drives no pixel; the team-colour
-validator counts one surface out of four. Read §2 before touching `edgeCoverage` and §4 before
-retrying anything on it.
+`RENDER_FINDINGS.md` §3 and §4**. The terrain response array and the architecture readers for
+`ArtDirection.surfaces` have since landed; §12 records their exact packing and cost. The remaining
+item from that short list is the team-colour validator counting one surface out of four. Read §2
+before touching `edgeCoverage` and §4 before retrying anything on it.
 
 `docs/SPEC_DRIFT_AUDIT.md` catalogues claims that stopped being true; `RENDER_FINDINGS.md` is the
 opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not

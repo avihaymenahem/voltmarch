@@ -92,7 +92,8 @@ import {
 } from 'three/tsl';
 import { SURFACE_COUNT, SurfaceId, type BiomeDef } from './Biomes';
 import {
-  MACRO_N, WARP_N, buildLayerArrayBytes, buildMacroBytes, buildWarpBytes,
+  MACRO_N, WARP_N, buildLayerArrayBytes, buildLayerResponseArrayBytes,
+  buildMacroBytes, buildWarpBytes,
   macroSeed, terrainTextureKey, warpSeed,
 } from './terrain-texture-gen';
 import {
@@ -142,11 +143,13 @@ function v3(c: readonly number[]): THREE.Vector3 {
 function createUniformNodes(
   warp: THREE.DataTexture, macro: THREE.DataTexture,
   layersStandIn: THREE.DataArrayTexture,
+  responsesStandIn: THREE.DataArrayTexture,
   splat0StandIn: THREE.DataTexture, splat1StandIn: THREE.DataTexture,
 ) {
   const S = TERRAIN_SCALAR_DEFAULTS;
   return {
     uLayers: texture(layersStandIn),
+    uResponses: texture(responsesStandIn),
     uSplat0: texture(splat0StandIn),
     uSplat1: texture(splat1StandIn),
     uWarp: texture(warp),
@@ -217,12 +220,12 @@ function placeholder2D(name: string): THREE.DataTexture {
   return tex;
 }
 
-function placeholderArray(name: string): THREE.DataArrayTexture {
+function placeholderArray(name: string, srgb = true): THREE.DataArrayTexture {
   const tex = new THREE.DataArrayTexture(new Uint8Array(4 * SURFACE_COUNT), 1, 1, SURFACE_COUNT);
   tex.name = name;
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
-  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   tex.needsUpdate = true;
   return tex;
 }
@@ -272,6 +275,25 @@ function layerArrayTexture(
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Linear normal XY / roughness delta / cavity array. */
+function responseArrayTexture(
+  data: Uint8Array, size: number, biomeKey: string,
+): THREE.DataArrayTexture {
+  const tex = new THREE.DataArrayTexture(data, size, size, SURFACE_COUNT);
+  tex.name = `terrain.responses.${biomeKey}`;
+  tex.format = THREE.RGBAFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = THREE.LinearFilter;
@@ -422,6 +444,8 @@ export function createTerrainNodeMaterials(
     && pre.key === terrainTextureKey(options.biome.key, layerSize, options.seed)
     && pre.layerSize === layerSize
     && pre.layers.length === layerSize * layerSize * 4 * SURFACE_COUNT
+    && pre.responses instanceof Uint8Array
+    && pre.responses.length === layerSize * layerSize * 4 * SURFACE_COUNT
     && pre.warp.length === WARP_N * WARP_N * 4
     && pre.macro.length === MACRO_N * MACRO_N * 4;
 
@@ -429,11 +453,13 @@ export function createTerrainNodeMaterials(
   const macro = macroTexture(adopted && pre !== null ? pre.macro : buildMacroBytes(macroSeed(options.seed)));
 
   const layersPlaceholder = placeholderArray('terrain.layers.placeholder');
+  const responsesPlaceholder = placeholderArray('terrain.responses.placeholder', false);
   const splat0Placeholder = placeholder2D('terrain.splatA.placeholder');
   const splat1Placeholder = placeholder2D('terrain.splatB.placeholder');
 
   const uniforms = createUniformNodes(
-    warp, macro, layersPlaceholder, splat0Placeholder, splat1Placeholder,
+    warp, macro, layersPlaceholder, responsesPlaceholder,
+    splat0Placeholder, splat1Placeholder,
   );
   const U = uniforms;
 
@@ -690,13 +716,25 @@ export function createTerrainNodeMaterials(
 
       const raAlbedo = vec3(0.0).toVar('raAlbedo');
       const raR = float(0.0).toVar('raR');
+      const raCavity = float(0.0).toVar('raCavity');
       for (let i = 0; i < SURFACE_COUNT; i++) {
         const w = raW[i].mul(raNorm).toVar(`raWn${i}`);
+        const response = U.uResponses
+          .sample(raXZ.div(U.uLayerScale.element(i))).depth(int(i))
+          .toVar(`raResponse${i}`);
         raAlbedo.addAssign(
           U.uLayers.sample(raXZ.div(U.uLayerScale.element(i))).depth(int(i)).rgb.mul(w),
         );
-        raR.addAssign(U.uLayerRough.element(i).mul(w));
+        raR.addAssign(clamp(
+          U.uLayerRough.element(i).add(response.b.sub(0.5).mul(0.5)), 0.55, 1.0,
+        ).mul(w));
+        raCavity.addAssign(response.a.mul(w));
       }
+
+      const raRoughMacro = raValue2(raXZ.div(14.0).add(vec2(17.0, 43.0)))
+        .toVar('raRoughMacro');
+      raR.assign(clamp(raR.add(raRoughMacro.sub(0.5).mul(0.045)), 0.55, 1.0));
+      raAlbedo.mulAssign(mix(0.965, 1.0, raCavity));
 
       // 2. Regional breakup.
       raAlbedo.assign(raMacro(raAlbedo, raXZ));
@@ -746,7 +784,33 @@ export function createTerrainNodeMaterials(
 
     const worldN = mix(base, raShadeN, U.uFaceMix).toVar('raMixedWorldN');
     const out = normalize(cameraViewMatrix.mul(vec4(worldN, 0.0)).xyz).toVar('raOutViewN');
-    return raIsCliffOf(raFace).select(out, normalize(cameraViewMatrix.mul(vec4(base, 0.0)).xyz));
+
+    // Ground response. The node path cannot share locals from `colorNode`'s
+    // sub-build, so it repeats only the two splat fetches and six compact
+    // response fetches — never the six albedo fetches.
+    const raXZ = positionWorld.xz.toVar('raNormalXZ');
+    const raWarp = U.uWarp.sample(raXZ.div(U.uWarpScale)).rg
+      .sub(0.5).mul(U.uWarpAmp).toVar('raNormalWarp');
+    const raSuv = raXZ.add(raWarp).mul(U.uInvMapSize).toVar('raNormalSuv');
+    const raS0 = U.uSplat0.sample(raSuv).toVar('raNormalS0');
+    const raS1 = U.uSplat1.sample(raSuv).toVar('raNormalS1');
+    const raW: FloatN[] = [raS0.r, raS0.g, raS0.b, raS0.a, raS1.r, raS1.g].map(
+      (w, i) => pow(max(w, 0.0), U.uSplatSharpen).toVar(`raNormalW${i}`),
+    );
+    const raSum = raW[0].add(raW[1]).add(raW[2]).add(raW[3]).add(raW[4]).add(raW[5])
+      .toVar('raNormalSum');
+    const raNorm = float(1.0).div(max(raSum, 1e-6)).toVar('raNormalNorm');
+    const raNxy = vec2(0.0).toVar('raNormalXY');
+    for (let i = 0; i < SURFACE_COUNT; i++) {
+      const response = U.uResponses
+        .sample(raXZ.div(U.uLayerScale.element(i))).depth(int(i));
+      raNxy.addAssign(response.rg.mul(2.0).sub(1.0).mul(raW[i].mul(raNorm)));
+    }
+    const groundWorld = normalize(base.add(vec3(raNxy.x, 0.0, raNxy.y).mul(0.52)))
+      .toVar('raGroundWorldN');
+    const groundView = normalize(cameraViewMatrix.mul(vec4(groundWorld, 0.0)).xyz)
+      .toVar('raGroundViewN');
+    return raIsCliffOf(raFace).select(out, groundView);
   });
 
   /* ----------------------------------------------------------------------
@@ -849,7 +913,9 @@ export function createTerrainNodeMaterials(
    * being held alive for the whole match.
    */
   let pendingLayers: Uint8Array | null = adopted && pre !== null ? pre.layers : null;
+  let pendingResponses: Uint8Array | null = adopted && pre !== null ? pre.responses : null;
   let layers: THREE.DataArrayTexture | null = null;
+  let responses: THREE.DataArrayTexture | null = null;
   let anisotropy = 8;
 
   function applyBiome(biome: BiomeDef): void {
@@ -867,13 +933,21 @@ export function createTerrainNodeMaterials(
      * texture and a swap that reached only the first.
      */
     const bytes = pendingLayers ?? buildLayerArrayBytes(biome, layerSize);
+    const responseBytes = pendingResponses ?? buildLayerResponseArrayBytes(biome, layerSize);
     pendingLayers = null;
+    pendingResponses = null;
     const next = layerArrayTexture(bytes, layerSize, biome.key);
+    const nextResponses = responseArrayTexture(responseBytes, layerSize, biome.key);
     next.anisotropy = anisotropy;
+    nextResponses.anisotropy = anisotropy;
     const prev = layers;
+    const prevResponses = responses;
     layers = next;
+    responses = nextResponses;
     uniforms.uLayers.value = next;
+    uniforms.uResponses.value = nextResponses;
     prev?.dispose();
+    prevResponses?.dispose();
   }
 
   applyBiome(options.biome);
@@ -897,6 +971,10 @@ export function createTerrainNodeMaterials(
         layers.anisotropy = a;
         layers.needsUpdate = true;
       }
+      if (responses) {
+        responses.anisotropy = a;
+        responses.needsUpdate = true;
+      }
     },
 
     dispose(): void {
@@ -904,8 +982,11 @@ export function createTerrainNodeMaterials(
       warp.dispose();
       macro.dispose();
       layers?.dispose();
+      responses?.dispose();
       layers = null;
+      responses = null;
       layersPlaceholder.dispose();
+      responsesPlaceholder.dispose();
       splat0Placeholder.dispose();
       splat1Placeholder.dispose();
     },

@@ -1170,6 +1170,15 @@ describe('the tile guards refuse what would otherwise be drawn', () => {
     };
     expect(isTerrainTexReply(short)).toBe(false);
 
+    const shortResponses = {
+      ...reply,
+      data: {
+        ...reply.data,
+        responses: reply.data.responses.slice(0, reply.data.responses.length - 1),
+      },
+    };
+    expect(isTerrainTexReply(shortResponses)).toBe(false);
+
     // And a size that disagrees with buffers which are themselves intact.
     expect(isTerrainTexReply({ ...reply, data: { ...reply.data, layerSize: 128 } })).toBe(false);
   });
@@ -1193,6 +1202,7 @@ describe('the tile guards refuse what would otherwise be drawn', () => {
     if (t.kind !== 'terrainTex:done') throw new Error('generation failed');
     const tBufs = replyTransfers(t);
     expect(tBufs).toContain(t.data.layers.buffer);
+    expect(tBufs).toContain(t.data.responses.buffer);
     expect(tBufs).toContain(t.data.warp.buffer);
     expect(tBufs).toContain(t.data.macro.buffer);
     expect(new Set(tBufs).size).toBe(tBufs.length);   // no buffer twice: DataCloneError

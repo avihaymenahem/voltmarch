@@ -586,7 +586,7 @@ export function isWaterReply(v: unknown): v is WaterReply {
 /* -- world texture guards -------------------------------------------------
  *
  * `size` is checked hard on both jobs, because it decides the allocation. A
- * terrain set at the declared 256 is 1.5 MB of layers; the same job with a
+ * terrain set at the declared 256 is 3 MB of albedo + response layers; the same job with a
  * malformed `size` of 60000 is an out-of-memory kill of the worker, which the
  * pool reads as "the worker is broken" and which costs the whole boot its
  * offload. 2048 is well past anything the art uses (256 and 512) and far short
@@ -625,7 +625,7 @@ export function isWaterTexJob(v: unknown): v is WaterTexJob {
  * True when `v` is a well-formed terrain texture reply.
  *
  * Every LENGTH is checked against the dimensions the reply itself declares,
- * because these three buffers go straight into `DataArrayTexture` and
+ * because these four buffers go straight into `DataArrayTexture` and
  * `DataTexture` with dimensions this code asserts rather than derives. A
  * `layers` buffer one byte short is not an exception — it is a GPU upload
  * reading past the end of an allocation, and this repo already has the story
@@ -644,6 +644,7 @@ export function isTerrainTexReply(v: unknown): v is TerrainTexReply {
   if (!isSaneTextureSize(d.layerSize)) return false;
   const size = d.layerSize;
   if (!isBytes(d.layers, size * size * 4 * SURFACE_COUNT)) return false;
+  if (!isBytes(d.responses, size * size * 4 * SURFACE_COUNT)) return false;
   if (!isBytes(d.warp, WARP_N * WARP_N * 4)) return false;
   return isBytes(d.macro, MACRO_N * MACRO_N * 4);
 }
