@@ -661,9 +661,10 @@ already bought stays bought.
 - **Riflemen will not voluntarily shoot a tank** while any softer target is
   nearby. That is the targeting scorer doing its job. Build Javelins or Flak
   Troopers.
-- **Aggressive and Defensive stance behave identically.** Nothing chases a target
-  of opportunity in this build. Hold Fire and Hold Ground are the two that
-  matter.
+- **Aggressive leaves its post and the others do not.** It chases a target of
+  opportunity out to its firing standoff plus eighteen metres, measured from the
+  post the stance stamped, then walks back. On an aircraft that band is thirty-two
+  to thirty-six metres, so a short retreat is undone — use Defensive.
 - **Passengers in a carrier contribute nothing.** Unload them first.
 - **A slot is not a seat.** Eight slots is four tanks or eight riflemen.
 - **A superweapon that is not powered is not charging**, and the HUD row simply

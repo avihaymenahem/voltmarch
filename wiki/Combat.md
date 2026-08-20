@@ -289,18 +289,33 @@ selection panel.
 
 | Stance | What it actually does |
 |---|---|
-| **Aggressive** | Fires at anything in range. |
-| **Defensive** | Fires at anything in range. Stamps a guard point where you set it. |
+| **Aggressive** | Fires at anything in range, and **leaves its post to chase** one that is out of range. |
+| **Defensive** | Fires at anything in range. Never leaves its post, but walks back to it if something displaces it. |
 | **Hold Fire** | Never acquires and never fires unless you force-fire it. Still moves and still closes on an attack order. |
 | **Hold Ground** | Fires freely, and **never moves for any reason** — including refusing to close on an attack order. |
 
-Be honest about this one: **Aggressive and Defensive are the same thing in this
-build.** No stance makes a unit chase a target of opportunity — a unit that
-acquires something out of range simply tracks it and waits. Only an explicit
-attack order or attack-move makes a unit advance. The guard point Defensive
-stamps is written and nothing reads it; there is no leash. Hold Fire and Hold
-Ground are real and both are worth using — Hold Fire on a scout keeps it from
-picking fights, Hold Ground on a chokepoint garrison means it.
+**Aggressive is the only stance that goes looking.** Setting a stance stamps a
+**post** at wherever the selection is standing, and Aggressive is the one that
+will leave it: it engages a target of opportunity out to its own firing standoff
+plus eighteen metres, measured from the post rather than from the unit, and then
+walks home. Every other stance stays where it is and shoots whatever comes to it.
+
+Eighteen metres is small on a rifleman and decisive on an aircraft, because the
+envelope scales with weapon range: the four airframes chase to between thirty-two
+and thirty-six metres of where you parked them. **Pull a damaged aircraft back a
+short distance on Aggressive and it flies straight back in.** To save it, either
+move it past that band in a single order or put it on **Defensive**, which is the
+better default for anything you intend to withdraw.
+
+Hold Fire and Hold Ground are the other two worth setting deliberately — Hold
+Fire on a scout keeps it from picking fights, Hold Ground on a chokepoint garrison
+means it.
+
+> This section used to say Aggressive and Defensive were the same thing, and that
+> the guard point was written and never read. Both were true when they were
+> written and stopped being true when the leash was wired. The page did not
+> notice, which is why the numbers above are now derived from the stance table by
+> `tests/wiki-numbers.spec.ts` rather than transcribed.
 
 **Guard (G)** puts a unit into a holding state: it stays put, engages whatever
 comes into range, and counts as resting for regeneration. It does not return to

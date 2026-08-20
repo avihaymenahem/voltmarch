@@ -94,7 +94,8 @@ import { BUILDINGS, UNITS, WEAPONS } from '../src/data/Defs';
 import { MISSIONS } from '../src/data/Missions';
 import { ARMOR_MATRIX, COMBAT_DAMAGE } from '../src/core/config';
 import {
-  ORE_REGROW_NODE_BONUS, ORE_REGROW_RATE, ORE_REGROW_SPREAD,
+  GUARD_LEASH, ORE_REGROW_NODE_BONUS, ORE_REGROW_RATE, ORE_REGROW_SPREAD,
+  STANCE_CHASE_METRES, STANCE_RETURNS,
 } from '../src/core/config';
 import { CAMPAIGNS } from '../src/campaign/index';
 import { medalFor, newOperationState } from '../src/campaign/Director';
@@ -1476,12 +1477,6 @@ describe('How-to-Play.md lists the main menu the shell actually builds', () => {
 
 const UNCHECKED_CLAIMS: readonly { page: string; phrase: string; why: string }[] = [
   {
-    page: 'Combat',
-    phrase: 'Aggressive and Defensive are the same thing in this',
-    why: 'A behavioural claim about `Steering`/`Targeting`, not a number. '
-      + '`tests/stances.spec.ts` is where a stance regression belongs.',
-  },
-  {
     page: 'Economy',
     phrase: 'a patch mined from the near edge fills back in',
     why: 'The SHAPE of regrowth. Derivable only by driving `OreField.regrow` for '
@@ -1522,4 +1517,101 @@ describe('the declared unmachine-checkable claims are still on the page', () => 
         + `(restore one of the two). Reason on file: ${c.why}`).toContain(c.phrase);
     });
   }
+});
+
+/* ==========================================================================
+ * 14. THE STANCES, AND THE ONE THAT MOVES
+ *
+ * Four wiki sites said "Aggressive and Defensive behave identically" and
+ * "nothing chases a target of opportunity in this build", while How-to-Play.md
+ * said the opposite in a table. All four were TRUE when written -- `GUARD_LEASH`
+ * was declared and read nowhere, and `guardX/guardZ` were written by six modules
+ * and consumed by none. v2.3.0's LEASH fix wired it and the manual did not
+ * notice, so the in-game manual shipped contradicting itself.
+ *
+ * `STANCE_CHASE_METRES[Aggressive]` is `GUARD_LEASH` and every other entry is 0,
+ * so the claim is a fact about that table and is derived from it here. The
+ * aircraft band is what makes it matter to a player: `Targeting.reachOf` returns
+ * `range * APPROACH_STOP_FRAC + chase`, so the envelope scales with weapon
+ * range and a short retreat inside it is undone.
+ * ========================================================================== */
+
+const STANCE_NAMES = ['Aggressive', 'Defensive', 'Hold Fire', 'Hold Ground'] as const;
+
+/**
+ * `APPROACH_STOP_FRAC` is module-private to `src/sim/Targeting.ts`, so it is
+ * READ OUT OF THE SOURCE rather than re-typed. A re-implemented constant nobody
+ * checks is the same defect this section exists to close, wearing the other hat.
+ */
+function approachStopFrac(): number {
+  const src = readFileSync(join(__dirname, '..', 'src', 'sim', 'Targeting.ts'), 'utf8');
+  const m = /const APPROACH_STOP_FRAC = ([0-9.]+);/.exec(src);
+  expect(m, 'src/sim/Targeting.ts no longer declares APPROACH_STOP_FRAC as a literal. '
+    + 'The wiki quotes an aircraft chase band derived from it.').not.toBeNull();
+  return Number(m![1]);
+}
+
+describe('the wiki is right about which stance chases', () => {
+  it('Aggressive is the only stance with a chase envelope, and it is GUARD_LEASH', () => {
+    expect(STANCE_CHASE_METRES[0], 'Aggressive chases GUARD_LEASH metres from its post')
+      .toBe(GUARD_LEASH);
+    for (let i = 1; i < STANCE_CHASE_METRES.length; i++) {
+      expect(STANCE_CHASE_METRES[i], `${STANCE_NAMES[i]} must not chase — `
+        + 'three wiki pages now say Aggressive is the only stance that leaves its post')
+        .toBe(0);
+    }
+    // The other half of "all four differ": HoldGround is the only one that will
+    // not walk home, which is what separates it from Defensive and Hold Fire.
+    expect(STANCE_RETURNS, 'HoldGround is the only stance that does not return to post')
+      .toEqual([true, true, true, false]);
+  });
+
+  it('the eighteen metres the pages spell out is GUARD_LEASH', () => {
+    expect(GUARD_LEASH, 'Combat.md, Strategy.md and Units-and-Verbs.md all spell this '
+      + 'as "eighteen metres". Change it and all three need re-reading.').toBe(18);
+    for (const page of ['Combat', 'Strategy', 'Units-and-Verbs'] as const) {
+      expect(wiki(page), `${page}.md: the chase envelope`).toContain('eighteen metres');
+    }
+  });
+
+  it('the aircraft band the pages quote is derived from the real airframes', () => {
+    const stop = approachStopFrac();
+    const air = UNITS.filter((u) => u.locomotor === 5 && u.weapons.length > 0);
+    expect(air.length, 'four airframes, one per army — air-layer.spec.ts pins that').toBe(4);
+
+    const envelopes = air.map((u) => WEAPONS[u.weapons[0]].range * stop + GUARD_LEASH);
+    // ROUNDED, not floored and ceiled: the real band is 31.6..36.4, and the
+    // prose says "thirty-two to thirty-six". Widening it to 31..37 would quote a
+    // range no airframe actually occupies.
+    const lo = Math.round(Math.min(...envelopes));
+    const hi = Math.round(Math.max(...envelopes));
+    expect([lo, hi], 'the pages spell this band as "thirty-two to thirty-six metres". '
+      + `Derived from the shipped airframes it is ${lo}..${hi}. Retune an aircraft weapon `
+      + 'and the prose needs rewriting.').toEqual([32, 36]);
+
+    for (const page of ['Combat', 'Strategy', 'Units-and-Verbs'] as const) {
+      expect(wiki(page), `${page}.md: the aircraft chase band`)
+        .toContain('thirty-two');
+      expect(wiki(page), `${page}.md: the aircraft chase band`)
+        .toContain('thirty-six metres');
+    }
+  });
+
+  it('and the claim that they behave identically is gone from every page', () => {
+    // Both directions. This is the sentence that shipped false for two releases,
+    // in four places, while a fifth page said the opposite.
+    const DEAD = [
+      'behave identically',
+      'are the same thing in this',
+      'Nothing chases a target of opportunity',
+      'nothing chases a target of opportunity',
+      'there is no leash',
+    ];
+    for (const page of ['Combat', 'Strategy', 'Units-and-Verbs', 'How-to-Play'] as const) {
+      for (const phrase of DEAD) {
+        expect(wiki(page), `${page}.md still carries "${phrase}", which stopped being true `
+          + 'when GUARD_LEASH was wired').not.toContain(phrase);
+      }
+    }
+  });
 });

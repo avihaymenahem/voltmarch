@@ -472,12 +472,14 @@ it services you at 10 % of max HP per second, up to eight at once, at the same 0
 at 1 HP costs about 85 credits to repair against 700 to replace, and takes ten seconds. It is the
 cheapest structure in the game per credit saved, and most players never build one.
 
-**Two of the four stances actually differ.** *Hold Fire* tracks a target and never pulls the
-trigger; *Hold Ground* fires freely and never repositions for a target. *Aggressive* and *Defensive*
-behave identically in this build — nothing chases a target of opportunity. So: put your defensive
-line on **Hold Ground** so it does not walk off a wall to close on a raider, and put engineers,
-harvester escorts and loaded carriers on **Hold Fire** so they do not start fights they are not
-there for.
+**All four stances differ, and Aggressive is the one that moves.** Setting a stance stamps a post
+where the selection stands. *Aggressive* leaves that post to chase a target of opportunity, out to
+its firing standoff plus eighteen metres measured from the post, then walks back. *Defensive* never
+leaves, but does walk home if something displaces it. *Hold Fire* moves like Defensive and never
+pulls the trigger. *Hold Ground* fires freely and never repositions for any reason. So: put your
+defensive line on **Hold Ground** so it does not walk off a wall to close on a raider — on
+Aggressive it genuinely will — and put engineers, harvester escorts and loaded carriers on
+**Hold Fire** so they do not start fights they are not there for.
 
 **Relocating beats rebuilding.** Moving a structure costs 35 % of its build cost (minimum 50) plus
 four seconds in transit and two to rise. Selling and rebuilding costs 50 % *and* the full build time
@@ -723,8 +725,10 @@ Be aware of these before you build a plan around one:
   crush resolver actually reads. Every other Allied and Soviet tank crushes; this one does not.
 - **Vehicles cannot ram vehicles.** Eleven hulls carry a crushable-by number and nothing reads it.
   Only infantry are crushable.
-- **Aggressive and Defensive stance are the same thing.** Nothing chases a target of opportunity in
-  this build. Hold Fire and Hold Ground are the two that do something.
+- **Aggressive really does chase, and it is worst on aircraft.** The envelope is the unit's firing
+  standoff plus eighteen metres from its post, so the four airframes re-engage from thirty-two to
+  thirty-six metres out. A short retreat on Aggressive is undone; use Defensive on anything you
+  plan to pull back.
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
 - **Objective credits are never paid.** See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
