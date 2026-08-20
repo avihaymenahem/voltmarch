@@ -110,6 +110,7 @@ export default defineSystem({
       // the deploy pocket and the escort lane, and maxProps remains unchanged.
       focusBoost: plan.start === 'mcv' ? 0.55 : 0.18,
       focusClumpGapScale: plan.start === 'mcv' ? 0.55 : 1,
+      openingCenters: plan.start === 'mcv' ? plannedStartPoints() : [],
     });
 
     /* -- masks ------------------------------------------------------------ *
@@ -288,6 +289,7 @@ export default defineSystem({
     debug.setCounter('props', s.props);
     debug.setCounter('propTypes', s.types);
     debug.setCounter('groundPatches', scatter.groundPatches);
+    debug.setCounter('openingProps', scatter.openingProps);
     debug.setCounter('baseWear', baseWear);
   },
 

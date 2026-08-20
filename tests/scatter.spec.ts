@@ -459,6 +459,51 @@ describe('Scatter — placement', () => {
     scatter.dispose();
   });
 
+  it('authors a substantial opening composition in every biome', () => {
+    const seeds = [
+      { terrain: 0x7e44a1, scatter: 0x5ca77e },
+      { terrain: 0x193fb2, scatter: 0xb5012d },
+      { terrain: 0xd73419, scatter: 0x290c77 },
+    ] as const;
+    for (const biome of BIOMES) {
+      for (const seed of seeds) {
+        const scene = new THREE.Scene();
+        const terrain = new Terrain({ scene, seed: seed.terrain, biome, anisotropy: 1 });
+        const scatter = new Scatter({
+          scene, terrain, biome, seed: seed.scatter,
+          urban: biome === 'urban' ? 0.95 : biome === 'desert' ? 0.45 : 0.20,
+          densityScale: 1,
+          preferred: biome === 'snow'
+            ? ['pine', 'bush', 'rock']
+            : biome === 'desert'
+              ? ['bush', 'rock', 'barrel']
+              : ['tree', 'bush', 'rock'],
+          openingCenters: [{ x: 160, z: 160 }],
+        });
+        scatter.addLowProfileExclusion(160, 160, 18);
+        scatter.generate();
+
+        const label = `${biome}/${seed.terrain.toString(16)}`;
+        // Eleven designed beats are offered. Terrain and spacing may reject a
+        // minority, but fewer than seven means the opening has fallen back to
+        // ordinary random scatter and no longer reads as an authored place.
+        expect(scatter.openingProps, label).toBeGreaterThanOrEqual(7);
+
+        const out = new Float32Array(scatter.propCount * 4);
+        const n = scatter.positions(out);
+        for (let i = 0; i < n; i++) {
+          const d = Math.hypot(out[i * 4] - 160, out[i * 4 + 2] - 160);
+          if (d >= 17.9) continue;
+          const def = PROP_DEFS[out[i * 4 + 3]];
+          expect(def?.family, `${label}: ${def?.key ?? 'unknown'} entered the deploy core`)
+            .toBe('grass');
+        }
+        expect(scatter.propCount, label).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
+        scatter.dispose();
+      }
+    }
+  });
+
   it('publishes composition centres and paints sparse habitat patches beneath them', () => {
     const { scatter } = rig('temperate', 0.25, 1.0);
     scatter.generate();

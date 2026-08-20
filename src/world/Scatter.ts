@@ -421,7 +421,95 @@ export interface ScatterOptions {
    * wilderness rhythm or the spacing between members of an individual clump.
    */
   readonly focusClumpGapScale?: number;
+  /**
+   * MCV positions that deserve a deliberately authored first-camera
+   * composition. These are not generic density foci: each centre receives a
+   * biome-specific service cache, perimeter edge and landscape landmark while
+   * `lowProfileExclusions` continue to protect the deploy/egress pocket.
+   */
+  readonly openingCenters?: readonly { readonly x: number; readonly z: number }[];
 }
+
+/** One authored beat in the local frame of an MCV opening. */
+interface OpeningBeat {
+  /** Metres sideways from the route toward map centre. */
+  readonly lateral: number;
+  /** Metres along the route toward map centre. Negative is behind the MCV. */
+  readonly forward: number;
+  /** Preferred prop keys, first legal/available key wins. */
+  readonly keys: readonly string[];
+  /** Yaw relative to the route toward map centre. */
+  readonly yaw: number;
+  /** Search radius used to settle the beat onto legal terrain. */
+  readonly settle?: number;
+}
+
+/*
+ * THE OPENING IS A SMALL AUTHORED SET, NOT A HIGHER RANDOM NUMBER.
+ *
+ * Three readable clusters surround the playable pocket:
+ *   - rear-right service cache (crates, drums, a short barrier),
+ *   - rear-left landscape island (biome silhouette + under-storey),
+ *   - side punctuation (one landmark and a low detail cluster).
+ *
+ * No beat occupies the forward centre corridor. Mirroring the lateral axis per
+ * start prevents two opponents from receiving visibly cloned dioramas, while
+ * keeping identical seeds byte-deterministic for lockstep and saved masks.
+ */
+const OPENING_BEATS: Readonly<Record<BiomeName, readonly OpeningBeat[]>> = {
+  temperate: [
+    { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
+    { lateral: 28, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
+    { lateral: 25, forward: -24, keys: ['crateStack', 'haystack'], yaw: -0.42, settle: 3.0 },
+    { lateral: 20, forward: -30, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: 27, forward: -30, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: -30, forward: -12, keys: ['tree', 'conifer'], yaw: 0.15, settle: 4.0 },
+    { lateral: -38, forward: -8, keys: ['treeAutumn', 'tree'], yaw: -0.25, settle: 4.0 },
+    { lateral: -27, forward: -20, keys: ['bush'], yaw: 0.35, settle: 3.0 },
+    { lateral: -35, forward: -20, keys: ['bush'], yaw: -0.30, settle: 3.0 },
+    { lateral: -30, forward: 10, keys: ['flowerBed', 'rockCluster'], yaw: 0.10, settle: 3.0 },
+    { lateral: 35, forward: 8, keys: ['bush', 'rockCluster'], yaw: -0.25, settle: 3.0 },
+  ],
+  desert: [
+    { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
+    { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
+    { lateral: 25, forward: -25, keys: ['crateStack'], yaw: -0.42, settle: 3.0 },
+    { lateral: 20, forward: -31, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: 27, forward: -31, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: -31, forward: -10, keys: ['palm', 'bush'], yaw: 0.15, settle: 4.5 },
+    { lateral: -39, forward: -6, keys: ['palm', 'boulder'], yaw: -0.25, settle: 4.5 },
+    { lateral: -28, forward: -21, keys: ['rockCluster', 'bush'], yaw: 0.35, settle: 3.5 },
+    { lateral: -36, forward: -20, keys: ['bush', 'rockCluster'], yaw: -0.30, settle: 3.5 },
+    { lateral: -31, forward: 10, keys: ['rockCluster', 'bush'], yaw: 0.10, settle: 3.5 },
+    { lateral: 36, forward: 7, keys: ['boulder', 'rockCluster'], yaw: -0.25, settle: 4.0 },
+  ],
+  snow: [
+    { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
+    { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
+    { lateral: 25, forward: -25, keys: ['crateStack'], yaw: -0.42, settle: 3.0 },
+    { lateral: 20, forward: -31, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: 27, forward: -31, keys: ['fence'], yaw: Math.PI * 0.5, settle: 2.0 },
+    { lateral: -30, forward: -11, keys: ['conifer'], yaw: 0.15, settle: 4.5 },
+    { lateral: -38, forward: -7, keys: ['conifer'], yaw: -0.25, settle: 4.5 },
+    { lateral: -27, forward: -21, keys: ['bush', 'rockCluster'], yaw: 0.35, settle: 3.5 },
+    { lateral: -35, forward: -20, keys: ['rockCluster', 'bush'], yaw: -0.30, settle: 3.5 },
+    { lateral: -30, forward: 10, keys: ['rockCluster', 'bush'], yaw: 0.10, settle: 3.5 },
+    { lateral: 36, forward: 7, keys: ['boulder', 'rockCluster'], yaw: -0.25, settle: 4.0 },
+  ],
+  urban: [
+    { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
+    { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
+    { lateral: 25, forward: -25, keys: ['containerStack', 'crateStack'], yaw: -0.42, settle: 3.5 },
+    { lateral: 19, forward: -32, keys: ['railing', 'fence'], yaw: Math.PI * 0.5, settle: 2.5 },
+    { lateral: 27, forward: -32, keys: ['railing', 'fence'], yaw: Math.PI * 0.5, settle: 2.5 },
+    { lateral: -29, forward: -13, keys: ['streetLampTwin', 'streetLamp'], yaw: 0.0, settle: 3.5 },
+    { lateral: -38, forward: -8, keys: ['streetLamp', 'telegraphPole'], yaw: 0.0, settle: 3.5 },
+    { lateral: -27, forward: -22, keys: ['flowerBed', 'bush'], yaw: 0.35, settle: 3.5 },
+    { lateral: -36, forward: -20, keys: ['flowerBed', 'hedge'], yaw: -0.30, settle: 3.5 },
+    { lateral: -31, forward: 10, keys: ['bench', 'flowerBed'], yaw: Math.PI * 0.5, settle: 3.5 },
+    { lateral: 36, forward: 7, keys: ['roadSign', 'flowerBed'], yaw: -0.25, settle: 3.5 },
+  ],
+};
 
 /* One live prop type: a def, its baked geometry, and its instance columns. */
 interface ScatterType {
@@ -635,6 +723,10 @@ export class Scatter {
    * without turning the lane into a visibly mown rectangle.
    */
   private readonly lowProfileExclusions: number[] = [];
+  /** Exact placement records authored by the opening-composition pass. */
+  private readonly openingPlacements = new Set<Placement>();
+  /** Types the opening composition depends on; the draw-call trim keeps them. */
+  private readonly openingDefIndices = new Set<number>();
 
   /**
    * Accepted clump centres, bucketed by (family, 64 m cell) so the 20-50 m
@@ -681,6 +773,8 @@ export class Scatter {
   generateMs = 0;
   /** Broad natural-material patches painted beneath selected prop clusters. */
   groundPatches = 0;
+  /** Authored props successfully settled around MCV openings. */
+  openingProps = 0;
   visibleInstances = 0;
   visibleChunks = 0;
   lastReport: CoverageReport | null = null;
@@ -1119,7 +1213,10 @@ export class Scatter {
     this.placements.length = 0;
     this.clumpBuckets.length = 0;
     this.compositionAnchors.length = 0;
+    this.openingPlacements.clear();
+    this.openingDefIndices.clear();
     this.groundPatches = 0;
+    this.openingProps = 0;
     this.clearedProps = 0;
     this.lastClearScanned = 0;
     this.lastClearCount = 0;
@@ -1212,6 +1309,12 @@ export class Scatter {
     // A low-frequency habitat field so 'field' props are patchy, not uniform.
     const habitatSeed = (this.opts.seed ^ 0x51ed) >>> 0;
 
+    /* -- 3a. authored opening compositions ------------------------------- *
+     * These go down BEFORE the broad scatter passes, so random vegetation
+     * respects the composition instead of landing first and rejecting every
+     * designed beat. The normal spacing/surface/slope masks still apply.     */
+    this.openingProps = this.placeOpeningCompositions(avail, rng.fork());
+
     for (let i = 0; i < avail.length; i++) {
       const type = avail[i];
       const def = type.def;
@@ -1268,7 +1371,9 @@ export class Scatter {
           break;
         }
       }
-      type.count = placed;
+      // Opening compositions may already have spent this type. Preserve that
+      // authored count; the broad pass adds to it rather than overwriting it.
+      type.count += placed;
       if (def.family === 'grass') grassPlaced += placed;
     }
 
@@ -1327,6 +1432,12 @@ export class Scatter {
      * 0.2960 -> 0.2569. What a type finally delivered is the honest basis for
      * spending a draw call on it; what it was allocated is not.               */
     const live = this.trimTypes(avail);
+    // `trimTypes` compacts the placement array. Report only authored beats that
+    // survived that operation, never the number merely attempted beforehand.
+    this.openingProps = 0;
+    for (let i = 0; i < this.placements.length; i++) {
+      if (this.openingPlacements.has(this.placements[i])) this.openingProps++;
+    }
 
     /* -- 4b. RE-TOP-UP: THE TRIM SPENDS DENSITY IT DOES NOT PAY BACK ------- *
      * `trimTypes()` deletes every placement of the types it drops, and until
@@ -1371,6 +1482,78 @@ export class Scatter {
 
   private finishTiming(t0: number): void {
     this.generateMs = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
+  }
+
+  /**
+   * Settle the biome-authored beats around every MCV opening.
+   *
+   * The local forward axis points toward map centre, which is the useful
+   * strategic route on every generated start table. Beats occupy the sides and
+   * rear only; the central forward corridor is intentionally absent. A small
+   * deterministic spiral lets a crate move off a slope or a tree move around a
+   * unit clearance without dissolving the authored cluster into random scatter.
+   */
+  private placeOpeningCompositions(avail: readonly ScatterType[], rng: Rng): number {
+    const centres = this.opts.openingCenters ?? [];
+    if (centres.length === 0) return 0;
+
+    const byKey = new Map<string, ScatterType>();
+    for (let i = 0; i < avail.length; i++) byKey.set(avail[i].def.key, avail[i]);
+    const beats = OPENING_BEATS[this.opts.biome];
+    let placed = 0;
+
+    for (let c = 0; c < centres.length; c++) {
+      const centre = centres[c];
+      let fx = MAP_SIZE * 0.5 - centre.x;
+      let fz = MAP_SIZE * 0.5 - centre.z;
+      const fl = Math.hypot(fx, fz);
+      if (fl < 1e-4) {
+        const a = rng.next() * TAU;
+        fx = Math.cos(a); fz = Math.sin(a);
+      } else {
+        fx /= fl; fz /= fl;
+      }
+      const rx = -fz, rz = fx;
+      const mirror = rng.next() < 0.5 ? -1 : 1;
+      const routeYaw = Math.atan2(fx, fz);
+
+      for (let b = 0; b < beats.length; b++) {
+        const beat = beats[b];
+        const lateral = beat.lateral * mirror;
+        const targetX = centre.x + rx * lateral + fx * beat.forward;
+        const targetZ = centre.z + rz * lateral + fz * beat.forward;
+        const settle = beat.settle ?? 3;
+        let landed = false;
+
+        // A key can exist in the biome and still reject this patch's surface
+        // or slope. Try the authored fallbacks after the preferred silhouette
+        // exhausts its settle spiral; snow ridges are the common case.
+        for (let k = 0; k < beat.keys.length && !landed; k++) {
+          const type = byKey.get(beat.keys[k]);
+          if (type === undefined) continue;
+
+          // Target first, then a golden-angle spiral. The maximum displacement
+          // stays smaller than the spacing between authored beats, so their
+          // cluster identity survives terrain settling.
+          for (let a = 0; a < 18 && !landed; a++) {
+            const radius = a === 0 ? 0 : settle * Math.sqrt(a / 17);
+            const angle = a * 2.399963229728653 + rng.range(-0.08, 0.08);
+            const x = targetX + Math.cos(angle) * radius;
+            const z = targetZ + Math.sin(angle) * radius;
+            if (!this.legal(type.def, x, z, 0.82)) continue;
+            if (!this.place(type.defIndex, type.def, x, z, rng)) continue;
+            const p = this.placements[this.placements.length - 1];
+            p.yaw = routeYaw + beat.yaw * mirror + rng.range(-0.06, 0.06);
+            this.openingPlacements.add(p);
+            this.openingDefIndices.add(type.defIndex);
+            type.count++;
+            placed++;
+            landed = true;
+          }
+        }
+      }
+    }
+    return placed;
   }
 
   /**
@@ -1744,7 +1927,8 @@ export class Scatter {
     const familyWeight = (t: ScatterType): number =>
       t.def.family === 'civic' ? 5.0 : t.def.family === 'canopy' ? 1.7 : 1.0;
     const score = (t: ScatterType): number =>
-      t.count * t.def.adorn * t.def.adorn * familyWeight(t);
+      (this.openingDefIndices.has(t.defIndex) ? 1e12 : 0)
+      + t.count * t.def.adorn * t.def.adorn * familyWeight(t);
     const ranked = placed.slice().sort((a, b) => score(b) - score(a));
     const keep = new Set(ranked.slice(0, cap));
     const dropped = new Set(ranked.slice(cap).map((t) => t.defIndex));
