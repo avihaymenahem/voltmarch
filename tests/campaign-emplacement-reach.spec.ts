@@ -479,6 +479,31 @@ const GUNS: Readonly<Record<string, string>> = {
   'reclamation.03.sold-twice': 'pillbox x8',
   'reclamation.04.served-notice': 'pillbox x7',
   'reclamation.05.closing-entry': 'mrdGlaive x5, mrdHelios x1',
+  // THREE from the Allied opening and TWO the layout stands on the stop notice,
+  // one either side of it. `op.foe` is Allied, so the layout's `pillbox` role key
+  // resolves through `keyFor` to ITSELF — `pillboxMg`, 22 m, `chainCount` 0 — so
+  // §2 is satisfied by the row not chaining at all rather than by distance. See
+  // that operation's own header for what the notice is and what stands on it.
+  'reclamation.06.in-duplicate': 'pillbox x5',
+  // TWO from `SOVIET_DEFENCE`'s doctrinal opening and THREE the layout stands
+  // along the approach: one on the weighbridge apron and two on the siding.
+  // `op.foe` is Soviet, so the layout's `pillbox` role key resolves through
+  // `keyFor` to the SENTRY GUN — `pillboxMg`, 22 m, `power: 0` so no brownout
+  // opens it, and `chainCount` 0 — and `flameJet` does not chain either, so §2 is
+  // satisfied by NEITHER row chaining rather than by distance. That matters here
+  // because the siding post at (286, 246) genuinely IS in §2's scope: it covers
+  // the `levy` tag at 19.80 m, which is the objective, and covering the objective
+  // is what an emplacement is for.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `teslaCoil` OFF THIS ROW, and on this
+  // operation that is the difference between a hard fight and an impossible one:
+  // `SOVIET_DEFENCE` seeds THREE, `teslaBolt` is 30 m with `chainCount` 2, and one
+  // pull is 153.6 then 92.2 against `ArmorClass.Infantry`. Every man who decides
+  // this operation is 85 hit points — four `rclTinker`, who are the only route to
+  // a captured gantry, and four `rclPicker` — so two would die per trigger.
+  // Delete the empty list and three of them appear on a map whose entire
+  // objective is walking engineers up to buildings.
+  'reclamation.07.payment-in-kind': 'flameTower x2, sentryGun x3',
 };
 
 describe('§1 the guns every operation points at the player', () => {

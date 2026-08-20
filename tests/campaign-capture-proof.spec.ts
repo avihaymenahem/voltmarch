@@ -637,10 +637,10 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
  * 7. THE SHIPPED TABLE — the six, by name, in both directions
  * ========================================================================== */
 
-describe('exactly eight operations declare captureProof', () => {
+describe('exactly ten operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the eight whose headers say so', () => {
+  it('and they are the ten whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -690,6 +690,43 @@ describe('exactly eight operations declare captureProof', () => {
      * and an `mrdArtificer` walking into the `mrdOculus` on that floor to put the
      * deed back in Pact hands is the exact move the operation exists to refuse.
      *
+     * `reclamation.06.in-duplicate` is the ninth, and it is the FIRST entry in
+     * this table that is an operation's THESIS rather than a hazard note. Its
+     * `bond` is a GAIA `civApartments` — the district's bonded store, the place
+     * the counterpart is walked to — and the carriers are six `rclTinker`, so
+     * `Capture.resolve` rule 1 would take it outright, at ANY health, for one of
+     * them, on the single most natural click in the operation: select the clerks,
+     * right-click the building you were told to reach. A counterpart lodged in a
+     * warehouse the Reclamation owns is not a second copy, it is the same copy in
+     * the same hand, which is the assertion the whole chapter is arguing against.
+     * The veto is that sentence as a flag bit — and it does not merely refuse the
+     * click, it CORRECTS it: `resolveContextOrder`'s neutral branch is guarded by
+     * `capturableNow`, so with the veto installed the cursor never offers
+     * Capture, `caps.canCapture` skips the garrison branch below it, and the
+     * order resolves to Move, which is exactly what the operation's
+     * `unitsInArea` threshold is waiting for. Its `house` is the
+     * `reclamation.05.closing-entry` shape on the same map: every threshold in
+     * that file counts seat 0, seat 1 opens holding one `engineer`, and a
+     * captured counting house would read as a lost one.
+     *
+     * `reclamation.07.payment-in-kind` is the tenth, and it is a FIFTH shape: a structure the
+     * OPPONENT owns, protected against the PLAYER'S OWN ENGINEERS rather than
+     * against a brain that has no `OrderKind.Capture` call site. R7's second
+     * primary is that the Works' receiving office is still standing at the end,
+     * because its counterfoils are the only proof the Reclamation was owed the
+     * plant it is levying — and `t.notesLost` reads `entityDead`, which is the
+     * RIGHT condition on a protect-target precisely because a captured structure
+     * is still alive and still standing. What the veto closes is the state after
+     * that: `Targeting.isValidTarget` refuses only ALLIES, so an office on the
+     * player's books is a legal target for every gun the Works owns, and the
+     * trigger that ends the operation does not care who fired. The play is not
+     * theoretical — the operation hands the player FOUR `rclTinker`, forty metres
+     * from that building, on a map whose whole verb is capturing enemy
+     * structures. The three `levy` gantries are deliberately NOT in the list: the
+     * operation wants those taken, and a blanket would make its own primary
+     * unreachable by the route the composition is built around. See both files'
+     * own headers.
+     *
      * ITS FLOOR IS GAIA'S, WHICH MAKES THIS THE §4 SHAPE AT FULL PRICE RATHER
      * THAN THE `soviets.06` ONE. That layout owns the instrument on the Neutral
      * slot because `Targeting.isValidTarget` refuses only ALLIES and the player's
@@ -717,6 +754,8 @@ describe('exactly eight operations declare captureProof', () => {
       'pact.08.struck-off = terrace,well,infirmary',
       'pact.09.vacant-possession = floor',
       'reclamation.05.closing-entry = house,ledger',
+      'reclamation.06.in-duplicate = house,bond',
+      'reclamation.07.payment-in-kind = office',
       'soviets.06.demolition-order = infirmary',
     ]);
   });
