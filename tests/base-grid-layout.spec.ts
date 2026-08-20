@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
 import { ScenarioBuilder } from '../src/game/Scenarios';
 import { buildAlliedBase } from '../src/game/scenarios/AlliedBase';
 import { buildSovietBase } from '../src/game/scenarios/SovietBase';
-import { AUTO_BASE_APRON_RADIUS, CELL } from '../src/core/config';
+import {
+  AUTO_BASE_APRON_RADIUS, CELL, PLACEMENT, placementPadWeight,
+} from '../src/core/config';
 import { footprintOriginCell } from '../src/core/math';
 import { EntityKind, Faction } from '../src/core/types';
 import { PerEntityObj, World } from '../src/core/world';
@@ -91,5 +93,50 @@ describe('procedural base grid', () => {
     });
     expect(rectangular.length).toBe(2);
     for (const i of rectangular) expect([st.footprintW[i], st.footprintH[i]]).toEqual([2, 3]);
+  });
+
+  it('batches the same concrete foundations used by player placement', () => {
+    const { world, b, keys } = rig(Faction.Allies);
+    const stamps: Array<[number, number, number, number]> = [];
+    let commits = 0;
+    const terrain = world.terrain as unknown as {
+      stampSurface(cx: number, cz: number, layer: number, weight: number): void;
+      commitSplat(): void;
+    };
+    terrain.stampSurface = (cx, cz, layer, weight): void => { stamps.push([cx, cz, layer, weight]); };
+    terrain.commitSplat = (): void => { commits++; };
+
+    buildAlliedBase(b, 256, 256, {
+      owner: b.allies, facingDeg: 90, garrison: false, defended: false,
+    });
+    expect(stamps.length).toBeGreaterThan(0);
+    expect(commits, 'the layout must not upload once per building').toBe(0);
+    b.commitSurfaceStamps();
+    expect(commits).toBe(1);
+    b.commitSurfaceStamps();
+    expect(commits, 'a clean batch is a no-op').toBe(1);
+
+    const st = world.store;
+    const factory = buildingSlots(world).find((i) => keys.get(st.handleOf(i)) === 'warFactory');
+    expect(factory).toBeDefined();
+    const origin = new Int32Array(2);
+    footprintOriginCell(
+      st.posX[factory!], st.posZ[factory!], st.footprintW[factory!], st.footprintH[factory!], origin,
+    );
+    expect(stamps).toContainEqual([origin[0], origin[1], PLACEMENT.padSurface, PLACEMENT.padWeight]);
+    expect(stamps).toContainEqual([
+      origin[0] - PLACEMENT.padMarginCells,
+      origin[1],
+      PLACEMENT.padSurface,
+      placementPadWeight(
+        origin[0] - PLACEMENT.padMarginCells, origin[1],
+        origin[0], origin[1], st.footprintW[factory!], st.footprintH[factory!],
+      ),
+    ]);
+    expect(placementPadWeight(
+      origin[0] - PLACEMENT.padMarginCells,
+      origin[1] - PLACEMENT.padMarginCells,
+      origin[0], origin[1], st.footprintW[factory!], st.footprintH[factory!],
+    ), 'pad corners must remain natural ground').toBe(0);
   });
 });

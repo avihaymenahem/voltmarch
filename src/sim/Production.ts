@@ -46,7 +46,7 @@
 
 import {
   BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAP_CELLS, MAX_PLAYERS,
-  PLACEMENT, PRODUCTION, SELL_REFUND,
+  PLACEMENT, PRODUCTION, SELL_REFUND, placementPadWeight,
 } from '../core/config';
 import {
   BUILD_TAB_COUNT, BuildTab, CommandKind, CreditReason, EntityFlag, EntityKind, EvaLine,
@@ -3484,9 +3484,8 @@ export class ProductionService implements QueueHooks {
     for (let z = cz - m; z < cz + h + m; z++) {
       for (let x = cx - m; x < cx + w + m; x++) {
         if (!isInMap(x, z)) continue;
-        // Full strength under the structure, half on the painted margin.
-        const inside = x >= cx && x < cx + w && z >= cz && z < cz + h;
-        t.stampSurface(x, z, PLACEMENT.padSurface, PLACEMENT.padWeight * (inside ? 1 : 0.5));
+        const weight = placementPadWeight(x, z, cx, cz, w, h);
+        if (weight > 0) t.stampSurface(x, z, PLACEMENT.padSurface, weight);
       }
     }
     t.commitSplat();

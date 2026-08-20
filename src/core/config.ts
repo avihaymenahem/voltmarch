@@ -5363,7 +5363,31 @@ export const PLACEMENT = {
   ghostColor: '#7FD8C0',
 } as const;
 
-/* ==========================================================================
+/**
+ * Concrete contribution for one cell around a completed building.
+ *
+ * The occupied footprint stays unmistakably paved.  The old half-strength
+ * rectangular margin also painted all four corner blocks, though, so a row of
+ * structures merged into one large checkerboard.  A lighter, cornerless apron
+ * reads as drainage / hardstand beside the walls while allowing the biome to
+ * remain visible between neighbouring buildings.
+ */
+export function placementPadWeight(
+  x: number, z: number, cx: number, cz: number, w: number, h: number,
+): number {
+  const insideX = x >= cx && x < cx + w;
+  const insideZ = z >= cz && z < cz + h;
+  if (insideX && insideZ) return PLACEMENT.padWeight;
+  if (!insideX && !insideZ) return 0;
+
+  const edgeDistance = insideX
+    ? (z < cz ? cz - z : z - (cz + h - 1))
+    : (x < cx ? cx - x : x - (cx + w - 1));
+  const taper = 1 - (edgeDistance - 1) / Math.max(1, PLACEMENT.padMarginCells);
+  return PLACEMENT.padWeight * 0.32 * Math.max(0, taper);
+}
+
+/* ===========================================================================
  * 21. FACTION ARCHITECTURE  (src/art/Building*.ts)
  *
  * APPENDED, never reordered. Bible 5.7 is the law this section encodes:

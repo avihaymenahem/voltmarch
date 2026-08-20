@@ -330,10 +330,12 @@ const TEMPERATE: BiomeDef = {
     { label: 'rock',     albedo: '#7A7258', shade: '#6C6550', accent: '#8A8266',
       roughness: 0.85, tileMetres: 7.0, surface: 'field',
       variation: 0.05, patch: 0.34, seed: 1104 },
-    // 4 Concrete — poured slabs, 1.2 m, crisp joint.
+    // 4 Concrete — broad poured slabs. At 1.2 m every base apron read as a
+    //   tiled bathroom floor from the RTS camera; 2.4 m preserves joints while
+    //   putting the pattern comfortably below the structures' visual mass.
     { label: 'concrete', albedo: '#9A968C', shade: '#8C887E', accent: '#A6A298',
       roughness: 0.70, tileMetres: 4.8, surface: 'slab',
-      featureMetres: 1.2, joint: '#7E7A70', variation: 0.03, seed: 1105 },
+      featureMetres: 2.4, joint: '#858178', variation: 0.025, seed: 1105 },
     // 5 Paving — cobble sett 0.4 m. Oversized on purpose (bible §6.1).
     { label: 'cobble',   albedo: '#B7ADA2', shade: '#A79E94', accent: '#C5BCB2',
       roughness: 0.68, tileMetres: 3.2, surface: 'cobble',
@@ -469,7 +471,7 @@ const SNOW: BiomeDef = {
       variation: 0.05, patch: 0.32, seed: 3104 },
     { label: 'concrete', albedo: '#9A968C', shade: '#8C887E', accent: '#A6A298',
       roughness: 0.70, tileMetres: 4.8, surface: 'slab',
-      featureMetres: 1.2, joint: '#7E7A70', variation: 0.03, seed: 3105 },
+      featureMetres: 2.4, joint: '#858178', variation: 0.025, seed: 3105 },
     { label: 'paving',   albedo: '#B7ADA2', shade: '#A79E94', accent: '#C5BCB2',
       roughness: 0.68, tileMetres: 3.2, surface: 'cobble',
       featureMetres: 0.4, joint: '#8E8578', variation: 0.04, seed: 3106 },
@@ -535,7 +537,7 @@ const URBAN: BiomeDef = {
       variation: 0.045, patch: 0.30, seed: 4104 },
     { label: 'concrete', albedo: '#9A968C', shade: '#8C887E', accent: '#A6A298',
       roughness: 0.70, tileMetres: 4.8, surface: 'slab',
-      featureMetres: 1.2, joint: '#7E7A70', variation: 0.03, seed: 4105 },
+      featureMetres: 2.4, joint: '#858178', variation: 0.025, seed: 4105 },
     { label: 'cobble',   albedo: '#B7ADA2', shade: '#A79E94', accent: '#C5BCB2',
       roughness: 0.68, tileMetres: 3.2, surface: 'cobble',
       featureMetres: 0.4, joint: '#8E8578', variation: 0.04, seed: 4106 },

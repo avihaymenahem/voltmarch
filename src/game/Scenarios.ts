@@ -56,9 +56,10 @@
 import {
   BUILDING_DIMENSIONS, BUILD_RADIUS, CELL, HARVESTER_CAPACITY, MAP_PRESETS,
   MAP_PRESET_DEFAULT, MAP_SIZE, NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS,
-  ORE_CELL_MAX, REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
+  ORE_CELL_MAX, PLACEMENT, REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
   TERRAIN_ISLAND_MIN_CELLS, TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE,
-  TERRAIN_START_FLAT_RADIUS, UNIT_DIMENSIONS, WATER_LEVEL, type SeaIsland, type SeaSpec
+  TERRAIN_START_FLAT_RADIUS, UNIT_DIMENSIONS, WATER_LEVEL, placementPadWeight,
+  type SeaIsland, type SeaSpec
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
@@ -2148,6 +2149,13 @@ const scratchCell = new Int32Array(2);
 const placeCell = new Int32Array(2);
 const placeOut = new Float32Array(2);
 
+/** Cosmetic terrain extension. Kept duck-typed so scenarios still run against
+ * the core world's flat test port, which intentionally has no splat texture. */
+interface SurfaceStamper {
+  stampSurface(cx: number, cz: number, layer: number, weight: number): void;
+  commitSplat(): void;
+}
+
 /* --------------------------------------------------------------------------
  * NOTHING SPAWNS IN A PIT IT CANNOT LEAVE
  *
@@ -2293,6 +2301,8 @@ export class ScenarioBuilder {
   private unbuildableGround = 0;
   /** The first of them, so the console line names one rather than a count. */
   private unbuildableFirst = '';
+  /** At least one scenario foundation changed the terrain splat this build. */
+  private surfaceDirty = false;
 
   constructor(
     readonly world: World,
@@ -2476,6 +2486,37 @@ export class ScenarioBuilder {
       }
     }
     return true;
+  }
+
+  /**
+   * Paint the same poured foundation a player-placed building receives.
+   * Scenario bases used to skip `Production.stampPad`, so their models floated
+   * on grass while anything the player added later sat on concrete. Stamps are
+   * accumulated and uploaded once by `commitSurfaceStamps()` after the entire
+   * layout, avoiding one control-texture upload per prebuilt structure.
+   */
+  private stampBuildingPad(cx: number, cz: number, w: number, h: number): void {
+    const t = this.world.terrain as unknown as Partial<SurfaceStamper>;
+    if (typeof t.stampSurface !== 'function') return;
+    const m = PLACEMENT.padMarginCells;
+    for (let z = cz - m; z < cz + h + m; z++) {
+      for (let x = cx - m; x < cx + w + m; x++) {
+        if (!isInMap(x, z)) continue;
+        const weight = placementPadWeight(x, z, cx, cz, w, h);
+        if (weight > 0) {
+          t.stampSurface(x, z, PLACEMENT.padSurface, weight);
+          this.surfaceDirty = true;
+        }
+      }
+    }
+  }
+
+  /** Upload every scenario pad as one terrain-splat batch. Safe on headless ports. */
+  commitSurfaceStamps(): void {
+    if (!this.surfaceDirty) return;
+    const t = this.world.terrain as unknown as Partial<SurfaceStamper>;
+    if (typeof t.commitSplat === 'function') t.commitSplat();
+    this.surfaceDirty = false;
   }
 
   /**
@@ -2940,6 +2981,7 @@ export class ScenarioBuilder {
     // The nav grid and the render must agree about which cells are taken.
     footprintOriginCell(px, pz, fw, fh, scratchCell);
     this.world.terrain.markOccupied(scratchCell[0], scratchCell[1], fw, fh, id);
+    this.stampBuildingPad(scratchCell[0], scratchCell[1], fw, fh);
     this.block(px, pz, s.radius[i] + 1.5);
 
     // Keep the player's cached economy in step, or the HUD lies about power and
@@ -5076,6 +5118,9 @@ export function buildScenario(
     plan.build(builder, cx, cz, start);
   } catch (err) {
     console.error(`[scenario] "${resolved}" failed partway through — frame will be sparse`, err);
+  } finally {
+    // One upload for the whole compound, including a sparse partial layout.
+    builder.commitSurfaceStamps();
   }
 
   // Picking, targeting and the placement validity check all read the spatial
