@@ -1646,8 +1646,11 @@ function ship(o: ShipOpts): UnitMassList {
       greeble('foreTurret', 'revolve', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
         group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
       }),
-      barrelMass('foreBarrel', 0.26, L * 0.20, [0, hullH + H * 0.21, L * 0.42], {
+      barrelMass('foreBarrel', 0.26, L * 0.20, [0, hullH + H * 0.21, L * 0.36], {
         role: MassRole.Greeble, group: 'fore mount',
+      }),
+      greeble('foreMuzzle', 'cone', [0.36, L * 0.06, 0.36], [0, hullH + H * 0.21, L * 0.43], 'bareMetal', {
+        rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
       }),
     );
   } else if (o.armament === 'escort') {
@@ -1655,8 +1658,11 @@ function ship(o: ShipOpts): UnitMassList {
       greeble('foreTurret', 'revolve', [W * 0.44, H * 0.18, W * 0.48], [0, hullH + H * 0.18, L * 0.28], 'paintMed', {
         group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
       }),
-      barrelMass('foreBarrel', 0.22, L * 0.22, [0, hullH + H * 0.20, L * 0.42], {
+      barrelMass('foreBarrel', 0.22, L * 0.22, [0, hullH + H * 0.20, L * 0.35], {
         role: MassRole.Greeble, group: 'fore mount',
+      }),
+      greeble('foreMuzzle', 'cone', [0.32, L * 0.06, 0.32], [0, hullH + H * 0.20, L * 0.43], 'bareMetal', {
+        rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
       }),
       greeble('ciws', 'revolve', [W * 0.28, H * 0.15, W * 0.28], [0, deckTop + H * 0.08, -L * 0.34], 'bareMetal', {
         group: 'aft mount', shape: { profile: DOME_PROFILE, segments: 12 },
@@ -2090,9 +2096,19 @@ function plane(o: PlaneOpts): UnitMassList {
     ], H * 0.10, [S * 0.26, wingY, -L * 0.06], [0, -0.28, 0.10], 'paintLarge', {
       capSlot: 'paintLarge', mirrorX: true,
     }),
-    primary('tailFin', 'taperedBox', [0.14, H * 0.30, L * 0.20], [0, H - H * 0.15, -L * 0.40], 'paintMed', {
-      shape: { topScaleX: 0.70, topScaleZ: 0.55, shear: -L * 0.04 },
-    }),
+    // The airframes finally diverge at the tail as loudly as they do at the
+    // engines. The Petrel keeps one integrated aerospace keel; the Soviet
+    // interceptor carries two outward-canted fins above its exposed nacelles.
+    o.nacelles
+      ? primary('tailFin', 'taperedBox', [0.16, H * 0.27, L * 0.20],
+        [S * 0.15, H - H * 0.145, -L * 0.40], 'paintMed', {
+          mirrorX: true, rot: [0, 0, 0.18],
+          shape: { topScaleX: 0.62, topScaleZ: 0.48, shear: -L * 0.05 },
+        })
+      : primary('tailFin', 'taperedBox', [0.16, H * 0.32, L * 0.22],
+        [0, H - H * 0.16, -L * 0.40], 'paintMed', {
+          shape: { topScaleX: 0.62, topScaleZ: 0.50, shear: -L * 0.05 },
+        }),
   ];
 
   masses.push(
@@ -2134,12 +2150,20 @@ function plane(o: PlaneOpts): UnitMassList {
         chamfer: 0.04,
       },
     }),
-    greeble('pylon', 'chamferBox', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', {
-      mirrorX: true, group: 'stores',
+    greeble('pylon', 'taperedBox', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', {
+      mirrorX: true, group: 'stores', shape: { topScaleX: 0.62, topScaleZ: 0.72 },
     }),
     greeble('ordnance', 'revolve', [0.26, L * 0.26, 0.26], [S * 0.24, wingY - H * 0.13, -L * 0.02], 'bareMetal', {
       mirrorX: true, rot: [HALF_PI, 0, 0], group: 'stores', shape: { profile: CAPSULE_PROFILE, segments: 10 },
     }),
+    // The pod used to end near the muzzle socket without any readable weapon
+    // mouth. A short cannon liner now overlaps the capsule and terminates on
+    // the live socket exactly, so flashes originate at visible hardware.
+    greeble('gunMuzzle', 'cylinder', [0.17, L * 0.14, 0.17],
+      [S * 0.24, wingY - H * 0.13, L * 0.03], 'bareMetal', {
+        mirrorX: true, rot: [HALF_PI, 0, 0], group: 'stores',
+        shape: { segments: 10, rTop: 0.76, capChamfer: 0.025 },
+      }),
     // The chine strake: one plate down each flank at the fuselage waterline.
     armour('fuse.chine', taperOutline(L * 0.44, 0.34, 0.42), 0.05,
       [S * 0.09, fuseY - fuseH * 0.06, L * 0.16], [0, HALF_PI, HALF_PI + 0.10],
@@ -2151,6 +2175,11 @@ function plane(o: PlaneOpts): UnitMassList {
       greeble('nacelle', 'cylinder', [S * 0.13, L * 0.34, S * 0.13], [S * 0.17, fuseY - fuseH * 0.16, -L * 0.26], 'bareMetal', {
         mirrorX: true, rot: [HALF_PI, 0, 0], group: 'engines', shape: { segments: 12, rTop: 0.88 },
       }),
+      greeble('nacelleNozzle', 'cylinder', [S * 0.15, L * 0.10, S * 0.15],
+        [S * 0.17, fuseY - fuseH * 0.16, -L * 0.46], 'bareMetal', {
+          mirrorX: true, rot: [HALF_PI, 0, 0], group: 'engines',
+          shape: { segments: 12, rTop: 0.74, capChamfer: 0.04 },
+        }),
     );
   } else {
     masses.push(
@@ -2167,7 +2196,10 @@ function plane(o: PlaneOpts): UnitMassList {
   );
   masses.push(insignia([S * 0.13, 0.05, S * 0.13], [S * 0.28, wingY + H * 0.06, -L * 0.06]));
   masses.push(
-    glowPanel('afterburner', [S * 0.19, 0.26, 0.06], [0, fuseY, -L * 0.56]),
+    glowPanel('afterburner',
+      o.nacelles ? [S * 0.13, 0.22, 0.06] : [S * 0.19, 0.26, 0.06],
+      o.nacelles ? [S * 0.17, fuseY - fuseH * 0.16, -L * 0.515] : [0, fuseY, -L * 0.56],
+      o.nacelles ? { mirrorX: true } : {}),
     glowPanel('wingTipLight', [0.10, 0.14, L * 0.26], [S * 0.44, wingY + H * 0.02, -L * 0.06], { mirrorX: true }),
     glowPanel('formationStrip', [S * 0.05, 0.05, L * 0.30], [S * 0.14, fuseY + fuseH * 0.44, L * 0.02], { mirrorX: true }),
   );

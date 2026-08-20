@@ -1224,8 +1224,11 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
       greeble('bowMount', 'taperedBox', [W * 0.48, H * 0.16, L * 0.14], [0, hullH + H * 0.10, L * 0.30], 'grille', {
         group: 'bowGun', shape: { topScaleX: 0.72, topScaleZ: 0.70, shear: L * 0.02 },
       }),
-      greeble('bowBarrel', 'cone', [0.26, L * 0.22, 0.26], [0, hullH + H * 0.15, L * 0.44], 'bareMetal', {
-        rot: [Math.PI * 0.46, 0, 0], group: 'bowGun', shape: { segments: 10, rTop: 0.74 },
+      greeble('bowBarrel', 'cone', [0.26, L * 0.22, 0.26], [0, hullH + H * 0.18, L * 0.39], 'bareMetal', {
+        rot: [Math.PI * 0.5, 0, 0], group: 'bowGun', shape: { segments: 10, rTop: 0.74 },
+      }),
+      greeble('bowMuzzle', 'cylinder', [0.34, L * 0.06, 0.34], [0, hullH + H * 0.18, L * 0.47], 'bareMetal', {
+        rot: [Math.PI * 0.5, 0, 0], group: 'bowGun', shape: { segments: 10, rTop: 0.72, capChamfer: 0.03 },
       }),
     );
   } else {
@@ -1234,7 +1237,10 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
         group: 'cells', shape: { density: 2.6, seed: 0x48c2 },
       }),
       greeble('cellBarrel', 'cone', [0.30, L * 0.20, 0.30], [W * 0.14, hullH + H * 0.18, L * 0.40], 'bareMetal', {
-        mirrorX: true, rot: [Math.PI * 0.44, 0, 0], group: 'cells', shape: { segments: 10, rTop: 0.72 },
+        mirrorX: true, rot: [Math.PI * 0.5, 0, 0], group: 'cells', shape: { segments: 10, rTop: 0.72 },
+      }),
+      greeble('cellMuzzle', 'cylinder', [0.38, L * 0.06, 0.38], [W * 0.14, hullH + H * 0.18, L * 0.47], 'bareMetal', {
+        mirrorX: true, rot: [Math.PI * 0.5, 0, 0], group: 'cells', shape: { segments: 10, rTop: 0.70, capChamfer: 0.03 },
       }),
     );
   }
@@ -1357,8 +1363,11 @@ function scrapFlyer(key: string, name: string, L: number, S: number, H: number):
   ];
 
   masses.push(
-    greeble('nose', 'cone', [S * 0.17, L * 0.20, S * 0.17], [0, fuseY, L * 0.52], 'paintMed', {
-      rot: [-Math.PI * 0.5, 0, 0], group: 'nose', shape: { segments: 12, rTop: 0.16 },
+    // This inherited the same reversed, detached cone as the first Kestrel.
+    // Point it forward and bury its root in the forebody instead of hanging a
+    // blunt disc in front of the aircraft.
+    greeble('nose', 'cone', [S * 0.17, L * 0.20, S * 0.17], [0, fuseY, L * 0.42], 'paintMed', {
+      rot: [Math.PI * 0.5, 0, 0], group: 'nose', shape: { segments: 12, rTop: 0.16 },
     }),
     greeble('canopy', 'plate', [S * 0.15, 0.09, L * 0.22], [0, fuseY + fuseH * 0.44, L * 0.18], 'glass', {
       rot: [-0.28, 0, 0], group: 'canopy',
@@ -1374,6 +1383,13 @@ function scrapFlyer(key: string, name: string, L: number, S: number, H: number):
     // The salvage pod hangs under the PORT wing only.
     greeble('pod', 'cylinder', [0.26, L * 0.24, 0.26], [-S * 0.24, wingY - H * 0.13, -L * 0.02], 'bareMetal', {
       rot: [Math.PI * 0.5, 0, 0], group: 'pod', shape: { segments: 10, rTop: 0.82 },
+    }),
+    // Mirrored barrels keep both gameplay sockets visible even though the
+    // salvage pod remains port-only. Their forward faces land exactly on the
+    // two Muzzle sockets.
+    greeble('gunMuzzle', 'cylinder', [0.17, L * 0.14, 0.17], [S * 0.24, wingY - H * 0.13, L * 0.03], 'bareMetal', {
+      mirrorX: true, rot: [Math.PI * 0.5, 0, 0], group: 'guns',
+      shape: { segments: 10, rTop: 0.72, capChamfer: 0.025 },
     }),
     greeble('skid', 'taperedBox', [S * 0.06, H * 0.11, L * 0.11], [S * 0.11, fuseY - fuseH * 0.52, -L * 0.02], 'paintTiny', {
       mirrorX: true, group: 'skids', shape: { topScaleZ: 0.7 },

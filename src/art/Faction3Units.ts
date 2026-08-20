@@ -1079,6 +1079,11 @@ function pactShip(o: PactShipOpts): UnitMassList {
   const superZ = lander ? -L * 0.34 : -L * 0.10;
   const superL = lander ? L * 0.22 : L * 0.34;
   const mastZ = lander ? superZ : -L * 0.16;
+  // Replacing the cutter's deck-sized fake rail with real perimeter members
+  // removes a large non-team surface. Its existing panels then land at 14.1%,
+  // one tenth above R-T1; a two-percent linear trim keeps the same graphic read
+  // while returning the smallest hull to the measured band.
+  const teamScale = o.key === 'meridian_cutter' ? 0.98 : 1;
 
   const masses: MassDef[] = [
     // DEADRISE. The hull was the single flattest primary mass in the game at
@@ -1132,8 +1137,9 @@ function pactShip(o: PactShipOpts): UnitMassList {
       // The well: a coaming down each side of the open vehicle deck, and the
       // capstan that hauls the door shut at the head of it. Without the coaming
       // the deck is a flat plate and the hull reads as a barge with a lid.
-      greeble('wellCoaming', 'box', [0.14, H * 0.20, L * 0.50], [W * 0.46, deckY + H * 0.10, L * 0.04], 'paintMed', {
+      greeble('wellCoaming', 'taperedBox', [0.14, H * 0.20, L * 0.50], [W * 0.46, deckY + H * 0.10, L * 0.04], 'paintMed', {
         mirrorX: true, rot: [0, 0, -0.14], group: 'well', chamfer: 0.04,
+        shape: { topScaleX: 0.62, topScaleZ: 0.94, shear: -0.04 },
       }),
       greeble('capstan', 'lathe', [0.52, W * 0.42, 0.52], [0, deckY + H * 0.16, -L * 0.14], 'bareMetal', {
         profile: 'capsule', segments: 10, rot: [0, 0, Math.PI * 0.5], group: 'well',
@@ -1144,8 +1150,9 @@ function pactShip(o: PactShipOpts): UnitMassList {
       // bare metal against bible 5.4's 5-34% floor. A vehicle deck is ribbed
       // steel rather than painted topside anyway — this is the one surface on
       // the ship a tank's tracks actually touch.
-      greeble('wellFloor', 'box', [W * 0.66, 0.10, L * 0.44], [0, deckY + 0.05, L * 0.02], 'tread', {
-        group: 'well', chamfer: 0.03,
+      greeble('wellFloor', 'planPrism', [W * 0.66, 0.10, L * 0.44], [0, deckY + 0.05, L * 0.02], 'tread', {
+        group: 'well', chamfer: 0.03, capSlot: 'tread',
+        shape: { plan: hexPlan(W * 0.66, L * 0.44), topScaleX: 0.96, topScaleZ: 0.98 },
       }),
       greeble('bollard', 'lathe', [0.28, 0.54, 0.28], [W * 0.42, deckY + 0.27, L * 0.14], 'bareMetal', {
         mirrorX: true, profile: 'cyl', segments: 8, group: 'deckFittings',
@@ -1156,11 +1163,13 @@ function pactShip(o: PactShipOpts): UnitMassList {
       // what an eight-slot hull needs to strike cargo down and what tells it
       // apart from the four-slot hull beside it in the sidebar.
       masses.push(
-        greeble('gantryLeg', 'box', [0.20, H * 0.30, 0.24], [W * 0.40, deckY + H * 0.15, -L * 0.02], 'bareMetal', {
-          mirrorX: true, taper: [0.70, 0.80, 0], group: 'gantry', chamfer: 0.03,
+        greeble('gantryLeg', 'taperedBox', [0.20, H * 0.30, 0.24], [W * 0.40, deckY + H * 0.15, -L * 0.02], 'bareMetal', {
+          mirrorX: true, group: 'gantry', chamfer: 0.03,
+          shape: { topScaleX: 0.70, topScaleZ: 0.80 },
         }),
-        greeble('gantryBeam', 'box', [W * 0.94, 0.22, 0.30], [0, deckY + H * 0.31, -L * 0.02], 'bareMetal', {
-          taper: [0.94, 0.62, 0], group: 'gantry', chamfer: 0.03,
+        greeble('gantryBeam', 'taperedBox', [W * 0.94, 0.22, 0.30], [0, deckY + H * 0.31, -L * 0.02], 'bareMetal', {
+          group: 'gantry', chamfer: 0.03,
+          shape: { topScaleX: 0.94, topScaleZ: 0.62 },
         }),
       );
     }
@@ -1169,8 +1178,11 @@ function pactShip(o: PactShipOpts): UnitMassList {
       greeble('foreMount', 'lathe', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
         profile: 'cyl', segments: 12, topRadius: 0.80, group: 'foreGun',
       }),
-      greeble('foreBarrel', 'lathe', [0.26, L * 0.20, 0.26], [0, hullH + H * 0.21, L * 0.42], 'bareMetal', {
+      greeble('foreBarrel', 'lathe', [0.26, L * 0.20, 0.26], [0, hullH + H * 0.21, L * 0.36], 'bareMetal', {
         profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
+      }),
+      greeble('foreMuzzle', 'lathe', [0.36, L * 0.06, 0.36], [0, hullH + H * 0.21, L * 0.43], 'bareMetal', {
+        profile: 'disc', segments: 10, topRadius: 0.72, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
       }),
     );
   } else {
@@ -1202,7 +1214,15 @@ function pactShip(o: PactShipOpts): UnitMassList {
   // warship silhouette the `'ramp'` variant exists to avoid.
   if (!lander) {
     masses.push(
-      greeble('rail', 'box', [W * 0.98, 0.16, L * 0.86], [0, hullH + H * 0.14, 0], 'grille', { group: 'rails' }),
+      // The old "rail" was one solid grate spanning 98% of the entire deck — a
+      // lid, not a guard rail. These three narrow edge members leave the deck
+      // open and produce the same perimeter read with actual negative space.
+      greeble('rail.side', 'taperedBox', [0.12, 0.16, L * 0.72], [W * 0.44, hullH + H * 0.14, -L * 0.02], 'bareMetal', {
+        mirrorX: true, group: 'rails', shape: { topScaleX: 0.68, topScaleZ: 0.98 },
+      }),
+      greeble('rail.bow', 'taperedBox', [W * 0.82, 0.16, 0.12], [0, hullH + H * 0.14, L * 0.34], 'bareMetal', {
+        group: 'rails', shape: { topScaleX: 0.96, topScaleZ: 0.68 },
+      }),
       greeble('sternMount', 'prism', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.36], 'bareMetal', {
         plan: 'hexagon', capSlot: 'grille', group: 'sternGun',
       }),
@@ -1213,10 +1233,10 @@ function pactShip(o: PactShipOpts): UnitMassList {
   }
 
   masses.push(
-    slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.46, hullH * 0.74, -L * 0.02], { mirrorX: true }),
-    slab('bridgeBand', [0.08, superH * 0.44, superL * 0.76], [W * 0.33, superY, superZ], { mirrorX: true }),
-    slab('bridgeCap', [W * 0.34, 0.08, superL * 0.53], [0, superY + superH * 0.5, superZ]),
-    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, deckY, L * 0.10]),
+    slab('hullStripe', [0.08, hullH * 0.28 * teamScale, L * 0.70 * teamScale], [W * 0.46, hullH * 0.74, -L * 0.02], { mirrorX: true }),
+    slab('bridgeBand', [0.08, superH * 0.44 * teamScale, superL * 0.76 * teamScale], [W * 0.33, superY, superZ], { mirrorX: true }),
+    slab('bridgeCap', [W * 0.34 * teamScale, 0.08, superL * 0.53 * teamScale], [0, superY + superH * 0.5, superZ]),
+    slab('deckPatch', [W * 0.52 * teamScale, 0.08, L * 0.16 * teamScale], [0, deckY, L * 0.10]),
   );
   // Aft on a warship, where the deck is clear. On a lighter that patch of deck
   // is under the bridge, so it moves forward into the well instead.
@@ -1282,22 +1302,47 @@ function pactFlyer(key: string, name: string, L: number, S: number, H: number): 
         topScaleX: 0.72, topScaleZ: 0.92, shear: -L * 0.020,
       },
     }),
-    primary('aftBoom', 'box', [S * 0.16, fuseH * 0.78, L * 0.48], [0, fuseY - fuseH * 0.04, -L * 0.26], 'paintMed', {
-      taper: [0.62, 0.58, -L * 0.06],
+    primary('aftBoom', 'planPrism', [S * 0.16, fuseH * 0.78, L * 0.48], [0, fuseY - fuseH * 0.04, -L * 0.26], 'paintMed', {
+      capSlot: 'paintSmall',
+      shape: {
+        plan: hexPlan(S * 0.16, L * 0.48),
+        topScaleX: 0.68, topScaleZ: 0.74,
+        bottomScaleX: 0.88, bottomScaleZ: 0.92,
+        shear: -L * 0.055,
+      },
     }),
     // Swept trapezoidal wing. The rotation is what makes it a wing and not a
     // plank, and it is also what takes its axis-aligned surface fraction to 0.
-    primary('wing', 'box', [S * 0.42, H * 0.10, L * 0.32], [S * 0.26, wingY, -L * 0.06], 'paintLarge', {
-      mirrorX: true, rot: [0, -0.30, 0.12], taper: [0.66, 0.58, 0],
+    primary('wing', 'planPrism', [S * 0.42, H * 0.10, L * 0.34], [S * 0.26, wingY, -L * 0.06], 'paintLarge', {
+      mirrorX: true, rot: [0, -0.30, 0.12], capSlot: 'paintMed',
+      shape: {
+        plan: [
+          [-S * 0.21, -L * 0.17], [S * 0.21, -L * 0.06],
+          [S * 0.21, L * 0.17], [-S * 0.21, L * 0.06],
+        ],
+        topScaleX: 0.92, topScaleZ: 0.94,
+        bottomScaleX: 1.02, bottomScaleZ: 1.00,
+      },
     }),
-    primary('fin', 'box', [0.14, H * 0.30, L * 0.20], [S * 0.16, H - H * 0.15, -L * 0.40], 'paintMed', {
-      mirrorX: true, rot: [0, 0, 0.28], taper: [0.66, 0.52, -L * 0.04],
+    primary('fin', 'planPrism', [H * 0.30, 0.15, L * 0.21], [S * 0.16, H - H * 0.15, -L * 0.40], 'paintMed', {
+      mirrorX: true, rot: [0, 0, 1.24], capSlot: 'paintSmall',
+      shape: {
+        plan: [
+          [-H * 0.15, -L * 0.105], [H * 0.15, -L * 0.040],
+          [H * 0.15, L * 0.105], [-H * 0.15, L * 0.040],
+        ],
+        topScaleX: 0.90, topScaleZ: 0.92,
+        bottomScaleX: 1.02, bottomScaleZ: 1.00,
+      },
     }),
   ];
 
   masses.push(
-    greeble('nose', 'lathe', [S * 0.18, L * 0.22, fuseH * 0.90], [0, fuseY, L * 0.56], 'paintMed', {
-      profile: 'cone', segments: 12, topRadius: 0.20, rot: [-Math.PI * 0.5, 0, 0], group: 'nose',
+    // The legacy cone pointed aft and floated beyond the forebody. Positive
+    // quarter-turn points its narrow end forward; this anchor buries the wide
+    // root in the blended body and carries the tip to 0.52 L.
+    greeble('nose', 'lathe', [S * 0.18, L * 0.20, fuseH * 0.90], [0, fuseY, L * 0.42], 'paintMed', {
+      profile: 'cone', segments: 12, topRadius: 0.20, rot: [Math.PI * 0.5, 0, 0], group: 'nose',
     }),
     greeble('canopy', 'lathe', [S * 0.15, fuseH * 0.42, L * 0.24], [0, fuseY + fuseH * 0.42, L * 0.20], 'glass', {
       profile: 'dome', segments: 12, group: 'canopy',
@@ -1306,14 +1351,18 @@ function pactFlyer(key: string, name: string, L: number, S: number, H: number): 
     greeble('intake', 'prism', [S * 0.10, fuseH * 0.42, L * 0.16], [S * 0.13, fuseY - fuseH * 0.10, L * 0.06], 'grille', {
       mirrorX: true, plan: 'hexagon', capSlot: 'grille', group: 'intakes',
     }),
-    greeble('skid', 'box', [S * 0.07, H * 0.12, L * 0.12], [S * 0.12, fuseY - fuseH * 0.5, -L * 0.02], 'paintTiny', {
-      mirrorX: true, group: 'skids',
+    greeble('skid', 'taperedBox', [S * 0.07, H * 0.12, L * 0.12], [S * 0.12, fuseY - fuseH * 0.5, -L * 0.02], 'paintTiny', {
+      mirrorX: true, group: 'skids', shape: { topScaleX: 0.72, topScaleZ: 0.66, shear: -0.03 },
     }),
-    greeble('pylon', 'box', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', {
-      mirrorX: true, group: 'pylons',
+    greeble('pylon', 'taperedBox', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', {
+      mirrorX: true, group: 'pylons', shape: { topScaleX: 0.58, topScaleZ: 0.72 },
     }),
     greeble('pod', 'lathe', [0.26, L * 0.26, 0.26], [S * 0.24, wingY - H * 0.13, -L * 0.02], 'bareMetal', {
       mirrorX: true, profile: 'capsule', segments: 10, rot: [Math.PI * 0.5, 0, 0], group: 'pods',
+    }),
+    greeble('gunMuzzle', 'lathe', [0.17, L * 0.14, 0.17], [S * 0.24, wingY - H * 0.13, L * 0.03], 'bareMetal', {
+      mirrorX: true, profile: 'cyl', segments: 10, topRadius: 0.72,
+      rot: [Math.PI * 0.5, 0, 0], group: 'pods',
     }),
     greeble('thruster', 'lathe', [S * 0.14, 0.26, S * 0.14], [0, fuseY, -L * 0.52], 'bareMetal', {
       profile: 'cyl', segments: 12, topRadius: 0.82, rot: [Math.PI * 0.5, 0, 0], group: 'thruster',
