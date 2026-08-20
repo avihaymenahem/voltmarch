@@ -218,14 +218,15 @@ describe('structure tonal hierarchy', () => {
 });
 
 describe('the mass-seam term that `cavityVertexTint` always promised', () => {
-  it('darkens the top half of a building, where the ground ramp is saturated', () => {
+  it('preserves a readable value range across the upper half', () => {
     // The ground ramp reaches 1.0 at 55% of the structure's height and stays
     // there. So before the seam term, an upward- or sideways-facing vertex
     // above that line carried EXACTLY 1.0 or 1.06 and nothing else — the tint
     // was a function of world height and normal alone, and both were maxed out.
-    // Any value BELOW 1.0 up there can only have come from a mass's own
-    // footline, which is the whole claim. Both directions are asserted, so a
-    // seam term that merely darkened everything would fail too.
+    // Primary masses now deliberately sit below full-value applied trim, so an
+    // absolute 1.0 threshold would confuse the broad tonal hierarchy with seam
+    // AO. Measure each model relative to its own brightest upper vertex instead:
+    // the upper assembly must contain both a highlight band and a darker band.
     // Counted across the roster rather than asserted per structure, and the
     // exception is real rather than a fudge: a model whose whole upper half is
     // ONE tall mass (`allied_aa`'s mast, `soviet_tesla`'s column) has its seam
@@ -239,11 +240,16 @@ describe('the mass-seam term that `cavityVertexTint` always promised', () => {
       const nor = g.getAttribute('normal');
       const c = tints(g);
       const cut = b.model.bounds[1] * 0.55;
+      let upperMax = 0;
+      for (let i = 0; i < c.length; i++) {
+        if (pos.getY(i) < cut || nor.getY(i) < -0.4) continue;
+        upperMax = Math.max(upperMax, c[i]);
+      }
       let dark = 0, bright = 0;
       for (let i = 0; i < c.length; i++) {
         if (pos.getY(i) < cut) continue;
         if (nor.getY(i) < -0.4) continue;          // an underside is the OLD term
-        if (c[i] < 0.99) dark++; else bright++;
+        if (c[i] < upperMax * 0.94) dark++; else bright++;
       }
       if (dark + bright === 0) continue;
       evaluated++;

@@ -2916,7 +2916,7 @@ export const UNIT_GREEBLE = {
    * This is a vertex tint, not a second material or a grime layer: it creates
    * the broad 5-7 colour-block hierarchy that survives at gameplay zoom.
    */
-  primaryMassTint: 0.90,
+  primaryMassTint: 0.86,
 } as const;
 
 /**
@@ -5565,7 +5565,7 @@ export const BUILDING_GREEBLE = {
    * Recess the large architectural volumes behind full-value trim, armour and
    * faction slabs. Pads are ground and explicitly do not receive this tint.
    */
-  primaryMassTint: 0.94,
+  primaryMassTint: 0.90,
   /** Rivet pitch in atlas px. Bible SOVIET-6: 10-14 px at reference scale. */
   rivetPitchPx: 11,
   /** Deck bolts are sparser than hull rivets. */
