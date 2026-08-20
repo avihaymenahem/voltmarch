@@ -113,6 +113,7 @@ import {
 } from './MassList';
 import { createUnitMaterial, specForPalette, viewWeight } from './UnitFactory';
 import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR } from './structure-anim';
+import { applyStructureRim } from './structure-rim';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -836,7 +837,7 @@ const STRUCTURE_CLIP_FRAGMENT = `
  * its own `MeshDepthMaterial` for the shadow map and that material never ran
  * this `onBeforeCompile`.
  */
-function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
+function applyStructureShader(mat: THREE.MeshPhysicalMaterial, silhouetteRim: boolean): void {
   const S = STRUCTURE_ANIM;
   const SLIN = STRUCTURE_ANIM_LINEAR;
   mat.onBeforeCompile = (shader) => {
@@ -849,6 +850,7 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
     // daylight inside the fog. Sampling here gives it FOG_EXPLORED_LEVEL, hence
     // exactly the FOG_EXPLORED_ALPHA tint the carpet used to lay over it.
     applyShroudTint(shader);
+    if (silhouetteRim) applyStructureRim(shader);
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>${STRUCTURE_ANIM_PARS}
@@ -916,7 +918,11 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   // Every value is identical — `f()` prints them exactly as before — but the
   // tuning constants that used to be typed inline are now interpolated, so a
   // handful of literals gained trailing zeroes and the SOURCE changed again.
-  mat.customProgramCacheKey = () => 'ra3.structure.v4';
+  // v5: structure bodies gained a geometry-normal silhouette lift. Pads keep a
+  // separate key because they are ground and deliberately omit that branch.
+  mat.customProgramCacheKey = () => silhouetteRim
+    ? 'ra3.structure.rim.v5'
+    : 'ra3.structure.pad.v5';
   mat.needsUpdate = true;
 }
 
@@ -1081,7 +1087,7 @@ export function createStructureMaterial(
   mat.clearcoat = c.clearcoat;
   mat.clearcoatRoughness = c.clearcoatRoughness;
   mat.envMapIntensity = c.envMapIntensity;
-  applyStructureShader(mat);
+  applyStructureShader(mat, true);
   return mat;
 }
 
@@ -1096,7 +1102,7 @@ export function createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Mesh
   mat.clearcoat = 0;
   mat.clearcoatRoughness = 1;
   mat.envMapIntensity = 0.35;
-  applyStructureShader(mat);
+  applyStructureShader(mat, false);
   return mat;
 }
 

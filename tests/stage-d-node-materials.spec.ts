@@ -31,9 +31,10 @@ import type { Node } from 'three/webgpu';
 import { Fn } from 'three/tsl';
 import { BUILDING_ANIM, PROP_MATERIAL, SCATTER_WIND, UNIT_MATERIAL } from '../src/core/config';
 import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR } from '../src/art/structure-anim';
-import { createStructureNodeMaterial } from '../src/art/StructureNodeMaterial';
+import { createPadNodeMaterial, createStructureNodeMaterial } from '../src/art/StructureNodeMaterial';
 import { createUnitNodeMaterial } from '../src/art/UnitNodeMaterial';
 import { UNIT_RIM_NODE_MARKER } from '../src/art/unit-rim-nodes';
+import { STRUCTURE_RIM_NODE_MARKER } from '../src/art/structure-rim-nodes';
 import { createPropNodeMaterial } from '../src/world/PropNodeMaterial';
 import { PROP_WIND } from '../src/world/prop-wind';
 import { DITHER_SHIFT_LITERAL } from '../src/render/dither-nodes';
@@ -476,6 +477,18 @@ describe('the unit node material', () => {
 });
 
 describe('the structure node material', () => {
+  it('lifts the geometry silhouette without lighting the foundation pad', () => {
+    const structure = createStructureNodeMaterial(fakeAtlas(), 'structure.rim');
+    const pad = createPadNodeMaterial(fakeAtlas(), 'structure.pad');
+    const structureFragment = compile(structure, 'glsl').fragment;
+    const padFragment = compile(pad, 'glsl').fragment;
+    expect(structureFragment).toContain(STRUCTURE_RIM_NODE_MARKER);
+    expect(structureFragment).toMatch(/normalViewGeometry/);
+    expect(padFragment).not.toContain(STRUCTURE_RIM_NODE_MARKER);
+    structure.dispose();
+    pad.dispose();
+  });
+
   it('discards the part of the structure still underground', () => {
     /*
      * The construction rise IS the discard: `vRaClip < 0.0` is what makes a

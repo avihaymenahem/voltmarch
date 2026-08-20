@@ -5587,6 +5587,19 @@ export const BUILDING_GREEBLE = {
 } as const;
 
 /**
+ * Scene-light response that belongs to the assembled structure rather than to
+ * its generated atlas. Buildings use a quieter, tighter silhouette lift than
+ * units: their larger screen footprint already carries readable planes, while
+ * the lift only needs to keep a dark roofline from merging into trees or a
+ * neighbouring structure. Foundation pads deliberately do not use it.
+ */
+export const STRUCTURE_MATERIAL = {
+  rimColor: '#A9CBE4',
+  rimStrength: 0.10,
+  rimPower: 4.0,
+} as const;
+
+/**
  * GEOMETRY LANGUAGE for structures. Every number is bible 5.7.
  */
 export const BUILDING_GEOMETRY = {

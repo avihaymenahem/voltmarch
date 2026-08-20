@@ -47,6 +47,7 @@ import { STRUCTURE_COATS, buildingTime, defaultCoat, type StructureCoat } from '
 import { configureUnitNodeBase } from './UnitNodeMaterial';
 import { assertUnitMaterialRuling } from './UnitFactory';
 import type { GreebleAtlas } from './Greeble';
+import { structureRim } from './structure-rim-nodes';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -263,6 +264,8 @@ const structureEmissive = Fn(([base]: [Vec3N]) => {
  * ========================================================================== */
 
 class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
+  constructor(private readonly silhouetteRim: boolean) { super(); }
+
   override setupPosition(builder: NodeBuilder): Vec3N {
     applyStructureVertex();
     const position = super.setupPosition(builder) as Vec3N;
@@ -271,7 +274,8 @@ class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
   }
 
   override setupOutput(builder: NodeBuilder, outputNode: Vec4N): Vec4N {
-    const out = super.setupOutput(builder, shroudTint(outputNode)) as Vec4N;
+    const lit = this.silhouetteRim ? structureRim(outputNode) : outputNode;
+    const out = super.setupOutput(builder, shroudTint(lit)) as Vec4N;
     return this.dithering === true ? ditherOutput(out) : out;
   }
 }
@@ -298,9 +302,9 @@ class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
  * `castShadowPositionNode` carries both — see `STAGE_D_TSL_GAPS` #1.
  */
 export function createStructureNodeMaterial(
-  atlas: GreebleAtlas, name: string, coat?: StructureCoat,
+  atlas: GreebleAtlas, name: string, coat?: StructureCoat, silhouetteRim = true,
 ): MeshPhysicalNodeMaterial {
-  const mat = new StructureStandardNodeMaterial();
+  const mat = new StructureStandardNodeMaterial(silhouetteRim);
   mat.name = name;
   configureUnitNodeBase(mat, atlas);
 
@@ -364,7 +368,7 @@ export function createStructureNodeMaterial(
 export function createPadNodeMaterial(
   atlas: GreebleAtlas, name: string,
 ): MeshPhysicalNodeMaterial {
-  const mat = createStructureNodeMaterial(atlas, name);
+  const mat = createStructureNodeMaterial(atlas, name, undefined, false);
   mat.clearcoat = 0;
   mat.clearcoatRoughness = 1;
   mat.envMapIntensity = 0.35;
