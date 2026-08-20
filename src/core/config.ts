@@ -285,6 +285,20 @@ export const STOREY = 3.2;
  */
 export const AUTO_BASE_APRON_RADIUS = 52;
 
+/**
+ * Prop-free core around an MCV opening.
+ *
+ * An undeployed opening is not an automatically generated base. Reusing the
+ * 52 m compound apron above erased more than 8,400 m² of dressing around a
+ * single vehicle and left the entire first camera frame as an empty lawn.
+ * Eighteen metres keeps tree crowns off the deployer and leaves one readable
+ * build-cell buffer around its future 3x3 yard, while the per-unit exclusions
+ * in `world/scatter.system.ts` preserve the infantry and armour egress lane.
+ * Scatter is non-blocking and structure placement fells it, so the surrounding
+ * ring remains buildable even though it no longer looks sterile.
+ */
+export const MCV_START_SCATTER_CLEAR_RADIUS = 18;
+
 /** FROZEN building footprints (cells) and heights (metres). */
 export const BUILDING_DIMENSIONS = {
   conYard:     { w: 3, h: 3, height: 11.0 },  // crane arm roofline

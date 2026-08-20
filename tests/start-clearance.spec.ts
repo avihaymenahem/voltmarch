@@ -46,7 +46,9 @@ import { describe, expect, it } from 'vitest';
 
 import { World } from '../src/core/world';
 import { EntityFlag, EntityKind, Faction } from '../src/core/types';
-import { CELL } from '../src/core/config';
+import {
+  AUTO_BASE_APRON_RADIUS, CELL, MCV_START_SCATTER_CLEAR_RADIUS,
+} from '../src/core/config';
 import {
   FALLBACK_PROPS, START_CLEAR_RADIUS, START_ESCORT_CLEAR_RADIUS,
   buildScenario, clearScenario, clearDefBindingCache, resolveDefBinding,
@@ -128,6 +130,16 @@ describe('the reserved radius is derived, not guessed', () => {
     // correct; equal or larger would mean one of the two numbers is unconsidered.
     expect(START_ESCORT_CLEAR_RADIUS).toBeGreaterThan(maxPropRadius());
     expect(START_ESCORT_CLEAR_RADIUS).toBeLessThan(START_CLEAR_RADIUS);
+  });
+
+  it('dresses an MCV opening without crowding its deploy core', () => {
+    // The instanced layer is visual-only and is felled when a structure lands,
+    // so it needs a readable buffer rather than the whole procedural-base
+    // compound. Guard both sides: enough room for the hard entity-prop safety
+    // radius, but decisively smaller than the 52 m base apron that caused the
+    // sterile opening.
+    expect(MCV_START_SCATTER_CLEAR_RADIUS).toBeGreaterThan(START_CLEAR_RADIUS);
+    expect(MCV_START_SCATTER_CLEAR_RADIUS).toBeLessThan(AUTO_BASE_APRON_RADIUS * 0.5);
   });
 });
 

@@ -40,7 +40,8 @@
 import { defineSystem } from '../core/loop';
 import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '../core/types';
 import {
-  AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS, SCATTER_SEED,
+  AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS,
+  MCV_START_SCATTER_CLEAR_RADIUS, SCATTER_SEED,
 } from '../core/config';
 import { clamp, Rng, TAU } from '../core/math';
 import { ctx } from '../game/context';
@@ -113,11 +114,17 @@ export default defineSystem({
      * deploy into, a harvester needs a clear run to the ore, and the build
      * ghost must not be sitting in a hedge.                                  */
 
-    // One shared procedural-base apron for every world-dressing layer. The
-    // road router already protects these discs; without the same mask here its
-    // newly clear lanes simply filled with instanced trees on the next phase.
+    // A standing procedural base needs the full 52 m compound apron shared
+    // with the road router. An MCV opening emphatically does not: applying that
+    // radius to one vehicle made the whole first camera frame a bald disc.
+    // Keep only the deploy core clear for MCV starts; the entity exclusions
+    // below extend a clean lane through the starting infantry and armour. The
+    // annulus outside those functional pockets is intentionally dressed.
+    const startApron = plan.start === 'mcv'
+      ? MCV_START_SCATTER_CLEAR_RADIUS
+      : AUTO_BASE_APRON_RADIUS;
     for (const p of plannedStartPoints()) {
-      scatter.addExclusion(p.x, p.z, AUTO_BASE_APRON_RADIUS);
+      scatter.addExclusion(p.x, p.z, startApron);
     }
 
     const store = world.store;
