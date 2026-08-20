@@ -305,6 +305,14 @@ function outriggerGear(hullW: number, gearH: number, length: number, wheels: num
           mirrorX: true, rot: [0, 0, Math.PI * 0.5], group: 'roadWheels',
           shape: { segments: 14, rTop: 1, capChamfer: 0.05 },
         }),
+      // A visible brake rotor turns the old black disc + coloured button into
+      // a layered mechanical wheel. It sits just inside the team hub and leaves
+      // a broad rubber shoulder around its rim.
+      greeble(`rotor${i}`, 'lathe', [wheelDia * 0.72, wheelT * 1.04, wheelDia * 0.72],
+        [wheelX, wheelR, z], 'bareMetal', {
+          mirrorX: true, rot: [0, 0, Math.PI * 0.5], group: 'roadWheels',
+          profile: 'disc', segments: 12,
+        }),
       /*
        * THE TEAM-COLOURED HUB, and it is not decoration.
        *
@@ -331,6 +339,23 @@ function outriggerGear(hullW: number, gearH: number, length: number, wheels: num
           shape: { segments: 12, rTop: 1, capChamfer: 0.04 },
         }),
     );
+    // One triangular locking plate is the three-spoke silhouette as a single
+    // purpose-shaped part. It stands proud of the coloured hub while leaving
+    // three arcs of violet visible around it.
+    const lockR = wheelDia * 0.13;
+    out.push(greeble(`lock${i}`, 'plate',
+      [lockR * 1.72, wheelT * 1.22, lockR * 1.50], [wheelX, wheelR, z], 'bareMetal', {
+        mirrorX: true, rot: [0, 0, Math.PI * 0.5], group: 'roadWheels',
+        shape: {
+          outline: [
+            [0, lockR],
+            [-lockR * 0.866, -lockR * 0.5],
+            [lockR * 0.866, -lockR * 0.5],
+          ],
+          thickness: wheelT * 1.22,
+          bevel: 0.014,
+        },
+      }));
   }
   // The transverse tie beam: the one piece that makes the gear read as a
   // chassis rather than as loose wheels. It shares the swing arms' group

@@ -315,7 +315,7 @@ describe('the hub plane stands proud of the band and clears the skirt', () => {
       expect(wheel.max[0], `${t.key}: wheel must not intersect the skirt`)
         .toBeLessThan(skirt.min[0]);
       // The skirt defines the outboard protrusion; see the R8 test below.
-      for (const g of ['band', 'wheel', 'sprocket', 'idler', 'roller', 'tooth']) {
+      for (const g of ['band', 'shoe', 'wheel', 'sprocket', 'idler', 'roller', 'tooth']) {
         const b = groupBox(t.fitted, g);
         if (b === null) continue;
         expect(b.max[0], `${t.key}: '${g}' must not out-reach the skirt`)
@@ -429,6 +429,23 @@ describe('the compliant track numbers survive the relayout', () => {
  * ========================================================================== */
 
 describe('the assembly is authored to the box it is given', () => {
+  it('models a continuous raised tread-shoe run without bright cap polygons', () => {
+    for (const t of TRACKED) {
+      const shoes = t.raw.polys.filter((p) => p.group === 'shoe');
+      expect(shoes.length, `${t.key}: raised shoe faces`).toBeGreaterThanOrEqual(150);
+      expect(shoes.length % 6, `${t.key}: each shoe is a closed six-face box`).toBe(0);
+      expect(shoes.every((p) => p.kind === 'side'), `${t.key}: shoes stay on the tread material`).toBe(true);
+
+      const band = box(t, 'band');
+      const shoe = box(t, 'shoe');
+      const wheel = box(t, 'wheel');
+      expect(shoe.max[0], `${t.key}: shoes stand proud of the smooth band`).toBeGreaterThan(band.max[0]);
+      expect(shoe.max[0], `${t.key}: shoes remain behind the wheel faces`).toBeLessThan(wheel.max[0]);
+      expect(shoe.min[1], `${t.key}: shoe relief stays inside the declared height`).toBeGreaterThanOrEqual(band.min[1] - 1e-9);
+      expect(shoe.max[1], `${t.key}: shoe relief stays inside the declared height`).toBeLessThanOrEqual(band.max[1] + 1e-9);
+    }
+  });
+
   it('the four layout fractions divide the footprint exactly', () => {
     const sum = UNIT_GEOMETRY.trackBandFraction
       + UNIT_GEOMETRY.trackHubProudFraction
@@ -465,15 +482,15 @@ describe('the assembly is authored to the box it is given', () => {
   });
 
   it('keeps the higher-resolution running gear inside its measured budget', () => {
-    // Still one merged mesh and one draw call per assembly. V3 deliberately
+    // Still one merged mesh and one draw call per assembly. V4 deliberately
     // spends more triangles on the highly visible stadium band, round wheels,
-    // sprockets and return rollers; exact counts prevent that approved spend
-    // becoming unmeasured future drift.
+    // sprockets, return rollers and raised tread shoes; exact counts prevent
+    // that approved spend becoming unmeasured future drift.
     const expected: Record<string, number> = {
-      allied_guardian: 1508, allied_ifv: 1508, allied_prism: 1508,
-      allied_harvester: 1676, allied_dozer: 1676,
-      soviet_rhino: 1600, soviet_apocalypse: 1768, soviet_v4: 1508,
-      soviet_harvester: 1676, soviet_dozer: 1676,
+      allied_guardian: 2084, allied_ifv: 2012, allied_prism: 2060,
+      allied_harvester: 2108, allied_dozer: 2060,
+      soviet_rhino: 2176, soviet_apocalypse: 2344, soviet_v4: 2060,
+      soviet_harvester: 2108, soviet_dozer: 2060,
     };
     let total = 0;
     for (const t of TRACKED) {
@@ -481,6 +498,6 @@ describe('the assembly is authored to the box it is given', () => {
       expect(t.fitted.triangles, `${t.key}: fitting must not add geometry`).toBe(t.raw.triangles);
       total += t.raw.triangles;
     }
-    expect(total).toBe(16104);
+    expect(total).toBe(21072);
   });
 });

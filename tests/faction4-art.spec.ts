@@ -207,7 +207,9 @@ describe('the Reclamation — running gear', () => {
     const arms = list.masses.filter((m) => m.name.startsWith('swing'));
     const tyres = list.masses.filter((m) => m.name.startsWith('wheel'));
     const hubs = list.masses.filter((m) => m.name.startsWith('hub'));
-    return { arms, tyres, hubs };
+    const rotors = list.masses.filter((m) => m.name.startsWith('rotor'));
+    const locks = list.masses.filter((m) => m.name.startsWith('lock'));
+    return { arms, tyres, hubs, rotors, locks };
   };
   const wheeled = RECLAIM_UNIT_MASS_LISTS.filter((l) => gearOf(l).tyres.length > 0);
 
@@ -271,6 +273,27 @@ describe('the Reclamation — running gear', () => {
         // is visible on the outboard face instead of being swallowed.
         expect(hub.size[0]).toBeLessThan(tyre.size[0]);
         expect(hub.size[1]).toBeGreaterThan(tyre.size[1]);
+      }
+    }
+  });
+
+  it('layers a metal rotor and proud three-vane lock into every road wheel', () => {
+    for (const list of wheeled) {
+      const { tyres, hubs, rotors, locks } = gearOf(list);
+      expect(rotors.length, `${list.key}: one brake rotor per tyre`).toBe(tyres.length);
+      expect(locks.length, `${list.key}: one three-vane lock per tyre`).toBe(tyres.length);
+      for (let i = 0; i < tyres.length; i++) {
+        const tyre = tyres[i];
+        const rotor = rotors[i];
+        const hub = hubs[i];
+        const lock = locks[i];
+        expect(rotor.slot, `${list.key} rotor${i} stays unpainted metal`).toBe('bareMetal');
+        expect(rotor.size[0]).toBeLessThan(tyre.size[0]);
+        expect(rotor.size[0]).toBeGreaterThan(hub.size[0]);
+        expect(rotor.size[1], `${list.key} rotor${i} remains behind the hub face`).toBeLessThan(hub.size[1]);
+        expect(lock.slot, `${list.key} locking plate stays mechanical metal`).toBe('bareMetal');
+        expect(lock.primitive, `${list.key} lock${i} is purpose-shaped geometry`).toBe('plate');
+        expect(lock.size[1], `${list.key} locking plate stands proud of the hub`).toBeGreaterThan(hub.size[1]);
       }
     }
   });

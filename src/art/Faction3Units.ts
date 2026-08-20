@@ -308,8 +308,9 @@ function wedgePlan(w: number, d: number): Plan {
  * Pact answers with one OCTAGONAL prism wider than the hull above it, its walls
  * slotted as `grille` so the intake plenum reads as dark plant against the bone
  * body — the same tonal job the near-black track links do, with none of the
- * same shape. Two lift-fan discs sit inboard of it so the skirt reads as
- * machinery rather than as a plinth.
+ * same shape. Two lift-fan rows break through the outboard shoulder of the
+ * plenum, where their rotors and blades remain visible from the tactical camera
+ * instead of being buried under the hull cap.
  *
  * `outboard` is the skirt half-width over the hull half-width. 1.22 puts the
  * turret/hull width ratio at 1.02/1.22 = 0.84, dead centre of R8's 0.75-0.95.
@@ -332,14 +333,38 @@ function plenumSkirt(hullWidth: number, skirtHeight: number, length: number, fan
       shape: { plan: octPlan(w, length), topScaleX: 0.84, topScaleZ: 0.88 },
     }),
   ];
-  const r = skirtHeight * 1.30;
+  // `r` is the authored DISC DIAMETER (lathe sizes are diameters). Keep the fan
+  // inside the skirt, but move its centre far enough outboard that the hull no
+  // longer covers the whole intake from above.
+  const r = Math.min(skirtHeight * 1.30, hullWidth * 0.20);
+  const fanX = hullWidth * 0.48;
+  const fanR = r * 0.5;
   for (let i = 0; i < fans; i++) {
     const z = -length * 0.34 + (length * 0.68 * i) / Math.max(1, fans - 1);
-    out.push(greeble(`fan${i}`, 'lathe', [r, skirtHeight * 0.42, r], [hullWidth * 0.36, skirtHeight * 0.30, z], 'bareMetal', {
+    out.push(greeble(`fan${i}`, 'lathe', [r, skirtHeight * 0.42, r], [fanX, skirtHeight * 0.90, z], 'bareMetal', {
       // The fan run is ONE readable object, so all of them share a group and
       // cost a single slot against bible 5.3's 6-12 detail budget.
       mirrorX: true, profile: 'disc', segments: 18, group: 'liftFans',
     }));
+    // One triangular impeller plate gives the intake three broad vanes as one
+    // coherent object. The negative-space metal rim around it does more visual
+    // work than twelve tiny boxes, while keeping the whole vehicle under the
+    // per-hull triangle budget.
+    const bladeRadius = fanR * 0.74;
+    out.push(greeble(`fan${i}.rotor`, 'plate',
+      [bladeRadius * 1.72, Math.max(0.04, skirtHeight * 0.08), bladeRadius * 1.50],
+      [fanX, skirtHeight * 1.12, z], 'grille', {
+        mirrorX: true, rot: [0, 0.22, 0], group: 'liftFans',
+        shape: {
+          outline: [
+            [0, bladeRadius],
+            [-bladeRadius * 0.866, -bladeRadius * 0.5],
+            [bladeRadius * 0.866, -bladeRadius * 0.5],
+          ],
+          thickness: Math.max(0.04, skirtHeight * 0.08),
+          bevel: 0.018,
+        },
+      }));
   }
   return out;
 }

@@ -331,6 +331,35 @@ describe('the Meridian Pact — art', () => {
     }
   });
 
+  it('exposes one three-vane rotor above every plenum lift-fan disc', () => {
+    let equipped = 0;
+    for (const l of MERIDIAN_UNIT_MASS_LISTS) {
+      const skirt = l.masses.find((m) => m.name === 'skirt');
+      const fans = l.masses.filter((m) => /^fan\d+$/.test(m.name));
+      const rotors = l.masses.filter((m) => /^fan\d+\.rotor$/.test(m.name));
+      if (fans.length === 0) continue;
+      equipped++;
+      expect(skirt, `${l.key}: fan discs need a plenum skirt`).toBeDefined();
+      expect(rotors.length, `${l.key}: one rotor plate per intake`).toBe(fans.length);
+      for (let i = 0; i < fans.length; i++) {
+        const fan = fans[i];
+        const rotor = rotors[i];
+        expect(fan.group).toBe('liftFans');
+        expect(rotor.group).toBe('liftFans');
+        expect(rotor.slot, `${l.key} fan${i}: vanes read dark against the metal rim`).toBe('grille');
+        expect(rotor.primitive, `${l.key} fan${i}: the impeller is real geometry`).toBe('plate');
+        expect(rotor.size[0], `${l.key} fan${i}: metal rim remains visible`).toBeLessThan(fan.size[0]);
+        expect(rotor.anchor[1] - rotor.size[1] * 0.5,
+          `${l.key} fan${i}: rotor must break through the plenum cap`)
+          .toBeGreaterThan(skirt!.anchor[1] + skirt!.size[1] * 0.5);
+        expect(fan.anchor[0] + fan.size[0] * 0.5,
+          `${l.key} fan${i}: intake must stay inside the skirt shoulder`)
+          .toBeLessThanOrEqual(skirt!.size[0] * 0.5 + 1e-9);
+      }
+    }
+    expect(equipped, 'the roster has no plenum-equipped vehicles to check').toBeGreaterThan(0);
+  });
+
   it('builds every structure inside its bands', () => {
     const palettes = {
       structure: MERIDIAN_STRUCTURE_PALETTE,

@@ -1581,6 +1581,28 @@ export interface TrackAssemblyParams {
 }
 
 /**
+ * One deliberately simple track shoe. The six broad faces all stay `side`
+ * polygons so the shoe samples the same dark tread tile as the rubber band;
+ * letting the end caps become `cap` would turn every link into a bright metal
+ * domino. It is kept unchamfered because the repeated silhouette is the detail
+ * here, and six quads let us spend the triangle budget on enough links to read
+ * as a continuous caterpillar run.
+ */
+function trackShoeMesh(w: number, h: number, d: number): ShapeMesh {
+  const x = w * 0.5, y = h * 0.5, z = d * 0.5;
+  const b = new ShapeBuilder();
+  const kind: FaceKind = 'side';
+  const group = 'shoe';
+  b.quad([x, -y, -z], [x, -y, z], [x, y, z], [x, y, -z], [1, 0, 0], kind, undefined, group);
+  b.quad([-x, -y, z], [-x, -y, -z], [-x, y, -z], [-x, y, z], [-1, 0, 0], kind, undefined, group);
+  b.quad([-x, y, -z], [x, y, -z], [x, y, z], [-x, y, z], [0, 1, 0], kind, undefined, group);
+  b.quad([-x, -y, z], [x, -y, z], [x, -y, -z], [-x, -y, -z], [0, -1, 0], kind, undefined, group);
+  b.quad([x, -y, z], [-x, -y, z], [-x, y, z], [x, y, z], [0, 0, 1], kind, undefined, group);
+  b.quad([-x, -y, -z], [x, -y, -z], [x, y, -z], [-x, y, -z], [0, 0, -1], kind, undefined, group);
+  return b.build();
+}
+
+/**
  * PROPER TRACKED RUNNING GEAR, instead of a flat slab on the side of a hull.
  *
  * A stadium-section track band (so the ends are ROUND, which is the thing a flat
@@ -1628,6 +1650,51 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   });
   // plan-space (x, z) -> world (z, y); extrusion axis y -> world x.
   b.merge(bandMesh, compose(rotationY(Math.PI * 0.5), rotationX(-Math.PI * 0.5)));
+
+  // Raised, individually modelled tread shoes. The old band had a convincing
+  // stadium silhouette but a completely smooth sidewall, so in the game view
+  // it still read as a rubber conveyor belt. These links sit proud of the band
+  // but behind the hub and skirt planes, preserving the exact assembly AABB.
+  // Their cadence scales with the run length and remains deliberately coarse:
+  // this is tactical-camera relief, not sub-pixel texture noise.
+  const shoeRelief = Math.min(w * 0.055, w * UNIT_GEOMETRY.trackHubProudFraction * 0.78);
+  const shoeRadial = h * 0.105;
+  const straight = Math.max(0, len * 0.5 - h * 0.5);
+  const straightLength = straight * 2;
+  const straightShoes = Math.max(8, Math.round(straightLength / (h * 0.54)));
+  const shoePitch = straightLength / straightShoes;
+  const shoeAlong = shoePitch * 0.58;
+  const shoeX = bw * 0.5 + shoeRelief * 0.5;
+  const shoe = trackShoeMesh(shoeRelief, shoeRadial, shoeAlong);
+
+  // Straight upper and lower runs.
+  for (let i = 0; i < straightShoes; i++) {
+    const z = -straight + shoePitch * (i + 0.5);
+    b.merge(shoe, translation(shoeX, h * 0.5 - shoeRadial * 0.5, z));
+    b.merge(shoe, translation(shoeX, -h * 0.5 + shoeRadial * 0.5, z));
+  }
+
+  // Five links wrap each rounded end. Rotating the same small shoe around the
+  // stadium tangent creates a real articulated contour without changing the
+  // ten-facet band underneath it.
+  const arcShoes = 5;
+  // Inset by the shoe's half-diagonal, not merely half its radial thickness:
+  // once a link turns around the arc its long axis also contributes to the
+  // outer radius. This keeps every rotated corner within the band's height.
+  const shoeRadius = h * 0.5 - Math.hypot(shoeRadial, shoeAlong) * 0.5;
+  for (let i = 0; i < arcShoes; i++) {
+    const a = -Math.PI * 0.5 + ((i + 1) / (arcShoes + 1)) * Math.PI;
+    const y = Math.sin(a) * shoeRadius;
+    const dz = Math.cos(a) * shoeRadius;
+    b.merge(shoe, compose(
+      translation(shoeX, y, straight + dz),
+      rotationX(Math.PI * 0.5 - a),
+    ));
+    b.merge(shoe, compose(
+      translation(shoeX, y, -straight - dz),
+      rotationX(a - Math.PI * 0.5),
+    ));
+  }
 
   const wheels = Math.max(2, Math.round(p.wheels ?? 5));
   const sprocketR = h * 0.5 * (p.sprocketScale ?? 0.92);

@@ -226,14 +226,17 @@ describe('`tracks` is the only model that states a measured flat share', () => {
     }
   });
 
-  it('and models the flank area itself 1.5-2.1x short', () => {
+  it('and models the flank area itself 1.5-2.2x short', () => {
     // `2 * d * h` is the band's two faces and nothing else, so the wheels, the
     // sprocket, the idler, the rollers, the teeth and the skirt contribute no
     // area at all to the model. They are most of what a track run actually is.
     for (const s of TRACKS) {
       const ratio = meshFlank(s.mass, s.faction)!.total / modelFlank(s.mass, s.faction).total;
       expect(ratio, `${s.key} mesh/model flank area`).toBeGreaterThan(1.45);
-      expect(ratio, `${s.key} mesh/model flank area`).toBeLessThan(2.10);
+      // Raised tread shoes add real visible flank surface without changing the
+      // legacy closed-form estimate, so the approved upper bound moves from
+      // 2.10 to 2.20 while keeping the analytic undercount explicitly gated.
+      expect(ratio, `${s.key} mesh/model flank area`).toBeLessThan(2.20);
     }
   });
 
