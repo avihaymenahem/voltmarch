@@ -674,7 +674,7 @@ const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Veh
  * length that fits, and `TAB_LABELS` is still what the tooltip and the
  * `aria-label` say, so nothing that has to be read aloud got shortened.
  */
-const TAB_SHORT: readonly string[] = ['BLD', 'DEF', 'INF', 'VEH', 'PWR'];
+const TAB_SHORT: readonly string[] = ['BUILD', 'DEF', 'INF', 'VEH', 'POWER'];
 
 /**
  * The glyph a build cell draws.
@@ -974,7 +974,7 @@ export class ResourceStrip {
     this.creditsEl = credits;
     credits.appendChild(makeIcon('credits', 'vm-icon vm-res-icon'));
     const cBody = el('div', 'vm-res-body', credits);
-    label(cBody, 'vm-res-label', 'Credits  banked / stored');
+    label(cBody, 'vm-res-label', 'Credits');
     const cLine = el('div', 'vm-credit-line', cBody);
     this.creditsNode = label(cLine, 'vm-res-value vm-num', '0');
     this.capNode = label(cLine, 'vm-res-cap vm-num', '');
@@ -993,7 +993,7 @@ export class ResourceStrip {
     const power = el('div', 'vm-res vm-res-power', this.root);
     power.appendChild(makeIcon('bolt', 'vm-icon vm-res-icon'));
     const pBody = el('div', 'vm-res-body', power);
-    label(pBody, 'vm-res-label', 'Power  draw / supply');
+    label(pBody, 'vm-res-label', 'Power');
     const pLine = el('div', 'vm-power-line', pBody);
     const meter = el('div', 'vm-power', pLine);
     meter.setAttribute('role', 'meter');

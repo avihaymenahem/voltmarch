@@ -529,3 +529,684 @@
 @media (prefers-reduced-motion: reduce) {
   .vm-hud[data-layout='perimeter'] .vm-command { transition: none; }
 }
+
+/* ======================================================================= */
+/* Reference-fidelity skin                                                 */
+/* ======================================================================= */
+
+/*
+ * The composition above establishes where each system lives.  This section
+ * is the actual art direction pass: violet electro-luminescent rims, stepped
+ * armour silhouettes, restrained blue-black glass, larger display type and
+ * inset control wells.  It intentionally overrides the faction tint for HUD
+ * chrome; faction colour still remains on units, pips and the world overlay.
+ */
+.vm-hud[data-layout='perimeter'] {
+  --vm-top-h: calc(52 * var(--vm-u));
+  --vm-selection-h: calc(110 * var(--vm-u));
+  --vm-command-h: calc(80 * var(--vm-u));
+  --vm-obj-max-h: calc(220 * var(--vm-u));
+
+  --vm-accent: #a84cff !important;
+  --vm-accent-hi: #e0b8ff !important;
+  --vm-accent-lo: #542071 !important;
+  --vm-accent-rgb: 168, 76, 255 !important;
+  --vm-glass: rgba(3, 7, 17, 0.94);
+  --vm-glass-deep: rgba(2, 5, 13, 0.985);
+  --vm-fill-lift: rgba(34, 17, 55, 0.38);
+  --vm-rim: rgba(1, 3, 10, 0.98);
+  --vm-bevel-hi: rgba(202, 111, 255, 0.94);
+  --vm-bevel-lo: rgba(103, 44, 145, 0.82);
+  --vm-bevel-glow: rgba(168, 76, 255, 0.34);
+  --vm-hairline: rgba(180, 102, 230, 0.46);
+  --vm-hairline-soft: rgba(198, 205, 232, 0.15);
+  --vm-well: rgba(6, 9, 22, 0.88);
+  --vm-text: #f2eef8;
+  --vm-dim: #bdb6ca;
+  --vm-faint: #7e788a;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel {
+  background:
+    linear-gradient(115deg, rgba(50, 25, 72, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(12, 18, 34, 0.985), rgba(2, 5, 14, 0.97));
+  box-shadow:
+    0 calc(8 * var(--vm-u)) calc(26 * var(--vm-u)) rgba(0, 0, 0, 0.58),
+    inset 0 0 calc(22 * var(--vm-u)) rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(230, 194, 255, 0.06);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel::before {
+  background: rgba(19, 8, 28, 0.98);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel::after {
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 calc(1 * var(--vm-u)) rgba(226, 151, 255, 0.75))
+    drop-shadow(0 0 calc(4 * var(--vm-u)) rgba(147, 54, 208, 0.20));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel:not(.vm-resources) .vm-panel-edge {
+  display: block;
+  inset: calc(4 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel-edge::before,
+.vm-hud[data-layout='perimeter'] .vm-panel-edge::after {
+  width: calc(12 * var(--vm-u));
+  height: calc(12 * var(--vm-u));
+  border-color: rgba(214, 127, 255, 0.82);
+  opacity: 0.85;
+}
+
+/* The long top plate: a true outlined silhouette with a reserved centre bay. */
+.vm-hud[data-layout='perimeter'] .vm-resources {
+  top: calc(8 * var(--vm-u));
+  height: var(--vm-top-h);
+  background:
+    linear-gradient(90deg,
+      rgba(14, 19, 34, 0.985) 0%,
+      rgba(3, 7, 17, 0.985) 35%,
+      rgba(11, 8, 22, 0.99) 50%,
+      rgba(3, 7, 17, 0.985) 65%,
+      rgba(14, 19, 34, 0.985) 100%);
+  box-shadow:
+    0 calc(7 * var(--vm-u)) calc(18 * var(--vm-u)) rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(101, 43, 146, 0.5);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::before,
+.vm-hud[data-layout='perimeter'] .vm-resources::after {
+  clip-path: inherit;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources > .vm-res {
+  top: calc(8 * var(--vm-u));
+  height: calc(36 * var(--vm-u));
+  padding: 0 calc(14 * var(--vm-u));
+  border-left-color: rgba(182, 108, 222, 0.25);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-credits {
+  left: calc(22 * var(--vm-u));
+  width: calc(160 * var(--vm-u));
+}
+.vm-hud[data-layout='perimeter'] .vm-res-trend {
+  left: calc(182 * var(--vm-u));
+  width: calc(116 * var(--vm-u));
+}
+.vm-hud[data-layout='perimeter'] .vm-res-power {
+  left: calc(298 * var(--vm-u));
+  width: calc(236 * var(--vm-u));
+}
+.vm-hud[data-layout='perimeter'] .vm-res-clock {
+  right: calc(300 * var(--vm-u));
+  width: calc(98 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-base {
+  right: calc(90 * var(--vm-u));
+  width: calc(112 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-body {
+  justify-content: center;
+  gap: calc(3 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-label {
+  font-size: calc(8.5 * var(--vm-u));
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.14em;
+  color: #938b9e;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-value {
+  font-size: calc(16 * var(--vm-u));
+  font-weight: 600;
+  line-height: 1.15;
+  color: #f5f1f8;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-icon {
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+  color: #817b8b;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-credits .vm-res-icon {
+  color: #ffd21d;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-credit-line {
+  gap: calc(7 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-cap {
+  font-size: calc(9 * var(--vm-u));
+  color: #8d8797;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-power {
+  height: calc(9 * var(--vm-u));
+  gap: calc(2 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-power-seg {
+  width: calc(3.5 * var(--vm-u));
+  background: rgba(145, 150, 172, 0.20);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-power-seg.is-lit {
+  background: #c146ff;
+  box-shadow: 0 0 calc(3 * var(--vm-u)) rgba(193, 70, 255, 0.5);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-power-state {
+  padding: calc(3 * var(--vm-u)) calc(6 * var(--vm-u));
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Objectives: larger header, checkbox-led rows and a deliberate reading grid. */
+.vm-hud[data-layout='perimeter'] .vm-objectives {
+  width: calc(190 * var(--vm-u));
+  padding: calc(13 * var(--vm-u));
+  gap: calc(10 * var(--vm-u));
+  background:
+    linear-gradient(180deg, rgba(13, 17, 31, 0.98), rgba(3, 7, 16, 0.965));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-head {
+  min-height: calc(22 * var(--vm-u));
+  height: calc(22 * var(--vm-u));
+  padding: 0 0 calc(8 * var(--vm-u));
+  border-bottom: 1px solid rgba(177, 86, 224, 0.54);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-title {
+  font-size: calc(12 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-count {
+  font-size: calc(10 * var(--vm-u));
+  color: #d483ff;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-list {
+  gap: calc(11 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj {
+  min-height: calc(38 * var(--vm-u));
+  height: auto;
+  padding-left: calc(20 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
+  position: relative;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(1 * var(--vm-u));
+  width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
+  border: 1px solid rgba(186, 90, 232, 0.58);
+  background: rgba(54, 24, 72, 0.22);
+  box-shadow: inset 0 0 calc(4 * var(--vm-u)) rgba(168, 76, 255, 0.08);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj.is-done::before {
+  border-color: var(--vm-ok);
+  background: var(--vm-ok);
+  box-shadow: inset 0 0 0 calc(2 * var(--vm-u)) rgba(3, 7, 16, 0.9);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-top {
+  height: calc(13 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-name {
+  font-size: calc(10.5 * var(--vm-u));
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-desc {
+  min-height: calc(12 * var(--vm-u));
+  margin: 0;
+  font-size: calc(8.5 * var(--vm-u));
+  line-height: calc(11 * var(--vm-u));
+  color: #a59eac;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-bar {
+  height: calc(2 * var(--vm-u));
+  margin-top: calc(2 * var(--vm-u));
+  background: rgba(214, 208, 224, 0.12);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-fill {
+  background: linear-gradient(90deg, #a748e2, #de70ff);
+  box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(211, 92, 255, 0.48);
+}
+
+/* Production rail: connected tabs, framed two-column cards, readable metadata. */
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
+  height: min(calc(372 * var(--vm-u)), calc(100% - 202 * var(--vm-u)));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tabs {
+  height: calc(32 * var(--vm-u));
+  border: 0;
+  border-bottom: 1px solid rgba(178, 88, 224, 0.42);
+  background: rgba(3, 6, 15, 0.96);
+  clip-path: polygon(
+    calc(10 * var(--vm-u)) 0,
+    calc(100% - 10 * var(--vm-u)) 0,
+    100% calc(10 * var(--vm-u)),
+    100% 100%, 0 100%, 0 calc(10 * var(--vm-u))
+  );
+  box-shadow: inset 0 1px 0 rgba(207, 119, 255, 0.44);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab {
+  height: calc(32 * var(--vm-u));
+  padding: 0 calc(4 * var(--vm-u));
+  border-right: 1px solid rgba(182, 104, 221, 0.20);
+  background: rgba(5, 8, 18, 0.92);
+  clip-path: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab::after {
+  left: calc(4 * var(--vm-u));
+  right: calc(4 * var(--vm-u));
+  top: auto;
+  bottom: 0;
+  height: calc(2 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab.is-active {
+  color: #f7edff;
+  background:
+    linear-gradient(180deg, rgba(133, 53, 184, 0.55), rgba(74, 25, 104, 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(231, 174, 255, 0.54),
+    inset 0 0 calc(12 * var(--vm-u)) rgba(201, 94, 255, 0.18);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab-label {
+  font-size: calc(8.5 * var(--vm-u));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tools {
+  gap: calc(3 * var(--vm-u));
+  padding: 0 calc(4 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tool {
+  width: calc(18 * var(--vm-u));
+  height: calc(24 * var(--vm-u));
+  border-color: rgba(181, 100, 225, 0.18);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-body {
+  padding: calc(9 * var(--vm-u));
+  background:
+    linear-gradient(180deg, rgba(12, 15, 29, 0.985), rgba(3, 6, 15, 0.98));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-grid {
+  grid-auto-rows: calc(84 * var(--vm-u));
+  gap: calc(8 * var(--vm-u));
+  padding: calc(2 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot {
+  isolation: isolate;
+  border: 1px solid rgba(178, 153, 202, 0.46);
+  background:
+    radial-gradient(80% 70% at 50% 52%, rgba(129, 67, 163, 0.12), transparent 70%),
+    rgba(3, 6, 15, 0.88);
+  box-shadow:
+    inset 0 0 calc(12 * var(--vm-u)) rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot::after {
+  content: '';
+  position: absolute;
+  inset: calc(3 * var(--vm-u));
+  z-index: 4;
+  border-top: 1px solid rgba(193, 111, 231, 0.15);
+  border-left: 1px solid rgba(193, 111, 231, 0.10);
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot:hover,
+.vm-hud[data-layout='perimeter'] .vm-slot:focus-visible {
+  border-color: #c468f2;
+  background:
+    radial-gradient(80% 70% at 50% 52%, rgba(169, 76, 214, 0.22), transparent 72%),
+    rgba(8, 8, 20, 0.94);
+  box-shadow:
+    inset 0 0 calc(15 * var(--vm-u)) rgba(171, 66, 228, 0.13),
+    0 0 calc(8 * var(--vm-u)) rgba(155, 63, 211, 0.16);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-name {
+  top: calc(7 * var(--vm-u));
+  left: calc(7 * var(--vm-u));
+  right: calc(7 * var(--vm-u));
+  max-height: calc(18 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u));
+  font-weight: 600;
+  line-height: calc(9 * var(--vm-u));
+  letter-spacing: 0.045em;
+  color: #d8d0df;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-cameo {
+  inset: calc(24 * var(--vm-u)) calc(4 * var(--vm-u)) calc(16 * var(--vm-u));
+  width: calc(100% - 8 * var(--vm-u));
+  height: calc(100% - 40 * var(--vm-u));
+  object-fit: contain;
+  filter: saturate(1.18) brightness(1.15) contrast(1.04);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-icon {
+  top: 51%;
+  width: calc(26 * var(--vm-u));
+  height: calc(26 * var(--vm-u));
+  color: #bd73e1;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-cost,
+.vm-hud[data-layout='perimeter'] .vm-slot-eta {
+  bottom: calc(5 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u));
+  color: #d8d0df;
+  z-index: 5;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-key {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot-flag {
+  top: calc(25 * var(--vm-u));
+  left: calc(5 * var(--vm-u));
+  right: calc(5 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+  z-index: 6;
+  background: rgba(2, 4, 10, 0.76);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-brief {
+  height: calc(44 * var(--vm-u));
+  margin-top: calc(6 * var(--vm-u));
+  padding: calc(6 * var(--vm-u));
+  border: 1px solid rgba(174, 94, 215, 0.24);
+  background: rgba(3, 6, 14, 0.74);
+}
+
+/* Minimap: map-first, with the legend floating as instrumentation. */
+.vm-hud[data-layout='perimeter'] .vm-dock-map {
+  padding: calc(8 * var(--vm-u));
+  background:
+    linear-gradient(145deg, rgba(20, 17, 35, 0.985), rgba(2, 6, 14, 0.98));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map .vm-dock-head {
+  position: absolute;
+  top: calc(10 * var(--vm-u));
+  left: calc(11 * var(--vm-u));
+  right: calc(11 * var(--vm-u));
+  z-index: 3;
+  height: calc(13 * var(--vm-u));
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map .vm-dock-title {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-legend {
+  margin-left: auto;
+  padding: calc(3 * var(--vm-u));
+  background: rgba(1, 4, 10, 0.72);
+  border: 1px solid rgba(182, 102, 220, 0.18);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-body {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-field {
+  border: 1px solid rgba(191, 101, 235, 0.42);
+  box-shadow:
+    inset 0 0 calc(20 * var(--vm-u)) rgba(0, 0, 0, 0.62),
+    0 0 0 calc(3 * var(--vm-u)) rgba(23, 10, 33, 0.76);
+}
+
+/* Selection: a complete vertical budget; nothing may extend below its frame. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection {
+  height: var(--vm-selection-h);
+  padding: calc(9 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
+  background:
+    linear-gradient(180deg, rgba(12, 16, 29, 0.985), rgba(3, 6, 14, 0.98));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-live {
+  gap: calc(6 * var(--vm-u));
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-head {
+  height: calc(22 * var(--vm-u));
+  min-height: calc(22 * var(--vm-u));
+  padding-bottom: calc(6 * var(--vm-u));
+  border-bottom: 1px solid rgba(182, 86, 226, 0.45);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-title {
+  font-size: calc(14 * var(--vm-u));
+  letter-spacing: 0.07em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-count {
+  color: #ce69ff;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-body {
+  min-height: calc(48 * var(--vm-u));
+  max-height: calc(48 * var(--vm-u));
+  gap: calc(10 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-card {
+  width: calc(54 * var(--vm-u));
+  min-width: calc(54 * var(--vm-u));
+  height: calc(48 * var(--vm-u));
+  border-color: rgba(178, 145, 196, 0.40);
+  background: rgba(4, 7, 16, 0.88);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-card.is-primary {
+  border-color: #c35af1;
+  box-shadow:
+    inset 0 0 calc(8 * var(--vm-u)) rgba(178, 70, 228, 0.13),
+    0 0 calc(5 * var(--vm-u)) rgba(154, 57, 207, 0.16);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-card-cameo {
+  filter: saturate(1.12) brightness(1.12);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-info {
+  justify-content: center;
+  gap: calc(5 * var(--vm-u));
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-sub {
+  font-size: calc(8.5 * var(--vm-u));
+  color: #a79fac;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-stats {
+  flex-wrap: nowrap;
+  gap: calc(11 * var(--vm-u));
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-stat {
+  gap: calc(4 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-stat-icon {
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-stat-value {
+  font-size: calc(10 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-hp {
+  height: calc(12 * var(--vm-u));
+  min-height: calc(12 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-hp-track {
+  background: rgba(229, 226, 235, 0.10);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-hp-track > i {
+  background: linear-gradient(90deg, #35da70, #57ec8f);
+  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(59, 229, 122, 0.34);
+}
+
+/* Command deck: five distinct armoured keys, matching the reference cadence. */
+.vm-hud[data-layout='perimeter'] .vm-command-deck {
+  padding: calc(6 * var(--vm-u));
+  gap: calc(2 * var(--vm-u));
+  background:
+    linear-gradient(180deg, rgba(10, 13, 26, 0.985), rgba(2, 5, 13, 0.985));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command {
+  padding: calc(9 * var(--vm-u)) calc(4 * var(--vm-u)) calc(7 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
+  border: 1px solid rgba(154, 133, 169, 0.22);
+  background:
+    linear-gradient(180deg, rgba(12, 15, 29, 0.72), rgba(4, 6, 15, 0.82));
+  color: #c8c0cf;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command:first-child {
+  border-left: 1px solid rgba(154, 133, 169, 0.22);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command:hover,
+.vm-hud[data-layout='perimeter'] .vm-command:focus-visible {
+  color: #f8edff;
+  border-color: rgba(198, 97, 241, 0.64);
+  background: rgba(115, 42, 151, 0.24);
+  box-shadow: inset 0 0 calc(10 * var(--vm-u)) rgba(181, 69, 230, 0.12);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command.is-active {
+  color: #e48dff;
+  border-color: #c25af0;
+  background: rgba(111, 37, 148, 0.34);
+  box-shadow:
+    inset 0 calc(2 * var(--vm-u)) 0 #dc76ff,
+    inset 0 0 calc(14 * var(--vm-u)) rgba(186, 72, 235, 0.17);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-icon {
+  width: calc(24 * var(--vm-u));
+  height: calc(24 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-label {
+  font-size: calc(9.5 * var(--vm-u));
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-key {
+  top: calc(5 * var(--vm-u));
+  right: calc(6 * var(--vm-u));
+  color: #6e6876;
+}
+
+/* Keep every compact-mode box internally valid after the larger skin pass. */
+@media (max-width: 1100px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-selection-h: calc(104 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-res-power { left: calc(190 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-sel-body {
+    min-height: calc(45 * var(--vm-u));
+    max-height: calc(45 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-card { height: calc(45 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-stances { gap: calc(2 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-stance {
+    width: calc(15 * var(--vm-u));
+    height: calc(15 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-stance > svg {
+    width: calc(9 * var(--vm-u));
+    height: calc(9 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-ability-row,
+  .vm-hud[data-layout='perimeter'] .vm-cargo-row,
+  .vm-hud[data-layout='perimeter'] .vm-primary-row,
+  .vm-hud[data-layout='perimeter'] .vm-destruct-row {
+    margin-left: calc(2 * var(--vm-u));
+  }
+}
+
+@media (max-width: 820px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-selection-w: calc(300 * var(--vm-u));
+    --vm-selection-h: calc(96 * var(--vm-u));
+    --vm-command-h: calc(70 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-command-icon {
+    width: calc(19 * var(--vm-u));
+    height: calc(19 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-command-label { font-size: calc(8 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-sel-title { font-size: calc(12 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-stances { gap: calc(1 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-stance { width: calc(14 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-slot-name {
+    max-height: calc(24 * var(--vm-u));
+    font-size: calc(7.5 * var(--vm-u));
+    line-height: calc(8 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-slot-cameo {
+    top: calc(30 * var(--vm-u));
+    height: calc(100% - 46 * var(--vm-u));
+  }
+}
