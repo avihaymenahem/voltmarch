@@ -252,7 +252,9 @@ describe('post.ts wiring', () => {
      *
      * Both halves are asserted because either alone is a bug: `autoUpdate =
      * false` without the re-arm freezes the shadow map at frame one, which is a
-     * far worse defect than the one being fixed. */
+     * far worse defect than the one being fixed. The initial arm is separate:
+     * the post chain warms up before the first `beginFrame()`, and Three r185's
+     * null shadow-array fallback is not comparison-enabled. */
     const code = stripComments(RENDERER_SRC);
     expect(code, 'autoUpdate must stay off')
       .toMatch(/shadowMap\.autoUpdate\s*=\s*false/);
@@ -263,6 +265,8 @@ describe('post.ts wiring', () => {
     // type signature instead of a body proves nothing.
     const at = code.indexOf('beginFrame() {');
     expect(at, 'beginFrame implementation not found').toBeGreaterThan(-1);
+    expect(code.slice(0, at), 'the pre-frame warm-up must build a real shadow map')
+      .toMatch(/shadowMap\.needsUpdate\s*=\s*cfg\.shadows\.enabled/);
     expect(code.slice(at, at + 400), 'beginFrame must re-arm the one rebuild')
       .toMatch(/shadowMap\.needsUpdate\s*=\s*true/);
   });

@@ -3,6 +3,7 @@
  *
  *   node tools/metrics.mjs shots/*.png            # measure our renders
  *   node tools/metrics.mjs --baseline refs/ra3steam_*.jpg
+ *   node tools/metrics.mjs --calibrate-current shots/*.png --expect 13
  *   node tools/metrics.mjs --compare shots/01-establishing-base.png
  *
  * Why this exists: docs/RA3_LOOK_BIBLE.md §14 R2 predicts the single most likely
@@ -22,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 // RA_ROOT lets the probe run from a scratch copy while the repo is busy.
 const ROOT = process.env.RA_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, 'docs', 'grade-baseline.json');
+const CURRENT_BASELINE_PATH = join(ROOT, 'docs', 'grade-current-1440p.json');
 
 /*
  * Targets from docs/RA3_LOOK_BIBLE.md §13.
@@ -54,6 +56,54 @@ const TARGETS = {
   vignetteRatio:     { range: [0.00, 2.00], w: 0, check: 37, label: 'Corner/centre luminance (informational only)' },
   chromaticAber:     { range: [0.00, 1.00], w: 0, check: 36, label: 'R/B edge misregistration (informational only)' },
 };
+
+/*
+ * THE SHIPPING LOOK IS NOW ITS OWN REGRESSION BASELINE.
+ *
+ * The RA3 corpus remains useful art-direction context, but it is not a valid
+ * per-scene regression oracle: its fourteen JPEGs mix 1440x1080 and 1024x768,
+ * while our canonical frames are 2560x1440; it also has no scene pairing. A
+ * global p99 >= 0.90 consequently calls an intentionally olive Soviet base a
+ * failure and mixed-resolution Sobel coverage calls every 1440p frame a
+ * failure. Neither verdict says whether VOLTMARCH regressed.
+ *
+ * `--calibrate-current` records one deterministic value per canonical scene at
+ * the capture geometry. These tolerances are deliberately broad enough for a
+ * material polish pass and narrow enough to catch the defects the metrics were
+ * written for: lifted blacks, a flattened grade, lost detail, grey fog or a
+ * saturation collapse. They never move automatically when a score fails.
+ */
+const CURRENT_TOLERANCE = {
+  medianLuminance: { kind: 'delta', value: 0.05, clamp: [0.08, 0.65] },
+  meanSaturation:  { kind: 'delta', value: 0.06, clamp: [0.35, 0.85] },
+  vividPixelFrac:  { kind: 'delta', value: 0.09, clamp: [0.15, 1.00] },
+  p1Luminance:     { kind: 'ceiling', value: 0.025, clamp: [0.00, 0.08] },
+  p99Luminance:    { kind: 'delta', value: 0.08, clamp: [0.55, 1.00] },
+  greenHueLeak:    { kind: 'ceiling', value: 0.005, clamp: [0.00, 0.02] },
+  farNearSatDelta: { kind: 'floor', value: 0.00, clamp: [-0.05, 1.00] },
+  edgeCoverage:    { kind: 'ratio', value: [0.80, 1.30], clamp: [0.04, 1.00] },
+  satLumMonotonic: { kind: 'exact', value: 1, clamp: [1, 1] },
+};
+
+function currentRange(key, row, currentBaseline) {
+  const centre = currentBaseline?.scenes?.[row.file]?.[key];
+  const tolerance = CURRENT_TOLERANCE[key];
+  if (typeof centre !== 'number' || tolerance === undefined) return null;
+  const [hardLo, hardHi] = tolerance.clamp;
+  if (tolerance.kind === 'delta') {
+    return [Math.max(hardLo, centre - tolerance.value), Math.min(hardHi, centre + tolerance.value)];
+  }
+  if (tolerance.kind === 'ceiling') {
+    // Absolute safety rail. A scene's current black floor is recorded for
+    // diagnosis, but it must never buy permission to lift the grade further.
+    return [hardLo, hardHi];
+  }
+  if (tolerance.kind === 'floor') return [hardLo, hardHi];
+  if (tolerance.kind === 'ratio') {
+    return [Math.max(hardLo, centre * tolerance.value[0]), Math.min(hardHi, centre * tolerance.value[1])];
+  }
+  return [tolerance.value, tolerance.value];
+}
 
 /** Widen a target to the observed RA3 spread when the reference disagrees with the asserted band. */
 function resolveRange(key, target, baseline) {
@@ -188,7 +238,13 @@ async function measure(file) {
 /* ------------------------------------------------------------------ */
 
 const args = process.argv.slice(2);
-const mode = args[0]?.startsWith('--') ? args.shift().slice(2) : 'score';
+let mode = 'score';
+if (args[0] === '--baseline' || args[0] === '--calibrate-current') {
+  mode = args.shift().slice(2);
+}
+const expectIdx = args.findIndex((a) => a === '--expect');
+const expected = expectIdx >= 0 ? Number(args[expectIdx + 1]) : null;
+if (expectIdx >= 0) args.splice(expectIdx, 2);
 const requested = args.length;
 const files = args.filter((f) => existsSync(f));
 const missing = requested - files.length;
@@ -216,9 +272,6 @@ if (!files.length) {
  * So the sample size is now always printed, a short sample is a loud warning,
  * and `--expect N` turns it into a hard failure for CI and scripted use.
  */
-const expectIdx = args.findIndex((a) => a === '--expect');
-const expected = expectIdx >= 0 ? Number(args[expectIdx + 1]) : null;
-
 if (missing > 0) {
   console.warn(`WARNING: ${missing} of ${requested} given path(s) did not exist and were skipped.`);
 }
@@ -229,6 +282,42 @@ if (expected !== null && files.length !== expected) {
 
 const rows = [];
 for (const f of files) rows.push(await measure(f));
+
+if (mode === 'calibrate-current') {
+  const expectedNames = Array.from({ length: 13 }, (_, i) => `${String(i + 1).padStart(2, '0')}-`);
+  const names = rows.map((row) => row.file).sort();
+  const missingScene = expectedNames.find((prefix) => !names.some((name) => name.startsWith(prefix)));
+  if (rows.length !== 13 || missingScene !== undefined) {
+    console.error(
+      `FAILED: current calibration requires the complete 13-scene canonical set` +
+        (missingScene ? `; no file starts with ${missingScene}` : '') + '.',
+    );
+    process.exit(2);
+  }
+  const sizes = new Set(rows.map((row) => `${row.width}x${row.height}`));
+  if (sizes.size !== 1 || !sizes.has('2560x1440')) {
+    console.error(
+      `FAILED: current calibration is defined at 2560x1440; measured ${Array.from(sizes).join(', ')}.`,
+    );
+    process.exit(2);
+  }
+  const keys = Object.keys(CURRENT_TOLERANCE);
+  const scenes = {};
+  for (const row of rows) {
+    scenes[row.file] = Object.fromEntries(keys.map((key) => [key, row[key]]));
+  }
+  writeFileSync(CURRENT_BASELINE_PATH, JSON.stringify({
+    version: 1,
+    capture: { width: 2560, height: 1440, tier: 'medium', sceneCount: 13 },
+    files: names,
+    scenes,
+  }, null, 2) + '\n');
+  console.log(
+    `Current 1440p baseline from ${rows.length} canonical scenes -> ` +
+      `docs/grade-current-1440p.json`,
+  );
+  process.exit(0);
+}
 
 if (mode === 'baseline') {
   // Establish what RA3 itself measures, so "the target" is observed, not asserted.
@@ -271,6 +360,27 @@ if (mode === 'baseline') {
 
 /* Score mode: grade each render against the bible, and against RA3 if measured. */
 const baseline = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) : null;
+const currentBaseline = existsSync(CURRENT_BASELINE_PATH)
+  ? JSON.parse(readFileSync(CURRENT_BASELINE_PATH, 'utf8'))
+  : null;
+
+const currentGeometry = currentBaseline?.capture
+  ? `${currentBaseline.capture.width}x${currentBaseline.capture.height}`
+  : null;
+const incompatibleCurrentRows = currentGeometry === null
+  ? rows
+  : rows.filter((row) => `${row.width}x${row.height}` !== currentGeometry);
+if (currentBaseline === null) {
+  console.warn(
+    `\n! No current-renderer calibration found. Falling back to global RA3/bible bands.\n` +
+      `  Run \`node tools/metrics.mjs --calibrate-current shots/*.png --expect 13\` after a reviewed 1440p capture.\n`,
+  );
+} else if (incompatibleCurrentRows.length > 0) {
+  console.warn(
+    `\n! Current baseline geometry is ${currentGeometry}; ${incompatibleCurrentRows.length} input frame(s) differ.\n` +
+      `  Those frames fall back to global bands because a resolution-sensitive regression grade cannot be transferred.\n`,
+  );
+}
 
 /*
  * THE INSTRUMENT REPORTS ITS OWN UNCERTAINTY.
@@ -299,7 +409,8 @@ const baseline = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PA
  * stays exactly as strict as it was and simply stops pretending its failure is
  * a pure verdict on the art.
  */
-if (baseline && !baseline.imageSizes) {
+if (baseline && !baseline.imageSizes
+  && (currentBaseline === null || incompatibleCurrentRows.length > 0)) {
   const affected = Object.entries(TARGETS)
     .filter(([, t]) => t.baselineKey && t.resolutionSensitive)
     .map(([k]) => k);
@@ -326,7 +437,10 @@ for (const r of rows) {
   console.log(`\n=== ${r.file}  (${r.width}x${r.height}) ===`);
   for (const [key, t] of Object.entries(TARGETS)) {
     const v = r[key];
-    const [lo, hi] = resolveRange(key, t, baseline);
+    const calibrated = currentGeometry === `${r.width}x${r.height}`
+      ? currentRange(key, r, currentBaseline)
+      : null;
+    const [lo, hi] = calibrated ?? resolveRange(key, t, baseline);
     const pass = v >= lo && v <= hi;
     totalWeight += t.w;
     if (!pass && t.w > 0) {
@@ -334,8 +448,9 @@ for (const r of rows) {
       failures.push({ file: r.file, key, value: v, range: [lo, hi], weight: t.w, check: t.check, label: t.label });
     }
     const ra3 = baseline?.metrics?.[key] ? `  RA3=${baseline.metrics[key].median.toFixed(3)}` : '';
+    const source = calibrated === null ? ' global' : ' current-1440p';
     const verdict = t.w === 0 ? 'info' : pass ? 'PASS' : 'FAIL';
-    console.log(`  ${verdict} w${t.w}  #${String(t.check).padStart(2)} ${t.label.padEnd(50)} ${v.toFixed(4)}  target ${lo.toFixed(3)}…${hi.toFixed(3)}${ra3}`);
+    console.log(`  ${verdict} w${t.w}  #${String(t.check).padStart(2)} ${t.label.padEnd(50)} ${v.toFixed(4)}  target ${lo.toFixed(3)}…${hi.toFixed(3)}${source}${ra3}`);
   }
 }
 

@@ -83,6 +83,34 @@ describe('the Reclamation — art', () => {
     }
   });
 
+  it('makes the Breaker Yard a working assembly gantry rather than an empty frame', () => {
+    const yard = RECLAIM_STRUCTURE_MASS_LISTS.find((l) => l.key === 'reclaim_breakeryard')!;
+    for (const name of [
+      'rail.rear', 'rail.walk', 'rail.hoist', 'assembly.hull', 'assembly.cradle',
+      'machine.press', 'machine.power', 'machine.feed',
+    ]) {
+      expect(yard.masses.some((m) => m.name === name), `missing ${name}`).toBe(true);
+    }
+    const press = yard.masses.find((m) => m.name === 'machine.press')!;
+    const power = yard.masses.find((m) => m.name === 'machine.power')!;
+    expect(press.size).not.toEqual(power.size);
+    expect(press.anchor[0]).toBeGreaterThan(0);
+    expect(power.anchor[0]).toBeLessThan(0);
+  });
+
+  it('layers armour over the casemate running gear and gives every gun hull a breaker prow', () => {
+    const gunHulls = RECLAIM_UNIT_MASS_LISTS.filter((l) =>
+      ['reclaim_grinder', 'reclaim_spitter', 'reclaim_slaghurler'].includes(l.key));
+    expect(gunHulls).toHaveLength(3);
+    for (const hull of gunHulls) {
+      for (const name of ['fenderFront', 'fenderRear', 'prowBeam', 'breakerTooth']) {
+        expect(hull.masses.some((m) => m.name === name), `${hull.key} missing ${name}`).toBe(true);
+      }
+      expect(hull.masses.find((m) => m.name === 'fenderFront')?.mirrorX).toBe(true);
+      expect(hull.masses.find((m) => m.name === 'breakerTooth')?.mirrorX).toBe(true);
+    }
+  });
+
   /**
    * THE RECTANGULARITY THAT ISN'T. Pinned rather than reported, because a
    * measurement in a commit message protects nothing.

@@ -816,6 +816,33 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
       shape: { topScaleX: 0.86, topScaleZ: 0.94, shear: L * 0.07, cornerCut: 0.22 },
     }),
 
+    // Segmented shoulder armour ties the outrider wheels back into the hull.
+    // The first version exposed every wheel and swing arm equally, which made
+    // the chassis read like a flat toy truck from the RTS camera. Two short
+    // plates preserve the faction's mechanical running gear while giving it a
+    // deep, layered flank silhouette.
+    greeble('fenderFront', 'taperedBox', [0.20, gearH * 0.62, L * 0.32],
+      [W * 0.57, gearH * 0.72, L * 0.25], 'paintMed', {
+        mirrorX: true, group: 'swingArms', rot: [0, 0, -0.06],
+        shape: { topScaleX: 0.70, topScaleZ: 0.90, shear: 0.05, cornerCut: 0.10 },
+      }),
+    greeble('fenderRear', 'taperedBox', [0.18, gearH * 0.52, L * 0.28],
+      [W * 0.59, gearH * 0.68, -L * 0.25], 'paintSmall', {
+        mirrorX: true, group: 'swingArms', rot: [0, 0, 0.08],
+        shape: { topScaleX: 0.64, topScaleZ: 0.86, shear: -0.04, cornerCut: 0.12 },
+      }),
+    // A welded prow beam and paired breaker teeth give the cheap main line a
+    // purposeful front end instead of terminating in the spine's flat face.
+    greeble('prowBeam', 'taperedBox', [W * 0.72, gearH * 0.18, 0.18],
+      [0, gearH * 0.42, L * 0.50], 'bareMetal', {
+        group: 'prow', shape: { topScaleX: 0.88, topScaleZ: 0.62, cornerCut: 0.10 },
+      }),
+    greeble('breakerTooth', 'taperedBox', [0.18, gearH * 0.24, L * 0.20],
+      [W * 0.25, gearH * 0.31, L * 0.56], 'bareMetal', {
+        mirrorX: true, group: 'prow', rot: [0.05, 0, 0],
+        shape: { topScaleX: 0.48, topScaleZ: 0.30, shear: L * 0.035 },
+      }),
+
     // THE GUN HOUSE — the dominant mass, and a fixed casemate rather than a
     // turret. Its front face is raked hard back, so the barrel comes out of a
     // sloped plate instead of out of a mantlet ring.

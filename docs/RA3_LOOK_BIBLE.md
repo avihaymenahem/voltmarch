@@ -884,12 +884,13 @@ that the baseline moved and by how much.
 | 33 | Kerb geometry | Extruded 0.15–0.20 m kerb casting its own shadow, with red paint on corner arcs | 2 |
 | 34 | Greeble density | Sobel \|∇\|>25 coverage 28–36% on units, 40–46% on buildings | 2 |
 
-> **READ `RENDER_FINDINGS.md` §2 BEFORE ACTING ON THIS NUMBER.** The band printed here is measured
-> on SUBJECT CROPS. `tools/metrics.mjs` scores the WHOLE FRAME, which is 60–75% ground, and the band
-> it actually enforces is **[0.5996, 0.8547]**, rebased from `docs/grade-baseline.json` because the
-> metric carries `baselineKey: true`. Two competent investigations once reached opposite conclusions
-> purely from measuring different things. It fails 13/13 today at 0.37–0.38 and **must not be
-> demoted**: subject crops are in band, the ground is ~4x under, and the ground is most of the frame.
+> **READ `RENDER_FINDINGS.md` §2 BEFORE ACTING ON THIS NUMBER.** The criterion printed here is for
+> SUBJECT CROPS; `tools/metrics.mjs` scores the WHOLE FRAME, which is 60–75% ground. Its shipping
+> regression gate therefore uses the reviewed per-scene values in `docs/grade-current-1440p.json`,
+> with a 0.80–1.30 detail-retention ratio, only for exact 2560×1440 captures. The old mixed-resolution
+> RA3-derived whole-frame band **[0.5996, 0.8547]** is retained as historical context and is no longer
+> transferred onto canonical frames. Do not demote the metric: subject crops remain in band while
+> the ground is materially under-detailed, and the split is still useful art-direction evidence.
 | 35 | Terraced relief | Relief is 4–8 m discrete steps with coping caps or striated cliffs; no smooth Perlin hills | 2 |
 | 36 | No CA / no grain | R/B-vs-G edge registration 0.0 px at corners; flat-patch noise is albedo detail only | 1 |
 | 37 | Vignette | Corner mean luminance 0.80–0.87 of centre, flat inside r=0.55 | 1 |

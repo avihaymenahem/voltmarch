@@ -73,16 +73,16 @@ describe('healthy structure activity', () => {
   it('uses tiny bounded recipes instead of damage-sized smoke columns', () => {
     const P = makeParticles();
     spawnSteamPuff(0, 5, 0, 1);
-    expect(P.lit.liveCount).toBeGreaterThanOrEqual(1);
-    expect(P.lit.liveCount).toBeLessThanOrEqual(2);
+    expect(P.lit.count).toBeGreaterThanOrEqual(1);
+    expect(P.lit.count).toBeLessThanOrEqual(2);
 
     spawnMachineSparks(0, 5, 0, 1);
-    expect(P.additive.liveCount).toBeGreaterThanOrEqual(2);
-    expect(P.additive.liveCount).toBeLessThanOrEqual(4);
+    expect(P.additive.count).toBeGreaterThanOrEqual(2);
+    expect(P.additive.count).toBeLessThanOrEqual(4);
 
-    const before = P.additive.liveCount;
+    const before = P.additive.count;
     spawnCollectorMote(0, 5, 0, 1);
-    expect(P.additive.liveCount).toBe(before + 1);
+    expect(P.additive.count).toBe(before + 1);
     P.dispose();
     setParticleSystem(null);
   });

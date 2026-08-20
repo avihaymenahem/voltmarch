@@ -954,11 +954,42 @@ function breakerYard(): StructureMassList {
       slot: 'bareMetal', capSlot: 'grille', chamfer: 0.08,
       shape: { topScaleX: 0.95, topScaleZ: 0.58, shear: 0.22 },
     },
+    // Twin bridge girders and a grated service walk make the crane read as
+    // load-bearing industrial machinery instead of a single picture frame.
+    {
+      name: 'rail.rear', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [w * 0.82, 0.52, 0.46], anchor: [-w * 0.02, railY - 0.18, -d * 0.29],
+      slot: 'bareMetal', capSlot: 'grille', chamfer: 0.07,
+      shape: { topScaleX: 0.92, topScaleZ: 0.64, shear: -0.16 },
+    },
+    box('rail.walk', MassRole.Greeble, [w * 0.70, 0.12, d * 0.16],
+      [w * 0.02, railY - 0.54, -d * 0.20], 'tread', {
+        group: 'rail', chamfer: 0.035,
+      }),
     girder('rail.leg', [0.50, railY - frameTop + 0.4, 0.50],
       [w * 0.40, (railY + frameTop) * 0.5 - 0.2, -d * 0.10], { mirrorX: true, group: 'rail' }),
     box('rail.trolley', MassRole.Greeble, [1.10, 0.82, 1.05], [-w * 0.12, railY - 0.94, -d * 0.10], 'hatch', {
       group: 'rail', chamfer: 0.06,
     }),
+    cyl('rail.hoist', MassRole.Greeble, [0.22, frameTop * 0.28, 0.22],
+      [-w * 0.12, railY - 1.34, -d * 0.10], 'bareMetal', {
+        group: 'rail', segments: 10, topRadius: 0.72, capSlot: 'grille',
+      }),
+    // A half-assembled casemate hangs beneath the bridge. The old empty black
+    // slab communicated neither scale nor purpose; this readable vehicle-sized
+    // mass makes the yard look active while leaving sightlines through it.
+    {
+      name: 'assembly.hull', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [w * 0.34, frameTop * 0.18, d * 0.34],
+      anchor: [-w * 0.10, deckH + frameTop * 0.24, -d * 0.08],
+      slot: 'paintMed', capSlot: 'grille', chamfer: 0.08,
+      rot: [0, -0.05, 0.04],
+      shape: { topScaleX: 0.76, topScaleZ: 0.82, shear: d * 0.035, cornerCut: 0.18 },
+    },
+    box('assembly.cradle', MassRole.Greeble, [w * 0.44, 0.26, d * 0.40],
+      [-w * 0.10, deckH + 0.18, -d * 0.08], 'bareMetal', {
+        group: 'assembly', chamfer: 0.05,
+      }),
     // A free-standing portal marks the open bay; there is no wall behind it.
     girder('bay.lintel', [w * 0.62, 0.62, 0.62], [0, frameTop * 0.72, d * 0.42], {
       group: 'bay', slot: 'stripe',
@@ -987,6 +1018,30 @@ function breakerYard(): StructureMassList {
     ...arcCoil('breakerMagnet', w * 0.27, deckH + 1.10, d * 0.22, 1.70, 1.55),
     ...hungClad('breaker.shield', frameTop * 0.58, d * 0.34,
       [-w * 0.43, frameTop * 0.56, d * 0.12], -0.16, 'paintSmall'),
+    // Two unequal machine houses add the heavy side masses missing from the
+    // first silhouette pass. They are deliberately different, preserving the
+    // faction's salvage asymmetry instead of closing the yard into a warehouse.
+    {
+      name: 'machine.press', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [w * 0.24, frameTop * 0.42, d * 0.30],
+      anchor: [w * 0.31, deckH + frameTop * 0.22, -d * 0.27],
+      slot: 'paintMed', capSlot: 'grille', chamfer: 0.09,
+      rot: [0, 0, -0.05], shape: { topScaleX: 0.72, topScaleZ: 0.88, shear: 0.16 },
+    },
+    {
+      name: 'machine.power', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [w * 0.18, frameTop * 0.30, d * 0.24],
+      anchor: [-w * 0.35, deckH + frameTop * 0.17, -d * 0.30],
+      slot: 'paintSmall', capSlot: 'vent', chamfer: 0.08,
+      rot: [0, 0, 0.09], shape: { topScaleX: 0.86, topScaleZ: 0.74, shear: -0.12 },
+    },
+    {
+      name: 'machine.feed', primitive: 'greebleStrip', role: MassRole.Greeble,
+      size: [w * 0.14, frameTop * 0.22, d * 0.18],
+      anchor: [w * 0.31, deckH + frameTop * 0.24, -d * 0.105],
+      slot: 'bareMetal', group: 'machinePress', chamfer: 0.04,
+      shape: { density: 3.2, seed: 0x52_b4 },
+    },
     teamPanel('team.deck', [w * 0.30, 0.16, d * 0.16], [w * 0.08, deckH + 0.06, -d * 0.04]),
     teamPanel('team.spine', [0.18, frameTop * 0.46, d * 0.34],
       [-w * 0.32, deckH + frameTop * 0.43, -d * 0.03]),
@@ -994,6 +1049,10 @@ function breakerYard(): StructureMassList {
     conduit('breaker.arc', [0.18, frameTop * 0.66, 0.16],
       [w * 0.40, frameTop * 0.54, -d * 0.18], { group: 'breakerJib' }),
     conduit('breaker.floor', [w * 0.30, 0.14, 0.14], [-w * 0.10, deckH + 0.10, d * 0.34]),
+    conduit('machine.arc', [0.16, frameTop * 0.34, 0.16],
+      [w * 0.31, deckH + frameTop * 0.26, -d * 0.105], { group: 'machinePress' }),
+    conduit('rail.arc', [w * 0.30, 0.14, 0.14],
+      [w * 0.10, railY - 0.16, -d * 0.33], { group: 'rail' }),
     insignia(w * 0.16, [-w * 0.30, frameTop * 0.50, d * 0.44]),
   );
   return list('reclaim_breakeryard', 'Breaker Yard', 'warFactory', masses, [

@@ -1712,6 +1712,25 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
    * and nothing between the two renders moves a caster.
    */
   gpuCommon.shadowMap.autoUpdate = false;
+  /*
+   * THE FIRST OFFSCREEN WARM-UP IS STILL A FRAME THAT NEEDS A SHADOW MAP.
+   *
+   * `createPostChain()` renders once while the loading curtain is up, before
+   * `RendererHandle.beginFrame()` has had a chance to arm the normal per-frame
+   * update below. With `autoUpdate = false` and the default `needsUpdate =
+   * false`, Three therefore supplies a null entry for
+   * `directionalShadowMap[0]`. In r185 its ARRAY-uniform fallback binds a depth
+   * texture with `TEXTURE_COMPARE_MODE = NONE` to a `sampler2DShadow`, producing
+   * `GL_INVALID_OPERATION: Mismatch between texture format and sampler type`
+   * on the warm-up's first indexed draw.
+   *
+   * Arming once here is the correct lifecycle invariant: the first render of a
+   * shadow-enabled renderer builds a real comparison texture, whether that
+   * render came from the post warm-up, a direct fallback or the game loop.
+   * `WebGLShadowMap` clears the flag after the build; `beginFrame()` continues
+   * to arm exactly one update on every later presented frame.
+   */
+  gpuCommon.shadowMap.needsUpdate = cfg.shadows.enabled;
 
   // Nice default background so frame zero is never a black void.
   gpuCommon.setClearColor(new THREE.Color(RENDER_CONFIG.sky.horizon), 1);

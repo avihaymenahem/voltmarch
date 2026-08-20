@@ -25,7 +25,7 @@ import { ArmorClass, BuildTab, EntityFlag, EntityKind, Faction, Locomotor } from
 import {
   BuildCatalog, BuildRole, FACTION_MERIDIAN as AI_FACTION_MERIDIAN, openingFor,
 } from '../src/sim/AIStrategy';
-import { formatStats } from '../src/art/MassList';
+import { formatStats, MassRole } from '../src/art/MassList';
 import {
   MERIDIAN_UNIT_MASS_LISTS, MERIDIAN_UNIT_MODELS, MERIDIAN_UNIT_PALETTE, meridianUnitLibrary,
 } from '../src/art/Faction3Units';
@@ -374,6 +374,16 @@ describe('the Meridian Pact — art', () => {
       expect(m.stats.warnings, l.key).toEqual([]);
       expect(m.stats.triangles, l.key).toBeLessThan(4000);
     }
+  });
+
+  it('builds the Forgeyard aperture as supported machinery, not a flat dish', () => {
+    const forge = MERIDIAN_STRUCTURE_MASS_LISTS.find((l) => l.key === 'meridian_forgeyard')!;
+    const iris = forge.masses.filter((m) => m.name.startsWith('forge.iris'));
+    expect(forge.masses.some((m) => m.name === 'forge.yoke' && m.role === MassRole.Primary)).toBe(true);
+    expect(forge.masses.filter((m) => m.name === 'forge.journal')).toHaveLength(1);
+    expect(iris).toHaveLength(8);
+    expect(new Set(iris.map((m) => m.rot?.[2])).size).toBe(8);
+    expect(forge.masses.some((m) => m.name === 'forge.converter')).toBe(true);
   });
 
   it('has a model for every content key and a content key for every model', () => {

@@ -601,6 +601,18 @@ function forgeyard(): StructureMassList {
         rot: [Math.PI * 0.5, 0, 0], segments: 20, topRadius: 0.66,
         capSlot: 'emissive', group: 'forgeHalo', feature: Feature.Window,
       }),
+    // A real load-bearing yoke stops the aperture reading as a decorative
+    // satellite dish balanced between two sticks. It sits behind the disc and
+    // terminates in two broad journal housings on the obelisks.
+    box('forge.yoke', MassRole.Primary, [w * 0.68, 0.34, 0.42],
+      [0, haloY, -d * 0.19], 'bareMetal', {
+        group: 'forgeYoke', chamfer: 0.08,
+      }),
+    cyl('forge.journal', MassRole.Greeble, [0.72, 0.54, 0.72],
+      [w * 0.30, haloY, -d * 0.16], 'bareMetal', {
+        mirrorX: true, rot: [Math.PI * 0.5, 0, 0], segments: 16,
+        topRadius: 0.78, capSlot: 'hatch', group: 'forgeYoke', chamfer: 0.05,
+      }),
     // Four broad mirror sails form the roofline and point at the aperture.
     pri('forge.sail', MassRole.Primary, [w * 0.34, 0.28, d * 0.34],
       [w * 0.25, f.height - 0.52, -d * 0.08], 'paintMed', {
@@ -645,8 +657,33 @@ function forgeyard(): StructureMassList {
       [w * 0.24, deckY + 0.22, d * 0.16], 'paintSmall', {
         mirrorX: true, group: 'launchGuides', chamfer: 0.05,
       }),
+    // Layered converter shoulders give the low deck enough machinery to read
+    // as a vehicle factory even when the aperture is cropped by the HUD.
+    pri('forge.converter', MassRole.Primary, [w * 0.22, f.height * 0.18, d * 0.30],
+      [w * 0.31, deckY + f.height * 0.09, -d * 0.25], 'paintMed', {
+        mirrorX: true, plan: 'hexagon', capSlot: 'grille',
+        group: 'converterShoulders', chamfer: 0.09,
+      }),
+    box('forge.converterBand', MassRole.TeamSlab, [w * 0.18, 0.14, d * 0.22],
+      [w * 0.31, deckY + f.height * 0.18 + 0.03, -d * 0.25], 'teamSlab', {
+        mirrorX: true, group: 'converterShoulders', chamfer: 0.04,
+      }),
     insignia(w * 0.15, [w * 0.30, deckY * 0.62, d * 0.405]),
   );
+
+  // Eight raised iris ribs turn the old flat brown disc into an engineered
+  // solar aperture. At gameplay distance they resolve as a faceted gold ring;
+  // up close the gaps preserve the dark collector well underneath.
+  const irisRadius = w * 0.145;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    masses.push(box(`forge.iris${i}`, MassRole.Greeble,
+      [w * 0.105, 0.11, 0.16],
+      [Math.cos(a) * irisRadius, haloY + Math.sin(a) * irisRadius, -d * 0.10 + 0.24],
+      i % 2 === 0 ? 'stripe' : 'bareMetal', {
+        rot: [0, 0, a], group: 'forgeIris', chamfer: 0.035,
+      }));
+  }
   return list('meridian_forgeyard', 'Forgeyard', 'warFactory', masses, [
     ...baseSockets(d, f.height, -w * 0.30, -d * 0.12),
     { part: PartId.Door, pos: [0, 0.2, d * 0.5 + 0.4] },

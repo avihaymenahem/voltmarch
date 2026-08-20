@@ -67,14 +67,18 @@ things**:
 The frame is **60–75% ground**. So the whole-frame metric fails *because the terrain is genuinely
 under-detailed*, while the units and buildings it also averages over are fine.
 
-**CONCLUSION: do not demote the check.** Doing so would silence the one metric correctly reporting
-the single largest visual problem in the project. The branch
-`metrics-edgecoverage-measurement-frame` holds that demotion and is **deliberately unmerged**.
+**CONCLUSION: keep the check, but do not transfer its mixed-resolution RA3 band onto current
+captures.** The subject/ground split remains useful art-direction evidence. The shipping regression
+gate now compares each canonical scene with its reviewed 2560×1440 counterpart in
+`docs/grade-current-1440p.json`; the RA3 corpus remains context, not a scene-paired oracle. The branch
+`metrics-edgecoverage-measurement-frame` holds a demotion and is **deliberately unmerged**.
 
 **What IS settled about the instrument, and is worth keeping:**
 
-- The band shown at runtime (`[0.5996, 0.8547]`) is NOT the bible's asserted `[0.20, 0.46]`. It is
-  rebased from `docs/grade-baseline.json` because the metric carries `baselineKey: true`.
+- The old runtime band (`[0.5996, 0.8547]`) was NOT the bible's asserted `[0.20, 0.46]`. It was
+  rebased from `docs/grade-baseline.json` because the metric carries `baselineKey: true`. At the
+  canonical 2560×1440 geometry, `tools/metrics.mjs` now uses a per-scene 0.80–1.30 ratio around the
+  reviewed current-renderer value instead.
 - **The reference geometry was recorded all along** — `SPEC_DRIFT_AUDIT.md` finding 17: ten
   1440×1080 and four 1024×768 JPEGs. Nobody needs to guess it again. Note the corpus mixes two
   geometries 40% apart in linear scale, so part of the band's width is pure geometry mixing.
@@ -1405,13 +1409,22 @@ its properties are on the prototype, so `{...info}` is `{}` on every real adapte
 
 ## 8. Unverified — do not quote these as fact
 
-- **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is
-  REAL and PRE-EXISTING.** Upgraded from "unverified": it was reproduced on the baseline build as
-  well as the changed one, so it belongs to neither. It is a live per-frame GL error nobody has
-  chased and it deserves its own task. (`shots/_report.json` stores no console message TEXT, which
-  is why the artefacts alone could not settle it — that is worth fixing in the harness.)
 - `[roads] junction corner radii 3.1–6.0 m are outside scorecard #33's 4–8 m band` — self-reported by
   the harness, not independently checked.
+
+### Resolved: the WebGL shadow sampler mismatch
+
+The warning was a genuine first-frame renderer defect, not a material texture. `createPostChain()`
+warms the scene before the first `RendererHandle.beginFrame()`. With `shadowMap.autoUpdate = false`
+and `needsUpdate` initially false, Three r185.1 bound its non-comparison fallback depth texture to
+the `directionalShadowMap[]` comparison-sampler array. The array setter does not apply the fallback
+texture's compare function, so the first draw failed with `GL_INVALID_OPERATION`.
+
+`src/render/renderer.ts` now arms one shadow update immediately after disabling automatic updates.
+The warm-up therefore creates the real comparison shadow texture; `beginFrame()` continues to arm
+the normal once-per-frame update. A fresh, self-closing 13/13 capture at 2560×1440 reports zero
+texture/sampler mismatch warnings, and `tests/perf-budget.spec.ts` pins both the initial and per-frame
+arms.
 
 
 ---

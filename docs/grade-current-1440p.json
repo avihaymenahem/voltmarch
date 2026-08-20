@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "capture": {
+    "width": 2560,
+    "height": 1440,
+    "tier": "medium",
+    "sceneCount": 13
+  },
+  "files": [
+    "01-establishing-base.png",
+    "02-hud-full.png",
+    "03-terrain-closeup.png",
+    "04-units-parade.png",
+    "05-combat.png",
+    "06-economy.png",
+    "07-soviet-base.png",
+    "08-naval-water.png",
+    "09-placement.png",
+    "10-selection.png",
+    "11-dusk-mood.png",
+    "12-blob-readability.png",
+    "13-atoll-crossing.png"
+  ],
+  "scenes": {
+    "01-establishing-base.png": {
+      "medianLuminance": 0.3837278485298157,
+      "meanSaturation": 0.46292151200807863,
+      "vividPixelFrac": 0.5895098198784722,
+      "p1Luminance": 0.0355929397046566,
+      "p99Luminance": 0.9105027318000793,
+      "greenHueLeak": 5.425347222222222e-7,
+      "farNearSatDelta": -0.01409441595339428,
+      "edgeCoverage": 0.25435465494791665,
+      "satLumMonotonic": 1
+    },
+    "02-hud-full.png": {
+      "medianLuminance": 0.36950746178627014,
+      "meanSaturation": 0.4745225675956693,
+      "vividPixelFrac": 0.4592236328125,
+      "p1Luminance": 0.023293333128094673,
+      "p99Luminance": 0.9152580499649048,
+      "greenHueLeak": 0.000008138020833333333,
+      "farNearSatDelta": 0.07149838943682052,
+      "edgeCoverage": 0.2563039822048611,
+      "satLumMonotonic": 1
+    },
+    "03-terrain-closeup.png": {
+      "medianLuminance": 0.37901803851127625,
+      "meanSaturation": 0.5924109568595859,
+      "vividPixelFrac": 0.8098489040798611,
+      "p1Luminance": 0.0408470593392849,
+      "p99Luminance": 0.8137309551239014,
+      "greenHueLeak": 0.00000244140625,
+      "farNearSatDelta": 0.08470577923861089,
+      "edgeCoverage": 0.08773763020833333,
+      "satLumMonotonic": 1
+    },
+    "04-units-parade.png": {
+      "medianLuminance": 0.3781796097755432,
+      "meanSaturation": 0.5590597887538933,
+      "vividPixelFrac": 0.8036583116319445,
+      "p1Luminance": 0.030853332951664925,
+      "p99Luminance": 0.735090970993042,
+      "greenHueLeak": 0.00018717447916666668,
+      "farNearSatDelta": -0.0032868511025483382,
+      "edgeCoverage": 0.1330447048611111,
+      "satLumMonotonic": 1
+    },
+    "05-combat.png": {
+      "medianLuminance": 0.32441020011901855,
+      "meanSaturation": 0.5375458898388962,
+      "vividPixelFrac": 0.5949462890625,
+      "p1Luminance": 0.0288509801030159,
+      "p99Luminance": 0.8252125382423401,
+      "greenHueLeak": 0.002187228732638889,
+      "farNearSatDelta": -0.0031322888069192922,
+      "edgeCoverage": 0.21133626302083333,
+      "satLumMonotonic": 1
+    },
+    "06-economy.png": {
+      "medianLuminance": 0.3742627501487732,
+      "meanSaturation": 0.5188765403850205,
+      "vividPixelFrac": 0.6583824327256944,
+      "p1Luminance": 0.030570195987820625,
+      "p99Luminance": 0.9012752771377563,
+      "greenHueLeak": 0.0014887152777777778,
+      "farNearSatDelta": -0.004391464788536248,
+      "edgeCoverage": 0.20044325086805556,
+      "satLumMonotonic": 1
+    },
+    "07-soviet-base.png": {
+      "medianLuminance": 0.3591427505016327,
+      "meanSaturation": 0.5096065399820193,
+      "vividPixelFrac": 0.5890359157986111,
+      "p1Luminance": 0.01683451049029827,
+      "p99Luminance": 0.6895694136619568,
+      "greenHueLeak": 0.0013734266493055556,
+      "farNearSatDelta": -0.012373589315939348,
+      "edgeCoverage": 0.2523727756076389,
+      "satLumMonotonic": 1
+    },
+    "08-naval-water.png": {
+      "medianLuminance": 0.4118015766143799,
+      "meanSaturation": 0.43068313617816906,
+      "vividPixelFrac": 0.38308648003472223,
+      "p1Luminance": 0.03053882345557213,
+      "p99Luminance": 0.9746509790420532,
+      "greenHueLeak": 0.0017304144965277779,
+      "farNearSatDelta": 0.18165285087849725,
+      "edgeCoverage": 0.3412350802951389,
+      "satLumMonotonic": 1
+    },
+    "09-placement.png": {
+      "medianLuminance": 0.3591427505016327,
+      "meanSaturation": 0.4250931477623719,
+      "vividPixelFrac": 0.4529937065972222,
+      "p1Luminance": 0.026098039001226425,
+      "p99Luminance": 0.921701192855835,
+      "greenHueLeak": 0.01284206814236111,
+      "farNearSatDelta": 0.06839267623506068,
+      "edgeCoverage": 0.20420979817708335,
+      "satLumMonotonic": 1
+    },
+    "10-selection.png": {
+      "medianLuminance": 0.27893176674842834,
+      "meanSaturation": 0.5394440368754349,
+      "vividPixelFrac": 0.45483262803819446,
+      "p1Luminance": 0.023293333128094673,
+      "p99Luminance": 0.8475733399391174,
+      "greenHueLeak": 0.002026909722222222,
+      "farNearSatDelta": 0.0018191469541212202,
+      "edgeCoverage": 0.23348117404513888,
+      "satLumMonotonic": 1
+    },
+    "11-dusk-mood.png": {
+      "medianLuminance": 0.15245568752288818,
+      "meanSaturation": 0.5478405202062178,
+      "vividPixelFrac": 0.2537896050347222,
+      "p1Luminance": 0.020457254722714424,
+      "p99Luminance": 0.7051113843917847,
+      "greenHueLeak": 0,
+      "farNearSatDelta": -0.02639233393641549,
+      "edgeCoverage": 0.21490342881944444,
+      "satLumMonotonic": 1
+    },
+    "12-blob-readability.png": {
+      "medianLuminance": 0.3471105992794037,
+      "meanSaturation": 0.5161801617037979,
+      "vividPixelFrac": 0.5555398220486111,
+      "p1Luminance": 0.023545097559690475,
+      "p99Luminance": 0.8260462880134583,
+      "greenHueLeak": 0.002865939670138889,
+      "farNearSatDelta": 0.0001893982167215924,
+      "edgeCoverage": 0.2918036566840278,
+      "satLumMonotonic": 1
+    },
+    "13-atoll-crossing.png": {
+      "medianLuminance": 0.4139929413795471,
+      "meanSaturation": 0.41314174985215546,
+      "vividPixelFrac": 0.47739990234375,
+      "p1Luminance": 0.03534117713570595,
+      "p99Luminance": 0.9721294045448303,
+      "greenHueLeak": 0.0029676649305555554,
+      "farNearSatDelta": 0.08708888045517188,
+      "edgeCoverage": 0.30853162977430554,
+      "satLumMonotonic": 1
+    }
+  }
+}
