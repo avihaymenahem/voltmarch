@@ -34,7 +34,7 @@
  * ============================================================================
  */
 
-import { BuildTab, NONE, OrderKind, Stance, UnitState } from '../../core/types';
+import { BuildTab, Faction, NONE, OrderKind, Stance, UnitState } from '../../core/types';
 import type { EntityId, PlayerId, ProductionItem } from '../../core/types';
 import { WATER_LEVEL } from '../../core/config';
 import { DEG2RAD, footprintOriginCell } from '../../core/math';
@@ -116,46 +116,45 @@ export function buildTerrainShowcase(b: ScenarioBuilder, cx: number, cz: number)
   b.setCredits(owner, 4820);
 }
 
-/* ==========================================================================
- * 04 — unit-parade (camera 38 m)
+/* ===========================================================================
+ * 04 — unit-parade (camera 62 m)
  *
- * Two ranks facing three-quarters toward the camera. Ordered small-to-large so
- * the eye can walk the size gradient, which is what makes "units are toys,
- * deliberately oversized" (bible §0 property 2) falsifiable in one look.
+ * One identical gameplay slice per faction: production building, main armour,
+ * and line infantry. Equivalent roles share a row, which makes silhouette and
+ * material drift visible immediately instead of hiding it in separate bases.
  * ========================================================================== */
 
-// The near rank is shorter and tighter than the far one because the frame is a
-// trapezoid: at 38 m it shows 63 m across the top row but only 33 m across the
-// bottom. A single symmetric line would run off both bottom corners.
-const ALLIED_PARADE = ['gi', 'engineer', 'ifv', 'grizzly', 'prismTank', 'harvester'] as const;
-const SOVIET_PARADE = ['attackDog', 'conscript', 'rhino', 'apocalypse', 'harvester', 'mcv', 'conscript'] as const;
-
 export function buildUnitParade(b: ScenarioBuilder, cx: number, cz: number): void {
-  // Three-quarter facing: dead-on hides the side panels, side-on hides the
-  // front mass. 22 degrees shows both.
-  const FACING = 22;
+  const FACTIONS = [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim] as const;
+  // 19.5 m clears the widest factory pad with a real lane between columns and
+  // still keeps both outside factions inside the 62 m camera's trapezoid.
+  const SPACING = 19.5;
+  const half = (FACTIONS.length - 1) * 0.5;
 
-  const row = (
-    keys: readonly string[], owner: PlayerId, z: number, spacing: number, vet: number,
-  ): void => {
-    const half = (keys.length - 1) * 0.5;
-    for (let i = 0; i < keys.length; i++) {
-      b.spawnUnit(keys[i], owner, cx + (i - half) * spacing, z, {
-        yawDeg: FACING + b.rng.range(-2.5, 2.5),
+  for (let i = 0; i < FACTIONS.length; i++) {
+    const owner = b.ownerForFaction(FACTIONS[i]);
+    const x = cx + (i - half) * SPACING;
+
+    // The factory is the backdrop, the tank owns the middle row, and three
+    // infantry put the smallest gameplay silhouette against clear ground.
+    b.spawnBuilding('warFactory', owner, x, cz - 11, { yawDeg: 0 });
+    b.spawnUnit('grizzly', owner, x, cz + 2, {
+      yawDeg: 20,
+      state: UnitState.Idle,
+      stance: Stance.HoldGround,
+      veterancy: i === 0 ? 2 : i === 1 ? 1 : 0,
+    });
+    for (let n = 0; n < 3; n++) {
+      b.spawnUnit('gi', owner, x + (n - 1) * 2.4, cz + 7.5, {
+        yawDeg: 18 + n * 2,
         state: UnitState.Idle,
         stance: Stance.HoldGround,
-        veterancy: i === keys.length - 3 ? vet : 0,
       });
     }
-  };
+    b.block(x, cz - 1, 11);
+  }
 
-  row(ALLIED_PARADE, b.allies, cz + 2, 6.8, 2);
-  row(SOVIET_PARADE, b.soviets, cz - 12, 7.4, 1);
-
-  // Bare ground behind the ranks would read as a void; a thin scatter band well
-  // clear of the units gives the frame a floor without crowding the subjects.
-  b.block(cx, cz - 3, 28);
-  b.scatter({ minX: cx - 40, minZ: cz - 30, maxX: cx + 40, maxZ: cz + 16 }, 46);
+  b.scatter({ minX: cx - 48, minZ: cz - 29, maxX: cx + 48, maxZ: cz + 24 }, 42);
 }
 
 /* ==========================================================================

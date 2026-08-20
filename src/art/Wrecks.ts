@@ -59,7 +59,7 @@ import { PropMesh, type PropPalette } from '../world/PropLibrary';
  * ========================================================================== */
 
 /** Which army's paint survives on the hulk. */
-export type WreckFaction = 'allies' | 'soviets' | 'neutral';
+export type WreckFaction = 'allies' | 'soviets' | 'meridian' | 'reclaim' | 'neutral';
 
 /**
  * Hulk size classes. A wreck does not need to be the unit that died — it needs
@@ -337,16 +337,20 @@ interface Burnt {
  * flat authored values per army, no noise, no gradient.
  */
 function burntPalette(p: PropPalette, faction: WreckFaction): Burnt {
-  const unit = RA3_UNIT_PALETTE[faction === 'neutral' ? 'neutral' : faction];
+  const unit = faction === 'allies' || faction === 'soviets' || faction === 'neutral'
+    ? RA3_UNIT_PALETTE[faction]
+    : null;
   const soviet = faction === 'soviets';
+  const meridian = faction === 'meridian';
+  const reclaim = faction === 'reclaim';
   return {
-    char: soviet ? '#241C18' : '#2B2A29',
-    deep: soviet ? '#141010' : '#181818',
-    tear: soviet ? '#5A4438' : '#4E4E50',
+    char: soviet ? '#241C18' : meridian ? '#3C3930' : reclaim ? '#201B24' : '#2B2A29',
+    deep: soviet ? '#141010' : meridian ? '#1D1C18' : reclaim ? '#110E14' : '#181818',
+    tear: soviet ? '#5A4438' : meridian ? '#81745D' : reclaim ? '#55445D' : '#4E4E50',
     rust: p.rust,
-    team: unit.team,
+    team: unit?.team ?? (meridian ? '#0FA98C' : '#9B18D8'),
     concrete: p.concrete,
-    ember: soviet ? '#FF6A22' : '#FF7A34',
+    ember: soviet ? '#FF6A22' : meridian ? '#FFC24A' : reclaim ? '#E27BFF' : '#FF7A34',
   };
 }
 
@@ -383,7 +387,11 @@ const HULK: Readonly<Record<WreckClass, HulkSpec>> = {
 
 /** Stable per-(faction, class) seed. Same wreck every boot, on every machine. */
 function hulkSeed(faction: WreckFaction, cls: WreckClass): number {
-  const f = faction === 'allies' ? 0x41 : faction === 'soviets' ? 0x53 : 0x4e;
+  const f = faction === 'allies' ? 0x41
+    : faction === 'soviets' ? 0x53
+      : faction === 'meridian' ? 0x4d
+        : faction === 'reclaim' ? 0x52
+          : 0x4e;
   const c = ['light', 'medium', 'heavy', 'support', 'naval'].indexOf(cls) + 1;
   return (0x57_52_00_00 ^ (f << 8) ^ (c * 0x9e37)) >>> 0;
 }
@@ -433,7 +441,19 @@ export function buildVehicleWreck(
   slab(m, [0, hullY + D * 0.34, L * 0.30], [W * 0.80, D * 0.16, L * 0.24], [tipX - 0.52, yaw, roll * 0.6], D * 0.10);
 
   /* -- 2. running gear --------------------------------------------------- */
-  if (spec.trackHeight > 0) {
+  if (faction === 'meridian') {
+    // Meridian hulls never touch the ground. Their wreck leaves two shattered
+    // levitation annuli and a canted keel plate instead of somebody else's
+    // caterpillar tracks — the faction remains legible after the colour chars.
+    const rr = W * 0.28;
+    m.color(b.deep).bevel(b.tear);
+    drum(m, [W * 0.34, rr * 0.24, -L * 0.06], rr, rr * 0.78, rr * 0.20,
+      12, rr * 0.05, [0.18, yaw + 0.22, 0.12], false, true);
+    drum(m, [-W * 0.42, rr * 0.20, L * 0.10], rr * 0.86, rr * 0.70, rr * 0.18,
+      12, rr * 0.05, [-0.14, yaw - 0.34, -0.16], false, true);
+    slab(m, [0, D * 0.20, -L * 0.18], [W * 0.74, D * 0.22, L * 0.44],
+      [0.12, yaw, -0.18], D * 0.10);
+  } else if (spec.trackHeight > 0) {
     const th = L * spec.trackHeight;
     const tw = W * 0.26;
     const tx = W * 0.5 + tw * 0.16;
@@ -511,6 +531,19 @@ export function buildVehicleWreck(
       L * rng.range(0.13, 0.21), L * rng.range(0.09, 0.15),
       [rng.range(-0.18, 0.18), a + rng.range(-0.8, 0.8), rng.range(-0.16, 0.16)],
       L * rng.range(0.02, 0.05));
+  }
+
+  if (faction === 'reclaim') {
+    // The arc coil survives as three misaligned rings beside the torn hull.
+    // It is a silhouette cue rather than a clean emissive effect: one ring is
+    // team paint, two are burnt metal, and the core is still barely hot.
+    const r = L * 0.105;
+    m.color(b.tear).bevel(b.rust).gloss(0.16);
+    drum(m, [-W * 0.48, r * 0.20, -L * 0.12], r, r * 0.82, r * 0.18,
+      12, r * 0.04, [0.12, 0.28, 0.18], false, true);
+    m.color(b.team).bevel(b.tear);
+    drum(m, [-W * 0.54, r * 0.28, -L * 0.02], r * 0.78, r * 0.62, r * 0.16,
+      12, r * 0.04, [-0.10, -0.22, 0.20], false, true);
   }
 
   /* -- the one surviving scrap of team colour ---------------------------- */
@@ -663,13 +696,14 @@ export interface WreckSet {
   dispose(): void;
 }
 
-const FACTIONS: readonly WreckFaction[] = ['allies', 'soviets', 'neutral'];
+const FACTIONS: readonly WreckFaction[] = ['allies', 'soviets', 'meridian', 'reclaim', 'neutral'];
 const CLASSES: readonly WreckClass[] = ['light', 'medium', 'heavy', 'support', 'naval'];
 const SIZES: readonly RubbleSize[] = ['small', 'medium', 'large'];
 
 /**
- * Build every hulk and every ruin: 3 factions x 5 classes + 3 factions x 3
- * sizes = 24 geometries, ~9 k triangles all in, built once at boot.
+ * Build every hulk and every ruin: 5 factions x 5 classes + 5 factions x 3
+ * sizes = 40 geometries. The live integration builds only the four medium
+ * faction hulks plus one neutral fallback; the full set exists for fixtures.
  *
  * That is 24 potential batches, but only the ones a match actually kills are
  * ever drawn — `InstanceBatcher` allocates on first instance, not on

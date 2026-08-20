@@ -323,10 +323,10 @@ const SHOTS = [
   },
   {
     name: '04-units-parade',
-    caption: 'Unit lineup at readable range — silhouette law, bevels, team-colour slabs, greeble.',
+    caption: 'Four-faction vertical slice — factory, main armour and line infantry per army.',
     flags: { shot: 'unit-parade', seed: 1 },
-    pose: [['focusOn', MAP_CENTER, MAP_CENTER, 38], ['setUiVisible', false]],
-    camera: { distance: 38, pitchDeg: 46.1812 },
+    pose: [['focusOn', MAP_CENTER, MAP_CENTER, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
   },
   {
     name: '05-combat',

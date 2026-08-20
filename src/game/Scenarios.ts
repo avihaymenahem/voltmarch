@@ -2656,7 +2656,15 @@ export class ScenarioBuilder {
     return id;
   }
 
-  private playerOf(faction: Faction): PlayerId {
+  /**
+   * Resolve (or create) the player that owns a faction-specific showcase.
+   *
+   * Normal match layouts should keep using `armySlot`: seating is a lobby
+   * concern there. Art fixtures are different — their whole job is to place
+   * equivalent roles from all four armies beside one another, so they need an
+   * explicit faction owner without depending on whichever two slots booted.
+   */
+  ownerForFaction(faction: Faction): PlayerId {
     const w = this.world;
     for (let i = 0; i < w.players.length; i++) {
       if (w.players[i].faction === faction) return w.players[i].id;
@@ -4377,8 +4385,8 @@ const PLANS: Record<string, ScenarioPlan> = {
   },
 
   'unit-parade': {
-    map: 'arid', distance: 38, yawDeg: 12, frozen: true, settleTicks: 0,
-    summary: 'Two ranks of units at readable range, three-quarter facing.',
+    map: 'arid', distance: 62, yawDeg: 12, frozen: true, settleTicks: 0,
+    summary: 'Four-faction vertical slice: line infantry, main armour and vehicle factory.',
     build: buildUnitParade,
   },
 

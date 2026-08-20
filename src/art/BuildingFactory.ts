@@ -1029,10 +1029,13 @@ export type StructureCoat = 'glaze' | 'field' | 'stone' | 'scrap';
 export const STRUCTURE_COATS: Readonly<Record<StructureCoat, {
   clearcoat: number; clearcoatRoughness: number; envMapIntensity: number;
 }>> = {
-  glaze: { clearcoat: 0.42, clearcoatRoughness: 0.26, envMapIntensity: 0.95 },
-  field: { clearcoat: 0.18, clearcoatRoughness: 0.54, envMapIntensity: 0.62 },
-  stone: { clearcoat: 0.24, clearcoatRoughness: 0.46, envMapIntensity: 0.78 },
-  scrap: { clearcoat: 0.15, clearcoatRoughness: 0.60, envMapIntensity: 0.72 },
+  glaze: { clearcoat: 0.24, clearcoatRoughness: 0.42, envMapIntensity: 0.72 },
+  field: { clearcoat: 0.12, clearcoatRoughness: 0.58, envMapIntensity: 0.56 },
+  stone: { clearcoat: 0.10, clearcoatRoughness: 0.62, envMapIntensity: 0.58 },
+  // Dark salvage needs more sky reflection than olive field plate or its open
+  // frame collapses into one black shape at RTS distance. The broad, rough
+  // highlight still reads as oxidised steel rather than clear-coated paint.
+  scrap: { clearcoat: 0.07, clearcoatRoughness: 0.72, envMapIntensity: 0.68 },
 };
 
 /**

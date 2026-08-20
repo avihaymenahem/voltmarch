@@ -38,10 +38,13 @@
  *
  * COST
  * ----
- * One `MeshStandardMaterial` and eight small geometries — 8 batches, at most 8
- * extra draw calls, and only for the keys a scenario actually uses. The
- * geometries come from `PropLibrary`, so a scenario boulder is the same object
- * as a scattered boulder and the frame reads as one world rather than two.
+ * One `MeshStandardMaterial`, seven library geometries and five wreck variants.
+ * The bridge still allocates batches lazily, so only content actually present
+ * in the scenario costs a draw call. The ordinary props come from
+ * `PropLibrary`, so a scenario boulder is the same object as a scattered
+ * boulder and the frame reads as one world rather than two. Killed vehicles
+ * resolve through their faction registration and therefore keep the visual
+ * language of the army that produced them.
  *
  * The material is NOT `createPropMaterial()`. That one carries the wind shader,
  * whose `aSway` attribute is authored per-vertex for a canopy standing still on
@@ -56,12 +59,13 @@ import * as THREE from 'three';
 import { nodePath } from '../render/gpu-path';
 
 import { defineSystem } from '../core/loop';
-import { EntityKind, Phase } from '../core/types';
+import { EntityKind, Faction, Phase } from '../core/types';
 import { ctx } from '../game/context';
 import { FALLBACK_PROPS, PROP_DEF_ID } from '../game/Scenarios';
 import { applyShroudTint } from '../render/FogOfWar';
 import { FACTION_ANY, registerKindMesh, type KindMesh } from '../render/RenderBridge';
-import { PropLibrary, PropMesh, propPalette, type PropPalette } from './PropLibrary';
+import { PropLibrary, propPalette } from './PropLibrary';
+import { buildVehicleWreck, type WreckFaction } from '../art/Wrecks';
 import { isBiomeName, type BiomeName } from './Biomes';
 import { getTerrain } from './Terrain';
 
@@ -92,53 +96,14 @@ function activeBiome(): BiomeName {
   return typeof key === 'string' && isBiomeName(key) ? key : 'temperate';
 }
 
-/* ==========================================================================
- * THE ONE MODEL THE LIBRARY DOES NOT HAVE
- * ========================================================================== */
-
-/**
- * A burnt-out vehicle hulk.
- *
- * `PropLibrary` has no wreck: it dresses a landscape, and a landscape has no
- * dead tanks in it. This is a deliberately COARSE read — at RTS range a hulk
- * has to say "a tank died here" in about four masses and one silhouette break.
- * Chassis, canted turret drum, a barrel pointing at the dirt, and two torn
- * plates thrown clear. Near-black with a rust cast; the fire and smoke come
- * from `EntityFlag.Burning`, which the VFX module already watches for.
- */
-function buildWreck(p: PropPalette): THREE.BufferGeometry {
-  const m = new PropMesh();
-  const charred = '#241F1C';
-  const scorched = '#15120F';
-
-  // Hull, sitting low and slightly nose-down like something that dropped.
-  m.color(charred).bevel('#3A322C').ao(0.55, 0, 2.6);
-  m.box(0, 0.75, 0, 3.1, 1.3, 5.9, 0.22, 0.0);
-  // Track skirts, blacker than the hull so the mass reads as two tiers.
-  m.color(scorched).bevel('#2C2622');
-  m.box(-1.55, 0.5, 0, 0.7, 0.9, 5.4, 0.14, 0.0);
-  m.box(1.55, 0.5, 0, 0.7, 0.9, 5.4, 0.14, 0.0);
-  // Turret, blown 35 degrees off its ring and tipped back.
-  m.color(charred).bevel('#463A32');
-  m.cyl(0.15, 1.65, -0.3, 1.35, 1.1, 0.95, 10, 0.14, true, true, 0.6);
-  // Barrel, pointing down and out of the frame of the turret it came from.
-  m.color(scorched).bevel('#3A322C');
-  m.box(1.45, 1.35, -1.55, 0.34, 0.34, 2.9, 0.08, 0.6);
-  // Two plates thrown clear. Rust, not char: torn metal shows its own colour.
-  m.color(p.rust).bevel('#8A6440');
-  m.box(-2.4, 0.12, 1.9, 1.5, 0.16, 1.1, 0.05, 0.9);
-  m.box(2.1, 0.1, -2.2, 1.2, 0.14, 0.9, 0.05, -0.5);
-
-  return m.toGeometry('prop.wreck');
-}
-
-/* ==========================================================================
+/* ============================================================================
  * MODULE
  * ========================================================================== */
 
 let material: THREE.Material | null = null;
 let library: PropLibrary | null = null;
 let ownedGeometry: THREE.BufferGeometry | null = null;
+let ownedFactionWrecks: THREE.BufferGeometry[] = [];
 
 export default defineSystem({
   id: 'art.entityProps',
@@ -182,12 +147,17 @@ export default defineSystem({
       material = glsl;
     }
 
-    ownedGeometry = buildWreck(palette);
+    // Neutral remains the def-id fallback for scenery-authored wrecks. Vehicle
+    // deaths bind more specifically by EntityStore faction below.
+    ownedGeometry = buildVehicleWreck(palette, 'neutral', 'medium');
 
     let registered = 0;
     const missing: string[] = [];
 
-    const register = (key: string, geometry: THREE.BufferGeometry, defId: number): void => {
+    const register = (
+      key: string, geometry: THREE.BufferGeometry, defId: number,
+      faction: Faction | typeof FACTION_ANY = FACTION_ANY,
+    ): void => {
       const fb = FALLBACK_PROPS[key];
       if (fb === undefined) return;
       const mesh: KindMesh = {
@@ -196,9 +166,21 @@ export default defineSystem({
         castShadow: true,
         receiveShadow: true,
       };
-      registerKindMesh(fb.kind, FACTION_ANY, mesh, defId);
+      registerKindMesh(fb.kind, faction, mesh, defId);
       registered++;
     };
+
+    const wreckFactions: readonly (readonly [Faction, WreckFaction])[] = [
+      [Faction.Allies, 'allies'],
+      [Faction.Soviets, 'soviets'],
+      [Faction.Meridian, 'meridian'],
+      [Faction.Reclaim, 'reclaim'],
+    ];
+    for (const [faction, artFaction] of wreckFactions) {
+      const geo = buildVehicleWreck(palette, artFaction, 'medium');
+      ownedFactionWrecks.push(geo);
+      register('wreck', geo, -1, faction);
+    }
 
     for (const key of Object.keys(FALLBACK_PROPS)) {
       const defId = PROP_DEF_ID[key];
@@ -237,6 +219,8 @@ export default defineSystem({
     // the GPU objects nobody else holds a reference to.
     ownedGeometry?.dispose();
     ownedGeometry = null;
+    for (const g of ownedFactionWrecks) g.dispose();
+    ownedFactionWrecks = [];
     library?.dispose();
     library = null;
     material?.dispose();

@@ -861,6 +861,27 @@ function alliedWarFactory(): StructureMassList {
     }),
     box('gantry.trolley', MassRole.Greeble, [0.9, 0.7, 0.9], [-s.w * 0.16, f.height - 1.5, -s.d * 0.10], 'hatch', { group: 'gantry' }),
     box('exhaust', MassRole.Greeble, [s.w * 0.16, 1.1, s.d * 0.20], [-s.w * 0.34, roof + 0.55, -s.d * 0.28], 'vent', { group: 'exhaust' }),
+    // V2 PRECISION AEROSPACE: a pair of swept ceramic roof shells. The empty
+    // slot between them is intentional; it keeps the factory from collapsing
+    // into one square roof slab at gameplay distance.
+    plate('flight.shell', MassRole.Primary,
+      [[-s.w * 0.18, -s.d * 0.23], [s.w * 0.20, -s.d * 0.17], [s.w * 0.16, s.d * 0.23], [-s.w * 0.11, s.d * 0.17]],
+      0.28, [s.w * 0.24, roof + 0.52, -s.d * 0.03], [-0.04, 0, -0.08], 'paintMed', {
+        mirrorX: true, group: 'flightDeck', chamfer: 0.06,
+      }),
+    // The integrated command bridge is low, glazed and centred. Allied
+    // hardware disappears into the shell instead of standing beside it.
+    tbox('flight.bridge', MassRole.Primary, [s.w * 0.28, 0.86, s.d * 0.24],
+      [0, roof + 0.92, -s.d * 0.18], 'paintSmall', {
+        topScaleX: 0.72, topScaleZ: 0.64, shear: -0.08, cornerCut: 0.16,
+      }, { capSlot: 'glass', chamfer: 0.07 }),
+    box('flight.glass', MassRole.Greeble, [s.w * 0.20, 0.28, 0.12],
+      [0, roof + 0.98, -s.d * 0.31], 'glass', { group: 'bridge', chamfer: 0.04 }),
+    // Two cyan runway bars are the long-range read; tiny windows would vanish.
+    box('flight.light', MassRole.Emissive, [0.14, 0.12, s.d * 0.48],
+      [s.w * 0.20, roof + 0.70, 0], 'emissive', {
+        mirrorX: true, group: 'runwayLights', feature: Feature.Window, chamfer: 0.03,
+      }),
   );
   return list('allied_warfactory', 'War Factory', 'allies', 'warFactory', s.masses, [
     ...baseSockets(s.d, roof + 1.2, -s.w * 0.34, -s.d * 0.28),
@@ -1323,6 +1344,26 @@ function sovietWarFactory(): StructureMassList {
     }),
     ...lattice(s.w * 0.30, s.d * 0.10, 2.2, roof * 1.55, 'derrick'),
     box('hoist', MassRole.Greeble, [1.1, 0.8, 1.1], [s.w * 0.30, roof * 1.50, s.d * 0.10], 'hatch', { group: 'derrick' }),
+    // V2 INDUSTRIAL DOMINION: twin pressure drums make the factory wider and
+    // heavier than the Allied canopy before surface colour enters the read.
+    cyl('casting.drum', MassRole.Primary, [s.w * 0.18, roof * 0.78, s.w * 0.18],
+      [s.w * 0.40, roof * 0.68, -s.d * 0.03], 'rivetPlate', {
+        mirrorX: true, group: 'castingBank', segments: 14, topRadius: 0.88, capSlot: 'grille',
+      }),
+    cyl('casting.band', MassRole.TeamSlab, [s.w * 0.205, 0.42, s.w * 0.205],
+      [s.w * 0.40, roof * 0.78, -s.d * 0.03], 'teamSlab', {
+        mirrorX: true, group: 'castingBank', segments: 14, topRadius: 1.0,
+      }),
+    // A single brutal bridge girder ties the drums together. It is deliberately
+    // offset toward the working derrick, not a polite centred roof crown.
+    tbox('casting.bridge', MassRole.Primary, [s.w * 0.88, 0.82, 1.36],
+      [s.w * 0.04, f.height - 0.54, -s.d * 0.02], 'rivetPlate', {
+        topScaleX: 0.92, topScaleZ: 0.62, shear: 0.22, cornerCut: 0.12,
+      }, { capSlot: 'grille', chamfer: 0.07 }),
+    box('casting.hot', MassRole.Emissive, [s.w * 0.30, 0.18, 0.18],
+      [s.w * 0.20, f.height - 0.46, s.d * 0.08], 'emissive', {
+        group: 'castingBank', feature: Feature.Window, chamfer: 0.03,
+      }),
   );
   return list('soviet_warfactory', 'War Factory', 'soviets', 'warFactory', s.masses, [
     ...baseSockets(s.d, f.height, -s.w * 0.36, -s.d * 0.26),

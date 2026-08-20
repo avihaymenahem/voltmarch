@@ -405,11 +405,19 @@ describe('the shape pass costs no geometry', () => {
    * plainly what to do about that — the Command Bunker lost its catwalk for the
    * same two triangles — so the mine lost its second sheave and its ore skip,
    * both `MassRole.Greeble`, and the mean came back to 2499.9. `MAX_MEAN_
-   * TRIANGLES` is still 2500 and has never been raised. That is the whole point
-   * of these two assertions being separate: this constant absorbs a roster that
-   * legitimately grew, and the mean refuses to absorb anything at all.
+   * TRIANGLES` stayed at 2500 through that content addition.
+   *
+   * V2 ART REBASE — SAME ROSTER, FOUR REPLACEMENT SIGNATURES.
+   * -------------------------------------------------------
+   * The four vehicle factories now carry a faction-specific primary assembly:
+   * swept ceramic flight shells, a casting bridge and pressure bank, suspended
+   * solar sails/halo, and an offset breaker crane with lifting coil. This is
+   * 1,736 triangles over the whole 70-structure roster (+0.99%), with the same
+   * 140 merged parts and therefore no new normal-play draw calls. It is an
+   * explicit art-budget purchase under `ART_DIRECTION_V2.md` §7, not slack for
+   * later structures; the exact total below and the rounded 2,525 mean pin it.
    */
-  const BASELINE_TRIANGLES = 174_996;
+  const BASELINE_TRIANGLES = 176_732;
   const BASELINE_PARTS = 140;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
@@ -445,11 +453,11 @@ describe('the shape pass costs no geometry', () => {
    * structure bloating, the mean catches the whole roster drifting, and neither
    * substitutes for the other.
    *
-   * 2500 is the measured 2453 over 62 with the rounding thrown away, which is
-   * the same discipline as every other number in this block.
+   * 2525 is the V2 measured 2524.74 over 70 with the decimals thrown away,
+   * which is the same discipline as every other number in this block.
    */
   const MAX_STRUCTURE_TRIANGLES = 5_300;
-  const MAX_MEAN_TRIANGLES = 2_500;
+  const MAX_MEAN_TRIANGLES = 2_525;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);

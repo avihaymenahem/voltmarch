@@ -888,12 +888,19 @@ interface TankOpts {
   wheels?: number;
   /** Tier-3 heavies get a second armour belt, more rollers and a deep skirt. */
   heavy?: boolean;
+  /** V2 construction language for the first four-faction vertical slice. */
+  v2Style?: 'precision' | 'dominion';
 }
 
 function tank(o: TankOpts): UnitMassList {
   const H = o.height;
   const L = o.hullLength;
   const W = o.hullWidth;
+  // V2 is the default grammar for the whole tracked combat roster, not a skin
+  // reserved for the two showcase tanks. The override remains for deliberate
+  // one-off prototypes, while every shipped Allied/Soviet tank inherits its
+  // faction construction language automatically.
+  const v2Style = o.v2Style ?? (o.faction === 'allies' ? 'precision' : 'dominion');
 
   // Bible 5.3: chassis is a thin 35-45% base, superstructure is the top 55-65%.
   const trackH = H * UNIT_LADDER.chassisHeightFraction * 0.55;
@@ -920,17 +927,88 @@ function tank(o: TankOpts): UnitMassList {
     // wall into a real sloped glacis, which is the most recognisable line on an
     // RA3 tank and the reason this mass measures 0% flat wall instead of 100%.
     primary('hull', 'taperedBox', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
-      shape: o.brutalist
-        ? { topScaleX: 0.90, topScaleZ: 0.94, shear: -L * 0.045, cornerCut: W * 0.075 }
-        : { topScaleX: 0.86, topScaleZ: 0.90, shear: -L * 0.065, cornerCut: W * 0.055 },
+      shape: v2Style === 'precision'
+        ? { topScaleX: 0.68, topScaleZ: 0.82, shear: -L * 0.12, cornerCut: W * 0.12 }
+        : v2Style === 'dominion'
+          ? { topScaleX: 0.94, topScaleZ: 0.88, shear: -L * 0.025, cornerCut: W * 0.13 }
+          : o.brutalist
+            ? { topScaleX: 0.90, topScaleZ: 0.94, shear: -L * 0.045, cornerCut: W * 0.075 }
+            : { topScaleX: 0.86, topScaleZ: 0.90, shear: -L * 0.065, cornerCut: W * 0.055 },
     }),
 
     /* -- 3. turret: lathed, 14 facets, no flat side at all --------------- */
-    primary('turret', 'revolve', [turretW, turretH, turretL], [0, turretY, turretZ], 'paintLarge', {
-      turret: true, capSlot: 'paintLarge',
-      shape: { profile: o.brutalist ? SOVIET_TURRET : ALLIED_TURRET, segments: 14 },
-    }),
+    v2Style === 'precision'
+      ? primary('turret', 'hull', [turretW * 1.07, turretH, turretL * 1.04], [0, turretY, turretZ], 'paintLarge', {
+        turret: true, capSlot: 'paintLarge',
+        shape: {
+          points: [
+            [0, 0.48, 0.34], [0.34, 0.34, 0.28], [-0.34, 0.34, 0.28],
+            [0.50, 0.04, 0.12], [-0.50, 0.04, 0.12],
+            [0.40, -0.42, 0.30], [-0.40, -0.42, 0.30],
+            [0.46, -0.34, -0.34], [-0.46, -0.34, -0.34],
+            [0.30, 0.26, -0.48], [-0.30, 0.26, -0.48],
+          ],
+          chamfer: 0.05,
+        },
+      })
+      : v2Style === 'dominion'
+        // A cast, slab-shouldered gun house. The previous revolved turret made
+        // the Soviet silhouette a rounder version of the Allied one; this puts
+        // the mass in broad cheeks, a low roof and a visibly sheared rear.
+        ? primary('turret', 'taperedBox', [turretW * 1.13, turretH * 0.94, turretL * 0.98],
+          [0, turretY, turretZ], 'paintLarge', {
+            turret: true, capSlot: 'paintLarge',
+            shape: {
+              topScaleX: 0.78, topScaleZ: 0.72,
+              bottomScaleX: 1.04, bottomScaleZ: 0.98,
+              shear: -turretL * 0.09, cornerCut: turretW * 0.10,
+            },
+          })
+      : primary('turret', 'revolve', [turretW, turretH, turretL], [0, turretY, turretZ], 'paintLarge', {
+        turret: true, capSlot: 'paintLarge',
+        shape: {
+          profile: o.brutalist ? SOVIET_TURRET : ALLIED_TURRET,
+          segments: 14,
+        },
+      }),
   ];
+
+  if (v2Style === 'precision') {
+    masses.push(
+      // One continuous shoulder fairing per flank. It hides the top half of the
+      // running gear and gives the Coalition its aerospace silhouette before
+      // colour or panel work is visible.
+      primary('trackFairing', 'taperedBox', [W * 0.18, trackH * 0.96, L * 0.80],
+        [W * 0.53, trackH * 0.78, -L * 0.02], 'paintMed', {
+          mirrorX: true, group: 'fairings',
+          shape: { topScaleX: 0.56, topScaleZ: 0.84, shear: -L * 0.055, cornerCut: 0.16 },
+        }),
+      armour('noseWing', taperOutline(W * 0.78, L * 0.22, 0.28), 0.10,
+        [0, deckY + 0.04, L * 0.36], [-0.16, 0, 0], 'paintMed', 'nose shell'),
+      greeble('commandFin', 'taperedBox', [0.12, H * 0.22, L * 0.16],
+        [-turretW * 0.22, H - H * 0.13, turretZ - turretL * 0.30], 'bareMetal', {
+          turret: true, group: 'command fin',
+          shape: { topScaleX: 0.45, topScaleZ: 0.54, shear: -0.08 },
+        }),
+    );
+  } else if (v2Style === 'dominion') {
+    masses.push(
+      // A cast shoulder collar visually locks the turret into the hull instead
+      // of leaving another disc perched on another box.
+      primary('turretCollar', 'revolve', [turretW * 1.04, turretH * 0.22, turretW * 0.96],
+        [0, deckY + turretH * 0.10, turretZ], 'bareMetal', {
+          shape: { profile: DRUM_PROFILE, segments: 16 }, group: 'turret collar',
+        }),
+      greeble('engineDrum', 'revolve', [W * 0.26, H * 0.24, W * 0.26],
+        [W * 0.30, deckY + H * 0.10, -L * 0.34], 'bareMetal', {
+          mirrorX: true, group: 'power pack', shape: { profile: DRUM_PROFILE, segments: 12 },
+        }),
+      greeble('exhaustStack', 'cone', [0.24, H * 0.34, 0.24],
+        [W * 0.36, deckY + H * 0.15, -L * 0.30], 'bareMetal', {
+          mirrorX: true, group: 'power pack', shape: { segments: 12, rTop: 0.76 },
+        }),
+    );
+  }
 
   /* -- 4. armament -------------------------------------------------------- */
   const muzzleZ = turretL * 0.5 + L * 0.40;
@@ -1023,7 +1101,8 @@ function tank(o: TankOpts): UnitMassList {
 
   /* -- 6. greebles -------------------------------------------------------- */
   masses.push(
-    ...vehicleGreebles(W, L, deckY),
+    // The old generic exhaust/stowage kit is intentionally omitted: V2's
+    // faction-specific fairings or power pack already carry this hierarchy.
     greebleRun('hull.spineRun', L * 0.44, 0.22, 0.15, [-W * 0.30, deckY + 0.04, -L * 0.06], 0x51 + o.hullNumber),
     greeble('cupola', 'revolve', [turretW * 0.30, H * 0.09, turretW * 0.30],
       [-turretW * 0.22, turretRoof + H * 0.045, turretZ - turretL * 0.16], 'hatch', {
@@ -1044,17 +1123,22 @@ function tank(o: TankOpts): UnitMassList {
   );
 
   /* -- 7. team colour (R-T1: 8-14% of surface, flat panels only) ---------- */
-  masses.push(
-    slab('turretCheekBand', [0.07, turretH * 0.56, turretL * 0.56],
-      [turretW * 0.5, turretY + turretH * 0.04, turretZ - turretL * 0.04], { turret: true, mirrorX: true , k: TEAM_K.tank }),
-    slab('hullFlankBand', [0.07, hullH * 0.62, L * 0.50], [W * 0.49, hullY, -L * 0.06], { mirrorX: true , k: TEAM_K.tank }),
-    // Top-facing panels are deliberately SMALL inserts. A turret-roof-sized
-    // plate measures inside R-T1 and still reads as a repainted tank, because a
-    // 39-degree camera weights a deck about 2.5x a flank.
-    slab('turretCap', [turretW * 0.34, 0.07, turretL * 0.30],
-      [-turretW * 0.16, turretRoof, turretZ - turretL * 0.02], { turret: true , k: TEAM_K.tank }),
-    slab('glacisBand', [W * 0.42, 0.07, L * 0.09], [0, deckY, L * 0.40], { k: TEAM_K.tank }),
-  );
+  if (v2Style === 'dominion') {
+    masses.push(
+      slab('skirtBox', [0.09, hullH * 0.98, L * 0.405], [W * 0.52, hullY, L * 0.18], { mirrorX: true, k: TEAM_K.tank }),
+      slab('skirtBoxRear', [0.09, hullH * 0.98, L * 0.365], [W * 0.52, hullY, -L * 0.22], { mirrorX: true, k: TEAM_K.tank }),
+      slab('glacisBand', [W * 0.48, 0.07, L * 0.11], [0, deckY, L * 0.40], { k: TEAM_K.tank }),
+    );
+  } else {
+    masses.push(
+      slab('turretCheekBand', [0.07, turretH * 0.56, turretL * 0.56],
+        [turretW * 0.5, turretY + turretH * 0.04, turretZ - turretL * 0.04], { turret: true, mirrorX: true , k: TEAM_K.tank }),
+      slab('hullFlankBand', [0.07, hullH * 0.62, L * 0.50], [W * 0.49, hullY, -L * 0.06], { mirrorX: true , k: TEAM_K.tank }),
+      slab('turretCap', [turretW * 0.34, 0.07, turretL * 0.30],
+        [-turretW * 0.16, turretRoof, turretZ - turretL * 0.02], { turret: true , k: TEAM_K.tank }),
+      slab('glacisBand', [W * 0.42, 0.07, L * 0.09], [0, deckY, L * 0.40], { k: TEAM_K.tank }),
+    );
+  }
   masses.push(insignia([turretW * 0.30, 0.06, turretW * 0.30],
     [turretW * 0.20, turretRoof + 0.02, turretZ + turretL * 0.18], { turret: true }));
   // R-T5 wants emissive at 1-3% of surface. The atlas masks 42% of each plate,
@@ -1181,7 +1265,33 @@ function support(o: SupportOpts): UnitMassList {
   }
 
   masses.push(
-    ...vehicleGreebles(W, L, deckY),
+    ...(o.brutalist
+      ? [
+        // Dominion support hulls carry their machinery outside the armour:
+        // pressure cans and furnace stacks make a refinery vehicle look built
+        // by the same industry as the casting-yard roofline.
+        greeble('pressureCan', 'revolve', [W * 0.22, H * 0.30, W * 0.22],
+          [W * 0.34, deckY + H * 0.14, -L * 0.30], 'bareMetal', {
+            mirrorX: true, group: 'power pack', shape: { profile: DRUM_PROFILE, segments: 12 },
+          }),
+        greeble('furnaceStack', 'cone', [0.28, H * 0.34, 0.28],
+          [W * 0.38, deckY + H * 0.18, -L * 0.22], 'bareMetal', {
+            mirrorX: true, group: 'power pack', shape: { segments: 10, rTop: 0.68 },
+          }),
+      ]
+      : [
+        // Coalition machinery is faired into two long shoulder shells. Their
+        // taper repeats the Guardian rather than bolting generic boxes on top.
+        greeble('serviceFairing', 'taperedBox', [W * 0.16, H * 0.34, L * 0.58],
+          [W * 0.48, deckY + H * 0.12, -L * 0.08], 'paintMed', {
+            mirrorX: true, group: 'service fairings',
+            shape: { topScaleX: 0.52, topScaleZ: 0.78, shear: -L * 0.04, cornerCut: 0.12 },
+          }),
+        greeble('sensorSpine', 'taperedBox', [W * 0.12, H * 0.16, L * 0.34],
+          [0, bodyY + bodyH * 0.46, -L * 0.12], 'bareMetal', {
+            group: 'sensor spine', shape: { topScaleX: 0.44, topScaleZ: 0.66, shear: -0.08 },
+          }),
+      ]),
     greebleRun('chassis.serviceRun', L * 0.40, 0.24, 0.18, [-W * 0.32, deckY + 0.04, -L * 0.16], 0x33 + o.hullNumber),
     armour('cabGlass', taperOutline(W * 0.52, bodyH * 0.34, 0.88), 0.10,
       [0, bodyY + bodyH * 0.16, -L * 0.10 + L * 0.33], [HALF_PI - 0.16, 0, 0], 'glass', 'glass'),
@@ -1490,6 +1600,44 @@ function ship(o: ShipOpts): UnitMassList {
       [W * 0.44, hullH * 0.62, -L * 0.02], [0, HALF_PI, HALF_PI - 0.26], 'paintMed', 'hull armour', { mirrorX: true }),
   );
 
+  if (o.brutalist) {
+    masses.push(
+      // Soviet ships expose power generation and handling hardware. These sit
+      // off-centre so even the plan silhouette feels industrial rather than a
+      // mirrored aerospace hull with different paint.
+      greeble('deckReactor', 'revolve', [W * 0.30, H * 0.26, W * 0.30],
+        [-W * 0.24, deckTop + H * 0.14, -L * 0.22], 'bareMetal', {
+          group: 'deck plant', shape: { profile: DRUM_PROFILE, segments: 12 },
+        }),
+      greeble('derrick', 'taperedBox', [0.22, H * 0.44, 0.22],
+        [W * 0.28, deckTop + H * 0.22, -L * 0.18], 'bareMetal', {
+          rot: [0, 0, -0.16], group: 'derrick',
+          shape: { topScaleX: 0.52, topScaleZ: 0.52, shear: 0.10 },
+        }),
+      greeble('derrickJib', 'extrude', [0.18, 0.18, L * 0.26],
+        [W * 0.28, deckTop + H * 0.42, -L * 0.08], 'bareMetal', {
+          rot: [0.12, 0, 0], group: 'derrick',
+          shape: {
+            profile: ductSection(0.20),
+            path: [[0, 0, -L * 0.13], [0, 0, 0], [0, 0, L * 0.13]],
+            scale: [1.0, 0.86, 0.58], capStart: true, capEnd: true,
+          },
+        }),
+    );
+  } else {
+    masses.push(
+      // Allied bridges grow swept shoulder wings and a single integrated
+      // sensor bar; the hardware is absorbed into the shell.
+      armour('bridgeWing', taperOutline(W * 0.40, superL * 0.54, 0.40), 0.08,
+        [W * 0.30, superY + superH * 0.18, superZ], [0, -0.18, 0.08],
+        'paintMed', 'bridge wings', { mirrorX: true }),
+      greeble('sensorBar', 'taperedBox', [W * 0.72, 0.18, 0.20],
+        [0, H * 0.82, mastZ], 'bareMetal', {
+          group: 'sensors', shape: { topScaleX: 0.82, topScaleZ: 0.52, cornerCut: 0.08 },
+        }),
+    );
+  }
+
   // A lighter has neither of these and cannot: the stern gun belongs to a hull
   // that fights, and a ram stem is the one thing that physically cannot share a
   // bow with a door. Leaving them on was the fastest way to build the escort
@@ -1711,12 +1859,19 @@ function hoverTransport(faction: 'allies' | 'soviets', hullNumber: number): Unit
       [0, deckY, 0], undefined, 'paintLarge', { capSlot: 'paintMed' }),
     // The forward cabin: the dominant mass, up at 0.655 H where it belongs.
     primary('cabin', 'taperedBox', [W * 0.62, bodyH, L * 0.34], [0, bodyY, L * 0.16], 'paintLarge', {
-      shape: { topScaleX: 0.72, topScaleZ: 0.78, shear: -L * 0.03, cornerCut: W * 0.06 },
+      shape: soviet
+        ? { topScaleX: 0.88, topScaleZ: 0.82, shear: -L * 0.01, cornerCut: W * 0.10 }
+        : { topScaleX: 0.64, topScaleZ: 0.72, shear: -L * 0.06, cornerCut: W * 0.08 },
     }),
-    // Twin ducted lift fans aft. Faceted cylinders, 12 segments.
-    primary('fanDuct', 'cylinder', [W * 0.34, bodyH * 0.94, W * 0.34], [W * 0.26, bodyY - bodyH * 0.04, -L * 0.30], 'bareMetal', {
-      mirrorX: true, shape: { segments: 12, rTop: 0.88 },
-    }),
+    // Exposed industrial ducts for the Soviets; swept shrouds for the Allies.
+    soviet
+      ? primary('fanDuct', 'cylinder', [W * 0.34, bodyH * 0.94, W * 0.34], [W * 0.26, bodyY - bodyH * 0.04, -L * 0.30], 'bareMetal', {
+        mirrorX: true, shape: { segments: 12, rTop: 0.88 },
+      })
+      : primary('fanDuct', 'taperedBox', [W * 0.31, bodyH * 0.88, W * 0.38], [W * 0.27, bodyY - bodyH * 0.04, -L * 0.30], 'paintMed', {
+        mirrorX: true, capSlot: 'grille',
+        shape: { topScaleX: 0.62, topScaleZ: 0.76, shear: -0.12, cornerCut: W * 0.08 },
+      }),
   ];
 
   masses.push(
@@ -1742,6 +1897,27 @@ function hoverTransport(faction: 'allies' | 'soviets', hullNumber: number): Unit
       group: 'mast', shape: { segments: 8 },
     }),
   );
+
+  if (soviet) {
+    masses.push(
+      greeble('exhaustCan', 'revolve', [0.52, H * 0.30, 0.52],
+        [-W * 0.34, bodyY + H * 0.02, -L * 0.12], 'bareMetal', {
+          group: 'power pack', shape: { profile: DRUM_PROFILE, segments: 12 },
+        }),
+      greeble('exhaustStack', 'cone', [0.24, H * 0.30, 0.24],
+        [-W * 0.34, bodyY + H * 0.22, -L * 0.12], 'bareMetal', {
+          group: 'power pack', shape: { segments: 10, rTop: 0.68 },
+        }),
+    );
+  } else {
+    masses.push(
+      armour('cabinWing', taperOutline(W * 0.48, L * 0.16, 0.46), 0.08,
+        [W * 0.30, bodyY + bodyH * 0.34, L * 0.10], [0, -0.14, 0.08],
+        'paintMed', 'cabin wings', { mirrorX: true }),
+      glowPanel('fanHalo', [W * 0.22, 0.06, W * 0.22],
+        [W * 0.27, bodyY + bodyH * 0.40, -L * 0.30], { mirrorX: true }),
+    );
+  }
 
   masses.push(
     slab('skirtBand', [0.08, skirtH * 0.40, L * 0.56], [W * 0.46, skirtY + skirtH * 0.12, 0], { mirrorX: true , k: TEAM_K.transport }),
@@ -1932,6 +2108,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   tank({
     key: 'allied_guardian', name: 'Guardian Tank', faction: 'allies', hullNumber: 4172,
     hullLength: 6.6, hullWidth: 3.2, height: 2.50, brutalist: false, gun: 'cannon', wheels: 5,
+    v2Style: 'precision',
   }),
   tank({
     key: 'allied_ifv', name: 'Sabre IFV', faction: 'allies', hullNumber: 4172,
@@ -2004,6 +2181,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   tank({
     key: 'soviet_rhino', name: 'Anvil Heavy Tank', faction: 'soviets', hullNumber: 8188,
     hullLength: 7.0, hullWidth: 3.4, height: 2.60, brutalist: true, gun: 'cannon', wheels: 6,
+    v2Style: 'dominion',
   }),
   tank({
     key: 'soviet_apocalypse', name: 'Sledge Tank', faction: 'soviets', hullNumber: 8188,

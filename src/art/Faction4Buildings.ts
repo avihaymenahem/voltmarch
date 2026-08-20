@@ -195,7 +195,7 @@ const PAD_SEED = 0x52_9d;
  * coverage lands at 25-33%, the HIGHEST of the four rosters and five to seven
  * times `SURFACE_BUDGET.detailFloorStructure`, with speckle at 0.1%.
  */
-const PANEL_DENSITY = 3.0;
+const PANEL_DENSITY = 1.25;
 
 /* ==========================================================================
  * 2. MASS CONSTRUCTORS
@@ -936,6 +936,25 @@ function breakerYard(): StructureMassList {
     }),
     // The cutting torch, which is the only warm light on a Reclamation building.
     conduit('lit.torch', [0.30, 0.30, 0.30], [-s.w * 0.30, s.roofY * 0.50, s.d * 0.5 - 0.02]),
+    // V2 WEAPONISED SALVAGE: the working jib is kicked hard to one flank and
+    // overhangs the bay. The centred travelling rail remains the load-bearing
+    // structure; this visibly improvised second crane is the faction tell.
+    girder('breaker.jib', [0.52, 0.62, s.d * 0.72],
+      [s.w * 0.29, railY - 0.76, s.d * 0.10], {
+        rot: [0.05, 0, -0.24], group: 'breakerJib',
+        shape: { topScaleX: 0.58, topScaleZ: 0.74, shear: 0.18 },
+      }),
+    girder('breaker.stay', [0.20, 2.4, 0.20],
+      [s.w * 0.34, railY - 1.65, -s.d * 0.20], {
+        rot: [0.48, 0, -0.18], group: 'breakerJib',
+      }),
+    // The magnetic lifting coil hangs below the offset trolley. It repeats the
+    // same coil grammar used by Reclamation weapons at architectural scale.
+    ...arcCoil('breakerMagnet', s.w * 0.28, s.roofY + 0.72, s.d * 0.24, 1.36, 1.28),
+    ...hungClad('breaker.shield', s.roofY * 0.54, s.d * 0.34,
+      [-s.w * 0.43, s.roofY * 0.58, s.d * 0.12], -0.14, 'paintSmall'),
+    conduit('breaker.arc', [0.16, s.roofY * 0.62, 0.14],
+      [s.w * 0.40, s.roofY * 0.56, -s.d * 0.18], { group: 'breakerJib' }),
   );
   return list('reclaim_breakeryard', 'Breaker Yard', 'warFactory', s.masses, [
     ...baseSockets(s.d, s.roofY + 1.2, -s.w * 0.12, -s.d * 0.24),

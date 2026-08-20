@@ -141,7 +141,7 @@ const PAD_SEED = 0x4d_9d;
  * at 29-41%, inside `BUILDING_VALIDATION.sobelTarget` (38-47%) for every
  * production structure, with drawn-detail coverage 5-8x the 4.5% R1 floor.
  */
-const PANEL_DENSITY = 2.4;
+const PANEL_DENSITY = 1.15;
 
 /* ==========================================================================
  * 2. MASS CONSTRUCTORS
@@ -579,6 +579,30 @@ function forgeyard(): StructureMassList {
       }),
     box('rail.trolley', MassRole.Greeble, [0.85, 0.65, 0.85], [-s.w * 0.16, f.height - 1.45, -s.d * 0.10], 'hatch', { group: 'rail' }),
     box('flue', MassRole.Greeble, [s.w * 0.15, 1.05, s.d * 0.18], [-s.w * 0.34, s.roofY + 0.52, -s.d * 0.28], 'vent', { group: 'flue' }),
+    // V2 SOLAR LEVITATION: paired hex mirror-sails lift above the closed shell.
+    // Their upward cant and gold centreline are the opposite of a gantry's
+    // horizontal dead weight even though both buildings produce vehicles.
+    pri('forge.sail', MassRole.Primary, [s.w * 0.34, 0.24, s.d * 0.42],
+      [s.w * 0.23, f.height - 0.78, -s.d * 0.02], 'paintMed', {
+        mirrorX: true, plan: 'hexagon', capSlot: 'paintSmall', rot: [-0.10, 0, -0.16],
+        group: 'solarSails', chamfer: 0.06,
+      }),
+    // The forge aperture stands on edge: from the RTS camera it reads as a
+    // luminous halo suspended between the sails, not another roof turret.
+    cyl('forge.halo', MassRole.Primary, [s.w * 0.30, 0.34, s.w * 0.30],
+      [0, f.height - 0.86, s.d * 0.05], 'bareMetal', {
+        rot: [Math.PI * 0.5, 0, 0], segments: 16, topRadius: 0.78,
+        capSlot: 'grille', group: 'forgeHalo', chamfer: 0.05,
+      }),
+    cyl('forge.sun', MassRole.Emissive, [s.w * 0.16, 0.20, s.w * 0.16],
+      [0, f.height - 0.86, s.d * 0.05], 'emissive', {
+        rot: [Math.PI * 0.5, 0, 0], segments: 14, topRadius: 0.72,
+        capSlot: 'emissive', group: 'forgeHalo', feature: Feature.Window,
+      }),
+    box('forge.spine', MassRole.Emissive, [0.14, 0.12, s.d * 0.54],
+      [0, s.roofY + 0.34, -s.d * 0.02], 'emissive', {
+        group: 'forgeSpine', feature: Feature.Window, chamfer: 0.03,
+      }),
   );
   return list('meridian_forgeyard', 'Forgeyard', 'warFactory', s.masses, [
     ...baseSockets(s.d, s.roofY + 1.1, -s.w * 0.34, -s.d * 0.28),

@@ -2720,18 +2720,18 @@ export interface UnitPalette {
  * BUDGET note in §6.
  */
 export const RA3_ALLIES: UnitPalette = {
-  base: '#AFBACC',
-  shadow: '#28303F',
-  team: '#2A2ED0',
-  teamSecondary: '#1C169A',
+  base: '#C1C7D0',
+  shadow: '#222A36',
+  team: '#315FEA',
+  teamSecondary: '#17316F',
   insignia: 'eagle',
   insigniaColor: '#F2F5FA',
   hullNumber: 4172,
-  emissive: '#8DD9CD',
-  bareMetal: '#61503A',
-  trackLink: '#281A11',
+  emissive: '#48D7FF',
+  bareMetal: '#343B45',
+  trackLink: '#141920',
   /** Deep cobalt canopy — a named RA3 accent mass, not a dark grey. */
-  glass: '#0F2E60',
+  glass: '#102B4B',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   rivets: false,
@@ -2751,17 +2751,17 @@ export const RA3_ALLIES: UnitPalette = {
  *   2. CHROMA. S 0.52 -> 0.61, on the single biggest field on a Soviet hull.
  */
 export const RA3_SOVIETS: UnitPalette = {
-  base: '#67702C',
-  shadow: '#282C10',
-  team: '#E01418',
-  teamSecondary: '#D51512',
+  base: '#5B6132',
+  shadow: '#242615',
+  team: '#C93336',
+  teamSecondary: '#681B1D',
   insignia: 'star',
   insigniaColor: '#E4C300',
   hullNumber: 8188,
   /** The one faction whose accents are orange furnace, not cyan. */
-  emissive: '#FF7A1E',
-  bareMetal: '#61503A',
-  trackLink: '#281A11',
+  emissive: '#FF8A32',
+  bareMetal: '#484238',
+  trackLink: '#1D1B18',
   glass: '#241C10',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
@@ -2854,22 +2854,22 @@ export const UNIT_GAIT = {
 
 export const UNIT_MATERIAL = {
   /** Painted hull. 60-75% of a unit's surface. */
-  paintRoughness: 0.52,
+  paintRoughness: 0.58,
   paintMetalness: 0.0,
-  clearcoat: 0.30,
-  clearcoatRoughness: 0.38,
-  envMapIntensity: 0.80,
+  clearcoat: 0.18,
+  clearcoatRoughness: 0.46,
+  envMapIntensity: 0.65,
   /** Barrels, tracks, rollers. 12-20% of surface. */
-  bareMetalRoughness: 0.32,
-  bareMetalMetalness: 0.82,
-  bareMetalEnv: 0.95,
+  bareMetalRoughness: 0.38,
+  bareMetalMetalness: 0.72,
+  bareMetalEnv: 0.82,
   /** Canopies. 1-3% of surface. */
   glassRoughness: 0.10,
   glassClearcoat: 0.60,
   glassEnv: 1.00,
   /** Emissive gain. Small MASKED panels only — 2.6 over a whole surface veils
    *  the frame to white, which is the failure the foundation warns about. */
-  emissiveIntensity: 2.2,
+  emissiveIntensity: 1.55,
   /**
    * Normal map XY gain.
    *
@@ -2881,7 +2881,7 @@ export const UNIT_MATERIAL = {
    * relief they stand for. 0.45 keeps the seam, loses the puffiness, and halves
    * the amplitude of the ambient-fill tint on tilted texels.
    */
-  normalScale: 0.45,
+  normalScale: 0.28,
 } as const;
 
 /** Canvas-greeble tuning. Every number here changes pixels in the atlas. */
@@ -5383,19 +5383,19 @@ export const RA3_ALLIED_STRUCTURE: UnitPalette = {
    * This is still the palest army in the game and still unmistakably ceramic
    * rather than Soviet olive.
    */
-  base: '#AFB8C7',
-  shadow: '#28303F',
+  base: '#B8BDC6',
+  shadow: '#222A36',
   /** Cobalt trim. R-T2: flat slab inserts, never a tint. */
-  team: '#2A2ED0',
-  teamSecondary: '#1C169A',
+  team: '#315FEA',
+  teamSecondary: '#17316F',
   insignia: 'eagle',
   insigniaColor: '#F2F5FA',
   hullNumber: 1949,
-  emissive: '#8DD9CD',
+  emissive: '#48D7FF',
   /** Chrome, read as a warm grey so it never goes blue steel (bible 5.4). */
-  bareMetal: '#7E7458',
-  trackLink: '#222A38',
-  glass: '#0F2E60',
+  bareMetal: '#39414B',
+  trackLink: '#171C24',
+  glass: '#102B4B',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   /** Allied architecture is welded and tiled. No rivets, ever. */
@@ -5404,17 +5404,17 @@ export const RA3_ALLIED_STRUCTURE: UnitPalette = {
 
 /** SOVIET structures. Olive over concrete, riveted, industrial. */
 export const RA3_SOVIET_STRUCTURE: UnitPalette = {
-  base: '#67702C',
-  shadow: '#282C10',
-  team: '#E01418',
-  teamSecondary: '#D51512',
+  base: '#5B6132',
+  shadow: '#242615',
+  team: '#C93336',
+  teamSecondary: '#681B1D',
   insignia: 'star',
   insigniaColor: '#E4C300',
   hullNumber: 1917,
   /** The one faction whose accents are orange furnace, not cyan (R-T5). */
-  emissive: '#FF7A1E',
-  bareMetal: '#61503A',
-  trackLink: '#281A11',
+  emissive: '#FF8A32',
+  bareMetal: '#484238',
+  trackLink: '#1D1B18',
   glass: '#241C10',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
@@ -5538,8 +5538,8 @@ export const BUILDING_GREEBLE = {
    * higher figure because Allied architecture carries no rivets and has to
    * reach the band on panel lines and banding strips alone.
    */
-  panelDensityAllies: 3.4,
-  panelDensitySoviets: 2.6,
+  panelDensityAllies: 1.35,
+  panelDensitySoviets: 1.20,
   /** Concrete is jointed, not panelled: a slab tile wants far fewer runs. */
   padPanelDensity: 1.0,
   /** Rivet pitch in atlas px. Bible SOVIET-6: 10-14 px at reference scale. */
