@@ -1603,7 +1603,14 @@ export function buildStructure(
       acc.setTransform(m.rot as V3 | undefined, anchor, mirror);
       // The ambient ramp is always measured from the GROUND, so a turret piece
       // rebased onto its ring still darkens correctly toward its base.
-      acc.setTint(height, m.tint ?? 1);
+      // Large architectural volumes sit one tonal step behind applied trim and
+      // faction plates, the same broad-value hierarchy used by units. Pads are
+      // ground surfaces and stay untouched; an authored tint always wins.
+      const massTint = m.tint
+        ?? (target !== 'pad' && m.role === MassRole.Primary
+          ? BUILDING_GREEBLE.primaryMassTint
+          : 1);
+      acc.setTint(height, massTint);
       // The seam ramp is measured from THIS MASS's footline instead, which is
       // the whole point of it: a lamp hood eight metres up needs a contact
       // shadow where it meets the wall, and the ground ramp saturated at 55%

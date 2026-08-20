@@ -210,6 +210,13 @@ function tints(g: StructureModel['body']): Float32Array {
   return out;
 }
 
+describe('structure tonal hierarchy', () => {
+  it('keeps primary bodies behind full-value trim without crushing the facade', () => {
+    expect(BUILDING_GREEBLE.primaryMassTint).toBeGreaterThanOrEqual(0.90);
+    expect(BUILDING_GREEBLE.primaryMassTint).toBeLessThanOrEqual(0.96);
+  });
+});
+
 describe('the mass-seam term that `cavityVertexTint` always promised', () => {
   it('darkens the top half of a building, where the ground ramp is saturated', () => {
     // The ground ramp reaches 1.0 at 55% of the structure's height and stays
@@ -303,7 +310,14 @@ describe('the mass-seam term that `cavityVertexTint` always promised', () => {
       // `tint` the author declared, and nothing beyond. All four terms are
       // multiplicative, so the product IS the floor — if a vertex is under it,
       // a fifth darkening has appeared that nobody wrote down.
-      const massTint = b.list.masses.reduce((lo, m) => Math.min(lo, m.tint ?? 1), 1);
+      const massTint = b.list.masses.reduce((lo, m) => {
+        const target = m.target ?? 'body';
+        const tint = m.tint
+          ?? (target !== 'pad' && m.role === MassRole.Primary
+            ? BUILDING_GREEBLE.primaryMassTint
+            : 1);
+        return Math.min(lo, tint);
+      }, 1);
       const floor = 0.60 * UNIT_GREEBLE.cavityVertexTint * STRUCTURE_AO.seamFloor * massTint;
       expect(min, `${b.list.key}`).toBeGreaterThanOrEqual(floor - 1e-4);
     }

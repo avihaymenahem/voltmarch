@@ -749,7 +749,13 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
       mb.setTransform(m.rot as V3 | undefined, anchor, mirror);
       // The ambient ramp is always measured from the GROUND, so a turret piece
       // rebased onto the pivot still darkens correctly toward the tracks.
-      mb.setTint({ height, massTint: m.tint ?? 1 });
+      // The large core volumes need to sit one tonal step behind the applied
+      // armour, insignia and hardware or the whole assembly collapses back into
+      // a single pale block at RTS distance. Explicit author tints still win;
+      // the role default gives every faction the hierarchy automatically.
+      const massTint = m.tint
+        ?? (m.role === MassRole.Primary ? UNIT_GREEBLE.primaryMassTint : 1);
+      mb.setTint({ height, massTint });
       // THE GAIT SIGN COMES FROM THE MIRROR FLAG, which is what lets one
       // declaration on `leg` animate both legs in opposition. Arms take the
       // opposite sign again: a walk reads as a walk because the left arm goes

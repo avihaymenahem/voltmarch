@@ -2721,7 +2721,10 @@ export interface UnitPalette {
  * BUDGET note in §6.
  */
 export const RA3_ALLIES: UnitPalette = {
-  base: '#C1C7D0',
+  // Leave real headroom for the atlas's +22% bevel patch and the warm noon
+  // key. The previous near-white base reached 99.6% value in albedo before it
+  // was lit, flattening layered armour into one white mass.
+  base: '#B3BDC9',
   shadow: '#222A36',
   team: '#315FEA',
   teamSecondary: '#17316F',
@@ -2908,6 +2911,12 @@ export const UNIT_GREEBLE = {
   bevelSaturationLoss: 0.15,
   /** Vertex-colour darkening on undersides and mass seams. */
   cavityVertexTint: 0.74,
+  /**
+   * Major silhouette volumes sit behind their full-value applied armour.
+   * This is a vertex tint, not a second material or a grime layer: it creates
+   * the broad 5-7 colour-block hierarchy that survives at gameplay zoom.
+   */
+  primaryMassTint: 0.90,
 } as const;
 
 /**
@@ -5552,6 +5561,11 @@ export const BUILDING_GREEBLE = {
   panelDensitySoviets: 1.20,
   /** Concrete is jointed, not panelled: a slab tile wants far fewer runs. */
   padPanelDensity: 1.0,
+  /**
+   * Recess the large architectural volumes behind full-value trim, armour and
+   * faction slabs. Pads are ground and explicitly do not receive this tint.
+   */
+  primaryMassTint: 0.94,
   /** Rivet pitch in atlas px. Bible SOVIET-6: 10-14 px at reference scale. */
   rivetPitchPx: 11,
   /** Deck bolts are sparser than hull rivets. */

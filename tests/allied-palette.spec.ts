@@ -25,7 +25,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { RA3_ALLIED_STRUCTURE, RA3_SOVIET_STRUCTURE, RA3_PAD_PALETTE } from '../src/core/config';
+import {
+  RA3_ALLIES, RA3_ALLIED_STRUCTURE, RA3_SOVIET_STRUCTURE, RA3_PAD_PALETTE,
+  UNIT_GREEBLE,
+} from '../src/core/config';
 
 /** Value channel of a `#rrggbb` string, 0..1 — HSV's V, i.e. max(r,g,b). */
 function valueOf(hex: string): number {
@@ -89,6 +92,19 @@ describe('Allied structure albedo leaves room for its own greebling', () => {
       .toBeGreaterThan(valueOf(RA3_SOVIET_STRUCTURE.base));
     // Low chroma is what makes it read as white ceramic at all.
     expect(satOf(RA3_ALLIED_STRUCTURE.base)).toBeLessThan(0.20);
+  });
+});
+
+describe('Allied unit ceramic retains shape under the noon key', () => {
+  const BEVEL_VALUE_GAIN = 1.22;
+
+  it('leaves meaningful albedo headroom above the bevel patch', () => {
+    expect(valueOf(RA3_ALLIES.base) * BEVEL_VALUE_GAIN).toBeLessThan(0.97);
+  });
+
+  it('keeps core masses behind their applied armour without crushing them', () => {
+    expect(UNIT_GREEBLE.primaryMassTint).toBeGreaterThanOrEqual(0.86);
+    expect(UNIT_GREEBLE.primaryMassTint).toBeLessThanOrEqual(0.92);
   });
 });
 
