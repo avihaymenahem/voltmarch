@@ -124,12 +124,14 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 5448 across 219 files (+3 opt-in probes)
+npm test             # vitest, currently 5721 across 229 files (+4 opt-in probes)
                      #   11 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across `manual`, `webgpu-bundle-isolation` and
                      #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 5437 and skips 14. Re-measure both numbers rather than
-                     #   adjusting them by hand; the gated set has grown twice.
+                     #   reports 5710 and skips 15. Re-measure BOTH numbers rather than
+                     #   adjusting them by hand — run it once, `npm run build`, run it
+                     #   again. The gated set has held at 11 across three re-measures;
+                     #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
