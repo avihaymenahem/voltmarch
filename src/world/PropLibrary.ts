@@ -1256,6 +1256,31 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
       // lobes from sharing a depth plane over a visible patch.
       m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr * rng.range(0.84, 0.98), 12, 7, 0,
         a + k * 0.73 + rng.range(-0.13, 0.13), true);
+
+      /*
+       * LEAF SPRAYS: the smooth ellipsoid carries volume, but a crown made only
+       * from ellipsoids still terminates as a necklace of balls. The outermost
+       * lobe on each branch receives one small V-folded fan aimed away from its
+       * branch. The pointed outer edge breaks the silhouette while the
+       * upward-facing fold remains legible from the fixed RTS pitch. These are
+       * ordinary triangles in the same baked source mesh — no alpha cards,
+       * material or draw call.
+       */
+      if (k === lobeN - 1) {
+        const sprayA = a + k * 1.91 + rng.range(-0.34, 0.34);
+        const sprayX = Math.cos(sprayA), sprayZ = Math.sin(sprayA);
+        m.blade(
+          lx + sprayX * lr * 0.38,
+          ly + lr * rng.range(0.02, 0.20),
+          lz + sprayZ * lr * 0.38,
+          sprayX, sprayZ,
+          lr * rng.range(0.44, 0.68),
+          lr * rng.range(0.08, 0.20),
+          lr * rng.range(0.30, 0.46),
+          lr * rng.range(0.08, 0.18),
+          2,
+        );
+      }
     }
     m.noFacetJitter();
   }
@@ -1407,6 +1432,17 @@ function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
       lr * rng.range(0.8, 1.25), h * rng.range(0.30, 0.50), lr * rng.range(0.8, 1.25),
        12, 7, 0.5, 0, true,
     );
+    if (i > 0) {
+      // Pointed outer growth stops the five smooth masses reading as beach
+      // balls while preserving the shrub's low, dense gameplay silhouette.
+      const dx = Math.cos(a), dz = Math.sin(a);
+      m.blade(
+        dx * (d + lr * 0.28), h * rng.range(0.46, 0.72), dz * (d + lr * 0.28),
+        dx, dz,
+        lr * rng.range(0.38, 0.58), h * rng.range(0.04, 0.12),
+        lr * rng.range(0.28, 0.44), h * rng.range(0.05, 0.14), 2,
+      );
+    }
   }
   // Long twigs breaking the outline. These are what stop a shrub from reading
   // as a primitive at the 39-degree camera. Jitter OFF for them: a twig card is

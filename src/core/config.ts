@@ -7808,20 +7808,24 @@ export const DECAL_ATLAS_SIZE = 512;
 /** Slots swept per frame looking for expired decals to collapse. */
 export const DECAL_SWEEP_PER_FRAME = 24;
 
-/** Tread marks. Bible §8.10: two strips at track gauge, ground x0.72, fade 35 s. */
-export const TREAD_LIFE_SECONDS = 35;
-export const TREAD_DARKEN = 0.72;
+/**
+ * Tread marks. Still long-lived enough to describe a manoeuvre, but restrained
+ * for dense armoured columns: the former 35 s / x0.72 pair compounded into
+ * near-black ribbons wherever several vehicles shared a lane.
+ */
+export const TREAD_LIFE_SECONDS = 28;
+export const TREAD_DARKEN = 0.79;
 /** Metres of travel between successive tread stamps. */
-export const TREAD_INTERVAL_METRES = 2.2;
+export const TREAD_INTERVAL_METRES = 2.6;
 /** Track gauge as a fraction of the unit's collision radius. */
 export const TREAD_GAUGE_FRACTION = 1.15;
 /** Half-length of one tread stamp along the direction of travel. */
-export const TREAD_HALF_LENGTH = 1.6;
-/** Half-width of one tread strip. Bible: 6-8 px at 1440p ~= 0.35 m. */
-export const TREAD_HALF_WIDTH = 0.42;
+export const TREAD_HALF_LENGTH = 1.5;
+/** Half-width of one tread strip. Kept near the photographed 0.35 m band. */
+export const TREAD_HALF_WIDTH = 0.36;
 /** Wheeled units lay a fainter, narrower mark. */
-export const TYRE_DARKEN = 0.86;
-export const TYRE_HALF_WIDTH = 0.24;
+export const TYRE_DARKEN = 0.89;
+export const TYRE_HALF_WIDTH = 0.20;
 /** On paving, bible §8.10 drops tread alpha to ~0.4 of the dirt value. */
 export const TREAD_PAVING_FALLOFF = 0.45;
 
