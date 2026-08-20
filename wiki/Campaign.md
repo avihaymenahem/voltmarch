@@ -106,17 +106,20 @@ its operations you have finished; each operation is a row with its par time and 
 | 03 | The Concession | The Crust | 15 | 2 | 2 |
 | 04 | In the Clear | The Crust | 16 | 2 | 2 |
 | 05 | The Open Count | The Crust | 17 | 2 | 2 |
+| 06 | Common Ground | The Crust | 18 | 2 | 2 |
+| 07 | The Thin Place | The Crust | 19 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
 | 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 
-**That is 28 of a planned 37 operations, and this page will not pretend otherwise.** The
-twenty-eight add up to 458 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 30 of a planned 37 operations, and this page will not pretend otherwise.** The
+thirty add up to 495 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
 screen — and **two are complete at nine**: Hold the Seam and The Timetable can both be
-played end to end, Soviets first. The Crust and Salvage Rights stand at five each.
+played end to end, Soviets first. The Crust stands at seven of nine and Salvage Rights at
+five of ten.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished

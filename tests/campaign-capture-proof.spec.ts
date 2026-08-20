@@ -634,13 +634,13 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
 });
 
 /* ==========================================================================
- * 7. THE SHIPPED TABLE — the five, by name, in both directions
+ * 7. THE SHIPPED TABLE — the six, by name, in both directions
  * ========================================================================== */
 
-describe('exactly five operations declare captureProof', () => {
+describe('exactly six operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the five whose headers say so', () => {
+  it('and they are the six whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -648,12 +648,25 @@ describe('exactly five operations declare captureProof', () => {
      * says it is closed.
      *
      * `reclamation.05.closing-entry` was the fifth, and it is the second of the
-     * two shapes this list holds. Four of these protect a structure the OPPONENT
-     * owns; that one protects two the PLAYER owns — every threshold in the file
-     * counts what seat 0 holds, so a captured counting house reads as a lost one
-     * and ends the operation in a defeat on the tick it changes hands. Its
-     * header measures that seat 1 really does open holding an `mrdArtificer`,
-     * so this is not a well-spelled no-op waiting on a call site.
+     * three shapes this list holds. Four of these protect a structure the
+     * OPPONENT owns; that one protects two the PLAYER owns — every threshold in
+     * the file counts what seat 0 holds, so a captured counting house reads as a
+     * lost one and ends the operation in a defeat on the tick it changes hands.
+     * Its header measures that seat 1 really does open holding an
+     * `mrdArtificer`, so this is not a well-spelled no-op waiting on a call site.
+     *
+     * `pact.07.thin-place` is the sixth and the THIRD shape: three GAIA
+     * buildings, which is `Capture.resolve` rule 1 — a neutral structure is taken
+     * outright, at ANY health, by one engineer, with no health gate to soften
+     * through. They are the operation's `hamlet` primary, and a captured holding
+     * lands on SEAT 0 in the middle of the enemy's own parcel, where
+     * `Targeting.isValidTarget` — which refuses only ALLIES — makes it a legal
+     * target for every gun the Ninth owns while the trigger that ends the match
+     * does not care who fired. The player opens with an `mrdArtificer`, so the
+     * play is available and the veto is not a no-op. Its header records the door
+     * this does NOT close: `GarrisonService.enter` calls `captureBuilding()`
+     * directly and consults no `CaptureService` veto, which is
+     * `allies.07.fair-copy`'s finding.
      */
     const declared = ALL
       .filter((o) => o.captureProof !== undefined)
@@ -663,6 +676,7 @@ describe('exactly five operations declare captureProof', () => {
       'allies.01.sounding-line = all',
       'pact.02.long-count = count',
       'pact.04.in-the-clear = mast',
+      'pact.07.thin-place = terrace,well,infirmary',
       'reclamation.05.closing-entry = house,ledger',
       'soviets.06.demolition-order = infirmary',
     ]);

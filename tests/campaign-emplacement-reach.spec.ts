@@ -381,6 +381,41 @@ const GUNS: Readonly<Record<string, string>> = {
   'pact.03.concession': 'rclSpitpost x5',
   'pact.04.in-the-clear': 'pillbox x4',
   'pact.05.open-count': 'mrdGlaive x6',
+  // THREE from the Reclamation opening and TWO the layout stands on the picket
+  // line in front of the cut. `op.foe` is Reclamation, so the layout's `pillbox`
+  // resolves through `keyFor` to the SPITPOST — `postCoil`, 20 m, `power: 0`, so
+  // unlike a Glaive Post there is no grid-deficit route to opening it — and it
+  // DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a `mrdWayfarer`'s 110 hp and an `mrdArtificer`'s 95. So §2
+  // is satisfied with room rather than by the row not chaining at all.
+  //
+  // NEITHER POST IS IN §2's SCOPE ANYWAY, and that is a measured property of
+  // where they stand rather than a gap: they sit 28.28 and 26.83 m up the
+  // approach from the cut, so the nearest tag any `when` clause names is the
+  // crew's own furnace at 26.68 m — outside a 20 m gun. The picket covers the
+  // ROUTE, which the layout header measures by exclusion (+33.8 m on the
+  // cheapest approach when both discs are closed), not the objective.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and here that
+  // is the whole operation: 28 m of `pylonArc` against the Solarch's 26 would
+  // delete the Pact doctrine the fight is built on, and its first chain link is
+  // 120.32 against a 110 hp Wayfarer and the 95 hp Artificer the capture route
+  // is bought with. Delete either empty list and a Pylon appears here.
+  'pact.06.common-ground': 'rclSpitpost x5',
+  // TWO from the Soviet opening and ONE the layout stands on the Ninth's
+  // allocation office, 19.8 m back down the road from it. `op.foe` is Soviet, so
+  // the layout's `pillbox` resolves through `keyFor` to the SENTRY GUN — 22 m of
+  // `pillboxMg`, `chainCount` 0, one pull 52.00 against a 110 hp `mrdWayfarer`,
+  // so §2 is satisfied by the row not chaining at all rather than by distance.
+  //
+  // THE EMPTY `roster.ai` IS WHY THERE ARE NO TESLA COILS HERE. `SovietBase.ts`
+  // seeds three, and `teslaBolt` is 30 m with `chainCount` 2 — 153.6 then 92.2,
+  // which does NOT clear a 110 hp Wayfarer on the second link, so this row is not
+  // load-bearing for §2. It is load-bearing for the operation: the allocation
+  // office is the second secondary's target and three coils on that line would
+  // make the assault a different question.
+  'pact.07.thin-place': 'flameTower x2, sentryGun x1',
   // WAS `sentryGun x2, teslaCoil x5` UNTIL 2026-08-19. Two of those five were
   // the compound's flank towers, authored as `prismTower` and resolved to a
   // Tesla Coil by `op.foe`; they are `pillbox`-role posts now. The three that
