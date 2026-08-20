@@ -189,6 +189,59 @@ describe('tutorial — bindings come from ActionCatalogue, never from prose', ()
     expect(texts).not.toContain('A');
   });
 
+  /**
+   * THE FIRST STEP OF THE TUTORIAL WAS UNWINNABLE ON A TRACKPAD.
+   *
+   * `camera.move` gates on `camZoomTravel >= 0.3` and its `actions` named
+   * exactly one zoom — `cam.wheelZoom` — beside two gestures that PAN. So a
+   * laptop player was shown a chip reading "Mouse wheel", plus "Two-finger
+   * swipe" and "Middle-drag", and asked to dolly the camera. Reported from a
+   * Mac as "cant zoom or scroll on z".
+   *
+   * WRITTEN AS A RULE, NOT AS A LIST, because a literal list is how the gap
+   * shipped: the step named a set that was correct on the day it was authored
+   * and nothing re-examined it when the camera scheme changed. Any step gated
+   * on a zoom must name a zoom a KEYBOARD can perform — `binding:
+   * 'rebindable'` is exactly "this has a chord", and a key needs no pointing
+   * device, no classifier verdict and no browser event shape.
+   */
+  it('never gates a step on an input the player has no key for', () => {
+    // THE ZOOM ACTIONS, DERIVED. `tests/action-catalogue.spec.ts` pins that
+    // this filter selects exactly the five zoom rows and no pan row, in both
+    // directions — so a sixth zoom added later cannot slip past this rule by
+    // being invisible to it.
+    const zooms = new Set(ACTIONS.filter((a) => /zoom/i.test(a.id)).map((a) => a.id));
+
+    for (const step of TUTORIAL_STEPS) {
+      if (!step.goals.some((g) => g.fact === 'camZoomTravel')) continue;
+      const keyed = step.actions
+        .filter((id) => zooms.has(id))
+        .map((id) => actionById(id))
+        .filter((a) => a !== undefined && a.binding === 'rebindable');
+      expect(
+        keyed.length,
+        `${step.id} asks the player to zoom and names no KEY that zooms — `
+        + 'every other route depends on a wheel or a gesture, which is what '
+        + 'left this step unwinnable on a trackpad. Filtering to the zoom rows '
+        + 'is load-bearing: the first draft of this rule accepted `cam.panUp`, '
+        + 'which is rebindable and does not zoom, and passed against the '
+        + 'broken step.',
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * And the chips must describe the machine the player is on. The trackpad
+   * gesture that dollies is `cam.trackpadZoom`; `cam.trackpadPan` is now the
+   * SHIFT-held gesture, so naming only the latter would print a pan under a
+   * heading asking for a zoom — the same defect one layer down.
+   */
+  it('names the trackpad zoom on the step that teaches zooming', () => {
+    const step = TUTORIAL_STEPS[stepIndex('camera.move')];
+    expect(step.actions).toContain('cam.trackpadZoom');
+    expect(step.actions).toContain('cam.pinchZoom');
+  });
+
   it('reports a cleared binding as unbound rather than falling back', () => {
     const cleared: Record<string, Chord> = {
       ...bindings,

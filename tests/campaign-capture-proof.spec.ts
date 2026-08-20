@@ -634,13 +634,13 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
 });
 
 /* ==========================================================================
- * 7. THE SHIPPED TABLE — the five, by name, in both directions
+ * 7. THE SHIPPED TABLE — the six, by name, in both directions
  * ========================================================================== */
 
-describe('exactly five operations declare captureProof', () => {
+describe('exactly ten operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the five whose headers say so', () => {
+  it('and they are the ten whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -648,12 +648,99 @@ describe('exactly five operations declare captureProof', () => {
      * says it is closed.
      *
      * `reclamation.05.closing-entry` was the fifth, and it is the second of the
-     * two shapes this list holds. Four of these protect a structure the OPPONENT
-     * owns; that one protects two the PLAYER owns — every threshold in the file
-     * counts what seat 0 holds, so a captured counting house reads as a lost one
-     * and ends the operation in a defeat on the tick it changes hands. Its
-     * header measures that seat 1 really does open holding an `mrdArtificer`,
-     * so this is not a well-spelled no-op waiting on a call site.
+     * three shapes this list holds. Four of these protect a structure the
+     * OPPONENT owns; that one protects two the PLAYER owns — every threshold in
+     * the file counts what seat 0 holds, so a captured counting house reads as a
+     * lost one and ends the operation in a defeat on the tick it changes hands.
+     * Its header measures that seat 1 really does open holding an
+     * `mrdArtificer`, so this is not a well-spelled no-op waiting on a call site.
+     *
+     * `pact.07.thin-place` is the sixth and the THIRD shape: three GAIA
+     * buildings, which is `Capture.resolve` rule 1 — a neutral structure is taken
+     * outright, at ANY health, by one engineer, with no health gate to soften
+     * through. They are the operation's `hamlet` primary, and a captured holding
+     * lands on SEAT 0 in the middle of the enemy's own parcel, where
+     * `Targeting.isValidTarget` — which refuses only ALLIES — makes it a legal
+     * target for every gun the Ninth owns while the trigger that ends the match
+     * does not care who fired. The player opens with an `mrdArtificer`, so the
+     * play is available and the veto is not a no-op. Its header records the door
+     * this does NOT close: `GarrisonService.enter` calls `captureBuilding()`
+     * directly and consults no `CaptureService` veto, which is
+     * `allies.07.fair-copy`'s finding.
+     *
+     * `pact.08.struck-off` is the seventh and it is the third shape again, on
+     * the SAME three Gaia holdings — it is P7's parcel nine days later, on P7's
+     * seeds, so the terrace, the well and the infirmary land on the same three
+     * points. What is new is WHO can spend themselves on those doors. The eleven
+     * households the operation exists to walk off the crust are spawned with the
+     * `engineer` key — `Faction.Neutral`, unarmed, and therefore carrying
+     * `canCapture` — on a 16 m ring around the three buildings they come out of.
+     * Without the veto, a commander who box-selects a lift and right-clicks the
+     * terrace to shelter them spends a household outright (rule 1 takes a
+     * neutral structure at ANY health, and `consume` writes `UnitState.Selling`
+     * and `markDead`), and the primary's threshold of nine moves out of reach
+     * three clicks later, silently. `refuse()` is the only branch that hands the
+     * man back.
+     *
+     * `pact.09.vacant-possession` is the eighth and it is the FIRST of a fourth
+     * shape: the veto is not a hazard note, it is the operation's own thesis
+     * written as a field. Its two primaries are that four unarmed men stand on
+     * the Conclave's reading floor at the hour and that no gun of the Order's is
+     * inside the precinct when they do — the Order takes possession of NOTHING —
+     * and an `mrdArtificer` walking into the `mrdOculus` on that floor to put the
+     * deed back in Pact hands is the exact move the operation exists to refuse.
+     *
+     * `reclamation.06.in-duplicate` is the ninth, and it is the FIRST entry in
+     * this table that is an operation's THESIS rather than a hazard note. Its
+     * `bond` is a GAIA `civApartments` — the district's bonded store, the place
+     * the counterpart is walked to — and the carriers are six `rclTinker`, so
+     * `Capture.resolve` rule 1 would take it outright, at ANY health, for one of
+     * them, on the single most natural click in the operation: select the clerks,
+     * right-click the building you were told to reach. A counterpart lodged in a
+     * warehouse the Reclamation owns is not a second copy, it is the same copy in
+     * the same hand, which is the assertion the whole chapter is arguing against.
+     * The veto is that sentence as a flag bit — and it does not merely refuse the
+     * click, it CORRECTS it: `resolveContextOrder`'s neutral branch is guarded by
+     * `capturableNow`, so with the veto installed the cursor never offers
+     * Capture, `caps.canCapture` skips the garrison branch below it, and the
+     * order resolves to Move, which is exactly what the operation's
+     * `unitsInArea` threshold is waiting for. Its `house` is the
+     * `reclamation.05.closing-entry` shape on the same map: every threshold in
+     * that file counts seat 0, seat 1 opens holding one `engineer`, and a
+     * captured counting house would read as a lost one.
+     *
+     * `reclamation.07.payment-in-kind` is the tenth, and it is a FIFTH shape: a structure the
+     * OPPONENT owns, protected against the PLAYER'S OWN ENGINEERS rather than
+     * against a brain that has no `OrderKind.Capture` call site. R7's second
+     * primary is that the Works' receiving office is still standing at the end,
+     * because its counterfoils are the only proof the Reclamation was owed the
+     * plant it is levying — and `t.notesLost` reads `entityDead`, which is the
+     * RIGHT condition on a protect-target precisely because a captured structure
+     * is still alive and still standing. What the veto closes is the state after
+     * that: `Targeting.isValidTarget` refuses only ALLIES, so an office on the
+     * player's books is a legal target for every gun the Works owns, and the
+     * trigger that ends the operation does not care who fired. The play is not
+     * theoretical — the operation hands the player FOUR `rclTinker`, forty metres
+     * from that building, on a map whose whole verb is capturing enemy
+     * structures. The three `levy` gantries are deliberately NOT in the list: the
+     * operation wants those taken, and a blanket would make its own primary
+     * unreachable by the route the composition is built around. See both files'
+     * own headers.
+     *
+     * ITS FLOOR IS GAIA'S, WHICH MAKES THIS THE §4 SHAPE AT FULL PRICE RATHER
+     * THAN THE `soviets.06` ONE. That layout owns the instrument on the Neutral
+     * slot because `Targeting.isValidTarget` refuses only ALLIES and the player's
+     * own opening column deleted a Sept-held Oculus in 4.37 s from a 22 m ring —
+     * measured in a real Targeting/Weapons/Projectiles/Damage rig, with the same
+     * column around an OWN Oculus and the same column on Hold Fire as controls.
+     * A neutral owner is exactly why the veto is load-bearing here: rule 1 takes
+     * a neutral structure OUTRIGHT AT ANY HEALTH, no soften ladder and no
+     * `captureHpFrac` gate, so without `captureProof` the operation's whole
+     * thesis is one right-click for the price of one reader out of four. The play
+     * is available — the operation opens with four artificers and the floor is
+     * the one door on the map that the arithmetic does not already refuse (see
+     * its header's capture block, where one capture is affordable and two are
+     * not) — and `refuse()` is the branch that hands the man back.
      */
     const declared = ALL
       .filter((o) => o.captureProof !== undefined)
@@ -663,7 +750,12 @@ describe('exactly five operations declare captureProof', () => {
       'allies.01.sounding-line = all',
       'pact.02.long-count = count',
       'pact.04.in-the-clear = mast',
+      'pact.07.thin-place = terrace,well,infirmary',
+      'pact.08.struck-off = terrace,well,infirmary',
+      'pact.09.vacant-possession = floor',
       'reclamation.05.closing-entry = house,ledger',
+      'reclamation.06.in-duplicate = house,bond',
+      'reclamation.07.payment-in-kind = office',
       'soviets.06.demolition-order = infirmary',
     ]);
   });

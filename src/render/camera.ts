@@ -39,17 +39,42 @@
  *     was not handled at all.
  *   - There is no middle button, so the only drag-pan was unreachable.
  *
- * So `wheel` is no longer one gesture. It is three, and which one you get
- * depends on the event:
+ * So `wheel` is no longer one gesture. It is several, and which one you get
+ * depends on the event and on ONE setting. IN PRECEDENCE ORDER, highest first:
  *
- *   ctrlKey             -> PINCH ZOOM        (macOS pinch, and ctrl+wheel)
- *   trackpad, no ctrl   -> TWO-FINGER PAN    (deltaX/deltaY across the ground)
- *   mouse wheel         -> DOLLY toward the cursor, exactly as before
+ *   ctrlKey                          -> ZOOM   (macOS pinch, and ctrl+wheel)
+ *   shiftKey                         -> PAN    (the "pan instead" modifier)
+ *   mostly-horizontal                -> PAN    (there is no horizontal zoom)
+ *   altKey                           -> ZOOM   (for a pinch the browser eats)
+ *   mouse wheel                      -> DOLLY toward the cursor, as ever
+ *   trackpad, `trackpadScroll: zoom` -> DOLLY  (the shipping default)
+ *   trackpad, `trackpadScroll: pan`  -> TWO-FINGER PAN across the ground
  *
- * Distinguishing the last two is a heuristic — see `classifyWheelEvent`, which
- * is exported and unit-tested precisely because it is a heuristic. It is also
- * overridable from Options, because heuristics are never perfect and a player
- * stuck in the wrong mode must be able to say so.
+ * Ctrl really is top: a pinch is a pinch whatever else is held, and it is also
+ * the one row that overrides the mostly-horizontal safety net, because a pinch
+ * legitimately arrives with a horizontal component.
+ *
+ * THE TRACKPAD DEFAULT CHANGED, AND IT CHANGED BECAUSE OF A REPORT. This file
+ * originally made a plain two-finger scroll PAN, which is the macOS maps
+ * convention. It is not the RTS convention, and a Mac player reported
+ * *"cant zoom or scroll on z"* — two fingers panned, and nothing they could
+ * find dollied. `trackpadScroll` keeps the old behaviour one chooser click
+ * away rather than deleting it; `Shift` + two fingers and a mostly-sideways
+ * swipe still pan in either mode, so the pan gesture is never unreachable.
+ *
+ * Distinguishing a trackpad from a mouse is a heuristic — see
+ * `classifyWheelEvent`, which is exported and unit-tested precisely because it
+ * is a heuristic. It is also overridable from Options, because heuristics are
+ * never perfect and a player stuck in the wrong mode must be able to say so.
+ * With the new default the verdict decides only the SENSITIVITY of a vertical
+ * scroll and no longer which VERB it performs — and today the two sensitivity
+ * constants are equal, so it decides nothing at all. See
+ * `CAMERA_NAV.trackpadZoomSensitivity`.
+ *
+ * AND THERE IS A KEYBOARD ZOOM NOW (`cam.zoomIn` / `cam.zoomOut`, `=` and `-`,
+ * polled in `src/input/input.system.ts`). Every gesture above depends on a
+ * `wheel` event arriving with the shape the browser is documented to send; a
+ * held key does not. It is the floor under all of this.
  *
  * Drag-pan now has three bindings, all of which reach the same world-grab:
  * MIDDLE-drag, SPACE+left-drag, and RIGHT-drag past a threshold. The threshold
@@ -147,15 +172,55 @@ const MOUSE_RIGHT = 2;
  *               all is strong trackpad evidence.
  *   magnitude   Wheel detents are coarse and land on browser constants — 100
  *               and 120 on Chrome/Edge, and exact multiples when events
- *               coalesce. Trackpad samples are small and often fractional,
- *               because they come from a scaled physical distance.
+ *               coalesce. Trackpad samples are usually small; on Windows
+ *               precision touchpads they are also often fractional, because
+ *               they come from a scaled physical distance.
  *   rate        A trackpad streams at display refresh. Detents are isolated
  *               even from a fast scroller.
  *
- * The known blind spot, stated plainly because the override exists for it: a
- * MOUSE WHEEL ON macOS, where the OS applies scroll acceleration and Chrome
- * reports small integer deltas that look exactly like a slow trackpad swipe.
- * That is why Options carries Auto / Force Trackpad / Force Mouse.
+ * THE `+0.9` FRACTIONAL WEIGHT IS A WINDOWS SIGNAL AND IS INERT ON macOS.
+ * This block used to read "trackpad samples are small and OFTEN FRACTIONAL"
+ * without qualification, and asserted it of the platform the whole scheme was
+ * written for. w3c/uievents#337 reports the opposite: *"Mac touchpads never
+ * produce deltas with a fractional part"*. macOS also AXIS-LOCKS a deliberate
+ * vertical swipe, so `deltaX` is exactly 0. Both of the two strongest trackpad
+ * tells are therefore absent by construction on the one platform that matters
+ * most, and what is left is magnitude and rate.
+ *
+ * Work that through for an axis-locked integer swipe (evidence per event, and
+ * the running score is a 0.5 blend clamped to +-1 with a +-0.25 flip band):
+ *
+ *   first event, gap = Infinity, so -0.4
+ *     |dY| 1..9    0 +0.6 -0.4 = +0.2  -> trackpad
+ *     |dY| 10..49  0  0.0 -0.4 = -0.4  -> MOUSE      (boundary at 9/10)
+ *     |dY| >= 50   0 -0.9 -0.4 = -1.3  -> MOUSE
+ *     |dY| = 100        -2.3 -0.4 = -2.7 -> MOUSE    (the mouse margin: huge)
+ *   sustained, gap 8 ms, so +0.7
+ *     |dY| 10..49  +0.7/event -> flips to trackpad on event 3
+ *     |dY| >= 50   -0.2/event -> saturates at mouse and NEVER RECOVERS
+ *
+ * That last line is a real defect and it is DELIBERATELY NOT FIXED HERE. A
+ * fast macOS flick whose peak samples cross `coarseDeltaPx` is called a mouse
+ * for the rest of the session. Retuning any weight to fix it puts the -2.7
+ * mouse margin at risk, which is the one thing in this heuristic that must not
+ * move; instead `trackpadScroll: 'zoom'` makes both verdicts DOLLY, and
+ * `trackpadZoomSensitivity === wheelZoomSensitivity` makes them dolly by the
+ * same amount, so the misdetection costs nothing a player can feel.
+ *
+ * `tests/camera-nav.spec.ts`'s trackpad fixture is `deltaX: 6.5, deltaY: 9.25`
+ * — non-zero AND fractional, so it trips both rescue signals at once and is
+ * the one shape a macOS trackpad is documented not to produce. It is a
+ * Windows-precision-touchpad fixture; the macOS shapes are pinned beside it.
+ *
+ * The other known blind spot, stated plainly because the override exists for
+ * it: a MOUSE WHEEL ON macOS, where the OS applies scroll acceleration and
+ * Chrome reports small integer deltas that look exactly like a slow trackpad
+ * swipe. That is why Options carries Auto / Force Trackpad / Force Mouse.
+ *
+ * NONE OF THE macOS EVENT SHAPES ABOVE WAS MEASURED HERE. They are documented
+ * behaviour (w3c/uievents#337 for the integers, the W3C public-webapps thread
+ * of Oct 2024 for pinch reaching every browser as ctrl+wheel). Nobody on this
+ * project has a Mac; the arithmetic is ours, the event shapes are cited.
  * ========================================================================== */
 
 export type PointerDeviceKind = 'mouse' | 'trackpad';
@@ -255,13 +320,37 @@ export function classifyWheelEvent(s: WheelSample, state: WheelDeviceState): Poi
  * human asks it to move. Options writes here through `setNavigation`.
  * ========================================================================== */
 
+export type TrackpadScrollMode = 'zoom' | 'pan';
+
 export interface NavigationOptions {
   /** Auto-detect the pointing device, or force one. */
   pointerDevice: PointerDeviceMode;
+  /**
+   * What a plain two-finger trackpad scroll does. **`'zoom'` is the default.**
+   *
+   * `'pan'` is what this file shipped with — the macOS maps convention, where
+   * two fingers move the document and only a pinch scales it. An RTS is not a
+   * map: scroll-to-zoom is close to universal in the genre, and a Mac player
+   * reported *"cant zoom or scroll on z"* against the pan default. It is kept
+   * as a chooser rather than deleted because the convention is real and some
+   * players will want it back.
+   *
+   * It never removes the pan gesture: `Shift` + two fingers pans in either
+   * mode, and a mostly-sideways swipe pans in either mode. And it never
+   * removes the zoom: pinch, `Ctrl` + scroll and `Alt` + scroll zoom in either
+   * mode.
+   */
+  trackpadScroll: TrackpadScrollMode;
   /** Multiplier on two-finger trackpad pan. 1 = the ground tracks the fingers. */
   trackpadPanSensitivity: number;
   /** Multiplier on mouse-wheel zoom notches. */
   wheelZoomSensitivity: number;
+  /**
+   * Multiplier on a trackpad two-finger scroll's zoom notches, through the
+   * same /100 normalisation the wheel uses. Equal to `wheelZoomSensitivity`
+   * today ON PURPOSE — see `CAMERA_NAV.trackpadZoomSensitivity`.
+   */
+  trackpadZoomSensitivity: number;
   /** Notches of zoom per unit of pinch `deltaY`. */
   pinchZoomSensitivity: number;
   /** Multiplier on drag-pan and keyboard pan. */
@@ -294,8 +383,10 @@ export interface NavigationOptions {
 export function defaultNavigationOptions(): NavigationOptions {
   return {
     pointerDevice: 'auto',
+    trackpadScroll: 'zoom',
     trackpadPanSensitivity: CAMERA_NAV.trackpadPanSensitivity,
     wheelZoomSensitivity: CAMERA_NAV.wheelZoomSensitivity,
+    trackpadZoomSensitivity: CAMERA_NAV.trackpadZoomSensitivity,
     pinchZoomSensitivity: CAMERA_NAV.pinchZoomSensitivity,
     dragPanSensitivity: 1.0,
     invertPanX: false,
@@ -312,6 +403,40 @@ export function defaultNavigationOptions(): NavigationOptions {
     edgeIntentSeconds: CAMERA_NAV.edgeIntentMs / 1000,
     edgeIdleSeconds: CAMERA_NAV.edgeIdleMs / 1000,
   };
+}
+
+/**
+ * Milliseconds a `ownsWheel` verdict is reused for the same target. A macOS
+ * scroll streams at display refresh and keeps one target for the whole
+ * gesture, so this turns a per-event pair of layout reads into one per gesture.
+ */
+const WHEEL_OWN_MEMO_MS = 200;
+
+/**
+ * True when `node` or any ancestor up to and including `root` can actually
+ * scroll — content overflows AND the computed overflow on that axis is
+ * `auto`/`scroll`. Both halves are required: an ellipsis truncation overflows
+ * without scrolling, and an `overflow: auto` box with short content scrolls
+ * nothing.
+ *
+ * DOM-only by construction. It is reached solely from `ownsWheel` past an
+ * `ownsEvent` short-circuit, and every test rig whose element `contains()`
+ * everything takes that short-circuit; the `getComputedStyle` guard is for a
+ * host that has a DOM but no CSSOM rather than for this project's specs.
+ */
+function hasScrollableAncestor(node: Node, root: HTMLElement): boolean {
+  if (typeof getComputedStyle !== 'function') return false;
+  let el: HTMLElement | null =
+    node instanceof HTMLElement ? node : (node.parentElement as HTMLElement | null);
+  while (el !== null) {
+    const cs = getComputedStyle(el);
+    const scrolls = (o: string): boolean => o === 'auto' || o === 'scroll';
+    if (el.scrollHeight > el.clientHeight + 1 && scrolls(cs.overflowY)) return true;
+    if (el.scrollWidth > el.clientWidth + 1 && scrolls(cs.overflowX)) return true;
+    if (el === root) return false;
+    el = el.parentElement;
+  }
+  return false;
 }
 
 /** Which binding started the current drag-pan. */
@@ -359,6 +484,13 @@ export class CameraRig {
   // --- navigation state ----------------------------------------------------
   private readonly nav: NavigationOptions = defaultNavigationOptions();
   private readonly wheelDevice: WheelDeviceState = createWheelDeviceState();
+
+  /** Extra roots whose wheel the rig may claim. See `addWheelSurface`. */
+  private readonly wheelSurfaces: HTMLElement[] = [];
+  /** One-entry memo for `ownsWheel`; a gesture keeps one target. */
+  private wheelOwnTarget: EventTarget | null = null;
+  private wheelOwnStamp = -Infinity;
+  private wheelOwnVerdict = false;
 
   /** Active drag-pan: which binding, which pointer, and the pinned ground pt. */
   private dragKind = DRAG_NONE;
@@ -508,8 +640,10 @@ export class CameraRig {
           // A forced mode must not be second-guessed by stale auto evidence.
           this.resetDeviceDetection();
           break;
+        case 'trackpadScroll': this.nav.trackpadScroll = value as TrackpadScrollMode; break;
         case 'trackpadPanSensitivity': this.nav.trackpadPanSensitivity = value as number; break;
         case 'wheelZoomSensitivity': this.nav.wheelZoomSensitivity = value as number; break;
+        case 'trackpadZoomSensitivity': this.nav.trackpadZoomSensitivity = value as number; break;
         case 'pinchZoomSensitivity': this.nav.pinchZoomSensitivity = value as number; break;
         case 'dragPanSensitivity': this.nav.dragPanSensitivity = value as number; break;
         case 'momentumDamping': this.nav.momentumDamping = value as number; break;
@@ -605,6 +739,29 @@ export class CameraRig {
     }
   }
 
+  /**
+   * Multiply the dolly by `zoomStep^notches`.
+   *
+   * MULTIPLICATIVE BECAUSE A DOLLY IS A RATIO: one notch has to mean the same
+   * 13% at 30 m as at 140 m, or the camera crawls at one end of the range and
+   * jumps at the other. `CAMERA.zoomStep`'s own comment records what happened
+   * when this was read as a fraction instead.
+   *
+   * Fractional notches are fine and are what the held-key zoom uses. Because
+   * `pow(s, a) * pow(s, b) === pow(s, a + b)`, a per-frame `zoomBy(rate * dt)`
+   * lands on exactly `zoomStep^(rate * Σdt)` however the frames fall — so the
+   * key poll is frame-rate independent as long as it keeps scaling by `dt`.
+   * The `dt` is the load-bearing half; a fixed step per frame is 4x faster at
+   * 240 fps.
+   *
+   * IT CARRIES NO `inputEnabled` GUARD, deliberately: it is the programmatic
+   * dolly and the shell uses it on posed and scripted cameras. Every INPUT
+   * route into it is guarded elsewhere — `handleWheel` returns early, and the
+   * key poll only runs during a match. A pause menu cannot reach it because
+   * `.vm-screen` (`src/shell/shell.css`) is a full-bleed `pointer-events: auto`
+   * layer, so the wheel never reaches the canvas or the HUD. That means the
+   * third file is load-bearing: make a screen non-full-bleed and this reopens.
+   */
   zoomBy(notches: number): void {
     const cfg = RENDER_CONFIG.camera;
     this.setDistance(this.targetDistance * Math.pow(cfg.zoomStep, notches));
@@ -1083,25 +1240,56 @@ export class CameraRig {
       ? classifyWheelEvent(e, this.wheelDevice)
       : nav.pointerDevice;
 
-    // macOS turns a pinch into a wheel event with ctrlKey set. Alt is offered
-    // as a keyboard alternative for trackpads whose pinch the browser eats.
+    // EVERY BROWSER ON macOS TURNS A PINCH INTO A WHEEL EVENT WITH `ctrlKey`
+    // SET, Safari included since Safari 15 (WebKit r277772, bug 225788) —
+    // retested across Firefox 131, Chrome 128 and Safari 18 in the W3C
+    // public-webapps thread of Oct 2024. That is why there is no
+    // `gesturestart` / `gesturechange` handler anywhere in this project: on
+    // Safari BOTH channels fire, so a gesture handler would zoom twice per
+    // pinch. Search results still confidently report the pre-2021 answer;
+    // the dated primary test is the one to believe.
+    //
+    // Alt is offered as a keyboard alternative for a trackpad whose pinch the
+    // browser eats before we see it.
     const pinch = e.ctrlKey;
-    const wantsZoom = pinch || e.altKey || kind === 'mouse';
+    const scrollZooms = kind === 'trackpad' && nav.trackpadScroll === 'zoom';
+    const wantsZoom = pinch || e.altKey || kind === 'mouse' || scrollZooms;
+
+    // Shift is the documented "pan instead" modifier and it is the trackpad's
+    // way back to a two-finger pan under `trackpadScroll: 'zoom'`. A pinch
+    // OUTRANKS it: a pinch is a pinch whatever else is held.
+    const wantsPan = e.shiftKey && !pinch;
 
     // Hard override: there is no such thing as a horizontal zoom. A gesture
     // that is mostly sideways is a pan whatever the classifier thinks, and this
     // is the safety net that stops a misdetected trackpad from being unusable.
     const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
 
-    if (wantsZoom && !(horizontal && !pinch)) {
-      this.wheelZoom(e, pinch || kind === 'trackpad');
+    if (!wantsPan && wantsZoom && !(horizontal && !pinch)) {
+      this.wheelZoom(e, pinch ? 'pinch' : kind === 'trackpad' ? 'trackpad' : 'wheel');
       return true;
     }
-    this.wheelPan(e);
+    this.wheelPan(e, kind);
     return true;
   }
 
-  private wheelZoom(e: WheelEvent, fineScale: boolean): void {
+  /**
+   * `scale` picks which sensitivity the delta is measured in, and the three
+   * values are three different physical units:
+   *
+   *   'pinch'    `deltaY` is a pinch sample, 0.5-3 per event. Scaled PER PIXEL.
+   *   'wheel'    `deltaY` is a detent, 100 or 120. Normalised by /100.
+   *   'trackpad' `deltaY` is a scroll sample, a few px. Normalised by /100 too,
+   *              which is what makes it a fraction of a notch without any
+   *              second constant doing the work.
+   *
+   * It was a BOOLEAN `fineScale`, with `pinch || kind === 'trackpad'` folded
+   * into it. That collapse is exactly what must not come back: routing a
+   * trackpad SCROLL through the pinch scale puts the ~130 px macOS inertia
+   * tail at 4.5 notches — the entire 55 -> 30 m span, arriving after the
+   * player stopped moving. `tests/camera-nav.spec.ts` pins the tail budget.
+   */
+  private wheelZoom(e: WheelEvent, scale: 'pinch' | 'wheel' | 'trackpad'): void {
     const cfg = RENDER_CONFIG.camera;
     const nav = this.nav;
 
@@ -1110,16 +1298,21 @@ export class CameraRig {
     this.pitchOverride = null;
 
     let notches: number;
-    if (fineScale) {
-      // Pinch and trackpad deltas are an order of magnitude smaller than a
-      // wheel detent, so they get their own scale rather than the /100
-      // normalisation, which would make a full pinch worth a tenth of a notch.
+    if (scale === 'pinch') {
+      // Pinch deltas are an order of magnitude smaller than a wheel detent, so
+      // they get their own PER-PIXEL scale rather than the /100 normalisation,
+      // which would make a full pinch worth a rounding error.
+      //
+      // `deltaMode` is deliberately not normalised on this branch: every source
+      // that produces a pinch produces `deltaMode 0`. If one ever does not, the
+      // /100 branch below is the shape to copy — do not add a third rule.
       notches = e.deltaY * nav.pinchZoomSensitivity;
     } else {
       let delta = e.deltaY;
       if (e.deltaMode === 1) delta *= 16;
       else if (e.deltaMode === 2) delta *= 400;
-      notches = (delta / 100) * nav.wheelZoomSensitivity;
+      notches = (delta / 100)
+        * (scale === 'trackpad' ? nav.trackpadZoomSensitivity : nav.wheelZoomSensitivity);
     }
     if (nav.invertZoom) notches = -notches;
     notches = THREE.MathUtils.clamp(notches, -CAMERA_NAV.maxNotchesPerEvent, CAMERA_NAV.maxNotchesPerEvent);
@@ -1151,7 +1344,7 @@ export class CameraRig {
     }
   }
 
-  private wheelPan(e: WheelEvent): void {
+  private wheelPan(e: WheelEvent, kind: PointerDeviceKind): void {
     const nav = this.nav;
     let dx = e.deltaX;
     let dy = e.deltaY;
@@ -1159,8 +1352,17 @@ export class CameraRig {
     else if (e.deltaMode === 2) { dx *= 400; dy *= 400; }
 
     // Shift+scroll is the platform convention for "scroll the other axis", and
-    // a mouse with no tilt wheel has no other way to pan sideways.
-    if (e.shiftKey && dx === 0) {
+    // a mouse with no tilt wheel has no other way to pan sideways. A TRACKPAD
+    // already has two axes, so on one Shift means "pan rather than zoom" and
+    // swapping the axes would take its vertical pan away.
+    //
+    // THIS AXIS SWAP WAS UNREACHABLE FROM A MOUSE FOR ITS WHOLE LIFE.
+    // `wantsZoom` was unconditionally true for `kind === 'mouse'`, so a mouse
+    // Shift+wheel zoomed and never arrived here — while `cam.wheelPanX` in
+    // `src/input/ActionCatalogue.ts` and the wiki both described it as *"the
+    // only sideways pan available on a mouse with no tilt wheel"*. The
+    // `wantsPan` clause in `handleWheel` is what finally makes that true.
+    if (e.shiftKey && dx === 0 && kind === 'mouse') {
       dx = dy;
       dy = 0;
     }
@@ -1292,6 +1494,79 @@ export class CameraRig {
     const t = e.target;
     if (t === this.domElement) return true;
     return t instanceof Node && this.domElement.contains(t);
+  }
+
+  /**
+   * Extra roots whose WHEEL events the rig may also claim. `ownsEvent` is
+   * untouched by this: pointer, key and contextmenu ownership must not change,
+   * because those really do belong to whatever DOM is under the cursor.
+   *
+   * THE HUD WAS A WHEEL DEAD ZONE AND NOBODY HAD MEASURED IT. `#hud-root` is
+   * `pointer-events: none`, but `.vm-hud .vm-panel { pointer-events: auto }`
+   * is the generic class on EVERY HUD panel, so a wheel over one has a target
+   * outside the canvas — `ownsEvent` says no — and `#hud-root` is a SIBLING of
+   * `#app > canvas`, so the input module's canvas listener is not on the
+   * propagation path either. Neither handler ran. Measured live in Chromium at
+   * four MacBook-shaped viewports: 25.95% of 1440x900, 23.79% of 1280x700,
+   * 21.24% of 1440x789, 19.91% of 1512x850 — one pointer position in five.
+   * Device-independent; a Windows mouse player lost the same fifth.
+   *
+   * Registered by `src/ui/hud.system.ts`, which is the module that owns that
+   * root. It is NOT hard-coded here, and `#menu-root` is deliberately NOT
+   * registered by anything: a menu screen is a modal surface and its wheel is
+   * its own. That also keeps the PvP pause menu — which runs with the camera
+   * still live, on purpose (`Shell.pause`) — behaving exactly as it did.
+   */
+  addWheelSurface(el: HTMLElement): void {
+    if (!this.wheelSurfaces.includes(el)) this.wheelSurfaces.push(el);
+    this.wheelOwnTarget = null;
+  }
+
+  removeWheelSurface(el: HTMLElement): void {
+    const i = this.wheelSurfaces.indexOf(el);
+    if (i >= 0) this.wheelSurfaces.splice(i, 1);
+    this.wheelOwnTarget = null;
+  }
+
+  /**
+   * Wheel ownership. The canvas always; a registered surface unless something
+   * on the way up can genuinely scroll.
+   *
+   * THE SCROLL TEST IS THE HALF THAT MATTERS. `.vm-grid` — the build cameo
+   * list — really does overflow (`overflow-y: auto`, and the shipped HUD
+   * measures scrollHeight 640 against clientHeight 425 on a full tab), and
+   * `.vm-sel-cards` really does overflow sideways. Claiming their wheel would
+   * trade one dead zone for a list the player cannot reach the bottom of. A
+   * SIZE test alone is not enough: `.vm-sel-title` carries `overflow: hidden`
+   * with an ellipsis, so its `scrollWidth` exceeds its `clientWidth` while
+   * nothing scrolls — the computed overflow has to be read too.
+   *
+   * Memoised on (target, timeStamp) across a 200 ms window because a gesture
+   * keeps one target and this is a 120 Hz path: `getComputedStyle` and
+   * `scrollHeight` are both layout reads. The cost of a stale verdict is one
+   * gesture behaving as the previous one did.
+   */
+  private ownsWheel(e: WheelEvent): boolean {
+    if (this.ownsEvent(e)) return true;
+    if (this.wheelSurfaces.length === 0) return false;
+
+    const t = e.target;
+    if (!(t instanceof Node)) return false;
+    let root: HTMLElement | null = null;
+    for (const s of this.wheelSurfaces) {
+      if (s === t || s.contains(t)) { root = s; break; }
+    }
+    if (root === null) return false;
+
+    if (t === this.wheelOwnTarget && e.timeStamp - this.wheelOwnStamp < WHEEL_OWN_MEMO_MS) {
+      this.wheelOwnStamp = e.timeStamp;
+      return this.wheelOwnVerdict;
+    }
+    const verdict = !hasScrollableAncestor(t, root);
+    this.wheelOwnTarget = t;
+    this.wheelOwnStamp = e.timeStamp;
+    this.wheelOwnVerdict = verdict;
+    return verdict;
   }
 
   private get navigating(): boolean {
@@ -1452,7 +1727,9 @@ export class CameraRig {
   };
 
   private onWheel = (e: WheelEvent): void => {
-    if (!this.navigating || !this.ownsEvent(e)) return;
+    // `ownsWheel`, not `ownsEvent`: the HUD panels are a fifth of the viewport
+    // and neither handler used to run over them. See `addWheelSurface`.
+    if (!this.navigating || !this.ownsWheel(e)) return;
     // Always: the page must never scroll under the battlefield, and on macOS an
     // unprevented ctrl+wheel is a full browser zoom.
     e.preventDefault();
@@ -1532,6 +1809,15 @@ export class CameraRig {
     window.addEventListener('pointerdown', this.onPointerDown, cap);
     window.addEventListener('pointerup', this.onPointerUp, cap);
     window.addEventListener('pointercancel', this.onPointerCancel, cap);
+    // `passive: false` IS LOAD-BEARING AND THE ASYMMETRY WITH `removeListeners`
+    // IS CORRECT. Since Chrome 73 a `wheel` listener on window/document/body is
+    // PASSIVE BY DEFAULT (the scrolling intervention, WICG/interventions#64;
+    // Firefox followed in bugzilla 1526725), and `passive: false` is the
+    // documented opt-out. Drop it as tidying and `preventDefault()` in
+    // `onWheel` becomes a silent no-op: the page scrolls under the battlefield
+    // and a macOS ctrl+wheel becomes a full browser zoom. Removal matches on
+    // capture alone, which is why the bare `cap` below is right and must not be
+    // "made to match".
     window.addEventListener('wheel', this.onWheel, { capture: true, passive: false });
     window.addEventListener('contextmenu', this.onContextMenu, cap);
     this.domElement.addEventListener('pointerleave', this.onPointerLeave, { passive: true });
@@ -1556,6 +1842,9 @@ export class CameraRig {
   dispose(): void {
     if (this.disposed) return;
     this.setInputMode('none');
+    // Drop the HUD root: a rig outliving its DOM would pin the whole overlay.
+    this.wheelSurfaces.length = 0;
+    this.wheelOwnTarget = null;
     this.unsubscribeConfig();
     this.disposed = true;
   }

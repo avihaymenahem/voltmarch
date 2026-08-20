@@ -601,7 +601,22 @@
       // An RTS lives on right-click. The browser menu must never appear.
       window.addEventListener('contextmenu', function (e) { e.preventDefault(); }, { capture: true });
 
-      // Kill browser-level gestures that would fight the camera rig.
+      /* Kill browser-level gestures that would fight the camera rig.
+       *
+       * `gesturestart` is Safari-only and non-standard. It is prevented here
+       * so a pinch cannot zoom the PAGE. What is NOT established, because
+       * nobody on this project has a Mac, is whether preventing it also
+       * suppresses the `wheel` + `ctrlKey` event Safari 15+ derives from the
+       * same gesture (WebKit r277772; retested across Safari 18, Chrome 128
+       * and Firefox 131 in the W3C public-webapps thread of Oct 2024). If it
+       * does, pinch-to-zoom is dead in Safari and only in Safari.
+       *
+       * THE CAMERA DOES NOT DEPEND ON THE ANSWER. A plain two-finger scroll
+       * dollies (`NavigationOptions.trackpadScroll`, default `'zoom'`), and
+       * `=` / `-` zoom from the keyboard, so a Safari player has two working
+       * zooms whichever way this resolves. Do not delete this line to find
+       * out — it is the only thing stopping the page zoom. Comment it out
+       * locally, pinch, and read the console.                                */
       window.addEventListener('dragstart', function (e) { e.preventDefault(); });
       window.addEventListener('gesturestart', function (e) { e.preventDefault(); });
       window.addEventListener('wheel', function (e) {

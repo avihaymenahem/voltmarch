@@ -155,7 +155,41 @@ describe('catalogue -> engine tables', () => {
       'cam.panRight': 'ArrowRight',
       'cam.rotateLeft': 'KeyQ',
       'cam.rotateRight': 'KeyE',
+      // The zoom keys are POLLED, not dispatched — a held key, exactly like
+      // pan. Added because there was no keyboard route to the dolly at all:
+      // `CameraRig.zoomBy` had two callers and both were wheel-driven, so a
+      // Mac trackpad player whose scroll events were being read wrongly had
+      // no way to zoom and no way to work around it.
+      'cam.zoomIn': 'Equal',
+      'cam.zoomOut': 'Minus',
     });
+  });
+
+  /**
+   * THE ZOOM ROSTER, PINNED BY VALUE, BECAUSE ANOTHER FILE DERIVES A RULE FROM
+   * IT. `tests/tutorial.spec.ts` refuses a step gated on `camZoomTravel` that
+   * names no KEYBOARD zoom, and it selects the zoom rows with `/zoom/i` on the
+   * id. That predicate is only trustworthy while the ids follow the
+   * convention — so it is checked here, in both directions, and a sixth zoom
+   * (or a pan row that happens to be spelled with "zoom" in its id) fails
+   * HERE, next to the table, rather than silently widening a rule two files
+   * away.
+   *
+   * The first draft of that rule had no such filter and accepted `cam.panUp`,
+   * which is rebindable and does not zoom. It passed against the broken step.
+   */
+  it('spells every zoom action, and only a zoom action, with `zoom` in its id', () => {
+    expect(ACTIONS.filter((a) => /zoom/i.test(a.id)).map((a) => a.id)).toEqual([
+      'cam.zoomIn', 'cam.zoomOut', 'cam.trackpadZoom', 'cam.pinchZoom', 'cam.wheelZoom',
+    ]);
+    // `cam.wheelPanX` is LABELLED "Pan Instead Of Zoom" and must not be caught
+    // by a predicate that reads labels instead of ids.
+    expect(actionById('cam.wheelPanX')?.label).toContain('Zoom');
+    expect(/zoom/i.test('cam.wheelPanX')).toBe(false);
+    // Exactly two of the five need no pointing device.
+    expect(
+      ACTIONS.filter((a) => /zoom/i.test(a.id) && a.binding === 'rebindable').map((a) => a.id),
+    ).toEqual(['cam.zoomIn', 'cam.zoomOut']);
   });
 
   it('hands out fresh objects so a caller cannot poison the catalogue', () => {

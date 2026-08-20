@@ -1254,7 +1254,9 @@ describe('Campaign.md describes the campaign that exists', () => {
      * in it had moved. The count still has to be RIGHT; it just no longer has
      * to be one. The word is spelled out because the page bans digits.
      */
-    const WORDS = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const WORDS = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen',
+      'Eighteen', 'Nineteen', 'Twenty'];
     expect(unpaid, 'more unpaid bonuses than this assertion can spell').toBeLessThan(WORDS.length);
     const noun = unpaid === 1 ? 'bonus pays' : 'bonuses pay';
     expect(text, `${unpaid} shipped bonus objectives pay no credits`)

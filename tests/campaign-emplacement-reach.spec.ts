@@ -326,11 +326,150 @@ const GUNS: Readonly<Record<string, string>> = {
   'allies.03.ground-truth': 'mrdGlaive x17',
   'allies.04.misclosure': 'flameTower x2, sentryGun x2',
   'allies.05.forced-closure': 'flameTower x2, sentryGun x3',
+  // THREE from the Reclamation opening and THREE the layout stands on the far
+  // half of the tramway. `op.foe` is Reclamation, so the layout's `pillbox`
+  // resolves through `keyFor` to the ARCSPITTER POST — `postCoil`, 20 m, and it
+  // DOES chain (`chainCount` 1), which is why this row is worth reading twice:
+  // one pull is 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the
+  // second link is 26.11 against a G.I.'s 120 hp, so §2 is satisfied with room
+  // rather than by the row not chaining at all. The empty `roster.ai` is what
+  // keeps `rclPylon` (28 m, chain 3, 120.32 a pull against a 90 hp engineer)
+  // off this row and therefore off the two open capture stands the operation is
+  // walked through; deleting either empty list puts a Pylon here and closes them.
+  'allies.06.machine-time': 'rclSpitpost x6',
+  // THREE from the Meridian opening and TWO the layout stands on the arc head.
+  // `op.foe` is Meridian, so the layout's `pillbox` resolves through `keyFor` to
+  // the GLAIVE POST — 24 m against a Sentry Gun's 22, `needsPower` where the
+  // Sentry Gun draws nothing, and no chain either way. The empty `roster.ai` is
+  // what keeps `mrdHelios` (33 m, `struct.defence.specialist`) off this row and
+  // therefore off the four capture stands the operation's primaries are walked
+  // to; deleting either empty list puts a Spire here and closes them.
+  'allies.07.fair-copy': 'mrdGlaive x5',
+  // THREE from the Reclamation opening and TWO the layout stands on the salvage
+  // house's oil derrick, 17.20 m off it on one integer offset and its exact
+  // negation. `op.foe` is Reclamation, so the layout's `pillbox` resolves
+  // through `keyFor` to the SPITPOST — `postCoil`, 20 m, `power: 0`, so unlike
+  // A7's Glaive Posts there is no grid-deficit route to opening them — and it
+  // DOES chain (`chainCount` 1): one pull is
+  // `34 x ARMOR_MATRIX[Tesla][Infantry] 1.60 x 0.80` = 43.52 and the second
+  // link is 26.11 against a G.I.'s 120 hp, so §2 is satisfied with room rather
+  // than by the row not chaining at all. The `retainer` tag those two cover is
+  // what the operation's secondary reads, which is what puts them in §2's scope.
+  // The empty `roster.ai` is what keeps `rclPylon` (28 m, chain 3, 120.32 a
+  // pull — lethal to a 120 hp G.I. and to the 90 hp engineer the secondary is
+  // bought with) off this row and therefore off the derrick's eight capture
+  // stands; deleting either empty list puts a Pylon here and closes them.
+  'allies.08.standing-order': 'rclSpitpost x5',
+  // THREE from the Reclamation opening on island 1 and TWO the layout stands on
+  // Bench Nine, one beside the sorting floor and one beside the breaking yard.
+  // `op.foe` is Reclamation, so the layout's `pillbox` resolves through `keyFor`
+  // to the ARCSPITTER POST — `postCoil`, 20 m, `power: 0` so a brownout does not
+  // silence it, and it DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a G.I.'s 120 hp and an engineer's 90. §2 is therefore
+  // satisfied with room rather than by the row not chaining.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and here that
+  // is the difference between a reachable secondary and an unreachable one: 28 m,
+  // `chainCount` 3, 120.32 on the first link, against the 90 hp engineer who is
+  // the ONLY route to the bore head — no vehicle in any army carries
+  // `canCapture`. Delete either empty list and a Pylon founded within 28 m of the
+  // head kills that man on the first link and his relief on the second.
+  'allies.09.made-good': 'rclSpitpost x5',
   'pact.01.shallow-road': 'pillbox x5, prismTower x2',
   'pact.02.long-count': 'flameTower x2, sentryGun x3',
   'pact.03.concession': 'rclSpitpost x5',
   'pact.04.in-the-clear': 'pillbox x4',
   'pact.05.open-count': 'mrdGlaive x6',
+  // THREE from the Reclamation opening and TWO the layout stands on the picket
+  // line in front of the cut. `op.foe` is Reclamation, so the layout's `pillbox`
+  // resolves through `keyFor` to the SPITPOST — `postCoil`, 20 m, `power: 0`, so
+  // unlike a Glaive Post there is no grid-deficit route to opening it — and it
+  // DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a `mrdWayfarer`'s 110 hp and an `mrdArtificer`'s 95. So §2
+  // is satisfied with room rather than by the row not chaining at all.
+  //
+  // NEITHER POST IS IN §2's SCOPE ANYWAY, and that is a measured property of
+  // where they stand rather than a gap: they sit 28.28 and 26.83 m up the
+  // approach from the cut, so the nearest tag any `when` clause names is the
+  // crew's own furnace at 26.68 m — outside a 20 m gun. The picket covers the
+  // ROUTE, which the layout header measures by exclusion (+33.8 m on the
+  // cheapest approach when both discs are closed), not the objective.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and here that
+  // is the whole operation: 28 m of `pylonArc` against the Solarch's 26 would
+  // delete the Pact doctrine the fight is built on, and its first chain link is
+  // 120.32 against a 110 hp Wayfarer and the 95 hp Artificer the capture route
+  // is bought with. Delete either empty list and a Pylon appears here.
+  'pact.06.common-ground': 'rclSpitpost x5',
+  // TWO from the Soviet opening and ONE the layout stands on the Ninth's
+  // allocation office, 19.8 m back down the road from it. `op.foe` is Soviet, so
+  // the layout's `pillbox` resolves through `keyFor` to the SENTRY GUN — 22 m of
+  // `pillboxMg`, `chainCount` 0, one pull 52.00 against a 110 hp `mrdWayfarer`,
+  // so §2 is satisfied by the row not chaining at all rather than by distance.
+  //
+  // THE EMPTY `roster.ai` IS WHY THERE ARE NO TESLA COILS HERE. `SovietBase.ts`
+  // seeds three, and `teslaBolt` is 30 m with `chainCount` 2 — 153.6 then 92.2,
+  // which does NOT clear a 110 hp Wayfarer on the second link, so this row is not
+  // load-bearing for §2. It is load-bearing for the operation: the allocation
+  // office is the second secondary's target and three coils on that line would
+  // make the assault a different question.
+  'pact.07.thin-place': 'flameTower x2, sentryGun x1',
+  // THREE from the Reclamation opening and TWO the layout stands on the works
+  // cradle, 17.20 and 19.80 m off the head on opposite bearings. `op.foe` is
+  // Reclamation, so the layout's `pillbox` resolves through `keyFor` to the
+  // ARCSPITTER POST — `postCoil`, 20 m, `power: 0` so no brownout opens it — and
+  // it DOES chain (`chainCount` 1): one pull is
+  // 34 x `ARMOR_MATRIX[Tesla][Infantry]` 1.60 x 0.80 = 43.52 and the second link
+  // is 26.11, against a `mrdWayfarer`'s 110 hp and an `mrdArtificer`'s 95. So §2
+  // is satisfied with room rather than by the row not chaining at all.
+  //
+  // BOTH POSTS ARE IN §2's SCOPE, because `head` is the tag the operation's own
+  // primary reads and they stand inside a 20 m gun of it. That is deliberate —
+  // the operation's doctrine beat is about which TARGET the player names. A
+  // Solarch ordered at a POST parks at 26 x 0.80 + hitRadius(1x1) 2.8284 =
+  // 23.6284 m of centre distance against `postCoil`'s reach of 20 + the hull's
+  // own 2.79 = 22.7900, so it stands off by 0.8384 m and walks 102.7 m to get
+  // there with 0.0 m of the approach inside either gun. Ordered at the HEAD it
+  // parks on the ordinary route instead — `Targeting.approach()` writes the
+  // target's CENTRE as the goal and never picks a cell — and the five reachable
+  // park cells carry -8.37 m to +0.53 m of margin. Attack-moved at the ground it
+  // walks 137.5 m with 32.0 m inside a post. A gun that covers the objective is
+  // the point; a gun that deletes two riflemen per trigger is what §2 forbids,
+  // and this one does not.
+  //
+  // THE THREE `rclPicker` THE LAYOUT STANDS ON THE COLLAR ARE NOT ON THIS ROW
+  // and that is correct rather than an omission: this roster pins EMPLACEMENTS,
+  // and they are units. They are documented in the layout's §4 and in the
+  // operation's picket block, where the exposure figures above are derived.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `rclPylon` OFF THIS ROW, and under
+  // `opening: 'force'` that is the whole balance of the operation: 28 m of
+  // `pylonArc`, `chainCount` 3, 120.32 on the first link — lethal to the 110 hp
+  // Wayfarers AND to the 90 hp `engineer` households the primary is counted in —
+  // against eighteen hulls that cannot be replaced. Delete either empty list and
+  // a Pylon appears here.
+  'pact.08.struck-off': 'rclSpitpost x5',
+  // THREE from the Meridian opening and THREE this layout stands on the Conclave
+  // precinct and its approach: two `mrdGlaive` the Sept has put on the Order's
+  // own gate, 19.799 m either side of the reading floor, and one on the Sept's
+  // forward chapterhouse. `op.foe` is Meridian — this is the chapter's second
+  // mirror — so the layout's explicit `mrdGlaive` keys resolve through `keyFor`
+  // to THEMSELVES, and `glaiveRepeater` carries `chainCount` 0, so §2 is
+  // satisfied by the row not chaining at all rather than by distance. The two
+  // gate posts ARE in §2's scope: they cover the `gate` tag they carry and the
+  // `floor` tag at 19.8 m, both of which the trigger table names.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `mrdHelios` OFF THIS ROW, and here that
+  // is the whole operation rather than a margin: `heliosLance` is range 33 and
+  // the two radii the win clause rests on are `PRECINCT_R` 40 minus `FLOOR_R`
+  // 14 = 26, which is `focusLance`'s range exactly. A Spire founded on the
+  // forward chapterhouse's ground — `PLACEMENT.adjacencyRadius` 20 plus its own
+  // radius, so about 26 m out, 34 m from the floor — covers the near half of the
+  // reading floor from OUTSIDE the precinct, which is ground the operation never
+  // asks the player to take. Delete either empty list and a Spire appears here.
+  'pact.09.vacant-possession': 'mrdGlaive x6',
   // WAS `sentryGun x2, teslaCoil x5` UNTIL 2026-08-19. Two of those five were
   // the compound's flank towers, authored as `prismTower` and resolved to a
   // Tesla Coil by `op.foe`; they are `pillbox`-role posts now. The three that
@@ -340,6 +479,31 @@ const GUNS: Readonly<Record<string, string>> = {
   'reclamation.03.sold-twice': 'pillbox x8',
   'reclamation.04.served-notice': 'pillbox x7',
   'reclamation.05.closing-entry': 'mrdGlaive x5, mrdHelios x1',
+  // THREE from the Allied opening and TWO the layout stands on the stop notice,
+  // one either side of it. `op.foe` is Allied, so the layout's `pillbox` role key
+  // resolves through `keyFor` to ITSELF — `pillboxMg`, 22 m, `chainCount` 0 — so
+  // §2 is satisfied by the row not chaining at all rather than by distance. See
+  // that operation's own header for what the notice is and what stands on it.
+  'reclamation.06.in-duplicate': 'pillbox x5',
+  // TWO from `SOVIET_DEFENCE`'s doctrinal opening and THREE the layout stands
+  // along the approach: one on the weighbridge apron and two on the siding.
+  // `op.foe` is Soviet, so the layout's `pillbox` role key resolves through
+  // `keyFor` to the SENTRY GUN — `pillboxMg`, 22 m, `power: 0` so no brownout
+  // opens it, and `chainCount` 0 — and `flameJet` does not chain either, so §2 is
+  // satisfied by NEITHER row chaining rather than by distance. That matters here
+  // because the siding post at (286, 246) genuinely IS in §2's scope: it covers
+  // the `levy` tag at 19.80 m, which is the objective, and covering the objective
+  // is what an emplacement is for.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `teslaCoil` OFF THIS ROW, and on this
+  // operation that is the difference between a hard fight and an impossible one:
+  // `SOVIET_DEFENCE` seeds THREE, `teslaBolt` is 30 m with `chainCount` 2, and one
+  // pull is 153.6 then 92.2 against `ArmorClass.Infantry`. Every man who decides
+  // this operation is 85 hit points — four `rclTinker`, who are the only route to
+  // a captured gantry, and four `rclPicker` — so two would die per trigger.
+  // Delete the empty list and three of them appear on a map whose entire
+  // objective is walking engineers up to buildings.
+  'reclamation.07.payment-in-kind': 'flameTower x2, sentryGun x3',
 };
 
 describe('§1 the guns every operation points at the player', () => {

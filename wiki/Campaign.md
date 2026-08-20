@@ -97,22 +97,32 @@ its operations you have finished; each operation is a row with its par time and 
 | 03 | Ground Truth | The Timetable | 15 | 1 | 1 |
 | 04 | Misclosure | The Timetable | 16 | 1 | 2 |
 | 05 | Forced Closure | The Timetable | 17 | 1 | 2 |
+| 06 | Machine Time | The Timetable | 18 | 2 | 2 |
+| 07 | Fair Copy | The Timetable | 19 | 2 | 1 |
+| 08 | Standing Order | The Timetable | 20 | 1 | 2 |
+| 09 | Made Good | The Timetable | 22 | 2 | 1 |
 | 01 | The Shallow Road | The Crust | 13 | 1 | 2 |
 | 02 | The Long Count | The Crust | 14 | 2 | 2 |
 | 03 | The Concession | The Crust | 15 | 2 | 2 |
 | 04 | In the Clear | The Crust | 16 | 2 | 2 |
 | 05 | The Open Count | The Crust | 17 | 2 | 2 |
+| 06 | Common Ground | The Crust | 18 | 2 | 2 |
+| 07 | The Thin Place | The Crust | 19 | 2 | 2 |
+| 08 | Struck Off | The Crust | 20 | 2 | 2 |
+| 09 | Vacant Possession | The Crust | 22 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
 | 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 | 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
+| 06 | In Duplicate | Salvage Rights | 18 | 3 | 1 |
+| 07 | Payment in Kind | Salvage Rights | 19 | 2 | 2 |
 
-**That is 24 of a planned 37 operations, and this page will not pretend otherwise.** The
-twenty-four add up to 379 minutes of authored par; the full table is meant to reach 10 hours.
+**That is 34 of a planned 37 operations, and this page will not pretend otherwise.** The
+thirty-four add up to 574 minutes of authored par; the full table is meant to reach 10 hours.
 All four chapters now have at least one operation, so all four have a card on the campaign
-screen — and **Hold the Seam is complete at nine**, which makes the Soviet campaign the one
-chapter you can play end to end. The other three stand at five each.
+screen — and **three are complete at nine**: Hold the Seam, The Timetable and The Crust
+all play end to end, Soviets first. Only Salvage Rights is short, at seven of ten.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -127,10 +137,10 @@ Every operation has at least one **primary** objective — what the operation is
 nothing else.
 
 - **A bonus may pay credits into that match**, immediately, straight into your bank. The ones that
-  pay are worth 400 to 700 credits and they are granted rather than deposited, so a full silo
+  pay are worth 400 to 1000 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Six shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Sixteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.
