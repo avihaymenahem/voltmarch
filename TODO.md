@@ -65,15 +65,6 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
-## Gameplay
-
-- **#48 — per-map spawn geometry.** A `StartTable` keyed like `MAP_SEAS`, plus `seaOffMapCentre`
-  taking the normal as a parameter. **It must not be authored by rotating the table** — ECMA-262 does
-  not pin `sin`/`cos` to bit precision, terrain generates independently on both machines of a
-  lockstep match, and that is a tick-zero desync. Permutation and power-of-two scaling are exact.
-
----
-
 ## Renderer and docs
 
 No open renderer/doc implementation items remain from this round. WebGPU GPU time now comes from

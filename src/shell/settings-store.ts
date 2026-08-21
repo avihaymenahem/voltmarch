@@ -790,14 +790,11 @@ export interface MapChoice {
    * is now the number the lobby offers and the number `normalizeSetup` clamps
    * the army list to, so a map that says 2 CANNOT be launched as a four-way.
    *
-   * WHY SOME AND NOT ALL. Two armies open on the authored diagonal
-   * (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on the
-   * same ellipse, with no reserved terrain shelf. That fan is fine on ground
-   * with no strong axis to it and wrong on ground that has one — `frozen-sector`
-   * is cliffs that channel every push into one lane, and both water maps put a
-   * shoreline through the middle, which is a two-sided shape by construction. So
-   * the open maps take four and the authored-for-two maps keep their number,
-   * rather than every map claiming a layout it does not have.
+   * WHY SOME AND NOT ALL. Every preset owns deterministic opening geometry in
+   * `MAP_START_TABLES`, including terrain shelves for every offered seat. The
+   * open maps expose four seats; Frozen Sector deliberately exposes two because
+   * its cliffs form a single combat lane, and both coasts remain two-sided naval
+   * battlefields. The number describes the intended match, not a missing layout.
    */
   readonly players: number;
 }

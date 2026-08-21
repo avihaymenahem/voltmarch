@@ -863,90 +863,36 @@ predicate, `mapSeed 0x5e1ec7` / `simSeed 90210`, in CREDITS rather than field co
   two layouts agree in intent even though they disagree in shape. Neither is argued in the source,
   which is why it is argued here.
 
-## Spawns vary by seed now, and the water decides how much
+## Skirmish starts are authored per map and vary by seed
 
-Reported as *"Our spawns are weird, we always spawn few meteres away from enemy, even thought maps
-are huge, we dont take advantage of that, also, its almost always the same spawns.. we need to
-define at least 4 possible spawns in each map"*. Three complaints, three different answers.
+`MAP_START_TABLES` in `Scenarios.ts` is the authoritative opening geometry for every map preset.
+Each entry owns integer offsets and its valid two-player pairings; coast entries also own the
+normal supplied to `seaOffMapCentre`. The tables are deliberately authored as integers rather than
+runtime rotations: `sin`/`cos` are not pinned to bit precision by ECMA-262, while terrain generates
+independently on lockstep peers.
 
-- **"A few metres away" was true and measured.** All four starts sat inside 148x124 m — **7.0% of a
-  512 m map**, with a 182 m margin nobody ever used. `START_SPREAD_X`/`_Z` are **148/124**, exactly
-  x2. The opening goes 193.1 m -> 386.2 m and the closest four-army pair 124.0 -> 248.0, which also
-  retired a latent defect: those adjacent pairs were **under `START_MIN_SEPARATION` 150**.
-
-  **x2 EXACTLY IS LOAD-BEARING.** `START_BISECTOR`'s normal places the sea on every coastal map via
-  `seaOffMapCentre`, and `tests/naval-maps.spec.ts` pins it to digits. A power of two is bit-exact
-  through `x*x`, a sum and a `sqrt` under IEEE-754, so the normal survives by `===`. Any other
-  factor moves the water.
-
-- **"Almost always the same spawns" was NOT the rotation, and that is why it looked fixed.**
-  `rotateStarts` has varied the OWNER of each spot from the seed for a long time. With two armies on
-  a four-slot table it swaps two players between slots 0 and 1 and never touches 2 or 3. **The
-  positions never varied at all.** `seatedSlots(armies, seed, sea)` is the missing half: it chooses
-  WHICH slots a match uses, and it is the ONE derivation both `startPointsFor` (which reserves the
-  terrain shelves) and `startSpots` (which places the bases) call. They must agree or an army stands
-  on unlevelled ground.
-
-- **`startPairFor` IS SALTED, AND THE UNSALTED VERSION SHIPPED A TEST THAT PASSED.**
-  `startOffset(seed, 2)` reads `hashU32(seed)` too, and `floor(u*4) >> 1 === floor(u*2)` for every
-  seed — 0 disagreements over 20 000. So the pair and the rotation were one random variable wearing
-  two names. Local-player corner occupancy over 20 000 seeds:
-
-  ```
-  unsalted   slot0 ~5015   slot1 =    0   slot2 ~9975   slot3 ~5010
-  salted     slot0  4922   slot1   5027   slot2  5002   slot3  5049
-  ```
-
-  One corner **unreachable** and one at even money, from the feature whose whole purpose is to stop
-  the player seeing the same corner. The first spec checked the PAIR histogram, which was uniform
-  (106/90/110/94) throughout. **Pin the corner the player lands in, never the pair** —
-  `tests/spawn-variety.spec.ts` does, and removing the salt kills it with `corner 1 drawn 0 times`.
-
-- **A COASTAL MAP GETS TWO LAYOUTS, NOT FOUR, AND THAT IS PHYSICS RATHER THAN A CHOICE.** Slots 0
-  and 1 *define* `START_BISECTOR`, so they project to exactly 0.0 along every shoreline placed by
-  `seaOffMapCentre` and are dry by construction. Slots 2 and 3 are the other corners of the same
-  rectangle and sit at **+/-190.10 m across that normal**, so exactly one of them is out to sea:
-
-  ```
-  coast     budget 98   slot0 112.00  slot1 112.00  slot2  302.10  slot3  -78.10
-  tropical  budget 94   slot0 100.00  slot1 100.00  slot2  -90.10  slot3  290.10
-  ```
-
-  `dryPairs` filters the table against the sea the generator will actually use, so `coast` keeps
-  [0,1] and [0,2] and `tropical` keeps [0,1] and [1,3]. **Do not "fix" this by pushing the sea
-  out** — every slot is dry only past |offset| 288.1 m (coast) / 284.1 m (tropical) against the
-  shipped 112 and 100, and `MAP_SEAS.tropical`'s own header records that merely 116 m costs 28
-  buildable dock sites against 81. It trades the navy for spawn variety.
-
-  **`NAVAL_SEA` IS THE EXCEPTION AND THE FALLBACK IS FOR IT.** Its normal is hand-authored
-  (`-SQRT1_2, -SQRT1_2`) rather than derived from the start table, so three of its four slots are
-  wet and NO pair survives the filter. `dryPairs` returns [0,1] there, which is the layout that
-  `?shot=` fixture has always been photographed with. It has one reader and is not a playable match.
-
-- **THE SEED IS KNOWABLE IN THE PLAN, and a first attempt at this asserted it was not.**
-  `ScenarioPlanSummary` carries `readonly seed`, resolved from `?seed=` in the same memo and at the
-  same moment as `armies` and `sea` — both of which `plannedStartPoints` already reads off that
-  object. Reserving all four shelves *because* the seed was believed unknowable is what drowned a
-  start on both coastal maps.
-
-- **THE SEED PARAMETER IS REQUIRED, WITH NO DEFAULT, ON PURPOSE.** A `seed = DEFAULT_SEED` default
-  silently relabelled eight existing call sites from one layout to another and only one of them
-  failed; the other seven went on measuring an undeclared layout. Making it required had the
-  compiler name all 36 sites instead.
-
-- **A TEST THAT PASSES `null` FOR `sea` WHILE BUILDING WITH A SEA CANNOT SEE A `sea` GUARD.**
-  `tests/naval-maps.spec.ts` derived its starts with `sea = null` and generated terrain with
-  `MAP_SEAS[preset]`, under a header claiming to be "exactly what `plannedTerrainInput` hands the
-  generator". Harmless while `startPointsFor` read nothing off `sea` but `.islands`; the moment the
-  seated slots depended on the water it made a `sea === null` scoping fix **invisible** — six
-  failures untouched, and a seventh test broken. Both channels take the preset now.
-
-- **WHAT IS NOT DONE.** Every landlocked map shares ONE offset table, so maps differ only in which
-  layouts their water permits. Genuinely per-map geometry needs a `StartTable` keyed like
-  `MAP_SEAS` and `seaOffMapCentre` taking the normal as a parameter. **It must not be authored by
-  rotating the table** — `sin`/`cos` are not pinned to bit precision by ECMA-262, terrain generates
-  independently on both machines of a lockstep match, and that is a tick-zero desync. Permutation
-  and power-of-two scaling are exact; angles are not.
+- **Terrain reservation and base placement share one derivation.** `seatedSlots(armies, seed, sea,
+  preset)` selects the slots; both `startPointsFor` and `startSpots` call it with the same preset.
+  `plannedStartPoints` supplies `plan.map` only for generic skirmishes. Bespoke campaign layouts do
+  not name a preset and intentionally retain `SKIRMISH_START_OFFSETS`, the classic temperate table.
+- **Every preset has a distinct battlefield shape.** Temperate keeps the classic diagonal, Arid
+  turns the long axis, Snow follows its corridor, Urban uses a square grid, Coast and Tropical use
+  two dry shoreline-parallel alternatives, and Atoll follows its four island centres. Snow and the
+  two coast maps remain two-player choices because that is their intended combat shape, not because
+  the data cannot seat more armies.
+- **The pair choice is salted away from ownership rotation.** `startPairFor` and `startOffset` must
+  not read the same raw hash: without the salt one local-player corner was unreachable over 20,000
+  seeds even though the pair histogram looked uniform. `tests/spawn-variety.spec.ts` pins player
+  corner occupancy rather than merely checking the pair draw.
+- **Water is validated twice.** Coastal alternatives are authored inland of the full shelf budget,
+  and `dryPairs` recomputes physical clearance from the actual `SeaSpec` before accepting them.
+  `NAVAL_SEA` is a posed fixture with a hand-authored normal; its historical `[0,1]` fallback stays
+  intact. Archipelago starts come from `sea.islands`, so island geometry remains the single source
+  of truth.
+- **The sea normal is explicit and stable.** Coast and Tropical retain the previously shipped
+  diagonal `CLASSIC_SEA_NORMAL`; changing another map's starts can no longer rotate their waterline.
+  `tests/naval-maps.spec.ts` pins that geometry, while `tests/map-start-tables.spec.ts` checks table
+  coverage, bounds, separation, distinctness, reservation/spawn agreement and coastal clearance.
 
 **A THREE- OR FOUR-ARMY SAVE RESTORED ONTO TWO-ARMY GROUND, AND NO GUARD COULD CATCH IT.** FIXED —
 `SaveContext.armies` now carries the seat count and `Shell.loadGame` rebuilds `opponents` from it.
@@ -980,25 +926,11 @@ restore agreed by accident.
   number. `tests/save-army-count.spec.ts` pins that it still does, because `loadGame`'s fix is a
   copy of it and two paths that must agree should fail together.
 
-**THE TWO SEA MAPS ARE `players: 2` BY ARITHMETIC, NOT BY JUDGEMENT, AND THE NUMBER IS NOT
-REVISABLE BY PLAYTEST.** `MAP_SEAS.coast` and `.tropical` are half-planes whose waterline is
-offset along `START_BISECTOR` — the perpendicular bisector of slots 0 and 1 — because that is the
-one bearing on which both openings project to the same distance from the water. Slots 2 and 3 are
-the other two corners of the same rectangle and they lie ACROSS that bisector. At the shipped
-`START_SPREAD_X/Z` of 148/124 they project to ±190.1 m, against a waterline at −112 m on coast and
-+100 m on tropical: **slot 3 on Contested Strait is 78 m out to sea and slot 2 on Coral Shore is
-90 m out to sea**, before `resolveStarts` slides anything.
-
-Measured on the pre-doubling table (74/62, projections ±95.05 m) the same seats were 16.95 m and
-4.95 m of dry land from the waterline, and a genuinely built four-army `contested-strait` put slot
-3 on 29.9% buildable ground with 31.8% of its build disc under water, one of five ore fields in
-the sea, and an 81 m shelf push the army never saw — `startSpots` deliberately does not read the
-reserved shelf list back, and `Scenarios.ts` records the v1.21.0 regression that came from reading
-it back. Doubling the spread made this two times worse, not better. A four-corner layout is
-incompatible with a bisector-aligned half-plane sea; giving either map four seats needs a
-different sea, not a different number. (`frozen-sector`'s 2 is the opposite case — measured at
-83-89% buildable and zero shelf push at all four starts, so its number IS an authored judgement
-about how it plays and is revisable.)
+**Coast, Tropical and Snow remain two-player maps by authored intent.** The old global rectangle
+made their seat count look like a geometry limitation. It is not one now: each has a complete
+four-slot table, but the lobby exposes the two-player battle the terrain was designed to deliver.
+Changing that number is therefore a playtest decision and must be accompanied by AI/pathing review,
+not a workaround in start placement.
 
 ## Cargo is SLOTS, and a carrier is not a bench
 

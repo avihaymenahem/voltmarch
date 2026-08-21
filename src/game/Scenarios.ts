@@ -411,15 +411,6 @@ export interface StartSpot {
  * That last line was a live inconsistency: `nudgeToBuildable` enforces a 150 m
  * floor between openings while the authored table it protects sat below it.
  *
- * WHY EXACTLY x2. `START_BISECTOR` reads slots [0] and [1] and its normal
- * places the sea on every coastal map; `tests/naval-maps.spec.ts` pins that
- * normal to digits. The normal depends only on the RATIO 37:31, so any uniform
- * scaling preserves it mathematically — and 2 is a power of two, so the
- * squares, their sum and the sqrt are all exact in IEEE-754 and it is
- * preserved BIT-FOR-BIT (verified: both components compare `===` against the
- * pre-change values). Do not rescale by a non-power-of-two without re-checking
- * that test.
- *
  *     two-army opening   386.2 m      closest pair   248.0 m
  *     edge margin        108 m        (a sea shelf needs 96: 58 flat + 14
  *                                      wobble + 6 band + 8 waviness + 10
@@ -434,8 +425,22 @@ export interface StartSpot {
 const START_SPREAD_X = 148;
 const START_SPREAD_Z = 124;
 
+export interface StartOffset {
+  readonly dx: number;
+  readonly dz: number;
+}
+
+export interface StartTable {
+  /** Exact offsets from map centre. Integers only: terrain is generated on every lockstep peer. */
+  readonly slots: readonly StartOffset[];
+  /** Authored two-player pairings. Wider alternatives may be sampled by the sim seed. */
+  readonly pairs: readonly (readonly [number, number])[];
+  /** Unit normal used by a half-plane sea, before the profile chooses its sign. */
+  readonly seaNormal?: { readonly x: number; readonly z: number };
+}
+
 /**
- * WHERE THE TWO ARMIES ACTUALLY START, as offsets from the map centre.
+ * The classic/temperate opening, as offsets from the map centre.
  *
  * THE ONE TABLE. It used to be two: these constants here, and
  * `TERRAIN_START_POSITIONS` in core/config.ts, which the generator reserved a
@@ -447,9 +452,10 @@ const START_SPREAD_Z = 124;
  * heightfield happened to produce, measured at 60-74% buildable with about a
  * third of openings under 60%.
  *
- * `src/world/terrain.system.ts` now reads THIS and hands it to the generator,
- * so the reservation and the spawn are the same two points by construction and
- * cannot drift again. `tests/start-shelves.spec.ts` asserts the shape.
+ * `MAP_START_TABLES` below is the shipping skirmish contract. This export stays
+ * as the classic table for temperate maps, campaign layouts, fixtures and old
+ * callers that do not name a preset. `startPointsFor` and `startSpots` resolve
+ * the same selected table, so terrain reservation and spawning cannot drift.
  *
  * Slot 0 keeps the exact corner the old hard-coded plan used, so a saved seed
  * frames the same valley it always did.
@@ -470,22 +476,89 @@ const START_SPREAD_Z = 124;
  * selected yet. `startPointsFor()` below is the one derivation both the
  * generator plan and the spawn now go through, and it takes the count.
  *
- * `START_BISECTOR` reads `[0]` and `[1]` BY INDEX and always did. That is now
- * load-bearing rather than incidental: the naval maps' shoreline normal is the
- * perpendicular bisector of the TWO-ARMY opening, and it must not rotate
- * because a four-army layout exists. `tests/naval-maps.spec.ts` pins the
- * resulting normal to digits.
+ * Campaign layouts deliberately omit a preset and therefore keep this table.
+ * Do not infer a table from the biome or sea: doing so moved authored campaign
+ * bases without changing their operation data.
  */
-export const SKIRMISH_START_OFFSETS: readonly { readonly dx: number; readonly dz: number }[] = [
+export const SKIRMISH_START_OFFSETS: readonly StartOffset[] = [
   { dx: -START_SPREAD_X, dz: START_SPREAD_Z },
   { dx: START_SPREAD_X, dz: -START_SPREAD_Z },
   { dx: START_SPREAD_X, dz: START_SPREAD_Z },
   { dx: -START_SPREAD_X, dz: -START_SPREAD_Z },
 ];
 
+const CLASSIC_PAIRS: readonly (readonly [number, number])[] = [
+  [0, 1], [2, 3], [0, 2], [1, 3],
+];
+
+/** Existing diagonal shoreline normal, pinned so changing a start table cannot rotate the sea. */
+const CLASSIC_SEA_NORMAL = { x: 0.6422198626104074, z: 0.7665204811801637 } as const;
+
+/**
+ * Skirmish opening geometry per map preset.
+ *
+ * These are authored integer coordinates, not rotated at runtime. Apart from
+ * avoiding cross-engine trigonometry drift, that lets each battlefield express
+ * its actual shape: long arid lanes, a square urban grid, a snow corridor, and
+ * two coastal strips that keep every candidate opening on land.
+ */
+export const MAP_START_TABLES: Readonly<Record<string, StartTable>> = {
+  temperate: { slots: SKIRMISH_START_OFFSETS, pairs: CLASSIC_PAIRS },
+  arid: {
+    slots: [
+      { dx: -124, dz: -148 }, { dx: 124, dz: 148 },
+      { dx: -124, dz: 148 }, { dx: 124, dz: -148 },
+    ],
+    pairs: CLASSIC_PAIRS,
+  },
+  snow: {
+    slots: [
+      { dx: -168, dz: 96 }, { dx: 168, dz: -96 },
+      { dx: 168, dz: 96 }, { dx: -168, dz: -96 },
+    ],
+    pairs: [[0, 1], [2, 3]],
+  },
+  urban: {
+    slots: [
+      { dx: -140, dz: 140 }, { dx: 140, dz: -140 },
+      { dx: 140, dz: 140 }, { dx: -140, dz: -140 },
+    ],
+    pairs: CLASSIC_PAIRS,
+  },
+  coast: {
+    slots: [
+      { dx: -148, dz: 124 }, { dx: 148, dz: -124 },
+      { dx: -96, dz: 145 }, { dx: 160, dz: -69 },
+    ],
+    pairs: [[0, 1], [2, 3]],
+    seaNormal: CLASSIC_SEA_NORMAL,
+  },
+  tropical: {
+    slots: [
+      { dx: -148, dz: 124 }, { dx: 148, dz: -124 },
+      { dx: -160, dz: 69 }, { dx: 96, dz: -145 },
+    ],
+    pairs: [[0, 1], [2, 3]],
+    seaNormal: CLASSIC_SEA_NORMAL,
+  },
+  atoll: {
+    slots: [
+      { dx: -138, dz: 134 }, { dx: 138, dz: -134 },
+      { dx: 138, dz: 134 }, { dx: -138, dz: -134 },
+    ],
+    pairs: CLASSIC_PAIRS,
+  },
+};
+
+/** Classic geometry for campaign layouts and callers that do not name a skirmish preset. */
+function startTableFor(preset?: string | null): StartTable {
+  return (preset === null || preset === undefined ? undefined : MAP_START_TABLES[preset])
+    ?? MAP_START_TABLES.temperate!;
+}
+
 /** Armies a skirmish seats when nothing says otherwise. */
 export const SKIRMISH_ARMIES_DEFAULT = 2;
-/** Armies a skirmish can seat at most — `SKIRMISH_START_OFFSETS.length`. */
+/** Armies a skirmish can seat at most — every map table is pinned to this size. */
 export const SKIRMISH_ARMIES_MAX = SKIRMISH_START_OFFSETS.length;
 
 /** Fold any requested army count into what this game can actually lay out. */
@@ -513,7 +586,7 @@ export function clampArmies(n: number | null | undefined): number {
  * There is no second list to drift: if an island moves, the start on it moves.
  */
 export function startPointsFor(
-  armies: number, sea: SeaSpec | null, seed: number,
+  armies: number, sea: SeaSpec | null, seed: number, preset?: string | null,
 ): readonly { readonly x: number; readonly z: number }[] {
   const n = clampArmies(armies);
   const islands = sea?.islands;
@@ -521,23 +594,13 @@ export function startPointsFor(
     return islands.slice(0, n).map((i) => ({ x: i.x, z: i.z }));
   }
   // ONE SHELF PER SEATED ARMY, AT THE SLOTS THAT ARMY WILL ACTUALLY USE — never
-  // one per table entry. Reserving all four instead was tried and it drowns a
-  // shelf on both coastal maps: slots 0 and 1 DEFINE `START_BISECTOR`, so they
-  // project to exactly 0.0 along the sea normal, while slots 2 and 3 sit at
-  // +-190.10 m across it. Against a shelf-push budget of 98 m (coast) and 94 m
-  // (tropical) that is one slot at -78.10 and one at -90.10 — in the water.
-  //
-  // AND THE GUARD FOR IT CANNOT LIVE HERE. `sea` is a parameter, and three
-  // specs deliberately call this with `sea = null` on maps that have one, to
-  // assert that a half-plane sea changes nothing. So any predicate on `sea`
-  // inside this function is invisible at the call site that matters — measured,
-  // when scoping the reservation to `sea === null` left all six coastal
-  // failures untouched and broke a seventh test that exists to refuse exactly
-  // that shape.
+  // one per table entry. The preset is part of this derivation because coastal
+  // alternatives are authored inland; omitting it here would reserve classic
+  // ground while `startSpots` places a base on the map-specific table.
   return [
     { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
-    ...seatedSlots(n, seed, sea).map((slot) => {
-      const o = SKIRMISH_START_OFFSETS[slot]!;
+    ...seatedSlots(n, seed, sea, preset).map((slot) => {
+      const o = startTableFor(preset).slots[slot]!;
       return { x: MAP_SIZE * 0.5 + o.dx, z: MAP_SIZE * 0.5 + o.dz };
     }),
   ];
@@ -693,8 +756,6 @@ function startOffset(seed: number, n: number): number {
  * restating it, because the day a map authors its own offsets the LIST would
  * still look right while meaning something else.
  */
-const START_PAIRS: readonly (readonly [number, number])[] = [[0, 1], [2, 3], [0, 2], [1, 3]];
-
 /**
  * THE SALT IS LOAD-BEARING AND IT COST A MEASUREMENT TO FIND.
  *
@@ -717,8 +778,8 @@ const START_PAIRS: readonly (readonly [number, number])[] = [[0, 1], [2, 3], [0,
  */
 function startPairFor(seed: number): number {
   return Math.min(
-    START_PAIRS.length - 1,
-    Math.floor((hashU32(seed ^ 0x9e37_79b9) / 0x1_0000_0000) * START_PAIRS.length),
+    CLASSIC_PAIRS.length - 1,
+    Math.floor((hashU32(seed ^ 0x9e37_79b9) / 0x1_0000_0000) * CLASSIC_PAIRS.length),
   );
 }
 
@@ -728,18 +789,18 @@ function startPairFor(seed: number): number {
  * ONE DERIVATION, TWO CALLERS, and that is the whole reason it is a function.
  * `startPointsFor` reserves the terrain shelves and `startSpots` places the
  * bases; they must name the same slots or a base stands on unlevelled ground.
- * The file already says this about `SKIRMISH_START_OFFSETS`; this is the same
- * rule one level up.
+ * The selected `MAP_START_TABLES` entry is therefore data, not presentation.
  *
  * `clampArmies`, NOT `Math.max(1, n)` — `startSpots` used the latter, so at
  * count 1 the two derivations disagreed about whether the pair gate applied.
  */
 export function seatedSlots(
-  armies: number, seed: number, sea: SeaSpec | null = null,
+  armies: number, seed: number, sea: SeaSpec | null = null, preset?: string | null,
 ): readonly number[] {
   const n = clampArmies(armies);
-  if (n !== 2) return Array.from({ length: n }, (_, i) => i);
-  const pairs = dryPairs(sea);
+  const table = startTableFor(preset);
+  if (n !== 2) return Array.from({ length: Math.min(n, table.slots.length) }, (_, i) => i);
+  const pairs = dryPairs(sea, table);
   return pairs[startPairFor(seed) % pairs.length]!;
 }
 
@@ -751,8 +812,8 @@ export function seatedSlots(
  * restated here because the choice has to be made BEFORE the generator runs —
  * a slot pushed 176 m inland is not the slot anybody reserved.
  */
-function slotClearance(slot: number, sea: SeaSpec): number {
-  const o = SKIRMISH_START_OFFSETS[slot];
+function slotClearance(slot: number, sea: SeaSpec, table: StartTable): number {
+  const o = table.slots[slot];
   if (o === undefined) return Number.POSITIVE_INFINITY;
   const px = MAP_SIZE * 0.5 + o.dx;
   const pz = MAP_SIZE * 0.5 + o.dz;
@@ -761,38 +822,21 @@ function slotClearance(slot: number, sea: SeaSpec): number {
 }
 
 /**
- * THE PAIRS THIS MAP'S WATER ACTUALLY ALLOWS.
+ * The authored pairs that also clear this map's real waterline.
  *
- * WHY THIS IS DERIVED AND NOT AUTHORED PER MAP. Slots 0 and 1 DEFINE
- * `START_BISECTOR` and every half-plane sea is placed along it, so those two
- * project to exactly 0.0 and are dry on every coastal map by construction.
- * Slots 2 and 3 are the other corners of the same rectangle and sit at
- * +/-190.10 m ACROSS that normal — so on any given coast, exactly one of them
- * is out to sea. Measured on the shipped profiles:
- *
- *     coast     budget 98   slot0 112.00  slot1 112.00  slot2  302.10  slot3  -78.10
- *     tropical  budget 94   slot0 100.00  slot1 100.00  slot2  -90.10  slot3  290.10
- *
- * so `coast` keeps [0,1] and [0,2], and `tropical` keeps [0,1] and [1,3]. Two
- * layouts each rather than four, and NOT because anybody chose two — because
- * that is how many the water leaves.
- *
- * A HAND-AUTHORED PER-MAP LIST WOULD HAVE BEEN WRONG THE FIRST TIME SOMEBODY
- * MOVED A SHORELINE. The constraint is physical, so it is computed from the
- * same numbers the generator will use, and `tests/spawn-variety.spec.ts` walks
- * the whole roster asserting no seated slot is ever wet.
- *
- * The alternative — push the sea out until all four slots are dry — needs
- * |offsetMetres| >= 288.1 m (coast) / 284.1 m (tropical) against the shipped
- * 112 and 100, and `MAP_SEAS.tropical`'s own header records that merely 116 m
- * costs 28 buildable dock sites against 81 at 100 m. It would trade the navy
- * for spawn variety. Do not.
+ * Pairings live in `MAP_START_TABLES` so a snow corridor can expose fewer
+ * strategic axes and each coast can provide two genuinely different dry
+ * openings. This physical filter remains as the safety net: moving a shoreline
+ * must fail closed instead of seating an army at a wet or generator-pushed
+ * slot. `tests/map-start-tables.spec.ts` checks the full shelf budget.
  */
-function dryPairs(sea: SeaSpec | null): readonly (readonly [number, number])[] {
-  if (sea === null || (sea.islands !== undefined && sea.islands.length > 0)) return START_PAIRS;
+function dryPairs(
+  sea: SeaSpec | null, table: StartTable,
+): readonly (readonly [number, number])[] {
+  if (sea === null || (sea.islands !== undefined && sea.islands.length > 0)) return table.pairs;
   const want = TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
     + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE;
-  const dry = START_PAIRS.filter((p) => p.every((slot) => slotClearance(slot, sea) >= want));
+  const dry = table.pairs.filter((p) => p.every((slot) => slotClearance(slot, sea, table) >= want));
   /*
    * THE FALLBACK IS NOT BELT-AND-BRACES; IT FIRES ON A REAL SEA WE SHIP.
    *
@@ -813,7 +857,7 @@ function dryPairs(sea: SeaSpec | null): readonly (readonly [number, number])[] {
    * Returning an empty list instead would take `pairs[i % 0]` to `undefined` and
    * put both armies on the map centre.
    */
-  return dry.length > 0 ? dry : START_PAIRS.slice(0, 1);
+  return dry.length > 0 ? dry : table.pairs.slice(0, 1);
 }
 
 export function rotateStarts<T>(owners: readonly T[], seed: number): T[] {
@@ -1016,6 +1060,7 @@ export function nudgeToBuildable(
 
 export function startSpots(
   cx: number, cz: number, count: number, sea: SeaSpec | null, seed: number,
+  preset?: string | null,
 ): StartSpot[] {
   const islands = sea?.islands;
   /*
@@ -1064,15 +1109,14 @@ export function startSpots(
    * opening distance collapsed from 193 m to 96.6 m and one army spawned on top
    * of the middle of the map.
    *
-   * The branch is gone rather than reordered. `SKIRMISH_START_OFFSETS` is the
-   * one table both this and `terrain.system.ts` read, so the positions are
-   * already agreed by construction and consulting the shelf list to REDISCOVER
-   * them could only ever reintroduce a disagreement. A shelf's job is to make
-   * the ground under a known point buildable, which it does whether or not
-   * anybody reads the list back.
+   * The branch is gone rather than reordered. Both consumers resolve the same
+   * `MAP_START_TABLES` entry, so the positions already agree by construction;
+   * consulting the shelf list to REDISCOVER them could only reintroduce drift.
+   * A shelf's job is to make the ground under a known point buildable, which
+   * it does whether or not anybody reads the list back.
    */
   {
-    // The authored diagonal comes from the one table, so every slot up to
+    // The authored opening comes from the selected table, so every slot up to
     // `SKIRMISH_ARMIES_MAX` lands exactly on a shelf the generator reserved. A
     // saved seed frames the same valley it always did: slots 0 and 1 are the
     // same two literals the two-entry table held.
@@ -1080,9 +1124,10 @@ export function startSpots(
     // shelves. Walking `i` directly — which is what this did — is what pinned
     // every match to slots 0 and 1 forever; it would now also put a base on
     // ground the generator never levelled, because the reservation moved.
-    const slots = seatedSlots(n, seed, sea);
+    const table = startTableFor(preset);
+    const slots = seatedSlots(n, seed, sea, preset);
     for (let i = pts.length; i < Math.min(n, slots.length); i++) {
-      const o = SKIRMISH_START_OFFSETS[slots[i]!]!;
+      const o = table.slots[slots[i]!]!;
       pts.push({ x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) });
     }
     // FIVE or more armies have no authored layout, so they fan around the
@@ -2326,7 +2371,8 @@ export class ScenarioBuilder {
     /** The MAP_PRESETS entry this scenario is being built on. */
     readonly preset: string,
     /**
-     * Armies this match seats. `startSpots(cx, cz, b.armies, b.sea)` is the one
+     * Armies this match seats. `startSpots(cx, cz, b.armies, b.sea, b.seed,
+     * b.preset)` is the one
      * call every layout makes; nothing here counts `world.players` instead,
      * because that list is seeded by whoever booted the engine and a test that
      * happens to add a third player must not silently become a three-base map.
@@ -4048,32 +4094,28 @@ export const NAVAL_SEA: SeaSpec = {
  * water goes. `plan.sea` still wins wherever it is set, so the naval fixture is
  * untouched.
  *
- * WHY THE NORMAL IS DERIVED AND NOT WRITTEN DOWN
- * ----------------------------------------------
+ * WHY THE NORMAL IS EXPLICIT PER START TABLE
+ * ------------------------------------------
  * A half-plane hands the whole sea to whichever army it happens to sit nearer,
  * and "nearer" is a projection onto the normal. There is exactly one bearing on
  * which both openings project to the same number: the PERPENDICULAR BISECTOR of
  * the line joining them. On any other, one player's shore is closer to their
  * base than the other's and the naval game is decided by `rotateStarts`.
  *
- * So the normal is computed from `SKIRMISH_START_OFFSETS` — the one table both
- * this and `terrain.system.ts` read — rather than restated as a pair of
- * literals that would silently stop bisecting anything the first time the
- * openings move. It falls out that the MAP CENTRE projects to the same number
- * too (it is their midpoint), which is what makes `offsetMetres` below mean
- * exactly "metres of dry land between every start and the waterline".
+ * `MAP_START_TABLES` supplies that normal with the coastal openings. Keeping it
+ * explicit prevents an unrelated start-table edit from rotating an existing
+ * shoreline. Coast and Tropical retain the exact classic normal that shipped
+ * before per-map geometry; `tests/naval-maps.spec.ts` pins it to digits.
  *
  * WHY THOSE OFFSETS AND NOT CLOSER
  * --------------------------------
  * `TerrainFields.resolveStarts` slides a start shelf inland whenever it sits
  * within `TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE + bandWidth +
  * wavinessMetres + TERRAIN_SEA_START_CLEARANCE` of the line. A pushed shelf is
- * the one thing that would change the LAND game: `startSpots` derives both
- * armies from `SKIRMISH_START_OFFSETS` added to shelf 0, while the generator
- * pushes each of the three shelves by its OWN distance, so the two stop
- * agreeing the moment any push is non-zero. Both offsets clear their budget by
- * 14 m and 6 m respectively, and `tests/naval-maps.spec.ts` asserts the shelves
- * did not move rather than trusting that they did not.
+ * the one thing that would change the LAND game: `startSpots` uses the authored
+ * offsets while the generator pushes each shelf independently. Every coastal
+ * pair therefore clears the full budget before it is offered; the naval and
+ * map-table specs assert the shelves did not move rather than assuming it.
  *
  * WHAT THE CHOSEN NUMBERS MEASURE, on the shipped seed and biome of each map:
  *
@@ -4093,30 +4135,10 @@ export const NAVAL_SEA: SeaSpec = {
  * site each — inside the geometry the generator already has.
  * -------------------------------------------------------------------------- */
 
-/**
- * Unit normal of the perpendicular bisector of the two openings, derived from
- * `SKIRMISH_START_OFFSETS` so it cannot drift away from them.
- *
- * `(-dz, dx)` is the perpendicular of the vector between the openings; the sign
- * is normalised so the result points toward +x/+z and `seaOffMapCentre` can
- * take a plain signed distance.
- */
-const START_BISECTOR = (() => {
-  const a = SKIRMISH_START_OFFSETS[0] ?? { dx: -1, dz: 1 };
-  const b = SKIRMISH_START_OFFSETS[1] ?? { dx: 1, dz: -1 };
-  const rawX = a.dz - b.dz;
-  const rawZ = b.dx - a.dx;
-  const len = Math.hypot(rawX, rawZ);
-  // Two collinear openings have no bisector. Nothing ships that layout, but a
-  // NaN normal would divide by itself inside `seaDistance` and flood the map.
-  if (!(len > 1e-6)) return { x: Math.SQRT1_2, z: Math.SQRT1_2 };
-  return { x: rawX / len, z: rawZ / len };
-})();
-
-/** The shape of one shoreline, minus the geometry every map derives the same way. */
+/** The shape of one shoreline, with its start-table normal supplied separately. */
 interface SeaProfile {
   /**
-   * Signed metres from the map centre to the waterline, along `START_BISECTOR`.
+   * Signed metres from the map centre to the waterline, along the supplied normal.
    * Negative puts the sea on the -normal side. Its magnitude is exactly the dry
    * land every start gets, which is why it is stated this way round.
    */
@@ -4129,15 +4151,17 @@ interface SeaProfile {
 }
 
 /** Turn a profile into the world-space half-plane the generator carves. */
-function seaOffMapCentre(p: SeaProfile): SeaSpec {
+function seaOffMapCentre(
+  p: SeaProfile, normal: { readonly x: number; readonly z: number },
+): SeaSpec {
   const sign = p.offsetMetres < 0 ? -1 : 1;
   return {
-    x: MAP_SIZE * 0.5 + START_BISECTOR.x * p.offsetMetres,
-    z: MAP_SIZE * 0.5 + START_BISECTOR.z * p.offsetMetres,
+    x: MAP_SIZE * 0.5 + normal.x * p.offsetMetres,
+    z: MAP_SIZE * 0.5 + normal.z * p.offsetMetres,
     // Points OUT TO SEA, which is away from the map centre on whichever side
     // the offset put the waterline.
-    normalX: START_BISECTOR.x * sign,
-    normalZ: START_BISECTOR.z * sign,
+    normalX: normal.x * sign,
+    normalZ: normal.z * sign,
     bandWidth: p.bandWidth,
     depth: p.depth,
     shelfMetres: p.shelfMetres,
@@ -4241,14 +4265,14 @@ const ARCHIPELAGO_ISLANDS: readonly SeaIsland[] = [
  * `x`/`z` and the normal carry no geometry here — `islands` being non-empty is
  * what tells the generator to ignore the half-plane — but they are required
  * fields that `isTerrainJob` validates, so they are filled with the map centre
- * and `START_BISECTOR`: the axis the shoal chain straddles, and the honest
+ * and the classic diagonal normal: the axis the shoal chain straddles, and the honest
  * answer if anything ever publishes this as a nominal `ShoreSpec`.
  */
 export const ARCHIPELAGO_SEA: SeaSpec = {
   x: MAP_SIZE * 0.5,
   z: MAP_SIZE * 0.5,
-  normalX: START_BISECTOR.x,
-  normalZ: START_BISECTOR.z,
+  normalX: CLASSIC_SEA_NORMAL.x,
+  normalZ: CLASSIC_SEA_NORMAL.z,
   bandWidth: 6,
   // 7.0 leaves the bed at -5.0, a metre clear of TERRAIN_SEA_FLOOR, so nothing
   // is clamped and the shoals have a deep floor to stand out against.
@@ -4306,7 +4330,7 @@ export const MAP_SEAS: Record<string, SeaSpec> = {
     wavinessMetres: 9,
     wavelengthMetres: 64,
     bandWidth: 7,
-  }),
+  }, MAP_START_TABLES.coast!.seaNormal!),
   /**
    * Coral Shore. The OPPOSITE side of the same bisector, so the two naval maps
    * are not one map twice, and deliberately SHALLOWER at 5.0 m. Depth is what
@@ -4330,7 +4354,7 @@ export const MAP_SEAS: Record<string, SeaSpec> = {
     wavinessMetres: 5,
     wavelengthMetres: 58,
     bandWidth: 7,
-  }),
+  }, MAP_START_TABLES.tropical!.seaNormal!),
   /**
    * Sunder Atoll. THE ONE ENTRY THAT IS NOT A HALF-PLANE — `islands` being
    * non-empty is what tells the generator to ignore `x`/`z` and the normal
@@ -4354,13 +4378,12 @@ const PLANS: Record<string, ScenarioPlan> = {
     // below, which knows where slot 0 actually ended up; this stays as the
     // answer for a world with no terrain module at all.
     focusDX: -74, focusDZ: 54,
-    summary: 'Two armies on the diagonal, three ore fields.',
+    summary: 'Armies on the map-authored opening, three ore fields.',
     build(b, cx, cz, start) {
-      // Starts on the classic RA diagonal, each with its own ore field and a
-      // contested patch between them, each turned to face the next round the
-      // table. `b.armies` is 2 unless a lobby said otherwise, so this is the
-      // same two spots and the same two owners it has always been.
-      const spots = startSpots(cx, cz, b.armies, b.sea, b.seed);
+      // Starts on this preset's authored opening, each with its own ore field
+      // and a contested patch between them, each turned toward the opposition.
+      // `b.armies` is 2 unless a lobby said otherwise.
+      const spots = startSpots(cx, cz, b.armies, b.sea, b.seed, b.preset);
       // WHERE THE ISLAND IS, AND WHERE THE ARMY STANDS ON IT — see
       // `islandSeats`. Identical to `spots` on every map that is not an
       // archipelago, and the ORE below keeps reading `spots`: both fields are
@@ -4808,7 +4831,12 @@ export function plannedStartPoints(): readonly { readonly x: number; readonly z:
   // reserved here and the bases placed by `startSpots` are two derivations of
   // one answer, and a plan that reserved slots 0/1 while the match seated 2/3
   // would put both armies on unlevelled ground.
-  return startPointsFor(plan.armies, plan.sea, plan.seed);
+  // Campaign layouts are authored against the classic table and derive their
+  // own geometry from it. Only the generic skirmish plan opts into per-preset
+  // starts; both terrain reservation and spawning make the same choice.
+  return startPointsFor(
+    plan.armies, plan.sea, plan.seed, plan.name === 'skirmish' ? plan.map : null,
+  );
 }
 
 /**
