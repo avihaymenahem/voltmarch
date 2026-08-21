@@ -364,7 +364,7 @@ export const CREDITS: readonly CreditGroup[] = [
     title: 'Art',
     lines: [
       'Every mesh generated procedurally from code',
-      'Every texture baked at boot in a worker',
+      'Every world texture baked at boot in a worker',
       'Ambience synthesised at boot',
       'No downloaded models or world textures',
     ],
@@ -400,6 +400,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'Rajdhani — the UI typeface, SIL Open Font License 1.1',
       'The wordmark and app icons, from a supplied logo',
       'The loading screen key art, a supplied illustration',
+      'Rakhalt and Vosk campaign portraits — original AI-assisted artwork',
       'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',
       'Weapons, explosions and effects — CC0 sound libraries',
       'Warfork by Team Forbidden — CC0',

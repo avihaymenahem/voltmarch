@@ -64,6 +64,7 @@
 
 import { el, button, focusable, icon, pageFrame, panel } from './Shell';
 import type { Screen, Shell } from './Shell';
+import { campaignBriefing } from './CampaignPresentation';
 
 /* ==========================================================================
  * 1. THE LAZY TABLE
@@ -579,10 +580,13 @@ export class BriefingScreen implements Screen {
 
   private render(chapter: ChapterView, op: OperationView): HTMLElement {
     const wrap = el('div', 'vm-camp-brief');
-    wrap.appendChild(el('span', 'vm-camp-brief-chapter', chapter.title));
-    wrap.appendChild(el('h3', 'vm-camp-brief-title',
+    const presentation = campaignBriefing(op.id);
+    const grid = el('div', 'vm-camp-brief-grid');
+    const copy = el('div', 'vm-camp-brief-copy');
+    copy.appendChild(el('span', 'vm-camp-brief-chapter', chapter.title));
+    copy.appendChild(el('h3', 'vm-camp-brief-title',
       `${String(op.index).padStart(2, '0')} · ${op.title}`));
-    wrap.appendChild(el('p', 'vm-camp-brief-beat', op.beat));
+    copy.appendChild(el('p', 'vm-camp-brief-beat', op.beat));
 
     const objectives = el('div', 'vm-camp-brief-objectives');
     objectives.appendChild(el('h4', 'vm-camp-brief-h4', 'Objectives'));
@@ -592,7 +596,44 @@ export class BriefingScreen implements Screen {
       line.appendChild(el('span', 'vm-camp-brief-obj-text', o.title));
       objectives.appendChild(line);
     }
-    wrap.appendChild(objectives);
+    copy.appendChild(objectives);
+
+    if (presentation !== null) {
+      const intel = el('div', 'vm-camp-brief-intel');
+      for (const [key, value] of [
+        ['Theatre', presentation.theatre],
+        ['Opposition', presentation.opposition],
+        ['Par window', parLabel(op.parSec)],
+      ] as const) {
+        const item = el('div', 'vm-camp-brief-intel-item');
+        item.appendChild(el('span', 'vm-camp-brief-intel-key', key));
+        item.appendChild(el('strong', 'vm-camp-brief-intel-value', value));
+        intel.appendChild(item);
+      }
+      copy.appendChild(intel);
+
+      const command = el('aside', 'vm-camp-command');
+      const portrait = document.createElement('img');
+      portrait.className = 'vm-camp-command-portrait';
+      portrait.setAttribute('src', presentation.commander.portrait);
+      portrait.setAttribute('alt', `${presentation.commander.name}, ${presentation.commander.role}`);
+      portrait.setAttribute('decoding', 'async');
+      command.appendChild(portrait);
+      command.appendChild(el('span', 'vm-camp-command-scan'));
+      const channel = el('span', 'vm-camp-command-channel', presentation.channel);
+      command.appendChild(channel);
+      const identity = el('div', 'vm-camp-command-identity');
+      identity.appendChild(el('strong', 'vm-camp-command-name', presentation.commander.name));
+      identity.appendChild(el('span', 'vm-camp-command-role', presentation.commander.role));
+      command.appendChild(identity);
+      command.appendChild(el('blockquote', 'vm-camp-command-directive', presentation.directive));
+      grid.appendChild(copy);
+      grid.appendChild(command);
+      wrap.classList.add('has-command');
+    } else {
+      grid.appendChild(copy);
+    }
+    wrap.appendChild(grid);
     return wrap;
   }
 

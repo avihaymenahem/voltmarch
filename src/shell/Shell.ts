@@ -94,6 +94,7 @@ import { actionKeyRow } from './tutorial-steps';
 import { isApplePlatform, type StoredBindings } from '../input/ActionCatalogue';
 
 import { eva as sayEva } from '../audio/AudioEngine';
+import { campaignSpeaker } from './CampaignPresentation';
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
@@ -1564,13 +1565,17 @@ export class Shell {
     switch (event.kind) {
       case 'dialogue': {
         if (event.text === undefined) return;
-        // A TOAST IS THE PLACEHOLDER AND IT IS DECLARED AS ONE. A briefing log
-        // with a speaker portrait is Phase 3 work; a line the player never sees
-        // is worse than a line in the wrong container, and this at least proves
-        // the sim half is producing them.
-        // Duck-typed on `__vmHud`, the same seam `outcome.system.ts` uses for its
-        // stranded warning. The shell may not import the HUD.
-        const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
+        // The HUD owns the surface and the shell owns the presentation lookup.
+        // Keep the seam structural: a headless campaign has no HUD, and a build
+        // with an older HUD still receives the line through the toast fallback.
+        const g = globalThis as unknown as {
+          __vmHud?: {
+            campaignDialogue?: (message: {
+              speaker: string; role: string; portrait: string; monogram: string; text: string;
+            }) => void;
+            toast?: (...a: unknown[]) => void;
+          };
+        };
         /*
          * A UNIQUE KEY PER LINE, AND KEYING ON THE SPEAKER DESTROYED TEXT.
          *
@@ -1586,23 +1591,32 @@ export class Shell {
          * their opening sentence — found by an adversarial verifier reading
          * `Chrome.ts`, because the surviving line looks perfectly correct.
          *
-         * The counter is monotonic and never reused, so no two beats can merge.
-         * `TOAST_MAX` still retires the oldest at five on screen: a burst of
-         * dialogue can now scroll rather than overwrite, which is a content
-         * pacing problem an author can see and fix, not a silent deletion they
-         * cannot.
+         * The dedicated campaign surface now queues authored lines and keeps a
+         * capped transmission log. The monotonic key remains for the headless
+         * and older-HUD fallback, where dialogue still lands in ToastStack and
+         * therefore still needs protection from coalescing.
          *
          * It lives on the shell rather than in `Chrome.ts` because the merge
-         * rule is right for every other caller. This is the one that was
-         * lying about what its events mean.
+         * rule is right for every other toast caller.
          */
         this.campaignBeatSeq++;
-        g.__vmHud?.toast?.(
-          'info',
-          `campaign-${event.speaker ?? 'line'}-${this.campaignBeatSeq}`,
-          event.speaker ?? '',
-          event.text,
-        );
+        const speaker = campaignSpeaker(event.speaker ?? 'Transmission');
+        if (g.__vmHud?.campaignDialogue !== undefined) {
+          g.__vmHud.campaignDialogue({
+            speaker: event.speaker ?? speaker.name,
+            role: speaker.role,
+            portrait: speaker.portrait,
+            monogram: speaker.monogram,
+            text: event.text,
+          });
+        } else {
+          g.__vmHud?.toast?.(
+            'info',
+            `campaign-${event.speaker ?? 'line'}-${this.campaignBeatSeq}`,
+            event.speaker ?? '',
+            event.text,
+          );
+        }
         return;
       }
       case 'eva': {

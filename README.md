@@ -77,7 +77,7 @@ Every unit, building, material, texture, cameo and in-game icon is built from Th
 custom shaders and procedural canvas generators, which means the entire look can be retuned by
 editing values rather than reopening an art tool.
 
-Four shipped assets are not generated, all deliberate:
+Five shipped asset groups are not generated from runtime code, all deliberate:
 
 - **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
   weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
@@ -90,6 +90,10 @@ Four shipped assets are not generated, all deliberate:
   one whole; that threshold is measured off the artwork rather than picked, and
   `tests/boot-splash.spec.ts` re-derives it. A missing or corrupt file degrades to exactly the
   curtain that shipped before it, wordmark included.
+- **Campaign character portraits** in `public/campaign/portraits/` — Rakhalt and Vosk, original
+  AI-assisted artwork generated for VOLTMARCH's briefing and in-match communications surfaces.
+  They are interface art, not meshes or textures used by the procedural game world; provenance and
+  delivery details live in `public/campaign/README.md`.
 - **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the

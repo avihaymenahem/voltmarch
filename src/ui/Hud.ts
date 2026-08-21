@@ -29,6 +29,7 @@
  *   hud.overlay.floater(x,y,z,text,color)                  anyone
  *   hud.overlay.orderMarker(x,y,z,kind)                    anyone
  *   hud.toast(kind,key,title,detail)                       anyone
+ *   hud.campaignDialogue(message)                          campaign shell
  *   hud.onPlaceRequest = (defId, key) => {}                 placement
  *   hud.setSoundHook(fn)                                    audio
  * Also published as `globalThis.__vmHud` for the console and the harness.
@@ -82,6 +83,7 @@ import {
 } from './Chrome';
 import { Minimap, type TerrainSampler } from './Minimap';
 import { Overlay } from './Overlay';
+import { CampaignComms, type CampaignCommsMessage } from './CampaignComms';
 // `src/progression/powers.ts` imports NOTHING — not the engine, not `three`,
 // not `src/sim/**` — and says so in its header, so this is a hard import for
 // the same reason `ABILITIES` above is one: it is the CONTENT half (label,
@@ -862,6 +864,7 @@ export class Hud {
   readonly minimap: Minimap;
   readonly overlay: Overlay;
   readonly toasts: ToastStack;
+  readonly campaignComms: CampaignComms;
 
   /** Input reads these; the HUD owns the toggle, never the gesture. */
   get armedMode(): ArmedMode { return this.sidebar.armedMode; }
@@ -1073,6 +1076,7 @@ export class Hud {
     this.toasts = new ToastStack(this.root, (parent, kind) => {
       parent.appendChild(makeIcon(TOAST_ICONS[kind], 'vm-icon'));
     });
+    this.campaignComms = new CampaignComms(this.root);
 
     /* -- pooled state ---------------------------------------------------- */
     this.localSnapshot = {
@@ -1470,6 +1474,11 @@ export class Hud {
     this.toasts.push(kind, key, title, detail);
   }
 
+  /** Queue an authored campaign line on the dedicated command-comms surface. */
+  campaignDialogue(message: CampaignCommsMessage): void {
+    this.campaignComms.push(message);
+  }
+
   /**
    * Live `alert` chips, and whether the stack is full.
    *
@@ -1642,6 +1651,7 @@ export class Hud {
     this.pushPlacementHint();
     this.overlay.frame(dt);
     this.toasts.frame(dt);
+    this.campaignComms.frame(dt);
   }
 
   /**
@@ -3159,6 +3169,7 @@ export class Hud {
     window.removeEventListener('keydown', this.onKeyDown);
     for (const off of this.unsubs) off();
     this.unsubs.length = 0;
+    this.campaignComms.dispose();
     this.toasts.dispose();
     this.minimap.dispose();
     this.overlay.dispose();

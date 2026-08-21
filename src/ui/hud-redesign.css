@@ -536,6 +536,239 @@
   top: calc(var(--vm-top-h) + 20 * var(--vm-u));
 }
 
+/* Campaign dialogue belongs to the lower information perimeter, immediately
+   above the selection dock. It never occupies the centre aiming corridor and
+   it stays clear of the right production rail even at 1024px. */
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms {
+  position: absolute;
+  left: calc(var(--vm-edge) + var(--vm-map-w) + var(--vm-panel-gap));
+  bottom: calc(var(--vm-edge) + var(--vm-selection-h) + var(--vm-panel-gap));
+  z-index: 8;
+  box-sizing: border-box;
+  width: min(calc(520 * var(--vm-u)), calc(100vw - var(--vm-rail-w) - var(--vm-map-w) - 5 * var(--vm-panel-gap)));
+  min-width: calc(390 * var(--vm-u));
+  min-height: calc(104 * var(--vm-u));
+  display: grid;
+  grid-template-columns: calc(92 * var(--vm-u)) minmax(0, 1fr);
+  overflow: visible;
+  pointer-events: auto;
+  background:
+    linear-gradient(100deg, rgba(52, 13, 19, 0.28), transparent 45%),
+    linear-gradient(180deg, rgba(17, 22, 39, 0.98), rgba(3, 6, 14, 0.985));
+  border-color: rgba(207, 60, 78, 0.48);
+  box-shadow:
+    0 calc(8 * var(--vm-u)) calc(22 * var(--vm-u)) rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms[hidden] { display: none; }
+
+.vm-hud[data-layout='perimeter'] .vm-comms-visual {
+  position: relative;
+  min-height: calc(104 * var(--vm-u));
+  overflow: hidden;
+  background: #070a10;
+  border-right: 1px solid rgba(220, 66, 82, 0.45);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12 * var(--vm-u)), calc(100% - 12 * var(--vm-u)) 100%, 0 100%);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-portrait {
+  width: 100%;
+  height: 100%;
+  min-height: calc(104 * var(--vm-u));
+  display: block;
+  object-fit: cover;
+  object-position: 50% 24%;
+  filter: saturate(0.82) contrast(1.08);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-monogram {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(232, 238, 246, 0.78);
+  font-size: calc(27 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background:
+    radial-gradient(circle at center, rgba(178, 43, 58, 0.22), transparent 58%),
+    repeating-linear-gradient(0deg, transparent 0 4px, rgba(255, 255, 255, 0.025) 4px 5px);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.26;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(222, 240, 255, 0.08) 3px 4px);
+  mix-blend-mode: screen;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-body {
+  min-width: 0;
+  padding: calc(9 * var(--vm-u)) calc(12 * var(--vm-u)) calc(10 * var(--vm-u));
+  display: flex;
+  flex-direction: column;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-signal {
+  display: flex;
+  align-items: center;
+  gap: calc(7 * var(--vm-u));
+  margin-bottom: calc(4 * var(--vm-u));
+  color: #d75c6b;
+  font-size: calc(7.5 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-pulse {
+  width: calc(22 * var(--vm-u));
+  height: 1px;
+  background: linear-gradient(90deg, #e95c6b, transparent);
+  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(233, 92, 107, 0.72);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-head {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(8 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-identity {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: calc(8 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-speaker {
+  color: #f2f5f9;
+  font-size: calc(14 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-role {
+  min-width: 0;
+  color: #8f99aa;
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-actions {
+  display: flex;
+  gap: calc(4 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-action {
+  min-width: calc(34 * var(--vm-u));
+  height: calc(18 * var(--vm-u));
+  padding: 0 calc(5 * var(--vm-u));
+  border: 1px solid rgba(156, 169, 191, 0.24);
+  background: rgba(3, 6, 13, 0.72);
+  color: #8f99aa;
+  font: inherit;
+  font-size: calc(7 * var(--vm-u));
+  letter-spacing: 0.10em;
+  cursor: pointer;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-action:hover,
+.vm-hud[data-layout='perimeter'] .vm-comms-action:focus-visible,
+.vm-hud[data-layout='perimeter'] .vm-comms-action[aria-expanded='true'] {
+  border-color: rgba(225, 77, 93, 0.65);
+  color: #f1a4ad;
+  outline: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-copy {
+  margin: calc(6 * var(--vm-u)) 0 0;
+  color: #d6dce6;
+  font-size: calc(10.5 * var(--vm-u));
+  line-height: 1.35;
+  letter-spacing: 0.012em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history {
+  position: absolute;
+  left: calc(92 * var(--vm-u));
+  right: 0;
+  bottom: 100%;
+  max-height: calc(210 * var(--vm-u));
+  overflow: hidden;
+  background: rgba(3, 6, 14, 0.985);
+  border: 1px solid rgba(207, 60, 78, 0.42);
+  border-bottom: 0;
+  box-shadow: 0 calc(-8 * var(--vm-u)) calc(20 * var(--vm-u)) rgba(0, 0, 0, 0.4);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history[hidden] { display: none; }
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-head {
+  padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
+  border-bottom: 1px solid rgba(207, 60, 78, 0.3);
+  color: #d75c6b;
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-list {
+  max-height: calc(170 * var(--vm-u));
+  padding: calc(4 * var(--vm-u)) calc(9 * var(--vm-u)) calc(8 * var(--vm-u));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row {
+  display: grid;
+  grid-template-columns: calc(64 * var(--vm-u)) minmax(0, 1fr);
+  gap: calc(8 * var(--vm-u));
+  padding: calc(6 * var(--vm-u)) 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-speaker {
+  color: #d75c6b;
+  font-size: calc(8 * var(--vm-u));
+  text-transform: uppercase;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-copy {
+  color: #aeb7c5;
+  font-size: calc(8.5 * var(--vm-u));
+  line-height: 1.35;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-enter { animation: vm-comms-in 220ms ease-out; }
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-exit { animation: vm-comms-out 350ms ease-in forwards; }
+
+@keyframes vm-comms-in {
+  from { opacity: 0; transform: translateY(calc(8 * var(--vm-u))); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes vm-comms-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(calc(5 * var(--vm-u))); }
+}
+
 /* ----------------------------------------------------------------------- */
 /* Narrow frames                                                           */
 /* ----------------------------------------------------------------------- */
@@ -1238,6 +1471,23 @@
   .vm-hud[data-layout='perimeter'] .vm-destruct-row {
     margin-left: calc(2 * var(--vm-u));
   }
+
+  .vm-hud[data-layout='perimeter'] .vm-campaign-comms {
+    left: var(--vm-edge);
+    right: var(--vm-edge);
+    bottom: calc(var(--vm-edge) + var(--vm-command-h) + var(--vm-panel-gap));
+    width: auto;
+    min-width: 0;
+    grid-template-columns: calc(70 * var(--vm-u)) minmax(0, 1fr);
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-comms-visual,
+  .vm-hud[data-layout='perimeter'] .vm-comms-portrait {
+    min-height: calc(92 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-comms-history { left: calc(70 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-comms-role { display: none; }
 }
 
 @media (max-width: 820px) {

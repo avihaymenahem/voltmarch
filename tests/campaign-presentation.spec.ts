@@ -444,7 +444,7 @@ describe('both declarations of PresentationEvent stay in step', () => {
 });
 
 /* ==========================================================================
- * 8. TWO LINES FROM ONE SPEAKER ARE TWO CHIPS, NOT ONE
+ * 8. TWO LINES FROM ONE SPEAKER ARE QUEUED, NOT OVERWRITTEN
  * ========================================================================== */
 
 describe('a dialogue beat cannot overwrite the line before it', () => {
@@ -457,16 +457,29 @@ describe('a dialogue beat cannot overwrite the line before it', () => {
    * speaker with two lines inside six seconds lost the first one silently.
    * Nearly every shipped operation opens that way.
    *
-   * This reads the source rather than driving a DOM, for the reason section 2
-   * gives: the suite is `environment: 'node'` and the surviving chip looks
-   * perfectly correct either way, so there is nothing a rendered assertion
-   * could see that this cannot.
+   * The campaign communications surface is now the primary consumer. It has
+   * to queue while a line is active; the toast key remains unique because the
+   * shell deliberately keeps a fallback for headless and older HUD builds.
    */
   const body = beatBody();
 
-  it('the toast key carries something per-beat, not just the speaker', () => {
+  it('the campaign surface receives the line before the toast fallback', () => {
     const arm = body.slice(body.indexOf("case 'dialogue':"), body.indexOf("case 'eva':"));
-    expect(arm, 'the dialogue arm no longer raises a toast').toContain('__vmHud');
+    expect(arm, 'the dialogue arm no longer reaches the campaign HUD').toContain('campaignDialogue');
+    expect(arm, 'headless and older HUD builds still need a readable fallback').toContain('.toast?.(');
+  });
+
+  it('the campaign surface queues a second active line', () => {
+    const comms = stripComments(src('src/ui/CampaignComms.ts'));
+    expect(comms, 'CampaignComms no longer distinguishes idle from active').toContain('this.active === null');
+    expect(comms, 'a line arriving while another is active must enter the queue')
+      .toContain('this.queue.push(message)');
+    expect(comms, 'the queued line must later become the presented line')
+      .toContain('this.present(this.queue.shift() as CampaignCommsMessage)');
+  });
+
+  it('the fallback toast key carries something per-beat, not just the speaker', () => {
+    const arm = body.slice(body.indexOf("case 'dialogue':"), body.indexOf("case 'eva':"));
     // The literal that broke it, by name: a template ending right after the
     // speaker. Anything appended to it is enough to stop the merge.
     expect(arm, "keying on `campaign-${speaker}` alone merges two lines of dialogue into one "

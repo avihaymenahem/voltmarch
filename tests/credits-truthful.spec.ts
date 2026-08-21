@@ -95,7 +95,7 @@ describe('the credits describe the product that actually ships', () => {
     }
   });
 
-  it('names the shipped typeface and the brand lockup', () => {
+  it('names the shipped interface artwork and typeface', () => {
     const assets = publicAssets();
     const fonts = assets.filter((f) => /\.(woff2?|ttf|otf)$/i.test(f));
     const brand = assets.filter((f) => f.startsWith('brand/') && /\.(png|jpe?g|webp|svg)$/i.test(f));
@@ -107,6 +107,15 @@ describe('the credits describe the product that actually ships', () => {
         .toMatch(/rajdhani/i);
       expect(allText, 'a shipped OFL font must have its licence named in the credits')
         .toMatch(/open font license|OFL/i);
+    }
+
+    const campaignPortraits = assets.filter((f) => /^campaign\/portraits\/.*\.(png|jpe?g|webp)$/i.test(f));
+    if (campaignPortraits.length > 0) {
+      expect(
+        allText,
+        `public/campaign ships ${campaignPortraits.length} character portrait(s), so the `
+        + 'credits must identify the non-procedural campaign artwork',
+      ).toMatch(/campaign portraits|Rakhalt|Vosk|AI-assisted artwork/i);
     }
 
     if (brand.length > 0) {
@@ -164,7 +173,9 @@ describe('the credits describe the product that actually ships', () => {
     // `DECLARED` while leaving the title alone would have left the same species
     // of false claim this file exists to catch, one level up.
     const BANNED = /\.(gltf|glb|fbx|obj|dae|png|jpe?g|webp|ktx2?|dds|tga|mp3|ogg|wav|m4a)$/i;
-    const DECLARED = /^(brand|fonts|audio)\//;
+    // CAMPAIGN joined in the gold-master vertical slice. These are interface
+    // portraits, named in credits and provenance, never world textures.
+    const DECLARED = /^(brand|fonts|audio|campaign)\//;
     const offenders = publicAssets().filter((f) => BANNED.test(f) && !DECLARED.test(f));
     expect(
       offenders,

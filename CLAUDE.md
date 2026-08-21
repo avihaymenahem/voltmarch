@@ -10,7 +10,8 @@ textures.
 
 That claim is about the GAME WORLD, and it is exactly true there: every mesh, material, texture,
 cameo and in-game icon is built from Three.js geometry, custom shaders and procedural canvas
-generators. **Four shipped assets are not generated**, all deliberate, all in `public/`:
+generators. **Five shipped asset groups are not generated from runtime code**, all deliberate, all
+in `public/`:
 
 1. **Rajdhani** (OFL-1.1) in `public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -46,7 +47,14 @@ generators. **Four shipped assets are not generated**, all deliberate, all in `p
    before this existed, wordmark included, rather than to a black rectangle with a progress bar.
 
    **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
-4. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+4. **Campaign character portraits** in `public/campaign/portraits/` — `rakhalt.webp` and
+   `vosk.webp`, original AI-assisted artwork generated with OpenAI's built-in image generation
+   tool on 2026-08-21 for the gold-master campaign slice. These are campaign/interface images, not
+   models or textures used by the procedural game world. The shipped files are 640 x 640 WebP
+   delivery derivatives; see `public/campaign/README.md`. The credits screen names them, and
+   `tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family.
+
+5. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
    real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
@@ -96,7 +104,7 @@ generators. **Four shipped assets are not generated**, all deliberate, all in `p
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-5. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+6. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `tests/credits-truthful.spec.ts` checks that screen against

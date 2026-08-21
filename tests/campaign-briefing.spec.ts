@@ -183,6 +183,16 @@ function objectiveLines(root: StubElement): string[] {
   return out;
 }
 
+function byClass(root: StubElement, className: string): StubElement[] {
+  const out: StubElement[] = [];
+  const walk = (node: StubElement): void => {
+    if (node.classList.contains(className)) out.push(node);
+    for (const child of node.childNodes) walk(child);
+  };
+  walk(root);
+  return out;
+}
+
 /** A shell that answers the two calls a briefing makes and nothing else. */
 function stubShell(): Shell {
   return {
@@ -229,6 +239,24 @@ describe('the shipped table', () => {
  * ========================================================================== */
 
 describe('BriefingScreen', () => {
+  it('gives the gold-master opening operation an authored command portrait and directive', async () => {
+    const host = await mountBriefing('soviets.01.first-tap');
+    const portraits = byClass(host, 'vm-camp-command-portrait');
+    const directives = byClass(host, 'vm-camp-command-directive');
+
+    expect(portraits).toHaveLength(1);
+    expect(portraits[0]?.getAttribute('src')).toMatch(/campaign\/portraits\/rakhalt\.webp$/);
+    expect(portraits[0]?.getAttribute('alt')).toMatch(/Rakhalt.*Directorate Command/i);
+    expect(directives.map((line) => line.textContent)).toEqual([
+      'Take the Allied survey tap. The three derricks stay with the town.',
+    ]);
+  });
+
+  it('does not fabricate a portrait for an operation without authored presentation', async () => {
+    const host = await mountBriefing(HELD_PAPER);
+    expect(byClass(host, 'vm-camp-command-portrait')).toHaveLength(0);
+  });
+
   it('does not list a hidden objective', async () => {
     const op = operationById(HELD_PAPER);
     const host = await mountBriefing(HELD_PAPER);

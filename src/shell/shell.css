@@ -3178,9 +3178,23 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 /* -- the briefing ---------------------------------------------------------- */
 
 .vm-shell .vm-camp-brief {
-  max-width: 68ch;
+  width: min(980px, calc(100% - 36px));
+  max-width: none;
   margin: 0 18px;
 }
+
+.vm-shell .vm-camp-brief-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+
+.vm-shell .vm-camp-brief.has-command .vm-camp-brief-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  align-items: start;
+}
+
+.vm-shell .vm-camp-brief-copy { min-width: 0; }
 
 .vm-shell .vm-camp-brief-chapter {
   font-size: 11px;
@@ -3240,6 +3254,142 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
 .vm-shell .vm-camp-brief-obj.is-secondary .vm-camp-brief-obj-text { color: var(--vm-text-dim); }
 
+.vm-shell .vm-camp-brief-intel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-camp-brief-intel-item {
+  min-width: 0;
+  padding: 9px 10px;
+  background: rgba(4, 8, 16, 0.55);
+  border: 1px solid rgba(170, 182, 204, 0.12);
+}
+
+.vm-shell .vm-camp-brief-intel-key,
+.vm-shell .vm-camp-brief-intel-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-brief-intel-key {
+  margin-bottom: 3px;
+  color: var(--vm-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-brief-intel-value {
+  color: var(--vm-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.vm-shell .vm-camp-command {
+  position: relative;
+  min-height: 370px;
+  overflow: hidden;
+  border: 1px solid rgba(213, 64, 82, 0.48);
+  border-radius: var(--vm-notch-sm);
+  background: #050810;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px));
+}
+
+.vm-shell .vm-camp-command::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent 42%, rgba(2, 5, 12, 0.32) 58%, rgba(2, 5, 12, 0.97) 79%),
+    linear-gradient(90deg, rgba(142, 25, 39, 0.12), transparent 52%);
+}
+
+.vm-shell .vm-camp-command-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.24;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(222, 240, 255, 0.08) 3px 4px);
+  mix-blend-mode: screen;
+}
+
+.vm-shell .vm-camp-command-portrait {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  height: 292px;
+  object-fit: cover;
+  object-position: 50% 18%;
+  filter: saturate(0.82) contrast(1.08);
+}
+
+.vm-shell .vm-camp-command-channel,
+.vm-shell .vm-camp-command-identity,
+.vm-shell .vm-camp-command-directive {
+  position: relative;
+  z-index: 2;
+}
+
+.vm-shell .vm-camp-command-channel {
+  display: inline-block;
+  margin: 12px;
+  padding: 4px 6px;
+  color: #eb7c88;
+  background: rgba(5, 8, 16, 0.78);
+  border: 1px solid rgba(213, 64, 82, 0.38);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-command-identity {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 76px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.vm-shell .vm-camp-command-name {
+  color: #f3f5f9;
+  font-size: 18px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-command-role {
+  color: #a18c91;
+  font-size: 9px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-command-directive {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 15px;
+  margin: 0;
+  color: #ccd3de;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* -- narrow ---------------------------------------------------------------- *
  * Under 720px the operation row stops trying to be one line: the beat and the
  * par fold under the title rather than being ellipsed to nothing.             */
@@ -3272,6 +3422,20 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   .vm-shell .vm-camp-op-lock {
     display: block;
     white-space: normal;
+  }
+
+  .vm-shell .vm-camp-brief.has-command .vm-camp-brief-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vm-shell .vm-camp-command {
+    min-height: 290px;
+  }
+
+  .vm-shell .vm-camp-command-portrait { height: 240px; }
+
+  .vm-shell .vm-camp-brief-intel {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
