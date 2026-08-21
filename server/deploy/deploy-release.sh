@@ -109,8 +109,17 @@ systemctl is-active --quiet "$SERVICE" || die 'relay service did not become acti
 
 origin=$(sed -n 's/^VM_ORIGINS=//p' "$ENV_FILE" | cut -d, -f1)
 [[ $origin == https://* ]] || die 'no HTTPS game origin is configured'
-sudo -u voltmarch env HOME=/tmp node "$release/smoke.mjs" \
-  ws://127.0.0.1:8787/ws "$origin" "$version"
+smoke_ok=0
+for _ in {1..20}; do
+  if sudo -u voltmarch env HOME=/tmp node "$release/smoke.mjs" \
+    ws://127.0.0.1:8787/ws "$origin" "$version"; then
+    smoke_ok=1
+    break
+  fi
+  systemctl is-active --quiet "$SERVICE" || break
+  sleep 0.25
+done
+[[ $smoke_ok -eq 1 ]] || die 'relay did not become protocol-ready'
 
 trap - ERR
 rm -f -- "$env_backup" "$archive"
