@@ -48,7 +48,12 @@ with no number is untracked, and that is itself the bug.
   the debt has not, so this is **the top of the campaign list** rather than a footnote under it.
   ~35 hours, and no agent can do any of it.
 
-- **THE CAPTURE HAZARD SWEEP — 7 of 37 operations, audited 2026-08-19.** `Capture.resolve`
+- **THE CAPTURE HAZARD SWEEP — BOTH SHAPES ARE GATED NOW; the hand sweep is retired.**
+  Shape 2 by `tests/campaign-capture-proof.spec.ts` (eleven declarers, both directions); **shape 1 by
+  `tests/campaign-capture-blind.spec.ts` as of 2026-08-21**, which builds all 37 worlds and compares the
+  swept hazard set to a declared table with one `toEqual`. It found **17 pairs and three real defects**,
+  named in the table as `REPORTED, NOT FIXED` — `allies.04.misclosure`'s `muster` is the one worth
+  acting on. Original hand audit was 7 of 17 operations, 2026-08-19. `Capture.resolve`
   consumes the capturing unit on EVERY non-refused outcome — capture, soften and friendly repair
   alike — and a NEUTRAL structure has no health gate, so the flip is instant. The three
   `canCapture` defs (`engineer`, `mrdArtificer`, `rclTinker`) carry **no `unlockedBy`**, so no
