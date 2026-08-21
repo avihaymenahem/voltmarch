@@ -65,3 +65,79 @@ export function clientAddress(
   }
   return peer;
 }
+
+/**
+ * The key every per-address limit is counted against.
+ *
+ * ── AN IPv6 ADDRESS IS NOT AN IDENTITY; A PREFIX IS ────────────────────────
+ *
+ * `clientAddress` answers WHICH address a connection came from, and that is the
+ * right answer to that question. It is the wrong thing to COUNT, because the
+ * smallest IPv6 allocation a residential or hosting customer receives is a /64
+ * — 1.8e19 addresses, every one of them a distinct `remoteAddress` and every
+ * one of them the same person. So `maxConnectionsPerIp` 8 becomes 8 per
+ * ADDRESS, and 63 addresses out of one ordinary /64 is 504 sockets, past the
+ * global `maxConnections` of 500. Measured on a real relay at
+ * VM_MAX_CONNECTIONS=6 / VM_MAX_CONNECTIONS_PER_IP=2: three addresses inside one
+ * /64 held six sockets, and a legitimate player on an unrelated network was
+ * then refused 401. The same arithmetic frees the join limit that is the ENTIRE
+ * defence on a six-character invite code.
+ *
+ * nginx does not bind either: `limit_conn_zone $binary_remote_addr` is the full
+ * 16 bytes for IPv6, so the edge counts per /128 as well.
+ *
+ * The codebase already knew the premise — `Bucket.spent`'s comment calls
+ * reaching many distinct addresses "trivial on IPv6" — and applied it to the
+ * eviction path while leaving the keying alone. This is the other half.
+ *
+ * IPv4 IS UNTOUCHED, and so is an IPv4-mapped address (`::ffff:1.2.3.4`), which
+ * is an IPv4 address wearing IPv6 syntax: grouping those would merge unrelated
+ * customers. Anything unparseable falls back to the address itself, which is
+ * the strictest available answer rather than the loosest.
+ */
+export function limitKey(address: string, ipv6PrefixBits: number): string {
+  return ipv6Prefix(address, ipv6PrefixBits) ?? address;
+}
+
+/**
+ * `address` reduced to its first `bits`, or null when it is not a real IPv6
+ * address. Rendered as `a:b:c:d:0:0:0:0/bits` — a key, not an address, and
+ * deliberately not re-parseable as one.
+ */
+function ipv6Prefix(address: string, bits: number): string | null {
+  if (!Number.isInteger(bits) || bits < 1 || bits > 128) return null;
+  // A link-local address may carry a zone (`fe80::1%eth0`). Not part of the
+  // address, and it must not become part of the key.
+  const zone = address.indexOf('%');
+  const bare = zone >= 0 ? address.slice(0, zone) : address;
+  if (!bare.includes(':')) return null;
+  // `::ffff:203.0.113.9` and `::203.0.113.9` are IPv4. Leave them alone.
+  if (/\d+\.\d+\.\d+\.\d+$/.test(bare)) return null;
+
+  const halves = bare.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] === '' ? [] : halves[0].split(':');
+  const tail = halves.length === 2 && halves[1] !== '' ? halves[1].split(':') : [];
+  let parts: string[];
+  if (halves.length === 2) {
+    const missing = 8 - head.length - tail.length;
+    if (missing < 0) return null;
+    parts = [...head, ...new Array<string>(missing).fill('0'), ...tail];
+  } else {
+    if (head.length !== 8) return null;
+    parts = head;
+  }
+
+  const whole = Math.floor(bits / 16);
+  const partial = bits % 16;
+  const out: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const raw = parts[i] ?? '';
+    if (!/^[0-9a-fA-F]{1,4}$/.test(raw)) return null;
+    const h = Number.parseInt(raw, 16);
+    if (i < whole) out.push(h.toString(16));
+    else if (i === whole && partial > 0) out.push(((h >>> (16 - partial)) << (16 - partial)).toString(16));
+    else out.push('0');
+  }
+  return `${out.join(':')}/${bits}`;
+}

@@ -11,8 +11,17 @@
 
 [Unit]
 Description=VOLTMARCH lockstep relay
-After=network-online.target
-Wants=network-online.target
+# `network.target`, not `network-online.target`. The relay binds an IP LITERAL
+# on loopback, so it needs no address to have been configured and no name to
+# resolve; waiting for the online target only delays boot.
+After=network.target
+
+# IN [Unit], NOT [Service]. systemd moved both of these in v229; `StartLimitBurst`
+# survives in [Service] as a compatibility alias but `StartLimitIntervalSec` does
+# NOT, so the interval was being ignored and only the default 10 s applied. The
+# guarantee happened to survive (RestartSec=2 against a 10 s window still trips
+# at five starts) but it survived by accident. `systemd-analyze verify` on the
+# target box is the instrument that settles this.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -47,6 +56,7 @@ EnvironmentFile=/etc/voltmarch-relay.env
 # EnvironmentFile above. bootstrap-host.sh creates it and deploy-release.sh
 # atomically advances VM_REQUIRE_BUILD with the activated client version.
 
+# A crash loop must not become a busy loop — see StartLimit* in [Unit] above.
 Restart=always
 RestartSec=2
 
@@ -74,6 +84,35 @@ LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete
+# WITHOUT THIS A FILTERED SYSCALL IS SIGSYS: the process dies with no message
+# and systemd reports a signal, not a reason. `~@resources` denies `setrlimit`
+# and `sched_setaffinity`, which node and V8 do touch at startup on some
+# builds — so this is the difference between a diagnosable EPERM and a silent
+# crash loop on a box nobody here owns.
+SystemCallErrorNumber=EPERM
+# Pairs with ProtectProc=invisible: /proc holds only this process's own pids.
+ProcSubset=pid
+RemoveIPC=yes
+UMask=0077
+
+# THE NETWORK HALF OF THE SANDBOX, which was entirely missing while the comment
+# above promised an RCE "has nowhere to go". The relay makes ZERO outbound
+# connections — it binds an IP literal, so node never even calls getaddrinfo —
+# so denying everything but loopback costs nothing and inbound from nginx on
+# 127.0.0.1 still passes. journald's socket is AF_UNIX and unaffected.
+#
+# IF YOU EVER SET VM_HOST TO A PUBLIC ADDRESS, THIS BREAKS THE SERVICE. That is
+# the correct trade for this deployment (the relay must not be routable) but it
+# is a trap worth knowing about before you change the bind address.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+# `User=` plus `NoNewPrivileges=` already means this process holds no
+# capabilities. Stating the empty set costs nothing and makes that explicit to
+# `systemd-analyze security`, which is the right instrument for auditing all of
+# the above on the target box.
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 # MemoryDenyWriteExecute MUST STAY OFF.
 # V8 is a JIT: it writes machine code and then executes it, which is exactly

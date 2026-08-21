@@ -470,6 +470,42 @@ describe('display prefs', () => {
 });
 
 /* ========================================================================== *
+ * 3b-bis. THE RELAY'S COPY OF THIS APP'S ORIGIN
+ * ========================================================================== */
+
+describe('the relay and the desktop app agree on the desktop origin', () => {
+  /**
+   * A THIRD PAIR OF DECLARATIONS THAT CANNOT IMPORT EACH OTHER, for the same
+   * reason as the bridge version below — except this boundary is a SECURITY one
+   * rather than a packaging one. `server/tsconfig.json`'s include list is four
+   * files, so the relay may not reach into `desktop/` any more than it may reach
+   * into `src/sim/`; the origin literal is therefore duplicated and compared
+   * here by text.
+   *
+   * WHAT DRIFT COSTS: `originAllowed` is a plain `includes`, checked in
+   * `verifyClient` BEFORE the upgrade completes. A relay whose copy is stale
+   * answers the packaged desktop build with HTTP 401 — measured, along with the
+   * fact that `app://voltmarch/` with a trailing slash is refused where
+   * `app://voltmarch` is accepted. The client cannot see the status code, so the
+   * menu reports "the match server is not answering", which is the one thing
+   * that is not true.
+   */
+  it('spells the same origin in both files', () => {
+    const relayConfig = readFileSync(
+      path.resolve(__dirname, '..', 'server', 'src', 'config.ts'), 'utf8',
+    );
+    const m = /DESKTOP_ORIGIN\s*=\s*'([^']+)'/.exec(relayConfig);
+    expect(m, 'server/src/config.ts must declare DESKTOP_ORIGIN as a literal').not.toBeNull();
+    expect(m?.[1]).toBe(ORIGIN);
+  });
+
+  it('carries no trailing slash, because Chromium sends none', () => {
+    expect(ORIGIN).toBe('app://voltmarch');
+    expect(ORIGIN.endsWith('/')).toBe(false);
+  });
+});
+
+/* ========================================================================== *
  * 3c. THE BRIDGE CONTRACT — two declarations that must not drift
  * ========================================================================== */
 

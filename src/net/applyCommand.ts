@@ -43,7 +43,38 @@ import { WIRE_LIMITS, type WireCommand } from './protocol';
  * `player` is copied as the client believes it, and the relay overwrites it
  * from the socket. A client cannot usefully lie here, but it is not trusted to
  * be honest either.
+ *
+ * ── WHY THE COORDINATES ARE CLAMPED HERE, OF ALL PLACES ────────────────────
+ *
+ * `screenToGround` unprojects onto the ground plane and returns the raw
+ * intersection; nothing between it and `CommandBus.issueOrder` bounds the
+ * result. With the camera at a map edge that puts real, clickable ground
+ * OUTSIDE the map under the cursor — 30.4 m past the focus at
+ * `CAMERA.defaultDistance`, 77.4 m at `maxDistance`, computed from the shipped
+ * pitch, fov and clamp. `validateCommand` requires `0 <= x <= MAP_SIZE`, so an
+ * off-map right-click in a multiplayer match is refused; and because
+ * `TurnRelay` empties the WHOLE submission on one bad command, the player also
+ * loses every other order issued in that 100 ms turn.
+ *
+ * THIS IS NOT A BREACH OF "REJECT, NEVER CLAMP". That rule governs
+ * `validateCommand`, which must never repair what it is judging — two
+ * validators that round differently diverge. This is the SENDER deciding what
+ * to say, before anything judges it, and the relay broadcasts one clamped value
+ * to both clients, so the two simulations cannot disagree about it.
+ *
+ * IT IS ALSO NOT THE COMPLETE FIX, and the difference is worth stating.
+ * `toWire` has exactly one production caller — the lockstep harvest in
+ * `net.system.ts` — so single player, the campaign and every replay are
+ * bit-identical to before, which is what makes this change safe to make without
+ * re-running the whole simulation suite. The cost is that an off-map click now
+ * means "the map edge" in a multiplayer match and still means "off the map" in
+ * a skirmish. Closing that means clamping in `input/Commands.ts#issueOrder`
+ * instead — the right site, and one that needs the full gate behind it.
  */
+function onMap(v: number): number {
+  return v < 0 ? 0 : v > WIRE_LIMITS.mapSize ? WIRE_LIMITS.mapSize : v;
+}
+
 export function toWire(cmd: Command): WireCommand {
   const entities: number[] = new Array<number>(cmd.entityCount);
   for (let i = 0; i < cmd.entityCount; i++) entities[i] = cmd.entities[i];
@@ -52,8 +83,8 @@ export function toWire(cmd: Command): WireCommand {
     player: cmd.player as number,
     order: cmd.order as number,
     target: cmd.target as number,
-    x: cmd.x,
-    z: cmd.z,
+    x: onMap(cmd.x),
+    z: onMap(cmd.z),
     defId: cmd.defId,
     tab: cmd.tab as number,
     cx: cmd.cx,

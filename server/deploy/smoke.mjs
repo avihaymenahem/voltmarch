@@ -7,9 +7,10 @@
  */
 import WebSocket from 'ws';
 
-const [url, origin, build] = process.argv.slice(2);
-if (!url || !origin || !build) {
-  console.error('usage: node smoke.mjs <ws-url> <https-origin> <build-version>');
+const [url, origin, build, protocolArg] = process.argv.slice(2);
+const protocol = Number(protocolArg);
+if (!url || !origin || !build || !Number.isSafeInteger(protocol) || protocol < 1) {
+  console.error('usage: node smoke.mjs <ws-url> <https-origin> <build-version> <protocol-version>');
   process.exit(2);
 }
 
@@ -31,7 +32,7 @@ function fail(message) {
 }
 
 socket.on('open', () => {
-  socket.send(JSON.stringify({ t: 'hello', protocol: 1, build }));
+  socket.send(JSON.stringify({ t: 'hello', protocol, build }));
 });
 
 socket.on('message', (data) => {
@@ -42,7 +43,7 @@ socket.on('message', (data) => {
     fail('relay returned non-JSON data');
     return;
   }
-  if (message?.t !== 'welcome' || message.protocol !== 1) {
+  if (message?.t !== 'welcome' || message.protocol !== protocol) {
     fail(`unexpected relay response: ${JSON.stringify(message)}`);
     return;
   }

@@ -56,11 +56,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           version=$(node -p "require('./package.json').version")
+          protocol=$(node -p "require('./server/dist/src/net/protocol.js').PROTOCOL_VERSION")
           archive="/tmp/voltmarch-relay-${GITHUB_SHA}.tgz"
           cp server/deploy/smoke.mjs server/smoke.mjs
           tar -C server -czf "$archive" dist package.json package-lock.json smoke.mjs
           rm server/smoke.mjs
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "protocol=$protocol" >> "$GITHUB_OUTPUT"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Configure deployment SSH key
@@ -88,4 +90,4 @@ jobs:
             "sudo /usr/local/sbin/voltmarch-relay-deploy '$GITHUB_SHA' '${{ steps.release.outputs.version }}' '/tmp/voltmarch-relay-${GITHUB_SHA}.tgz'"
 
       - name: Verify public Cloudflare route
-        run: node server/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}'
+        run: node server/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.protocol }}'

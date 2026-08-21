@@ -14,18 +14,84 @@
  * ============================================================================
  */
 
-function num(name: string, fallback: number): number {
-  const raw = process.env[name];
+/**
+ * A positive integer from the environment, or the default — and a REFUSAL for
+ * anything else.
+ *
+ * IT USED TO FALL BACK SILENTLY, ALWAYS TOWARD LESS RESTRICTION. Measured:
+ * `VM_MAX_CONNECTIONS_PER_IP=0` gave 8, `VM_MAX_CONNECTIONS=-5` gave 500,
+ * `VM_HEARTBEAT_MS=abc` gave 15000. Every one of those is an operator who
+ * believes they tightened a limit and did not, with nothing printed and nothing
+ * to look at — which is the "limits that appeared to be enforced and were not"
+ * pattern this server's own audit table says was four of its six original
+ * defects. A typo in a unit file is invisible; a process that will not start is
+ * not. `Restart=always` plus `StartLimitBurst` turns that into five restarts and
+ * a journal line naming the variable, which is the correct outcome for a
+ * misconfiguration at deploy time.
+ *
+ * Note that 0 is refused rather than accepted: every value here is a CAP, and a
+ * cap of zero would refuse all play. Where "off" is meaningful the sentinel is
+ * documented on the field itself.
+ */
+export function parseCount(name: string, raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === '') return fallback;
   const v = Number(raw);
-  return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+  if (!Number.isFinite(v) || v <= 0 || Math.floor(v) !== v) {
+    throw new Error(`[relay] ${name}=${JSON.stringify(raw)} is not a positive integer`);
+  }
+  return v;
+}
+
+function num(name: string, fallback: number): number {
+  return parseCount(name, process.env[name], fallback);
+}
+
+/**
+ * A comma-separated list from the environment, or the default.
+ *
+ * IT REPLACES THE DEFAULT, IT DOES NOT EXTEND IT, and that has bitten once
+ * already — the shipped systemd unit sets `VM_ORIGINS` to a single entry, so the
+ * compiled fallback list is gone entirely on the deployed relay. Measured:
+ * `http://localhost:5173` is in the fallback array and returned 401 under that
+ * environment.
+ *
+ * `none` IS THE EMPTY LIST. Without it an empty list is inexpressible — the
+ * empty string is indistinguishable from an unset variable — so an operator who
+ * wanted `VM_TRUSTED_PROXIES` cleared (the correct setting for a relay exposed
+ * directly, and the one `address.ts` documents) silently got the three loopback
+ * entries back.
+ */
+export function parseList(raw: string | undefined, fallback: string[]): string[] {
+  if (raw === undefined || raw === '') return fallback;
+  if (raw.trim().toLowerCase() === 'none') return [];
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 function list(name: string, fallback: string[]): string[] {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
-  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return parseList(process.env[name], fallback);
 }
+
+/**
+ * The desktop build's origin, which no operator can be expected to know.
+ *
+ * `desktop/src/app-url.ts` registers `app://voltmarch` as a privileged scheme
+ * and every window in the packaged build is served from it, so Chromium stamps
+ * exactly this string on the WebSocket handshake — measured on a real Electron
+ * launch, no trailing slash, and `app://voltmarch/` WITH one is a different
+ * origin that is refused. It cannot be imported: `server/tsconfig.json`'s
+ * include list is the security boundary and sees four files, so the literal is
+ * duplicated here and `tests/desktop-origin.spec.ts` compares the two by text —
+ * the same mechanism the desktop bridge version uses for the same reason.
+ *
+ * ALWAYS PRESENT, NEVER ONLY A DEFAULT. `VM_ORIGINS` replaces the fallback
+ * list, so an entry that lived only there would be dropped by the shipped unit
+ * file and the packaged desktop build would be refused at the handshake — 401,
+ * before the upgrade, reported to the player as "the match server is not
+ * answering". It costs nothing to allow: `app:` is not a scheme any browser can
+ * mint, the whole point of the `Origin` check is the browser-driven case, and
+ * `https://evil.example` is still refused (measured).
+ */
+export const DESKTOP_ORIGIN = 'app://voltmarch';
 
 export const CONFIG = {
   /** Bind address. LOOPBACK BY DEFAULT — nginx is the only thing that should reach this. */
@@ -44,16 +110,36 @@ export const CONFIG = {
    * The reason there is nothing worth stealing through such a socket is the
    * other half: this server sets no cookies and reads no credentials, so a
    * cross-site connection is an anonymous connection with no privileges.
+   *
+   * `DESKTOP_ORIGIN` is unioned in rather than listed as a default, because
+   * `VM_ORIGINS` REPLACES the default. See its own comment.
    */
-  origins: list('VM_ORIGINS', [
+  origins: [DESKTOP_ORIGIN, ...list('VM_ORIGINS', [
     'https://avihaymenahem.github.io',
     'http://localhost:5173',
     'http://localhost:4173',
     'http://127.0.0.1:5173',
-  ]),
+  ]).filter((o) => o !== DESKTOP_ORIGIN)],
 
-  /** Set to '1' to accept any Origin. Development only; refuses to run with TLS off in prod. */
+  /**
+   * Set to '1' to accept any `Origin`. DEVELOPMENT ONLY, and the process
+   * refuses to start with it set when `NODE_ENV=production`.
+   *
+   * THIS COMMENT USED TO PROMISE SOMETHING UNIMPLEMENTABLE. It read "refuses to
+   * run with TLS off in prod", and neither half was true: nothing refused
+   * anything (the only other mention in the whole server is a `console.warn`,
+   * and a relay started with `NODE_ENV=production VM_ALLOW_ANY_ORIGIN=1` was
+   * measured accepting `Origin: https://attacker.example` with 101), and this
+   * process CANNOT OBSERVE TLS at all — nginx terminates it one hop away and
+   * `proxy_pass` is plain `http://` to loopback by design. A comment stating a
+   * property the code does not implement is a defect in this repo, so one half
+   * was implemented (`index.ts#assertConfigSafe`) and the unimplementable half
+   * was deleted rather than restated.
+   */
   allowAnyOrigin: process.env.VM_ALLOW_ANY_ORIGIN === '1',
+
+  /** True when this is a production deployment. The systemd unit sets it. */
+  production: process.env.NODE_ENV === 'production',
 
   /**
    * Trust `X-Real-IP` / `X-Forwarded-For` from these socket addresses.
@@ -90,6 +176,16 @@ export const CONFIG = {
   maxConnections: num('VM_MAX_CONNECTIONS', 500),
   /** Concurrent sockets from one address. Generous: a household shares an IP. */
   maxConnectionsPerIp: num('VM_MAX_CONNECTIONS_PER_IP', 8),
+  /**
+   * How much of an IPv6 address a per-address limit is counted against.
+   *
+   * 64, because that is the smallest allocation a customer receives — see
+   * `address.ts#limitKey` for the arithmetic and the measurement. IPv4 and
+   * IPv4-mapped addresses are unaffected at any setting. Set to **128** to count
+   * per exact address, which is the behaviour that shipped and which a single
+   * host can walk out of 1.8e19 ways.
+   */
+  ipv6PrefixBits: num('VM_IPV6_PREFIX_BITS', 64),
   /** Live matches. Each is two sockets and a few turns of buffer. */
   maxMatches: num('VM_MAX_MATCHES', 200),
 
@@ -108,7 +204,17 @@ export const CONFIG = {
 
   /* -- lifetimes ---------------------------------------------------------- */
 
-  /** Ping interval. Two missed pongs terminates — kills slowloris and half-open sockets. */
+  /**
+   * Ping interval. ONE missed pong terminates — kills slowloris and half-open
+   * sockets.
+   *
+   * This said "two missed pongs" and the sweep in `index.ts` terminates on the
+   * first: `alive` is cleared immediately after each ping and a pong is the only
+   * thing that sets it. Measured at `VM_HEARTBEAT_MS=1500` — one ping at +692 ms,
+   * socket closed by the server at +2201 ms. The distinction is not academic:
+   * this is the number an operator sizes `proxy_read_timeout` against, and the
+   * real dead-peer detection window is 30 s, not 45 s.
+   */
   heartbeatMs: num('VM_HEARTBEAT_MS', 15_000),
   /** A socket that connects and then does nothing. */
   lobbyIdleMs: num('VM_LOBBY_IDLE_MS', 60_000),

@@ -55,11 +55,43 @@ import type { IncomingMessage } from 'node:http';
 
 import { CONFIG } from './config';
 // Extracted so it can be unit tested — this module starts a server on import.
-import { clientAddress } from './address';
+import { clientAddress, limitKey } from './address';
 import { Lobby, makeCode, makeSeed } from './Lobby';
 import type { Peer } from './Match';
 import { PROTOCOL_VERSION, WIRE_LIMITS, parseMessage } from '../../src/net/protocol';
 import type { ClientMessage, ErrorCode, ServerMessage } from '../../src/net/protocol';
+
+/* ==========================================================================
+ * 0. CONFIGURATION THAT MUST NOT REACH PRODUCTION
+ * ========================================================================== */
+
+/**
+ * Refuse to start on a configuration that is safe only on a developer's box.
+ *
+ * RUN BEFORE THE SERVER IS CONSTRUCTED, because everything below this file's
+ * imports happens at module scope — a check placed in the `listening` handler
+ * fires after the socket is already accepting connections, which is what the
+ * previous `console.warn` did.
+ *
+ * `config.ts` claimed a refusal that did not exist. Only the half this process
+ * can actually observe is implemented: `NODE_ENV`, which the shipped systemd
+ * unit sets. TLS is NOT observable here — nginx terminates it and proxies plain
+ * `http://` to loopback by design — so no check keys on it and no comment
+ * promises one.
+ */
+function assertConfigSafe(): void {
+  if (CONFIG.allowAnyOrigin && CONFIG.production) {
+    console.error(
+      '[relay] REFUSING TO START: VM_ALLOW_ANY_ORIGIN=1 with NODE_ENV=production.'
+      + ' That accepts a socket from any page on the internet. Unset one of them.',
+    );
+    process.exit(1);
+  }
+  // There is deliberately no "the origin list is empty" guard: `CONFIG.origins`
+  // always carries `DESKTOP_ORIGIN`, so it cannot be, and a check that cannot be
+  // made to fail is an assertion this project has already shipped believing.
+}
+assertConfigSafe();
 
 /* ==========================================================================
  * 1. PRIVACY
@@ -78,6 +110,18 @@ const IP_SALT = randomBytes(32);
 
 function ipKey(raw: string | undefined): string {
   return createHash('sha256').update(IP_SALT).update(raw ?? 'unknown').digest('base64url').slice(0, 16);
+}
+
+/**
+ * The key every per-address limit counts against, for one request.
+ *
+ * ONE FUNCTION, TWO CALL SITES — `verifyClient` reserves against it and
+ * `connection` records it, and the two must agree exactly or the reservation
+ * leaks. `limitKey` collapses an IPv6 address to its prefix first: see its own
+ * header for why a /128 is not an identity.
+ */
+function addressKey(req: IncomingMessage): string {
+  return ipKey(limitKey(clientAddress(req, CONFIG.trustedProxies), CONFIG.ipv6PrefixBits));
 }
 
 /* ==========================================================================
@@ -173,7 +217,7 @@ const wss = new WebSocketServer({
   verifyClient: (info: { origin: string; req: IncomingMessage }) => {
     if (!originAllowed(info.origin)) return false;
     if (connections.size >= CONFIG.maxConnections) return false;
-    const key = ipKey(clientAddress(info.req, CONFIG.trustedProxies));
+    const key = addressKey(info.req);
     if ((perIp.get(key) ?? 0) >= CONFIG.maxConnectionsPerIp) return false;
     // RESERVED HERE, NOT ON 'connection'. Checking here and incrementing there
     // leaves a window in which every simultaneous handshake from one address
@@ -187,7 +231,7 @@ const wss = new WebSocketServer({
 });
 
 wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-  const ip = ipKey(clientAddress(req, CONFIG.trustedProxies));
+  const ip = addressKey(req);
   const conn: Conn = {
     ws,
     ip,
@@ -382,8 +426,20 @@ function isFaction(v: unknown): v is number {
   // `WIRE_LIMITS.factions`, NOT the player cap. The two were confused here and
   // the relay accepted faction indices 5..7, which every client would then have
   // used to index its faction-keyed tables. See the comment on the limit.
+  // AND THE FLOOR IS 1, NOT 0. `Faction.Neutral` is index 0 and `core/types.ts`
+  // states in its own comment that "the number of playable armies is
+  // FACTION_COUNT - 1" — Gaia is a seat the scenario adds locally and never a
+  // seat a player picks. Accepting 0 let a hostile client seat itself as Gaia:
+  // not a desync (both clients do the identical thing) and not a NaN (0 indexes
+  // every faction-keyed table fine), but a seat whose roster is not a playable
+  // army's, forwarded to an opponent who did not ask for it.
+  //
+  // Deliberately NOT mirrored into `Session.ts`'s check, which is a TRIPWIRE and
+  // must stay no stricter than what a correct relay can emit. Lobby.begin can no
+  // longer emit a 0, so the loose bound there costs nothing and a tightened one
+  // would be a new way to end a match.
   return typeof v === 'number' && Number.isInteger(v)
-    && v >= 0 && v < WIRE_LIMITS.factions;
+    && v >= 1 && v < WIRE_LIMITS.factions;
 }
 
 function isVisibility(v: unknown): v is 'public' | 'private' {
@@ -477,6 +533,23 @@ function shutdown(signal: string): void {
 
 process.on('SIGTERM', () => { shutdown('SIGTERM'); });
 process.on('SIGINT', () => { shutdown('SIGINT'); });
+
+/**
+ * The SERVER's own error, which is a different thing from a socket's.
+ *
+ * `ws` forwards the underlying `http.Server`'s `error` event, and an `error`
+ * event with no listener is rethrown by node — so a relay started while a stale
+ * instance still held the port died on an unhandled `EADDRINUSE` stack trace
+ * (reproduced: exit code 1, `throw er; // Unhandled 'error' event`). With
+ * `Restart=always` and `RestartSec=2` that is a restart loop whose journal says
+ * nothing an operator can act on. The per-socket handler above is deliberately
+ * separate: a socket error is ordinary on the open internet and must NOT be
+ * fatal, while a listen failure is fatal and should say so.
+ */
+wss.on('error', (err: Error) => {
+  console.error(`[relay] server error: ${err.message}`);
+  process.exit(1);
+});
 
 wss.on('listening', () => {
   console.log(

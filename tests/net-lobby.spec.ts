@@ -233,3 +233,88 @@ describe('the code alphabet is shared, not copied', () => {
     expect(CODE_ALPHABET.length).toBeGreaterThan(20);
   });
 });
+
+/* ==========================================================================
+ * THE DESKTOP TARGET, WHICH THE OLD PREDICATE COULD NOT SEE
+ * ========================================================================== */
+
+describe('the transport rule reads the TARGET, not the page', () => {
+  /**
+   * `pageIsPlaintext()` tested `location.protocol !== 'https:'`. That was a
+   * correct proxy for "the browser will not stop me" while a browser was the
+   * only target. The packaged desktop build is served from `app://voltmarch`,
+   * and MEASURED on a real Electron launch: `location.protocol` is `app:`
+   * while `window.isSecureContext` is TRUE. The two inverted, so the guard read
+   * a genuinely secure page as plaintext and the shipped client accepted a
+   * public `ws://` relay, greeted it, and enabled the Multiplayer row with no
+   * warning — verified by launching the real app against a stub relay.
+   */
+  it('REFUSES a public ws:// relay from the desktop app', async () => {
+    pageAt('app://voltmarch/index.html', 'ws://relay.example.com/ws');
+    const { relayUrl, unavailableReason } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('');
+    expect(unavailableReason()).toContain('wss://');
+  });
+
+  it('still allows a LOOPBACK ws:// relay from the desktop app', async () => {
+    // `--vm-relay=ws://localhost:8787/ws` is the only way a developer reaches a
+    // local relay on that target — `localDefault()` is inert there, because
+    // `location.hostname` is `voltmarch`. A blanket "wss:// only" rule would
+    // have closed the hole by breaking desktop development.
+    pageAt('app://voltmarch/index.html?relay=ws%3A%2F%2Flocalhost%3A8787%2Fws');
+    const { relayUrl, unavailableReason } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('ws://localhost:8787/ws');
+    expect(unavailableReason()).toBe('');
+  });
+
+  it('accepts wss:// from the desktop app', async () => {
+    pageAt('app://voltmarch/index.html', 'wss://relay.example.com/ws');
+    const { relayUrl } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('wss://relay.example.com/ws');
+  });
+
+  it('offers no relay at all to the desktop app by default', async () => {
+    // `localDefault()` keys on `location.hostname`, which is `voltmarch` here.
+    pageAt('app://voltmarch/index.html');
+    const { relayUrl, unavailableReason } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('');
+    expect(unavailableReason()).toContain('No match server');
+  });
+
+  it('refuses a public ws:// relay from a PLAINTEXT dev page too', async () => {
+    // The old rule allowed this: the page was http, so anything went. The
+    // question was never what the page uses — it is whether the socket crosses
+    // a network somebody can sit on.
+    pageAt('http://localhost:5173/', 'ws://relay.example.com/ws');
+    const { relayUrl } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('');
+  });
+
+  it('does not read a hostname that merely CONTAINS localhost as loopback', async () => {
+    // `localhost.evil.com` resolves wherever its owner points it. The same trap
+    // `desktop/src/app-url.ts#isLoopbackHost` is written literally to avoid.
+    pageAt('https://example.com/', 'ws://localhost.evil.com/ws');
+    const { relayUrl } = await import('../src/shell/net-link');
+    expect(relayUrl()).toBe('');
+  });
+
+  it('treats 127.0.0.1 and [::1] as this machine', async () => {
+    for (const url of ['ws://127.0.0.1:8787/ws', 'ws://127.9.9.9:8787/ws', 'ws://[::1]:8787/ws']) {
+      pageAt('https://example.com/', url);
+      const { relayUrl } = await import('../src/shell/net-link');
+      expect(relayUrl(), url).toBe(url);
+    }
+  });
+});
+
+describe('net-link exposes no writer for the relay address', () => {
+  it('has no setRelayUrl, because the route its comment named did not exist', async () => {
+    // It had exactly one reference tree-wide — its own definition — and the
+    // web bundle had already tree-shaken it out, so "used from the console" was
+    // false on both targets. The storage key it wrote is still READ, so the
+    // route that works (edit the stored value, or pass `?relay=`) is untouched.
+    const mod = await import('../src/shell/net-link');
+    expect('setRelayUrl' in mod).toBe(false);
+    expect(read('src/shell/net-link.ts')).not.toMatch(/^export function setRelayUrl/m);
+  });
+});

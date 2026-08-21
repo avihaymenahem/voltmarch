@@ -109,10 +109,12 @@ systemctl is-active --quiet "$SERVICE" || die 'relay service did not become acti
 
 origin=$(sed -n 's/^VM_ORIGINS=//p' "$ENV_FILE" | cut -d, -f1)
 [[ $origin == https://* ]] || die 'no HTTPS game origin is configured'
+protocol=$(node -p "require('$release/dist/src/net/protocol.js').PROTOCOL_VERSION")
+[[ $protocol =~ ^[1-9][0-9]*$ ]] || die 'compiled relay has an invalid protocol version'
 smoke_ok=0
 for _ in {1..20}; do
   if sudo -u voltmarch env HOME=/tmp node "$release/smoke.mjs" \
-    ws://127.0.0.1:8787/ws "$origin" "$version"; then
+    ws://127.0.0.1:8787/ws "$origin" "$version" "$protocol"; then
     smoke_ok=1
     break
   fi

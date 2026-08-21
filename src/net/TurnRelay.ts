@@ -40,7 +40,7 @@
  * ============================================================================
  */
 
-import { WIRE_LIMITS, validateCommand } from './protocol';
+import { TURN_DELAY, WIRE_LIMITS, validateCommand } from './protocol';
 import type { ErrorCode, WireCheck, WireCommand } from './protocol';
 
 /** One slot's contribution to one turn. */
@@ -81,8 +81,40 @@ interface Pending {
 export class TurnRelay {
   /** Turns awaiting completion, keyed by turn number. */
   private readonly pending = new Map<number, Pending>();
-  /** Highest turn broadcast. -1 before the first. */
-  private emitted = -1;
+  /** Highest turn broadcast. `firstTurn - 1` before the first. */
+  private emitted: number;
+
+  /**
+   * The next turn each slot may submit. Index === slot.
+   *
+   * ── THE OUT-OF-ORDER COMPLETION, AND WHY A COUNTER CLOSES IT ───────────────
+   *
+   * Without this, a slot could complete a turn ABOVE one still open and strand
+   * it forever. Honest peer submits turns 2 and 3 (the whole lookahead);
+   * attacker submits only 3; turn 3 completes, `emitted` jumps to 3, and turns
+   * that never completed can never be resubmitted because `s.turn <= emitted`
+   * answers `duplicate-turn` from then on. The honest client's `TurnScheduler`
+   * blocks at the missing turn and never runs again — and since both peers are
+   * then silent, the silence sweep kicks whichever went quiet first, which is
+   * the VICTIM. A losing player could convert a loss into a win with one
+   * out-of-order frame.
+   *
+   * `TurnScheduler.open` sends exactly one frame per turn-opening tick, for
+   * `turnOf(tick) + turnDelay`, in ascending order with no gaps and no resends —
+   * so requiring strict succession refuses nothing a real client does. The
+   * baseline matters as much as the rule: the bootstrap turns `0..TURN_DELAY-1`
+   * are pre-seeded EMPTY on every client and never traverse the relay, so the
+   * first turn a healthy peer ever sends is `TURN_DELAY`. Starting `emitted` at
+   * -1 would make that first legal submission look like a skip.
+   *
+   * With both, `pending` is a contiguous run from `emitted + 1` by induction, a
+   * turn can only complete when every lower one already has, and `emitted`
+   * advances by exactly one. That also removes the only route by which `retire`
+   * could walk `emitted` BACKWARDS and re-open an already-broadcast turn —
+   * `emitted` is the sole enforcement of `duplicate-turn`, so its monotonicity
+   * should not rest on another rule holding.
+   */
+  private readonly nextTurn: number[];
 
   /**
    * Slots that have gone, and are never waited for again.
@@ -103,8 +135,19 @@ export class TurnRelay {
   constructor(
     readonly slots: number,
     readonly turnLookahead: number,
+    /**
+     * The first turn any slot may submit. See `nextTurn`.
+     *
+     * Defaults to `TURN_DELAY` because that is what the product sends: the
+     * bootstrap turns below it are pre-seeded empty on every client and never
+     * reach a relay. A harness that drives submissions by hand from turn 0
+     * passes 0 and gets the behaviour it always had.
+     */
+    readonly firstTurn: number = TURN_DELAY,
   ) {
     this.gone = new Array<boolean>(slots).fill(false);
+    this.emitted = firstTurn - 1;
+    this.nextTurn = new Array<number>(slots).fill(firstTurn);
   }
 
   /** Highest turn broadcast so far. */
@@ -136,6 +179,14 @@ export class TurnRelay {
     }
 
     if (this.gone[s.slot]) return { ok: false, code: 'not-in-match' };
+
+    // STRICT SUCCESSION PER SLOT. See `nextTurn` for the attack this closes and
+    // for why it cannot refuse a healthy client. The two failure codes are the
+    // ones the caller already distinguishes: below the expected turn is a
+    // resend, above it is running further ahead than the window allows.
+    const expected = this.nextTurn[s.slot] ?? this.firstTurn;
+    if (s.turn < expected) return { ok: false, code: 'duplicate-turn' };
+    if (s.turn > expected) return { ok: false, code: 'turn-out-of-window' };
 
     let slot = this.pending.get(s.turn);
     if (slot === undefined) {
@@ -187,8 +238,15 @@ export class TurnRelay {
     }
 
     slot.commands[s.slot] = accepted;
-    slot.checks[s.slot] = s.check;
+    // REBUILT, not retained — the same rule `validateCommand` follows two lines
+    // above and states in its own header. The caller's object is untrusted JSON
+    // and only these two integers are ever read from it; storing it verbatim
+    // kept every other key the sender attached alive inside the relay for the
+    // life of the turn, which is exactly the shape "REBUILD, NEVER SANITISE"
+    // exists to refuse. Both fields are already proven integers above.
+    slot.checks[s.slot] = { tick: s.check.tick, hash: s.check.hash };
     slot.reported++;
+    this.nextTurn[s.slot] = s.turn + 1;
 
     if (slot.reported < this.slots) return { ok: true, frame: null, desync: null, warning };
 
@@ -256,7 +314,14 @@ export class TurnRelay {
       p.reported++;
       if (p.reported < this.slots) continue;
       this.pending.delete(turn);
-      this.emitted = turn;
+      // MONOTONIC, not assigned. `emitted` is the SOLE enforcement of
+      // `duplicate-turn`, and lowering it re-opens a turn already broadcast —
+      // the survivor then holds two copies of one frame and only
+      // `TurnScheduler.receiveFrame`'s `turn <= executed` backstop keeps that
+      // from being executed twice. Strict succession above makes an out-of-order
+      // completion unreachable, so this can no longer fire; it stays because a
+      // property this important should not depend on another rule holding.
+      this.emitted = Math.max(this.emitted, turn);
       const commands: WireCommand[] = [];
       for (let i = 0; i < this.slots; i++) {
         const block = p.commands[i];

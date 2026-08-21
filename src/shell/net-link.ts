@@ -15,13 +15,34 @@
  *   4. localhost default              — `npm run dev` + `npm run server`
  *   5. nothing                        — the menu entry says "not configured"
  *
- * ── THE SCHEME IS CHECKED, NOT ASSUMED ─────────────────────────────────────
+ * ── THE TRANSPORT IS CHECKED HERE, AND IT IS ABOUT THE TARGET ──────────────
  *
  * A page served over https cannot open a `ws://` socket — the browser blocks it
  * as mixed content, and the error it reports points at the socket rather than
  * at the configuration. So a plaintext URL is refused HERE, where the message
- * can say what is actually wrong, unless the page itself is plaintext (which
- * only happens on localhost).
+ * can say what is actually wrong.
+ *
+ * THE PREDICATE USED TO BE "IS THIS PAGE PLAINTEXT", AND THE DESKTOP BUILD
+ * BROKE IT. `pageIsPlaintext()` tested `location.protocol !== 'https:'`, which
+ * was a correct proxy for "the browser will not stop me" on the only target
+ * that existed. The packaged desktop build is served from `app://voltmarch`, and
+ * measured on a real launch: `location.protocol` is `app:` while
+ * `window.isSecureContext` is TRUE. The two inverted. So the guard read a
+ * genuinely secure page as plaintext, the shipped client accepted
+ * `ws://relay.example.com/ws` for a PUBLIC host, greeted it, and enabled the
+ * Multiplayer row with no warning anywhere.
+ *
+ * That wire carries an invite code in cleartext and a command stream the relay
+ * stamps with the sender's slot, so a path attacker on it can read the code,
+ * inject well-formed orders that BOTH clients then agree on (the desync
+ * detector — this project's anti-cheat — cannot see an injection both sides
+ * receive), or simply be the relay.
+ *
+ * The question is not what scheme the PAGE uses; it is whether the socket
+ * crosses a network. `ws://` is accepted only to a loopback target, which is
+ * what a developer running `npm run server` actually needs and is the one case
+ * with no network to attack. Everything else must be `wss://`. That covers the
+ * browser rule too, which is why there is no longer a separate one.
  * ============================================================================
  */
 
@@ -53,9 +74,27 @@ function fromStorage(): string {
   }
 }
 
-/** True when the page itself is insecure, i.e. a local dev server. */
-function pageIsPlaintext(): boolean {
-  return typeof location !== 'undefined' && location.protocol !== 'https:';
+/**
+ * True when `raw` is a plaintext socket to somewhere other than this machine.
+ *
+ * The whole transport rule, and it reads the TARGET rather than the page — see
+ * the header for the desktop build that made the difference matter. The host
+ * test is the twin of `desktop/src/app-url.ts#isLoopbackHost`; both are
+ * deliberately literal, because a hostname that merely CONTAINS "localhost"
+ * (`localhost.evil.com`) resolves wherever its owner points it.
+ *
+ * An unparseable URL answers TRUE — refuse. `relayUrl` has already checked the
+ * scheme by the time this runs, so reaching the catch means something stranger
+ * than a typo.
+ */
+function crossesTheNetworkInClear(raw: string): boolean {
+  if (!raw.startsWith('ws://')) return false;
+  try {
+    const h = new URL(raw).hostname.replace(/^\[|\]$/g, '');
+    return !(h === 'localhost' || h === '::1' || /^127\.\d+\.\d+\.\d+$/.test(h));
+  } catch {
+    return true;
+  }
 }
 
 function localDefault(): string {
@@ -75,9 +114,10 @@ export function relayUrl(): string {
   const raw = fromQuery() || fromStorage() || fromBuild() || localDefault();
   if (raw === '') return '';
   if (!/^wss?:\/\//.test(raw)) return '';
-  // See the header: refuse plaintext from a secure page here, where the reason
-  // can be stated, rather than letting the browser block it at connect time.
-  if (raw.startsWith('ws://') && !pageIsPlaintext()) return '';
+  // See the header: refuse a plaintext socket to a REMOTE host here, where the
+  // reason can be stated, rather than letting the browser block it at connect
+  // time — or, on the desktop target, letting it succeed.
+  if (crossesTheNetworkInClear(raw)) return '';
   return raw;
 }
 
@@ -102,22 +142,28 @@ export function unavailableReason(): string {
   // label now; this keeps the row from needing the ellipsis in the first place.
   if (raw === '') return 'No match server configured';
   if (!/^wss?:\/\//.test(raw)) return 'The configured match server address is not a WebSocket URL.';
-  if (raw.startsWith('ws://') && !pageIsPlaintext()) {
-    return 'The match server must use wss:// when the game is served over https.';
+  if (crossesTheNetworkInClear(raw)) {
+    return 'A match server on another host must use wss://, not ws://.';
   }
   return '';
 }
 
-/** Point this build at a relay, persistently. Used from the console. */
-export function setRelayUrl(url: string): void {
-  try {
-    if (url === '') persistentStorage().removeItem(STORAGE_KEY);
-    else persistentStorage().setItem(STORAGE_KEY, url);
-  } catch {
-    // Nothing to do; the query flag still works.
-  }
-  reachable = null;
-}
+/*
+ * `setRelayUrl` USED TO LIVE HERE AND IS DELETED. Its doc comment read "Used
+ * from the console", and it had exactly one reference tree-wide — its own
+ * definition. On the web build that made it dead code the bundler removed:
+ * `dist/assets/Shell-*.js` holds the READ of `vm.relayUrl` and contains no
+ * `setItem` for it at all, so the console route it named had already stopped
+ * existing. On the desktop build there is no console to use it from — the
+ * application menu is nulled and no devtools accelerator is bound, verified by
+ * pressing all four and reading `isDevToolsOpened()`.
+ *
+ * The storage key itself is unchanged and still read by `fromStorage` above, so
+ * the route that DOES work is untouched: write `values["vm.relayUrl"]` into
+ * `userData/storage/state.json` (desktop) or `localStorage` (web), or pass
+ * `?relay=`. A dead function with a comment naming a route that does not exist
+ * is worse than no function, because it reads as a supported affordance.
+ */
 
 /* ==========================================================================
  * REACHABILITY
