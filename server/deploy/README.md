@@ -1,6 +1,6 @@
 # Production relay deployment
 
-This directory turns a fresh Ubuntu VPS into the production Voltmarch relay and
+This directory turns a fresh Debian/Ubuntu VPS into the production Voltmarch relay and
 then lets GitHub Actions deploy immutable, automatically rolled-back releases.
 
 ## Architecture

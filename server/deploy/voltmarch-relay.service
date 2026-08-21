@@ -25,7 +25,10 @@ WorkingDirectory=/opt/voltmarch-relay/current
 # --disallow-code-generation-from-strings kills eval() and new Function()
 # process-wide. Neither `ws` nor this server needs them, so the capability is
 # simply removed rather than trusted not to be reached.
-ExecStart=/usr/bin/node --disallow-code-generation-from-strings dist/server/src/index.js
+# bootstrap-host.sh replaces this placeholder with `command -v node`. Hostinger
+# images may install Node in /usr/local/bin while distro packages use /usr/bin;
+# systemd does not perform a shell PATH lookup for ExecStart.
+ExecStart=__NODE_BINARY__ --disallow-code-generation-from-strings dist/server/src/index.js
 
 EnvironmentFile=/etc/voltmarch-relay.env
 

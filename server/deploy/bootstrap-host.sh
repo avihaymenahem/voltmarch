@@ -46,6 +46,8 @@ if (( node_ok == 0 )); then
 fi
 node -e 'const [ma,mi]=process.versions.node.split(".").map(Number); if(ma<20||(ma===20&&mi<19)) process.exit(1)' \
   || die 'Node.js 20.19 or newer is required'
+node_binary=$(command -v node)
+[[ $node_binary == /* && -x $node_binary ]] || die 'could not resolve an executable Node.js path'
 
 id -u voltmarch >/dev/null 2>&1 \
   || useradd --system --no-create-home --home-dir /opt/voltmarch-relay --shell /usr/sbin/nologin voltmarch
@@ -80,7 +82,10 @@ VM_REQUIRE_BUILD=$required_build
 EOF
 chown root:voltmarch /etc/voltmarch-relay.env
 chmod 0640 /etc/voltmarch-relay.env
-install -o root -g root -m 0644 "$SCRIPT_DIR/voltmarch-relay.service" /etc/systemd/system/voltmarch-relay.service
+sed "s|__NODE_BINARY__|$node_binary|g" "$SCRIPT_DIR/voltmarch-relay.service" \
+  > /etc/systemd/system/voltmarch-relay.service
+chown root:root /etc/systemd/system/voltmarch-relay.service
+chmod 0644 /etc/systemd/system/voltmarch-relay.service
 systemctl daemon-reload
 
 # Give Certbot a valid port-80 virtual host for the first certificate request.

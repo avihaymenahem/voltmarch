@@ -33,7 +33,13 @@ chown voltmarch:voltmarch "$RELEASES" "$NPM_CACHE"
 release="$RELEASES/$sha"
 staging="$RELEASES/.${sha}.new"
 [[ $release == "$RELEASES/"* && $staging == "$RELEASES/"* ]] || die 'release path escaped its root'
-[[ ! -e $release ]] || die "release $sha already exists"
+if [[ -e $release ]]; then
+  active=''
+  if [[ -L $CURRENT ]]; then active=$(readlink -f "$CURRENT" || true); fi
+  [[ $active != "$release" ]] || die "release $sha is already active"
+  [[ -d $release && ! -L $release ]] || die 'existing inactive release path is unsafe'
+  rm -rf -- "$release"
+fi
 rm -rf -- "$staging"
 mkdir -p "$staging"
 
@@ -74,6 +80,7 @@ rollback() {
     systemctl stop "$SERVICE" || true
     rm -f -- "$CURRENT"
   fi
+  [[ $release == "$RELEASES/"* ]] && rm -rf -- "$release"
   rm -f -- "$env_backup" "$archive"
   exit "$status"
 }
