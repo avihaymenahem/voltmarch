@@ -99,7 +99,7 @@ export const enum BuildRole {
   Armor = 13,
   /** Long-ranged / high-tech striker. */
   Siege = 14,
-  /** Captures and repairs. */
+  /** Commanders and other unique non-composition support. */
   Support = 15,
   /** Redeploys into a Construction Yard. */
   Mcv = 16,
@@ -212,8 +212,10 @@ export const enum BuildRole {
    * must not do.
    */
   ReconHull = 26,
+  /** Infantry bought for a capture operation, separate from commander support. */
+  Engineer = 27,
 }
-export const BUILD_ROLE_COUNT = 27;
+export const BUILD_ROLE_COUNT = 28;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -240,7 +242,7 @@ export const BUILD_ROLE_NAMES: readonly string[] = [
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
   'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
   'upgrade', 'navalYard', 'transport', 'warship', 'commandPost', 'commanderPower',
-  'reconHull',
+  'reconHull', 'engineer',
 ];
 
 /* ==========================================================================
@@ -699,7 +701,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   // yard could never rebuild one.
   fighter('mcv', BuildRole.Mcv, EntityKind.Vehicle, 2000, ['warFactory'],
     Faction.Neutral, NO_ANSWER, 0),
-  fighter('engineer', BuildRole.Support, EntityKind.Infantry, 500, ['barracks'],
+  fighter('engineer', BuildRole.Engineer, EntityKind.Infantry, 500, ['barracks'],
     Faction.Neutral, NO_ANSWER, 0),
 
   /* -- THE COMMANDERS ------------------------------------------------------
@@ -758,6 +760,8 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [0.9, 1.5, 0.7, 0.4, 1.7], 2),
   fighter('rhino', BuildRole.Armor, EntityKind.Vehicle, 900, ['warFactory'],
     Faction.Soviets, [0.8, 1.5, 1.5, 1.2, 0], 5),
+  fighter('v4', BuildRole.Siege, EntityKind.Vehicle, 1400, ['warFactory', 'radar'],
+    Faction.Soviets, [1.2, 0.9, 1.1, 2.0, 0], 2),
   // The Air column WAS 1.2 here. It was never wrong in a way anything could
   // notice — nothing in the game could get airborne, so the column was dead —
   // but it is wrong now: the Sledge fields exactly one weapon, `twinCannon`,
@@ -812,7 +816,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN, NO_ANSWER, 0),
   fighter('mrdCarryall', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['mrdForgeyard'],
     FACTION_MERIDIAN, NO_ANSWER, 0),
-  fighter('mrdArtificer', BuildRole.Support, EntityKind.Infantry, 500, ['mrdChapterhouse'],
+  fighter('mrdArtificer', BuildRole.Engineer, EntityKind.Infantry, 500, ['mrdChapterhouse'],
     FACTION_MERIDIAN, NO_ANSWER, 0),
 
   // Wayfarers are a screen, not a line: cheap, quick, and the only thing in the
@@ -888,7 +892,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_RECLAIM, NO_ANSWER, 0),
   fighter('rclCrawler', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['rclBreakerYard'],
     FACTION_RECLAIM, NO_ANSWER, 0),
-  fighter('rclTinker', BuildRole.Support, EntityKind.Infantry, 500, ['rclRookery'],
+  fighter('rclTinker', BuildRole.Engineer, EntityKind.Infantry, 500, ['rclRookery'],
     FACTION_RECLAIM, NO_ANSWER, 0),
 
   // Weight 5 on a 90-credit body: the Reclamation's default army really is
@@ -2245,6 +2249,26 @@ export const AI_RETREAT = {
   maxFraction: 0.34,
 } as const;
 
+/**
+ * A small, deliberate engineer operation rather than another army-composition
+ * weight. The AI buys one only after it has seen a legal prize, walks that one
+ * engineer to it, and sends a compact escort through the ordinary command bus.
+ */
+export const AI_CAPTURE = {
+  /** Easy remains readable and does not execute multi-unit capture tactics. */
+  minDiscipline: 0.5,
+  /** Fighting units required before 500 credits may leave the main force. */
+  minEscort: 3,
+  /** Maximum units peeled off to accompany the engineer. */
+  escortSize: 4,
+  /** Do not launch a side operation while the home base is under pressure. */
+  maxPressure: 0.6,
+  /** Five seconds between identical capture orders. */
+  reissueTicks: 150,
+  /** Below economy/first-producer interrupts, above discretionary filler. */
+  buildScore: 0.85,
+} as const;
+
 export const AI_FOCUS = {
   /**
    * Metres around the strike group's centre searched for a target worth naming.
@@ -2268,6 +2292,15 @@ export const AI_FOCUS = {
    * the group has finished standing still over the corpse.
    */
   retargetTicks: 30,
+  /**
+   * Units allowed to share one named target on Normal.
+   *
+   * The rest of the strike group keeps its attack-move order and therefore
+   * acquires independently. Hard and Brutal deliberately keep whole-group
+   * focus; Normal gets useful concentration without frame-perfect army-wide
+   * deletion micro.
+   */
+  normalFireteamSize: 5,
   /**
    * Class weights for "what is worth killing first".
    *

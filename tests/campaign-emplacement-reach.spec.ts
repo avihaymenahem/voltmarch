@@ -55,9 +55,9 @@
  * THROUGH
  * -------------------------------------------------------------------------
  * `buildBaseFor` seeds each army's own doctrinal defence at its start spot, and
- * on a Soviet seat that is three Tesla Coils. Those are NOT a campaign
- * authoring decision — a skirmish player meets the same three, with a whole
- * tech tree to answer them — and gating them here would either delete the
+ * on a Soviet seat that is three Tesla Coils. Those are the campaign baseline;
+ * skirmish starts use the same five positions with one Coil and two sentries.
+ * Gating the campaign line here would either delete the
  * Soviet base defence or need an exception list per operation. So the scope is
  * the ground the operation ASKS the player to take: an emplacement is in scope
  * when a tag some trigger's `when` clause names is inside that emplacement's

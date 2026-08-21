@@ -143,12 +143,10 @@
  * what to spend on. Aubray says it out loud on the capture, because a rule a
  * player can only learn by losing it is a rule badly told.
  *
- * **`structureCaptured` ALONE WOULD NEVER RESTART**, and that is a fact about
- * the opponent rather than a design choice worth hiding: the AI owns no
- * engineer (`AiBrain` never issues `OrderKind.Capture`, and the def's weight is
- * 0), so the office cannot change hands twice. The only thing that can end the
- * ownership is the building dying, which is the loss. The `unitsInArea` clause
- * is therefore the ENTIRE reason the hold is a hold.
+ * **`structureCaptured` CAN RESTART NOW.** A disciplined AI may buy an engineer
+ * and retake a visible legal office; a second player capture makes the condition
+ * true again. The `unitsInArea` clause remains the reason the objective is a
+ * hold rather than a remote ownership check.
  *
  * Timing, against the two scripted waves:
  *

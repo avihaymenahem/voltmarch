@@ -93,7 +93,7 @@ function wpn(
     // A gun answers air only when its row SAYS it answers air.
     canTargetAir: extra?.canTargetAir ?? false,
     // TRUE by default, unlike its sibling above: a gun shoots the ground unless
-    // its row says it cannot. Exactly one row says so — see `migCannon`.
+    // its row says it cannot. The Interceptor and AA Battery say so explicitly.
     canTargetGround: extra?.canTargetGround ?? true,
     // 1 = "this row's air damage is whatever the armour matrix says". Only the
     // four line-infantry rifles carry anything else; see `rifle` below.
@@ -358,7 +358,8 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
   /* 17 */ wpn('aaCannon', 'Flak Battery', 34, WarheadClass.AutoCannon, 26, 0.7,
     ProjectileKind.Bullet, 160,
     { burstCount: 3, burstDelay: 0.06, splashRadius: 1.2, splashFalloff: 0.4,
-      turretTurnRate: 240, canTargetAir: true, muzzleFx: FxKind.MuzzleFlashMedium,
+      turretTurnRate: 240, canTargetAir: true, canTargetGround: false,
+      muzzleFx: FxKind.MuzzleFlashMedium,
       travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
 ];
 
@@ -661,12 +662,23 @@ export class WeaponSystem {
     }
 
     // --- elevate ---------------------------------------------------------
+    /*
+     * The ordinary elevation limits describe a ground weapon mount. They must
+     * not clip a shot that crosses the air layer: at cruise altitude the old
+     * +62 degree ceiling created an 8 m overhead dead zone, while the -12
+     * degree floor made an airborne bullet weapon miss ground targets it was
+     * otherwise allowed to engage. Keep ballistic shells on their authored
+     * ground arc; direct fire across layers follows the actual bearing.
+     */
+    const crossesAirLayer = isAirborne(st, i) !== isAirborne(st, t);
     let launchPitch: number;
     if (w.projectile === ProjectileKind.Shell && w.projectileSpeed > 0) {
       const solved = ballisticArc(Math.max(0.5, flat), dy, w.projectileSpeed, COMBAT_PROJECTILES.gravity);
       // NaN means "out of ballistic reach": hold at max elevation, which both
       // looks right and drops the round as far downrange as physics allows.
       launchPitch = Number.isNaN(solved) ? MAX_ELEV : clamp(solved, MIN_ELEV, MAX_ELEV);
+    } else if (crossesAirLayer) {
+      launchPitch = Math.atan2(dy, Math.max(0.01, flat));
     } else {
       launchPitch = clamp(Math.atan2(dy, Math.max(0.5, flat)), MIN_ELEV, MAX_ELEV);
     }

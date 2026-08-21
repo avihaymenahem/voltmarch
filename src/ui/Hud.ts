@@ -251,7 +251,7 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   ru('soviet_harvester', 'Ore Collector', 'Mines ore. The economy is this unit.', 1400, 12, BuildTab.Vehicles, ['refinery'], Faction.Soviets),
   ru('soviet_rhino', 'Anvil Heavy Tank', 'Slow, heavy, and it wins the trade.', 900, 10, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
   ru('soviet_sickle', 'Sickle', 'Legged scout. Hops over obstacles.', 700, 8, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
-  ru('soviet_v4', 'V4 Rocket Launcher', 'Siege artillery. Cannot defend itself.', 1400, 14, BuildTab.Vehicles, ['radar'], Faction.Soviets),
+  ru('v4', 'V4 Rocket Launcher', 'Siege artillery. Cannot defend itself up close.', 1400, 18, BuildTab.Vehicles, ['radar'], Faction.Soviets),
 ];
 
 /** Armour class -> the word the stat row shows. */

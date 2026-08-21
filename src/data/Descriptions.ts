@@ -371,6 +371,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'it flattens infantry it drives over. Slow and expensive — escort it, and '
     + 'never walk it into a rocket squad alone.',
 
+  v4:
+    'Dedicated rocket artillery. It outranges every emplacement and punishes '
+    + 'packed lines, but light armour and a dead zone make tanks, aircraft and '
+    + 'close infantry fatal without an escort.',
+
   mig:
     'The fastest thing on the map, and it does one job: its autocannon is at '
     + 'its best against light armour, which is what every aircraft is made of. '

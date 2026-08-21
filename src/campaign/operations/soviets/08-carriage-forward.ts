@@ -296,21 +296,16 @@
  * hypothetical on the ground: measured on the built world, **seat 1 opens
  * holding one `engineer`**, because `buildAlliedBase` spawns one.
  *
- * It is still not declared, because the verb is unreachable rather than
- * merely unused. CLAUDE.md's capability audit of `src/sim/AI.ts` lists
- * `Capture` among the commands the brain NEVER issues; `engineer`'s build
- * weight is 0 and `buildUnits` filters `weight <= 0`, so the brain neither buys
- * one nor orders the one it was given to do anything but die in a squad. A
- * `captureProof` entry here would be a well-spelled no-op — the
- * `map.coral-shore` shape `validate.ts` refuses for rosters — and it would add
- * a row to `tests/campaign-capture-proof.spec.ts` claiming a protection nothing
- * can test.
+ * It is still not declared because ownership is the predicate. The brain can
+ * now buy an engineer and issue `Capture`, but taking the plant is meant to
+ * count exactly like demolishing it. A `captureProof` entry would contradict
+ * that objective and add a row to `tests/campaign-capture-proof.spec.ts`
+ * claiming protection this operation does not want.
  *
  * What IS done is the cheap half: `t.plantLost` reads
  * `ownerCount(0, 'building', 'plant', max: 0)` rather than
- * `entityDead: 'plant'`, so the trigger is already correct on the day somebody
- * teaches the brain the verb. The predicate covers the case; the field is not
- * claimed for a hazard nothing can reach today.
+ * `entityDead: 'plant'`, so the trigger remains correct when the brain uses the
+ * verb. The predicate covers the case; no veto is needed.
  *
  * ============================================================================
  * WHAT THIS OPERATION DOES NOT CHECK, SAID OUT LOUD
@@ -1176,8 +1171,7 @@ const op: OperationDef = {
      *
      * `ownerCount ... max: 0` rather than `entityDead`, so a capture counts
      * exactly as a demolition does. See the header on why `captureProof` is NOT
-     * declared: the brain cannot issue `Capture`, but the predicate is written
-     * as though it could.
+     * declared: the predicate already handles the brain's capture route.
      */
     {
       id: 't.plantLost',

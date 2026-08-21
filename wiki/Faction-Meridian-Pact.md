@@ -28,7 +28,7 @@ hole is the reason the Pact is not simply better.
 
 You win standoffs and lose brawls. Every Pact gun out-ranges its opposite number by one to three
 metres and under-damages it. The Solarch reaches 26 m against a Warden's 24; the Sunmonitor reaches
-40 m; the Zenith Emitter reaches 33. Hold the line at maximum range, kite, and never let a Soviet
+40 m; the Zenith Emitter also reaches 40. Hold the line at maximum range, kite, and never let a Soviet
 column close.
 
 You get to tier two first. A Solar Array is 350 credits for **160 power** where a Power Plant is 300
@@ -70,7 +70,7 @@ crushes anything.
 | Sun Collector | 1000 | 13 s | Forgeyard, Ore Cistern | 800 | Light | 7.0 | unarmed | — | — | Half the load, twice the trips. Carries 450 credits of ore, 400 cheaper and 40% faster than a standard harvester |
 | Sandskiff **(locked)** | 550 | 9 s | Forgeyard | 190 | Light | **9.2** | Arc Repeater, 13 x4, autocannon | 23 m | yes | The raider, and the fastest ground hull on the map. Turreted, shoots at aircraft, **and holds two cargo slots** — two infantry, or one vehicle. Gated on the Forgeyard rather than the Slipway, which makes it the only hull in the game with a hold that still crosses dry land |
 | Solarch | 800 | 12 s | Forgeyard | 330 | Light | 7.6 | Focus Lance, 60, AP, 1.4 m splash | 26 m | no | The Pact main line. Outranges, never brawls. Turreted, faster than any other line tank |
-| Zenith Emitter **(locked)** | 1500 | 19 s | Forgeyard, Reliquary | 240 | Light | 6.2 | Zenith Emitter, 94, prism | **33 m** | no | Siege beam. Enormous damage that nearly nothing resists, at the longest ground reach in the army. Must stop to fire. 240 hit points |
+| Zenith Emitter **(locked)** | 1500 | 19 s | Forgeyard, Reliquary | 240 | Light | 6.2 | Zenith Emitter, 94, prism | **40 m** | no | Siege beam. Enormous damage that nearly nothing resists, at the longest ground reach in the army. Must stop to fire. 240 hit points |
 | Pactworks Carryall | 3000 | 32 s | Forgeyard | 950 | Heavy | 5.0 | unarmed | — | — | Unfolds into a second Conclave. Cannot be crushed |
 
 ## Aircraft

@@ -439,10 +439,6 @@ describe('a blurb that names a power dependency has one', () => {
  * rows the fallback path serves and the roster does not.
  */
 const UNFIRED_ROWS: Readonly<Record<string, string>> = {
-  artillery:
-    'The "V4 Launcher". A complete Soviet siege gun (130 HE, 48 m, 6.5 m burst, 12 m minimum) '
-    + 'with no Soviet siege unit. The roster answers a base with the Sledge and the air arm. '
-    + 'Giving it a hull is a def row, a FALLBACK_UNITS row, a model, a cameo and a balance pass.',
   chaingun:
     'The Sabre IFV\'s old gun, at 115.8 raw dps the most over-scaled row in the game. '
     + 'Replaced by `ifvChaingun` in Defs.ts#REBALANCE_WEAPONS. It could not be retuned in place '

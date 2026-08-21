@@ -235,7 +235,7 @@
  *
  *       Solarch    focusLance   26   ->  26*0.8 + 18 = 38.8 m of surface
  *       Sandskiff  arcRepeater  23   ->  23*0.8 + 18 = 36.4
- *       Zenith     zenithBeam   33   ->  33*0.8 + 18 = 44.4   (buildable here)
+ *       Zenith     zenithBeam   40   ->  40*0.8 + 18 = 50.0   (buildable here)
  *       Monitor    monitorLance 40   ->  40*0.8 + 18 = 50.0   (waterOnly, and
  *                                                              the wade zone is
  *                                                              water)

@@ -25,14 +25,11 @@
  * fiction and it is also the primary: `ownerCount(0, 'building', 'books',
  * min: 2)`, both blocks in Soviet hands at once, standing.
  *
- * **AND THAT IS WHY THE OPERATION IS NOT `capture-hold`.** Nothing here is
- * held against a clock: the win is the instant both deeds land, and neither can
- * be taken back — `AiBrain` owns no engineer (`Capture` is on CLAUDE.md's
- * unreachable list, the def's weight is 0 and `buildUnits` filters
- * `weight <= 0`), and `GarrisonService.enter` refuses a structure whose owner
- * it is not allied to, so a block on our books is closed to them twice over.
- * What they can do is knock it down, and that ends the operation. See the loss
- * below.
+ * **AND THAT IS WHY THE OPERATION IS NOT `capture-hold`.** Nothing here is held
+ * against a clock: the win resolves on the tick both deeds are in Soviet hands.
+ * The AI can now buy an engineer and recapture a legal visible block before that
+ * instant, so the route is contestable; destruction still ends the operation.
+ * See the loss below.
  *
  * **`infiltrate`, AND IT IS THE THIRD READING OF A WORD THE ENGINE HAS NO
  * PREDICATE FOR.** There is no stealth in this game and no vision condition

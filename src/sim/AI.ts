@@ -114,6 +114,7 @@ import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
 import { commanderPowers } from './CommanderPowers';
 import { repairSellService } from './RepairSell';
+import { CAPTURE, captureService } from './Capture';
 import { hasUpgradeKey } from './Upgrades';
 import {
   COMMANDER_POWERS, CommanderPowerId, ownsCommanderPower, powerByContentKey,
@@ -123,7 +124,7 @@ import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  AI_DEPLOY, AI_FOCUS, AI_NAVAL, AI_POWER, AI_POWER_BUY, AI_PRODUCERS, AI_RAID, AI_RETREAT,
+  AI_CAPTURE, AI_DEPLOY, AI_FOCUS, AI_NAVAL, AI_POWER, AI_POWER_BUY, AI_PRODUCERS, AI_RAID, AI_RETREAT,
   AI_SAVING, AI_SUPERWEAPON,
   AI_UPGRADE, BUILD_ROLE_NAMES, EXTRA_PRODUCERS, isOpeningEconomyRole, openingHoldFor,
   BuildCatalog, BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
@@ -205,6 +206,8 @@ const GROUP_WITHDRAW = 5;
  * dead — which is what returns the survivors to the ordinary strike group.
  */
 const GROUP_RAID = 6;
+/** A compact escort assigned to an engineer until its capture attempt resolves. */
+const GROUP_CAPTURE = 7;
 
 /** What an amphibious operation is currently doing. */
 const enum AmphibState {
@@ -414,6 +417,9 @@ export class AiBrain {
   private reserveCount = 0;
   private readonly harvesterIds = new Int32Array(64);
   private harvesterCount = 0;
+  /** Capture-capable infantry, deliberately excluded from the fighting roster. */
+  private readonly engineerIds = new Int32Array(8);
+  private engineerCount = 0;
   /**
    * Construction vehicles we own and have not unfolded yet.
    *
@@ -493,6 +499,10 @@ export class AiBrain {
    */
   private readonly inFlight = new Int32Array(BUILD_TAB_COUNT);
   private readonly inFlightTick = new Int32Array(BUILD_TAB_COUNT);
+  /** Engineers started in production but not yet spawned or cancelled. */
+  private engineerInProduction = 0;
+  /** Closes the spawn-to-next-census window in which a duplicate could be bought. */
+  private engineerSpawnedSinceCensus = false;
   /** Structures that finished and are waiting for a PlaceBuilding command. */
   private readonly pendingPlaceDef = new Int32Array(MAX_QUEUE_DEPTH);
   private pendingPlaceCount = 0;
@@ -545,6 +555,14 @@ export class AiBrain {
    * stream would attribute a scouting run to this rule.
    */
   private airWithdrawals = 0;
+  /* -- engineer capture operation --------------------------------------- */
+  private captureTarget: EntityId = NONE;
+  private captureEngineer: EntityId = NONE;
+  private captureIssuedTick = -1e9;
+  private captureEscortIssuedTick = -1e9;
+  private readonly captureEscort = new Int32Array(AI_CAPTURE.escortSize);
+  private captureEscortCount = 0;
+  private capturesOrdered = 0;
   /* -- the second front (see `AI_RAID`) ----------------------------------- */
   /** Party members, rebuilt from the tags every pass. Never the source of truth. */
   private readonly raidIds = new Int32Array(AI_SQUAD_MAX * 2);
@@ -904,12 +922,25 @@ export class AiBrain {
       if ((e.player as number) !== me) return;
       const t = e.tab as number;
       if (t >= 0 && t < BUILD_TAB_COUNT && this.inFlight[t] > 0) this.inFlight[t]--;
+      if (!e.isBuilding && this.catalog.entryForUnit(e.defId)?.role === BuildRole.Engineer) {
+        this.engineerInProduction++;
+      }
     }));
 
     offs.push(events.on('production:cancelled', (e) => {
       if ((e.player as number) !== me) return;
       const t = e.tab as number;
       if (t >= 0 && t < BUILD_TAB_COUNT && this.inFlight[t] > 0) this.inFlight[t]--;
+      if (this.catalog.entryForUnit(e.defId)?.role === BuildRole.Engineer) {
+        this.engineerInProduction = Math.max(0, this.engineerInProduction - 1);
+      }
+    }));
+
+    offs.push(events.on('entity:spawned', (e) => {
+      if ((e.player as number) !== me) return;
+      if (this.catalog.entryForUnit(e.defId)?.role !== BuildRole.Engineer) return;
+      this.engineerInProduction = Math.max(0, this.engineerInProduction - 1);
+      this.engineerSpawnedSinceCensus = true;
     }));
 
     offs.push(events.on('production:ready', (e) => {
@@ -983,6 +1014,9 @@ export class AiBrain {
     // The second front, one slot ahead of the squad layer so it reads the
     // PREVIOUS pass settled state and never splits a group mid-reform.
     if (t % AI_CADENCE.squad === 1) this.raid(s);
+    // The engineer goes one slot before regrouping so its escort is tagged and
+    // cannot be reclaimed by the main wave in the same pass.
+    if (t % AI_CADENCE.squad === 2) this.captureOperation(s);
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
     // The navy, on the squad clock one slot after the squad layer. It reads
@@ -1003,6 +1037,104 @@ export class AiBrain {
     // `commanderAbility` runs after `squad`: firing a superweapon at the strike
     // group's position wants this tick's census, not the last one's.
     if (t % AI_CADENCE.build === 8) this.lateGame(s, p);
+  }
+
+  /* ======================================================================
+   * 2.2a ENGINEER CAPTURE OPERATION
+   * ====================================================================== */
+
+  private captureOperation(s: SimContext): void {
+    if (this.diff.discipline < AI_CAPTURE.minDiscipline
+      || this.basePressure > AI_CAPTURE.maxPressure) {
+      this.abandonCapture();
+      return;
+    }
+
+    const st = this.store;
+    let engineer = NONE;
+    let target = NONE;
+    let bestDistance = Infinity;
+    // Choose the engineer/target pair with the shortest delivery route. The
+    // roster is tiny (normally one), so an allocation-heavy planner buys none.
+    for (let e = 0; e < this.engineerCount; e++) {
+      const h = this.engineerIds[e] as EntityId;
+      const i = st.index(h);
+      if (i < 0) continue;
+      const f = st.flags[i];
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned | EntityFlag.Immobilized)) !== 0) continue;
+      const candidate = this.pickCaptureTarget(st.posX[i], st.posZ[i]);
+      if (candidate === NONE) continue;
+      const ti = st.index(candidate);
+      if (ti < 0) continue;
+      const d = distSq2(st.posX[i], st.posZ[i], st.posX[ti], st.posZ[ti]);
+      if (d < bestDistance) { bestDistance = d; engineer = h; target = candidate; }
+    }
+
+    if (engineer === NONE || target === NONE || this.armyCount < AI_CAPTURE.minEscort) {
+      this.abandonCapture();
+      return;
+    }
+    if (target !== this.captureTarget || engineer !== this.captureEngineer) {
+      this.abandonCapture();
+      this.captureTarget = target;
+      this.captureEngineer = engineer;
+    }
+
+    // Retain live escorts, then fill the compact party from ordinary fighting
+    // units. The dedicated tag prevents `regroupSquads` from reclaiming them.
+    let escorts = 0;
+    for (let k = 0; k < this.captureEscortCount; k++) {
+      const h = this.captureEscort[k] as EntityId;
+      const i = st.index(h);
+      if (i < 0 || this.groupTag.getAt(i) !== GROUP_CAPTURE) continue;
+      this.captureEscort[escorts++] = h as number;
+    }
+    this.captureEscortCount = escorts;
+    for (let a = 0; a < this.armyCount && escorts < AI_CAPTURE.escortSize; a++) {
+      const h = this.armyIds[a] as EntityId;
+      const i = st.index(h);
+      if (i < 0) continue;
+      const tag = this.groupTag.getAt(i);
+      if (tag === GROUP_SCOUT || tag === GROUP_NAVAL || tag === GROUP_WITHDRAW
+        || tag === GROUP_RAID || tag === GROUP_CAPTURE) continue;
+      this.groupTag.setAt(i, GROUP_CAPTURE);
+      this.captureEscort[escorts++] = h as number;
+    }
+    this.captureEscortCount = escorts;
+    if (escorts < AI_CAPTURE.minEscort) {
+      this.abandonCapture();
+      return;
+    }
+
+    const ei = st.index(engineer);
+    const ti = st.index(target);
+    if (ei < 0 || ti < 0) { this.abandonCapture(); return; }
+    const captureAlreadySet = st.orderKind[ei] === OrderKind.Capture
+      && st.orderTarget[ei] === (target as number);
+    if (!captureAlreadySet || s.tick - this.captureIssuedTick >= AI_CAPTURE.reissueTicks) {
+      if (this.issueOrder(OrderKind.Capture, this.one(engineer), 1,
+        st.posX[ti], st.posZ[ti], target)) {
+        this.captureIssuedTick = s.tick;
+        this.capturesOrdered++;
+      }
+    }
+    if (s.tick - this.captureEscortIssuedTick >= AI_CAPTURE.reissueTicks
+      && this.moveGroup(this.captureEscort, escorts, OrderKind.AttackMove, st.posX[ti], st.posZ[ti])) {
+      this.captureEscortIssuedTick = s.tick;
+    }
+  }
+
+  private abandonCapture(): void {
+    const st = this.store;
+    for (let k = 0; k < this.captureEscortCount; k++) {
+      const i = st.index(this.captureEscort[k] as EntityId);
+      if (i >= 0 && this.groupTag.getAt(i) === GROUP_CAPTURE) this.groupTag.setAt(i, GROUP_NONE);
+    }
+    this.captureEscortCount = 0;
+    this.captureTarget = NONE;
+    this.captureEngineer = NONE;
+    this.captureIssuedTick = -1e9;
+    this.captureEscortIssuedTick = -1e9;
   }
 
   /* ======================================================================
@@ -1611,6 +1743,8 @@ export class AiBrain {
 
     this.armyCount = 0;
     this.harvesterCount = 0;
+    this.engineerCount = 0;
+    this.engineerSpawnedSinceCensus = false;
     this.mcvCount = 0;
     this.transportCount = 0;
     this.warshipCount = 0;
@@ -1679,6 +1813,13 @@ export class AiBrain {
       if ((f & EntityFlag.IsHarvester) !== 0) {
         if (this.harvesterCount < this.harvesterIds.length) {
           this.harvesterIds[this.harvesterCount++] = st.handleOf(i) as number;
+        }
+        continue;
+      }
+
+      if (this.isEngineerUnit(i, kind)) {
+        if (this.engineerCount < this.engineerIds.length) {
+          this.engineerIds[this.engineerCount++] = st.handleOf(i) as number;
         }
         continue;
       }
@@ -1811,6 +1952,16 @@ export class AiBrain {
       && (flags & EntityFlag.IsHarvester) === 0
       && st.cargoMax[i] <= 0
       && (transportService()?.capacityAt(i) ?? 0) <= 0
+      && st.maxSpeed[i] > 0;
+  }
+
+  /** Catalog-backed engineer identity; the infantry fallback keeps headless tests useful. */
+  private isEngineerUnit(i: number, kind: EntityKind): boolean {
+    const st = this.store;
+    const entry = this.catalog.entryForUnit(st.defId[i]);
+    if (entry !== undefined) return entry.role === BuildRole.Engineer;
+    return kind === EntityKind.Infantry
+      && (st.flags[i] & EntityFlag.CanAttack) === 0
       && st.maxSpeed[i] > 0;
   }
 
@@ -2022,6 +2173,43 @@ export class AiBrain {
     }
     if (st.powerDraw[i] > 0) return BuildRole.Power;
     return BuildRole.Unknown;
+  }
+
+  /**
+   * Best presently visible structure an engineer may legally enter.
+   *
+   * This deliberately has no memory fallback: capture is an entity-targeted
+   * order and therefore requires the same current vision a human needs. The
+   * capture service owns construction, garrison and campaign vetoes, so the AI
+   * cannot silently invent a second, weaker definition of a valid prize.
+   */
+  private pickCaptureTarget(fromX = this.baseX, fromZ = this.baseZ): EntityId {
+    const svc = captureService();
+    if (svc === null) return NONE;
+    const st = this.store;
+    const buildings = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    let best = NONE;
+    let bestScore = -Infinity;
+    for (let a = 0; a < count; a++) {
+      const i = buildings[a];
+      const h = st.handleOf(i);
+      if (!this.world.vision.canSee(this.player, h)) continue;
+      if (!svc.isCapturable(h, this.player)) continue;
+      const neutral = st.faction[i] === Faction.Neutral;
+      if (!neutral && this.world.areAllied(this.player, st.owner[i] as PlayerId)) continue;
+
+      const hpFrac = st.maxHp[i] > 0 ? st.hp[i] / st.maxHp[i] : 1;
+      const ready = neutral || hpFrac <= CAPTURE.captureHpFrac;
+      // Ready captures dominate. A healthy enemy is still legal: repeated
+      // engineers apply CaptureService's documented 25% softening rule.
+      const captureValue = ready ? 4.0 : 0.8 + (1 - hpFrac) * 1.5;
+      const neutralValue = neutral ? 1.5 : 0;
+      const d = Math.sqrt(distSq2(fromX, fromZ, st.posX[i], st.posZ[i]));
+      const score = captureValue + neutralValue + strikeValue(this.enemyRoleOf(i)) - d * 0.004;
+      if (score > bestScore) { bestScore = score; best = h; }
+    }
+    return best;
   }
 
   /** Stable identity for a remembered structure: its origin cell. */
@@ -2860,6 +3048,20 @@ export class AiBrain {
     // Storage: only worth it when the bank is actually overflowing.
     if (p.credits > p.storageMax * AI_ECONOMY.siloFillFraction) {
       this.consider(this.catalog.forRole(BuildRole.Storage, this.faction), 1.1, 'banking overflow');
+    }
+
+    // Engineers are bought for a seen, legal operation — never as generic
+    // composition filler, never without bodies available to escort them, and
+    // only one live/queued/spawned-between-censuses at a time.
+    const engineersCommitted = this.engineerCount + this.engineerInProduction
+      + (this.engineerSpawnedSinceCensus ? 1 : 0);
+    if (this.diff.discipline >= AI_CAPTURE.minDiscipline
+      && this.basePressure <= AI_CAPTURE.maxPressure
+      && this.armyCount >= AI_CAPTURE.minEscort
+      && engineersCommitted === 0
+      && this.pickCaptureTarget() !== NONE) {
+      this.consider(this.catalog.forRole(BuildRole.Engineer, this.faction),
+        AI_CAPTURE.buildScore, 'an engineer for a visible capture');
     }
 
     /* -- the repair depot -------------------------------------------------
@@ -4461,7 +4663,8 @@ export class AiBrain {
       // `GROUP_WITHDRAW` and `GROUP_RAID` alongside `GROUP_SCOUT`: all three are
       // hulls with a job of their own, and filing any of them into the strike
       // group would order it straight back into the main fight on this pass.
-      if (tag === GROUP_SCOUT || tag === GROUP_WITHDRAW || tag === GROUP_RAID) continue;
+      if (tag === GROUP_SCOUT || tag === GROUP_WITHDRAW || tag === GROUP_RAID
+        || tag === GROUP_CAPTURE) continue;
       if (tag === GROUP_STRIKE) this.strikeIds[this.strikeCount++] = h as number;
       else if (tag === GROUP_RESERVE) this.reserveIds[this.reserveCount++] = h as number;
     }
@@ -4575,8 +4778,10 @@ export class AiBrain {
   }
 
   /**
-   * Name ONE target for the whole strike group. True when an order went out or
-   * one is already standing — i.e. when the caller must not also attack-move.
+   * Name ONE target for a difficulty-sized part of the strike group. Normal
+   * concentrates one fireteam; Hard and Brutal concentrate the whole group.
+   * True when an order went out or one is already standing — i.e. when the
+   * caller must not overwrite the standing attack with a new attack-move.
    *
    * THREE STATES, and the middle one is why this returns a boolean rather than
    * simply issuing:
@@ -4625,7 +4830,10 @@ export class AiBrain {
     if (pick === NONE) return alive;
     this.focusPickedTick = s.tick;
     if (pick === this.focusTarget) return true;
-    if (!this.issueOrder(OrderKind.Attack, this.strikeIds, this.strikeCount, 0, 0, pick)) {
+    const focusCount = this.diff.index === 1
+      ? Math.min(this.strikeCount, AI_FOCUS.normalFireteamSize)
+      : this.strikeCount;
+    if (!this.issueOrder(OrderKind.Attack, this.strikeIds, focusCount, 0, 0, pick)) {
       return alive;
     }
     this.focusTarget = pick;

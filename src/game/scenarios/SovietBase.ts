@@ -11,8 +11,9 @@
  *
  *   - **Heavier.** Six repeated industrial masses and an extra reactor make
  *     the Soviet skyline denser without forcing foundations into each other.
- *   - **Deeper defence.** Three tesla coils on the line plus two flame towers
- *     behind them, rather than one hard point.
+ *   - **Deeper defence.** Campaign layouts retain the authored three-Coil line.
+ *     Skirmish starts use one Tesla anchor and two sentries so the opening base
+ *     stays layered without tripling chain burst before the garrison joins.
  *   - **Industrial rhythm.** Soviet rows are tighter in massing and carry far
  *     more repeated power machinery. Their silhouettes provide the disorder;
  *     their poured foundations still obey the player's construction grid.
@@ -49,11 +50,10 @@ const SOVIET_CORE: readonly StructurePlacement[] = [
   { key: 'oreSilo', dx: -36, dz: 12 },
 
   /*
-   * THE REACTOR COLUMN. The Soviet layout is the expensive one — three Tesla
-   * Coils alone are −225 — and the whole base drew −495 against the three
-   * back-row reactors' +300. A Soviet skirmish started at −195: every Tesla
-   * Coil dark, radar offline, on the first frame. Three more reactors put it
-   * at +105. Symmetric with the silo column on −X, inside the same budget.
+   * THE REACTOR COLUMN. This layout originally carried three Tesla Coils and
+   * needed all six reactors to avoid opening in a brownout. The balanced line
+   * keeps one Coil, but the industrial column remains: it is the Soviet skyline
+   * and leaves expansion headroom instead of silently changing the base grid.
    */
   { key: 'powerPlant', dx: 36, dz: 4, secondary: true },
   { key: 'powerPlant', dx: 36, dz: 16, secondary: true },
@@ -69,11 +69,20 @@ const SOVIET_CORE: readonly StructurePlacement[] = [
   { key: 'barracks', dx: 30, dz: 20 },
 ];
 
-/** Tesla on the line, flame towers as the second layer behind the gate. */
+/** Authored campaign line. Mission reach and roster tests pin this composition. */
 const SOVIET_DEFENCE: readonly StructurePlacement[] = [
   { key: 'teslaCoil', dx: -24, dz: -20 },
   { key: 'teslaCoil', dx: 0, dz: -20 },
   { key: 'teslaCoil', dx: 24, dz: -20 },
+  { key: 'flameTower', dx: -12, dz: -14 },
+  { key: 'flameTower', dx: 12, dz: -14 },
+];
+
+/** Skirmish line: the same five positions, with one anti-armour hard point. */
+const SOVIET_SKIRMISH_DEFENCE: readonly StructurePlacement[] = [
+  { key: 'sentryGun', dx: -24, dz: -20 },
+  { key: 'teslaCoil', dx: 0, dz: -20 },
+  { key: 'sentryGun', dx: 24, dz: -20 },
   { key: 'flameTower', dx: -12, dz: -14 },
   { key: 'flameTower', dx: 12, dz: -14 },
 ];
@@ -126,7 +135,8 @@ export function buildSovietBase(
   }
 
   if (defended) {
-    for (const p of SOVIET_DEFENCE) {
+    const defence = options.balancedDefence === true ? SOVIET_SKIRMISH_DEFENCE : SOVIET_DEFENCE;
+    for (const p of defence) {
       const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
       b.spawnBuilding(p.key, owner, x, z, { yawDeg });
     }

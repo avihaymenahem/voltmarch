@@ -244,7 +244,7 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
   // `EntityFlag.NeedsPower` — see rule 2 in this block's header. The flag was
   // authored here and read by nothing; the Zenith's blurb promised a brownout
   // weakness the simulation had no way to apply. Deleted rather than faked.
-  /* 22 */ wpn('zenithBeam', 'Zenith Emitter', 94, WarheadClass.Prism, 33, 2.9,
+  /* 22 */ wpn('zenithBeam', 'Zenith Emitter', 94, WarheadClass.Prism, 40, 2.9,
     ProjectileKind.Beam, 0,
     { turretTurnRate: 65, requiresStop: true,
       muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
@@ -602,7 +602,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
   // order, it is an inversion; `ifvChaingun` below is 65 raw dps now and this
   // row is the ceiling for a mobile burst weapon again.
   /*
-   * THE ONE GROUND-BLIND ROW IN THE GAME, AND IT WAS ALREADY GROUND-BLIND
+   * THE MOBILE GROUND-BLIND ROW, AND IT WAS ALREADY GROUND-BLIND
    * BEFORE THE FLAG EXISTED.
    *
    * `migCannon` is the only aircraft weapon that fires a plain `Bullet` — a
@@ -719,6 +719,10 @@ export const REBALANCE_WEAPONS: readonly WeaponDef[] = [
     ProjectileKind.Bullet, 150,
     { burstCount: 5, burstDelay: 0.06, turretTurnRate: 200, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactMetal }),
+  /* 42 */ wpn('prismSiegeBeam', 'Siege Prism Emitter', 92, WarheadClass.Prism, 38, 2.6,
+    ProjectileKind.Beam, 0,
+    { turretTurnRate: 70, requiresStop: true,
+      muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
 ];
 
 /**
@@ -1279,7 +1283,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'allied_prism',
     maxHp: 260, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - U.prismTank.l * 0.14,
     locomotor: Locomotor.Track, radius: hullRadius(U.prismTank), sight: 34,
-    weapons: [w('prismBeam')], hasTurret: true, crushLevel: 2, crushableBy: 5,
+    weapons: [w('prismSiegeBeam')], hasTurret: true, crushLevel: 2, crushableBy: 5,
     flags: EntityFlag.Crusher,
   }),
 
@@ -1302,6 +1306,16 @@ export const UNITS: readonly UnitDef[] = [
     maxHp: 800, armor: ArmorClass.Heavy, maxSpeed: 3.8, turnRate: 2.6 - U.apocalypse.l * 0.14,
     locomotor: Locomotor.Track, radius: hullRadius(U.apocalypse), sight: 30,
     weapons: [w('twinCannon')], hasTurret: true, crushLevel: 6, crushableBy: 0,
+  }),
+  unit({
+    key: 'v4', name: 'V4 Rocket Launcher', blurb: 'Siege artillery. Cannot defend itself up close.',
+    faction: Faction.Soviets, kind: EntityKind.Vehicle,
+    cost: 1400, buildTime: 18, tab: BuildTab.Vehicles,
+    prereqs: ['warFactory', 'radar'], sortOrder: 35,
+    model: 'soviet_v4',
+    maxHp: 270, armor: ArmorClass.Light, maxSpeed: 4.4, turnRate: 2.6 - U.prismTank.l * 0.14,
+    locomotor: Locomotor.Track, radius: hullRadius(U.prismTank), sight: 38,
+    weapons: [w('artillery')], hasTurret: true, crushableBy: 5,
   }),
 
   /* -- Shared support ----------------------------------------------------- */
@@ -2249,7 +2263,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Neutral, cost: 2000, buildTime: 24, tab: BuildTab.Structures,
     prereqs: ['refinery'], sortOrder: 40, model: 'warFactory', dim: B.warFactory,
     maxHp: 1200, power: -40, sight: 20,
-    produces: ['harvester', 'grizzly', 'rhino', 'ifv', 'prismTank', 'apocalypse', 'mcv'],
+    produces: ['harvester', 'grizzly', 'rhino', 'ifv', 'v4', 'prismTank', 'apocalypse', 'mcv'],
     producesTab: BuildTab.Vehicles,
     // An Anvil is 7 m long and leaves nose-first; anything under ~6 m and it
     // spawns intersecting its own factory's blocked footprint.
@@ -3063,27 +3077,19 @@ export { RELOCATE, relocationFee } from '../sim/Relocate';
     }
   }
 
-  /* -- the rows nothing fires -------------------------------------------- *
-   * TWO, BOTH IN `DEFAULT_WEAPONS`, BOTH DELIBERATE, AND THE LIST IS CLOSED.
+  /* -- the row nothing fires --------------------------------------------- *
+   * ONE ROW IN `DEFAULT_WEAPONS`, DELIBERATE, AND THE LIST IS CLOSED.
    *
-   *   12  artillery    "V4 Launcher" — 130 HE at 48 m with a 6.5 m burst and a
-   *                    12 m minimum. A fully authored Soviet siege gun with no
-   *                    Soviet siege unit to carry it: the roster's answer to a
-   *                    base is the Sledge and the air arm. Giving it a hull
-   *                    means a def row, a `FALLBACK_UNITS` row, a model, a
-   *                    cameo and a balance pass, which is content work rather
-   *                    than a data fix.
    *   6   chaingun     the IFV's old gun, replaced by `ifvChaingun` — see
    *                    `REBALANCE_WEAPONS`. This file cannot edit a row it
    *                    borrows verbatim from `src/sim/Combat.ts`, so the
    *                    corrected weapon had to be appended and row 6 fell out
    *                    of the roster.
    *
-   * NEITHER IS UNREACHABLE. `CONTENT_WEAPON` in `src/sim/combat.system.ts`
-   * still names both — `v4` for the first, `ifv` and `sickle` for the second —
-   * and that map is the pre-content path a unit resolves on before the def
-   * tables bind. So they are rows the fallback armoury still serves and the
-   * shipped roster does not, which is a different thing from dead data.
+   * IT IS NOT UNREACHABLE. `CONTENT_WEAPON` in `src/sim/combat.system.ts`
+   * still names it for `ifv` and `sickle`, and that map is the pre-content path
+   * a unit resolves on before the def tables bind. It is a row the fallback
+   * armoury still serves and the shipped roster does not.
    *
    * The count is asserted, not the membership, because the membership is
    * pinned with its reasons in `tests/content-truthful.spec.ts` §4 — where a
@@ -3094,10 +3100,10 @@ export { RELOCATE, relocationFee } from '../sim/Relocate';
     for (const b of BUILDINGS) for (const i of b.weapons) fired.add(i);
     const orphans: string[] = [];
     for (let i = 0; i < WEAPONS.length; i++) if (!fired.has(i)) orphans.push(`${i}:${WEAPONS[i].key}`);
-    if (orphans.length > 2) {
+    if (orphans.length > 1) {
       problems.push(
         `${orphans.length} weapon rows are fired by no def (${orphans.join(', ')}) — only `
-        + '"artillery" and "chaingun" are allowed to be, and both are documented above',
+        + '"chaingun" is allowed to be, and it is documented above',
       );
     }
   }

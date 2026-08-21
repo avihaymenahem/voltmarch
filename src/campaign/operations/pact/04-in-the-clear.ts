@@ -71,7 +71,7 @@
  *     Solarch     focusLance       26     38.80       44.46   <- the binding one
  *     Sunlancer   sunLance         26     38.80       44.46
  *     Hierarch    focusLance       26     38.80       44.46
- *     Zenith      zenithBeam       33     44.40       50.06   (unit.specialist)
+ *     Zenith      zenithBeam       40     50.00       55.66   (unit.specialist)
  *     Sunmonitor  monitorLance     40     50.00       55.66   (needs a coast)
  *
  * **THE LOT CLEARS THE BINDING BAR BY 9.28 m AND THE MEASUREMENT IS OF EVERY

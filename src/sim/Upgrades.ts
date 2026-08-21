@@ -144,7 +144,7 @@ export const UPGRADES: readonly UpgradeDef[] = [
   },
   {
     bit: 4, key: 'upgSovietUranium', faction: Faction.Soviets,
-    lever: UpgradeLever.Damage, scope: UpgradeScope.Vehicle, mul: 1.25,
+    lever: UpgradeLever.Damage, scope: UpgradeScope.Vehicle, mul: 1.15,
   },
   {
     bit: 5, key: 'upgSovietSlurry', faction: Faction.Soviets,
@@ -162,17 +162,17 @@ export const UPGRADES: readonly UpgradeDef[] = [
   },
   {
     bit: 8, key: 'upgMrdCapacitors', faction: Faction.Meridian,
-    lever: UpgradeLever.Cooldown, scope: UpgradeScope.All, mul: 0.85,
+    lever: UpgradeLever.Cooldown, scope: UpgradeScope.All, mul: 0.90,
   },
 
   /* -- the Reclamation -------------------------------------------------- */
   {
     bit: 9, key: 'upgRclSwarmDrill', faction: Faction.Reclaim,
-    lever: UpgradeLever.Cooldown, scope: UpgradeScope.Infantry, mul: 0.82,
+    lever: UpgradeLever.Cooldown, scope: UpgradeScope.Infantry, mul: 0.90,
   },
   {
     bit: 10, key: 'upgRclOvercharge', faction: Faction.Reclaim,
-    lever: UpgradeLever.Damage, scope: UpgradeScope.Vehicle, mul: 1.20,
+    lever: UpgradeLever.Damage, scope: UpgradeScope.Vehicle, mul: 1.15,
   },
   {
     bit: 11, key: 'upgRclSalvage', faction: Faction.Reclaim,

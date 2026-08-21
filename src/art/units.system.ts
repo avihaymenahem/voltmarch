@@ -94,6 +94,7 @@ export const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   attackDog: 'soviet_dog',
   rhino: 'soviet_rhino',
   apocalypse: 'soviet_apocalypse',
+  v4: 'soviet_v4',
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
   mig: 'soviet_mig',

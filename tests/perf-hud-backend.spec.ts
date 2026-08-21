@@ -167,6 +167,7 @@ import {
   PERF_ROW_COUNT,
   PerfHud,
   UNAVAILABLE,
+  WebGpuTimer,
   drawsOverBudget,
   emptyReadout,
   formatBackend,
@@ -350,7 +351,7 @@ describe('formatGpuTime', () => {
   it('names the backend when the backend is the reason', () => {
     const text = formatGpuTime('absent', null, 'webgpu');
     expect(text).toContain(UNAVAILABLE);
-    expect(text).toContain('webgpu');
+    expect(text).toContain('timestamp-query');
   });
 
   it('names the missing extension when the browser is the reason', () => {
@@ -380,6 +381,42 @@ describe('formatGpuTime', () => {
     // as `n/a` would hide a GPU that keeps being preempted.
     expect(formatGpuTime('disjoint', null, 'webgl')).toBe('disjoint');
     expect(formatGpuTime('waiting', null, 'webgl')).toBe('waiting');
+  });
+});
+
+describe('WebGpuTimer', () => {
+  it('enables timestamp writes only while sampling and resolves real GPU milliseconds', async () => {
+    let resolves = 0;
+    const renderer = {
+      info: { render: { timestamp: 0 } },
+      backend: { trackTimestamp: true },
+      resolveTimestampsAsync: async () => { resolves++; return 7.25; },
+    };
+    const timer = new WebGpuTimer(renderer);
+    expect(timer.available).toBe(true);
+    expect(renderer.backend.trackTimestamp).toBe(false);
+    timer.setActive(true);
+    expect(renderer.backend.trackTimestamp).toBe(true);
+    for (let i = 0; i < 15; i++) timer.tick();
+    await Promise.resolve();
+    expect(resolves).toBe(1);
+    expect(timer.status).toBe('ok');
+    expect(timer.gpuMs).toBe(7.25);
+    timer.setActive(false);
+    expect(renderer.backend.trackTimestamp).toBe(false);
+  });
+
+  it('stays absent when the adapter did not expose timestamp-query', () => {
+    const renderer = {
+      info: { render: { timestamp: 0 } },
+      backend: { trackTimestamp: false },
+      resolveTimestampsAsync: async () => 0,
+    };
+    const timer = new WebGpuTimer(renderer);
+    timer.setActive(true);
+    expect(timer.available).toBe(false);
+    expect(timer.status).toBe('absent');
+    expect(renderer.backend.trackTimestamp).toBe(false);
   });
 });
 
@@ -448,7 +485,7 @@ describe('the panel on the node path', () => {
 
     const gpu = rows.get('gpu') ?? '';
     expect(gpu).toContain(UNAVAILABLE);
-    expect(gpu).toContain('webgpu');
+    expect(gpu).toContain('timestamp-query');
 
     // The rows that ARE measurable on both renderers keep their numbers. An
     // alignment that blanked them would be its own kind of lie.

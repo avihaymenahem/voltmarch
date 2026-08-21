@@ -31,7 +31,7 @@ export const HALF_PI = Math.PI * 0.5;
 export const DEG2RAD = Math.PI / 180;
 export const RAD2DEG = 180 / Math.PI;
 /** Small enough to ignore, large enough to survive f32 round-tripping. */
-export const EPSILON = 1e-6;
+const EPSILON = 1e-6;
 
 /* ==========================================================================
  * SCALAR
@@ -50,7 +50,7 @@ export function lerp(a: number, b: number, t: number): number {
 }
 
 /** Where does `v` sit between a and b, as 0..1? Returns 0 when a === b. */
-export function inverseLerp(a: number, b: number, v: number): number {
+function inverseLerp(a: number, b: number, v: number): number {
   const d = b - a;
   return Math.abs(d) < EPSILON ? 0 : (v - a) / d;
 }
@@ -64,12 +64,6 @@ export function remap(v: number, inMin: number, inMax: number, outMin: number, o
 export function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = clamp01(inverseLerp(edge0, edge1, x));
   return t * t * (3 - 2 * t);
-}
-
-/** Ken Perlin's smootherstep — zero 1st AND 2nd derivative at the edges. */
-export function smootherstep(edge0: number, edge1: number, x: number): number {
-  const t = clamp01(inverseLerp(edge0, edge1, x));
-  return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
 export function step(edge: number, x: number): number {
@@ -162,97 +156,12 @@ export function yawTo(x0: number, z0: number, x1: number, z1: number): number {
 }
 
 /* ==========================================================================
- * 2D VECTOR OPS ON FLAT ARRAYS
+ * FLAT ARRAY TYPE
  *
- * `v` arrays are [x, z] pairs (ground plane). All of these accept an `out`
- * array and return it — no object is ever created.
+ * Callers supply [x,z] output buffers to allocation-free geometry helpers.
  * ========================================================================== */
 
 export type Vec2Array = Float32Array | number[];
-
-export function v2set(out: Vec2Array, x: number, z: number): Vec2Array {
-  out[0] = x; out[1] = z; return out;
-}
-
-export function v2copy(out: Vec2Array, a: Vec2Array): Vec2Array {
-  out[0] = a[0]; out[1] = a[1]; return out;
-}
-
-export function v2add(out: Vec2Array, a: Vec2Array, b: Vec2Array): Vec2Array {
-  out[0] = a[0] + b[0]; out[1] = a[1] + b[1]; return out;
-}
-
-export function v2sub(out: Vec2Array, a: Vec2Array, b: Vec2Array): Vec2Array {
-  out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; return out;
-}
-
-export function v2scale(out: Vec2Array, a: Vec2Array, s: number): Vec2Array {
-  out[0] = a[0] * s; out[1] = a[1] * s; return out;
-}
-
-/** out = a + b * s. The workhorse of every integrator. */
-export function v2addScaled(out: Vec2Array, a: Vec2Array, b: Vec2Array, s: number): Vec2Array {
-  out[0] = a[0] + b[0] * s; out[1] = a[1] + b[1] * s; return out;
-}
-
-export function v2dot(a: Vec2Array, b: Vec2Array): number {
-  return a[0] * b[0] + a[1] * b[1];
-}
-
-/** 2D cross product (the z of the 3D cross). Sign tells you which side. */
-export function v2cross(a: Vec2Array, b: Vec2Array): number {
-  return a[0] * b[1] - a[1] * b[0];
-}
-
-export function v2lenSq(a: Vec2Array): number {
-  return a[0] * a[0] + a[1] * a[1];
-}
-
-export function v2len(a: Vec2Array): number {
-  return Math.sqrt(a[0] * a[0] + a[1] * a[1]);
-}
-
-/** Normalize in place into `out`. A zero vector stays zero (never NaN). */
-export function v2norm(out: Vec2Array, a: Vec2Array): Vec2Array {
-  const l2 = a[0] * a[0] + a[1] * a[1];
-  if (l2 < EPSILON) { out[0] = 0; out[1] = 0; return out; }
-  const inv = 1 / Math.sqrt(l2);
-  out[0] = a[0] * inv; out[1] = a[1] * inv;
-  return out;
-}
-
-/** Perpendicular (rotate +90 degrees). */
-export function v2perp(out: Vec2Array, a: Vec2Array): Vec2Array {
-  const x = a[0];
-  out[0] = -a[1]; out[1] = x;
-  return out;
-}
-
-export function v2rot(out: Vec2Array, a: Vec2Array, radians: number): Vec2Array {
-  const c = Math.cos(radians), s = Math.sin(radians);
-  const x = a[0], z = a[1];
-  out[0] = x * c - z * s;
-  out[1] = x * s + z * c;
-  return out;
-}
-
-export function v2lerp(out: Vec2Array, a: Vec2Array, b: Vec2Array, t: number): Vec2Array {
-  out[0] = a[0] + (b[0] - a[0]) * t;
-  out[1] = a[1] + (b[1] - a[1]) * t;
-  return out;
-}
-
-/** Clamp a vector's length to `max`. */
-export function v2clampLen(out: Vec2Array, a: Vec2Array, max: number): Vec2Array {
-  const l2 = a[0] * a[0] + a[1] * a[1];
-  if (l2 > max * max && l2 > EPSILON) {
-    const s = max / Math.sqrt(l2);
-    out[0] = a[0] * s; out[1] = a[1] * s;
-  } else {
-    out[0] = a[0]; out[1] = a[1];
-  }
-  return out;
-}
 
 /* -- scalar-pair variants (no array at all — the fastest path) ------------- */
 
@@ -265,30 +174,6 @@ export function dist2(x0: number, z0: number, x1: number, z1: number): number {
 export function distSq2(x0: number, z0: number, x1: number, z1: number): number {
   const dx = x1 - x0, dz = z1 - z0;
   return dx * dx + dz * dz;
-}
-
-/** True if two circles overlap. */
-export function circlesOverlap(
-  x0: number, z0: number, r0: number,
-  x1: number, z1: number, r1: number,
-): boolean {
-  const r = r0 + r1;
-  return distSq2(x0, z0, x1, z1) < r * r;
-}
-
-/** True if a point is inside an axis-aligned rect. */
-export function pointInRect(
-  x: number, z: number,
-  minX: number, minZ: number, maxX: number, maxZ: number,
-): boolean {
-  return x >= minX && x <= maxX && z >= minZ && z <= maxZ;
-}
-
-export function rectsOverlap(
-  aMinX: number, aMinZ: number, aMaxX: number, aMaxZ: number,
-  bMinX: number, bMinZ: number, bMaxX: number, bMaxZ: number,
-): boolean {
-  return aMinX <= bMaxX && aMaxX >= bMinX && aMinZ <= bMaxZ && aMaxZ >= bMinZ;
 }
 
 /**
@@ -352,12 +237,6 @@ export function ballisticArc(dist: number, dy: number, speed: number, gravity: n
   return Math.atan((s2 - Math.sqrt(root)) / (gravity * dist));
 }
 
-/** Flight time for a shell launched at `angle` covering `dist` horizontally. */
-export function ballisticFlightTime(dist: number, speed: number, angle: number): number {
-  const vx = speed * Math.cos(angle);
-  return Math.abs(vx) < EPSILON ? 0 : dist / vx;
-}
-
 /**
  * First-order target lead. Solves for the interception point of a projectile
  * of speed `projSpeed` fired from (sx,sz) at a target at (tx,tz) moving at
@@ -417,24 +296,9 @@ export function cellToWorld(c: number): number {
   return (c + 0.5) * CELL;
 }
 
-/** Cell index to the world coordinate of the cell's minimum corner. */
-export function cellToWorldMin(c: number): number {
-  return c * CELL;
-}
-
 /** Flatten (cx,cz) into a row-major index. Caller must ensure it is in bounds. */
 export function cellIndex(cx: number, cz: number): number {
   return cz * MAP_CELLS + cx;
-}
-
-/** X component of a flat cell index. */
-export function indexToCellX(i: number): number {
-  return i % MAP_CELLS;
-}
-
-/** Z component of a flat cell index. */
-export function indexToCellZ(i: number): number {
-  return (i / MAP_CELLS) | 0;
 }
 
 /** True if a cell coordinate pair is inside the map. */
@@ -445,11 +309,6 @@ export function isInMap(cx: number, cz: number): boolean {
 /** Clamp a single cell axis into the map. */
 export function clampCell(c: number): number {
   return c < 0 ? 0 : c >= MAP_CELLS ? MAP_CELLS - 1 : c;
-}
-
-/** True if a world position is inside the map bounds. */
-export function isInWorld(x: number, z: number): boolean {
-  return x >= 0 && z >= 0 && x < MAP_SIZE && z < MAP_SIZE;
 }
 
 /** Clamp a world coordinate into the map, with an optional inset margin. */
@@ -504,7 +363,7 @@ export function hash2i(x: number, y: number): number {
 }
 
 /** Hash three integers. */
-export function hash3i(x: number, y: number, z: number): number {
+function hash3i(x: number, y: number, z: number): number {
   return hashU32((x * 73856093) ^ (y * 19349663) ^ (z * 83492791));
 }
 
@@ -514,7 +373,7 @@ export function hash2f(x: number, y: number): number {
 }
 
 /** Hash three integers to a float in [0,1). */
-export function hash3f(x: number, y: number, z: number): number {
+function hash3f(x: number, y: number, z: number): number {
   return hash3i(x, y, z) / 4294967296;
 }
 
@@ -680,46 +539,16 @@ export function value2(x: number, y: number, seed = 0): number {
   return (nx0 + (nx1 - nx0) * v) * 2 - 1;
 }
 
-/** 3D value noise in [-1, 1]. */
-export function value3(x: number, y: number, z: number, seed = 0): number {
-  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-  const xf = x - xi, yf = y - yi, zf = z - zi;
-  const u = fade(xf), v = fade(yf), w = fade(zf);
-  const s = seed | 0;
-
-  const c = (dx: number, dy: number, dz: number) =>
-    hashU32(hash3i(xi + dx, yi + dy, zi + dz) ^ s) / 4294967296;
-
-  const n000 = c(0, 0, 0), n100 = c(1, 0, 0), n010 = c(0, 1, 0), n110 = c(1, 1, 0);
-  const n001 = c(0, 0, 1), n101 = c(1, 0, 1), n011 = c(0, 1, 1), n111 = c(1, 1, 1);
-
-  const x00 = n000 + (n100 - n000) * u;
-  const x10 = n010 + (n110 - n010) * u;
-  const x01 = n001 + (n101 - n001) * u;
-  const x11 = n011 + (n111 - n011) * u;
-  const y0 = x00 + (x10 - x00) * v;
-  const y1 = x01 + (x11 - x01) * v;
-  return (y0 + (y1 - y0) * w) * 2 - 1;
-}
-
 // --- Simplex ---------------------------------------------------------------
 
 const F2 = 0.5 * (Math.sqrt(3) - 1);
 const G2 = (3 - Math.sqrt(3)) / 6;
-const F3 = 1 / 3;
-const G3 = 1 / 6;
 
 /** 12 gradient directions for 2D simplex, as flat [x,y] pairs. */
 const GRAD2 = new Float32Array([
   1, 1, -1, 1, 1, -1, -1, -1,
   1, 0, -1, 0, 1, 0, -1, 0,
   0, 1, 0, -1, 0, 1, 0, -1,
-]);
-
-const GRAD3 = new Float32Array([
-  1, 1, 0, -1, 1, 0, 1, -1, 0, -1, -1, 0,
-  1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1,
-  0, 1, 1, 0, -1, 1, 0, 1, -1, 0, -1, -1,
 ]);
 
 /**
@@ -753,49 +582,6 @@ export function simplex2(xin: number, yin: number, seed = 0): number {
   return 70 * (n0 + n1 + n2);
 }
 
-/** 3D simplex noise, roughly [-1, 1]. Used for volumetric smoke and curl. */
-export function simplex3(xin: number, yin: number, zin: number, seed = 0): number {
-  const s = (xin + yin + zin) * F3;
-  const i = Math.floor(xin + s), j = Math.floor(yin + s), k = Math.floor(zin + s);
-  const t = (i + j + k) * G3;
-  const x0 = xin - (i - t), y0 = yin - (j - t), z0 = zin - (k - t);
-
-  let i1: number, j1: number, k1: number, i2: number, j2: number, k2: number;
-  if (x0 >= y0) {
-    if (y0 >= z0)      { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
-    else if (x0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 0; k2 = 1; }
-    else               { i1 = 0; j1 = 0; k1 = 1; i2 = 1; j2 = 0; k2 = 1; }
-  } else {
-    if (y0 < z0)       { i1 = 0; j1 = 0; k1 = 1; i2 = 0; j2 = 1; k2 = 1; }
-    else if (x0 < z0)  { i1 = 0; j1 = 1; k1 = 0; i2 = 0; j2 = 1; k2 = 1; }
-    else               { i1 = 0; j1 = 1; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
-  }
-
-  const x1 = x0 - i1 + G3,     y1 = y0 - j1 + G3,     z1 = z0 - k1 + G3;
-  const x2 = x0 - i2 + 2 * G3, y2 = y0 - j2 + 2 * G3, z2 = z0 - k2 + 2 * G3;
-  const x3 = x0 - 1 + 3 * G3,  y3 = y0 - 1 + 3 * G3,  z3 = z0 - 1 + 3 * G3;
-
-  const gi = (a: number, b: number, c: number) =>
-    (hashU32(hash3i(a, b, c) ^ (seed | 0)) % 12) * 3;
-
-  const g0 = gi(i, j, k);
-  const g1 = gi(i + i1, j + j1, k + k1);
-  const g2 = gi(i + i2, j + j2, k + k2);
-  const g3 = gi(i + 1, j + 1, k + 1);
-
-  let n0 = 0, n1 = 0, n2 = 0, n3 = 0;
-  let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
-  if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * (GRAD3[g0] * x0 + GRAD3[g0 + 1] * y0 + GRAD3[g0 + 2] * z0); }
-  let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
-  if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * (GRAD3[g1] * x1 + GRAD3[g1 + 1] * y1 + GRAD3[g1 + 2] * z1); }
-  let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
-  if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * (GRAD3[g2] * x2 + GRAD3[g2 + 1] * y2 + GRAD3[g2 + 2] * z2); }
-  let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
-  if (t3 > 0) { t3 *= t3; n3 = t3 * t3 * (GRAD3[g3] * x3 + GRAD3[g3 + 1] * y3 + GRAD3[g3 + 2] * z3); }
-
-  return 32 * (n0 + n1 + n2 + n3);
-}
-
 /**
  * Fractional Brownian motion: `octaves` layers of simplex at doubling
  * frequency and halving amplitude. The default terrain shape.
@@ -806,20 +592,6 @@ export function fbm2(
   let sum = 0, amp = 1, freq = 1, norm = 0;
   for (let o = 0; o < octaves; o++) {
     sum += simplex2(x * freq, y * freq, seed + o * 131) * amp;
-    norm += amp;
-    amp *= gain;
-    freq *= lacunarity;
-  }
-  return norm > 0 ? sum / norm : 0;
-}
-
-/** 3D fbm. */
-export function fbm3(
-  x: number, y: number, z: number, octaves = 4, lacunarity = 2.0, gain = 0.5, seed = 0,
-): number {
-  let sum = 0, amp = 1, freq = 1, norm = 0;
-  for (let o = 0; o < octaves; o++) {
-    sum += simplex3(x * freq, y * freq, z * freq, seed + o * 131) * amp;
     norm += amp;
     amp *= gain;
     freq *= lacunarity;
@@ -874,38 +646,6 @@ export function worley2(x: number, y: number, seed: number, out: Float32Array): 
   return out;
 }
 
-/**
- * Domain warping: displace the sample position by another noise field before
- * sampling. This is the single cheapest way to stop a pattern reading as
- * "regular procedural noise" — camo blobs REQUIRE it.
- * Writes the warped [x, y] into `out`.
- */
-export function domainWarp2(
-  x: number, y: number, strength: number, frequency: number, seed: number, out: Vec2Array,
-): Vec2Array {
-  const wx = simplex2(x * frequency, y * frequency, seed);
-  const wy = simplex2(x * frequency + 5.2, y * frequency + 1.3, seed + 977);
-  out[0] = x + wx * strength;
-  out[1] = y + wy * strength;
-  return out;
-}
-
-/**
- * Curl of a 2D noise field — a divergence-free vector field, which is what
- * makes smoke drift look like smoke instead of like particles blowing outward.
- * Writes [vx, vy] into `out`.
- */
-export function curl2(x: number, y: number, seed: number, out: Vec2Array): Vec2Array {
-  const e = 0.05;
-  const n1 = simplex2(x, y + e, seed);
-  const n2 = simplex2(x, y - e, seed);
-  const n3 = simplex2(x + e, y, seed);
-  const n4 = simplex2(x - e, y, seed);
-  out[0] = (n1 - n2) / (2 * e);
-  out[1] = -(n3 - n4) / (2 * e);
-  return out;
-}
-
 /* ==========================================================================
  * COLOR
  *
@@ -917,14 +657,6 @@ export function curl2(x: number, y: number, seed: number, out: Vec2Array): Vec2A
 export function hexToInt(hex: string): number {
   const s = hex.charCodeAt(0) === 35 /* '#' */ ? hex.slice(1) : hex;
   return parseInt(s, 16) | 0;
-}
-
-/** Packed integer to sRGB bytes, written into `out` as [r,g,b] in 0..255. */
-export function intToRgb255(v: number, out: Uint8Array | number[]): Uint8Array | number[] {
-  out[0] = (v >> 16) & 0xff;
-  out[1] = (v >> 8) & 0xff;
-  out[2] = v & 0xff;
-  return out;
 }
 
 /** '#RRGGBB' to sRGB floats in 0..1, written into `out` as [r,g,b]. */
@@ -953,13 +685,6 @@ export function hexToLinearRgb(hex: string, out: Float32Array | number[]): Float
   out[1] = srgbToLinear(out[1] as number);
   out[2] = srgbToLinear(out[2] as number);
   return out;
-}
-
-/** Pack 0..1 floats back into 0xRRGGBB. */
-export function rgbToInt(r: number, g: number, b: number): number {
-  return ((clamp01(r) * 255 + 0.5) | 0) << 16
-       | ((clamp01(g) * 255 + 0.5) | 0) << 8
-       | ((clamp01(b) * 255 + 0.5) | 0);
 }
 
 /** Mix two packed colours in sRGB space. */
@@ -996,20 +721,3 @@ export function hsvToRgb(h: number, s: number, v: number, out: Float32Array | nu
   }
   return out;
 }
-
-/* ==========================================================================
- * SCRATCH
- *
- * Module-level reusable buffers. Using these instead of `new Float32Array(2)`
- * inside a system is the difference between a flat heap and a sawtooth.
- * A scratch buffer is only valid until the next call that uses it — never hold
- * a reference across a function boundary.
- * ========================================================================== */
-
-export const SCRATCH_V2_A = new Float32Array(2);
-export const SCRATCH_V2_B = new Float32Array(2);
-export const SCRATCH_V2_C = new Float32Array(2);
-export const SCRATCH_V3_A = new Float32Array(3);
-export const SCRATCH_V3_B = new Float32Array(3);
-export const SCRATCH_I2_A = new Int32Array(2);
-export const SCRATCH_I2_B = new Int32Array(2);

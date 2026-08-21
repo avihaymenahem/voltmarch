@@ -596,6 +596,11 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 600, buildTime: 10, prereqs: ['warFactory', 'radar'], sortOrder: 30,
   },
   {
+    key: 'v4', name: 'V4 Rocket Launcher', blurb: 'Siege artillery. Cannot defend itself up close.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 1400, buildTime: 18, prereqs: ['warFactory', 'radar'], sortOrder: 35,
+  },
+  {
     key: 'prismTank', name: 'Refractor Tank', blurb: 'Beam artillery. Fragile.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
     cost: 1200, buildTime: 17, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
@@ -761,7 +766,7 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 800, buildTime: 12, prereqs: ['mrdForgeyard'], sortOrder: 30,
   },
   {
-    key: 'mrdZenith', name: 'Zenith Emitter', blurb: 'Siege beam. Dies in a brownout.',
+    key: 'mrdZenith', name: 'Zenith Emitter', blurb: 'Siege beam. Stops to fire and cannot survive a rush.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
     cost: 1500, buildTime: 19, prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 40,
   },
@@ -1165,7 +1170,7 @@ const CONTENT: readonly ContentSpec[] = [
   },
   {
     key: 'upgSovietUranium', name: 'Uranium Shells',
-    blurb: 'Soviet vehicles deal 25% more damage. Applies to every hull you own.',
+    blurb: 'Soviet vehicles deal 15% more damage. Applies to every hull you own.',
     kind: BuildKind.Upgrade, faction: Faction.Soviets, tab: V,
     cost: 1200, buildTime: 26, prereqs: ['warFactory', 'battleLab'], sortOrder: 95,
   },
@@ -1191,7 +1196,7 @@ const CONTENT: readonly ContentSpec[] = [
   },
   {
     key: 'upgMrdCapacitors', name: 'Capacitor Banks',
-    blurb: 'Everything you own reloads 15% faster.',
+    blurb: 'Everything you own reloads 10% faster.',
     kind: BuildKind.Upgrade, faction: Faction.Meridian, tab: S,
     cost: 1000, buildTime: 24, prereqs: ['mrdOculus', 'mrdReliquary'], sortOrder: 95,
   },
@@ -1199,13 +1204,13 @@ const CONTENT: readonly ContentSpec[] = [
   /* -- the Reclamation: spray, bite, and cash in the field ---------------- */
   {
     key: 'upgRclSwarmDrill', name: 'Swarm Drill',
-    blurb: 'Reclamation infantry reload 18% faster. Applies to every picker you own.',
+    blurb: 'Reclamation infantry reload 10% faster. Applies to every picker you own.',
     kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: I,
     cost: 800, buildTime: 20, prereqs: ['rclRookery', 'rclSpotter'], sortOrder: 95,
   },
   {
     key: 'upgRclOvercharge', name: 'Coil Overcharge',
-    blurb: 'Reclamation vehicles deal 20% more damage. Applies to every hull you own.',
+    blurb: 'Reclamation vehicles deal 15% more damage. Applies to every hull you own.',
     kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: V,
     cost: 1200, buildTime: 26, prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 95,
   },
@@ -3911,7 +3916,16 @@ export class ProductionService implements QueueHooks {
     st.cargo[i] = 0;
     st.weaponIndex[i] = def !== undefined && def.weapons.length > 0 ? def.weapons[0] : -1;
     st.state[i] = UnitState.Idle;
-    st.stance[i] = Stance.Aggressive;
+    /*
+     * Aircraft begin Defensive because an eight-metre retreat on Aggressive is
+     * otherwise immediately undone by the automatic chase envelope. Explicit
+     * Attack and AttackMove orders still close normally; only unattended
+     * target-of-opportunity pursuit changes. Ground and naval production keep
+     * the game's long-standing Aggressive default.
+     */
+    st.stance[i] = st.locomotor[i] === Locomotor.Air
+      ? Stance.Defensive
+      : Stance.Aggressive;
     st.spawnTick[i] = this.world.tick;
 
     let flags = st.flags[i] | fb.flags | (def?.flags ?? 0);

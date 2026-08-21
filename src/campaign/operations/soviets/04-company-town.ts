@@ -106,14 +106,11 @@
  * deed lands — a rule the player can only learn by losing it is a rule badly
  * told.
  *
- * **NEITHER DISTRICT CAN TAKE A DERRICK, BY EITHER VERB.** Two things flip a
- * neutral structure — an engineer takes the deed permanently, a squad holds it
- * while it stands inside — and a brain can do neither: `AiBrain` owns no
- * engineer (`Capture` is on CLAUDE.md's unreachable list, the def's weight is 0
- * and `buildUnits` filters `weight <= 0`), and the only `OrderKind.Enter` in
- * `AI.ts` is the amphibious boarding path on a map with a sea, which this is
- * not. `GarrisonService.enter` also refuses a structure whose owner it is not
- * allied to, so a derrick already taken is closed to them twice over.
+ * **BOTH DISTRICTS CAN NOW CONTEST A DERRICK WITH AN ENGINEER.** A disciplined
+ * brain can buy one for a visible legal deed and send an escort. The separate
+ * `OrderKind.Enter` route remains amphibious/garrison behavior, and
+ * `GarrisonService.enter` still refuses a structure whose owner is not allied
+ * to the entrant.
  *
  * What they CAN do is knock it down, and a levelled derrick is gone for the
  * rest of the match — which is why the layout puts FIVE on the ground for a

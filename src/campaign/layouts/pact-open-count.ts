@@ -43,9 +43,8 @@
  * **THAT LAST ONE IS LOAD-BEARING FOR THE OPERATION'S OPENING DECISION.** Both
  * seats therefore open with exactly ONE Artificer, which is why the capture bill
  * in `05-open-count.ts` is three more at 500 rather than four at 500. And the
- * Sept's copy never does anything: `src/sim/AI.ts` contains the string
- * `Capture` **zero times**, so an AI seat's engineer is a hull the brain files
- * into a squad and marches at the player's base.
+ * Sept's copy is now tactically meaningful: a disciplined brain can use it for
+ * one visible legal capture and move an escort with it.
  *
  * The `civOilDerrick` is the one key that is NOT remapped, because
  * `FACTION_KEY_MAP` holds role keys only and the civilian block is faction-blind

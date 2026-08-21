@@ -76,7 +76,7 @@ describe('content vocabulary', () => {
 
     expect(weaponOf('grizzly')).toBe(weaponIndexOf('lightCannon'));
     expect(weaponOf('rhino')).toBe(weaponIndexOf('heavyCannon'));
-    expect(weaponOf('prismTank')).toBe(weaponIndexOf('prismBeam'));
+    expect(weaponOf('prismTank')).toBe(WEAPONS.findIndex((w) => w.key === 'prismSiegeBeam'));
     expect(weaponOf('conscript')).toBe(weaponIndexOf('conscriptRifle'));
 
     for (const key of ['harvester', 'mcv', 'engineer', 'transport']) {

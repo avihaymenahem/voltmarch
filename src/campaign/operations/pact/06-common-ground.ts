@@ -338,14 +338,15 @@
  * either.
  *
  * **AND TRAP 9 IS CLOSED BY CONSTRUCTION RATHER THAN BY A FIELD.** Three
- * separate routes to a captured protect-target, all shut:
- * `Capture.resolve` takes its FRIENDLY branch for a structure the engineer's own
- * player owns, `src/sim/AI.ts` contains the string `Capture` **zero times**, and
- * `GarrisonService.refusalFor` answers `'hostile'` for a building whose owner is
- * not allied to the entrant — so the crew cannot flip the deed by walking a
+ * separate routes matter. `Capture.resolve` takes its FRIENDLY branch for a
+ * structure the engineer's own player owns, while the opposing brain can now
+ * attempt a legal capture; that is acceptable because the ownership objectives
+ * count capture exactly like demolition. `GarrisonService.refusalFor` answers
+ * `'hostile'` for a building whose owner is not allied to the entrant, so the
+ * crew cannot flip the deed merely by walking a
  * picker into a tenement the way `allies.07.fair-copy` prices for its own relay
- * blocks. A `captureProof` here would forbid a play no seat can make, which is
- * the well-spelled no-op `validate.ts` refuses elsewhere. `t.rowLost` reads
+ * blocks. A `captureProof` here would forbid an ownership play the operation
+ * intentionally counts. `t.rowLost` reads
  * `ownerCount(0, 'building', 'row', max: 1)` anyway, which is capture-aware in
  * the direction that matters: a tenement the player no longer holds is a
  * tenement lost, whatever is standing.
@@ -793,8 +794,8 @@ const op: OperationDef = {
    * office MUST stay capturable — both objectives count a capture exactly as
    * they count a demolition and both titles say "take off". The row is on the
    * player's own seat, where `Capture.resolve` takes the FRIENDLY branch ahead
-   * of the veto list; the only seat that could take it never issues the verb
-   * (`src/sim/AI.ts` contains `Capture` zero times); and
+   * of the veto list; an opposing engineer capture is intentionally counted by
+   * the same ownership predicates; and
    * `GarrisonService.refusalFor` answers `'hostile'` for a non-allied owner, so
    * the `civApartments` deed cannot be flipped by a picker walking in either. A
    * veto here would forbid a play nobody can make.

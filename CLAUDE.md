@@ -1477,11 +1477,11 @@ can"*. That reframes the question as CAPABILITY PARITY, which is measurable, bec
 commands through the same bus a player does. Audited against every verb:
 
 ```
-uses:   Move  AttackMove  Deploy  Harvest  Enter  Unload  UseAbility
+uses:   Move  Attack  AttackMove  Capture  Deploy  Harvest  Enter  Unload  UseAbility
         issueOrder  issuePlaceBuilding  issueProductionStart
         issueRepairToggle  issueSetStance  issueUsePower
 
-NEVER:  Attack  ForceAttack  Stop  Guard  Capture  Repair  Scatter  Patrol
+NEVER:  ForceAttack  Stop  Guard  Repair  Scatter  Patrol
         issueSell  issueSetRally  issueSetPrimary  issueRelocate
         issueProductionCancel  issueProductionPause  issueSelfDestruct
 ```
@@ -1578,16 +1578,19 @@ sides get the change, `enemyLost` moved in both directions.
 **WHAT IS STILL MISSING, and the audit is a MAP, NOT A CHECKLIST.** `SelfDestruct`,
 `ProductionPause`, `ProductionCancel` and `Relocate` are deliberately skipped: a human almost never
 uses them and an AI cancelling and re-queueing production reads as indecision rather than skill.
-The three that are real gaps:
+The two that remain real gaps:
 
-- **The AI owns no engineer, so `Capture` is unreachable.** The def exists but its weight is 0 and
-  `buildUnits` filters `weight <= 0`, and nothing references `BuildRole.Support` for it. Giving the
-  brain the verb alone would hand it to a unit that never exists. Buying one, escorting it and
-  choosing a building is a FEATURE, not a verb.
 - **Per-unit retreat.** `flee=0` at every sample of every rung — only the harvester layer ever sets
   `UnitState.Fleeing`. Group retreat (`shouldRetreat`) is real and should stay.
 - **`issueSell`.** `OreCrisis`'s `SellOut` branch is a documented route out of a dead economy that
   the AI structurally cannot take.
+
+**ENGINEER CAPTURE IS NOW A REAL AI OPERATION, NOT A FREE VERB.** Each faction's engineer has the
+dedicated `BuildRole.Engineer`. A disciplined AI buys at most one when it has current vision of a
+legal capturable building, four available escorts and no serious base pressure. It issues the same
+`Capture` command a player uses, sends the escort with `AttackMove`, keeps that group out of ordinary
+regrouping, and abandons the operation when vision, legality, pressure or either endpoint changes.
+Hidden and service-vetoed targets are deliberately ignored.
 
 ### Aircraft, and the four rifles holding the whole air layer up
 
@@ -1596,9 +1599,10 @@ measurements inside it that outlive it.
 
 **THE REWORK LANDED 2026-08-19 AND THE BLOCKS BELOW DESCRIBE SHIPPED BEHAVIOUR.** This note used to
 read *"the rework itself is not done — do not read any of this as describing shipped behaviour"*,
-and everything under it was a diagnosis. `WeaponDef.airMultiplier` is the fix: 0.25 on the four
-line-infantry rifles, 1 on all 38 other rows. What is still NOT done is named under *What is still
-open* below — the loiter, and the 8 m overhead blind cone.
+and everything under it was a diagnosis. `WeaponDef.airMultiplier` is 0.25 on the four line-infantry
+rifles and 1 on all 38 other rows. Aircraft produced by a factory now start Defensive, so a short
+move-away order is not immediately undone by an Aggressive auto-chase. An explicit attack still
+closes and parks as ordered.
 
 ### A rifleman out-shoots a flak battery, and that is one inversion
 
@@ -1801,18 +1805,15 @@ occurs in play** — so if it ever matters, the honest fix is `OreCrisis`'s shap
 predicate with a standing structure redeeming a promise), enumerated exhaustively over the real
 catalog FIRST, and not a change to `isBeaten`.
 
-**ALTITUDE BUYS AN AIRCRAFT NOTHING, AND `AIR_CRUISE_ALTITUDE` IS NOT COVER.** `Combat.engage`
-computes `flat = Math.sqrt(dx*dx + dz*dz)` and `surfaceDist = max(0, flat - hitRadius(target))`;
-**`dy` is not in it.** So 22 m of vertical separation costs a ground shooter exactly zero range, and
-a rifleman standing directly beneath an aircraft is at `flat = 0`. Anyone reasoning about air combat
-from the picture on screen will get this wrong. **And being at `flat = 0` does not mean he can hit
-it** — see the elevation clamp under *A tank stopped killing aircraft* below, which is the opposite
-conclusion from the same fact and the one that decides engagements.
+**ALTITUDE BUYS AN AIRCRAFT NO RANGE COVER.** `Combat.engage` computes
+`flat = Math.sqrt(dx*dx + dz*dz)` and `surfaceDist = max(0, flat - hitRadius(target))`; **`dy` is not
+in the range test.** So 22 m of vertical separation costs a ground shooter exactly zero range, and a
+rifleman directly beneath an aircraft is at `flat = 0`. Direct fire that crosses the air layer now
+follows its actual vertical bearing, so that in-range shot can connect.
 
-Nothing pulls the aircraft back out, either. `Targeting` closes any attacker to `range *
-APPROACH_STOP_FRAC` (0.80) and **parks** it there (`APPROACH_PARKED`), publishing the goal exactly
-once, so an aircraft flies to 13.6-18.4 m of its target and stays until one of them is dead. That is
-the largest single multiplier on how fast aircraft die.
+An explicit attack closes to `range * APPROACH_STOP_FRAC` (0.80) and **parks** there
+(`APPROACH_PARKED`). A plain move order breaks that engagement, and new aircraft start Defensive so
+a short retreat is not reclaimed by Aggressive auto-chase.
 
 **Do not "fix" it by forcing an attack run.** Measured at today's damage, one 19 m pass (`2R / v`,
 2.8-3.5 s) is worth 6-14% of a Power Plant and 17-41% of a main battle tank — a Petrel Bomber's entire
@@ -1820,13 +1821,10 @@ attack run takes **14% off a Power Plant**. An aircraft that cannot stop is not 
 loiter is a problem because it is the ONLY behaviour, not because loitering is wrong: the fix is a
 way OUT that the player and the AI can both issue, never a rule forbidding staying.
 
-**THE AIR MULTIPLIER DOES NOT CLOSE THIS AND WAS NOT MEANT TO.** It buys the aircraft roughly four
-times as long to be wrong in — a screen that used to end it in about a second now needs four to
-five, and one full 2R/v pass is survivable in all four armies where it was not in any — but a parked
-aircraft still stays until one side is dead. **What is still open, and neither is a data change:**
-the loiter has no way out, and the 8 m overhead blind cone means the safest place for an aircraft is
-directly over the battery. Both are behaviour, both are in the task list, and both survived this
-change untouched by design.
+**THE AIR MULTIPLIER AND BEHAVIOUR FIXES SOLVE DIFFERENT FAILURES.** The multiplier gives an aircraft
+roughly four times as long against massed line rifles. Defensive spawn stance makes the natural
+short-retreat gesture hold. Cross-layer direct fire uses the actual pitch and closes the old overhead
+blind cone without changing authored ground-mount limits or ballistic shell arcs.
 
 **FIVE ANSWERS TO "AIRCRAFT DIE TOO FAST" THAT WERE COSTED AND REJECTED**, recorded so nobody
 re-derives them. Overturn one by rewriting it with an argument, not by trying it.
@@ -1885,8 +1883,8 @@ had already recorded.
 Reported as *"i still think we have unbalanced fights... 3 airplanes destroyed by 1 tank in a
 second... something is weird"*. `tests/aircraft-killer-probe.spec.ts` holds every figure below;
 re-run it rather than re-quoting it. (This block used to open "**This one is SHIPPED behaviour,
-unlike the rest of this section**", which stopped being a distinction when the air multiplier
-landed — the whole section is shipped now except the two items named under *What is still open*.)
+unlike the rest of this section**", which stopped being a distinction when the air multiplier and
+the two behavior follow-ups landed.)
 
 - **`Damage.applySplash` WAS PURELY HORIZONTAL.** `y` was a parameter of that function read by
   nothing but the crater decal, and the victim loop filters on Alive, PendingDestroy and Garrisoned
@@ -1913,25 +1911,12 @@ landed — the whole section is shipped now except the two items named under *Wh
   against three Interceptors kills all three with **no tank contributing a single point**: aaTurret 2 kills
   / 338.7 damage / 100% via splash, gi 1 kill / 140.9 / 0% via splash, ifv 88.0.
 
-**AN AIRCRAFT DIRECTLY OVERHEAD CANNOT BE HIT AT ALL, AND THE BLOCK ABOVE IMPLIES THE OPPOSITE.**
-"A rifleman standing directly beneath an aircraft is at `flat = 0`" is true about RANGE and its
-natural reading is false about outcomes. `Combat.engage` clamps the launch pitch to
-`COMBAT_WEAPONS.maxElevationDeg` (62), so a projectile weapon fires at 62 degrees however steep the
-real bearing is; the round climbs 1.88 m per metre downrange and reaches the aircraft's band well
-beyond it. The gun tracks, the trigger releases, the tracer looks right, and nothing connects. One
-G.I. against one Interceptor at cruise:
-
-```
-  7 m horizontally     killed 0    0 damage in the whole window
-  8 m horizontally     killed 1    190 damage, first kill at 8.47 s
-```
-
-**QUOTE 8 m, NOT THE 11.70 THE GEOMETRY GIVES.** `AIR_CRUISE_ALTITUDE / tan(62 deg)` is 11.70 and
-that is the centre-line figure; the real edge is 8 because a round is accepted anywhere inside the
-airframe's hit disc and `Projectiles.sweep` tests a SPAN rather than a point — a derivation wrong by
-3 m, caught only because it was measured afterwards. Instant and Beam rows are exempt
-(`resolveInstant` launches nothing). **This is not a regression**, predates all of the above, and
-the splash fix does not touch it. The safest place for an aircraft is directly over the battery.
+**THE OLD OVERHEAD BLIND CONE IS CLOSED WITHOUT MOVING THE GROUND-MOUNT CONSTANTS.** The historical
+failure came from clamping every direct-fire launch to `COMBAT_WEAPONS.maxElevationDeg` (62): at 7 m
+a rifle round passed under an aircraft, while 8 m happened to connect with its hit disc. `Combat`
+now exempts direct fire when exactly one endpoint is airborne and follows the actual bearing. Ground
+versus ground still uses the authored elevation limits; ballistic shells still use their clamped
+arc. The regression control now requires both the 7 m and 8 m shots to deal damage.
 
 **EVERY `seconds` IN THE SWEEP ABOVE IS A SINGLE-TARGET FIGURE, AND A FLIGHT DIES FASTER THAN IT
 SAYS.** That table is `raw * ARMOR_MATRIX[warhead][Light] * globalMul`, i.e. a PER-TARGET dps — but
@@ -2060,7 +2045,7 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   `const np = nodePath(); np !== null ? np.createX(...) : createX(...)`. Never in the frame loop.
 - **`RendererHandle.renderer` IS GONE. It is `webgl` and `node`, and one of them is null.** The two
   renderer families share no base type, and almost everything the consumers reached for is genuinely
-  WebGL-only — `getContext()` for the timer query, `capabilities.getMaxAnisotropy()`,
+  WebGL-only — `getContext()` for the WebGL timer query, `capabilities.getMaxAnisotropy()`,
   `readRenderTargetPixels`, `PMREMGenerator`'s constructor. Anything that works on both reads
   `frameInfo()`, `size`, `capabilities` or `backend`. **`window.__VM.renderer` is null under
   `?gpu=webgpu`** and `__VM.rendererHandle` is the backend-agnostic one.
@@ -2076,6 +2061,11 @@ that picks. **The default is still WebGL** and nothing in the product selects th
 - **`drawCallsByPass` IS WEBGL-ONLY.** The node `Renderer` has no seam between the shadow pass and
   the colour pass to meter, so it reports zeros with a true total and `MAX_DRAW_CALLS` cannot be
   checked there. Do not invent a split.
+- **GPU TIME IS REAL ON BOTH BACKENDS.** WebGL uses
+  `EXT_disjoint_timer_query_webgl2`; WebGPU requests Three's `timestamp-query` tracking at renderer
+  construction, disables timestamp writes while the overlay is hidden, and resolves the latest
+  completed frame asynchronously while visible. An adapter without the feature reports `n/a · no
+  timestamp-query`; frame time is never substituted for GPU time.
 - **`npm run shots` has two arms and they may never share a directory.** `shots/` and
   `node tools/shoot.mjs --gpu=webgpu` -> `shots-webgpu/`. The node arm launches REAL Chrome
   (`channel: 'chrome'`) because Playwright's bundled Chromium cannot get a WebGPU device here, and

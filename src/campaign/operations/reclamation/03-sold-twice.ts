@@ -166,14 +166,10 @@
  * **NEITHER DEPOT CAN TAKE A TAP, BY EITHER VERB, AND THE REASON IS THE VERB
  * RATHER THAN THE UNIT.** Two things flip a neutral structure — an engineer
  * takes the deed permanently, a squad holds it while it stands inside — and a
- * brain can do neither. Worth stating precisely, because `buildAlliedGarrison`
- * hands each depot ONE engineer at t=0 (the built world reports it), so the
- * shorthand "the AI owns no engineer" is false on this map. What is true is
- * that **`AiBrain` never issues `OrderKind.Capture` at all** — it is on
- * CLAUDE.md's list of verbs with no call site, `buildUnits` filters the
- * weight-0 row so it never buys another, and the only `OrderKind.Enter` in
- * `AI.ts` is the amphibious boarding path on a map with a sea, which this is
- * not. `GarrisonService.enter` also refuses a structure whose owner it is not
+ * brain could historically do neither. That restriction is gone: a disciplined
+ * `AiBrain` can buy one engineer for a visible legal deed, issue
+ * `OrderKind.Capture`, and move an escort with it. `GarrisonService.enter`
+ * still refuses a structure whose owner it is not
  * allied to. What they CAN do is knock one down, and a levelled tap is gone for
  * the match — which is why the layout puts THREE at each end for a primary that
  * asks for two. Each end can absorb one loss. Neither can absorb two.

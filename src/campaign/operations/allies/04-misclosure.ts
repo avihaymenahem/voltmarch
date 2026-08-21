@@ -308,14 +308,12 @@
  * moment it is theirs it is an Allied building alone in a Soviet district that
  * every gun they own may shoot. A prize with a short life, not a second base.
  *
- * **AND MONOTONICITY NOW RESTS ON A PREMISE `entityAlive` DID NOT NEED.** The
- * two gated columns are safe only because seat 1 can never take the muster
- * BACK. It cannot: `AiBrain` issues no `OrderKind.Capture` anywhere in
- * `src/sim/AI.ts` — CLAUDE.md's capability audit, and the layout's own header
- * re-derives it for the parked-hull question — and `GarrisonService.refusalFor`
- * answers `'hostile'` for any structure the entrant is not allied to, so no
- * conscript can walk it back either. **If the brain ever learns the verb, this
- * paragraph is one of the things that breaks**, which is the same exclusion
+ * **OWNERSHIP IS NO LONGER MONOTONE.** A disciplined seat-1 brain can now buy
+ * an engineer, issue `OrderKind.Capture`, and take the muster back while it is
+ * visible and legal. The gated columns therefore follow current ownership
+ * instead of treating the first capture as permanent. `GarrisonService.refusalFor`
+ * still answers `'hostile'` for ordinary infantry, so no conscript can walk it
+ * back by garrisoning. This is the same distinction
  * `tests/campaign-capture-blind.spec.ts` names as the first thing to delete on
  * that day.
  *
@@ -445,10 +443,9 @@ const CLOSE = minutes(16);
  * `t.musterDown`'s `max: 0` is the other way round and carries `SETTLE` for
  * exactly that reason.
  *
- * STILL MONOTONE, on a premise `entityAlive` did not need: seat 1 cannot take
- * it back, because `AiBrain` issues no `OrderKind.Capture` and
- * `GarrisonService.refusalFor` answers `'hostile'` for a structure the entrant
- * is not allied to. See the header for what breaks if the brain learns it.
+ * NOT MONOTONE: seat 1 can now take it back with a legal engineer capture.
+ * `GarrisonService.refusalFor` still prevents hostile infantry from doing the
+ * same through the garrison verb. See the header.
  */
 const MUSTER_UP: Condition = {
   on: 'ownerCount', player: 1, role: 'building', tag: 'muster', min: 1,
@@ -591,6 +588,8 @@ const op: OperationDef = {
   // See the header. Empty on both sides — and the Soviet half is the one that
   // matters, because a Tesla Coil beside the muster would wall off the fork.
   roster: { player: [], ai: [] },
+
+  captureProof: ['office'],
 
   objectives: [
     {

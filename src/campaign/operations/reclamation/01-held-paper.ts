@@ -566,9 +566,9 @@ const op: OperationDef = {
       kind: 'secondary',
       // UNCHANGED. This one counts the PLAYER's own holdings and always has —
       // `t.yardLost` is `ownerCount(0, 'building', 'yard', max: 3)` — so the
-      // capture migration does not reach it. Nothing on the map can take a yard
-      // off the player either: the brain owns no engineer, which `src/sim/AI.ts`
-      // records as a capability gap rather than a choice.
+      // capture migration does not reach it. The AI can now mount a legal,
+      // visible engineer capture, so ownership is genuine pressure on this
+      // secondary rather than a guaranteed constant.
       title: 'Finish with all four yards standing',
       credits: 600,
     },

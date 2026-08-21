@@ -443,9 +443,6 @@ const UNTABLED_WEAPONS: Readonly<Record<string, string>> = {
     'The pre-content fallback row for the IFV and the Sickle. `REBALANCE_WEAPONS` '
     + 're-authored the shipped gun as `ifvChaingun`; no def fires this one, and the '
     + 'wiki tabulating it would put the exact 22 x4 figure back on the page.',
-  artillery:
-    'The V4 Launcher. Authored, fired by nothing in the current roster, and named '
-    + 'in prose directly under the emplacements table so a reader is not misled.',
 };
 
 describe('Combat.md §2 quotes the armoury', () => {

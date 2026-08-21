@@ -480,7 +480,7 @@ describe('the AI buys in-match upgrades', () => {
   });
 
   it('will not buy a combat multiplier over an army that does not exist', () => {
-    // The vehicle lever is 1200 credits for 25% more damage on every hull. Over
+    // The vehicle lever is 1200 credits for 15% more damage on every hull. Over
     // one hull that is a disaster; the gate is `AI_UPGRADE.minVehicles`.
     //
     // `harvesters: 0` is load-bearing and is not the test dodging the gate. A

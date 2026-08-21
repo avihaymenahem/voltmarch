@@ -131,6 +131,8 @@ export interface BaseOptions {
   garrison?: boolean;
   /** Include the wall + defence line. Default true. */
   defended?: boolean;
+  /** Use the skirmish-tuned defensive line without rewriting campaign encounters. */
+  balancedDefence?: boolean;
   /** Owner override. Defaults to the Allied player. */
   owner?: PlayerId;
 }

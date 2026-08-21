@@ -58,6 +58,7 @@ Built at the **War Factory**.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Ore Harvester | 1400 | 16 s | War Factory, Refinery | 1000 | Heavy | 5.0 | unarmed | — | — | Your entire economy. Carries 700 credits of ore. Crushes infantry |
 | Anvil Tank | 900 | 13 s | War Factory | 420 | **Heavy** | 5.4 | 125 mm Cannon, 78, AP, 2.1 m splash | 26 m | no | The main battle tank. Slower, heavier, hits harder, and out-ranges a Warden by 2 m |
+| V4 Rocket Launcher | 1400 | 18 s | War Factory, Radar | 270 | Light | 4.4 | V4 Launcher, 130, HE, 6.5 m splash | **48 m** | no | Dedicated land siege. Outranges every emplacement, but folds if armour enters its 12 m dead zone |
 | Sledge Tank **(locked)** | 1750 | 24 s | War Factory, Proving Ground | **800** | Heavy | 3.8 | Twin 125 mm, 60 x2, AP, 2.2 m splash | 28 m | no | The end of an argument. More than twice a Warden's hit points, the longest reach of any tank cannon at 28 m, crushes everything and can be crushed by nothing |
 | Construction Vehicle | 3000 | 32 s | War Factory | 1000 | Heavy | 4.2 | unarmed | — | — | Unfolds into a second Construction Yard. Cannot be crushed |
 

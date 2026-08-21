@@ -539,21 +539,14 @@ function assertArmed(rig: Rig, ids: readonly EntityId[]): void {
  * measurement and the question here is an upper bound on the shooter, not an
  * average over an approach. Every seconds-to-kill below is therefore a FLOOR.
  *
- * THE STANDOFF IS 14 m AND IT IS NOT A ROUND NUMBER PICKED FOR NEATNESS.
- * `COMBAT_WEAPONS.maxElevationDeg` is 62, and `Combat.engage` clamps the launch
- * pitch to it, so a projectile fired at an aircraft directly overhead leaves the
- * muzzle at 62 degrees and passes underneath it. The floor is
- * `AIR_CRUISE_ALTITUDE / tan(62 deg)` = 11.70 m of HORIZONTAL separation —
- * measured, and pinned in its own test below, because a probe that parks the
- * flight at dxz = 0 records every projectile weapon in the game as unable to
- * shoot down an aircraft and that is an artefact of the geometry rather than a
- * fact about the guns. 14 m clears it and is inside `rifle`'s 18 m range.
+ * THE STANDOFF IS 14 m so every sampled direct-fire row remains inside rifle
+ * range while avoiding a degenerate zero-horizontal-distance setup. Cross-layer
+ * direct fire now follows the actual bearing, so this distance no longer works
+ * around an elevation-clamp blind cone.
  * ========================================================================== */
 
 /** Horizontal metres between shooter and flight. See the block above. */
 const STANDOFF = 14;
-/** `AIR_CRUISE_ALTITUDE / tan(maxElevationDeg)` — the overhead blind cone. */
-const BLIND_CONE = AIR_CRUISE_ALTITUDE / Math.tan(62 * Math.PI / 180);
 
 interface CaseResult {
   readonly shooter: string;
@@ -833,66 +826,25 @@ describe('§3b the reported incident, staged', () => {
     }
   }, 120_000);
 
-  it('cannot be hit at all inside 8 m horizontally, and that is the elevation clamp', async () => {
+  it('has no invisible overhead dead zone when direct fire crosses the air layer', async () => {
     /*
-     * A SECOND MECHANISM, FOUND WHILE BUILDING THIS FILE, AND IT IS NOT A
-     * REGRESSION — it predates every change here and the splash fix does not
-     * touch it.
-     *
-     * `Combat.engage` clamps the launch pitch to `COMBAT_WEAPONS.maxElevationDeg`
-     * (62 degrees), so a projectile weapon firing at a target 22 m up sends the
-     * round out at 62 degrees no matter how steep the real bearing is. The
-     * round then climbs 1.88 m for every metre downrange and only reaches the
-     * aircraft's altitude band well BEYOND it. The gun tracks, the trigger
-     * releases, the tracer looks right, and nothing connects.
-     *
-     * CLAUDE.md states that `Combat.engage` puts `dy` in neither the range test
-     * nor the arc, so "a rifleman standing directly beneath an aircraft is at
-     * flat = 0" — true, and the consequence is the opposite of the one implied:
-     * he is IN RANGE and CANNOT HIT. The safest place for an aircraft is
-     * directly over the battery.
-     *
-     * MEASURED, NOT DERIVED, because the derivation is wrong by 3 m. A single
-     * shooter, a single Interceptor at cruise, horizontal separation swept 0..20 m:
-     *
-     *     d (m)     0   2   4   5   6   7   8   9  10  12  14  16  18  20
-     *     rifle     .   .   .   .   .   .   K   K   K   K   K   K   K   K
-     *     flakBurst .   .   .   .   .   .   K   K   K   K   K   K   K   K
-     *
-     * The centre-line figure `AIR_CRUISE_ALTITUDE / tan(62 deg)` is 11.70 m;
-     * the real edge is 8 m because the round is accepted anywhere inside the
-     * airframe's hit disc and `Projectiles.sweep` tests a SPAN rather than a
-     * point. Quote 8, not 11.70.
+     * This used to pin the measured edge of the +62-degree launch clamp: 7 m
+     * dealt zero damage while 8 m reached the airframe's hit disc. Cross-layer
+     * direct fire now follows the actual pitch, so both distances must connect.
      */
     const inside = await runCase('gi', 1, 'mig', 1, 0, 7);
     const outside = await runCase('gi', 1, 'mig', 1, 0, 8);
     console.log(`[airkill §3b] one gi vs one mig at ${AIR_CRUISE_ALTITUDE} m — 7 m: ${
       JSON.stringify(inside)}
   8 m: ${JSON.stringify(outside)}`);
-    expect(inside.damageDirect + inside.damageSplash, 'the dead zone has closed — re-measure it')
-      .toBe(0);
-    /*
-     * THE CONTROL IS DAMAGE, NOT A KILL, AND IT WAS A KILL UNTIL 2026-08-19.
-     *
-     * This is a claim about GEOMETRY — whether a round fired at 62 degrees ever
-     * reaches the aircraft's band inside the airframe's hit disc — and the
-     * honest control for it is "rounds connect at 8 m and none connect at 7".
-     * `killed === 1` was a proxy that also depended on the rifle's DPS, and
-     * `WeaponDef.airMultiplier` (0.25 on all four line rifles) took one G.I.
-     * from 8.47 s to kill an Interceptor to 33.8 s — past this rig's 30-second
-     * window. The measurement did not change: 190.0 damage delivered before,
-     * 177.8 delivered in the same window now, both from 8 m, both zero at 7.
-     * A control that moves when an unrelated balance number moves is the wrong
-     * control.
-     */
-    expect(
-      outside.damageDirect,
-      'the control at 8 m landed nothing either, so the dead-zone reading proves nothing',
-    ).toBeGreaterThan(0);
-    // The centre-line derivation, kept so a change to `maxElevationDeg` shows up
-    // here rather than in a player's match.
-    expect(BLIND_CONE).toBeGreaterThan(11);
-    expect(BLIND_CONE).toBeLessThan(12);
+    expect(inside.damageDirect, 'a direct-fire weapon still fires underneath an aircraft')
+      .toBeGreaterThan(0);
+    // Damage, not a kill, is the stable control: the air multiplier changes
+    // time-to-kill without changing whether the trajectory connects.
+    expect(outside.damageDirect, 'the existing 8 m control stopped connecting')
+      .toBeGreaterThan(0);
+    expect(inside.damageDirect, 'closing the dead zone should not weaken the closer shot')
+      .toBeGreaterThanOrEqual(outside.damageDirect * 0.8);
   }, 240_000);
 });
 

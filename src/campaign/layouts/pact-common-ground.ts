@@ -294,10 +294,10 @@
  * and note that the two are now within 0.26 m of each other, where the table
  * this paragraph used to sit under had them 2.6 m apart in the other order.
  *
- * The crew cannot take them by either route: `refusalFor` answers `'hostile'`
- * for a building whose owner is not allied to the entrant, and `src/sim/AI.ts`
- * contains the string `Capture` **zero times**. That is why the operation
- * declares no `captureProof`. They are also NOT sellable —
+ * The crew cannot take them through the garrison route: `refusalFor` answers
+ * `'hostile'` for a building whose owner is not allied to the entrant. The AI
+ * can use an engineer capture, and the operation's ownership predicates already
+ * count that outcome; it therefore declares no `captureProof`. They are also NOT sellable —
  * `Scenarios.civilian` clears `EntityFlag.Sellable`, measured on the built world
  * rather than read out of `FALLBACK_BUILDINGS` — so the player cannot cash in
  * the thing they are being paid to protect.

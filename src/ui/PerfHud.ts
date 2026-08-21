@@ -41,9 +41,10 @@
  *
  * WHAT THE DETECTOR CANNOT DO
  * ---------------------------
- * `EXT_disjoint_timer_query_webgl2` is the only way from inside a browser to
- * measure GPU time directly, and Chrome ships it disabled on most platforms for
- * timing-attack reasons. When it is absent the best available answer is
+ * GPU time needs an API-level clock: `EXT_disjoint_timer_query_webgl2` on WebGL
+ * or the adapter's `timestamp-query` feature on WebGPU. Browsers and adapters
+ * may withhold either for capability or timing-attack reasons. When the active
+ * backend exposes neither, the best available answer is
  * "unknown", and the only way to turn that into a number is to PROBE — raise
  * the load and see whether frame time moves, which is exactly how the two rows
  * quoted above were produced. A probe perturbs the thing it measures, so it
@@ -89,12 +90,9 @@
  *           the shadow pass and the colour pass to meter — so the slot reads
  *           `n/a` and `is-draws-over` cannot fire. **Do not invent a split**: a
  *           faked one looks like the WebGL number and means something else.
- *   gpu     `EXT_disjoint_timer_query_webgl2` is a WEBGL extension. On the node
- *           path there is no context to ask, so the timer is absent for a
- *           reason that is a property of the RENDERER rather than of this
- *           machine's browser — and a bare `n/a` for both conflates "Chrome
- *           hides the extension here" with "this backend has no such thing".
- *           The row names which one it is.
+ *   gpu     WebGL uses `EXT_disjoint_timer_query_webgl2`; WebGPU uses Three's
+ *           real `timestamp-query` integration. A bare `n/a` would conflate
+ *           different missing capabilities, so the row names which one it is.
  *   device  New, and the reason is `docs/RENDER_FINDINGS.md` §7g:
  *           `powerPreference: 'high-performance'` is a HINT that Windows
  *           ignores, so a frame-time reading can be about a GPU nobody chose
@@ -102,9 +100,8 @@
  *           the header line, the adapter is on this row, and both are READ off
  *           the renderer rather than inferred from `?gpu=`.
  *
- * `classifyLoad` is deliberately untouched. Its "no gpu timer — frame time is
- * the display, not the load" reason is exactly as true under WebGPU as under
- * WebGL, and the WHY belongs on the row that is missing the measurement.
+ * `classifyLoad` is deliberately API-neutral. If the live backend has no GPU
+ * clock, frame time remains the display rather than a fabricated load metric.
  * ============================================================================
  */
 
@@ -554,13 +551,12 @@ const TIMER_POOL = 3;
  * which reason" — and a `''`-means-ok convention cannot be exhaustively
  * switched on. `formatGpuTime` is the only consumer.
  *
- * Every member is WEBGL VOCABULARY. `disjoint` is `GPU_DISJOINT_EXT`, which has
- * no WebGPU counterpart at all; on the node path the timer is never constructed
- * and the status is permanently `absent`. That is dead, not lying — but a row
- * that reads a bare `n/a` on both backends says nothing about which.
+ * `disjoint` is WebGL vocabulary; the API-neutral surface retains it because a
+ * WebGPU timer can use the other three states. The backend-aware formatter is
+ * what explains why an unavailable timer is absent.
  */
 export type GpuTimerStatus =
-  /** No `EXT_disjoint_timer_query_webgl2` — or no WebGL context to ask. */
+  /** The active graphics API exposes no usable GPU clock. */
   | 'absent'
   /** The extension is live and no query has resolved yet. */
   | 'waiting'
@@ -569,7 +565,18 @@ export type GpuTimerStatus =
   /** A real measurement is available. */
   | 'ok';
 
-export class GpuTimer {
+/** The timer surface consumed by the panel, independent of graphics API. */
+export interface GpuTimerLike {
+  readonly available: boolean;
+  readonly gpuMs: number | null;
+  readonly status: GpuTimerStatus;
+  tick(): void;
+  /** Optional activation hook; WebGPU uses it to avoid timestamp writes while hidden. */
+  setActive?(active: boolean): void;
+  dispose(): void;
+}
+
+export class GpuTimer implements GpuTimerLike {
   /** Milliseconds of the most recently resolved frame, or null. */
   private lastMs: number | null = null;
   private readonly ext: TimerExt | null = null;
@@ -703,6 +710,77 @@ export class GpuTimer {
     }
     this.queries.length = 0;
     this.pendingCount = 0;
+  }
+}
+
+/** Structural surface of Three's WebGPU timestamp-query path. */
+export interface WebGpuTimestampRenderer {
+  readonly info: { readonly render: { timestamp: number } };
+  readonly backend: { trackTimestamp?: boolean };
+  resolveTimestampsAsync(type?: string): Promise<number | undefined>;
+}
+
+/** Resolve often enough to keep Three's fixed query pool bounded, not per frame. */
+const WEBGPU_RESOLVE_FRAMES = 15;
+
+/**
+ * Real WebGPU GPU time from Three's `timestamp-query` integration.
+ *
+ * The feature is requested when the renderer is created, but timestamp writes
+ * are disabled while the overlay is hidden. While visible, every fifteenth
+ * frame resolves the accumulated queries asynchronously; the renderer reports
+ * the sum for the latest complete frame in milliseconds.
+ */
+export class WebGpuTimer implements GpuTimerLike {
+  private readonly supported: boolean;
+  private active = false;
+  private pending = false;
+  private failed = false;
+  private frames = 0;
+  private lastMs: number | null = null;
+
+  constructor(private readonly renderer: WebGpuTimestampRenderer) {
+    // WebGPUBackend folds the constructor request together with actual adapter
+    // support during init. Reading this after init is therefore the capability
+    // test; do not infer support from the requested backend.
+    this.supported = renderer.backend.trackTimestamp === true;
+    renderer.backend.trackTimestamp = false;
+  }
+
+  get available(): boolean { return this.supported && !this.failed; }
+  get gpuMs(): number | null { return this.available ? this.lastMs : null; }
+  get status(): GpuTimerStatus {
+    if (!this.available) return 'absent';
+    return this.lastMs === null ? 'waiting' : 'ok';
+  }
+
+  setActive(active: boolean): void {
+    if (!this.supported || this.failed) return;
+    this.active = active;
+    this.renderer.backend.trackTimestamp = active;
+    if (!active) this.frames = 0;
+  }
+
+  tick(): void {
+    if (!this.active || !this.available || this.pending) return;
+    this.frames++;
+    if (this.frames < WEBGPU_RESOLVE_FRAMES) return;
+    this.frames = 0;
+    this.pending = true;
+    void this.renderer.resolveTimestampsAsync('render').then((ms) => {
+      this.pending = false;
+      if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) this.lastMs = ms;
+    }, () => {
+      this.pending = false;
+      this.failed = true;
+      this.active = false;
+      this.renderer.backend.trackTimestamp = false;
+    });
+  }
+
+  dispose(): void {
+    this.active = false;
+    this.renderer.backend.trackTimestamp = false;
   }
 }
 
@@ -920,18 +998,10 @@ export function drawsOverBudget(colour: number | null, budget: number = DRAW_BUD
 /**
  * The GPU-time row.
  *
- * The measurement is `EXT_disjoint_timer_query_webgl2` and there is no second
- * source. What differs between the backends is WHY it is missing, and that is
- * the half worth printing: on WebGL the extension is usually withheld by the
- * browser for timing-attack reasons and may appear on another machine, while on
- * the node path there is no WebGL context to ask and nothing wired in its place
- * — no machine will ever show a number here until one is.
- *
- * (WebGPU's counterpart is `timestamp-query`, which three surfaces through
- * `renderer.info.render.timestamp` behind `trackTimestamp`. Neither field is on
- * `NodeRendererLike` nor on `NormalisedFrameInfo`, so wiring it is a change in
- * `src/render/`, not here. Until then this row is honestly empty rather than
- * dishonestly full.)
+ * WebGL uses `EXT_disjoint_timer_query_webgl2`; WebGPU uses Three's
+ * `timestamp-query` integration. Both arrive through `GpuTimerLike` and both
+ * are real GPU clock measurements. An absent row still names the missing API
+ * capability rather than turning absence into zero.
  */
 export function formatGpuTime(
   status: GpuTimerStatus,
@@ -944,6 +1014,7 @@ export function formatGpuTime(
   // `absent`. Null backend is the pre-boot case, where "no extension" is the
   // only thing actually known.
   if (backend === null || backend === 'webgl') return `${UNAVAILABLE} · no timer ext`;
+  if (backend === 'webgpu') return `${UNAVAILABLE} · no timestamp-query`;
   return `${UNAVAILABLE} · not on ${backend}`;
 }
 
@@ -985,6 +1056,8 @@ export interface PerfHudOptions {
   source: PerfSource;
   /** WebGL2 context for the GPU timer. Omit and the timer stays absent. */
   gl?: TimerQueryGl | null;
+  /** API-neutral timer; supplied by the WebGPU path. Takes precedence over `gl`. */
+  timer?: GpuTimerLike;
   /** Start visible. Default false — the setting is off by default. */
   visible?: boolean;
   /**
@@ -1010,7 +1083,7 @@ export class PerfHud {
   private readonly frames = new FrameRing(HISTORY_FRAMES);
   private readonly cpu = new FrameRing(HISTORY_FRAMES);
   private readonly readout: PerfReadout = emptyReadout();
-  private readonly timer: GpuTimer;
+  private readonly timer: GpuTimerLike;
 
   private readonly primary: Text;
   private readonly fps: Text;
@@ -1050,7 +1123,7 @@ export class PerfHud {
   constructor(options: PerfHudOptions) {
     this.source = options.source;
     this.now = options.now ?? (() => performance.now());
-    this.timer = new GpuTimer(options.gl ?? null);
+    this.timer = options.timer ?? new GpuTimer(options.gl ?? null);
 
     this.root = el('div', 'vm-perf', options.mount);
     // Inline as well as in the stylesheet: if perf.css ever fails to load, the
@@ -1086,6 +1159,7 @@ export class PerfHud {
 
     this.visible = options.visible ?? false;
     this.root.hidden = !this.visible;
+    this.timer.setActive?.(this.visible);
     this.applyMountFlag();
   }
 
@@ -1126,6 +1200,7 @@ export class PerfHud {
     if (this.disposed || this.visible === value) return;
     this.visible = value;
     this.root.hidden = !value;
+    this.timer.setActive?.(value);
     this.applyMountFlag();
     if (!value) return;
     // A window collected before the panel was opened would describe a different

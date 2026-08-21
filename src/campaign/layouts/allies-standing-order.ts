@@ -135,12 +135,9 @@
  * Pickers together — 4 x 17.68 plus 8 x 11.89 = 165.82 dps against 800 hp, so
  * 4.82 s** — and `t.headLost` is an unconditional defeat.
  *
- * **NOBODY BUT THE PLAYER CAN TAKE IT.** `AiBrain` owns no engineer — its
- * weight is 0 and `buildUnits` filters `weight <= 0` — and its only
- * `OrderKind.Enter` is `amphibHull`; there is no line in `src/sim/AI.ts` that
- * issues `Enter` against a BUILDING. `allies-fair-copy` grepped for it and this
- * file rests on the same reading. It is a fact about the brain rather than
- * about the rules: say so if either changes.
+ * **THE AI CAN NOW CONTEST IT.** A disciplined `AiBrain` can buy one engineer
+ * for a visible legal structure, issue `OrderKind.Capture`, and send an escort.
+ * `OrderKind.Enter` remains the unrelated garrison/transport verb.
  *
  * ============================================================================
  * THE RETAINER IS AN INCOME, A DENIAL AND A PRICE, AND ALL THREE ARE MEASURED

@@ -169,6 +169,8 @@ export interface NodeRendererLike {
     reset(): void;
     readonly render: {
       calls: number; drawCalls: number; triangles: number; points: number; lines: number;
+      /** Milliseconds resolved from WebGPU timestamp queries. */
+      timestamp: number;
     };
     readonly memory: { geometries: number; textures: number; programs: number };
   };
@@ -187,6 +189,8 @@ export interface NodeRendererLike {
     readonly isWebGPUBackend?: boolean;
     readonly isWebGLBackend?: boolean;
     readonly device?: DeviceLike;
+    /** Enabled only while the performance panel is sampling. */
+    trackTimestamp?: boolean;
   };
   readonly isWebGPURenderer: true;
   outputColorSpace: THREE.ColorSpace;
@@ -214,6 +218,8 @@ export interface NodeRendererLike {
    * renderer inside `bootstrap()`.
    */
   render(scene: THREE.Object3D, camera: THREE.Camera): void;
+  /** Resolve accumulated timestamp queries and return the latest frame's GPU ms. */
+  resolveTimestampsAsync(type?: string): Promise<number | undefined>;
   /**
    * THE ONLY READBACK THIS RENDERER HAS. `WebGLRenderer.readRenderTargetPixels`
    * — synchronous, caller-supplied buffer — does not exist on `Renderer` at all;

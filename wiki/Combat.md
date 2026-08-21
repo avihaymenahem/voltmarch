@@ -102,10 +102,12 @@ tank. Both elevate, so both are also anti-air.
 | 125 mm Cannon | Anvil | 78 | Armour-Piercing | 26 | 2.00 s | 39 | 2.1 | no |
 | Twin 125 mm | Sledge | 60 x2 | Armour-Piercing | 28 | 2.58 s | 47 | 2.2 | no |
 | 25 mm Sabre | Sabre IFV, Hydrofoil | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
-| Prism Emitter | Refractor Tank, Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
+| Prism Emitter | Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
+| Siege Prism Emitter | Refractor Tank | 92 | Prism | 38 | 2.60 s | 35 | – | no |
 | Focus Lance | Solarch, Hierarch | 60 | Armour-Piercing | 26 | 1.60 s | 38 | 1.4 | no |
 | Arc Repeater | Sandskiff | 13 x4 | Autocannon | 23 | 0.76 s | 68 | – | yes |
-| Zenith Emitter | Zenith Emitter | 94 | Prism | 33 | 2.90 s | 32 | – | no |
+| Zenith Emitter | Zenith Emitter | 94 | Prism | 40 | 2.90 s | 32 | – | no |
+| V4 Launcher | V4 Rocket Launcher | 130 | High Explosive | 48 (min 12) | 4.50 s | 29 | 6.5 | no |
 | Spit Coil | Arcspitter, Scrap Skimmer | 30 | Tesla | 16 | 0.95 s | 32 | – | yes |
 | Grinder Arc | Grinder, Scrap Baron | 70 | Tesla | 18 | 1.90 s | 37 | – | no |
 | Slag Mortar | Slaghurler | 124 | High Explosive | 42 (min 11) | 4.30 s | 29 | 5.8 | no |
@@ -146,8 +148,8 @@ two rules — see [Power](#3-how-a-shot-resolves) below. A "no" there does not m
 the gun survives a blackout: only the Pillbox, the Sentry Gun and the Spitpost do,
 because only those three draw no power at all.
 
-The V4 Launcher (130 HE, 48 m, 6.5 splash, 12 m minimum range) exists in the
-armoury and no unit in the current roster carries it.
+The V4 Rocket Launcher is the Soviet land siege answer: unmatched 48 m reach
+and a huge burst, balanced by Light armour, a slow firing cycle and a 12 m dead zone.
 
 ### Which guns can shoot up
 
@@ -330,12 +332,12 @@ Kills promote. Ranks are shown as chevrons on the unit.
 | Rank | Kills needed | Damage | Max HP | Reload |
 |---|---|---|---|---|
 | Rookie | – | x1.00 | x1.00 | x1.00 |
-| Veteran | 3 | x1.15 | x1.10 | x0.90 |
-| Elite | 6 | x1.35 | x1.25 | x0.80 |
+| Veteran | 3 | x1.12 | x1.12 | x0.95 |
+| Elite | 6 | x1.22 | x1.28 | x0.90 |
 
 A promotion raises max HP and heals by **exactly the amount gained** — it is
-never a free full heal. An elite unit is roughly 1.7x the damage output of a
-rookie once the reload bonus is counted, on top of 25% more health. Keeping
+never a free full heal. An elite unit is roughly 1.36x the damage output of a
+rookie once the reload bonus is counted, on top of 28% more health. Keeping
 veterans alive is the single cheapest upgrade in the game.
 
 Kills on your own allies do not count. A **Promotion crate** grants one rank
@@ -468,7 +470,7 @@ see [Repair and sell](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#repair-and-s
 |---|---|
 | Simulation rate | 30 Hz |
 | Global damage scalar | x0.80, applied to every point of damage |
-| Longest gun in the roster | V4 Launcher, 48 m (unused) — then the Slag Mortar at 42 m |
+| Longest gun in the roster | V4 Launcher, 48 m — then the Slag Mortar at 42 m |
 | Shortest | Attack Dog's jaws, 3.6 m |
 | Guard-range acquire / drop | 1.08x / 1.28x weapon range |
 | Attack-order stop / resume | 0.80x / 0.95x weapon range |

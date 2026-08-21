@@ -63,7 +63,7 @@ Built at the **War Factory**.
 | Ore Harvester | 1400 | 16 s | War Factory, Refinery | 1000 | Heavy | 5.0 | unarmed | — | — | Your entire economy. Carries 700 credits of ore. Crushes infantry |
 | Warden Tank | 700 | 11 s | War Factory | 340 | Medium | 6.6 | 90 mm Cannon, 55, AP | 24 m | no | The main battle tank. Turreted, crushes infantry |
 | Sabre IFV **(locked)** | 600 | 10 s | War Factory, Radar | 220 | Light | 8.4 | 25 mm Sabre, 11 x5, autocannon | 22 m | yes | The raider. Fast, turreted, 1.00 against Light armour — it erases other raiders and aircraft |
-| Refractor Tank **(locked)** | 1200 | 17 s | War Factory, Proving Ground | 260 | Light | 6.0 | Prism Emitter, 92, prism | 30 m | no | Beam artillery. Enormous damage that almost nothing resists. Must stop to fire. Fragile |
+| Refractor Tank **(locked)** | 1200 | 17 s | War Factory, Proving Ground | 260 | Light | 6.0 | Siege Prism Emitter, 92, prism | 38 m | no | Beam artillery. Enormous damage that almost nothing resists. Must stop to fire. Fragile |
 | Construction Vehicle | 3000 | 32 s | War Factory | 1000 | Heavy | 4.2 | unarmed | — | — | Unfolds into a second Construction Yard. Cannot be crushed |
 
 ## Aircraft

@@ -274,8 +274,9 @@ than dividing hit points by one of these columns would suggest. See
 | Solarch | 800 | 330 Light | 26 | 13 | 32 | 38 | 38 | 21 |
 | Grinder | 600 | 270 Med | **18** | 59 | 35 | 31 | 33 | 22 |
 | Sledge | 1,750 | 800 Heavy | 28 | 16 | 40 | 47 | 47 | 26 |
-| Refractor Tank | 1,200 | 260 Light | 30 | 39 | 34 | 34 | 32 | 28 |
-| Zenith Emitter | 1,500 | 240 Light | 33 | 36 | 31 | 31 | 29 | 26 |
+| Refractor Tank | 1,200 | 260 Light | 38 | 39 | 34 | 34 | 32 | 28 |
+| Zenith Emitter | 1,500 | 240 Light | 40 | 36 | 31 | 31 | 29 | 26 |
+| V4 Rocket Launcher | 1,400 | 270 Light | **48** | 26 | 23 | 19 | 14 | 29 |
 | Slaghurler | 1,150 | 230 Light | **42** | 26 | 23 | 19 | 14 | **29** |
 | Swarmhornet *(air)* | 900 | 180 Light | 17 | 47 | 28 | 25 | 26 | 18 |
 | Interceptor *(air)* | 1,000 | 190 Light | 21 | 76 | **95** | 62 | 33 | 33 |
@@ -325,6 +326,8 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 [Campaign](/avihaymenahem/voltmarch/wiki/Campaign)). Every aircraft is Light armour — the air/ground split is a targeting rule, not
 a seventh armour class. Aircraft ignore terrain, water, cliffs, buildings and each other entirely,
 cruise at 22 m, never land, never rearm and travel in a straight line to wherever you send them.
+Newly produced aircraft start in **Defensive** stance, so a short retreat holds instead of being
+reclaimed by Aggressive auto-chase; an explicit attack order still closes to firing range.
 
 | Aircraft | Army | Cost | HP | Speed | Warhead | What it is for |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -336,13 +339,14 @@ cruise at 22 m, never land, never rearm and travel in a straight line to whereve
 Every one is gated on the **vehicle factory plus a radar** — one tier below the tech building, the
 same shape for all four armies — and on the *unit.air* unlock, which is one mission for everybody.
 
-The two Allied and Soviet rows are deliberately different questions. An Interceptor at 95 DPS against Light beats any other
-aircraft in the game and does 33 against an Anvil or a wall — it is air superiority and nothing else. A
-Petrel Bomber does 43 to a structure and 46 to heavy armour and will lose a dogfight to the Interceptor. Buy the
-one that answers what you scouted.
+The two Allied and Soviet rows are deliberately different questions. An Interceptor at 95 DPS against
+Light beats any other aircraft in the game, but its autocannon does not acquire ground targets — it
+is air superiority and nothing else. A Petrel Bomber does 43 to a structure and 46 to heavy armour
+and will lose a dogfight to the Interceptor. Buy the one that answers what you scouted.
 
 **Range is measured on the ground plane**, so cruising altitude costs an aircraft nothing and costs
-the gun shooting at it nothing either.
+the gun shooting at it nothing either. Direct fire crossing between ground and air follows the real
+vertical bearing, so parking directly overhead is not an invisible safe zone.
 
 **A weapon can only shoot up if its row says so.** Tank cannons, artillery, flamethrowers, torpedoes,
 naval deck guns, siege beams and the emplaced MG in a pillbox cannot. What can:
@@ -422,9 +426,9 @@ covering fire from the barge that brought them. The Slag Hauler is the cheapest 
 the game at 1100 and the only carrier anywhere behind Heavy armour — which matters, because the
 Reclamation has **no escort hull** to screen a crossing with.
 
-**Numbers that scale.** Veterancy is worth more than it looks. Three kills gives rank 1 (×1.15
-damage, ×1.10 HP, ×0.9 cooldown); six gives rank 2 (×1.35 damage, ×1.25 HP, ×0.8 cooldown). An elite
-unit does **1.69×** the damage of a rookie and takes 25 % more to kill. Keeping a damaged veteran
+**Numbers that scale.** Veterancy is worth more than it looks. Three kills gives rank 1 (×1.12
+damage, ×1.12 HP, ×0.95 cooldown); six gives rank 2 (×1.22 damage, ×1.28 HP, ×0.90 cooldown). An elite
+unit does **1.36×** the damage of a rookie and takes 28 % more to kill. Keeping a damaged veteran
 alive — see the Repair Depot below — is worth more than replacing it.
 
 ---
@@ -675,6 +679,9 @@ Behaviours worth knowing:
   repeatedly makes the next push bigger.**
 - With no Construction Yard it goes all-in with everything, immediately.
 - It **mirrors your unlocks**. Anything you have earned, it can build.
+- From Normal upward, if it can currently see a legal capturable structure and has four escorts
+  available without leaving its base under pressure, it may buy one engineer, escort it with
+  Attack-Move, and attempt the capture. Hidden and campaign-vetoed targets are ignored.
 - **It builds superweapons, and it earns its commander powers the same way you do.** From Normal
   upward it will raise a Command Post and buy the powers its difficulty allows — Normal gets Ore
   Boost and Emergency Repair, Hard adds the Airstrike and the Orbital Scan, Brutal gets all five —
@@ -727,8 +734,8 @@ Be aware of these before you build a plan around one:
   Only infantry are crushable.
 - **Aggressive really does chase, and it is worst on aircraft.** The envelope is the unit's firing
   standoff plus eighteen metres from its post, so the four airframes re-engage from thirty-two to
-  thirty-six metres out. A short retreat on Aggressive is undone; use Defensive on anything you
-  plan to pull back.
+  thirty-six metres out. Aircraft now leave the factory on Defensive; if you deliberately switch one
+  to Aggressive, use Defensive again before relying on a short retreat.
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
 - **Objective credits are never paid.** See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).

@@ -349,7 +349,7 @@
  * nearest a hull outside the rim can ever be to a head is `62 - 20` = **42.00 m**
  * — clear of the bar by **10.34 m**. Nothing the player owns can shoot a head
  * from legal ground, and that is a property of the roster and the map together:
- * `mrdZenith` (33 m) is `unit.specialist` and refused; `mrdHelios` (33 m) is
+ * `mrdZenith` (40 m) is `unit.specialist` and refused; `mrdHelios` (33 m) is
  * `struct.defence.specialist` and refused; `mrdKestrel` is `unit.air` and
  * refused; and `mrdCutter` (33 m), `mrdCorvette` (33) and `mrdMonitor` (40) are
  * all built by an `mrdSlipway`, which wants a coast that `arid` does not have —

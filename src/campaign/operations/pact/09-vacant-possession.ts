@@ -111,11 +111,11 @@
  *     precinct at the hour is a thing the player has given up the ability to
  *     shoot. **The operation is won on the approaches or it is not won.**
  *
- * The two 33 m rows in the Meridian army are `zenithBeam` (`mrdZenith`,
- * `unit.specialist`) and `heliosLance` (`mrdHelios`,
+ * The two long-range rows in the Meridian army are the 40 m `zenithBeam`
+ * (`mrdZenith`, `unit.specialist`) and the 33 m `heliosLance` (`mrdHelios`,
  * `struct.defence.specialist`), and **both sit behind unlock tags this
  * operation's allow-list withholds from both seats.** Either breaks the
- * subtraction from its own side: a Zenith on the rim covers seven metres into
+ * subtraction from its own side: a Zenith on the rim covers fourteen metres into
  * the floor and makes the withdrawal free, and a Spire founded on the Sept's
  * forward chapterhouse covers the near half of it from outside the wall. The
  * layout's §8 measures both.

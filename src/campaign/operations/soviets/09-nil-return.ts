@@ -394,13 +394,11 @@
  * both drop seat 0's count, and the office taken and the office levelled both
  * drop seat 1's. The predicate already means what the objective says.
  *
- * And the click is unreachable in the one direction that would matter. The heads
- * are seat 0's, `Capture.ts` rule 2 refuses an army-owned structure above
- * `CAPTURE.captureHpFrac`, `GarrisonService.enter` returns `'hostile'` for a
- * structure its player is not allied to, and `OrderKind.Capture` has **zero
- * occurrences in `src/sim/AI.ts`** — the brain has never issued the verb, which
- * is the gap CLAUDE.md's own capability audit lists. If the brain is ever given
- * it, this operation does not break: a head captured still drops
+ * The heads are seat 0's, `Capture.ts` rule 2 refuses an army-owned structure
+ * above `CAPTURE.captureHpFrac`, and `GarrisonService.enter` returns `'hostile'`
+ * for a structure its player is not allied to. The brain can now issue a legal
+ * engineer capture once the health gate is met, and the operation does not break:
+ * a head captured still drops
  * `ownerCount(0, ...)` and still counts against the floor, which is the correct
  * reading of an establishment taking a head off the sector's books.
  *

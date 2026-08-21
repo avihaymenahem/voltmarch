@@ -80,6 +80,7 @@ import type { LiveBackend } from '../render/backend';
 import {
   DRAW_BUDGET,
   PerfHud,
+  WebGpuTimer,
   asTimerGl,
   perfFrameShareOf,
   perfPanelHeightUnits,
@@ -316,26 +317,21 @@ export default defineSystem({
       return;
     }
 
-    // The renderer's context, when it is a WebGL2 one that will actually run
-    // timer queries. `asTimerGl` returns null for anything else and the panel
-    // then reports "gpu n/a" rather than inventing a number.
+    // Each backend supplies its native timer: WebGL's extension or Three's
+    // WebGPU timestamp-query resolver. Neither path substitutes frame time.
     let gl: ReturnType<typeof asTimerGl> = null;
+    let timer: WebGpuTimer | undefined;
     try {
-      /*
-       * WEBGL ONLY. `EXT_disjoint_timer_query_webgl2` is a WebGL extension and
-       * there is no context to ask on the node path — WebGPU's equivalent is
-       * `timestamp-query`, which three drives through `renderer.info.render
-       * .timestamp` and which this panel does not read. The panel already
-       * reports "gpu n/a" when the extension is absent, which is the honest
-       * state here too rather than a fabricated number.
-       */
-      const webgl = ctx().handle.webgl;
+      const handle = ctx().handle;
+      const webgl = handle.webgl;
       gl = webgl === null ? null : asTimerGl(webgl.getContext());
+      timer = handle.node === null ? undefined : new WebGpuTimer(handle.node);
     } catch {
       gl = null;
+      timer = undefined;
     }
 
-    hud = new PerfHud({ mount, source: new EngineSource(), gl, visible: false });
+    hud = new PerfHud({ mount, source: new EngineSource(), gl, timer, visible: false });
     // For the console and for `tools/playtest.mjs`, exactly as `ui.objectives`
     // publishes its panel. Nothing in the game reads it.
     globalThis.__vmPerf = hud;

@@ -1272,6 +1272,8 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   apocalypse: unit('apocalypse', EntityKind.Vehicle, U.apocalypse, 800, ArmorClass.Heavy, 3.8,
     Locomotor.Track, 30, TURRETED | EntityFlag.Crusher, Faction.Soviets,
     { crushLevel: 6, crushableBy: 0, turretTurnRate: 1.2 }),
+  v4: unit('v4', EntityKind.Vehicle, U.prismTank, 270, ArmorClass.Light, 4.4,
+    Locomotor.Track, 38, TURRETED, Faction.Soviets, { crushableBy: 5 }),
 
   harvester: unit('harvester', EntityKind.Vehicle, U.harvester, 1000, ArmorClass.Heavy, 5.0,
     Locomotor.Track, 20, EntityFlag.IsHarvester | EntityFlag.Crusher, Faction.Neutral,
@@ -1817,6 +1819,7 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   prismTank: ['prismtank', 'prism', 'athena', 'athenacannon'],
   rhino: ['rhino', 'rhinotank', 'heavytank', 'hammertank'],
   apocalypse: ['apocalypse', 'apoc', 'apocalypsetank'],
+  v4: ['v4', 'v4launcher', 'sovietv4', 'rocketartillery'],
   harvester: ['harvester', 'oreharvester', 'oreminer', 'chronominer', 'miner'],
   mcv: ['mcv', 'mobileconstructionvehicle', 'constructionvehicle'],
   gunboat: ['gunboat', 'assaultdestroyer', 'patrolboat'],
@@ -2852,7 +2855,7 @@ export class ScenarioBuilder {
      * in role terms ('battleLab', 'prismTower') which `keyFor` remaps per
      * faction. Without this check the opening base HANDS OUT the structures the
      * mission table exists to sell: a fresh profile started next to a free
-     * Proving Ground, the Soviet AI opened with three Tesla Coils the player could
+     * Proving Ground, the Soviet AI opened with Tesla Coils the player could
      * not build, and the reward for a 150-kill chain was already in both bases
      * before the first shot. Verified live before it was fixed.
      *
@@ -4379,6 +4382,7 @@ const PLANS: Record<string, ScenarioPlan> = {
           // at the enemy, so the layout is turned away from where it is aimed.
           buildBaseFor(b, owners[i], seats[i].x, seats[i].z, {
             facingDeg: wrapDeg(seats[i].facingDeg + 180),
+            balancedDefence: true,
           });
         }
       } else {
@@ -4429,7 +4433,9 @@ const PLANS: Record<string, ScenarioPlan> = {
     map: 'arid', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
     summary: 'Soviet base: olive slabs, tesla line on the threat axis, armour massed behind it.',
     build(b, cx, cz) {
-      buildSovietBase(b, cx - 1, cz - 7, { facingDeg: 0, garrison: true });
+      buildSovietBase(b, cx - 1, cz - 7, {
+        facingDeg: 0, garrison: true, balancedDefence: true,
+      });
       b.addOre(cx - 52, cz - 6, 24);
       b.scatter({ minX: cx - 74, minZ: cz - 66, maxX: cx + 74, maxZ: cz + 30 }, 104);
     },

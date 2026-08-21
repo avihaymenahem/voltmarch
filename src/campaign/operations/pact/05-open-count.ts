@@ -399,14 +399,12 @@
  * is the natural place to form up, because it is forty-four metres outside the
  * nearest Sept gun.
  *
- * **AND IT NEEDS NO `captureProof`, WHICH WAS CHECKED RATHER THAN SKIPPED.**
- * Trap 9's second half is a protect-target the ENEMY can take, at which point the
- * previous owner's guns make it a legal target and the trigger that ends the
- * match does not care who fired. It is unreachable here for a measured reason:
- * `src/sim/AI.ts` contains the string `Capture` **zero times**, so the Sept's own
- * opening Artificer — it has one, because the mirror gives both seats the same
- * garrison — never spends it on anything. The field would install a veto against
- * a play no seat in this operation can make. `FALLBACK_BUILDINGS.civilian` also
+ * **THE STATION NOW NEEDS `captureProof`.** It is a protect-target the enemy can
+ * otherwise take with its opening Artificer or a purchased engineer, at which
+ * point the previous owner's guns make it a legal target and the trigger that
+ * ends the match does not care who fired. `captureProof: ['post']` closes
+ * that route while leaving friendly engineer repair intact.
+ * `FALLBACK_BUILDINGS.civilian` also
  * clears `EntityFlag.Sellable`, so the player cannot dispose of the thing they
  * are protecting to bank its refund. Measured off the built world rather than
  * read out of `FALLBACK_BUILDINGS.civilian`, which is the wrong table for an
@@ -911,15 +909,15 @@ const op: OperationDef = {
   roster: { player: [], ai: [] },
 
   /*
-   * NO `captureProof`, AND IT WAS CHECKED RATHER THAN SKIPPED. The hall MUST be
+   * A NARROW `captureProof`, checked rather than widened. The hall MUST be
    * capturable — that is the primary. The chapterhouse must stay capturable —
    * `HOUSE_OFF` counts an Artificer exactly as it counts a shell. And the
-   * assessors' station is on the player's own seat, where `Capture.resolve`
-   * takes the FRIENDLY branch ahead of the veto list anyway, and the only seat
-   * that could take it never issues the verb: `src/sim/AI.ts` contains the
-   * string `Capture` zero times. A veto here would forbid a play nobody can
-   * make, which is the well-spelled no-op `validate.ts` refuses elsewhere.
+   * assessors' station is protected from hostile capture; `Capture.resolve`
+   * takes the FRIENDLY repair branch ahead of the veto list, so the player's
+   * own Artificer can still mend it.
    */
+
+  captureProof: ['post'],
 
   objectives: [
     {
@@ -1045,8 +1043,8 @@ const op: OperationDef = {
     /* -- the hall changes hands -------------------------------------------
      * `structureCaptured` is `ownerOfTag(tag) === player`, which for an enemy
      * structure is exactly "the player took it" and cannot be satisfied by
-     * anything else — the Sept has no way to hand it over and no way to take it
-     * back, because `src/sim/AI.ts` never issues `Capture`.
+     * anything else. The Sept can now mount a legal recapture before the trigger
+     * settles, so current ownership remains the source of truth.
      *
      * Two speakers on one tick is two chips; see the toast note above.
      */

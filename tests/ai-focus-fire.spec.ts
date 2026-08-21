@@ -224,7 +224,7 @@ describe('the doctrine ladders on a number that already means this', () => {
 });
 
 describe('the brain names a target once it is in contact', () => {
-  it('issues an explicit Attack, addressed to the strike group', () => {
+  it('issues an explicit Attack, addressed to the strike group on Brutal', () => {
     const h = makeHarness(BRUTAL);
     h.army(AI_SQUAD_MAX * 6);
     h.enemyUnit(BASE_X + 6, ARMY_Z + 6);
@@ -237,6 +237,21 @@ describe('the brain names a target once it is in contact', () => {
     expect(first.target).not.toBe(-1);
     expect(first.entityCount, 'a focus order is for the whole group').toBeGreaterThan(1);
     expect(h.brain.focusOrderCount).toBeGreaterThan(0);
+  });
+
+  it('limits Normal concentration to one human-sized fireteam', () => {
+    const h = makeHarness(NORMAL, 8188);
+    h.army(AI_SQUAD_MAX * 6);
+    h.enemyUnit(BASE_X + 6, ARMY_Z + 6, 0.2);
+    h.runToAttack();
+    h.step(SIM_HZ * 12);
+
+    const orders = h.attackOrders();
+    expect(orders.length, 'Normal never named a target').toBeGreaterThan(0);
+    for (const order of orders) {
+      expect(order.entityCount).toBeLessThanOrEqual(AI_FOCUS.normalFireteamSize);
+    }
+    expect(orders[0].entityCount).toBe(AI_FOCUS.normalFireteamSize);
   });
 
   it('picks the nearly-dead one over the healthy one', () => {

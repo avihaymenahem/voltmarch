@@ -154,6 +154,9 @@ async function createNodeRenderer(
      * renderer) and which `assertBackend` refuses anyway.
      */
     forceWebGL: false,
+    // Requests the optional device feature at boot. The perf panel disables
+    // writes while hidden and enables them only during an active sample.
+    trackTimestamp: true,
   });
   disableThreeFallback(renderer);
   await renderer.init();

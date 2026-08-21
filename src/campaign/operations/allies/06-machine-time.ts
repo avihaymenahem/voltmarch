@@ -412,9 +412,9 @@
  * **`t.hallLost` READS `ownerCount`, NOT `entityDead`, AND THE DIFFERENCE IS A
  * CAPTURE.** Seat 1 opens holding an `rclTinker` — measured, it is what
  * `buildAlliedBase`'s single engineer resolves to through `keyFor` on a
- * Reclamation seat — so a player-owned hall is capturable in principle. The
- * shipped brain never issues `OrderKind.Capture`, so it will not happen; but
- * `entityDead` would read FALSE on a hall that had changed hands and the
+ * Reclamation seat — so a player-owned hall is capturable in practice now that
+ * the brain can issue `OrderKind.Capture`. `entityDead` would read FALSE on a
+ * hall that had changed hands and the
  * operation would run on with the machine in somebody else's name.
  * `ownerCount(player 0, ..., max: 0)` covers demolition and capture with one
  * clause, so **no `captureProof` is needed anywhere in this file** — every

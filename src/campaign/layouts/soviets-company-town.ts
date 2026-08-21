@@ -87,13 +87,11 @@
  *      flip a neutral structure and `src/data/Civilians.ts` names both: an
  *      ENGINEER takes the deed permanently, and a SQUAD takes it for as long as
  *      they stand in it (`GarrisonService.enter` calls `captureBuilding`,
- *      `releaseEmptied` hands it back). Neither is reachable for a brain.
- *      `AiBrain` owns no engineer — CLAUDE.md's capability audit lists
- *      `Capture` as unreachable, the def's weight is 0 and `buildUnits` filters
- *      `weight <= 0` — and the ONLY `OrderKind.Enter` anywhere in `AI.ts` is
- *      the amphibious boarding path, addressed to a transport hull, on a map
- *      with a sea. This one is landlocked. So a derrick the player has taken
- *      stops counting only when it is DESTROYED, and `GarrisonService.enter`
+ *      `releaseEmptied` hands it back). A disciplined brain can now use the
+ *      engineer route for a visible legal derrick and send an escort; its
+ *      amphibious `OrderKind.Enter` path remains unrelated. This map is
+ *      landlocked. A deed can therefore change hands or be destroyed, while
+ *      `GarrisonService.enter`
  *      returns `'hostile'` for a structure its player is not allied to, which
  *      closes the last door.
  *

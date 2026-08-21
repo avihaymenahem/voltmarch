@@ -319,11 +319,9 @@
  *
  * **IT IS NOT A WELL-SPELLED NO-OP, AND THE MEASUREMENT IS THE REASON.** Seat 1
  * opens holding one `mrdArtificer` — counted on the built world — so the
- * engineer exists on this map. What does not exist is a CALL SITE:
- * `AiBrain` never issues `OrderKind.Capture` anywhere, which CLAUDE.md's
- * capability audit lists as a standing gap. That is a fact about `src/sim/AI.ts`
- * and not about this operation, and it can stop being true without anybody
- * touching this file. `captureProof` makes the primary independent of it.
+ * engineer exists on this map, and the brain can now issue a real escorted
+ * `OrderKind.Capture`. `captureProof` is therefore load-bearing: it keeps the
+ * primary independent of AI ownership tactics.
  *
  * The assay is deliberately NOT in the list: it is the one structure this
  * operation wants taken, by either route.

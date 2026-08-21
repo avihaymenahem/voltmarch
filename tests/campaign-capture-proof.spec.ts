@@ -634,13 +634,13 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
 });
 
 /* ==========================================================================
- * 7. THE SHIPPED TABLE — the six, by name, in both directions
+ * 7. THE SHIPPED TABLE — by name, in both directions
  * ========================================================================== */
 
-describe('exactly eleven operations declare captureProof', () => {
+describe('exactly thirteen operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the eleven whose headers say so', () => {
+  it('and they are the thirteen whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -711,7 +711,7 @@ describe('exactly eleven operations declare captureProof', () => {
      *
      * `reclamation.07.payment-in-kind` is the tenth, and it is a FIFTH shape: a structure the
      * OPPONENT owns, protected against the PLAYER'S OWN ENGINEERS rather than
-     * against a brain that has no `OrderKind.Capture` call site. R7's second
+     * against a speculative AI route. R7's second
      * primary is that the Works' receiving office is still standing at the end,
      * because its counterfoils are the only proof the Reclamation was owed the
      * plant it is levying — and `t.notesLost` reads `entityDead`, which is the
@@ -770,8 +770,10 @@ describe('exactly eleven operations declare captureProof', () => {
       .sort();
     expect(declared).toEqual([
       'allies.01.sounding-line = all',
+      'allies.04.misclosure = office',
       'pact.02.long-count = count',
       'pact.04.in-the-clear = mast',
+      'pact.05.open-count = post',
       'pact.07.thin-place = terrace,well,infirmary',
       'pact.08.struck-off = terrace,well,infirmary',
       'pact.09.vacant-possession = floor',

@@ -290,11 +290,9 @@
  * ============================================================================
  * `heads`  — the four `civOreMine`, on SEAT 0. Every threshold in the trigger
  *            table counts what seat 0 owns, so a head lost and a head taken read
- *            the same, which is correct and is also unreachable: `Capture.ts`
- *            rule 2 refuses an army-owned structure above `captureHpFrac`,
- *            `GarrisonService.enter` returns `'hostile'` for a structure its
- *            player is not allied to, and `OrderKind.Capture` has zero
- *            occurrences in `src/sim/AI.ts`. The brain has never issued the verb.
+ *            the same, which is correct. `Capture.ts` rule 2 refuses an
+ *            army-owned structure above `captureHpFrac`, and a brain that later
+ *            meets the gate can now issue the same engineer capture as a player.
  * `filing` — the establishment's Radar Dome, on seat 1, so the hidden secondary
  *            can be answered by a gun or by four engineers.
  * `survey` / `lane` / `pan` / `establishment` / `last` — produced by `spawnUnits`

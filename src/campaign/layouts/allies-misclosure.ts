@@ -162,12 +162,12 @@
  *     it, so a Warden brawling on the doorstep is chipping the thing it is
  *     defending. That is honest, and it is why the operation carries a line at
  *     four tenths.
- *   - **It cannot be rebuilt and it cannot be taken.** `civHospital` has no
+ *   - **It cannot be rebuilt, and the operation capture-proofs it.** `civHospital` has no
  *     `ContentSpec` in `Production.ts`, so no sidebar in the game makes one and
  *     a lost office is lost — the property `soviets-short-allocation` picks its
- *     own civilian keys for. And `AiBrain` has never issued `OrderKind.Capture`
- *     (zero occurrences in `src/sim/AI.ts`), so the only thing the Soviets can
- *     do to it is knock it down.
+ *     own civilian keys for. The AI can now issue `OrderKind.Capture`, so
+ *     `allies.04.misclosure` protects the office explicitly; the Soviets can
+ *     attack it but cannot change its deed.
  *
  * **`civHospital` RATHER THAN THE OTHER THREE CIVILIAN SILHOUETTES**, and the
  * reason is partly the chapter. It is the widest of them — 12x8 m under a 10 m

@@ -139,11 +139,10 @@
  *     not want the rescue should not hand out a refinery. This one wants it.
  *   - **"No refinery left."** The Foundry rebuilds it for 2000, and a player
  *     holding deeds has income while they do.
- *   - **"The Soviets take the field back."** They cannot take a deed at all:
- *     CLAUDE.md's capability audit lists `Capture` as unreachable for the AI —
- *     it owns no engineer, the def's weight is 0, and `buildUnits` filters
- *     `weight <= 0`. They can destroy a head, which costs income and the
- *     secondary, and is not a defeat.
+ *   - **"The Soviets take the field back."** This is now a real counterplay:
+ *     a disciplined AI may buy an engineer for a visible legal deed and escort
+ *     it there. It can also destroy a head, which costs income and the secondary
+ *     but is not a defeat.
  *
  * `Viability.isBeaten` — nothing to build with and nothing to fight with — is
  * the honest floor, and it is reachable: a mine head is a building but not a

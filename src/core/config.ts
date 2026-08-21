@@ -1345,10 +1345,6 @@ const RECLAIM_LOOK: FactionLook = {
  * links them, so changing this one does not move the minimap.
  */
 export const ORE_CRYSTAL_COLOR = '#FFC64A';
-/** Neutral rock. */
-export const ROCK_COLOR = '#7C7468';
-/** Neutral foliage. */
-export const FOLIAGE_COLOR = '#5A5F3A';
 
 /* ==========================================================================
  * 7. SURFACE ARCHETYPES — falsifiable PBR ranges
@@ -1407,12 +1403,6 @@ const SURFACES: Record<SurfaceArchetype, SurfaceLook> = {
   decal:             S(0.90, 0.90, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00),
 };
 
-/** Soot colour burned into damaged armour. */
-export const DAMAGE_SOOT_COLOR = '#14100C';
-/** Ember emissive on burning wrecks. */
-export const EMBER_EMISSIVE_COLOR = '#FF5A18';
-/** Panel gap width in metres — Allies only. */
-export const PANEL_GAP = 0.015;
 /** Absolute minimum chamfer on ANY edge in the game. Never zero. */
 export const MIN_CHAMFER = 0.02;
 
@@ -1594,12 +1584,6 @@ const HUD_NOON = {
   fontStack: "'Rajdhani','Oswald','Arial Narrow',sans-serif",
 };
 
-/** Sidebar width in CSS pixels. The iconic right-hand vertical shell. */
-export const SIDEBAR_WIDTH_PX = 232;
-/** Minimap canvas size in CSS pixels. */
-export const MINIMAP_SIZE_PX = 216;
-/** Build cameo tile size in CSS pixels. */
-export const CAMEO_SIZE_PX = 60;
 /** HUD text refresh rate — 15 Hz is imperceptible and saves layout thrash. */
 export const HUD_TEXT_HZ = 15;
 /** Minimap redraw rate. */
@@ -1862,8 +1846,6 @@ export const LAYERS = {
  * 15. PERFORMANCE CONTRACT
  * ========================================================================== */
 
-/** Hard target: 60 fps with 200+ active units. */
-export const TARGET_FPS = 60;
 /**
  * Draw call ceiling for the COLOUR PASS. Exceeding this means a batch key is
  * wrong.
@@ -2007,12 +1989,10 @@ export const CONSTRUCTION_RISE_SECONDS = 2.0;
 /** Kills required for veterancy ranks 1 and 2. */
 export const VETERANCY_KILLS = [3, 6] as const;
 /** Damage multiplier per rank (index 0 = rookie). */
-export const VETERANCY_DAMAGE = [1.0, 1.15, 1.35] as const;
+export const VETERANCY_DAMAGE = [1.0, 1.12, 1.22] as const;
 /** Max-HP multiplier per rank. */
-export const VETERANCY_HP = [1.0, 1.10, 1.25] as const;
+export const VETERANCY_HP = [1.0, 1.12, 1.28] as const;
 
-/** Seconds a wreck burns before it is removed. */
-export const WRECK_LIFETIME = 22;
 /** Damage per second taken while Burning. */
 export const BURN_DPS = 4;
 /** HP fraction below which a unit starts smoking. */
@@ -2152,20 +2132,13 @@ export const DRAG_THRESHOLD_PX = 5;
 export const DOUBLE_CLICK_MS = 300;
 /** Metres of radius used for a single-click entity pick. */
 export const PICK_RADIUS = 1.6;
-/** Seconds the selection bracket pulses after an order is issued. */
-export const ORDER_PULSE_SECONDS = 0.35;
 
 /* ==========================================================================
  * 19. DEBUG / HARNESS
  * ========================================================================== */
 
-/** Fixed render size for ?shot= screenshots, so they are diffable run to run. */
-export const SHOT_WIDTH = 1920;
-export const SHOT_HEIGHT = 1080;
 /** Seed used whenever no ?seed= is supplied. */
 export const DEFAULT_SEED = 0x5eed1234;
-/** Seconds the determinism soak simulates. */
-export const SOAK_MINUTES = 20;
 
 /* ==========================================================================
  * 20. TERRAIN (owned by src/world/Terrain.ts)
@@ -3472,7 +3445,7 @@ export const COMBAT_WEAPONS = {
   /** Exponential recoil recovery rate, per second. */
   recoilLambda: 9.0,
   /** Rate-of-fire multiplier per veterancy rank (index 0 = rookie). */
-  vetCooldownMul: [1.0, 0.9, 0.8] as readonly number[],
+  vetCooldownMul: [1.0, 0.95, 0.90] as readonly number[],
   /** Muzzle height as a fraction of the entity's collision radius, for units. */
   muzzleHeightMul: 0.62,
   /** Absolute muzzle-height floor in metres (infantry shoulder). */
@@ -4495,8 +4468,6 @@ export const AI_THREAT_CLASS_COUNT = 5;
 
 /** Sidebar width in design px. RA2 shipped 168 and it divides cleanly by 4/8/12. */
 export const HUD_DESIGN_WIDTH = 168;
-/** Design height the vertical stack in VISUAL_DNA §2.2 was measured against. */
-export const HUD_DESIGN_HEIGHT = 768;
 
 /**
  * uiScale = clamp(floor(screenH / 720 * 4) / 4, 1, 4).
@@ -4708,20 +4679,6 @@ export const HUD_CAMEO = {
   pitchDeg: 24,
 } as const;
 
-/** Power bar (VISUAL_DNA §2.10). Tri-banded, bottom-anchored. */
-export const HUD_POWER = {
-  widthAllies: 12,
-  widthSoviets: 14,
-  /** 1 px bright line + 2 px dark. */
-  hatchPitch: 3,
-  /** Headroom shown above `produced` so a full bar is never ambiguous. */
-  headroom: 1.35,
-  /** Yellow transition band as a fraction of the bar. Vanishes near total draw. */
-  yellowBand: 0.06,
-  /** Brownout pulse rate in Hz. */
-  pulseHz: 1.5,
-} as const;
-
 /** Superweapon countdown rows (VISUAL_DNA §2.12). */
 export const HUD_SUPERWEAPON = {
   rowH: 18,
@@ -4843,16 +4800,6 @@ export const HUD_SKIN_SOVIETS: HudFactionSkin = {
   emblem: '#DED48F',
 };
 
-/**
- * Disabled/charging cameo tint: warm khaki sepia, hue 45-50, sat 0.30-0.45,
- * value +8%. Blues disappear entirely. The NAME LABEL is exempt (I13).
- */
-export const HUD_DISABLED_TINT = {
-  hueDeg: 47,
-  saturation: 0.38,
-  valueLift: 0.08,
-} as const;
-
 /** Minimap terrain colours by SurfaceId, heavily downsampled (VISUAL_DNA §2.5). */
 export const HUD_MINIMAP_SURFACE = [
   '#4F5622', // Ground
@@ -4862,9 +4809,8 @@ export const HUD_MINIMAP_SURFACE = [
   '#4A4A4A', // Concrete
   '#3E3E42', // Paving
 ] as const;
-/** Water and ore on the radar. Ore is one of the few things allowed to be bright. */
+/** Water on the radar. */
 export const HUD_MINIMAP_WATER = '#16304A';
-export const HUD_MINIMAP_ORE = '#C8A83C';
 /** Unexplored shroud on the radar is pure black — never a grey wash. */
 export const HUD_MINIMAP_SHROUD = '#000000';
 
@@ -5894,15 +5840,6 @@ export const BUILDING_FOOTPRINTS: Readonly<Record<string, { w: number; h: number
   gate: { w: 1, h: 1, height: 3.6 },
 };
 
-/**
- * The main slab of a production structure is DELIBERATELY shorter than its
- * roofline: bible R-S2 wants a tank at 0.50-0.62x a production structure's
- * silhouette, and BUILDING_DIMENSIONS heights are rooflines that include
- * stacks, masts and gantries (bible SOVIET-3 puts stacks 35-55% ABOVE the
- * roof). This is the fraction of the frozen height the massive body occupies.
- */
-export const BUILDING_BODY_FRACTION = 0.56;
-
 /* ==========================================================================
  * 22. FOG OF WAR AND VISION   (owned by src/sim/Vision.ts + src/render/FogOfWar.ts)
  *
@@ -5968,9 +5905,6 @@ export const FOG_MIN_SIGHT = 6.0;
 export const FOG_SIGHT_SCALE = 1.0;
 /** Metres a structure adds to its own sight, on top of FOG_SIGHT_SCALE. */
 export const FOG_STRUCTURE_SIGHT_BONUS = 3.0;
-/** Metres of vision granted around the whole map when a scenario reveals it. */
-export const FOG_SPAWN_REVEAL_RADIUS = 26.0;
-
 /* -- cloak and detection --------------------------------------------------- */
 
 /**
@@ -7291,9 +7225,6 @@ export const VFX_GROUND = {
 
 /** 1 tank length. The bible's unit of length for waves, foam and wakes. */
 export const TANK_LENGTH_METRES = 7;
-/** Pixels per metre at 2560x1440, default zoom. Converts px specs to metres. */
-export const PIXELS_PER_METRE_1440 = 207 / 7;
-
 /**
  * One authored depth stop of the absorption ramp. `t` is normalised depth,
  * 0 at the waterline and 1 at `WATER_LOOK.rampDepthMetres`.
@@ -7848,27 +7779,11 @@ export const ROAD_COLORS = {
 export const ROAD_ROUGHNESS = { asphalt: 0.75, kerb: 0.65, pavement: 0.70 } as const;
 
 /**
- * Metres per repeat of the generated asphalt / concrete detail textures.
- *
- * These are SMALL on purpose. Bible §6.1 oversizes ground features 2-3x, but
- * "oversized" means a 0.8 m cobble, not a 2 m one — the first pass ran a 6 m
- * repeat of a generator whose base mottling has a ~1/3-texture period, which
- * put 2 m blobs on the carriageway and read as bubble wrap rather than tarmac.
- * Asphalt aggregate is 0.02 m and the patches that sit over it are painted by
- * the decal layer, not by the tiling texture.
- */
-export const ROAD_TEXTURE_METRES = { asphalt: 3.0, kerb: 1.6, pavement: 3.2 } as const;
-/** Generator feature density per repeat. Higher = smaller features. */
-export const ROAD_TEXTURE_SCALE = { asphalt: 13, kerb: 10, pavement: 9 } as const;
-/**
  * Normal-map strength. Tarmac is FLAT — the relief here is aggregate at a
  * couple of millimetres, and anything stronger turns a 39-degree camera's
  * grazing highlights into a boiling mess.
  */
 export const ROAD_NORMAL_SCALE = 0.32;
-/** Edge length of those generated textures. */
-export const ROAD_TEXTURE_SIZE = 256;
-
 /** Sidewalk slab size, bible §6.1: 1.2 x 1.2 m with a 0.03 m joint. */
 export const ROAD_SLAB_METRES = 1.2;
 export const ROAD_SLAB_JOINT = 0.03;

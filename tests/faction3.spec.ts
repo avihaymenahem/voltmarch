@@ -293,7 +293,7 @@ describe('the Meridian Pact — AI doctrine', () => {
       BuildRole.WarFactory, BuildRole.Radar, BuildRole.TechLab, BuildRole.Storage,
       BuildRole.Defense, BuildRole.AntiAir, BuildRole.Harvester, BuildRole.Armor,
       BuildRole.Infantry, BuildRole.Siege, BuildRole.Support, BuildRole.Mcv,
-      BuildRole.Skirmisher,
+      BuildRole.Skirmisher, BuildRole.Engineer,
     ];
     for (const r of roles) {
       const e = catalog.forRole(r, FACTION_MERIDIAN);

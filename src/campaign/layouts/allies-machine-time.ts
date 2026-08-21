@@ -391,9 +391,9 @@
  * `buildAlliedBase` spawns exactly one `engineer`, which is what makes the
  * operation's "one free, three at five hundred" arithmetic true — and `keyFor`
  * resolves that same line to an **`rclTinker` on the Reclamation seat**, so seat
- * 1 opens holding a capture unit of its own. The shipped brain never issues
- * `OrderKind.Capture`, so it will not use it; the operation is written in
- * `ownerCount` rather than `entityDead` so that it would not matter if it did.
+ * 1 opens holding a capture unit of its own. The brain can now issue
+ * `OrderKind.Capture`; the operation's `ownerCount` conditions deliberately
+ * remain correct when ownership changes.
  *
  * **THE RECLAMATION HALF OF THE ROSTER IS THE LOAD-BEARING ONE.** `rclPylon` is
  * `struct.defence.specialist`, reaches **28 m**, and one pull is `pylonArc` 94 x

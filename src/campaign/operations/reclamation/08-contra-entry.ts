@@ -340,14 +340,11 @@
  *   - **`captureProof`.** Nothing in the trigger table reads `entityDead` or
  *     `entityAlive` at all, so there is no protect-target for a capture to
  *     invert. The one threshold a capture could touch is the SECONDARY
- *     `ownerCount(0, 'building', 'stack', min: 3)`, and the seat that would have
- *     to do it cannot: `src/sim/AI.ts` issues no `OrderKind.Capture` anywhere —
- *     CLAUDE.md's verb audit lists it under NEVER, and the brain owns no
- *     engineer because `buildUnits` filters `weight <= 0`. Seat 1 does open
- *     holding one `mrdArtificer` off `buildAlliedGarrison`, which is exactly
- *     `reclamation.05.closing-entry`'s case — but that operation's thresholds
- *     are its PRIMARIES, and a belt-and-braces field on a secondary that no code
- *     path can reach is a claim in the source that nothing tests.
+ *     `ownerCount(0, 'building', 'stack', min: 3)`. Seat 1 opens holding one
+ *     `mrdArtificer` off `buildAlliedGarrison` and can now mount a legal capture,
+ *     which makes current ownership genuine pressure on the secondary. Unlike
+ *     `reclamation.05.closing-entry`, whose thresholds are primaries, this
+ *     secondary is deliberately allowed to be contested.
  *   - **PAYING IN CREDITS.** The obvious mercantile shape is `credits(0, min: N)`
  *     at the counter, and it is a fiction the engine cannot honour: no effect
  *     removes credits, so "the money on the table" would be a threshold the

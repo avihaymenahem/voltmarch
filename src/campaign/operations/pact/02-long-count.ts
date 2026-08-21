@@ -45,7 +45,7 @@
  *     Solarch   focusLance    26   26.46     38.80     53.05 ok     0.14 IN
  *     Sunlancer sunLance      26   26.46     38.80     53.05 ok     0.14 IN
  *     Sandskiff arcRepeater   23   24.06     36.40     50.65 ok     2.54 IN   (locked)
- *     Zenith    zenithBeam    33   32.06     44.40     58.65 ok     0.00 IN   (locked)
+ *     Zenith    zenithBeam    40   37.66     50.00     64.25 ok     0.00 IN   (locked)
  *
  * Three things in that table are the operation:
  *
@@ -59,7 +59,7 @@
  *      rows because it is `D - 18`.
  *   2. **14.25 m IS THEREFORE THE WHOLE MARGIN, AND IT IS SPENT BY DRIVING.**
  *      The critical CENTRE distance is `0.80R - 8.592`: 7.41 m for a Wayfarer,
- *      12.21 m for a Solarch, 17.81 m for a Zenith — in each case 14.25 m
+ *      12.21 m for a Solarch, 23.41 m for a Zenith — in each case 14.25 m
  *      inside that hull's own stopping distance. A player who right-clicks the
  *      pump never crosses it. A player who ATTACK-MOVES through the compound
  *      does, because an attack-move keeps walking to its destination — so the

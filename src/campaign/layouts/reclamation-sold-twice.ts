@@ -118,15 +118,10 @@
  *      to flip a neutral structure (`src/data/Civilians.ts` names both): an
  *      ENGINEER takes the deed permanently, and a SQUAD holds it while it
  *      stands inside (`GarrisonService.enter` calls `captureBuilding`,
- *      `releaseEmptied` hands it back). A brain can do neither, and the reason
- *      is the VERB rather than the unit — a distinction worth drawing here
- *      because `buildAlliedGarrison` hands each depot one engineer at t=0, so
- *      "the AI owns no engineer" is false on this map. What is true is that
- *      **`AiBrain` never issues `OrderKind.Capture` at all**: CLAUDE.md's
- *      capability audit lists it among the verbs the brain has no call site
- *      for, `buildUnits` filters the def's weight-0 row so it never buys
- *      another, and the only `OrderKind.Enter` in `AI.ts` is the amphibious
- *      boarding path on a map with a sea, which this is not.
+ *      `releaseEmptied` hands it back). A disciplined brain can now take the
+ *      first route: it buys one engineer for a visible legal deed, issues
+ *      `OrderKind.Capture`, and sends an escort. Its amphibious `Enter` path is
+ *      unrelated and this map remains landlocked.
  *      `GarrisonService.enter` also returns `'hostile'` for a structure its
  *      player is not allied to, which closes the last door. **A tap you hold
  *      stops counting only when it is DESTROYED.**

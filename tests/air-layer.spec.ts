@@ -404,7 +404,7 @@ describe('canTargetAir — the gate, and its default', () => {
       // army's only one that moves. See `REBALANCE_WEAPONS` in Defs.ts — the
       // rebalance cut its damage, never its ability to shoot up.
       'ifvChaingun'];
-    const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'flameJet',
+    const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'prismSiegeBeam', 'flameJet',
       'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite',
       'focusLance', 'zenithBeam', 'glaiveRepeater', 'mirrorGun',
       'slagCharge', 'grinderArc', 'slagMortar', 'scowGun', 'hulkBattery', 'postCoil'];
@@ -418,10 +418,10 @@ describe('canTargetAir — the gate, and its default', () => {
   it('vetoes in weaponCanHurt before the armour matrix is consulted', () => {
     const cannon = weaponByKey('heavyCannon');
     const flak = weaponByKey('aaCannon');
-    // Both hurt Light armour perfectly well on the ground.
+    // The tank gun hurts Light armour on the ground; the AA Battery refuses it.
     expect(weaponCanHurt(cannon, ArmorClass.Light, false)).toBe(true);
-    expect(weaponCanHurt(flak, ArmorClass.Light, false)).toBe(true);
-    // Airborne, only one of them is allowed to try.
+    expect(weaponCanHurt(flak, ArmorClass.Light, false)).toBe(false);
+    // Airborne, the relationship reverses.
     expect(weaponCanHurt(cannon, ArmorClass.Light, true)).toBe(false);
     expect(weaponCanHurt(flak, ArmorClass.Light, true)).toBe(true);
     // The default argument keeps every ground-only caller reading unchanged.
@@ -1054,6 +1054,13 @@ describe('an aircraft can actually leave the factory', () => {
     const queued = world.player(p).queues[BuildTab.Vehicles].items.length;
     expect(built, 'the aircraft never left the factory').toBe(1);
     expect(queued, 'the queue is still holding a finished aircraft').toBe(0);
+    const aircraft = st.byKind[EntityKind.Vehicle].find(
+      (i) => st.defId[i] === vind.defId,
+    );
+    expect(aircraft, 'the produced aircraft vanished before its stance could be read')
+      .not.toBeUndefined();
+    expect(st.stance[aircraft!], 'aircraft should not undo a short retreat by auto-chasing')
+      .toBe(Stance.Defensive);
   });
 
   it('still refuses to hand a GROUND unit a spot the grid closed', () => {
@@ -1101,11 +1108,13 @@ describe('an aircraft can actually leave the factory', () => {
     run(Math.ceil(grizzly.buildTime / SIM_DT) * 2 + 60);
 
     let built = 0;
+    let tank = -1;
     for (let a = 0; a < st.aliveCount; a++) {
       const i = st.alive[a];
-      if (st.kind[i] === EntityKind.Vehicle) built++;
+      if (st.kind[i] === EntityKind.Vehicle) { built++; tank = i; }
     }
     expect(built, 'a tank egressed onto ground the grid closed').toBe(0);
+    expect(tank).toBe(-1);
   });
 });
 

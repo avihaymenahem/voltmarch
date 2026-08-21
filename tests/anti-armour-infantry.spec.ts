@@ -309,7 +309,7 @@ describe('§4 art that is built but never drawn', () => {
    * §7, which asserts all four tables agree rather than trusting this note.
    */
   const KNOWN_ORPHANS: readonly string[] = [
-    'soviet_sickle', 'soviet_v4',        // in the HUD's fallback roster, nowhere else
+    'soviet_sickle',                     // in the art roster, nowhere else
   ];
 
   it('has no unbound unit model outside the known list', () => {

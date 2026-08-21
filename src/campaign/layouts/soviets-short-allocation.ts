@@ -122,24 +122,17 @@
  * replaced by a structure the objective does not recognise is a rule nobody can
  * see.
  *
- * **NEITHER SIDE CAN TAKE THE OTHER'S BY CAPTURE, WHICH LEAVES ONLY THE GUN.**
+ * **BOTH SIDES CAN NOW CONTEST OWNERSHIP WITH AN ENGINEER.**
  * `Capture.ts` rule 2 refuses an army-owned structure above
  * `CAPTURE.captureHpFrac` (0.5), and `GarrisonService.enter` returns
  * `'hostile'` for a structure its player is not allied to — so the garrison
  * route is closed outright.
  *
- * **THE ENGINEER ROUTE IS CLOSED FOR THE NINTH BY THE VERB, NOT BY THE ROSTER,
- * AND AN EARLIER DRAFT HAD THIS BACKWARDS.** It said "`AiBrain` owns no
- * engineer", which is true of what the brain BUILDS (`weight` 0, and
- * `buildUnits` filters `weight <= 0`) and false of what it HOLDS:
+ * **THE NINTH OPENS WITH THE ENGINEER IT NEEDS FOR THAT ROUTE.**
  * `game/scenarios/AlliedBase.ts` spawns one with every Allied opening, so seat 1
  * owns an engineer from tick zero — measured on the bound headless build,
- * `seat1 u:engineer x1`. What actually closes the route is that
- * `OrderKind.Capture` has **zero occurrences in `src/sim/AI.ts`**: the brain has
- * never issued the verb, which is the gap CLAUDE.md's capability audit already
- * lists. `regroupSquads` files that engineer into a squad and attack-moves it
- * like any other hull. If the brain is ever given `Capture`, this operation
- * needs re-reading — a working taken rather than killed still drops
+ * `seat1 u:engineer x1`. A disciplined brain can now issue `OrderKind.Capture`
+ * and escort it. A working taken rather than killed still drops
  * `ownerCount`, so `t.cut` would fire correctly, but the header's "DESTROYED,
  * not contested" stops being true. It is NOT closed for the player against
  * the Ninth's tap, and the operation deliberately leaves that open — see
