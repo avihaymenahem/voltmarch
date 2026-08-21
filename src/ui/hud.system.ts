@@ -104,7 +104,7 @@ export default defineSystem({
     /*
      * Close the UI-audio seam.
      *
-     * The HUD publishes four abstract cues and refuses to invent a sound for
+     * The HUD publishes abstract cues and refuses to invent a sound for
      * them; the audio module bakes `ui.hover/click/tab/error` and refuses to
      * reach into the HUD. Neither would ever have called the other. The
      * translation table is three lines and belongs here, in the wiring layer.
@@ -119,6 +119,7 @@ export default defineSystem({
         click: 'ui.click',
         tab: 'ui.tab',
         error: 'ui.error',
+        signal: 'ui.ping',
       };
       hud.setSoundHook((cue) => { playUi(CUE_SOUND[cue]); });
     } catch {

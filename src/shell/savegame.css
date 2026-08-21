@@ -90,6 +90,40 @@
   background: var(--vm-accent-glow);
 }
 
+.vm-shell .vm-save-row.has-campaign {
+  --vm-save-campaign-rgb: 213, 64, 82;
+  --vm-save-campaign-accent: #eb7c88;
+  border-color: rgba(var(--vm-save-campaign-rgb), 0.42);
+  background:
+    linear-gradient(105deg, rgba(var(--vm-save-campaign-rgb), 0.08), transparent 43%),
+    rgba(4, 9, 17, 0.72);
+}
+
+.vm-shell .vm-save-row.has-campaign.is-allies {
+  --vm-save-campaign-rgb: 53, 200, 240;
+  --vm-save-campaign-accent: #72daf7;
+}
+
+.vm-shell .vm-save-row.has-campaign.is-pact {
+  --vm-save-campaign-rgb: 151, 91, 222;
+  --vm-save-campaign-accent: #bf93ed;
+}
+
+.vm-shell .vm-save-row.has-campaign.is-reclamation {
+  --vm-save-campaign-rgb: 205, 148, 51;
+  --vm-save-campaign-accent: #e3b566;
+}
+
+.vm-shell .vm-save-row.has-campaign .vm-save-thumb {
+  border-color: rgba(var(--vm-save-campaign-rgb), 0.45);
+}
+
+.vm-shell .vm-save-row.has-campaign .vm-save-thumb.is-generated {
+  background:
+    linear-gradient(160deg, rgba(var(--vm-save-campaign-rgb), 0.22), rgba(9, 13, 20, 0.77) 68%),
+    var(--vm-glass-strong);
+}
+
 /* -- the plate ------------------------------------------------------------- */
 
 .vm-shell .vm-save-thumb {
@@ -179,6 +213,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.vm-shell .vm-save-operation {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: -1px;
+}
+
+.vm-shell .vm-save-operation-chapter {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--vm-save-campaign-accent);
+}
+
+.vm-shell .vm-save-operation-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--vm-text-dim);
 }
 
 .vm-shell .vm-save-meta {

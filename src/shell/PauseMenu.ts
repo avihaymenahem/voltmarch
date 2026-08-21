@@ -56,6 +56,7 @@
 import { HelpPanel } from './Help';
 import { MissionsPanel } from './Missions';
 import { SavePanel } from './LoadGame';
+import { campaignBriefing, campaignTheme } from './CampaignPresentation';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
 import { desktopBridge } from '../platform/desktop';
 import { campaignObjectiveView } from '../ui/objectives.system';
@@ -138,6 +139,13 @@ export function objectiveLine(o: ActiveObjective): string {
   return `${value} / ${o.progress.target}`;
 }
 
+/** Optional campaign payout shown in the paused objective ledger. */
+export function objectiveCreditReward(o: ActiveObjective): string {
+  const reward = o.reward.find((row) => row.kind === 'credits');
+  if (reward === undefined || reward.amount <= 0) return '';
+  return `+${Math.floor(reward.amount).toLocaleString('en-US')} cr`;
+}
+
 export class PauseMenuScreen implements Screen {
   readonly id = 'paused';
   private host: HTMLElement | null = null;
@@ -157,10 +165,19 @@ export class PauseMenuScreen implements Screen {
     const p = panel('vm-pause-panel');
     this.card = p;
 
+    const operation = this.shell.currentCampaignOperation();
+    const briefing = operation === null ? null : campaignBriefing(operation.id);
+    const theme = operation === null ? null : campaignTheme(operation.id);
+    if (operation !== null) p.classList.add('has-campaign');
+    if (theme !== null) p.classList.add(`is-${theme}`);
+
     const head = el('div', 'vm-pause-head');
-    head.appendChild(el('p', 'vm-subtitle', 'Paused'));
     const setup = this.shell.getSetup();
-    head.appendChild(el('h2', 'vm-h2', mapById(setup.map).name));
+    head.appendChild(el('p', 'vm-subtitle', operation === null ? 'Paused' : operation.chapterTitle));
+    head.appendChild(el('h2', 'vm-h2', operation?.title ?? mapById(setup.map).name));
+    if (operation !== null) {
+      head.appendChild(el('p', 'vm-pause-operation-label', 'Campaign operation paused'));
+    }
     p.appendChild(head);
 
     const stats = el('div', 'vm-pause-stats');
@@ -175,7 +192,37 @@ export class PauseMenuScreen implements Screen {
     const faction = playableFactions().find((f) => f.key === setup.playerFaction);
     stats.appendChild(el('span', undefined, faction?.name ?? '—'));
     stats.appendChild(el('span', undefined, `${DIFFICULTIES[setup.difficulty]} · ${SPEEDS[setup.speed].toFixed(1)}×`));
+    if (operation !== null) stats.appendChild(el('span', undefined, mapById(setup.map).name));
     p.appendChild(stats);
+
+    if (briefing !== null) {
+      const command = el('section', 'vm-pause-command');
+      command.setAttribute('aria-label', 'Operation command');
+
+      const visual = el('div', 'vm-pause-command-visual');
+      if (briefing.commander.portrait !== '') {
+        const portrait = el('img', 'vm-pause-command-portrait');
+        portrait.src = briefing.commander.portrait;
+        portrait.alt = `${briefing.commander.name}, ${briefing.commander.role}`;
+        portrait.decoding = 'async';
+        visual.appendChild(portrait);
+      } else {
+        visual.appendChild(el('span', 'vm-pause-command-monogram', briefing.commander.monogram));
+      }
+      visual.appendChild(el('span', 'vm-pause-command-scan'));
+
+      const copy = el('div', 'vm-pause-command-copy');
+      copy.appendChild(el('span', 'vm-pause-command-channel', briefing.channel));
+      const identity = el('div', 'vm-pause-command-identity');
+      identity.appendChild(el('strong', 'vm-pause-command-name', briefing.commander.name));
+      identity.appendChild(el('span', 'vm-pause-command-role', briefing.commander.role));
+      copy.appendChild(identity);
+      copy.appendChild(el('p', 'vm-pause-command-directive', briefing.directive));
+
+      command.appendChild(visual);
+      command.appendChild(copy);
+      p.appendChild(command);
+    }
 
     const objectives = this.buildObjectives();
     if (objectives !== null) p.appendChild(objectives);
@@ -322,6 +369,8 @@ export class PauseMenuScreen implements Screen {
       const name = el('span', 'vm-pause-obj-name', o.title);
       name.title = o.description;
       row.appendChild(name);
+      const reward = objectiveCreditReward(o);
+      if (reward !== '') row.appendChild(el('span', 'vm-pause-obj-reward vm-num', reward));
       row.appendChild(el('span', 'vm-pause-obj-value vm-num', objectiveLine(o)));
       wrap.appendChild(row);
     }

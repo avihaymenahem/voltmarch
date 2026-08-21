@@ -219,7 +219,9 @@ function checkCondition(c: Condition, where: string, f: Faults, seats: number): 
       if (!(c.frac > 0) || c.frac > 1) f.at(where, `entityHpBelow frac must be in (0,1], got ${c.frac}`);
       break;
     case 'unitsInArea':
-      if (c.min < 1) f.at(where, 'unitsInArea min must be at least 1');
+      if (!Number.isInteger(c.min) || c.min < 1) {
+        f.at(where, 'unitsInArea min must be a whole number of at least 1');
+      }
       if (!(c.area.r > 0)) f.at(where, 'unitsInArea area needs a positive radius');
       checkSeat(c.player, where, f, seats);
       break;
@@ -230,11 +232,29 @@ function checkCondition(c: Condition, where: string, f: Faults, seats: number): 
         // fires on tick one and reads as if it were waiting for something.
         f.at(where, 'ownerCount needs at least one of min/max — without one it is always true');
       }
+      if (c.min !== undefined && (!Number.isInteger(c.min) || c.min < 0)) {
+        f.at(where, 'ownerCount min must be a whole non-negative count');
+      }
+      if (c.max !== undefined && (!Number.isInteger(c.max) || c.max < 0)) {
+        f.at(where, 'ownerCount max must be a whole non-negative count');
+      }
+      if (c.min !== undefined && c.max !== undefined && c.min > c.max) {
+        f.at(where, `ownerCount min ${c.min} is greater than max ${c.max}`);
+      }
       checkSeat(c.player, where, f, seats);
       break;
     case 'credits':
       if (c.min === undefined && c.max === undefined) {
         f.at(where, 'credits needs at least one of min/max');
+      }
+      if (c.min !== undefined && (!Number.isFinite(c.min) || c.min < 0)) {
+        f.at(where, 'credits min must be a finite non-negative amount');
+      }
+      if (c.max !== undefined && (!Number.isFinite(c.max) || c.max < 0)) {
+        f.at(where, 'credits max must be a finite non-negative amount');
+      }
+      if (c.min !== undefined && c.max !== undefined && c.min > c.max) {
+        f.at(where, `credits min ${c.min} is greater than max ${c.max}`);
       }
       checkSeat(c.player, where, f, seats);
       break;

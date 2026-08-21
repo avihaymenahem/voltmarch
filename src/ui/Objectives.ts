@@ -194,6 +194,8 @@ export interface ProfileView {
   version: number;
   unlocked: readonly string[];
   missions: readonly MissionProgress[];
+  /** Best medal by authored operation. Optional for older/screenshot handles. */
+  campaign?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -569,6 +571,8 @@ export class ObjectivesPanel {
   private probeIn = 0;
   private dirty = true;
   private signature = '';
+  /** Last campaign header applied; makes the frame-side context call free when steady. */
+  private campaignContext = '';
   private view: ObjectivesView = readStoredView();
   private lastOpen: 'summary' | 'expanded' = this.view === 'collapsed' ? 'summary' : this.view;
   private disposed = false;
@@ -717,6 +721,31 @@ export class ObjectivesPanel {
   /** How many objectives the summary fold is hiding. */
   get hiddenCount(): number {
     return this.hidden;
+  }
+
+  /**
+   * Name and skin the live operation without making the generic progression
+   * view know campaign vocabulary.
+   *
+   * `null` restores the exact skirmish header. The title is written directly
+   * rather than folded into the objective signature because changing context
+   * does not require rebuilding a single row.
+   */
+  setCampaignContext(title: string | null, theme: string | null = null): void {
+    const clean = title?.trim() ?? '';
+    const active = clean !== '';
+    const signature = active ? `${clean}|${theme ?? ''}` : '';
+    if (signature === this.campaignContext) return;
+    this.campaignContext = signature;
+    const label = active ? clean : 'Objectives';
+    this.title.textContent = label;
+    this.title.title = active ? `Objectives · ${label}` : '';
+    this.head.setAttribute('aria-label', active ? `Objectives · ${label}` : 'Objectives');
+    this.toggle.setAttribute('aria-label', active ? `Toggle objectives for ${label}` : 'Toggle objectives');
+    this.root.classList.toggle('is-campaign', active);
+    for (const candidate of ['soviets', 'allies', 'pact', 'reclamation']) {
+      this.root.classList.toggle(`is-${candidate}`, active && theme === candidate);
+    }
   }
 
   setView(value: ObjectivesView): void {

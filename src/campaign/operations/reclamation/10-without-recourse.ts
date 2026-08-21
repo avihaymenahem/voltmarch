@@ -1701,13 +1701,12 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Tallow',
-          text: 'Endorsed to the four houses jointly and without recourse. We cannot be paid for '
-            + 'reading it, we cannot be leaned on to alter it, and we cannot be answered to if a '
-            + 'house declines to honour a line in it. Nine yards became four paying for that '
-            + 'book and this afternoon we gave it away, and I would do it in the same order '
-            + 'again. A record everybody may check is the only property on this continent that '
-            + 'is worth more once you have stopped owning it. Take the company name off the '
-            + 'spine on your way out — it was never the name that made it true.',
+          text: 'Endorsed to the four houses jointly and without recourse. We cannot be paid to '
+            + 'read it, leaned on to alter it, or answered to when a house refuses a line. Nine '
+            + 'yards became four paying for that book, and today we gave it away. I would do it '
+            + 'in the same order again. A record everybody may check is the only property worth '
+            + 'more once you stop owning it. Take the company name off the spine on your way '
+            + 'out. It was never the name that made it true.',
         },
         { do: 'endOperation', result: 'win' },
       ],

@@ -898,14 +898,12 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Aubray',
-          text: 'Three of those houses are behind the works and cost nothing but the walk. The '
-            + 'fourth is past the middle of the quarter with an Arcspitter post sitting on it, '
-            + 'and that post is there twice over — for the house, and for the road up to it. '
-            + 'Take her and leave it standing and she is rubble in forty seconds. There is a '
-            + 'second post past her, on the fifth house, and it covers the approach as well as '
-            + 'the roof. Kill the post first, or walk your man the long way round the far side. '
-            + 'Then hold all four together for seven minutes, and understand that four minus one '
-            + 'is not three houses of current. It is no run at all.',
+          text: 'Three houses are behind the works; they cost only the walk. The fourth is across '
+            + 'the quarter under an Arcspitter that also covers its road. Take the house while '
+            + 'that post stands and she is rubble in forty seconds. A second post covers the '
+            + 'fifth house and its approach. Kill each post first, or send your man around the '
+            + 'far side. Then hold four houses together for seven minutes. Four minus one is not '
+            + 'three houses of current. It is no run at all.',
         },
       ],
     },

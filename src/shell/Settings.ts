@@ -1051,7 +1051,7 @@ export class SettingsScreen implements Screen {
         : 'Turns off every progression gate and saves that preference for future launches. '
           + 'Nothing is earned or written into your progression profile. '
           + 'Computer opponents already retain their complete faction roster; this changes only '
-          + 'what you can build.',
+          + 'what you can build and which campaign operations you can launch.',
     );
     prog.appendChild(unlockRow);
     if (bootFlag) {

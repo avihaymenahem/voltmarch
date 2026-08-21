@@ -753,14 +753,12 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Nael',
-          text: 'The Conclave sits at the hour and conveys the precinct to the eleven houses, and '
-            + 'we hold from them afterwards as tenants. It is read out from the floor by the '
-            + 'people receiving it — and an instrument read under the arms of the party conveying '
-            + 'it is a party conveying to itself, which the assessors will not enter. So it is two '
-            + 'things at once: the readers on the floor at the hour, and every gun of ours outside '
-            + 'the wall when they read. The instrument on the floor is under seal and neither side '
-            + 'may lay a gun on it — but a shell that lands beside it still tells, so do not fight '
-            + 'across the top of it.',
+          text: 'At the hour the Conclave conveys the precinct to the eleven houses; afterwards '
+            + 'we hold as tenants. Their people must read the instrument from the floor, with '
+            + 'every Pact gun outside the wall. A reading made under our arms is a conveyance to '
+            + 'ourselves, and the assessors will not enter it. The instrument is sealed and '
+            + 'neither side may fire on it. A shell landing beside it still tells, so do not '
+            + 'fight across the floor.',
         },
         { do: 'revealArea', player: 0, area: { x: HOUSE.x, z: HOUSE.z, r: 30 } },
       ],
@@ -798,13 +796,11 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Hesk, of the pan',
-          text: 'Hesk, for the eleven houses. I told you on the pan that you never asked us. You '
-            + 'are asking now and I am not going to be gracious about it — we lost a well and you '
-            + 'are handing us a roof, and the two are not the same thing. But four of us will walk '
-            + 'onto that floor and read it out, and after that it is ours to be wrong about. '
-            + 'Four is what we are and three is the floor of it, so do not point us at anything. '
-            + 'We carry nothing, and one of those posts puts a man of mine down in under two '
-            + 'seconds.',
+          text: 'Hesk, for the eleven houses. You never asked us. You are asking now, and I will '
+            + 'not be gracious: we lost a well and you are handing us a roof. They are not the '
+            + 'same. But four of us will walk onto that floor and read it out; after that it is '
+            + 'ours to be wrong about. Three must live, so do not point us at anything. We carry '
+            + 'nothing, and one post drops a man in under two seconds.',
         },
       ],
     },

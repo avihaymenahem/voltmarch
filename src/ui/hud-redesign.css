@@ -540,6 +540,9 @@
    above the selection dock. It never occupies the centre aiming corridor and
    it stays clear of the right production rail even at 1024px. */
 .vm-hud[data-layout='perimeter'] .vm-campaign-comms {
+  --vm-comms-rgb: 213, 64, 82;
+  --vm-comms-accent: #d75c6b;
+  --vm-comms-role: #a18c91;
   position: absolute;
   left: calc(var(--vm-edge) + var(--vm-map-w) + var(--vm-panel-gap));
   bottom: calc(var(--vm-edge) + var(--vm-selection-h) + var(--vm-panel-gap));
@@ -553,12 +556,36 @@
   overflow: visible;
   pointer-events: auto;
   background:
-    linear-gradient(100deg, rgba(52, 13, 19, 0.28), transparent 45%),
+    linear-gradient(100deg, rgba(var(--vm-comms-rgb), 0.16), transparent 45%),
     linear-gradient(180deg, rgba(17, 22, 39, 0.98), rgba(3, 6, 14, 0.985));
-  border-color: rgba(207, 60, 78, 0.48);
+  border-color: rgba(var(--vm-comms-rgb), 0.5);
   box-shadow:
     0 calc(8 * var(--vm-u)) calc(22 * var(--vm-u)) rgba(0, 0, 0, 0.56),
     inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-allies {
+  --vm-comms-rgb: 53, 200, 240;
+  --vm-comms-accent: #72daf7;
+  --vm-comms-role: #8fa9ba;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-pact {
+  --vm-comms-rgb: 151, 91, 222;
+  --vm-comms-accent: #bf93ed;
+  --vm-comms-role: #a496b5;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-reclamation {
+  --vm-comms-rgb: 205, 148, 51;
+  --vm-comms-accent: #e3b566;
+  --vm-comms-role: #ad9b7b;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-campaign-comms.is-neutral {
+  --vm-comms-rgb: 124, 154, 184;
+  --vm-comms-accent: #aebdca;
+  --vm-comms-role: #8f99aa;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-campaign-comms[hidden] { display: none; }
@@ -568,7 +595,7 @@
   min-height: calc(104 * var(--vm-u));
   overflow: hidden;
   background: #070a10;
-  border-right: 1px solid rgba(220, 66, 82, 0.45);
+  border-right: 1px solid rgba(var(--vm-comms-rgb), 0.46);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12 * var(--vm-u)), calc(100% - 12 * var(--vm-u)) 100%, 0 100%);
 }
 
@@ -592,7 +619,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   background:
-    radial-gradient(circle at center, rgba(178, 43, 58, 0.22), transparent 58%),
+    radial-gradient(circle at center, rgba(var(--vm-comms-rgb), 0.22), transparent 58%),
     repeating-linear-gradient(0deg, transparent 0 4px, rgba(255, 255, 255, 0.025) 4px 5px);
 }
 
@@ -617,7 +644,7 @@
   align-items: center;
   gap: calc(7 * var(--vm-u));
   margin-bottom: calc(4 * var(--vm-u));
-  color: #d75c6b;
+  color: var(--vm-comms-accent);
   font-size: calc(7.5 * var(--vm-u));
   font-weight: 700;
   letter-spacing: 0.17em;
@@ -627,8 +654,14 @@
 .vm-hud[data-layout='perimeter'] .vm-comms-pulse {
   width: calc(22 * var(--vm-u));
   height: 1px;
-  background: linear-gradient(90deg, #e95c6b, transparent);
-  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(233, 92, 107, 0.72);
+  background: linear-gradient(90deg, var(--vm-comms-accent), transparent);
+  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(var(--vm-comms-rgb), 0.72);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-page {
+  color: var(--vm-text-faint);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-comms-head {
@@ -656,7 +689,7 @@
 
 .vm-hud[data-layout='perimeter'] .vm-comms-role {
   min-width: 0;
-  color: #8f99aa;
+  color: var(--vm-comms-role);
   font-size: calc(8 * var(--vm-u));
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -686,8 +719,8 @@
 .vm-hud[data-layout='perimeter'] .vm-comms-action:hover,
 .vm-hud[data-layout='perimeter'] .vm-comms-action:focus-visible,
 .vm-hud[data-layout='perimeter'] .vm-comms-action[aria-expanded='true'] {
-  border-color: rgba(225, 77, 93, 0.65);
-  color: #f1a4ad;
+  border-color: rgba(var(--vm-comms-rgb), 0.68);
+  color: var(--vm-comms-accent);
   outline: none;
 }
 
@@ -702,6 +735,7 @@
   -webkit-line-clamp: 3;
   line-clamp: 3;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-comms-history {
@@ -712,7 +746,7 @@
   max-height: calc(210 * var(--vm-u));
   overflow: hidden;
   background: rgba(3, 6, 14, 0.985);
-  border: 1px solid rgba(207, 60, 78, 0.42);
+  border: 1px solid rgba(var(--vm-comms-rgb), 0.44);
   border-bottom: 0;
   box-shadow: 0 calc(-8 * var(--vm-u)) calc(20 * var(--vm-u)) rgba(0, 0, 0, 0.4);
 }
@@ -721,8 +755,8 @@
 
 .vm-hud[data-layout='perimeter'] .vm-comms-history-head {
   padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
-  border-bottom: 1px solid rgba(207, 60, 78, 0.3);
-  color: #d75c6b;
+  border-bottom: 1px solid rgba(var(--vm-comms-rgb), 0.32);
+  color: var(--vm-comms-accent);
   font-size: calc(8 * var(--vm-u));
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -737,17 +771,43 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-comms-history-row {
+  --vm-history-accent: var(--vm-comms-accent);
   display: grid;
-  grid-template-columns: calc(64 * var(--vm-u)) minmax(0, 1fr);
+  grid-template-columns: calc(72 * var(--vm-u)) minmax(0, 1fr);
   gap: calc(8 * var(--vm-u));
   padding: calc(6 * var(--vm-u)) 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.vm-hud[data-layout='perimeter'] .vm-comms-history-identity {
+  display: grid;
+  align-content: start;
+  gap: calc(2 * var(--vm-u));
+  min-width: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row.is-allies { --vm-history-accent: #72daf7; }
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row.is-pact { --vm-history-accent: #bf93ed; }
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row.is-reclamation { --vm-history-accent: #e3b566; }
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row.is-soviets { --vm-history-accent: #d75c6b; }
+.vm-hud[data-layout='perimeter'] .vm-comms-history-row.is-neutral { --vm-history-accent: #aebdca; }
+
 .vm-hud[data-layout='perimeter'] .vm-comms-history-speaker {
-  color: #d75c6b;
+  color: var(--vm-history-accent);
   font-size: calc(8 * var(--vm-u));
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-comms-history-role {
+  color: #768397;
+  font-size: calc(6.5 * var(--vm-u));
+  line-height: 1.15;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-comms-history-copy {
@@ -1024,6 +1084,52 @@
   color: #d483ff;
 }
 
+/* A story operation keeps its command identity in the live HUD. The generic
+ * skirmish/progression panel above remains purple and still reads Objectives. */
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign {
+  --vm-obj-campaign-rgb: 213, 64, 82;
+  --vm-obj-campaign-accent: #eb7c88;
+  border-color: rgba(var(--vm-obj-campaign-rgb), 0.48);
+  background:
+    linear-gradient(180deg, rgba(var(--vm-obj-campaign-rgb), 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(13, 17, 31, 0.98), rgba(3, 7, 16, 0.965));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign.is-allies {
+  --vm-obj-campaign-rgb: 53, 200, 240;
+  --vm-obj-campaign-accent: #72daf7;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign.is-pact {
+  --vm-obj-campaign-rgb: 151, 91, 222;
+  --vm-obj-campaign-accent: #bf93ed;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign.is-reclamation {
+  --vm-obj-campaign-rgb: 205, 148, 51;
+  --vm-obj-campaign-accent: #e3b566;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign .vm-obj-head {
+  border-bottom-color: rgba(var(--vm-obj-campaign-rgb), 0.62);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign .vm-obj-title,
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign .vm-obj-count {
+  color: var(--vm-obj-campaign-accent);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign .vm-obj::before {
+  border-color: rgba(var(--vm-obj-campaign-rgb), 0.62);
+  background: rgba(var(--vm-obj-campaign-rgb), 0.16);
+  box-shadow: inset 0 0 calc(4 * var(--vm-u)) rgba(var(--vm-obj-campaign-rgb), 0.15);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives.is-campaign .vm-obj-fill {
+  background: linear-gradient(90deg, rgba(var(--vm-obj-campaign-rgb), 0.82), var(--vm-obj-campaign-accent));
+  box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--vm-obj-campaign-rgb), 0.5);
+}
+
 .vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-list {
   gap: calc(11 * var(--vm-u));
 }
@@ -1055,13 +1161,20 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-top {
-  height: calc(13 * var(--vm-u));
+  height: auto;
+  min-height: calc(13 * var(--vm-u));
+  align-items: flex-start;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-name {
   font-size: calc(10.5 * var(--vm-u));
   font-weight: 600;
   letter-spacing: 0.025em;
+  line-height: 1.22;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-desc {

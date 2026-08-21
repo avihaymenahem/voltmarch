@@ -556,7 +556,7 @@ Three shipped facts that constrain the tuning:
 | **Cutscenes** | **CUT.** The look bible bans depth of field and motion blur — the cinematic toolkit — and a pre-rendered cutscene is a downloaded asset by definition. **No video in `public/`.** |
 | **A fifth exception** | **Recommend NO.** If the author wants painted portraits, take it **once, at the start, for portraits only**, on the `tools/brand.mjs` pattern: sources outside `public/`, a generator resolving paths **from the script's own location, never the caller's cwd** (that bug has shipped three times), a `README.md`, and CLAUDE.md's numbered list + `README.md` + the credits screen edited in the **same commit** — `tests/credits-truthful.spec.ts` checks the credits against `public/` recursively. |
 
-**`npm run shots` cannot see any of this.** Thirteen posed fixtures, `?shot=` never constructs a Shell, `__vmProgression` is never published. **Do not read an unchanged 91.1% grade as evidence anything campaign-related is fine.** That is bounded and honest, and it is not "no gate": `tests/campaign-screens.spec.ts` mounts each screen under vitest and asserts structure and word survival, exactly as `manual.spec.ts` does for 17 pages.
+**`npm run shots` cannot see any of this.** Thirteen posed fixtures, `?shot=` never constructs a Shell, `__vmProgression` is never published. **Do not read an unchanged 91.1% grade as evidence anything campaign-related is fine.** Campaign UI has its own product-path instrument now: `npm run campaign:shots` drives the published Shell through fresh, partially completed and fully completed selectors; all four faction briefings; a replay briefing with earned medal; the results-to-next-briefing handoff; a real operation boot; live commander traffic and its transmission log; both pages of a long Reclamation order; four faction after-action languages; Director-style graded victory publication; the public Retry lifecycle; a graded defeat; and separately armed chapter finales at 2560×1440, 1280×720 and the 1024×640 compact desktop — fifty-seven captures. Structural mounts remain split by the surfaces they own (`campaign-chapters.spec.ts`, `campaign-briefing.spec.ts`, `campaign-results-presentation.spec.ts`) rather than hidden behind the planned but never-created `campaign-screens.spec.ts` name.
 
 ### 6.2 Maps — 7 presets, 35 battlefields, no new preset in v1
 
@@ -622,7 +622,7 @@ Consequences: **briefings are lazy-loaded per operation, never preloaded**, via 
 
 **Per-chapter wiki pages: recommended against at first ship.** They are a second copy of the campaign's own corpus and nothing gates their numbers.
 
-**`tests/campaign-text.spec.ts`**, in `wiki-numbers.spec.ts`'s shape: every page parses; every word of four letters or more survives into the rendered tree; **no briefing body contains a bare integer that an `Operations.ts` field also holds**; and a minimum-row assertion so a parser matching nothing fails loudly. Objectives render from data, beneath the prose, never inside it.
+**`tests/campaign-text.spec.ts`** now derives all 37 operation rows and all 648 dialogue effects from the shipped table. It holds a four-line-per-operation non-vacuity floor, player-facing whitespace/control/internal-key hygiene, briefing-number shadowing, speaker rail length, and the live comms pacing contract: at most three 210-character pages per transmission and no page advancing faster than 14 characters per second. Objective word survival is mounted in `campaign-briefing.spec.ts`; selector copy survival is mounted in `campaign-chapters.spec.ts`; `campaign-comms-channel.spec.ts` proves paging loses no word and the full original remains in history.
 
 ---
 
@@ -727,12 +727,26 @@ Every test in this repo's style: it must be able to fail, and it must fail at th
 | **G5** | `campaign-save.spec.ts` | Trigger state round-trips exactly; a save with no `CHUNK_CMPN` loads with default state; **reordering triggers changes nothing a save restores**; **a save from operation A is REFUSED against operation B on the same preset and seed**; `structuralHash()` unchanged, asserted **by value**; **a paid secondary does not pay twice after save-scum.** |
 | **G6** | `campaign-replay.spec.ts` + the `replay-probe` campaign arm **in CI** | A recorded operation replays to matching checkpoint hashes **and deleting one command diverges**; a campaign header round-trips through a v2 file; a genuinely v2-era file still parses. |
 | **G7** | `campaign-gate.spec.ts` | **`suppressProgression` asserted through the BUS** (emit `match:started`, assert `inMatch() === false`); `setCampaignRoster` cleared on **every** exit — win, loss, retry, abandon, quit; **every new `ShellState` reachable from `'playing'` and back is in `MID_MATCH_STATES`**, driven through the state machine rather than read off the array. |
-| **G8** | `campaign-wiring.spec.ts` + `reward-wiring.spec.ts` extension | Every objective declaring `credits` resolves to the one payout site; no primary declares credits; **no campaign operation constructs a `Reward`**; `stillMissing` rewritten as a repo-wide `grant(` scan with a named allowlist. |
+| **G8** | `campaign-wiring.spec.ts` + `reward-wiring.spec.ts` | Every objective declaring `credits` is a positive secondary with a completion effect and resolves through the paid-once session ledger; **no campaign operation constructs a `Reward`**; the single campaign-side `Economy.grant` call lives in the runtime sink shared by objective payouts and the intentionally authored `grantCredits` effect. |
 | **G9** | `campaign-bundle-isolation.spec.ts` | No operation id or fingerprint phrase in `index-*.js`; **the non-vacuity half — one other chunk carries every operation**, so the test cannot pass by the campaign having been deleted; a static import from `campaign.system.ts` to `Director.ts` fails on purpose; **no `*.system.ts` statically imports `src/shell/**`.** |
-| **G10** | `campaign-text.spec.ts` + `campaign-screens.spec.ts` | Every page parses; every word ≥4 letters survives into the rendered tree; **no bare integer in prose that a data field also holds**; a minimum-row floor; every screen mounts and its structure holds. |
+| **G10** | `campaign-text.spec.ts` + `campaign-chapters.spec.ts` + `campaign-briefing.spec.ts` + `campaign-results-presentation.spec.ts` + `npm run campaign:shots` | The 37-operation / 648-line corpus is non-vacuous and clean; briefing prose does not shadow live numeric tuning; selector and briefing mount with authored copy; result presentation semantics hold; the real product route is captured at 1440p and 720p. |
 | **G11** | `campaign-length.spec.ts` | `sum(parSec) >= 36000`. |
 | **G12** | `achievements.spec.ts` | **Every achievement driven to completion from a synthetic trace.** One with no completing trace does not ship. |
 | **G13** | `wiki-numbers.spec.ts` extension | Operation and chapter counts re-derived from `CAMPAIGNS`; `MISSIONS.length` and per-scope counts re-derived. |
+
+**G2 delivery note (2026-08-21):** `campaign-reachability.spec.ts` now computes the objective-state
+closure for all 37 operations, requires a reachable win, refuses objective-gated dead branches,
+requires a reachable completion for every primary, and rejects a loss that is certainly true on the
+first director tick. `validateCampaign` also rejects fractional/negative/inverted count bounds and
+non-finite/negative/inverted credit bounds. The larger world-domain claim in G2(b) remains shared
+with the headless map, roster, spawn-ground and human playtest gates; this static proof does not
+pretend terrain, economy pressure or practical winnability are graph properties.
+
+**G7 delivery note (2026-08-21):** the bus-side progression suppression is exercised by
+`progression-suppress.spec.ts`, current mid-match state transitions are driven by
+`match-lifecycle.spec.ts`, and `campaign-gate.spec.ts` now pins session, scenario plan, roster and
+outcome policy as one lifecycle. A failed re-arm also disarms the previous operation before
+returning `null`, so a rejected replay/save id cannot leak old campaign rules into the next match.
 
 **The standing gates, unchanged, at every step:** `npm run typecheck` (four invocations — run **`npm ci --prefix server`** first in any fresh worktree or the fourth dies on `TS2307: Cannot find module 'ws'`), `npm test`, `npm run build`, `npm run server:test`. **G5, G6, G9 and G13 add to the `distIsCurrent()`-gated count CLAUDE.md tracks — update that number in the same commit.**
 

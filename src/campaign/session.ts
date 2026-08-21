@@ -65,6 +65,8 @@ export interface ObjectiveRow {
   readonly title: string;
   readonly kind: 'primary' | 'secondary';
   readonly status: ObjectiveStatus;
+  /** Optional one-time in-operation payout. Presentation only; the sink owns payment. */
+  readonly credits?: number;
 }
 
 /* ==========================================================================

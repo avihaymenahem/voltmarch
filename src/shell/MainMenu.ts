@@ -34,6 +34,7 @@ declare const __APP_VERSION__: string;
 
 import { MAPS } from './settings-store';
 import { saveSlots } from './LoadGame';
+import { CAMPAIGN_OPERATION_COUNT, CAMPAIGN_OPERATION_IDS } from './CampaignPresentation';
 import {
   button,
   el,
@@ -70,6 +71,23 @@ function missionsHint(): string {
   } catch {
     return '';
   }
+}
+
+/** Return-player campaign progress, without pulling the authored table into the title chunk. */
+export function campaignHint(
+  profile?: { readonly campaign?: Readonly<Record<string, number>> } | null,
+): string {
+  let source = profile;
+  if (source === undefined) {
+    try { source = readProgression()?.profile() ?? null; } catch { source = null; }
+  }
+  if (source == null) return `${CAMPAIGN_OPERATION_COUNT} operations`;
+  const rows = source.campaign ?? {};
+  const done = CAMPAIGN_OPERATION_IDS.reduce(
+    (count, id) => count + (typeof rows[id] === 'number' && rows[id] > 0 ? 1 : 0),
+    0,
+  );
+  return `${done} / ${CAMPAIGN_OPERATION_COUNT} complete`;
 }
 
 /**
@@ -154,7 +172,7 @@ export class MainMenuScreen implements Screen {
     // be telling them the wrong thing.
     nav.appendChild(button('Campaign', {
       iconName: 'flag',
-      hint: 'Four commanders',
+      hint: campaignHint(),
       onClick: () => this.shell.openCampaign(),
     }));
 
@@ -400,7 +418,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'Rajdhani — the UI typeface, SIL Open Font License 1.1',
       'The wordmark and app icons, from a supplied logo',
       'The loading screen key art, a supplied illustration',
-      'Rakhalt, Vosk and Wend campaign portraits — original AI-assisted artwork',
+      'Campaign command portraits — original AI-assisted artwork',
       'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',
       'Weapons, explosions and effects — CC0 sound libraries',
       'Warfork by Team Forbidden — CC0',

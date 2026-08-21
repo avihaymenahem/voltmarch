@@ -225,9 +225,8 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Vosk',
-          text: 'Eight hulls. There is no yard behind you and nothing to replace them with. '
-            + 'Survey 40 is where the Works publish which way the March is going — stand on '
-            + 'the pad and they publish nothing.',
+          text: 'Eight hulls. No yard behind you, no replacements. Survey 40 is where the Works '
+            + 'publish which way the March is going. Stand on the pad and they publish nothing.',
         },
         { do: 'revealArea', player: 0, area: PAD },
       ],

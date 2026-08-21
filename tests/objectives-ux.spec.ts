@@ -560,6 +560,25 @@ describe('seeing all objectives', () => {
     expect(count?.textContent).toBe('1/5');
   });
 
+  it('names and skins a campaign operation, then restores the generic skirmish header', () => {
+    const h = mountPanel([objective('m1')]);
+    const root = h.panel.root as unknown as StubElement;
+    const title = byClass(root, 'vm-obj-title');
+    const head = byClass(root, 'vm-obj-head');
+
+    h.panel.setCampaignContext('First Tap', 'soviets');
+    expect(title?.textContent).toBe('First Tap');
+    expect(head?.getAttribute('aria-label')).toBe('Objectives · First Tap');
+    expect(root.classList.contains('is-campaign')).toBe(true);
+    expect(root.classList.contains('is-soviets')).toBe(true);
+
+    h.panel.setCampaignContext(null);
+    expect(title?.textContent).toBe('Objectives');
+    expect(head?.getAttribute('aria-label')).toBe('Objectives');
+    expect(root.classList.contains('is-campaign')).toBe(false);
+    expect(root.classList.contains('is-soviets')).toBe(false);
+  });
+
   it('models a different frame share for each fold', () => {
     const h = mountPanel([1, 2, 3, 4, 5, 6].map((n) => objective(`m${n}`)));
     const summary = h.panel.objectivesFrameShareModelled(1280, 720);
@@ -1046,6 +1065,35 @@ describe('the campaign view carries the fact across the seam', () => {
       { text: '', hidden: true },
     ]);
     for (const r of visibleReadouts(panel)) expect(r.text).not.toContain('/');
+  });
+
+  it('carries an authored campaign payout into the live row and completion banner', () => {
+    prepareOperation(fakeSession([{
+      id: 'bonus',
+      title: 'Keep the survey mast standing',
+      kind: 'secondary',
+      status: 'complete',
+      credits: 500,
+    }]));
+    adoptPreparedOperation();
+    const view = campaignObjectiveView();
+    if (view === null) throw new Error('an armed operation must publish a view');
+    const objective = view.activeObjectives()[0];
+    expect(objective.description).toBe('Bonus objective · +500 credits');
+    expect(objective.reward).toEqual([{ kind: 'credits', amount: 500 }]);
+    expect(rewardSummary(objective.reward)).toBe('+500 credits');
+  });
+
+  it('keeps primary and optional campaign work distinct in the live tower', () => {
+    prepareOperation(fakeSession([
+      { id: 'main', title: 'Hold the line', kind: 'primary', status: 'active' },
+      { id: 'side', title: 'Keep the depot', kind: 'secondary', status: 'active' },
+    ]));
+    adoptPreparedOperation();
+    const view = campaignObjectiveView();
+    if (view === null) throw new Error('an armed operation must publish a view');
+    expect(view.activeObjectives().map((objective) => objective.description))
+      .toEqual(['Primary objective', 'Bonus objective']);
   });
 });
 

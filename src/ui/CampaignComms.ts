@@ -14,37 +14,108 @@ export interface CampaignCommsMessage {
   readonly role: string;
   readonly portrait: string;
   readonly monogram: string;
+  readonly theme: 'allies' | 'neutral' | 'pact' | 'reclamation' | 'soviets';
   readonly text: string;
 }
 
-const HISTORY_MAX = 20;
-const QUEUE_MAX = 12;
+/** Fuses above the largest shipped operation, guarded by campaign-text.spec. */
+export const CAMPAIGN_COMMS_HISTORY_MAX = 64;
+export const CAMPAIGN_COMMS_QUEUE_MAX = 96;
 const MIN_LIFE = 7;
 const MAX_LIFE = 15;
 const FADE_SEC = 0.35;
+export const CAMPAIGN_COMMS_PAGE_CHARS = 210;
+
+/** Reading hold for one already-paged live-card transmission. */
+export function campaignCommsLife(text: string): number {
+  return Math.max(MIN_LIFE, Math.min(MAX_LIFE, 4.5 + text.length / 18));
+}
+
+/**
+ * Break a transmission at sentence/word boundaries before the three-line live
+ * card clips it. History keeps the original unbroken message.
+ */
+export function campaignCommsPages(
+  text: string,
+  limit = CAMPAIGN_COMMS_PAGE_CHARS,
+): readonly string[] {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (clean === '') return [''];
+  const cap = Math.max(24, Math.floor(limit));
+  const pages: string[] = [];
+  let page = '';
+  const flush = (): void => {
+    if (page !== '') pages.push(page);
+    page = '';
+  };
+  const add = (part: string): void => {
+    const next = page === '' ? part : `${page} ${part}`;
+    if (next.length <= cap) { page = next; return; }
+    flush();
+    if (part.length <= cap) { page = part; return; }
+    for (const word of part.split(' ')) {
+      const wordNext = page === '' ? word : `${page} ${word}`;
+      if (wordNext.length > cap && page !== '') flush();
+      page = page === '' ? word : `${page} ${word}`;
+    }
+  };
+  for (const sentence of clean.split(/(?<=[.!?])\s+/)) add(sentence);
+  flush();
+  return pages;
+}
+
+interface CampaignCommsPage extends CampaignCommsMessage {
+  readonly pageIndex: number;
+  readonly pageTotal: number;
+}
+
+/** The channel banner describes how the line arrived, not one generic priority. */
+export function campaignCommsChannel(message: Pick<CampaignCommsMessage, 'role' | 'theme'>): string {
+  if (message.role === 'Intercepted Signal') return 'Intercepted signal';
+  switch (message.theme) {
+    case 'allies': return 'Continental channel';
+    case 'pact': return 'Conclave channel';
+    case 'reclamation': return 'House channel';
+    case 'soviets': return 'Directorate channel';
+    case 'neutral': return 'Field transmission';
+  }
+}
+
+/** Wrapped continuation pages belong to the same transmission and stay silent. */
+export function campaignCommsSignals(pageIndex: number): boolean {
+  return pageIndex === 0;
+}
+
+/** The advance control always names the action it will actually perform. */
+export function campaignCommsAdvanceLabel(pending: number): string {
+  const count = Number.isFinite(pending) ? Math.max(0, Math.floor(pending)) : 0;
+  return count > 0 ? `NEXT (${count})` : 'CLOSE';
+}
 
 export class CampaignComms {
   readonly root: HTMLElement;
 
   private readonly portrait: HTMLImageElement;
   private readonly monogram: HTMLElement;
+  private readonly signal: Text;
   private readonly speaker: Text;
   private readonly role: Text;
   private readonly copy: Text;
-  private readonly queueCount: Text;
+  private readonly pageNumber: Text;
   private readonly logButton: HTMLButtonElement;
+  private readonly nextButton: HTMLButtonElement;
   private readonly historyRoot: HTMLElement;
   private readonly historyList: HTMLElement;
 
-  private readonly queue: CampaignCommsMessage[] = [];
+  private readonly queue: CampaignCommsPage[] = [];
   private readonly history: CampaignCommsMessage[] = [];
-  private active: CampaignCommsMessage | null = null;
+  private active: CampaignCommsPage | null = null;
   private age = 0;
   private life = 0;
   private fading = false;
   private historyOpen = false;
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, private readonly onSignal: (() => void) | null = null) {
     this.root = el('section', 'vm-campaign-comms vm-panel', parent);
     this.root.hidden = true;
     this.root.setAttribute('aria-label', 'Campaign communications');
@@ -60,7 +131,11 @@ export class CampaignComms {
 
     const body = el('div', 'vm-comms-body', this.root);
     const signal = el('div', 'vm-comms-signal', body);
-    signal.appendChild(document.createTextNode('Priority transmission'));
+    this.signal = document.createTextNode('Field transmission');
+    signal.appendChild(this.signal);
+    const pageNumber = el('span', 'vm-comms-page', signal);
+    this.pageNumber = document.createTextNode('');
+    pageNumber.appendChild(this.pageNumber);
     el('span', 'vm-comms-pulse', signal);
 
     const head = el('div', 'vm-comms-head', body);
@@ -81,14 +156,12 @@ export class CampaignComms {
     this.logButton.addEventListener('click', () => this.toggleHistory());
     actions.appendChild(this.logButton);
 
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.className = 'vm-comms-action is-next';
-    next.appendChild(document.createTextNode('NEXT '));
-    this.queueCount = document.createTextNode('');
-    next.appendChild(this.queueCount);
-    next.addEventListener('click', () => this.advance());
-    actions.appendChild(next);
+    this.nextButton = document.createElement('button');
+    this.nextButton.type = 'button';
+    this.nextButton.className = 'vm-comms-action is-next';
+    this.nextButton.addEventListener('click', () => this.advance());
+    actions.appendChild(this.nextButton);
+    this.updateQueueCount();
 
     const copyEl = el('p', 'vm-comms-copy', body);
     copyEl.setAttribute('aria-live', 'polite');
@@ -104,16 +177,31 @@ export class CampaignComms {
 
   push(message: CampaignCommsMessage): void {
     this.history.push(message);
-    if (this.history.length > HISTORY_MAX) this.history.shift();
+    if (this.history.length > CAMPAIGN_COMMS_HISTORY_MAX) this.history.shift();
     this.rebuildHistory();
 
+    const chunks = campaignCommsPages(message.text);
+    const pages = chunks.map((text, pageIndex): CampaignCommsPage => ({
+      ...message,
+      text,
+      pageIndex,
+      pageTotal: chunks.length,
+    }));
     if (this.active === null) {
-      this.present(message);
+      this.present(pages.shift() as CampaignCommsPage);
+      for (const page of pages) this.enqueue(page);
+      // `present()` ran before the continuation pages existed. Refresh after
+      // enqueueing or a two-page first message misleadingly opens with CLOSE.
+      this.updateQueueCount();
       return;
     }
-    if (this.queue.length >= QUEUE_MAX) this.queue.shift();
-    this.queue.push(message);
+    for (const page of pages) this.enqueue(page);
     this.updateQueueCount();
+  }
+
+  private enqueue(page: CampaignCommsPage): void {
+    if (this.queue.length >= CAMPAIGN_COMMS_QUEUE_MAX) this.queue.shift();
+    this.queue.push(page);
   }
 
   frame(dt: number): void {
@@ -121,7 +209,7 @@ export class CampaignComms {
     this.age += dt;
     if (!this.fading && this.age >= this.life) {
       if (this.queue.length > 0) {
-        this.present(this.queue.shift() as CampaignCommsMessage);
+        this.present(this.queue.shift() as CampaignCommsPage);
         return;
       }
       this.fading = true;
@@ -147,22 +235,30 @@ export class CampaignComms {
     this.root.remove();
   }
 
-  private present(message: CampaignCommsMessage): void {
+  private present(message: CampaignCommsPage): void {
     this.active = message;
     this.age = 0;
-    this.life = Math.max(MIN_LIFE, Math.min(MAX_LIFE, 4.5 + message.text.length / 18));
+    this.life = campaignCommsLife(message.text);
     this.fading = false;
     this.root.hidden = false;
-    this.root.classList.remove('is-exit', 'is-enter');
+    this.root.classList.remove(
+      'is-exit', 'is-enter', 'is-allies', 'is-neutral', 'is-pact', 'is-reclamation', 'is-soviets',
+    );
+    this.root.classList.add(`is-${message.theme}`);
 
     this.speaker.nodeValue = message.speaker;
     this.role.nodeValue = message.role;
+    this.signal.nodeValue = campaignCommsChannel(message);
+    this.pageNumber.nodeValue = message.pageTotal > 1
+      ? `${message.pageIndex + 1} / ${message.pageTotal}`
+      : '';
     this.copy.nodeValue = message.text;
     this.monogram.textContent = message.monogram;
     this.portrait.hidden = message.portrait === '';
     this.monogram.hidden = message.portrait !== '';
     if (message.portrait !== '') this.portrait.src = message.portrait;
     this.updateQueueCount();
+    if (campaignCommsSignals(message.pageIndex)) this.onSignal?.();
 
     // Restart the entry beat even when the next queued line reuses a speaker.
     void this.root.offsetWidth;
@@ -171,7 +267,7 @@ export class CampaignComms {
 
   private advance(): void {
     if (this.queue.length > 0) {
-      this.present(this.queue.shift() as CampaignCommsMessage);
+      this.present(this.queue.shift() as CampaignCommsPage);
       return;
     }
     this.hide();
@@ -195,15 +291,24 @@ export class CampaignComms {
   }
 
   private updateQueueCount(): void {
-    this.queueCount.nodeValue = this.queue.length > 0 ? `(${this.queue.length})` : '';
+    const pending = this.queue.length;
+    this.nextButton.textContent = campaignCommsAdvanceLabel(pending);
+    this.nextButton.setAttribute(
+      'aria-label',
+      pending > 0 ? `Next transmission, ${pending} remaining` : 'Close transmission',
+    );
   }
 
   private rebuildHistory(): void {
     const fragment = document.createDocumentFragment();
     for (const line of this.history) {
       const row = el('div', 'vm-comms-history-row');
-      const who = el('strong', 'vm-comms-history-speaker', row);
+      row.classList.add(`is-${line.theme}`);
+      const identity = el('span', 'vm-comms-history-identity', row);
+      const who = el('strong', 'vm-comms-history-speaker', identity);
       who.textContent = line.speaker;
+      const role = el('span', 'vm-comms-history-role', identity);
+      role.textContent = line.role;
       const copy = el('span', 'vm-comms-history-copy', row);
       copy.textContent = line.text;
       fragment.appendChild(row);
@@ -212,4 +317,3 @@ export class CampaignComms {
     this.historyList.scrollTop = this.historyList.scrollHeight;
   }
 }
-

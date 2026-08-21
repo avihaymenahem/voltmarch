@@ -325,10 +325,9 @@ export interface ObjectiveDef {
    *
    * SECONDARIES ONLY. Paying for the primary is paying for playing, and
    * `validateCampaign` refuses it at import (`validate.ts#checkOperation`, the
-   * `o.kind === 'primary'` arm). **This line named `tests/campaign-wiring.spec.ts`
-   * and no such file exists** — it is a planned deliverable, `CAMPAIGN_BUILD_SPEC.md`
-   * §G8, cited here in the present tense. The rule is real; the citation was
-   * not. `grant` rather than `deposit`
+   * `o.kind === 'primary'` arm). `tests/campaign-wiring.spec.ts` derives every
+   * paid row from the shipped table, requires its completion effect, and pins
+   * the single campaign-side `Economy.grant` sink. `grant` rather than `deposit`
    * because a scripted reward must never evaporate at a full silo; the
    * permanent `capFloor` lift is its accepted cost, and `oreWasted` is not
    * touched because that counter moves only for `CreditReason.Harvest`.
@@ -418,10 +417,9 @@ export type Condition =
    * `validateCampaign` compares the trigger's tags against the layout's
    * DECLARED `tags` set at import, and `tests/campaign-maps.spec.ts` builds
    * every operation headless and compares the declaration against what landed,
-   * in both directions. **This line credited `campaign-reachability.spec.ts`,
-   * which does not exist** — it is a planned deliverable (`CAMPAIGN_BUILD_SPEC.md`
-   * §G2) named here in the present tense. `entityDead: 'convoy'` on an operation
-   * whose layout forgot the tag fails the player on tick one.
+   * in both directions. The separate `campaign-reachability.spec.ts` gate
+   * proves the objective-dependent trigger closure reaches a win; it leaves
+   * terrain and practical playability to those builds and human campaign runs.
    */
   | { readonly on: 'entityDead'; readonly tag: string }
   /** The weakest live entity carrying `tag` is below `frac` of its maximum. */

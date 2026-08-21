@@ -45,7 +45,7 @@
  */
 
 import type { PlayerStats } from '../core/types';
-import { opponentChips, type OpponentSummary } from './settings-store';
+import { DIFFICULTIES, opponentChips, type OpponentSummary } from './settings-store';
 import { formatClock, currentObjectives, objectiveLine } from './PauseMenu';
 import { MissionsPanel, humaniseId, rewardCopy } from './Missions';
 import {
@@ -54,7 +54,12 @@ import {
   type CatalogueEntry,
   type Reward,
 } from '../ui/Objectives';
-import { campaignDebrief } from './CampaignPresentation';
+import {
+  campaignDebrief,
+  campaignFinale,
+  campaignMedalStandard,
+  campaignTheme,
+} from './CampaignPresentation';
 import {
   button,
   el,
@@ -139,6 +144,8 @@ export interface CampaignResult {
    * chunk while assembling a result.
    */
   readonly nextOperationId: string | null;
+  /** Player-facing title resolved with the id before the campaign chunk is released. */
+  readonly nextOperationTitle: string | null;
   /** 0 none, 1 bronze, 2 silver, 3 gold. */
   readonly medal: number;
   /** The objective id a loss names, or ''. */
@@ -148,6 +155,7 @@ export interface CampaignResult {
     readonly title: string;
     readonly kind: 'primary' | 'secondary';
     readonly status: 'hidden' | 'active' | 'complete' | 'failed';
+    readonly credits?: number;
   }[];
 }
 
@@ -185,10 +193,32 @@ function campaignObjectiveList(c: CampaignResult): HTMLElement {
     line.appendChild(el('span', 'vm-camp-result-mark',
       o.status === 'complete' ? '✓' : o.status === 'failed' ? '✕' : '·'));
     line.appendChild(el('span', 'vm-camp-result-text', o.title));
-    if (o.kind === 'secondary') line.appendChild(el('span', 'vm-camp-result-tag', 'Bonus'));
+    line.appendChild(el('span', `vm-camp-result-tag is-${o.kind}`,
+      o.kind === 'primary' ? 'Primary' : 'Bonus'));
+    line.appendChild(el('span', `vm-camp-result-status is-${o.status}`,
+      campaignObjectiveStatusLabel(o.status)));
+    const reward = campaignObjectiveRewardLabel(o.credits, o.status === 'complete');
+    if (reward !== '') line.appendChild(el('span', 'vm-camp-result-reward', reward));
     wrap.appendChild(line);
   }
   return wrap;
+}
+
+/** Objective state translated into an explicit after-action verdict. */
+export function campaignObjectiveStatusLabel(
+  status: CampaignResult['objectives'][number]['status'],
+): string {
+  if (status === 'complete') return 'Complete';
+  if (status === 'failed') return 'Failed';
+  if (status === 'active') return 'Not met';
+  return 'Undisclosed';
+}
+
+/** The authored payout translated into a result-state label, or nothing. */
+export function campaignObjectiveRewardLabel(credits: number | undefined, paid: boolean): string {
+  if (credits === undefined || !Number.isFinite(credits) || credits <= 0) return '';
+  const amount = Math.floor(credits).toLocaleString('en-US');
+  return paid ? `Paid +${amount} cr` : `+${amount} cr reward`;
 }
 
 export interface CampaignMedalPresentation {
@@ -199,34 +229,27 @@ export interface CampaignMedalPresentation {
 
 /** The persisted medal translated into the promise the campaign grader made. */
 export function campaignMedalPresentation(medal: number): CampaignMedalPresentation {
-  const safe = Number.isFinite(medal) ? medal : 0;
-  const tier = Math.max(0, Math.min(3, Math.floor(safe))) as 0 | 1 | 2 | 3;
-  if (tier === 3) return {
-    tier,
-    label: 'Gold Medal',
-    detail: 'Gold standard · all bonus objectives · Hard or above',
-  };
-  if (tier === 2) return {
-    tier,
-    label: 'Silver Medal',
-    detail: 'Silver standard · all bonus objectives',
-  };
-  if (tier === 1) return {
-    tier,
-    label: 'Bronze Medal',
-    detail: 'Operation complete',
-  };
-  return { tier, label: 'No Medal', detail: 'No campaign award recorded' };
+  const standard = campaignMedalStandard(medal);
+  return { tier: standard.tier, label: standard.label, detail: standard.requirement };
+}
+
+/** The setup index translated into the grade named on brief and debrief. */
+export function campaignGradeLabel(difficulty: number): string {
+  const safe = Number.isFinite(difficulty) ? Math.round(difficulty) : 1;
+  return DIFFICULTIES[Math.max(0, Math.min(DIFFICULTIES.length - 1, safe))] ?? 'Normal';
 }
 
 /** Campaign-only material that belongs in the screen's one scrollable band. */
-function campaignAfterAction(c: CampaignResult, won: boolean): HTMLElement {
+function campaignAfterAction(c: CampaignResult, won: boolean, difficulty: number): HTMLElement {
   const wrap = el('section', `vm-camp-after-action ${won ? 'is-win' : 'is-loss'}`);
+  const theme = campaignTheme(c.operationId);
+  if (theme !== null) wrap.classList.add(`is-${theme}`);
   const report = el('div', 'vm-camp-after-report');
 
   const heading = el('div', 'vm-camp-after-heading');
   heading.appendChild(el('span', 'vm-camp-after-kicker', 'After action report'));
   heading.appendChild(el('span', 'vm-camp-after-operation', c.title));
+  heading.appendChild(el('span', 'vm-camp-after-grade', `${campaignGradeLabel(difficulty)} grade`));
   report.appendChild(heading);
 
   const award = campaignMedalPresentation(c.medal);
@@ -243,9 +266,29 @@ function campaignAfterAction(c: CampaignResult, won: boolean): HTMLElement {
   medal.appendChild(awardCopy);
   report.appendChild(medal);
   report.appendChild(campaignObjectiveList(c));
+  if (won && c.nextOperationId === null) {
+    const finale = campaignFinale(c.operationId);
+    const complete = el('div', 'vm-camp-finale');
+    complete.appendChild(icon('flag', 15));
+    const copy = el('div', 'vm-camp-finale-copy');
+    copy.appendChild(el('strong', 'vm-camp-finale-title', 'Campaign complete'));
+    copy.appendChild(el(
+      'strong',
+      'vm-camp-finale-verdict',
+      finale?.title ?? `${c.chapterTitle} is secured`,
+    ));
+    if (finale !== null) copy.appendChild(el('span', 'vm-camp-finale-note', finale.message));
+    complete.appendChild(copy);
+    report.appendChild(complete);
+  }
   wrap.appendChild(report);
 
-  const debrief = campaignDebrief(c.operationId, won);
+  const failed = c.objectives.find((o) => o.id === c.reason)
+    ?? c.objectives.find((o) => o.status === 'failed' && o.kind === 'primary');
+  const debrief = campaignDebrief(c.operationId, won, {
+    medal: c.medal,
+    failedObjective: failed?.title,
+  });
   if (debrief !== null) {
     const command = el('aside', 'vm-camp-debrief-command');
     const visual = el('div', 'vm-camp-debrief-visual');
@@ -463,7 +506,7 @@ export class EndScreen implements Screen {
      */
     const reveal = this.buildReveal();
     const progress = this.buildProgress();
-    const afterAction = c === undefined ? null : campaignAfterAction(c, r.won);
+    const afterAction = c === undefined ? null : campaignAfterAction(c, r.won, r.difficulty);
     if (afterAction !== null || reveal !== null || progress !== null) {
       const body = el('div', 'vm-end-body');
       if (afterAction !== null) body.appendChild(afterAction);
@@ -500,12 +543,23 @@ export class EndScreen implements Screen {
       // is Main Menu makes a nine-operation chapter feel like nine separate
       // skirmishes — and Retry is the most-pressed button in any campaign, so
       // it never leaves the row, it just stops being the emphasis.
+      //
+      // FORWARD MEANS THE NEXT BRIEFING, NEVER A SILENT DEPLOY. The briefing is
+      // where objectives, combat grade, reserve, authorisations and commander
+      // intent live; skipping it made this action materially different from
+      // choosing the same operation in the campaign dossier. Retire the ended
+      // match first as the Campaign action below does, so Back from the next
+      // briefing cannot leave an old operation world masquerading as the menu
+      // backdrop.
       const next = r.won ? c.nextOperationId : null;
       if (next !== null) {
         foot.appendChild(button('Next Operation', {
           iconName: 'swords',
+          hint: c.nextOperationTitle ?? undefined,
           variant: 'primary',
-          onClick: () => { void this.shell.startOperation(next); },
+          onClick: () => {
+            void this.shell.quitToMenu().then(() => this.shell.openBriefing(next));
+          },
         }));
       }
       foot.appendChild(button('Retry', {
@@ -513,8 +567,10 @@ export class EndScreen implements Screen {
         variant: r.won || next !== null ? 'default' : 'primary',
         onClick: () => { void this.shell.retryOperation(); },
       }));
-      foot.appendChild(button('Campaign', {
+      const campaignComplete = r.won && c.nextOperationId === null;
+      foot.appendChild(button(campaignComplete ? 'Campaign Complete' : 'Campaign', {
         iconName: 'flag',
+        variant: campaignComplete ? 'primary' : 'default',
         onClick: () => { void this.shell.quitToMenu().then(() => this.shell.openCampaign()); },
       }));
     } else {

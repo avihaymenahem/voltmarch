@@ -49,14 +49,9 @@ const CAMPAIGN = join(REPO, 'src', 'campaign');
  * Each entry must be a citation whose own sentence says the file is absent. An
  * entry that starts existing fails the second assertion below — so creating
  * `campaign-wiring.spec.ts` forces somebody to come back here and to the
- * comment that describes it as missing.
+ * comment that describes it as missing. Empty today: every cited spec exists.
  */
-const KNOWN_ABSENT: Readonly<Record<string, string>> = {
-  'campaign-wiring.spec.ts':
-    "types.ts's `credits` block names it to record that the citation was false: the "
-    + 'no-paid-primary rule is real and lives in validate.ts#checkOperation, and the spec is a '
-    + 'planned deliverable (CAMPAIGN_BUILD_SPEC.md §G8) that was quoted in the present tense.',
-};
+const KNOWN_ABSENT: Readonly<Record<string, string>> = {};
 
 /** Every `.ts` under `src/campaign/`, recursively. */
 function campaignFiles(dir = CAMPAIGN): string[] {

@@ -43,6 +43,7 @@ import {
 } from '../game/Replay';
 import { playbackReport, type PlaybackReport } from '../game/Playback';
 import { buildVersion } from '../game/replay.system';
+import { campaignOperationIdentity } from './CampaignPresentation';
 import { formatClock } from './PauseMenu';
 import { MAPS, mapById, type MapChoice } from './settings-store';
 import {
@@ -123,7 +124,13 @@ export function replayLengthTicks(file: ReplayFile): number {
 export function replaySummary(file: ReplayFile): string {
   const length = formatClock(replayLengthTicks(file) / SIM_HZ);
   const n = file.commands.length;
-  return `${replayMap(file.header).name} · ${replayMatchup(file.header)} · ${length} · `
+  const operation = file.header.campaign === undefined
+    ? null
+    : campaignOperationIdentity(file.header.campaign.operation);
+  const where = operation === null
+    ? replayMap(file.header).name
+    : `${operation.chapterTitle} · ${operation.title} · ${replayMap(file.header).name}`;
+  return `${where} · ${replayMatchup(file.header)} · ${length} · `
     + `${n} ${n === 1 ? 'command' : 'commands'}`;
 }
 
@@ -158,7 +165,7 @@ export class ReplaysScreen implements Screen {
     recent.appendChild(el('h3', 'vm-h3', 'Last Match'));
     if (last === null) {
       recent.appendChild(el('p', 'vm-replays-note',
-        'Nothing yet this session. Play a skirmish and it will appear here.'));
+        'Nothing yet this session. Finish or leave a battle and it will appear here.'));
     } else {
       recent.appendChild(el('p', 'vm-replays-note', replaySummary(last)));
       const actions = el('div', 'vm-replay-actions');
@@ -284,7 +291,11 @@ export class ReplaysScreen implements Screen {
    */
   private download(file: ReplayFile): void {
     const h = file.header;
-    const name = `voltmarch-${replayMap(h).id}-${(h.simSeed >>> 0).toString(16)}.json`;
+    const operation = h.campaign === undefined
+      ? null
+      : campaignOperationIdentity(h.campaign.operation);
+    const subject = operation?.id.replace(/[^a-z0-9.-]+/gi, '-') ?? replayMap(h).id;
+    const name = `voltmarch-${subject}-${(h.simSeed >>> 0).toString(16)}.json`;
     const blob = new Blob([JSON.stringify(file)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -340,8 +351,15 @@ export class ReplayBar {
     const root = el('div', 'vm-replay-bar');
 
     const badge = el('div', 'vm-replay-badge');
+    const operation = file.header.campaign === undefined
+      ? null
+      : campaignOperationIdentity(file.header.campaign.operation);
     badge.appendChild(icon('monitor', 14));
-    badge.appendChild(el('span', undefined, 'Replay'));
+    badge.appendChild(el('span', 'vm-replay-badge-label', operation?.title ?? 'Replay'));
+    if (operation !== null) {
+      badge.title = `Campaign replay · ${operation.chapterTitle} · ${operation.title}`;
+      badge.classList.add(`is-${operation.theme}`);
+    }
     root.appendChild(badge);
 
     this.playBtn = button('Pause', {

@@ -100,9 +100,9 @@ export type HudCommandAction = 'move' | 'attack' | 'guard' | 'stop' | 'scatter';
 
 /**
  * Abstract UI sounds. The HUD refuses to invent a sound and the audio module
- * refuses to reach into the HUD; `hud.system.ts` owns the four-line mapping.
+ * refuses to reach into the HUD; `hud.system.ts` owns the cue mapping.
  */
-export type HudSoundCue = 'hover' | 'click' | 'error' | 'tab';
+export type HudSoundCue = 'hover' | 'click' | 'error' | 'signal' | 'tab';
 
 /** Tooltip content the HUD can supply but `HudCameo` does not carry. */
 export interface BuildExtras {

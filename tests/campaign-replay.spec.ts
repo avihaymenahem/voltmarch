@@ -52,6 +52,7 @@ import type { ReplayCampaign, ReplayFile, ReplayHeader } from '../src/game/Repla
 import {
   adoptPreparedPlayback, playbackCampaignFault, playbackIssue, preparePlayback,
 } from '../src/game/Playback';
+import { replaySummary } from '../src/shell/Replays';
 
 const P0 = 0 as PlayerId;
 const CX = MAP_SIZE * 0.5;
@@ -178,6 +179,29 @@ describe('the header carries which operation was played', () => {
 
     const raw = JSON.parse(rec.serialise()) as { header: Record<string, unknown> };
     expect(Object.prototype.hasOwnProperty.call(raw.header, 'campaign')).toBe(false);
+  });
+});
+
+describe('the replay library names campaign recordings as operations', () => {
+  it('keeps chapter, operation and battlefield together in the summary', () => {
+    const file: ReplayFile = {
+      header: { ...HEADER, formatVersion: REPLAY_FORMAT_VERSION_CAMPAIGN, campaign: S1 },
+      commands: [],
+      checks: [],
+    };
+    const summary = replaySummary(file);
+    expect(summary).toContain('Hold the Seam');
+    expect(summary).toContain('First Tap');
+    expect(summary).toContain('Airbase Flats');
+    expect(summary).toContain('Soviet Union vs Allied Forces');
+  });
+
+  it('leaves an ordinary skirmish summary operation-free', () => {
+    const file: ReplayFile = { header: { ...HEADER }, commands: [], checks: [] };
+    const summary = replaySummary(file);
+    expect(summary).toContain('Airbase Flats');
+    expect(summary).not.toContain('Hold the Seam');
+    expect(summary).not.toContain('First Tap');
   });
 });
 

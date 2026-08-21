@@ -90,10 +90,16 @@ Five shipped asset groups are not generated from runtime code, all deliberate:
   one whole; that threshold is measured off the artwork rather than picked, and
   `tests/boot-splash.spec.ts` re-derives it. A missing or corrupt file degrades to exactly the
   curtain that shipped before it, wordmark included.
-- **Campaign character portraits** in `public/campaign/portraits/` — Rakhalt and Vosk, original
-  AI-assisted artwork generated for VOLTMARCH's briefing and in-match communications surfaces.
+- **Campaign character portraits** in `public/campaign/portraits/` — the nineteen-character authored
+  command cast, original AI-assisted artwork generated for VOLTMARCH's briefing, debrief and
+  in-match communications surfaces.
   They are interface art, not meshes or textures used by the procedural game world; provenance and
   delivery details live in `public/campaign/README.md`.
+- **Campaign command surfaces** — faction-authored briefing and loading transitions, portrait
+  communications with a persistent transmission log, operation-aware pause dossiers, save-row
+  identity and medal-bearing after-action reports across all 37 operations. Briefings disclose
+  deployment, starting reserve, field-catalogue authorization, medal standards and visible bonus
+  payouts; live objectives carry those payouts through completion and after action.
 - **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the

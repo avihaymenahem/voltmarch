@@ -47,12 +47,13 @@ in `public/`:
    before this existed, wordmark included, rather than to a black rectangle with a progress bar.
 
    **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
-4. **Campaign character portraits** in `public/campaign/portraits/` — `rakhalt.webp` and
-   `vosk.webp`, original AI-assisted artwork generated with OpenAI's built-in image generation
-   tool on 2026-08-21 for the gold-master campaign slice. These are campaign/interface images, not
-   models or textures used by the procedural game world. The shipped files are 640 x 640 WebP
-   delivery derivatives; see `public/campaign/README.md`. The credits screen names them, and
-   `tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family.
+4. **Campaign character portraits** in `public/campaign/portraits/` — nineteen authored command-cast
+   portraits, original AI-assisted artwork generated with OpenAI's built-in image generation tool
+   on 2026-08-21. These are campaign/interface images, not models or textures used by the procedural
+   game world. The shipped files are 640 x 640 WebP delivery derivatives; the complete cast and
+   palette contract live in `public/campaign/README.md`. The credits screen names the family, and
+   `tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family while
+   `tests/campaign-portrait-assets.spec.ts` checks every referenced portrait.
 
 5. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two

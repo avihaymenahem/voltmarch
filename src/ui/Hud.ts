@@ -1076,7 +1076,10 @@ export class Hud {
     this.toasts = new ToastStack(this.root, (parent, kind) => {
       parent.appendChild(makeIcon(TOAST_ICONS[kind], 'vm-icon'));
     });
-    this.campaignComms = new CampaignComms(this.root);
+    // One restrained radio chirp per authored transmission. Continuation pages
+    // are filtered inside CampaignComms, and the abstract cue keeps mute and
+    // mixer ownership in hud.system.ts with every other HUD sound.
+    this.campaignComms = new CampaignComms(this.root, () => this.soundHook?.('signal'));
 
     /* -- pooled state ---------------------------------------------------- */
     this.localSnapshot = {

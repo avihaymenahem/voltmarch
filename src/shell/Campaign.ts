@@ -62,9 +62,16 @@
  * pressed.
  * ========================================================================== */
 
-import { el, button, focusable, icon, pageFrame, panel } from './Shell';
+import { el, button, chooser, focusable, icon, pageFrame, panel } from './Shell';
 import type { Screen, Shell } from './Shell';
-import { campaignBriefing } from './CampaignPresentation';
+import {
+  campaignBriefing,
+  campaignMedalStandard,
+  campaignTheme,
+  preloadCampaignPortraits,
+} from './CampaignPresentation';
+import { unlockAllActive } from './unlockall.system';
+import { DIFFICULTIES } from './settings-store';
 
 /* ==========================================================================
  * 1. THE LAZY TABLE
@@ -86,14 +93,18 @@ import { campaignBriefing } from './CampaignPresentation';
  * structural type that omits a field does not merely fail to READ it: it makes
  * the rule that needs it unexpressible.
  *
- * It mirrors `ObjectiveDef` in `src/campaign/types.ts` field for field —
- * `credits` excepted, which no screen here shows. Both sides are checked
- * against their own copy; keep the two in step.
+ * It mirrors the fields `BriefingScreen` consumes from `ObjectiveDef` in
+ * `src/campaign/types.ts`. `credits` is deliberately present now: a visible
+ * optional objective must disclose the payout it already grants, while the
+ * `hidden` filter below keeps both its title and reward off the briefing.
+ * Both sides are checked against their own copy; keep the two in step.
  */
 interface ObjectiveView {
   readonly id: string;
   readonly kind: 'primary' | 'secondary';
   readonly title: string;
+  /** Optional in-operation payout, granted once when this objective completes. */
+  readonly credits?: number;
   /** Hidden until a `setObjective` effect reveals it, IN THE MATCH. */
   readonly hidden?: boolean;
 }
@@ -105,6 +116,13 @@ interface OperationView {
   readonly beat: string;
   readonly parSec: number;
   readonly requires: readonly string[];
+  readonly map: {
+    readonly opening: 'base' | 'force' | 'mcv';
+    readonly credits: number;
+  };
+  readonly roster: {
+    readonly player: readonly string[];
+  };
   readonly objectives: readonly ObjectiveView[];
 }
 
@@ -118,6 +136,13 @@ interface ChapterView {
 interface CampaignModule {
   readonly CAMPAIGNS: readonly ChapterView[];
 }
+
+const CHAPTER_COMMAND: Readonly<Record<string, string>> = {
+  soviets: 'Directorate campaign',
+  allies: 'Continental command',
+  pact: 'Meridian conclave',
+  reclamation: 'Salvage houses',
+};
 
 let pending: Promise<CampaignModule> | null = null;
 
@@ -253,16 +278,25 @@ export class CampaignScreen implements Screen {
   mount(host: HTMLElement): void {
     this.host = host;
     host.classList.add('vm-page');
+    // The first portrait is needed on Briefing, before Deploy. Begin decoding
+    // the small cast as soon as Campaign is chosen; the loader is idempotent
+    // and Shell.startOperation repeats it only for direct/deep-link launches.
+    preloadCampaignPortraits();
     const { root, body } = pageFrame('Campaign', () => { this.shell.showMenu(); });
+    root.classList.add('vm-campaign-page');
     host.appendChild(root);
 
     const note = el('p', 'vm-camp-note');
-    note.append(
+    const noteCopy = el('span', 'vm-camp-note-copy');
+    noteCopy.append(
       'Four campaigns, open from the start. ',
       el('strong', undefined, 'Soviets first'),
       ' is the recommended order — it is the only one nothing else spoils, and it is the order the '
       + 'factions are easiest to learn in.',
     );
+    note.appendChild(noteCopy);
+    const overall = el('span', 'vm-camp-overall', 'Loading campaign record…');
+    note.appendChild(overall);
     body.appendChild(note);
 
     const list = el('div', 'vm-camp-chapters');
@@ -279,6 +313,31 @@ export class CampaignScreen implements Screen {
         return;
       }
 
+      const operationIds = new Set(this.chapters.flatMap((chapter) => (
+        chapter.operations.map((operation) => operation.id)
+      )));
+      const completed = [...this.done.keys()].filter((id) => operationIds.has(id)).length;
+      const gold = [...this.done.entries()].filter(([id, medal]) => (
+        operationIds.has(id) && medal >= 3
+      )).length;
+      const overallCopy = el('span', 'vm-camp-overall-copy',
+        `${completed} / ${operationIds.size} complete${gold > 0 ? ` · ${gold} gold` : ''}`);
+      const overallTrack = el('span', 'vm-camp-overall-track');
+      const overallFill = el('span', 'vm-camp-overall-fill');
+      overallFill.style.setProperty('--vm-camp-overall-progress',
+        `${Math.round((completed / operationIds.size) * 100)}%`);
+      overallTrack.appendChild(overallFill);
+      // Clear the loading copy before replacing its children. Browsers do
+      // this as part of replaceChildren; spelling it out also keeps the tiny
+      // DOM harness honest about the transition from loading to progress.
+      overall.textContent = '';
+      overall.replaceChildren(overallCopy, overallTrack);
+      overall.setAttribute('role', 'progressbar');
+      overall.setAttribute('aria-label', 'Overall campaign completion');
+      overall.setAttribute('aria-valuemin', '0');
+      overall.setAttribute('aria-valuemax', String(operationIds.size));
+      overall.setAttribute('aria-valuenow', String(completed));
+
       const cards = el('div', 'vm-camp-cards');
       this.cards = [];
       for (let i = 0; i < this.chapters.length; i++) {
@@ -291,7 +350,7 @@ export class CampaignScreen implements Screen {
 
       this.opsHost = el('div', 'vm-camp-ops-host');
       list.appendChild(this.opsHost);
-      this.select(landingChapter(this.chapters, this.done));
+      this.select(landingChapter(this.chapters, this.done), true);
     }).catch((err: unknown) => {
       if (this.disposed) return;
       list.replaceChildren();
@@ -312,7 +371,7 @@ export class CampaignScreen implements Screen {
    * gamepad player to the top of the ring. Only `opsHost` is replaced, and
    * nothing in it is focused at the moment of the swap.
    */
-  private select(id: string | null): void {
+  private select(id: string | null, revealCurrent = false): void {
     // Pressing the card that is already open rebuilds nothing. Cheap, and it
     // keeps a repeated press from swapping the list out from under a pointer.
     if (this.selected === id && this.opsHost !== null) return;
@@ -327,10 +386,88 @@ export class CampaignScreen implements Screen {
     if (ch === undefined) return;
     host.setAttribute('aria-label', ch.title);
     const card = panel('vm-camp-chapter');
+    const theme = campaignTheme(ch.id);
+    if (theme !== null) card.classList.add(`is-${theme}`);
+
+    const complete = ch.operations.filter((o) => this.done.has(o.id)).length;
+    const chapterComplete = complete === ch.operations.length;
+    const current = ch.operations.find((op) => {
+      if (this.done.has(op.id)) return false;
+      return unlockAllActive() || op.requires.every((required) => this.done.has(required));
+    });
+    const head = el('div', 'vm-camp-chapter-head');
+    const identity = el('div', 'vm-camp-chapter-identity');
+    identity.appendChild(el('span', 'vm-camp-chapter-command',
+      CHAPTER_COMMAND[ch.id] ?? 'Campaign command'));
+    identity.appendChild(el('h2', 'vm-camp-chapter-title', ch.title));
+    head.appendChild(identity);
+
+    // Keep the operation deck connected to the person who will brief the
+    // next deployment. A finished chapter falls back to its finale commander,
+    // so revisiting a completed campaign never leaves an empty identity well.
+    const commandOp = current ?? ch.operations[ch.operations.length - 1];
+    if (commandOp !== undefined) {
+      const presentation = campaignBriefing(commandOp.id);
+      if (presentation !== null && presentation.commander.portrait !== '') {
+        const commander = el('div', 'vm-camp-chapter-commander');
+        const portrait = document.createElement('img');
+        portrait.className = 'vm-camp-chapter-commander-portrait';
+        portrait.setAttribute('src', presentation.commander.portrait);
+        portrait.setAttribute('alt', '');
+        portrait.setAttribute('aria-hidden', 'true');
+        portrait.setAttribute('decoding', 'async');
+        portrait.setAttribute('draggable', 'false');
+        commander.appendChild(portrait);
+        const copy = el('span', 'vm-camp-chapter-commander-copy');
+        copy.appendChild(el('span', 'vm-camp-chapter-commander-label',
+          chapterComplete ? 'Final command' : 'Next briefing'));
+        copy.appendChild(el('strong', 'vm-camp-chapter-commander-name',
+          presentation.commander.name));
+        commander.appendChild(copy);
+        head.appendChild(commander);
+      }
+    }
+
+    const status = el('div', 'vm-camp-chapter-status');
+    if (chapterComplete) status.appendChild(el('strong', 'vm-camp-chapter-complete', 'Campaign complete'));
+    status.appendChild(el('span', 'vm-camp-chapter-count',
+      `${complete} / ${ch.operations.length} complete`));
+    head.appendChild(status);
+
+    // COMPLETED REPLAYS CAN PUSH THE CURRENT ROW BELOW A SHORT DESKTOP FOLD.
+    // The dossier already names the next commander in its pinned header, so
+    // put the matching forward action there as well. The authored row remains
+    // in sequence below (and still owns medal/lock detail); this is a stable
+    // continuation route, not a second representation of progression.
+    if (current !== undefined) {
+      const continueButton = button('Continue', {
+        iconName: 'swords',
+        hint: current.title,
+        variant: 'primary',
+        onClick: () => { this.shell.openBriefing(current.id); },
+      });
+      continueButton.classList.add('vm-camp-chapter-continue');
+      head.appendChild(continueButton);
+    }
+    card.appendChild(head);
+    card.appendChild(el('p', 'vm-camp-chapter-blurb', ch.blurb));
+
+    let currentRow: HTMLElement | null = null;
     const ops = el('div', 'vm-camp-ops');
-    for (const op of ch.operations) ops.appendChild(this.operationRow(ch, op, this.done));
+    for (const op of ch.operations) {
+      const row = this.operationRow(ch, op, this.done, op.id === current?.id);
+      if (op.id === current?.id) currentRow = row;
+      ops.appendChild(row);
+    }
     card.appendChild(ops);
     host.appendChild(card);
+    // On initial entry, bring the actionable row into the nearest visible
+    // edge. A manual chapter press leaves scroll ownership with the player.
+    if (revealCurrent && currentRow !== null && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!this.disposed) currentRow?.scrollIntoView({ block: 'nearest' });
+      });
+    }
   }
 
   /**
@@ -346,19 +483,59 @@ export class CampaignScreen implements Screen {
    */
   private chapterCard(ch: ChapterView, index: number): HTMLElement {
     const card = el('button', 'vm-card vm-camp-card');
+    // Stable product semantics for accessibility, visual QA and future gamepad
+    // automation. The authored id survives copy and ordering changes; the
+    // visible title deliberately remains the player-facing label.
+    card.setAttribute('data-chapter-id', ch.id);
+    const theme = campaignTheme(ch.id);
+    if (theme !== null) card.classList.add(`is-${theme}`);
     card.type = 'button';
     card.id = `vm-camp-card-${index}`;
     card.setAttribute('aria-pressed', 'false');
     card.appendChild(el('div', 'vm-card-stripe'));
+
+    // The chapter selector is the player's first faction read. Reuse the
+    // opening operation's authored commander rather than adding a second
+    // chapter-art registry that can drift away from the briefing dossier.
+    const opening = ch.operations[0];
+    const command = opening === undefined ? null : campaignBriefing(opening.id);
+    if (command !== null && command.commander.portrait !== '') {
+      const portrait = document.createElement('img');
+      portrait.className = 'vm-camp-card-portrait';
+      portrait.setAttribute('src', command.commander.portrait);
+      portrait.setAttribute('alt', '');
+      portrait.setAttribute('aria-hidden', 'true');
+      portrait.setAttribute('decoding', 'async');
+      portrait.setAttribute('draggable', 'false');
+      card.appendChild(portrait);
+    }
+
     card.appendChild(el('div', 'vm-card-name', ch.title));
+    card.appendChild(el('div', 'vm-camp-card-command',
+      CHAPTER_COMMAND[ch.id] ?? 'Campaign command'));
     card.appendChild(el('div', 'vm-card-blurb', ch.blurb));
 
-    const foot = el('div', 'vm-camp-card-foot');
     const complete = ch.operations.filter((o) => this.done.has(o.id)).length;
+    const chapterComplete = complete === ch.operations.length;
+    if (chapterComplete) card.classList.add('is-complete');
+    const progress = el('div', 'vm-camp-card-progress');
+    progress.setAttribute('role', 'progressbar');
+    progress.setAttribute('aria-label', `${ch.title} campaign completion`);
+    progress.setAttribute('aria-valuemin', '0');
+    progress.setAttribute('aria-valuemax', String(ch.operations.length));
+    progress.setAttribute('aria-valuenow', String(complete));
+    const fill = el('span', 'vm-camp-card-progress-fill');
+    fill.style.setProperty('--vm-camp-progress',
+      `${Math.round((complete / ch.operations.length) * 100)}%`);
+    progress.appendChild(fill);
+    card.appendChild(progress);
+
+    const foot = el('div', 'vm-camp-card-foot');
     foot.appendChild(el('span', 'vm-camp-chapter-count',
       `${complete} / ${ch.operations.length}`));
     const gold = ch.operations.filter((o) => (this.done.get(o.id) ?? 0) >= 3).length;
     if (gold > 0) foot.appendChild(el('span', 'vm-camp-card-gold', `${gold} gold`));
+    if (chapterComplete) foot.appendChild(el('span', 'vm-camp-card-complete', 'Complete'));
     card.appendChild(foot);
 
     focusable(card);
@@ -367,19 +544,35 @@ export class CampaignScreen implements Screen {
   }
 
   private operationRow(
-    ch: ChapterView, op: OperationView, done: ReadonlyMap<string, number>,
+    ch: ChapterView,
+    op: OperationView,
+    done: ReadonlyMap<string, number>,
+    isCurrent: boolean,
   ): HTMLElement {
     const missing = op.requires.filter((id) => !done.has(id));
-    const locked = missing.length > 0;
+    // Unlock Everything is an availability override, not campaign progress.
+    // Keep `done` untouched so chapter counts, medal pips and the landing
+    // chapter continue to describe what the player actually earned. Turning
+    // the setting off therefore restores the authored prerequisite graph
+    // immediately instead of leaving fake completion rows in the profile.
+    const locked = !unlockAllActive() && missing.length > 0;
 
     const rowEl = el('div', 'vm-camp-op');
+    rowEl.setAttribute('data-operation-id', op.id);
     if (locked) rowEl.classList.add('is-locked');
+    if (isCurrent) {
+      rowEl.classList.add('is-current');
+      rowEl.setAttribute('aria-current', 'step');
+    }
 
     const num = el('span', 'vm-camp-op-index', String(op.index).padStart(2, '0'));
     rowEl.appendChild(num);
 
     const text = el('div', 'vm-camp-op-text');
-    text.appendChild(el('span', 'vm-camp-op-title', op.title));
+    const titleLine = el('div', 'vm-camp-op-title-line');
+    titleLine.appendChild(el('span', 'vm-camp-op-title', op.title));
+    if (isCurrent) titleLine.appendChild(el('span', 'vm-camp-op-current', 'Next operation'));
+    text.appendChild(titleLine);
     // LOCKED SAYS WHY. "Complete <the previous operation>" is a sentence a
     // player can act on; a padlock is not. It goes in its OWN class on a
     // locked row, because that row is laid out as one line and the beat's
@@ -536,6 +729,39 @@ export function briefingObjectives(
   return out;
 }
 
+/** The authored opening translated into player-facing deployment language. */
+export function campaignDeploymentLabel(opening: OperationView['map']['opening']): string {
+  if (opening === 'force') return 'Fixed task force';
+  if (opening === 'mcv') return 'Mobile construction';
+  return 'Established base';
+}
+
+/** Campaign credits are shared by every active seat, but this row briefs the player's reserve. */
+export function campaignReserveLabel(credits: number): string {
+  if (!Number.isFinite(credits) || credits <= 0) return 'No reserve';
+  return `${Math.round(credits).toLocaleString('en-US')} cr`;
+}
+
+const CAMPAIGN_AUTHORIZATION_LABELS: Readonly<Record<string, string>> = {
+  'struct.defence.specialist': 'Specialist defence',
+  'struct.superweapon.solarlance': 'Solar Lance',
+  'struct.superweapon.strategic': 'Strategic superweapon',
+  'struct.support': 'Support structures',
+  'struct.tech': 'Tech tier',
+  'unit.raider': 'Raider units',
+};
+
+/** Player-side additions to the day-one catalogue, never a claim about every unit on the field. */
+export function campaignAuthorizationLabel(ids: readonly string[]): string {
+  if (ids.length === 0) return 'Standard issue only';
+  return ids.map((id) => {
+    const authored = CAMPAIGN_AUTHORIZATION_LABELS[id];
+    if (authored !== undefined) return authored;
+    const words = id.replace(/^(?:struct|unit)\./, '').replace(/[._-]+/g, ' ').trim();
+    return words === '' ? 'Special issue' : words.charAt(0).toUpperCase() + words.slice(1);
+  }).join(' · ');
+}
+
 export class BriefingScreen implements Screen {
   readonly id = 'briefing';
 
@@ -547,7 +773,11 @@ export class BriefingScreen implements Screen {
   mount(host: HTMLElement): void {
     this.host = host;
     host.classList.add('vm-page');
+    // Defensive for harnesses or future routes that open a briefing without
+    // first mounting CampaignScreen. Normal navigation already warmed these.
+    preloadCampaignPortraits();
     const { root, body, foot } = pageFrame('Briefing', () => { this.shell.openCampaign(); });
+    root.classList.add('vm-camp-brief-page');
     host.appendChild(root);
     body.appendChild(el('p', 'vm-camp-loading', 'Loading…'));
 
@@ -561,7 +791,21 @@ export class BriefingScreen implements Screen {
         return;
       }
       const { chapter, op } = found;
+      const theme = campaignTheme(op.id);
+      if (theme !== null) root.classList.add(`is-${theme}`);
       body.appendChild(this.render(chapter, op));
+
+      const grade = el('div', 'vm-camp-difficulty');
+      const gradeCopy = el('div', 'vm-camp-difficulty-copy');
+      gradeCopy.appendChild(el('span', 'vm-camp-difficulty-label', 'Combat grade'));
+      gradeCopy.appendChild(el('span', 'vm-camp-difficulty-note', 'Sets enemy pressure and medal grading'));
+      grade.appendChild(gradeCopy);
+      grade.appendChild(chooser(
+        DIFFICULTIES.map((label, value) => ({ label, value })),
+        this.shell.campaignDifficulty(),
+        (value) => { this.shell.setCampaignDifficulty(value); },
+      ));
+      foot.appendChild(grade);
 
       const deploy = button('Deploy', {
         variant: 'primary',
@@ -580,20 +824,36 @@ export class BriefingScreen implements Screen {
 
   private render(chapter: ChapterView, op: OperationView): HTMLElement {
     const wrap = el('div', 'vm-camp-brief');
-    const presentation = campaignBriefing(op.id);
+    const theme = campaignTheme(op.id);
+    if (theme !== null) wrap.classList.add(`is-${theme}`);
+    const visibleObjectives = briefingObjectives(op.objectives);
+    const primary = visibleObjectives.find((o) => o.kind === 'primary');
+    const presentation = campaignBriefing(op.id, primary?.title);
     const grid = el('div', 'vm-camp-brief-grid');
     const copy = el('div', 'vm-camp-brief-copy');
     copy.appendChild(el('span', 'vm-camp-brief-chapter', chapter.title));
     copy.appendChild(el('h3', 'vm-camp-brief-title',
       `${String(op.index).padStart(2, '0')} · ${op.title}`));
+    const bestMedal = completionOf().get(op.id) ?? 0;
+    if (bestMedal > 0) {
+      const record = el('div', 'vm-camp-brief-record');
+      record.appendChild(icon('trophy', 13));
+      record.appendChild(el('span', 'vm-camp-brief-record-label', 'Best award'));
+      record.appendChild(el('strong', 'vm-camp-brief-record-value',
+        campaignMedalStandard(bestMedal).label));
+      copy.appendChild(record);
+    }
     copy.appendChild(el('p', 'vm-camp-brief-beat', op.beat));
 
     const objectives = el('div', 'vm-camp-brief-objectives');
     objectives.appendChild(el('h4', 'vm-camp-brief-h4', 'Objectives'));
-    for (const o of briefingObjectives(op.objectives)) {
+    for (const o of visibleObjectives) {
       const line = el('div', `vm-camp-brief-obj is-${o.kind}`);
       line.appendChild(el('span', 'vm-camp-brief-tag', o.kind === 'primary' ? 'Primary' : 'Bonus'));
       line.appendChild(el('span', 'vm-camp-brief-obj-text', o.title));
+      if (o.kind === 'secondary' && o.credits !== undefined && o.credits > 0) {
+        line.appendChild(el('span', 'vm-camp-brief-obj-reward', `+${o.credits.toLocaleString('en-US')} cr`));
+      }
       objectives.appendChild(line);
     }
     copy.appendChild(objectives);
@@ -603,6 +863,9 @@ export class BriefingScreen implements Screen {
       for (const [key, value] of [
         ['Theatre', presentation.theatre],
         ['Opposition', presentation.opposition],
+        ['Deployment', campaignDeploymentLabel(op.map.opening)],
+        ['Starting reserve', campaignReserveLabel(op.map.credits)],
+        ['Field catalogue', campaignAuthorizationLabel(op.roster.player)],
         ['Par window', parLabel(op.parSec)],
       ] as const) {
         const item = el('div', 'vm-camp-brief-intel-item');
@@ -611,6 +874,18 @@ export class BriefingScreen implements Screen {
         intel.appendChild(item);
       }
       copy.appendChild(intel);
+
+      const standards = el('section', 'vm-camp-medal-standards');
+      standards.setAttribute('aria-label', 'Campaign medal standards');
+      standards.appendChild(el('span', 'vm-camp-medal-standards-kicker', 'Award standard'));
+      for (let tier = 1; tier <= 3; tier++) {
+        const standard = campaignMedalStandard(tier);
+        const item = el('div', `vm-camp-medal-standard is-tier-${tier}`);
+        item.appendChild(el('strong', 'vm-camp-medal-standard-label', standard.label));
+        item.appendChild(el('span', 'vm-camp-medal-standard-rule', standard.requirement));
+        standards.appendChild(item);
+      }
+      copy.appendChild(standards);
 
       const command = el('aside', 'vm-camp-command');
       const portrait = document.createElement('img');

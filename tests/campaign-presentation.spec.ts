@@ -59,6 +59,10 @@ import type { CampaignSession, ObjectiveRow } from '../src/campaign/session';
 import { CAMPAIGNS } from '../src/campaign/index';
 import { newOperationState } from '../src/campaign/Director';
 import { currentObjectives } from '../src/shell/PauseMenu';
+import {
+  CAMPAIGN_OPERATION_IDS,
+  campaignOperationIdentity,
+} from '../src/shell/CampaignPresentation';
 import { curtainLabels } from '../src/shell/Shell';
 import type { PresentationEvent } from '../src/campaign/runtime';
 
@@ -381,6 +385,30 @@ describe('the loading curtain names what the player chose', () => {
   });
 });
 
+describe('shell chrome can identify every campaign operation without loading the campaign chunk', () => {
+  it('resolves every shipped operation to its authored title, chapter and faction theme', () => {
+    const authored = new Map(CAMPAIGNS.flatMap((chapter) => chapter.operations.map((operation) => [
+      operation.id,
+      { title: operation.title, chapterTitle: chapter.title, theme: chapter.id },
+    ] as const)));
+
+    expect(CAMPAIGN_OPERATION_IDS.length).toBe(authored.size);
+    for (const id of CAMPAIGN_OPERATION_IDS) {
+      const expected = authored.get(id);
+      const identity = campaignOperationIdentity(id);
+      expect(identity, `${id} has no lightweight identity for save/load and pause chrome`)
+        .not.toBeNull();
+      expect(identity?.title).toBe(expected?.title);
+      expect(identity?.chapterTitle).toBe(expected?.chapterTitle);
+      expect(identity?.theme).toBe(expected?.theme);
+    }
+  });
+
+  it('returns null for a stale save instead of inventing a campaign name', () => {
+    expect(campaignOperationIdentity('allies.99.deleted-operation')).toBeNull();
+  });
+});
+
 /* ==========================================================================
  * 7. THE TYPE IS DECLARED TWICE, AND NOTHING MADE THE COPIES AGREE
  * ========================================================================== */
@@ -472,10 +500,10 @@ describe('a dialogue beat cannot overwrite the line before it', () => {
   it('the campaign surface queues a second active line', () => {
     const comms = stripComments(src('src/ui/CampaignComms.ts'));
     expect(comms, 'CampaignComms no longer distinguishes idle from active').toContain('this.active === null');
-    expect(comms, 'a line arriving while another is active must enter the queue')
-      .toContain('this.queue.push(message)');
+    expect(comms, 'every page arriving while another is active must enter the queue')
+      .toContain('this.enqueue(page)');
     expect(comms, 'the queued line must later become the presented line')
-      .toContain('this.present(this.queue.shift() as CampaignCommsMessage)');
+      .toContain('this.present(this.queue.shift() as CampaignCommsPage)');
   });
 
   it('the fallback toast key carries something per-beat, not just the speaker', () => {

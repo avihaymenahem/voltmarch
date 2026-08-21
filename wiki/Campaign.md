@@ -69,15 +69,29 @@ its operations you have finished; each operation is a row with its par time and 
   declares, primaries first. **Hidden bonuses are not on it, and nothing stands in for one**: a
   briefing that named one, or even admitted it was there, would be the operation spoiling its own
   turn before you had pressed anything.
-- **Deploy** starts the match.
+- **Deploy** starts the match. The loading transition carries the chapter, operation, commander
+  portrait and current directive into shader compilation instead of falling back to a generic map
+  name.
 - An operation whose prerequisites are unfinished is shown **locked, with the reason spelled out**
   — "complete *First Tap*" rather than a padlock. A row you cannot see is a row you cannot plan
   toward.
 - Every chapter is open from first launch. The order they are listed in is a recommendation and not
   a gate; within a chapter, the operations are a chain.
-- **Difficulty comes from the Skirmish lobby.** There is no difficulty row on the briefing screen,
-  and the setting you last chose for skirmishes is what a gold medal is graded against (§2). Game
-  speed is forced to 1x for the duration.
+- **Combat grade is explicit on every briefing.** Easy, Normal, Hard and Brutal set enemy pressure
+  and medal grading together; the choice persists and also becomes the default in Skirmish. The
+  after-action report names the grade actually played, rather than reading whichever setting was
+  changed later. Game speed is forced to 1x for the duration.
+- **Deployment is explicit before Deploy.** The briefing says whether the operation opens on an
+  established base, a mobile construction vehicle or a fixed task force, and names the starting
+  credit reserve. A no-production, zero-credit operation therefore cannot masquerade as a normal
+  base match until the player lands.
+- **The field catalogue is explicit too.** “Standard issue only” means the operation's day-one
+  roster replaces profile unlocks; named authorizations identify the raider, tech, specialist
+  defence, support or superweapon tiers added for that operation. It describes permission to build,
+  not every pre-placed unit on the field.
+- **The medal standard is stated before Deploy**, not discovered on the results screen: Bronze for
+  completing the operation, Silver for meeting every bonus objective, and Gold for doing the
+  Silver work on Hard or Brutal. Briefing and after-action copy share the same source.
 
 ### What ships today
 
@@ -125,7 +139,12 @@ its operations you have finished; each operation is a row with its par time and 
 637 minutes of authored par against a plan written to reach 10 hours. All four chapters now have a
 card on the campaign screen and all four play end to end — Hold the Seam, The Timetable and
 The Crust at nine operations each, Salvage Rights at ten. Soviets first is the order the screen
-recommends.
+recommends. Each chapter card carries its opening commander's authored portrait behind the faction
+treatment, so the four campaigns read as four commands before the player opens an operation. The
+selected chapter dossier also names and shows the commander attached to the next briefing; a
+completed chapter retains its finale command instead of collapsing to an empty identity panel.
+Operation beats and prerequisite reasons wrap in that dossier rather than being clipped behind an
+ellipsis, including at the desktop minimum.
 
 **Every par in that table is an author's estimate, not a measured time.** One operation has ever
 been played end to end by a person, and the harness figure for it sat four minutes under the play
@@ -144,7 +163,9 @@ nothing else.
 - **A bonus may pay credits into that match**, immediately, straight into your bank. The ones that
   pay are worth 400 to 1200 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
-  not pay it a second time.
+  not pay it a second time. A visible payout is named on the briefing, live objective tower,
+  completion banner, pause dossier and after-action report; a hidden bonus carries the same value
+  only after its existing reveal trigger makes the objective itself visible.
 - **Nineteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
@@ -162,13 +183,39 @@ nothing else.
 > instead, for as long as one is armed, and hands itself back the moment it ends. Hidden bonuses
 > are filtered out of it until something reveals them. The match-objective board is not merely
 > covered up — it is switched off for the duration, because progression is (§3).
+> The tower is headed by the **operation name**, carries that faction's command colour, and wraps
+> authored objective titles rather than truncating them inside the panel. Its description line
+> keeps **Primary objective** and **Bonus objective** explicit, and appends the payout where one
+> exists, so optional work cannot masquerade as the condition that ends the operation.
 >
 > The same list is on the **briefing** before you deploy and on the **results screen** after, where
-> each row is marked met or not. Neither is the *full* list where a hidden bonus is concerned: the
+> each row names both its **Primary/Bonus** class and its **Complete/Failed/Not met** verdict rather
+> than relying on a tick or cross alone. Neither is the *full* list where a hidden bonus is concerned: the
 > briefing never shows one, and the results screen shows it only if the match revealed it.
+> Reopening a completed operation also places its best medal on the briefing; a first attempt keeps
+> that space empty rather than presenting a meaningless zero-record badge.
 >
-> In-mission dialogue arrives as a **toast** in the corner rather than in a briefing log with a
-> portrait; that part is a placeholder and the source says so.
+> **Pausing an operation opens its dossier**, not the generic skirmish card: chapter and operation,
+> commander and current directive, combat grade, battlefield and the full currently revealed
+> objective ledger remain readable over the frozen battle.
+>
+> In-mission dialogue arrives through the **campaign communications panel** above the selection
+> dock, with the speaker's portrait, role and faction channel. Several lines fired on one tick are
+> queued rather than overwritten; long lines page at sentence boundaries instead of clipping.
+> One authored transmission may occupy at most three live-card pages, and each page remains for a
+> length-derived reading hold of up to 15 seconds rather than advancing on a fixed timer. **LOG**
+> keeps the original unbroken transmissions for the rest of the operation. A restrained radio cue
+> sounds once when each new transmission reaches the panel; continuation pages do not repeat it,
+> and the cue obeys the normal UI audio and mute settings.
+
+Campaign save rows carry the chapter and operation identity as well as the battlefield. Two
+operations that share terrain therefore remain distinguishable in both Load Game and the manual
+save panel; an autosave plate without a screenshot names the operation rather than pretending it
+was an ordinary skirmish.
+
+Campaign recordings retain the same identity in the replay library, in the playback badge and in
+the downloaded filename. The map remains visible as provenance, but it is no longer presented as
+if it were the operation's name.
 
 Medals are graded from the outcome, never stored as something payable:
 
@@ -231,8 +278,11 @@ written back over the settings you chose for skirmishes.
   refuses the file by name instead of playing a plausible skirmish on its ground.
 - **Watching a replay of an operation records nothing**, for the same reason playing one records
   almost nothing: watching is not playing.
-- The results screen offers **Retry** and, on a win, **Next Operation**. Retry re-arms the
-  operation properly; it is not the skirmish Rematch button wearing a different word.
+- The results screen offers **Retry** and, on a win, **Next Operation**. At the final operation it
+  instead marks the chapter **Campaign Complete**, delivers a faction-specific authored epilogue,
+  and returns to the campaign selector. Retry re-arms the operation properly; it is not the
+  skirmish Rematch button wearing a different word. The forward action names the next operation in
+  its hint, so leaving an after-action report is a deliberate continuation rather than a blind jump.
 
 ---
 

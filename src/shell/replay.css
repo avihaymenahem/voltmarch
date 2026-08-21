@@ -149,6 +149,19 @@
   text-transform: uppercase;
 }
 
+.vm-shell .vm-replay-badge-label {
+  display: block;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-replay-badge.is-soviets { color: #eb7c88; border-color: rgba(213, 64, 82, 0.62); }
+.vm-shell .vm-replay-badge.is-allies { color: #72daf7; border-color: rgba(53, 200, 240, 0.62); }
+.vm-shell .vm-replay-badge.is-pact { color: #bf93ed; border-color: rgba(151, 91, 222, 0.62); }
+.vm-shell .vm-replay-badge.is-reclamation { color: #e3b566; border-color: rgba(205, 148, 51, 0.62); }
+
 /*
  * `width: auto` IS THE LOAD-BEARING LINE. `.vm-btn` is `width: 100%`, because
  * every other consumer of the kit stacks it in a menu column — so a `flex:

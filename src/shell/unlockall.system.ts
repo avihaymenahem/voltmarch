@@ -122,7 +122,8 @@ export default defineSystem({
     unlockGate()?.setUnrestricted(true);
     console.warn(
       '[unlockall] Unlock Everything is ON (Options -> Diagnostics). '
-      + 'Every gated unit, structure and battlefield is available to you AND to the AI. '
+      + 'Every gated unit, structure, battlefield and campaign operation is available; '
+      + 'combat content is also available to the AI. '
       + 'The preference is saved, but no unlock reward is written to your profile.',
     );
   },

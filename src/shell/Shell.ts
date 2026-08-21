@@ -94,7 +94,14 @@ import { actionKeyRow } from './tutorial-steps';
 import { isApplePlatform, type StoredBindings } from '../input/ActionCatalogue';
 
 import { eva as sayEva } from '../audio/AudioEngine';
-import { campaignSpeaker } from './CampaignPresentation';
+import {
+  campaignBriefing,
+  campaignSpeaker,
+  campaignTheme,
+  preloadCampaignPortraits,
+  type CampaignSpeakerPresentation,
+  type CampaignTheme,
+} from './CampaignPresentation';
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
@@ -128,6 +135,7 @@ interface CampaignObjectiveRow {
   readonly title: string;
   readonly kind: 'primary' | 'secondary';
   readonly status: 'hidden' | 'active' | 'complete' | 'failed';
+  readonly credits?: number;
 }
 
 interface OperationBoot {
@@ -188,8 +196,9 @@ export type ShellState =
    * campaign's own start triggers, which is a bug in the other direction.
    *
    * **If an in-match briefing log is ever built, it MUST go on that list.**
-   * `tests/campaign-gate.spec.ts` drives the state machine rather than reading
-   * the array, so the day one is added the test is what says so.
+   * `match-lifecycle.spec.ts` drives every current mid-match route through the
+   * real outcome watcher; add the new route there rather than source-reading
+   * this array. `campaign-gate.spec.ts` separately pins the operation latches.
    */
   | 'campaign'
   /** One operation's briefing. Reachable from `'campaign'` only. */
@@ -923,6 +932,8 @@ export class Shell {
     chapterTitle: string;
     /** The next operation in this chapter, or null at the end of one. */
     nextId: string | null;
+    /** Resolved beside nextId so the synchronous result screen can name it. */
+    nextTitle: string | null;
     map: OperationBoot;
   } | null = null;
 
@@ -1030,6 +1041,48 @@ export class Shell {
   /** The configuration the next (or current) match runs with. */
   getSetup(): Readonly<MatchSetup> {
     return this.setup;
+  }
+
+  /** Difficulty the next campaign operation will use and grade medals against. */
+  campaignDifficulty(): number {
+    return this.setup.difficulty;
+  }
+
+  /**
+   * The campaign identity behind the running match, if there is one.
+   *
+   * A copy rather than the private operation object: pause UI needs the
+   * authored title and chapter, but must never gain a path to mutate the boot
+   * plan or next-operation link while the simulation is frozen behind it.
+   */
+  currentCampaignOperation(): Readonly<{
+    id: string;
+    title: string;
+    chapterTitle: string;
+  }> | null {
+    const operation = this.operation;
+    if (operation === null) return null;
+    return {
+      id: operation.id,
+      title: operation.title,
+      chapterTitle: operation.chapterTitle,
+    };
+  }
+
+  /**
+   * Set the campaign grade explicitly from the briefing.
+   *
+   * Mirror it across the stored opponent rows as well as the legacy singular
+   * field: `effectiveOpponents` deliberately lets those two representations
+   * reassert one another, so persisting only one would make the choice appear
+   * to revert when the skirmish lobby next opens.
+   */
+  setCampaignDifficulty(value: number): void {
+    const difficulty = Math.max(0, Math.min(3, Math.round(value)));
+    const next = cloneSetup(this.setup);
+    next.difficulty = difficulty;
+    for (const opponent of next.opponents) opponent.difficulty = difficulty;
+    this.setup = this.settings.setSetup(next, playableFactions().map((f) => f.key));
   }
 
   /**
@@ -1282,6 +1335,7 @@ export class Shell {
         chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
         // A replay or a restored save has nowhere onward to offer.
         nextId: null,
+        nextTitle: null,
         map: op.map,
       };
     }
@@ -1387,10 +1441,15 @@ export class Shell {
       this.fail('Operation Not Found', new Error(`No campaign operation '${operationId}'.`));
       return;
     }
+    // Campaign worlds have a long deterministic boot. Spend that time fetching
+    // the 640px cast so an opening transmission never fades in over a blank
+    // portrait slot; ordinary skirmishes never call this and pay nothing.
+    preloadCampaignPortraits();
     // RESOLVED ONCE, HERE, BECAUSE `buildResult` RUNS INSIDE A FRAME. The
     // chapter title and the next operation both live in the lazily-imported
     // table, and the end screen cannot await a chunk while it is being built.
     const chapter = install.chapterOf(op);
+    const nextOperation = chapter?.operations.find((o) => o.index === op.index + 1) ?? null;
     this.operation = {
       id: op.id,
       title: op.title,
@@ -1399,7 +1458,8 @@ export class Shell {
       // on a win so the campaign has somewhere to go — an end screen whose only
       // forward button is "Main Menu" makes a nine-operation chapter feel like
       // nine separate skirmishes.
-      nextId: chapter?.operations.find((o) => o.index === op.index + 1)?.id ?? null,
+      nextId: nextOperation?.id ?? null,
+      nextTitle: nextOperation?.title ?? null,
       map: op.map,
     };
     this.campaignResult = null;
@@ -1511,6 +1571,7 @@ export class Shell {
       title: op.title,
       chapterTitle: op.chapterTitle,
       nextOperationId: op.nextId,
+      nextOperationTitle: op.nextTitle,
       medal: result.medal,
       reason: result.reason,
       objectives: result.objectives,
@@ -1530,7 +1591,7 @@ export class Shell {
     return this.setup.difficulty;
   }
 
-  /** What the campaign wants shown. Dialogue and EVA for now; camera later. */
+  /** What the campaign wants shown: dialogue, EVA announcements and directed camera beats. */
   playCampaignBeat(event: {
     kind: string;
     speaker?: string;
@@ -1571,7 +1632,8 @@ export class Shell {
         const g = globalThis as unknown as {
           __vmHud?: {
             campaignDialogue?: (message: {
-              speaker: string; role: string; portrait: string; monogram: string; text: string;
+              speaker: string; role: string; portrait: string; monogram: string;
+              theme: 'allies' | 'neutral' | 'pact' | 'reclamation' | 'soviets'; text: string;
             }) => void;
             toast?: (...a: unknown[]) => void;
           };
@@ -1607,6 +1669,7 @@ export class Shell {
             role: speaker.role,
             portrait: speaker.portrait,
             monogram: speaker.monogram,
+            theme: speaker.theme,
             text: event.text,
           });
         } else {
@@ -1841,6 +1904,13 @@ export class Shell {
        * "Initialising" underneath it already say that, twice.
        */
       const curtain = curtainLabels(this.operation, map.name);
+      const operationBrief = this.operation === null ? null : campaignBriefing(this.operation.id);
+      const operationTheme = this.operation === null ? null : campaignTheme(this.operation.id);
+      const loadingCommand = operationBrief === null || operationTheme === null ? null : {
+        commander: operationBrief.commander,
+        directive: operationBrief.directive,
+        theme: operationTheme,
+      };
 
       this.show(
         new LoadingScreen(
@@ -1848,6 +1918,7 @@ export class Shell {
           factionByKey(this.setup.playerFaction)?.name ?? '',
           this.settings.get().controls.bindings,
           curtain.kicker,
+          loadingCommand,
         ),
         'loading',
       );
@@ -2351,6 +2422,7 @@ export class Shell {
         chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
         // A replay or a restored save has nowhere onward to offer.
         nextId: null,
+        nextTitle: null,
         map: op.map,
       };
       suppressProgression(true);
@@ -3616,6 +3688,12 @@ export class LoadingScreen implements Screen {
      * default and that is why it has none.
      */
     private readonly kicker: string = 'Loading',
+    /** Campaign continuity card. Null keeps the skirmish curtain unchanged. */
+    private readonly command: {
+      readonly commander: CampaignSpeakerPresentation;
+      readonly directive: string;
+      readonly theme: CampaignTheme;
+    } | null = null,
   ) {}
 
   mount(host: HTMLElement): void {
@@ -3625,6 +3703,27 @@ export class LoadingScreen implements Screen {
     const inner = el('div', 'vm-load-inner');
     inner.appendChild(el('p', 'vm-subtitle', this.kicker));
     inner.appendChild(el('h1', 'vm-h2', this.mapName));
+
+    if (this.command !== null) {
+      host.classList.add('vm-load-campaign', `is-${this.command.theme}`);
+      const card = el('section', 'vm-load-command');
+      card.setAttribute('aria-label', 'Operation command');
+      const portrait = document.createElement('img');
+      portrait.className = 'vm-load-command-portrait';
+      portrait.src = this.command.commander.portrait;
+      portrait.alt = `${this.command.commander.name}, ${this.command.commander.role}`;
+      portrait.decoding = 'async';
+      card.appendChild(portrait);
+      const copy = el('div', 'vm-load-command-copy');
+      copy.appendChild(el('span', 'vm-load-command-kicker', 'Operation command'));
+      const identity = el('div', 'vm-load-command-identity');
+      identity.appendChild(el('strong', 'vm-load-command-name', this.command.commander.name));
+      identity.appendChild(el('span', 'vm-load-command-role', this.command.commander.role));
+      copy.appendChild(identity);
+      copy.appendChild(el('p', 'vm-load-command-directive', this.command.directive));
+      card.appendChild(copy);
+      inner.appendChild(card);
+    }
 
     const meta = el('div', 'vm-load-meta');
     if (this.factionName !== '') {
@@ -3647,6 +3746,9 @@ export class LoadingScreen implements Screen {
 
   unmount(): void {
     this.root?.classList.remove('vm-load');
+    this.root?.classList.remove(
+      'vm-load-campaign', 'is-allies', 'is-pact', 'is-reclamation', 'is-soviets',
+    );
     this.root = null;
   }
 }

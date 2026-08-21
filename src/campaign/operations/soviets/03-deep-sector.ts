@@ -324,10 +324,9 @@ const op: OperationDef = {
           // filing waits on the Allies losing the instruments, not on the
           // instruments being wreckage, and the trigger table has said so since
           // `t.filed` stopped counting corpses.
-          text: 'Take the tap before then, or take the masts off them and the filing waits. '
-            + 'The front closes the sector at fifteen either way. Your column is at the '
-            + 'staging post; the yards have a second on the rail, three minutes out. That is '
-            + 'all of it.',
+          text: 'Take the tap, or take the masts off them and delay the filing. '
+            + 'The front closes at fifteen. Your column is at the staging post; a second is '
+            + 'three minutes out. That is all.',
         },
         // The fork has to be KNOWN in minute three or it is not a decision.
         // Revealing both ends of it with the briefing is the cheapest way to

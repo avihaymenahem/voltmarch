@@ -1323,4 +1323,28 @@ describe('a slot card', () => {
     expect(img).not.toBeNull();
     expect(img?.src).toBe('data:image/png;base64,AAAA');
   });
+
+  it('suggests the operation name during a campaign and the map name otherwise', () => {
+    expect(suggestedSaveName('temperate-valley', 754))
+      .toBe('Temperate Valley · 12:34');
+    expect(suggestedSaveName('temperate-valley', 754, 'allies.01.sounding-line'))
+      .toBe('Sounding Line · 12:34');
+    expect(suggestedSaveName('temperate-valley', 754, 'allies.99.deleted-operation'))
+      .toBe('Temperate Valley · 12:34');
+  });
+
+  it('identifies a campaign save by chapter and operation instead of only its shared map', () => {
+    const card = slotCard({
+      slot: meta({
+        context: { ...CONTEXT, campaignOperationId: 'allies.01.sounding-line' },
+      }),
+      nowMs: 1_700_000_000_000,
+    }) as unknown as StubElement;
+
+    expect(card.classList.contains('has-campaign')).toBe(true);
+    expect(card.classList.contains('is-allies')).toBe(true);
+    expect(card.text()).toContain('The Timetable');
+    expect(card.text()).toContain('Sounding Line');
+    expect(card.text()).toContain('Temperate Valley');
+  });
 });

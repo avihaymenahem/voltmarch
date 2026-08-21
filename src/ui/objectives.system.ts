@@ -128,23 +128,29 @@ export function campaignObjectiveView(): ProgressionView | null {
   // that omits it renders exactly as it always did.
   const rows = (): ActiveObjective[] => session.rows()
     .filter((r) => r.status !== 'hidden')
-    .map((r) => ({
-      id: r.id,
-      scope: 'match' as const,
-      title: r.title,
-      description: '',
-      category: 'tactics' as const,
-      target: 1,
-      reward: [],
-      flag: true,
-      progress: {
+    .map((r) => {
+      const credits = r.credits !== undefined && r.credits > 0 ? r.credits : 0;
+      const importance = r.kind === 'primary' ? 'Primary objective' : 'Bonus objective';
+      return {
         id: r.id,
-        value: r.status === 'complete' ? 1 : 0,
+        scope: 'match' as const,
+        title: r.title,
+        description: credits > 0
+          ? `${importance} · +${credits.toLocaleString('en-US')} credits`
+          : importance,
+        category: 'tactics' as const,
         target: 1,
-        complete: r.status === 'complete',
-        claimedAt: null,
-      },
-    }));
+        reward: credits > 0 ? [{ kind: 'credits' as const, amount: credits }] : [],
+        flag: true,
+        progress: {
+          id: r.id,
+          value: r.status === 'complete' ? 1 : 0,
+          target: 1,
+          complete: r.status === 'complete',
+          claimedAt: null,
+        },
+      };
+    });
 
   return {
     // An EMPTY profile, not a fake one. This view owns no profile — the real
@@ -233,7 +239,14 @@ export default defineSystem({
   frame(r: RenderContext): void {
     // Once, on the frame the campaign first appears — and once more when it
     // goes away, so the panel falls back to the profile for the next skirmish.
-    const armed = campaignSession() !== null;
+    const session = campaignSession();
+    const armed = session !== null;
+    if (panel !== null) {
+      panel.setCampaignContext(
+        session?.op.title ?? null,
+        session?.op.id.split('.', 1)[0] ?? null,
+      );
+    }
     if (panel !== null && armed !== injected) {
       injected = armed;
       panel.setProgression(armed ? campaignObjectiveView() : null);

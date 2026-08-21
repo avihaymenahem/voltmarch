@@ -32,6 +32,8 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /* ==========================================================================
  * THE DOM STUB — installed before any imported module can call it
@@ -161,7 +163,9 @@ g.document = stubDocument;
 
 import { CampaignScreen, landingChapter, loadCampaign } from '../src/shell/Campaign';
 import { CAMPAIGNS } from '../src/campaign/index';
+import { campaignBriefing } from '../src/shell/CampaignPresentation';
 import type { Shell } from '../src/shell/Shell';
+import { setSessionUnlockAll } from '../src/shell/unlockall.system';
 
 /* ==========================================================================
  * FIXTURES
@@ -175,6 +179,13 @@ interface ChapterLike {
 }
 
 const TABLE: readonly ChapterLike[] = CAMPAIGNS;
+
+/** Keep the module-level session switch testable without touching host storage. */
+const TEST_STORAGE = {
+  getItem: (_key: string): string | null => null,
+  setItem: (_key: string, _value: string): void => { /* in-memory session is enough */ },
+  removeItem: (_key: string): void => { /* in-memory session is enough */ },
+};
 
 /**
  * Install a profile whose `campaign` rows are the given medals.
@@ -240,6 +251,7 @@ function completeChapter(index: number): Record<string, number> {
 }
 
 afterEach(() => {
+  setSessionUnlockAll(false, TEST_STORAGE);
   delete g.__vmProgression;
 });
 
@@ -272,8 +284,31 @@ describe('the shipped table', () => {
  * ========================================================================== */
 
 describe('the campaign screen', () => {
+  it('never truncates a locked operation prerequisite with an ellipsis', () => {
+    const css = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'shell.css'), 'utf8');
+    const at = css.indexOf('.vm-shell .vm-camp-op-lock {');
+    const rule = css.slice(at, css.indexOf('\n}', at));
+
+    expect(at).toBeGreaterThan(-1);
+    expect(rule).toContain('white-space: normal');
+    expect(rule).toContain('overflow-wrap: anywhere');
+    expect(rule).not.toContain('text-overflow: ellipsis');
+  });
+
+  it('keeps the authored operation beat readable at every desktop width', () => {
+    const css = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'shell.css'), 'utf8');
+    const at = css.indexOf('.vm-shell .vm-camp-op-beat {');
+    const rule = css.slice(at, css.indexOf('\n}', at));
+
+    expect(at).toBeGreaterThan(-1);
+    expect(rule).toContain('white-space: normal');
+    expect(rule).toContain('overflow-wrap: anywhere');
+    expect(rule).not.toContain('text-overflow: ellipsis');
+  });
+
   it('draws one card per chapter', async () => {
     const host = await mountCampaign();
+    expect(all(host, 'vm-campaign-page')).toHaveLength(1);
     expect(cards(host).length).toBe(TABLE.length);
     expect(cards(host).map((c) => c.textContent.startsWith(TABLE[0].title)))
       .toContain(true);
@@ -317,6 +352,24 @@ describe('the campaign screen', () => {
     // Short, and the one thing telling a new player where to start.
     const host = await mountCampaign();
     expect(host.textContent).toContain('Soviets first');
+  });
+
+  it('summarises overall authored progress without counting stale profile rows', async () => {
+    const rows = {
+      [TABLE[0].operations[0].id]: 1,
+      [TABLE[1].operations[0].id]: 3,
+      'removed.operation': 3,
+    };
+    withProfile(rows);
+    const host = await mountCampaign();
+    const overall = all(host, 'vm-camp-overall')[0];
+    const total = TABLE.reduce((count, chapter) => count + chapter.operations.length, 0);
+
+    expect(overall.textContent).toBe(`2 / ${total} complete · 1 gold`);
+    expect(overall.getAttribute('aria-valuenow')).toBe('2');
+    expect(overall.getAttribute('aria-valuemax')).toBe(String(total));
+    expect(all(overall, 'vm-camp-overall-track')).toHaveLength(1);
+    expect(all(overall, 'vm-camp-overall-fill')).toHaveLength(1);
   });
 });
 
@@ -404,6 +457,34 @@ describe('the screen opens where the player is', () => {
     expect(shownOperations(host)).toEqual(titlesOf(TABLE[0]));
     expect(pressedCard(host)).toBe(cards(host)[0]);
   });
+
+  it('marks the first unfinished playable row as the next operation', async () => {
+    const completed: Record<string, number> = {};
+    for (const op of TABLE[0].operations.slice(0, 3)) completed[op.id] = 1;
+    withProfile(completed);
+    const host = await mountCampaign();
+    const current = all(host, 'vm-camp-op').filter((row) => row.classList.contains('is-current'));
+
+    expect(current).toHaveLength(1);
+    expect(current[0].getAttribute('aria-current')).toBe('step');
+    expect(all(current[0], 'vm-camp-op-title')[0].textContent).toBe(TABLE[0].operations[3].title);
+    expect(all(current[0], 'vm-camp-op-current')[0].textContent).toBe('Next operation');
+  });
+
+  it('marks no next row when the selected chapter is complete', async () => {
+    withProfile(completeChapter(0));
+    const host = await mountCampaign();
+    // Landing moves to chapter two, which does have a next operation.
+    expect(all(host, 'vm-camp-op').filter((row) => row.classList.contains('is-current')))
+      .toHaveLength(1);
+    cards(host)[0].click();
+    expect(all(host, 'vm-camp-op').filter((row) => row.classList.contains('is-current')))
+      .toHaveLength(0);
+    expect(all(host, 'vm-camp-chapter-complete').map((node) => node.textContent))
+      .toEqual(['Campaign complete']);
+    expect(all(host, 'vm-camp-card-complete').map((node) => node.textContent))
+      .toContain('Complete');
+  });
 });
 
 /* ==========================================================================
@@ -458,5 +539,140 @@ describe('a locked operation', () => {
     for (const r of all(host, 'vm-camp-op').filter((x) => x.classList.contains('is-locked'))) {
       expect(all(r, 'vm-camp-op-beat').length).toBe(0);
     }
+  });
+});
+
+describe('campaign faction identity and progress', () => {
+  it('keeps the next briefing actionable above completed replay rows', async () => {
+    const opened: string[] = [];
+    const completed: Record<string, number> = {};
+    for (const op of TABLE[0].operations.slice(0, 3)) completed[op.id] = 1;
+    withProfile(completed);
+    const host = await mountCampaign(opened);
+    const next = TABLE[0].operations[3];
+
+    const actions = all(host, 'vm-camp-chapter-continue');
+    expect(actions).toHaveLength(1);
+    expect(actions[0].textContent).toContain('Continue');
+    expect(actions[0].textContent).toContain(next.title);
+    actions[0].click();
+    expect(opened).toEqual([next.id]);
+  });
+
+  it('does not invent a continuation after the selected campaign is complete', async () => {
+    withProfile(completeChapter(0));
+    const host = await mountCampaign();
+    cards(host)[0].click();
+    expect(all(host, 'vm-camp-chapter-continue')).toHaveLength(0);
+  });
+
+  it('gives every faction card its authored opening commander portrait', async () => {
+    const host = await mountCampaign();
+    const expected: Readonly<Record<string, string>> = {
+      soviets: 'rakhalt.webp',
+      allies: 'aubray.webp',
+      pact: 'calvane.webp',
+      reclamation: 'tallow.webp',
+    };
+    const chapterCards = cards(host);
+
+    expect(chapterCards).toHaveLength(TABLE.length);
+    for (let i = 0; i < TABLE.length; i++) {
+      const portrait = all(chapterCards[i], 'vm-camp-card-portrait');
+      expect(portrait, TABLE[i].id).toHaveLength(1);
+      expect(portrait[0].getAttribute('src'))
+        .toMatch(new RegExp(`campaign/portraits/${expected[TABLE[i].id]}$`));
+      expect(portrait[0].getAttribute('alt')).toBe('');
+      expect(portrait[0].getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('skins every chapter card and the active operation deck by faction', async () => {
+    const host = await mountCampaign();
+    const chapterCards = cards(host);
+
+    for (let i = 0; i < TABLE.length; i++) {
+      expect(chapterCards[i].getAttribute('data-chapter-id')).toBe(TABLE[i].id);
+      expect(chapterCards[i].classList.contains(`is-${TABLE[i].id}`), TABLE[i].id).toBe(true);
+      expect(all(chapterCards[i], 'vm-camp-card-command').length).toBe(1);
+      expect(all(chapterCards[i], 'vm-camp-card-progress')[0].getAttribute('aria-valuemax'))
+        .toBe(String(TABLE[i].operations.length));
+    }
+
+    chapterCards[2].click();
+    expect(all(host, 'vm-camp-chapter')[0].classList.contains(`is-${TABLE[2].id}`)).toBe(true);
+    expect(all(host, 'vm-camp-op').map((row) => row.getAttribute('data-operation-id')))
+      .toEqual(TABLE[2].operations.map((operation) => operation.id));
+  });
+
+  it('identifies the commander of the next briefing in the active operation deck', async () => {
+    const host = await mountCampaign();
+    const expected = campaignBriefing(TABLE[0].operations[0].id)?.commander;
+    expect(expected).toBeDefined();
+
+    expect(all(host, 'vm-camp-chapter-commander-label')[0].textContent).toBe('Next briefing');
+    expect(all(host, 'vm-camp-chapter-commander-name')[0].textContent).toBe(expected?.name);
+    expect(all(host, 'vm-camp-chapter-commander-portrait')[0].getAttribute('src'))
+      .toBe(expected?.portrait);
+  });
+
+  it('keeps the finale commander in a completed chapter dossier', async () => {
+    withProfile(completeChapter(0));
+    const host = await mountCampaign();
+    cards(host)[0].click();
+    const finale = TABLE[0].operations[TABLE[0].operations.length - 1];
+    const expected = campaignBriefing(finale.id)?.commander;
+    expect(expected).toBeDefined();
+
+    expect(all(host, 'vm-camp-chapter-commander-label')[0].textContent).toBe('Final command');
+    expect(all(host, 'vm-camp-chapter-commander-name')[0].textContent).toBe(expected?.name);
+  });
+
+  it('restores a selected-chapter command header above the operation list', async () => {
+    const host = await mountCampaign();
+    expect(all(host, 'vm-camp-chapter-title')[0].textContent).toBe(TABLE[0].title);
+    expect(all(host, 'vm-camp-chapter-command')[0].textContent.length).toBeGreaterThan(0);
+    expect(all(host, 'vm-camp-chapter-blurb').length).toBe(1);
+  });
+});
+
+/* ==========================================================================
+ * 6. UNLOCK EVERYTHING BYPASSES THE GRAPH, NOT THE PROFILE
+ *
+ * The progression UnlockGate owns units, structures and battlefields. The
+ * campaign has a separate authored `requires` graph, so the settings switch
+ * must be consulted here as well. It must NOT synthesize completion: medals
+ * and chapter totals remain an honest account of what the player earned.
+ * ========================================================================== */
+
+describe('Unlock Everything on the campaign screen', () => {
+  it('makes every operation in a fresh chapter launchable without awarding progress', async () => {
+    setSessionUnlockAll(true, TEST_STORAGE);
+    const opened: string[] = [];
+    const host = await mountCampaign(opened);
+    const rows = all(host, 'vm-camp-op');
+
+    expect(rows.length).toBe(TABLE[0].operations.length);
+    expect(rows.every((r) => !r.classList.contains('is-locked'))).toBe(true);
+    expect(rows.every((r) => all(r, 'vm-btn').length === 1)).toBe(true);
+    expect(all(host, 'vm-camp-op-lock').length).toBe(0);
+
+    // Availability is not completion: the profile is still empty.
+    expect(all(cards(host)[0], 'vm-camp-chapter-count')[0].textContent)
+      .toBe(`0 / ${TABLE[0].operations.length}`);
+    expect(all(host, 'vm-camp-pip').some((pip) => pip.classList.contains('is-on'))).toBe(false);
+
+    all(rows[rows.length - 1], 'vm-btn')[0].click();
+    expect(opened).toEqual([TABLE[0].operations[rows.length - 1].id]);
+  });
+
+  it('restores the authored prerequisites when the switch is turned off', async () => {
+    setSessionUnlockAll(true, TEST_STORAGE);
+    const unlocked = await mountCampaign();
+    expect(all(unlocked, 'vm-camp-op').some((r) => r.classList.contains('is-locked'))).toBe(false);
+
+    setSessionUnlockAll(false, TEST_STORAGE);
+    const gated = await mountCampaign();
+    expect(all(gated, 'vm-camp-op').some((r) => r.classList.contains('is-locked'))).toBe(true);
   });
 });

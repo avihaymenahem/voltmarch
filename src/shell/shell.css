@@ -1090,6 +1090,37 @@
 .vm-shell .vm-pause-panel {
   width: min(400px, 88vw);
   padding: 0 0 12px;
+  max-height: 92vh;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.vm-shell .vm-pause-panel.has-campaign {
+  --vm-camp-rgb: 213, 64, 82;
+  --vm-camp-accent: #eb7c88;
+  width: min(720px, 92vw);
+  border-color: rgba(var(--vm-camp-rgb), 0.55);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-camp-rgb), 0.08), transparent 45%),
+    var(--vm-panel);
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.65),
+    inset 0 0 48px rgba(var(--vm-camp-rgb), 0.035);
+}
+
+.vm-shell .vm-pause-panel.has-campaign.is-allies {
+  --vm-camp-rgb: 53, 200, 240;
+  --vm-camp-accent: #72daf7;
+}
+
+.vm-shell .vm-pause-panel.has-campaign.is-pact {
+  --vm-camp-rgb: 151, 91, 222;
+  --vm-camp-accent: #bf93ed;
+}
+
+.vm-shell .vm-pause-panel.has-campaign.is-reclamation {
+  --vm-camp-rgb: 205, 148, 51;
+  --vm-camp-accent: #e3b566;
 }
 
 .vm-shell .vm-pause-head {
@@ -1100,11 +1131,45 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-head {
+  position: relative;
+  padding-right: 170px;
+  border-bottom-color: rgba(var(--vm-camp-rgb), 0.34);
+}
+
+.vm-shell .vm-pause-panel.has-campaign .vm-subtitle {
+  color: var(--vm-camp-accent);
+}
+
+.vm-shell .vm-pause-operation-label {
+  position: absolute;
+  top: 24px;
+  right: 22px;
+  margin: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
 .vm-shell .vm-pause-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 14px 12px 4px;
+}
+
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 12px;
+}
+
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-nav .vm-btn:first-child,
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-nav .vm-btn:last-child {
+  grid-column: 1 / -1;
 }
 
 .vm-shell .vm-pause-stats {
@@ -1115,6 +1180,138 @@
   letter-spacing: 0.16em;
   color: var(--vm-text-faint);
   text-transform: uppercase;
+}
+
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-stats {
+  border-bottom: 1px solid var(--vm-line-soft);
+  padding-bottom: 10px;
+}
+
+.vm-shell .vm-pause-command {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  min-height: 104px;
+  margin: 12px 22px 2px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.44);
+  background:
+    linear-gradient(100deg, rgba(var(--vm-camp-rgb), 0.13), transparent 55%),
+    rgba(2, 7, 14, 0.72);
+}
+
+.vm-shell .vm-pause-command-visual {
+  position: relative;
+  min-height: 104px;
+  overflow: hidden;
+  border-right: 1px solid rgba(var(--vm-camp-rgb), 0.42);
+  background: rgba(var(--vm-camp-rgb), 0.08);
+}
+
+.vm-shell .vm-pause-command-portrait {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 104px;
+  object-fit: cover;
+  object-position: center 22%;
+  filter: saturate(0.82) contrast(1.05);
+}
+
+.vm-shell .vm-pause-command-monogram {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--vm-camp-accent);
+}
+
+.vm-shell .vm-pause-command-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.026) 0,
+    rgba(255, 255, 255, 0.026) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.vm-shell .vm-pause-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 16px;
+}
+
+.vm-shell .vm-pause-command-channel,
+.vm-shell .vm-pause-command-role {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-pause-command-channel { color: var(--vm-camp-accent); }
+
+.vm-shell .vm-pause-command-identity {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vm-shell .vm-pause-command-name {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-pause-command-role {
+  min-width: 0;
+  color: var(--vm-text-faint);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.vm-shell .vm-pause-command-directive {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--vm-text-dim);
+}
+
+@media (max-width: 620px) {
+  .vm-shell .vm-pause-panel.has-campaign .vm-pause-head {
+    padding-right: 22px;
+  }
+
+  .vm-shell .vm-pause-operation-label {
+    position: static;
+    margin-top: 2px;
+  }
+
+  .vm-shell .vm-pause-command {
+    grid-template-columns: 82px minmax(0, 1fr);
+    margin-inline: 12px;
+  }
+
+  .vm-shell .vm-pause-panel.has-campaign .vm-pause-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .vm-shell .vm-pause-panel.has-campaign .vm-pause-nav .vm-btn:first-child,
+  .vm-shell .vm-pause-panel.has-campaign .vm-pause-nav .vm-btn:last-child {
+    grid-column: auto;
+  }
 }
 
 /* ==========================================================================
@@ -1149,6 +1346,18 @@
 
 .vm-shell .vm-end-panel.has-campaign {
   width: min(960px, 94vw);
+}
+
+/* Results carried the same fixed-pixel problem as the campaign selector: at
+   1440p the complete operation report occupied a 960px island. Give the
+   authored campaign report a larger review scale while leaving skirmish
+   results and the minimum desktop viewport untouched. */
+@media (min-width: 1800px) and (min-height: 1000px) {
+  .vm-shell .vm-end-panel.has-campaign {
+    width: min(1120px, calc((100vw - 96px) / 1.15));
+    max-height: calc((100dvh - 96px) / 1.15);
+    zoom: 1.15;
+  }
 }
 
 /* Pinned: all three are fixed-size and must never be the thing that scrolls
@@ -1213,6 +1422,16 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
+/* Twelve campaign facts are a deliberate 6 × 2 ledger. Once the high-DPI
+   campaign report widened, auto-fit chose seven columns and left two blank
+   wells at the end of row two. Preserve auto-fit for narrow/skirmish results,
+   but keep the authored campaign matrix balanced wherever six columns fit. */
+@media (min-width: 900px) {
+  .vm-shell .vm-end-panel.has-campaign > .vm-stats {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
 .vm-shell .vm-stat {
   display: flex;
   flex-direction: column;
@@ -1258,6 +1477,98 @@
   align-items: center;
   gap: 22px;
   width: min(620px, 86vw);
+}
+
+.vm-shell .vm-load-campaign {
+  --vm-load-camp-rgb: 213, 64, 82;
+  --vm-load-camp-accent: #eb7c88;
+}
+
+.vm-shell .vm-load-campaign.is-allies {
+  --vm-load-camp-rgb: 53, 200, 240;
+  --vm-load-camp-accent: #72daf7;
+}
+
+.vm-shell .vm-load-campaign.is-pact {
+  --vm-load-camp-rgb: 151, 91, 222;
+  --vm-load-camp-accent: #bf93ed;
+}
+
+.vm-shell .vm-load-campaign.is-reclamation {
+  --vm-load-camp-rgb: 205, 148, 51;
+  --vm-load-camp-accent: #e3b566;
+}
+
+.vm-shell .vm-load-command {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  width: 100%;
+  min-height: 108px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--vm-load-camp-rgb), 0.42);
+  background:
+    linear-gradient(100deg, rgba(var(--vm-load-camp-rgb), 0.13), transparent 56%),
+    rgba(4, 8, 16, 0.9);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.vm-shell .vm-load-command-portrait {
+  width: 88px;
+  height: 100%;
+  min-height: 108px;
+  object-fit: cover;
+  object-position: 50% 24%;
+  border-right: 1px solid rgba(var(--vm-load-camp-rgb), 0.38);
+  filter: saturate(0.84) contrast(1.06);
+}
+
+.vm-shell .vm-load-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 15px;
+}
+
+.vm-shell .vm-load-command-kicker {
+  color: var(--vm-load-camp-accent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-load-command-identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  row-gap: 1px;
+  gap: 9px;
+  margin-top: 2px;
+}
+
+.vm-shell .vm-load-command-name {
+  color: var(--vm-text);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-load-command-role {
+  min-width: 0;
+  color: var(--vm-text-faint);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.vm-shell .vm-load-command-directive {
+  margin: 6px 0 0;
+  color: var(--vm-text-dim);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .vm-shell .vm-load-bar {
@@ -1952,6 +2263,24 @@
   flex: 0 0 auto;
   font-weight: 700;
   color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-pause-obj-reward {
+  flex: 0 0 auto;
+  color: var(--vm-camp-accent, var(--vm-accent));
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-obj-row { align-items: flex-start; }
+
+.vm-shell .vm-pause-panel.has-campaign .vm-pause-obj-name {
+  overflow: visible;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .vm-shell .vm-pause-obj-row.is-done .vm-pause-obj-name,
@@ -2926,14 +3255,52 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
  * source.                                                                 */
 
 .vm-shell .vm-camp-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
   margin: 0 18px 18px;
   color: var(--vm-text-dim);
   font-size: 13px;
   line-height: 1.55;
-  max-width: 62ch;
 }
 
 .vm-shell .vm-camp-note strong { color: var(--vm-text); font-weight: 600; }
+
+.vm-shell .vm-camp-note-copy { max-width: 62ch; }
+
+.vm-shell .vm-camp-overall {
+  display: grid;
+  gap: 5px;
+  width: clamp(150px, 18vw, 220px);
+  flex: 0 0 auto;
+  color: var(--vm-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-overall-copy {
+  justify-self: end;
+}
+
+.vm-shell .vm-camp-overall-track {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.085);
+}
+
+.vm-shell .vm-camp-overall-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--vm-camp-overall-progress, 0%);
+  background: var(--vm-accent);
+  box-shadow: 0 0 9px rgba(var(--vm-accent-rgb), 0.55);
+  transition: width 220ms ease-out;
+}
 
 .vm-shell .vm-camp-loading {
   margin: 24px 0;
@@ -2965,15 +3332,41 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 /* -- the four chapter cards ------------------------------------------------ *
- * `.vm-card` is the faction-card idiom from the lobby, reused rather than
- * re-invented: the same notch, the same `aria-pressed` selected treatment and
- * the same stripe, which falls back to `--vm-accent` when no `--vm-card-color`
- * is set — so a chapter card needs no colour of its own.
+ * The briefing, in-match transmission and after-action report all carry the
+ * speaking faction's command colour. The selector is the first link in that
+ * chain, so its cards and selected operation deck use the same four palettes.
  *
  * `minmax(0, 1fr)` rather than the lobby's `minmax(140px, 1fr)`: four chapters
  * are a fixed set and they should stay on ONE row down to the 900px breakpoint
  * where the setup grid folds. A `140px` floor lets them wrap to two rows and
  * the "compact row of four" stops being a row.                               */
+
+.vm-shell .vm-camp-card,
+.vm-shell .vm-camp-chapter {
+  --vm-camp-rgb: 213, 64, 82;
+  --vm-camp-accent: #eb7c88;
+  --vm-accent-rgb: var(--vm-camp-rgb);
+  --vm-accent: var(--vm-camp-accent);
+  --vm-card-color: var(--vm-camp-accent);
+}
+
+.vm-shell .vm-camp-card.is-allies,
+.vm-shell .vm-camp-chapter.is-allies {
+  --vm-camp-rgb: 53, 200, 240;
+  --vm-camp-accent: #72daf7;
+}
+
+.vm-shell .vm-camp-card.is-pact,
+.vm-shell .vm-camp-chapter.is-pact {
+  --vm-camp-rgb: 151, 91, 222;
+  --vm-camp-accent: #bf93ed;
+}
+
+.vm-shell .vm-camp-card.is-reclamation,
+.vm-shell .vm-camp-chapter.is-reclamation {
+  --vm-camp-rgb: 205, 148, 51;
+  --vm-camp-accent: #e3b566;
+}
 
 .vm-shell .vm-camp-cards {
   display: grid;
@@ -2982,13 +3375,86 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   margin-bottom: 14px;
 }
 
-.vm-shell .vm-camp-card {
+.vm-shell .vm-card.vm-camp-card {
+  overflow: hidden;
+  isolation: isolate;
   gap: 5px;
   padding: 12px 12px 11px;
+  border-color: rgba(var(--vm-camp-rgb), 0.22);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-camp-rgb), 0.09), transparent 56%),
+    rgba(255, 255, 255, 0.025);
 }
 
-/* Two lines, clamped. One line ellipses most of these blurbs mid-clause; two
- * fits every shipped chapter at this width and keeps all four cards level. */
+.vm-shell .vm-card.vm-camp-card > :not(.vm-camp-card-portrait) {
+  position: relative;
+  z-index: 1;
+}
+
+.vm-shell .vm-camp-card-portrait {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0 auto;
+  width: 48%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+  opacity: 0.22;
+  filter: saturate(0.68) contrast(1.12);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 62%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 62%);
+  transition: opacity 160ms ease-out, transform 220ms ease-out,
+    filter 160ms ease-out;
+}
+
+.vm-shell .vm-card.vm-camp-card:hover .vm-camp-card-portrait,
+.vm-shell .vm-card.vm-camp-card.is-focus .vm-camp-card-portrait {
+  opacity: 0.34;
+  filter: saturate(0.84) contrast(1.12);
+  transform: scale(1.025);
+}
+
+.vm-shell .vm-card.vm-camp-card[aria-pressed='true'] .vm-camp-card-portrait {
+  opacity: 0.42;
+  filter: saturate(0.94) contrast(1.15);
+  transform: scale(1.035);
+}
+
+.vm-shell .vm-camp-card .vm-card-name,
+.vm-shell .vm-camp-card-command,
+.vm-shell .vm-camp-card .vm-card-blurb {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92);
+}
+
+.vm-shell .vm-card.vm-camp-card:hover,
+.vm-shell .vm-card.vm-camp-card.is-focus {
+  border-color: rgba(var(--vm-camp-rgb), 0.52);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-camp-rgb), 0.14), transparent 62%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.vm-shell .vm-card.vm-camp-card[aria-pressed='true'] {
+  border-color: rgba(var(--vm-camp-rgb), 0.8);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-camp-rgb), 0.2), transparent 68%),
+    rgba(var(--vm-camp-rgb), 0.06);
+  box-shadow: inset 0 0 28px rgba(var(--vm-camp-rgb), 0.06),
+    0 0 20px rgba(var(--vm-camp-rgb), 0.08);
+}
+
+.vm-shell .vm-camp-card-command {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  color: var(--vm-camp-accent);
+  opacity: 0.9;
+}
+
+/* Two lines at the normal four-card width. The compact four-up layout gets a
+ * third line below; without it the Pact/Reclamation blurbs ended mid-clause. */
 .vm-shell .vm-camp-card .vm-card-blurb {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -2998,11 +3464,49 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   min-height: 2.9em;
 }
 
+@media (min-width: 901px) and (max-width: 1100px) {
+  .vm-shell .vm-camp-card .vm-card-blurb {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    min-height: 4.35em;
+  }
+}
+
 .vm-shell .vm-camp-card-foot {
   display: flex;
   align-items: baseline;
   gap: 10px;
   margin-top: 2px;
+}
+
+.vm-shell .vm-camp-card-complete {
+  margin-left: auto;
+  color: var(--vm-camp-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-card.vm-camp-card.is-complete {
+  box-shadow: inset 0 -2px 0 rgba(var(--vm-camp-rgb), 0.45);
+}
+
+.vm-shell .vm-camp-card-progress {
+  position: relative;
+  height: 3px;
+  margin-top: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.vm-shell .vm-camp-card-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--vm-camp-progress, 0%);
+  background: var(--vm-camp-accent);
+  box-shadow: 0 0 9px rgba(var(--vm-camp-rgb), 0.55);
+  transition: width 220ms ease-out;
 }
 
 /* `--vm-accent`, NOT `--vm-gold`. Two reasons and either one settles it:
@@ -3014,16 +3518,112 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--vm-accent);
+  color: var(--vm-camp-accent);
 }
 
-.vm-shell .vm-camp-chapter { padding: 16px 18px; }
+.vm-shell .vm-camp-chapter {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px;
+  background:
+    linear-gradient(110deg, rgba(var(--vm-camp-rgb), 0.08), transparent 36%),
+    var(--vm-glass);
+}
+
+.vm-shell .vm-camp-chapter::before {
+  background: rgba(var(--vm-camp-rgb), 0.36);
+}
+
+.vm-shell .vm-camp-chapter::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--vm-camp-accent), transparent 62%);
+  opacity: 0.72;
+  pointer-events: none;
+}
 
 .vm-shell .vm-camp-chapter-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
   gap: 12px;
+}
+
+.vm-shell .vm-camp-chapter-continue {
+  min-width: 126px;
+  align-self: stretch;
+}
+
+.vm-shell .vm-camp-chapter-commander {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 9px 3px 3px;
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.24);
+  background: rgba(var(--vm-camp-rgb), 0.055);
+}
+
+.vm-shell .vm-camp-chapter-commander-portrait {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  object-fit: cover;
+  object-position: 50% 20%;
+  filter: saturate(0.82) contrast(1.08);
+}
+
+.vm-shell .vm-camp-chapter-commander-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vm-shell .vm-camp-chapter-commander-label {
+  color: var(--vm-text-faint);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-chapter-commander-name {
+  max-width: 20ch;
+  color: var(--vm-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-chapter-status {
+  display: flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vm-shell .vm-camp-chapter-complete {
+  color: var(--vm-camp-accent);
+  font-size: 9px;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-chapter-identity {
+  display: grid;
+  gap: 3px;
+}
+
+.vm-shell .vm-camp-chapter-command {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vm-camp-accent);
 }
 
 .vm-shell .vm-camp-chapter-title {
@@ -3079,6 +3679,48 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   background: var(--vm-glass-soft);
 }
 
+.vm-shell .vm-camp-chapter .vm-camp-op:not(.is-locked) {
+  border-color: rgba(var(--vm-camp-rgb), 0.18);
+  background: linear-gradient(90deg, rgba(var(--vm-camp-rgb), 0.04), transparent 44%),
+    var(--vm-glass-soft);
+}
+
+.vm-shell .vm-camp-chapter .vm-camp-op.is-current {
+  border-color: rgba(var(--vm-camp-rgb), 0.58);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-camp-rgb), 0.15), transparent 58%),
+    var(--vm-glass-soft);
+  box-shadow: inset 3px 0 0 var(--vm-camp-accent),
+    0 0 18px rgba(var(--vm-camp-rgb), 0.07);
+}
+
+.vm-shell .vm-camp-op-current {
+  color: var(--vm-camp-accent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-op-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+.vm-shell .vm-camp-chapter .vm-camp-op-index,
+.vm-shell .vm-camp-chapter .vm-camp-pip.is-on {
+  color: var(--vm-camp-accent);
+}
+
+.vm-shell .vm-camp-chapter .vm-camp-pip.is-on {
+  background: var(--vm-camp-accent);
+  border-color: var(--vm-camp-accent);
+  box-shadow: 0 0 6px rgba(var(--vm-camp-rgb), 0.5);
+}
+
 .vm-shell .vm-camp-op > .vm-btn {
   padding-left: 8px;
   padding-right: 8px;
@@ -3092,8 +3734,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
  * argument is about VISIBILITY, not about height.
  *
  * `.vm-camp-op-title` is `display: block`, which is exactly what a flex item
- * wants; the two spans sit on one baseline and the reason takes the ellipsis
- * because the title is what the row IS.                                      */
+ * wants; the reason shares its baseline while space permits and wraps rather
+ * than dropping the prerequisite the player came here to learn.             */
 
 .vm-shell .vm-camp-op.is-locked {
   opacity: 0.62;
@@ -3105,6 +3747,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 .vm-shell .vm-camp-op.is-locked .vm-camp-op-text {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
 }
@@ -3116,12 +3759,12 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-op-lock {
+  flex: 1 1 300px;
   min-width: 0;
   font-size: 12px;
   color: var(--vm-text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-shell .vm-camp-op-lockcell {
@@ -3148,9 +3791,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   display: block;
   font-size: 12px;
   color: var(--vm-text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-shell .vm-camp-op-par {
@@ -3181,6 +3823,103 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
 /* -- the briefing ---------------------------------------------------------- */
 
+/* One presentation system, four command languages. The portraits already
+   carry these palettes; the frame has to agree or every non-Soviet commander
+   looks as though they are speaking through a captured Directorate terminal. */
+.vm-shell .vm-camp-brief,
+.vm-shell .vm-camp-brief-page,
+.vm-shell .vm-camp-after-action {
+  --vm-camp-rgb: 213, 64, 82;
+  --vm-camp-accent: #eb7c88;
+  --vm-camp-role: #a18c91;
+}
+
+.vm-shell .vm-camp-brief.is-allies,
+.vm-shell .vm-camp-brief-page.is-allies,
+.vm-shell .vm-camp-after-action.is-allies {
+  --vm-camp-rgb: 53, 200, 240;
+  --vm-camp-accent: #72daf7;
+  --vm-camp-role: #8fa9ba;
+}
+
+.vm-shell .vm-camp-brief.is-pact,
+.vm-shell .vm-camp-brief-page.is-pact,
+.vm-shell .vm-camp-after-action.is-pact {
+  --vm-camp-rgb: 151, 91, 222;
+  --vm-camp-accent: #bf93ed;
+  --vm-camp-role: #a496b5;
+}
+
+.vm-shell .vm-camp-brief.is-reclamation,
+.vm-shell .vm-camp-brief-page.is-reclamation,
+.vm-shell .vm-camp-after-action.is-reclamation {
+  --vm-camp-rgb: 205, 148, 51;
+  --vm-camp-accent: #e3b566;
+  --vm-camp-role: #ad9b7b;
+}
+
+.vm-shell .vm-camp-brief-page {
+  --vm-accent-rgb: var(--vm-camp-rgb);
+  --vm-accent: var(--vm-camp-accent);
+}
+
+/* The shared 1160px shell frame is calibrated for 1280x720. At 1440p it left
+   campaign screens occupying less than half the frame, with briefing copy and
+   commander identity physically no larger than on the minimum viewport. These
+   are authored command surfaces rather than utility modals: scale them as one
+   composition on large desktops, while the divided width/height caps preserve
+   the same safe area and the 720p route remains byte-for-byte unchanged. */
+@media (min-width: 1800px) and (min-height: 1000px) {
+  .vm-shell .vm-campaign-page,
+  .vm-shell .vm-camp-brief-page {
+    width: min(1280px, calc((100vw - 96px) / 1.25));
+    max-height: calc((100dvh - 96px) / 1.25);
+    zoom: 1.25;
+  }
+}
+
+.vm-shell .vm-camp-difficulty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-right: auto;
+}
+
+.vm-shell .vm-camp-difficulty-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.vm-shell .vm-camp-difficulty-label,
+.vm-shell .vm-camp-difficulty-note {
+  display: block;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-difficulty-label {
+  color: var(--vm-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-difficulty-note {
+  color: var(--vm-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.vm-shell .vm-camp-difficulty .vm-chooser {
+  min-width: 144px;
+}
+
+.vm-shell .vm-camp-difficulty .vm-chooser-value {
+  min-width: 88px;
+  color: var(--vm-camp-accent);
+  border-color: rgba(var(--vm-camp-rgb), 0.3);
+}
+
 .vm-shell .vm-camp-brief {
   /* The body is already capped by `.vm-page-panel`. A second 980px cap left a
      blank column between the command portrait and the panel edge on wide
@@ -3208,7 +3947,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--vm-accent);
+  color: var(--vm-camp-accent);
 }
 
 .vm-shell .vm-camp-brief-title {
@@ -3216,6 +3955,32 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: 22px;
   font-weight: 600;
   color: var(--vm-text);
+}
+
+.vm-shell .vm-camp-brief-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin: -2px 0 12px;
+  padding: 4px 8px;
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.24);
+  color: var(--vm-camp-accent);
+  background: rgba(var(--vm-camp-rgb), 0.055);
+}
+
+.vm-shell .vm-camp-brief-record-label {
+  color: var(--vm-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-brief-record-value {
+  color: var(--vm-text);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .vm-shell .vm-camp-brief-beat {
@@ -3239,7 +4004,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-brief-obj {
-  display: flex;
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 10px;
   padding: 5px 0;
@@ -3253,7 +4019,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   color: var(--vm-text-faint);
 }
 
-.vm-shell .vm-camp-brief-obj.is-primary .vm-camp-brief-tag { color: var(--vm-accent); }
+.vm-shell .vm-camp-brief-obj.is-primary .vm-camp-brief-tag { color: var(--vm-camp-accent); }
 
 .vm-shell .vm-camp-brief-obj-text {
   font-size: 14px;
@@ -3261,6 +4027,14 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-brief-obj.is-secondary .vm-camp-brief-obj-text { color: var(--vm-text-dim); }
+
+.vm-shell .vm-camp-brief-obj-reward {
+  color: var(--vm-camp-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
 
 .vm-shell .vm-camp-brief-intel {
   display: grid;
@@ -3281,9 +4055,6 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 .vm-shell .vm-camp-brief-intel-key,
 .vm-shell .vm-camp-brief-intel-value {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .vm-shell .vm-camp-brief-intel-key {
@@ -3292,19 +4063,69 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .vm-shell .vm-camp-brief-intel-value {
   color: var(--vm-text);
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.vm-shell .vm-camp-medal-standards {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.22);
+  background: rgba(var(--vm-camp-rgb), 0.045);
+}
+
+.vm-shell .vm-camp-medal-standards-kicker,
+.vm-shell .vm-camp-medal-standard {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.vm-shell .vm-camp-medal-standards-kicker {
+  display: flex;
+  align-items: center;
+  color: var(--vm-camp-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-medal-standard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid rgba(var(--vm-camp-rgb), 0.16);
+}
+
+.vm-shell .vm-camp-medal-standard-label {
+  color: var(--vm-text);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.vm-shell .vm-camp-medal-standard-rule {
+  color: var(--vm-text-faint);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .vm-shell .vm-camp-command {
   position: relative;
   min-height: 370px;
   overflow: hidden;
-  border: 1px solid rgba(213, 64, 82, 0.48);
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.52);
   border-radius: var(--vm-notch-sm);
   background: #050810;
   box-shadow:
@@ -3320,7 +4141,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   pointer-events: none;
   background:
     linear-gradient(180deg, transparent 42%, rgba(2, 5, 12, 0.32) 58%, rgba(2, 5, 12, 0.97) 79%),
-    linear-gradient(90deg, rgba(142, 25, 39, 0.12), transparent 52%);
+    linear-gradient(90deg, rgba(var(--vm-camp-rgb), 0.14), transparent 52%);
 }
 
 .vm-shell .vm-camp-command-scan {
@@ -3354,9 +4175,9 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   display: inline-block;
   margin: 12px;
   padding: 4px 6px;
-  color: #eb7c88;
+  color: var(--vm-camp-accent);
   background: rgba(5, 8, 16, 0.78);
-  border: 1px solid rgba(213, 64, 82, 0.38);
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.42);
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -3370,6 +4191,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   bottom: 76px;
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
+  row-gap: 1px;
   gap: 9px;
 }
 
@@ -3381,10 +4204,13 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-command-role {
-  color: #a18c91;
+  min-width: 0;
+  color: var(--vm-camp-role);
   font-size: 9px;
   letter-spacing: 0.11em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-shell .vm-camp-command-directive {
@@ -3398,6 +4224,52 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   line-height: 1.4;
 }
 
+/* Without Recourse carries the longest briefing in the roster. At the
+   1024x640 desktop floor its final Gold requirement used to sit half under the
+   pinned Deploy deck. Preserve the four-sided panel inset, but tighten only
+   the internal vertical rhythm so every objective, intel cell and award rule
+   is visible in the first frame. */
+@media (max-height: 660px) and (min-width: 721px) {
+  .vm-shell .vm-camp-brief {
+    margin-block: 12px;
+  }
+
+  .vm-shell .vm-camp-brief-beat {
+    margin-bottom: 14px;
+    line-height: 1.45;
+  }
+
+  .vm-shell .vm-camp-brief-objectives {
+    padding-top: 12px;
+  }
+
+  .vm-shell .vm-camp-brief-h4 {
+    margin-bottom: 6px;
+  }
+
+  .vm-shell .vm-camp-brief-obj {
+    padding-block: 3px;
+  }
+
+  .vm-shell .vm-camp-brief-intel {
+    margin-top: 14px;
+    padding-top: 10px;
+  }
+
+  .vm-shell .vm-camp-brief-intel-item {
+    padding-block: 7px;
+  }
+
+  .vm-shell .vm-camp-medal-standards {
+    margin-top: 6px;
+  }
+
+  .vm-shell .vm-camp-medal-standards-kicker,
+  .vm-shell .vm-camp-medal-standard {
+    padding-block: 6px;
+  }
+}
+
 /* -- narrow ---------------------------------------------------------------- *
  * Under 720px the operation row stops trying to be one line: the beat and the
  * par fold under the title rather than being ellipsed to nothing.             */
@@ -3409,27 +4281,58 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   .vm-shell .vm-camp-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .vm-shell .vm-camp-note {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .vm-shell .vm-camp-overall {
+    width: 100%;
+  }
+
+  .vm-shell .vm-camp-overall-copy {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 720px) {
+  .vm-shell .vm-camp-chapter-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .vm-shell .vm-camp-chapter-commander {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .vm-shell .vm-camp-chapter-continue {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .vm-shell .vm-camp-difficulty {
+    width: 100%;
+    justify-content: space-between;
+    margin-right: 0;
+  }
+
   .vm-shell .vm-camp-op {
     grid-template-columns: 2.2em minmax(0, 1fr) auto;
     row-gap: 8px;
   }
 
   .vm-shell .vm-camp-op-par { grid-column: 2; }
-  .vm-shell .vm-camp-op-beat { white-space: normal; }
-
-  /* The locked row keeps its one-line shape only while there is a line to
-   * keep it on: at this width the reason wraps under the title instead of
-   * being ellipsed away, which is the same trade the beat makes above. */
+  /* At this width the reason moves under the title instead of sharing its
+   * baseline; it already wraps at every width and never needs an ellipsis. */
   .vm-shell .vm-camp-op.is-locked .vm-camp-op-text {
     display: block;
   }
 
   .vm-shell .vm-camp-op-lock {
     display: block;
-    white-space: normal;
   }
 
   .vm-shell .vm-camp-brief.has-command .vm-camp-brief-grid {
@@ -3444,6 +4347,15 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
   .vm-shell .vm-camp-brief-intel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vm-shell .vm-camp-medal-standards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vm-shell .vm-camp-medal-standard {
+    border-top: 1px solid rgba(var(--vm-camp-rgb), 0.16);
+    border-left: 0;
   }
 }
 
@@ -3463,9 +4375,16 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 .vm-shell .vm-camp-result-row {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 9px;
   font-size: 13px;
   color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-camp-result-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .vm-shell .vm-camp-result-mark {
@@ -3476,13 +4395,41 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
 .vm-shell .vm-camp-result-row.is-complete { color: var(--vm-text); }
 .vm-shell .vm-camp-result-row.is-complete .vm-camp-result-mark { color: var(--vm-accent); }
+.vm-shell .vm-camp-after-action .vm-camp-result-row.is-complete .vm-camp-result-mark {
+  color: var(--vm-camp-accent);
+}
 .vm-shell .vm-camp-result-row.is-failed .vm-camp-result-mark { color: var(--vm-danger); }
 
 .vm-shell .vm-camp-result-tag {
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-result-tag.is-primary {
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-camp-result-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-result-status.is-complete { color: var(--vm-camp-accent); }
+.vm-shell .vm-camp-result-status.is-failed { color: var(--vm-danger); }
+.vm-shell .vm-camp-result-status.is-active { color: var(--vm-text-faint); }
+
+.vm-shell .vm-camp-result-reward {
+  color: var(--vm-camp-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* -- campaign after-action report ----------------------------------------- *
@@ -3498,7 +4445,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   gap: 1px;
   margin: 18px;
   overflow: hidden;
-  border: 1px solid var(--vm-line);
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.32);
   border-radius: var(--vm-notch-sm);
   background: var(--vm-line-soft);
   clip-path: polygon(0 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 13px 100%, 0 calc(100% - 13px));
@@ -3508,16 +4455,26 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   min-width: 0;
   padding: 18px 20px;
   background:
-    linear-gradient(135deg, rgba(var(--vm-accent-rgb), 0.055), transparent 44%),
+    linear-gradient(135deg, rgba(var(--vm-camp-rgb), 0.075), transparent 44%),
     rgba(3, 7, 15, 0.94);
 }
 
 .vm-shell .vm-camp-after-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
-  justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+}
+
+.vm-shell .vm-camp-after-grade {
+  margin-left: auto;
+  color: var(--vm-camp-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .vm-shell .vm-camp-after-kicker,
@@ -3527,16 +4484,16 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-after-kicker {
-  color: var(--vm-accent);
+  color: var(--vm-camp-accent);
   font-size: 10px;
 }
 
 .vm-shell .vm-camp-after-operation {
-  overflow: hidden;
+  min-width: 0;
   color: var(--vm-text-faint);
   font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-shell .vm-camp-award {
@@ -3595,12 +4552,50 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-camp-award-detail {
-  overflow: hidden;
   color: var(--vm-text-faint);
   font-size: 10px;
+  line-height: 1.3;
   letter-spacing: 0.04em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.vm-shell .vm-camp-finale {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid rgba(var(--vm-camp-rgb), 0.32);
+  background: rgba(var(--vm-camp-rgb), 0.08);
+  color: var(--vm-camp-accent);
+}
+
+.vm-shell .vm-camp-finale-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vm-shell .vm-camp-finale-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-finale-verdict {
+  color: var(--vm-text);
+  font-size: 12px;
+  letter-spacing: 0.055em;
+}
+
+.vm-shell .vm-camp-finale-note {
+  color: var(--vm-text-faint);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .vm-shell .vm-camp-debrief-command {
@@ -3609,7 +4604,9 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   grid-template-rows: minmax(142px, 1fr) auto;
   min-width: 0;
   overflow: hidden;
-  background: #050810;
+  background:
+    radial-gradient(circle at 82% 14%, rgba(var(--vm-camp-rgb), 0.12), transparent 46%),
+    #050810;
 }
 
 .vm-shell .vm-camp-debrief-visual {
@@ -3659,11 +4656,13 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   text-transform: uppercase;
 }
 
-.vm-shell .vm-camp-debrief-channel { color: #eb7c88; }
+.vm-shell .vm-camp-debrief-channel { color: var(--vm-camp-accent); }
 
 .vm-shell .vm-camp-debrief-identity {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
+  row-gap: 1px;
   gap: 8px;
   margin-top: 4px;
 }
@@ -3675,7 +4674,12 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   text-transform: uppercase;
 }
 
-.vm-shell .vm-camp-debrief-role { color: #9b8b92; }
+.vm-shell .vm-camp-debrief-role {
+  min-width: 0;
+  color: var(--vm-camp-role);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 
 .vm-shell .vm-camp-debrief-message {
   margin: 7px 0 0;
@@ -3687,6 +4691,138 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 .vm-shell .vm-camp-after-action.is-loss .vm-camp-after-kicker,
 .vm-shell .vm-camp-after-action.is-loss .vm-camp-result-row.is-failed {
   color: var(--vm-danger);
+}
+
+/* A 1280x720 result has roughly 230px between the pinned verdict and pinned
+   stats/action deck. The square dossier portrait used to make this column more
+   than 400px tall, so the commander identity and debrief existed but opened
+   below the scroll fold. On short, wide desktops make the dossier horizontal:
+   the complete assessment now fits in the first frame without shrinking text
+   or sacrificing the portrait. */
+@media (max-height: 800px) and (min-width: 721px) {
+  .vm-shell .vm-end-panel.has-campaign {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .vm-shell .vm-end-panel.has-campaign > .vm-end-head {
+    gap: 6px;
+    padding: 18px 28px 14px;
+  }
+
+  .vm-shell .vm-end-panel.has-campaign .vm-verdict {
+    font-size: clamp(32px, 4.5vw, 52px);
+  }
+
+  .vm-shell .vm-end-panel.has-campaign > .vm-stats .vm-stat {
+    gap: 4px;
+    padding: 10px 16px;
+  }
+
+  .vm-shell .vm-end-panel.has-campaign > .vm-stats .vm-stat-value {
+    font-size: 24px;
+  }
+
+  .vm-shell .vm-camp-after-action {
+    margin-block: 10px;
+  }
+
+  .vm-shell .vm-camp-after-report {
+    padding-block: 12px;
+  }
+
+  .vm-shell .vm-camp-after-heading {
+    margin-bottom: 8px;
+  }
+
+  .vm-shell .vm-camp-award {
+    min-height: 46px;
+    padding-block: 6px;
+  }
+
+  .vm-shell .vm-camp-result {
+    gap: 2px;
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .vm-shell .vm-camp-finale {
+    margin-top: 7px;
+    padding-block: 6px;
+  }
+
+  .vm-shell .vm-camp-debrief-command {
+    grid-template-columns: 144px minmax(0, 1fr);
+    grid-template-rows: minmax(150px, auto);
+  }
+
+  .vm-shell .vm-camp-debrief-visual,
+  .vm-shell .vm-camp-debrief-portrait {
+    min-height: 150px;
+    height: 100%;
+  }
+
+  .vm-shell .vm-camp-debrief-copy {
+    align-self: center;
+    margin: 0;
+    padding: 14px 13px;
+    background: rgba(5, 8, 16, 0.96);
+  }
+}
+
+/* 1024 x 640 is the minimum wide campaign review surface. The pinned verdict,
+   twelve-stat ledger and action deck leave a deliberately tight report band;
+   trim ornamental air here so the finale's authored epilogue is visible in
+   the first frame instead of looking as though the stats cut it in half. */
+@media (max-height: 660px) and (min-width: 721px) {
+  .vm-shell .vm-end-panel.has-campaign > .vm-end-head {
+    gap: 4px;
+    padding: 12px 22px 10px;
+  }
+
+  .vm-shell .vm-end-panel.has-campaign .vm-verdict {
+    font-size: clamp(30px, 4vw, 40px);
+    letter-spacing: 0.18em;
+    text-indent: 0.18em;
+  }
+
+  .vm-shell .vm-end-panel.has-campaign > .vm-stats .vm-stat {
+    padding: 8px 14px;
+  }
+
+  .vm-shell .vm-end-panel.has-campaign > .vm-stats .vm-stat-value {
+    font-size: 22px;
+  }
+
+  .vm-shell .vm-camp-after-action {
+    margin-block: 8px;
+  }
+
+  .vm-shell .vm-camp-after-report {
+    padding-block: 9px;
+  }
+
+  .vm-shell .vm-camp-after-heading {
+    margin-bottom: 6px;
+  }
+
+  .vm-shell .vm-camp-award {
+    min-height: 42px;
+    padding-block: 4px;
+  }
+
+  .vm-shell .vm-camp-result {
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+
+  .vm-shell .vm-camp-finale {
+    margin-top: 5px;
+    padding-block: 4px;
+  }
+
+  .vm-shell .vm-camp-finale-note {
+    line-height: 1.25;
+  }
 }
 
 @media (max-width: 720px) {

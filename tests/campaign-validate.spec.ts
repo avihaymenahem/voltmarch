@@ -247,6 +247,42 @@ describe('the faults that would otherwise be invisible at runtime', () => {
     }, 'always true');
   });
 
+  it('refuses impossible or non-integral authored count bounds', () => {
+    const op = operation();
+    const replace = (when: Condition): OperationDef => ({
+      ...op,
+      triggers: op.triggers.map((trigger) => trigger.id === 't.derricks'
+        ? { ...trigger, when }
+        : trigger),
+    });
+
+    expectOneFault(replace({
+      on: 'ownerCount', player: 0, role: 'building', min: -1,
+    }), 'whole non-negative');
+    expectOneFault(replace({
+      on: 'ownerCount', player: 0, role: 'building', min: 3, max: 2,
+    }), 'greater than max');
+    expectOneFault(replace({
+      on: 'unitsInArea', player: 0, area: { x: 0, z: 0, r: 20 }, min: 1.5,
+    }), 'whole number');
+  });
+
+  it('refuses non-finite, negative and inverted credit thresholds', () => {
+    const op = operation();
+    const withCredits = (min: number, max?: number): OperationDef => ({
+      ...op,
+      triggers: [...op.triggers, {
+        id: 't.credits',
+        when: { on: 'credits', player: 0, min, ...(max === undefined ? {} : { max }) },
+        then: [{ do: 'dialogue', speaker: 'Rakhalt', text: 'Reserve checked.' }],
+      }],
+    });
+
+    expectOneFault(withCredits(Number.NaN), 'finite non-negative');
+    expectOneFault(withCredits(-1), 'finite non-negative');
+    expectOneFault(withCredits(500, 100), 'greater than max');
+  });
+
   it('a seat number past the operation’s own army count', () => {
     const op = operation();
     expectOneFault({

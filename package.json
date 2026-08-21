@@ -1,6 +1,6 @@
 {
   "name": "voltmarch",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "private": true,
   "type": "module",
   "description": "VOLTMARCH - an original real-time strategy game for the browser, built on Three.js. All art is procedurally generated from code.",
@@ -20,6 +20,7 @@
     "desktop:smoke": "node desktop/smoke.mjs",
     "desktop:typecheck": "tsc --noEmit -p desktop/tsconfig.json",
     "shots": "node tools/shoot.mjs",
+    "campaign:shots": "node tools/campaign-shoot.mjs",
     "naval-proof": "node tools/naval-proof.mjs",
     "desync-probe": "node tools/desync-probe.mjs",
     "replay-probe": "node tools/replay-probe.mjs",

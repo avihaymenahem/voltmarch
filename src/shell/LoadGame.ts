@@ -73,6 +73,7 @@ import './savegame.css';
 import { SIM_HZ } from '../core/config';
 import { DIFFICULTIES, mapById } from './settings-store';
 import { formatClock } from './PauseMenu';
+import { campaignOperationIdentity } from './CampaignPresentation';
 import {
   button,
   el,
@@ -550,8 +551,15 @@ export function factionName(key: string): string {
 }
 
 /** The suggested name in the manual-save field. */
-export function suggestedSaveName(mapId: string, simSeconds: number): string {
-  return `${mapById(mapId).name} · ${formatClock(simSeconds)}`;
+export function suggestedSaveName(
+  mapId: string,
+  simSeconds: number,
+  campaignOperationId?: string,
+): string {
+  const operation = campaignOperationId === undefined
+    ? null
+    : campaignOperationIdentity(campaignOperationId);
+  return `${operation?.title ?? mapById(mapId).name} · ${formatClock(simSeconds)}`;
 }
 
 /**
@@ -587,8 +595,12 @@ interface SlotCardOptions {
  */
 export function slotCard(options: SlotCardOptions): HTMLDivElement {
   const s = options.slot;
+  const operation = s.context.campaignOperationId === undefined
+    ? null
+    : campaignOperationIdentity(s.context.campaignOperationId);
   const card = el('div', `vm-save-row${options.selected === true ? ' is-selected' : ''}`);
   card.dataset.slotId = s.id;
+  if (operation !== null) card.classList.add('has-campaign', `is-${operation.theme}`);
 
   /* -- plate ------------------------------------------------------------- */
   const thumb = el('div', 'vm-save-thumb');
@@ -603,7 +615,7 @@ export function slotCard(options: SlotCardOptions): HTMLDivElement {
     // one. A generated plate is honest about that; a grey box is not.
     thumb.classList.add('is-generated');
     thumb.appendChild(el('span', 'vm-save-thumb-clock vm-num', formatClock(s.simSeconds)));
-    thumb.appendChild(el('span', 'vm-save-thumb-map', mapById(s.context.mapId).name));
+    thumb.appendChild(el('span', 'vm-save-thumb-map', operation?.title ?? mapById(s.context.mapId).name));
   }
   const badge = el('span', `vm-save-kind is-${s.kind}`, s.kind === 'auto' ? 'Auto' : 'Manual');
   thumb.appendChild(badge);
@@ -612,6 +624,13 @@ export function slotCard(options: SlotCardOptions): HTMLDivElement {
   /* -- text -------------------------------------------------------------- */
   const body = el('div', 'vm-save-body');
   body.appendChild(el('h3', 'vm-save-name', s.label === '' ? mapById(s.context.mapId).name : s.label));
+
+  if (operation !== null) {
+    const campaign = el('div', 'vm-save-operation');
+    campaign.appendChild(el('span', 'vm-save-operation-chapter', operation.chapterTitle));
+    campaign.appendChild(el('span', 'vm-save-operation-title', operation.title));
+    body.appendChild(campaign);
+  }
 
   const meta = el('div', 'vm-save-meta');
   meta.appendChild(chip('map', mapById(s.context.mapId).name));
@@ -895,6 +914,7 @@ export class SavePanel {
     input.value = suggestedSaveName(
       this.shell.getSetup().map,
       this.shell.matchSeconds(),
+      this.shell.currentCampaignOperation?.()?.id,
     );
     input.addEventListener('input', () => this.onNameEdited());
     focusable(input);
@@ -1028,7 +1048,11 @@ export class SavePanel {
 
     const typed = sanitizeSaveName(this.name.value);
     const label = typed === ''
-      ? suggestedSaveName(this.shell.getSetup().map, this.shell.matchSeconds())
+      ? suggestedSaveName(
+        this.shell.getSetup().map,
+        this.shell.matchSeconds(),
+        this.shell.currentCampaignOperation?.()?.id,
+      )
       : typed;
 
     this.busy = true;

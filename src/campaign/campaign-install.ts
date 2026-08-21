@@ -254,7 +254,13 @@ class Session implements CampaignSession {
     for (const o of this.op.objectives) {
       const status = this.state.objectives.get(o.id) ?? 'active';
       if (status === 'hidden') continue;
-      out.push({ id: o.id, title: o.title, kind: o.kind, status });
+      out.push({
+        id: o.id,
+        title: o.title,
+        kind: o.kind,
+        status,
+        ...(o.credits === undefined ? {} : { credits: o.credits }),
+      });
     }
     return out;
   }
@@ -279,6 +285,11 @@ let armed: Session | null = null;
  * read its map and title. Null when the id resolves to nothing.
  */
 export function armOperation(operationId: string, difficulty: number): OperationDef | null {
+  // An arm attempt replaces the whole campaign session even when the new id
+  // is invalid. Otherwise a failed replay/save lookup returns null while the
+  // previous operation's roster, layout and outcome policy remain active — a
+  // rejected launch silently mutating the next ordinary match.
+  disarmOperation();
   const op = operationById(operationId);
   if (op === null) {
     console.error(`[campaign] no operation '${operationId}'.`);
@@ -289,8 +300,6 @@ export function armOperation(operationId: string, difficulty: number): Operation
     console.error(`[campaign] operation '${op.id}' names layout '${op.layout}', which is not registered.`);
     return null;
   }
-
-  disarmOperation();
 
   const session = new Session(op, difficulty);
   armed = session;
