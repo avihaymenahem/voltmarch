@@ -442,7 +442,7 @@
  * whatever the posts do.
  *
  * Around it, measured after `spawnBuilding` snapped each footprint: a Breaker
- * Yard **30.3 m** behind (1250 hp, a REAL vehicle producer on the AI's seat, so
+ * Yard **32.6 m** behind (1250 hp, a REAL vehicle producer on the AI's seat, so
  * levelling it costs the Reclamation throughput as well as scenery) and two
  * Spitposts **26.1 m each** in front, on the side the column arrives from, 23.3
  * m apart. Those three figures read 26.0 / 27.9 / 22.8 before the derrick came
@@ -498,19 +498,20 @@
  * cannot produce them, and anyone re-deriving them from that spec alone will
  * conclude the roster block does nothing.
  *
- *     home spot  108, 380     Conclave 110, 378     foe spot 404, 132
+ *     home spot  108, 380     Conclave 114, 382     foe spot 404, 132
  *     shelf anchor 343.4, 300.2 (nominal — the composition is measured here)
- *     station    340, 296     shed 370, 300         posts 318,310 and 338,322
+ *     station    340, 296     shed 372, 302         posts 318,310 and 338,322
  *     WORKS      422, 268     CUT  234, 306         axis 386.2
  *
- *     home -> station 246.7      foe -> station 176.1     station -> shed 30.3
+ *     home -> station 246.7      foe -> station 176.1     station -> shed 32.6
  *     station -> posts 26.1 and 26.1                post -> post 23.3
- *     (Conclave -> station is 244.2; 246.7 is measured from the START SPOT,
- *      which is 2.83 m from the Conclave and is what `t.win`'s disc is drawn
- *      on. The 1150 hp 3x2 at 98, 364 is a Forgeyard or a Cistern — the error
- *      is worth writing down because "Conclave" appears in an objective TITLE
- *      and in Calvane's closing line, so a reader has three reasons to look for
- *      it and this file pointed at the wrong building twice.)
+ *     (Conclave -> station is 241.8; 246.7 is measured from the START SPOT,
+ *      which is 6.32 m from the Conclave and is what `t.win`'s disc is drawn
+ *      on. Nothing stands at (98, 364), which this block used to call a
+ *      Forgeyard or a Cistern — those are at (112, 358) and (112, 406). The
+ *      error is worth writing down because "Conclave" appears in an objective
+ *      TITLE and in Calvane's closing line, so a reader has three reasons to
+ *      look for it and this file pointed at the wrong building twice.)
  *     bearers 73,400 / 76,404 / 79,408 / 82,411
  *     bearers -> home spot 40.7 / 40.1 / 40.1 / 40.7   -> station 287 / 285 / 284 / 283
  *
@@ -897,7 +898,7 @@ const op: OperationDef = {
      * mechanism armed for the next. Recorded rather than worked around.
      *
      * The reveal is 64 m on the station, which shows the two posts (26.1 m out
-     * each) and the breaker yard (30.3 m behind) in the same frame. The
+     * each) and the breaker yard (32.6 m behind) in the same frame. The
      * player is meant to see the whole problem while they still have the match
      * to answer it.
      */

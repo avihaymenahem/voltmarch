@@ -24,22 +24,37 @@
  * is true. Positions are `store.posX/posZ` after `spawnBuilding` snapped each
  * footprint to the placement grid.
  *
- *     lot                     landed        straight   to Pact yard  posts  route
- *     tide gauge         (220.0, 380.0)      112.0 m      308.8 m      2     119 m
- *     first change point (316.0, 272.0)      234.4 m      165.4 m      3     273 m
- *     second change pt   (344.0, 224.0)      282.9 m      109.8 m      4     320 m
- *     the benchmark      (400.0, 214.0)      335.9 m       82.1 m      5     382 m
+ *     lot                     landed      to our yard  to Pact yard  posts  route
+ *     tide gauge         (220.0, 380.0)      106.0 m      306.0 m      2     107 m
+ *     first change point (316.0, 272.0)      230.0 m      162.6 m      3     245 m
+ *     second change pt   (344.0, 224.0)      279.0 m      107.1 m      4     293 m
+ *     the benchmark      (398.0, 212.0)      331.0 m       78.1 m      5     354 m
  *
- * `route` is 8-connected Dijkstra over the real `Terrain.passGrid` for
+ * **BOTH DISTANCE COLUMNS ARE TO THE CONSTRUCTION YARDS**, which land at
+ * (114, 382) and (402, 134). They used to be to the START SPOTS (108, 380) and
+ * (404, 132) under the words "straight" and "to Pact yard" — 112.0 / 234.4 /
+ * 282.9 / 335.2 and 308.8 / 165.4 / 109.8 / 80.2, which is the whole of the
+ * old table except the benchmark row. The spot and the yard are 6.32 m and
+ * 2.83 m apart respectively; this same header already corrects exactly that
+ * confusion for `RELIEF` further down, and the correction was applied to three
+ * numbers and not to this table.
+ *
+ * The benchmark row moved for a second, independent reason: see `RELIEF`'s
+ * block below on the faced-footprint snap, which put the station at (398, 212)
+ * rather than the (400, 214) this table used to name.
+ *
+ * `route` is 8-connected octile Dijkstra over the real `Terrain.passGrid` for
  * `Locomotor.Track`, refusing any cell a structure occupies, from the nearest
- * free cell to the player's Construction Yard (6.3 m off it) to the nearest
- * free cell to each station. It is quoted BESIDE the straight line because the
- * two differ by 14–16 % once the buildings are standing, and a straight line
- * across a coast is a claim about ground nobody checked.
+ * free cell to the player's Construction Yard (8.0 m off it) to the nearest
+ * free cell to each station (6.3 m off the first three, 6.0 m off the
+ * benchmark). Descent and cheapest-predecessor chains agree on all four. It is
+ * quoted BESIDE the straight line because the two differ by 1–7 % once the
+ * buildings are standing, and a straight line across a coast is a claim about
+ * ground nobody checked.
  *
  * **THE ESCALATION IS THE PACT'S OWN BASE, NOT THE POST COUNT.** Five Glaive
  * Posts is a fight; five Glaive Posts with the nearest Pact base structure
- * **48.4 m away** and their Construction Yard at 82.1 m is a different fight,
+ * **45.1 m away** and their Construction Yard at 78.1 m is a different fight,
  * because everything that yard has built since the match began is standing
  * beside them. The post ladder (2/3/4/5) is a legibility device on top of that;
  * the real cost of being late is the last two columns of the table.
@@ -47,10 +62,10 @@
  * The two openings, counted on the same build:
  *
  *     player   4 Warden Tanks, 5 G.I.s, 1 engineer, 2 harvesters
- *              23 structures — yard, refinery, war factory, barracks, radar,
- *              4 power plants, 2 silos, 3 Pillboxes, 9 wall segments
+ *              24 structures — yard, refinery, war factory, barracks, radar,
+ *              4 power plants, 2 silos, 3 Pillboxes, 10 wall segments
  *     Pact     4 Solarchs, 5 Wayfarers, 1 Artificer, 2 Collectors
- *              37 structures — 23 of base, of which 3 are its own Glaive
+ *              38 structures — 24 of base, of which 3 are its own Glaive
  *              Posts, plus the 14 this layout plants up the strand
  *
  * Both are two units and two structures lighter than the same build with the
@@ -178,7 +193,7 @@ import { layout } from '../layout';
  * **THE EXPOSURE THAT BUYS IS WORTH STATING.** `build` seats the two bases from
  * the real `startSpots`, so a generator change that slid an opening would move
  * the BASES and leave this line exactly where it is. The margins absorb a small
- * slide everywhere except at the far end: the benchmark is only 82.1 m from the
+ * slide everywhere except at the far end: the benchmark is only 78.1 m from the
  * Pact's yard, so it is the lot a moved opening reaches first. `build` compares
  * the two and warns rather than letting them drift in silence.
  */
@@ -209,7 +224,7 @@ function at(along: number, sea: number): Point {
  * the NOMINAL lots below rather than on where a station landed, so the gap that
  * decides overlap is the lot-to-lot one: **56.3 m and 53.7 m** against a 48 m
  * touching distance, so **no two discs overlap** — with 8.3 m and 5.7 m to
- * spare. (The stations themselves landed 55.6 m and 56.9 m apart, which is a
+ * spare. (The stations themselves landed 55.6 m and 55.3 m apart, which is a
  * different pair of numbers and governs nothing.) A player standing in an
  * overlap would satisfy the next
  * window without moving, which would hand them a station they never walked to,
@@ -221,11 +236,14 @@ function at(along: number, sea: number): Point {
  * The tide gauge, where a levelling line starts and where the chart drum with
  * the old record still is.
  *
- * Lands at (220.0, 380.0): **112.0 m from the player's yard and 308.8 m from
- * the Pact's**. It is on the player's own strand and the only thing between
- * them and it is the two-post picket. It sits 51.6 m off the straight line to
- * the first change point and **the route that goes via it is 16.4 m longer** —
- * 2.5 s at a Warden's 6.6 m/s — which is exactly why neither this file nor the
+ * Lands at (220.0, 380.0): **106.0 m from the player's yard and 306.0 m from
+ * the Pact's** (112.0 and 308.8 from the two START SPOTS, which is what this
+ * comment used to quote under the word "yard"). It is on the player's own
+ * strand and the only thing between them and it is the two-post picket. It
+ * sits 51.6 m off the straight line from the start spot to the first change
+ * point — 48.9 m off the line from the yard — and **the route that goes via it
+ * is 12.7 m longer** — 1.9 s at a Warden's 6.6 m/s — which is exactly why
+ * neither this file nor the
  * operation pretends the drum is a detour. It costs a fight, on the clock, and
  * the clock is all this operation charges for.
  */
@@ -234,11 +252,11 @@ export const GAUGE: Point = at(85, 70);
 /** The disc the drum trigger counts. Two units, which is a detachment. */
 export const GAUGE_YARD: Area = { x: GAUGE.x, z: GAUGE.z, r: 22 };
 
-/** The first change point. Lands 234.4 m out, 165.4 m from the Pact, 3 posts. */
+/** The first change point. Lands 230.0 m from our yard, 162.6 m from the Pact's, 3 posts. */
 export const CHANGE_A: Point = at(228, 50);
-/** The second. 282.9 m out, 109.8 m from the Pact, 4 posts. */
+/** The second. 279.0 m from our yard, 107.1 m from the Pact's, 4 posts. */
 export const CHANGE_B: Point = at(282, 34);
-/** The benchmark, where the line closes. 335.9 m out, 82.1 m from the Pact. */
+/** The benchmark, where the line closes. 331.0 m from our yard, 78.1 m from the Pact's. */
 export const BENCH: Point = at(330, 58);
 
 /**
@@ -278,18 +296,35 @@ export const BENCH_HOLD: Area = { x: BENCH.x, z: BENCH.z, r: 24 };
  *     57.4 m   to the second change point's STATION AS IT LANDED (344.0, 224.0)
  *              — 57.7 m to its nominal lot, which is the other number and not
  *              this one
- *     58.3 m   to the benchmark's STATION AS IT LANDED (400.0, 214.0)
- *              — 56.0 m to its nominal lot
+ *     55.5 m   to the benchmark's STATION AS IT LANDED (398.0, 212.0)
+ *              — 56.0 m to its nominal lot. The station used to land at
+ *              (400.0, 214.0) and this line used to read 58.3 m; `bb83ffb`
+ *              made `ScenarioBuilder.spawnBuilding` snap on the FACED
+ *              footprint, and `civApartments` is a 2x3 raised at a yaw that
+ *              quantises to 90, so a non-square block at that yaw snaps on the
+ *              swapped lattice and moves 2.83 m. The NOMINAL figure is
+ *              untouched, which is the falsifier: the arithmetic was right and
+ *              the ground moved under it.
  *     53.4 m   to the Pact's CONSTRUCTION YARD, the 3x3 at (402.0, 134.0)
  *              — the Pact's START SPOT is 56.2 m, and those are two different
  *              points. The previous version of this comment quoted the SEAT
  *              distance under the word "yard".
  *
  * So the wave arrives 57 m from one station and 58 m from the other, which is
- * as near to equidistant as this ground allows, and outside the base's own
- * sprawl: the nearest Pact structure is 37.0 m away, i.e. 15.0 m clear of the
- * widest ring below. Spawning on the objective reads as a cheat however correct
- * the fiction is; `soviets-deep-sector` says the same about its own approach.
+ * as near to equidistant as this ground allows.
+ *
+ * **IT IS NO LONGER OUTSIDE THE BASE'S OWN SPRAWL, AND THAT SENTENCE USED TO
+ * SAY IT WAS.** The nearest Pact structure is an `mrdRampart` at (378, 166),
+ * **16.2 m** away, with three more of the row at 17.5, 19.6 and 22.2 m — so
+ * the widest ring below reaches 5.8 m PAST the nearest of them. It read 37.0 m
+ * when it was written and that was true then: `bb83ffb` moved the wall row
+ * from local z -20 to -28 and took it from nine segments to ten, which walked
+ * the sprawl into the relief point. The drops themselves are still on passable
+ * ground — that is a different question and
+ * `tests/campaign-spawn-ground.spec.ts` owns it — but a wave now arrives
+ * inside the rampart line rather than clear of it. Spawning on the objective
+ * reads as a cheat however correct the fiction is;
+ * `soviets-deep-sector` says the same about its own approach.
  *
  * ============================================================================
  * THE RING IS THE THING TO MEASURE, AND IT IS NOT A DISC AND NOT A SAMPLE
@@ -437,7 +472,7 @@ export default layout({
      * trigger table needs the same points as static data, and `build` seats the
      * bases from the real `startSpots`. If a generator change ever slides an
      * opening the two stop describing one world — the bases move and the
-     * levelling line does not — and the benchmark, 82.1 m off the Pact's yard,
+     * levelling line does not — and the benchmark, 78.1 m off the Pact's yard,
      * is the lot with the least room to absorb it. Four metres is one cell.
      *
      * SECOND, THE SEAWARD SIGN. Every `sea` offset in this file is positive and

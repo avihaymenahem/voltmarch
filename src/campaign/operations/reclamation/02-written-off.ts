@@ -24,7 +24,7 @@
  *     a Spitpost                420   2.6% — power-free, and it cannot chase
  *     a Tinker                  500   3.1% — one deed, or one capture
  *     a Grinder                 600   3.8% — the line
- *     a Scrapjaw               1150   7.2% — another hauler on a 387.6 m round trip
+ *     a Scrapjaw               1150   7.2% — another hauler on a 415.9 m round trip
  *     an Ore Sorter            2000  12.5% — a dock on the field itself
  *
  * There is no timer on the primary and there is deliberately none. The pressure
@@ -46,13 +46,18 @@
  * unloads in `UNLOAD_SECONDS` 2.2 and moves at 5.6 m/s. Centre to centre, per
  * load:
  *
- *     home dock      387.6 m round trip   69.2 s driving   75.7 s cycle    476 cr/min
- *     the station     99.4 m round trip    17.8 s driving   24.2 s cycle   1485 cr/min
+ *     home dock      415.9 m round trip   74.3 s driving   80.7 s cycle    446 cr/min
+ *     the station    105.0 m round trip    18.7 s driving   25.2 s cycle   1427 cr/min
  *
  * The first row is measured off the built world rather than off the opening:
- * the player's own Ore Sorter lands at (122, 396), **193.8 m** from the field,
- * which is the 193.08 m opening plus where `ALLIED_CORE` puts a refinery inside
- * its own base.
+ * the player's own Ore Sorter lands at **(112, 406)**, **207.93 m** from the
+ * field, which is the 193.08 m opening plus where `ALLIED_CORE` puts a refinery
+ * inside its own base. It read (122, 396) and 193.8 m until `bb83ffb` rebuilt
+ * the procedural bases on the placement grid: the refinery slot's local offset
+ * went from (20, -2) to (24, -4), the base facing is cardinalised now, and
+ * `spawnBuilding` snaps on the FACED footprint — three changes, one structure,
+ * 17.2 m of movement. Both round trips are exactly twice the centre-to-centre
+ * figure, which is the convention this table has always used.
  *
  * **QUOTE THE FIRST FIGURE AND TREAT THE SECOND AS A CEILING.** The measured
  * band for a real harvester is 429-700 credits/min — `src/data/Civilians.ts`
@@ -85,7 +90,7 @@
  *     `softenFrac` 0.25 off and dying. The station is 1200 hp, so it is one
  *     Tinker plus 600 points of damage, or three Tinkers and no fight. Taking
  *     it does to their economy exactly what it does for yours: their two
- *     crushers drive home from that moment — 143.4 m to their opening —
+ *     crushers drive home from that moment — 140.6 m to their opening —
  *     because `isUsableRefinery` requires an ally.
  *
  *     **AND SOFTEN-THEN-COME-BACK-LATER LOSES TO THE BRAIN, WHICH IS THE
@@ -171,7 +176,7 @@
  *     mine head A  224, 280   40.0 m from the field   153.2 m from the player
  *     mine head B  304, 284   55.6 m                  218.2 m
  *     mine head C  236, 204   55.7 m                  217.6 m
- *     station      294, 224   49.7 m                  242.8 m   143.4 m from the Soviets
+ *     station      296, 222   52.5 m                  245.6 m   140.6 m from the Soviets
  *     RAID         360, 169  135.6 m                            57.5 m from the Soviets
  *
  * `auditConnectivity` on that build: one passable region holding 100% of the
@@ -316,8 +321,8 @@ const op: OperationDef = {
       hidden: true,
       title: 'Take the Soviet sorting station intact',
       /*
-       * NO CREDITS. The payout is the station: a 99.4 m round trip instead of
-       * 387.6, 2000 of ceiling, and their two crushers sent home.
+       * NO CREDITS. The payout is the station: a 105.0 m round trip instead of
+       * 415.9, 2000 of ceiling, and their two crushers sent home.
        * `soviets.02.common-standard` pays its secondary in hulls for the same
        * reason — a reward the operation can hand over in kind should not be
        * handed over in cash.
@@ -363,7 +368,8 @@ const op: OperationDef = {
      *
      * 68 m IS BOUNDED BY THE OPENING AT 193.08 m, so this cannot read true on
      * tick one. Measured on the built world, the closest unit the player owns at
-     * t=0 is **184.0 m** from the field's centre, 116 m outside the disc. An untagged `unitsInArea` is the expensive spelling and the right
+     * t=0 is **156.5 m** from the field's centre, 88 m outside the disc. An
+     * untagged `unitsInArea` is the expensive spelling and the right
      * one here: the question is whether ANYTHING of the player's has reached
      * the field, and tagging would mean naming in advance which unit counts. It
      * walks `store.alive` twice a tick until it fires, and `state.fired`
@@ -547,8 +553,8 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Their dock is our dock. Fifty metres of haul instead of a hundred and '
-            + 'ninety-four, two thousand of ceiling, and their crushers drive home from '
+          text: 'Their dock is our dock. Fifty metres of haul instead of two hundred '
+            + 'and eight, two thousand of ceiling, and their crushers drive home from '
             + 'here. '
             + 'Tallow would call that three favours. It was one purchase.',
         },

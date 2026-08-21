@@ -49,9 +49,9 @@
  * the same build `tests/campaign-maps.spec.ts` performs — after
  * `spawnBuilding` snapped each footprint to the placement grid.
  *
- *     player Construction Yard   (110, 378)
- *     Soviet Construction Yard   (402, 134)      380.5 m apart
- *     the office                 (332, 286)      240.3 m from the player,
+ *     player Construction Yard   (114, 382)
+ *     Soviet Construction Yard   (402, 134)      380.1 m apart
+ *     the office                 (332, 286)      238.2 m from the player,
  *                                                167.3 m from the Soviets
  *     the cordon, five guns      (310, 366) (302, 334) (290, 302)
  *                                (278, 274) (258, 246)
@@ -65,22 +65,35 @@
  *     that there is no quiet route and the whole premise collapses into an
  *     assault with extra steps.
  *   - **THE DIRECT LINE RUNS OVER THE MIDDLE GUN.** The straight run from the
- *     player's yard to the office passes **1.30 m** from (290, 302), 195.4 m
- *     along a 240.3 m route — about forty-four metres of it inside a 22 m arc.
- *     The other four guns are 31.8 to 65.5 m off that line and touch it
- *     nowhere. One gun on the axis, deliberately: marching at the objective is
- *     a decision, not an accident.
- *   - **THE WAY ROUND COSTS 76.0 m.** Measured by Dijkstra on a 4 m grid with
- *     every cell inside 22 m of a gun removed AND the district's own wall
- *     segments blocked: the shortest route from the player's yard to the
- *     office that never enters an arc is **316.3 m against 240.3 m direct**,
- *     which is 22.3 s of extra walking at an engineer's 3.4 m/s. The bow does
- *     not wrap — the yard side and the rear are open — and the ends stop
- *     because the streets do.
+ *     player's yard to the office passes **2.28 m** from (290, 302), 193.3 m
+ *     along a 238.2 m line — about forty-four metres of it inside a 22 m arc
+ *     (the chord is 43.8 m). The other four guns are 31.8, 32.7, 64.3 and
+ *     66.4 m off that line and touch it nowhere. One gun on the axis,
+ *     deliberately: marching at the objective is a decision, not an accident.
+ *   - **THE WAY ROUND COSTS 102 m OF ROUTE.** 8-connected octile Dijkstra on
+ *     the 4 m cell grid, `Terrain.passGrid`'s Foot bit with occupancy folded
+ *     in — so the district's own wall segments and every other footprint are
+ *     shut — with every cell whose centre lies inside 22 m of a gun also
+ *     removed. Endpoints are the nearest open cell to each centre: 6.00 m off
+ *     the office, 8.00 m off the yard. The descent chain and the
+ *     cheapest-predecessor chain agree on every figure here.
+ *
+ *         straight line, centre to centre        238.2 m
+ *         shortest route, no arcs banned         248.5 m
+ *         shortest route that never enters an arc  350.7 m
+ *
+ *     So the detour is **102.2 m of route**, about 30 s of extra walking at an
+ *     engineer's 3.4 m/s. **The comparison has to be route against route** —
+ *     this block used to read "316.3 m against 240.3 m direct", which set a
+ *     route beside a STRAIGHT LINE and so counted the grid's own 10 m of
+ *     octile overhead as part of the price of going round. The bow does not
+ *     wrap — the yard side and the rear are open — and the ends stop because
+ *     the streets do. On the raw terrain grid with nothing occupied the same
+ *     three figures are 238.2 / 255.8 / 360.3.
  *
  * **SO THE PRICE OF THE QUIET ROUTE IS THE FOUR BODIES, NOT THE WALK**, and it
- * is worth saying that plainly rather than letting a 76 m detour pretend to be
- * the cost. Counted on a world built with the def tables BOUND and this
+ * is worth saying that plainly rather than letting a hundred-metre detour
+ * pretend to be the cost. Counted on a world built with the def tables BOUND and this
  * operation's roster IN FORCE — the only state in which either is true — the
  * two openings are **11 combat units against 11**:
  *
@@ -152,7 +165,7 @@
  * waves are a FLOOR on the pressure rather than the whole of it — the district
  * also has a base, a bank and a brain.
  *
- * The player's own armour crosses the 240.3 m from home in 36 s at a Warden's
+ * The player's own armour crosses the 238.2 m from home in 36 s at a Warden's
  * 6.6 m/s, so a crew that takes the office alone can be relieved — but only by
  * an army that started moving at the capture, which is the second half of the
  * decision the first half set up.

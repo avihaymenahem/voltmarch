@@ -16,7 +16,7 @@
  * opening is 246.7 m of straight line and **281.4 m of actual road**, and that
  * the road is a property of the terraces rather than of anything authored.
  * (246.7 is measured to the START SPOT, which is what `t.win`'s disc is drawn
- * on; the Conclave itself sits 2.83 m off it, at 244.2. Both figures moved by
+ * on; the Conclave itself sits 6.32 m off it, at 241.8. Both figures moved by
  * ~2.5 m when the derrick came off the shelf's doorway — see the pocket
  * section — and the road figure is instrument-dependent besides. The operation
  * header names the instrument and carries the control-versus-fixed pair.)
@@ -75,28 +75,39 @@
  * `place()` below returns a point and the snap moves it again, so nothing here
  * is recomputed from the fractions.
  *
- *     home spot 108, 380     Conclave 110, 378     foe spot 404, 132
+ *     home spot 108, 380     Conclave 114, 382     foe spot 404, 132
  *     anchor    343.4, 300.2 (nominal)
- *     station   340, 296  (Gaia, 900 hp)           shed 370, 300 (1250 hp)
+ *     station   340, 296  (Gaia, 900 hp)           shed 372, 302 (1250 hp)
  *     posts     318, 310  and  338, 322  (520 hp each)
  *     bearers   73,400  76,404  79,408  82,411   (5.00 m apart, consecutive)
  *
- *     home -> station 246.7      foe -> station 176.1     station -> shed 30.3
+ *     home -> station 246.7      foe -> station 176.1     station -> shed 32.6
  *     station -> posts 26.1 and 26.1       post -> post 23.3
  *     bearers -> home spot 40.7 / 40.1 / 40.1 / 40.7
  *     bearers -> station 287 / 285 / 284 / 283
  *     nearest Reclamation asset to the bearers at t = 0: 256.7 m
  *
  * **THE STATION ROW MOVED AND NOTHING ELSE DID.** It read 344, 300 until the
- * derrick came off the shelf's doorway; the shed, both posts, the bearers and
- * both openings are byte-identical before and after, which is the property the
+ * derrick came off the shelf's doorway; both posts, the bearers and both
+ * openings are byte-identical before and after, which is the property the
  * anchor split above exists to buy. The four rows that moved are the four that
  * are measured FROM the derrick.
  *
+ * **THAT SENTENCE HAS SINCE STOPPED BEING TRUE OF THE SHED.** `bb83ffb` made
+ * `spawnBuilding` snap on the FACED footprint, so a non-square footprint at a
+ * yaw that quantises to 90 or 270 moves exactly (±2, ±2): `rclBreakerYard` is
+ * 3x2 and it now stands at (372, 302) rather than (370, 300). The two
+ * Spitposts are 1x1 and cannot move — I re-measured them at (318, 310) and
+ * (338, 322), 26.08 m each from the station and 23.32 m apart, which is what
+ * isolates the drift to the one non-square structure.
+ *
  * **TWO OF THOSE ROWS WERE WRONG AND BOTH ARE THE SAME KIND OF WRONG.** The
- * Conclave read 98, 364: the 1900 hp 3x3 `mrdConclave` is at **110, 378**,
- * 2.83 m from the start spot, and the 1150 hp 3x2 at 98, 364 is a Forgeyard or
- * a Cistern — identified by hp off the built world rather than by eye. And the
+ * Conclave read 98, 364: the 1900 hp 3x3 `mrdConclave` is at **114, 382**,
+ * 6.32 m from the start spot, and (98, 364) held a 1150 hp 3x2 — the Forgeyard,
+ * on the old base tables. **Nothing stands there now**: the same commit that
+ * moved the Conclave moved every other row of `ALLIED_CORE` with it, and the
+ * two 1150 hp 3x2 structures on this seat are `mrdForgeyard` at (112, 358) and
+ * `mrdCistern` at (112, 406), both read back by key off the built world. And the
  * nearest-asset row read 261.4, which is the FIRST bearer's distance and the
  * LARGEST of the four; per bearer it runs 261.4 / 259.8 / 258.2 / 256.7, and
  * the operation header states it as a guarantee, so it has to be the minimum.
@@ -451,7 +462,7 @@ const BEARERS = 4;
  *
  * **IT IS NOT "NARROWER THAN THE GAP BETWEEN ANY TWO OF THEM".** Every
  * centre-to-centre gap on the shelf is UNDER 28 m: post to post 23.3, station
- * to post A and to post B 26.1 each, station to shed 30.3 — that last one is
+ * to post A and to post B 26.1 each, station to shed 32.6 — that last one is
  * the single gap that is now OVER 28, which strengthens the point rather than
  * weakening it: seven rings would not have kept those two apart either. That claim
  * would have made a radius of 7 structurally unable to walk one lot onto
@@ -569,7 +580,7 @@ export default layout({
     /* ==================================================================
      * 2. THE SHELF
      *
-     * The station on the Gaia slot, the breaking shed 30.3 m behind it, and
+     * The station on the Gaia slot, the breaking shed 32.6 m behind it, and
      * two coil posts 26.1 m in front of it each, as placed. Everything but the
      * derrick is measured from `anchor` — the NOMINAL shelf point — so
      * `STATION_MOUTH_CLEAR` moves one building and not four.

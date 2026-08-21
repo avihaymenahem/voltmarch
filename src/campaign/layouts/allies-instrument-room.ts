@@ -38,8 +38,8 @@
  *      can ever walk into, which deletes the quiet route and with it the whole
  *      operation.
  *   2. **THE DIRECT LINE IS NOT.** The straight run from the player's yard to
- *      the office passes **1.30 m** from the middle gun, 195.4 m along a
- *      240.3 m route — so a column that marches at the objective is inside a
+ *      the office passes **2.28 m** from the middle gun, 193.3 m along a
+ *      238.2 m line — so a column that marches at the objective is inside a
  *      22 m arc for about forty-four metres of it, and no other gun is within
  *      22 m of that line at all. One gun, deliberately, because the point is
  *      that going round is a decision rather than a flourish.
@@ -375,7 +375,7 @@ export default layout({
      * 60.6 and v -6.7 to +11.1 once the placement search has nudged each one
      * onto buildable ground — a ragged run rather than a straight fence, which
      * is what a wall built by a district looks like — and the operation's
-     * 316.3 m route is measured WITH them standing.
+     * 350.7 m arc-free route is measured WITH them standing.
      */
     const wallKey = b.keyFor(district, 'wall');
     const wallStep = Math.max(1, b.footprintOf(wallKey).w) * CELL;

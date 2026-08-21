@@ -124,13 +124,13 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6081 across 242 files (+4 opt-in probes)
+npm test             # vitest, currently 6122 across 243 files (+4 opt-in probes)
                      #   11 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across `manual`, `webgpu-bundle-isolation` and
                      #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 6070 and skips 15. Re-measure BOTH numbers rather than
+                     #   reports 6111 and skips 15. Re-measure BOTH numbers rather than
                      #   adjusting them by hand — run it once, `npm run build`, run it
-                     #   again. The gated set has held at 11 across six re-measures;
+                     #   again. The gated set has held at 11 across seven re-measures;
                      #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
@@ -467,6 +467,56 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   the wrong bit answers a different question in both directions. **The ring formula is source-gated
   against `runtime.ts` rather than re-derived**, since a re-implemented formula nobody checks is the
   same defect wearing the other hat.
+- **AN AUTHORED LITERAL IS A REQUEST, AND FOR A NON-SQUARE FOOTPRINT AT YAW 90/270 IT IS NOT WHERE
+  THE STRUCTURE LANDS.** `ScenarioBuilder.spawnBuilding` snaps on the **FACED** footprint
+  (`facedFootprintW/H`), so a 3x2 or 2x3 at a yaw quantising to 90 or 270 snaps on the SWAPPED
+  lattice — and the two lattices have opposite parity in both axes, so the structure moves by
+  exactly **(+/-2, +/-2) = 2.83 m**. Not "may move": it always moves. Measured across the built
+  campaign, **173 of 2121 buildings, in every one of the 37 operations**. Square footprints and
+  yaw 0/180 are unaffected, which is why the control in any such measurement is the other
+  structures in the same layout landing exactly on their literals.
+
+  So a layout header saying *"all five land on their authored literals at ring zero"* is a claim
+  that has to be MEASURED off `store.posX/posZ`, not read off the source — three shipped headers
+  said it and were wrong about one structure each. Where a constant is BOTH a record of a landed
+  position and an input to something else, it is the landed value that is correct:
+  `reclamation.01.held-paper`'s `SORTER` feeds an `orderTagged` move destination and was pointing
+  2.83 m off the building it names.
+- **THE CONSTRUCTION YARD OFFSET IS FOUR CONSTANTS KEYED ON THE CARDINAL YAW, AND THE ANCHOR IS NOT
+  `startSpots`.** `buildBaseFor` puts the yard at local `{ dx: 0, dz: -4 }` in both base tables,
+  `cardinalBaseFacing` quantises the yaw to 0/90/180/270 BEFORE `cos`/`sin`, and every continental
+  seat anchor is a multiple of 4 — so `Math.round` is always handed an exact `k + 0.5` and the
+  snap adds exactly +2 on both axes, every time:
+
+  ```
+  yaw   0 : yard = anchor + ( +2, -2 )      yaw 180 : yard = anchor + ( +2, +6 )
+  yaw  90 : yard = anchor + ( -2, +2 )      yaw 270 : yard = anchor + ( +6, +2 )
+  ```
+
+  **The correct anchor is `islandSeats(startSpots(cx, cz, armies, sea, seed), sea)[i]`**, not raw
+  `startSpots`: identity on all 36 continental operations and wrong by 16-25 m on the atoll, whose
+  seats come back `clampWorld(s.x - outward.z * ISLAND_SEAT_OFFSET, 4)` and are NOT lattice-aligned.
+  Anchoring on the raw spots gives 3 predictor misses; anchoring correctly gives **1 of 70**, and
+  that one is `reclamation.01.held-paper`, whose Foundry is layout-authored and never goes through
+  `buildBaseFor` at all.
+
+  **QUOTE THE TABLE AS A FALSIFIER, NEVER AS A SUBSTITUTE FOR MEASURING.** It holds only while the
+  anchor is on the 4 m lattice, the yard came from `buildBaseFor`, and neither `connectedGround`
+  nor `footprintClear` fired. None of those fires on the shipped 37 — but that is a property of
+  this ground, not a guarantee. Also: **6 of 37 operations have ONE yard for two armies**
+  (`soviets.02`, `allies.07`, `pact.08`, `pact.09`, `reclamation.04`, `reclamation.07`).
+- **`tests/campaign-anchor-drift.spec.ts` PINS THE ANCHORS BECAUSE THE DERIVED FIGURES CANNOT BE
+  PINNED.** On 2026-08-20 a base-geometry commit moved every structure in every generated base and
+  introduced the faced-footprint snap above. Nothing failed. **147 measured claims across 38
+  campaign headers silently became wrong**, including three distances a character speaks out loud,
+  and it took a fourteen-agent sweep to find them.
+
+  A gate over the prose is not achievable — a header says "a hundred and forty metres" in one
+  place and "141.8 m" in another. What is achievable is pinning the ANCHORS every one of those
+  figures derives from: each seat's start spot and each seat's landed yard, by value, per
+  operation. **The failure message names the layout and operation files whose headers quote
+  yard-anchored distances**, so the next drift arrives as "these headers are now suspect" rather
+  than as silence. Same shape as `tests/terrain-lod.spec.ts` pinning chunk counts per map.
 - **`Shell.playCampaignBeat` IS THE ONLY CONSUMER OF `PresentationEvent`, AND IT HANDLED ONE OF THE
   THREE KINDS THAT ARE PRODUCED.** `EffectSink` pushes `dialogue`, `eva` and `camera`;
   `campaign.system.ts` drains all three every frame and hands every one to that method, whose body

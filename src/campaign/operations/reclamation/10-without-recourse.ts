@@ -787,12 +787,21 @@ const YARD_GONE: Condition = {
  * that matters — the hazard it warns about is four seconds wide.
  *
  * **THE FASTEST CONCEIVABLE CLEAR IS INSIDE IT AND THAT IS STATED RATHER THAN
- * GLOSSED.** 198.4 m of Track from the company corner over the real cost grid,
- * an `rclGrinder` at `maxSpeed` 5.8, and 2 x 480 hp of `sentryGun` against four
- * of them at 17.68 dps vs Concrete apiece: **34.2 + 13.6 = 47.8 seconds** with
- * no acceleration, no steering and perfect focus. So a player who does nothing
- * else can have this beat land at sixty, two seconds behind `t.hours`. That is
- * the case `Shell.campaignBeatSeq` was written for (trap 13) and it is two
+ * GLOSSED.** 220.0 m of Track from the company corner over the real cost grid
+ * to the nearer of the two guards, an `rclGrinder` at `maxSpeed` 5.8, and
+ * 2 x 480 hp of `sentryGun` against four of them at 17.68 dps vs Concrete
+ * apiece: **37.9 + 13.6 = 51.5 seconds** with no acceleration, no steering and
+ * perfect focus. So a player who does nothing
+ * else can have this beat land at sixty, eight and a half seconds behind
+ * `t.hours`. (198.4 m is not reachable by any route: the STRAIGHT LINE from
+ * the corner to either landed `sentryGun` — they stand at (254, 238) and
+ * (274, 262) — is 203.67 m, so no grid route between them can be shorter.
+ * Measured from the corner's nearest open cell the two Track routes are 228.74
+ * and 220.05 m, identical on the descent and cheapest-predecessor chains, and
+ * from the Foundry 216.74 and 208.05; the four `rclGrinder` start positions
+ * give 176.74 to 204.74. The conclusion is unaffected — 51.5 s is still inside
+ * the sixty — so this is a margin claim that was 8% tighter than stated.)
+ * That is the case `Shell.campaignBeatSeq` was written for (trap 13) and it is two
  * speakers, not three.
  */
 const POSTS_GONE: Condition = {

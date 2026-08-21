@@ -46,15 +46,33 @@
  * Six feeder houses on the quarter tramway, `civApartments` on the GAIA seat,
  * 800 hp of `ArmorClass.Concrete` each, and the hall draws through four of them.
  *
+ * **EVERY ROUTE FIGURE IN THIS SECTION IS STALE AND HAS NOT BEEN
+ * RE-MEASURED.** Both of the two start points it is taken from moved when
+ * `bb83ffb` rebuilt the procedural bases on the placement grid, and they moved
+ * a long way: the player's BARRACKS went from (84, 372) to **(88, 356)**, 16.5 m,
+ * and `buildAlliedBase`'s free engineer went from (96.21, 376.84) to
+ * **(98.00, 362.00)**, because its own local offset in `ALLIED_GARRISON`
+ * changed from (-10, +7) to (-18, +10) in the same commit. Both landed
+ * positions are read off `store.posX/posZ`; the (80.0, 375.3) door and its
+ * (78, 370) cell were derived from the OLD barracks and are not re-derived
+ * here. Every metre and every second in the two tables below, and the exclusion
+ * control under them, is therefore a fact about a world that no longer exists.
+ *
+ * **DO NOT PATCH THE NUMBERS ONE AT A TIME.** They have to be re-taken together,
+ * with the goal convention named — `FlowFieldCache.snapToReachable` of the house
+ * centre, which is NOT the Euclidean-nearest open cell and disagrees with it by
+ * about 1.6% on this ground. An instrument that cannot first reproduce one of
+ * the surviving figures has no standing to replace the rest.
+ *
  * **THE INSTRUMENT IS THE WALK, NOT THE HOUSE, AND THE FIRST VERSION OF THIS
  * TABLE WAS MEASURED FROM THE WRONG PLACE.** An engineer does not start at the
  * opening: the three bought ones come out of the BARRACKS DOOR, which
- * `ProductionService.tryEgress` puts at (80.0, 375.3) — the barracks' own yaw
- * and `exitOffsetZ`, rotated — and which `findEgressSpot`'s fixed-order ring
- * search then snaps to cell **(78, 370)**, on the WEST face of the base. The
- * free one `buildAlliedBase` spawns stands at (96.2, 376.8). Those two are 20 m
- * apart and they are not interchangeable, because the base is an obstacle and
- * the way round it is not symmetric. Both are measured below.
+ * `ProductionService.tryEgress` puts at the barracks' own yaw and `exitOffsetZ`,
+ * rotated, and which `findEgressSpot`'s fixed-order ring search then snaps to a
+ * cell on the WEST face of the base. The free one `buildAlliedBase` spawns
+ * stands about 20 m away, and the two are not interchangeable, because the base
+ * is an obstacle and the way round it is not symmetric. Both are measured
+ * below — on the pre-`bb83ffb` ground.
  *
  * Route: octile Dijkstra over the real
  * `FlowFieldCache.costGridFor(MoveClass.Foot)` on the world this operation
@@ -145,12 +163,20 @@
  * `CAPTURE.reachMetres` 2.2 plus the same 0.234, so for a 2x3 footprint the four
  * stands sit 6.434 m out in x and 8.434 m out in z. Read off the built world:
  *
- *     house 4    W 17.46  N 15.68  COVERED     E 25.72  S 27.93  open
- *     house 5    W 17.46  N 15.68  COVERED     E 25.72  S 27.93  open
+ *     house 4    W 17.70  N 15.91  COVERED     E 25.95  S 28.16  open
+ *     house 5    W 17.70  N 15.91  COVERED     E 25.95  S 28.16  open
  *     houses 1-3, 6                            nearest post 34.30 m or more
- *     the meter  E 12.31  S 14.21  COVERED     W 22.52  N 21.35  open
+ *     the meter  E 12.54  S 14.45  COVERED     W 22.75  N 21.59  open
+ *     house 6    E 22.95  N 26.24  open        W 34.58  S 33.07  open
  *
- * The meter's north stand at 21.35 m is outside the firing circle and inside
+ * Those are GUN-CENTRE to STAND-CENTRE distances, the quantity the 20.234 and
+ * 21.834 circles are thresholds on. The table used to hold the SURFACE distance
+ * — each entry 0.234 m smaller — and compare it against circles with that same
+ * radius added; no verdict changes, and the arithmetic is now self-consistent.
+ * House six has its own row because `bb83ffb` moved the Reclamation's three
+ * base `rclSpitpost` and put one of them 22.95 m from its east stand.
+ *
+ * The meter's north stand at 21.59 m is outside the firing circle and inside
  * acquisition, so a post tracks a man there and never pulls — the behaviour
  * `allies-forced-closure` records for its west-north-west stand, and worth
  * knowing before somebody reads a turret following their engineer as a bug.
@@ -178,7 +204,7 @@
  * the stand table predicts that and nothing on screen announces it.
  *
  * **THE EXCLUSION CONTROL IS THE INSTRUMENT THAT SETTLES IT** (CLAUDE.md trap
- * 18): re-run the same fill with all **418** cells within 20.234 m of a seat-1
+ * 18): re-run the same fill with all **434** cells within 20.234 m of a seat-1
  * gun marked impassable — the three line posts AND the three `rclSpitpost` in
  * the Reclamation's own base, because closing some guns and not others measures
  * a third map — and take the cheapest capture cell either way. From the barracks
@@ -255,7 +281,7 @@
  * minutes are measured against: `engineer` is `buildTime` 10 with a barracks
  * AND a refinery standing at t=0 and `BuildQueue.advanceTab` only ever advances
  * `items[0]`, so three leave the door at 0:10, 0:20 and 0:30 while the free one
- * is already standing at (96.2, 376.8). Give the free engineer the longest walk
+ * is already standing at (98.0, 362.0). Give the free engineer the longest walk
  * and the bought ones the rest in descending order and the last house lands at
  * **0:30 + 74.7 = 1:44.7**; the earliest possible win is therefore **8:44.7**.
  *
@@ -479,9 +505,13 @@
  *                                              the meter 13   5 200
  *
  * **THE HALL IS THE FIRST LINK AND THE OLD FIGURE DID NOT KNOW IT.** It is
- * PLAYER-owned, 69.43 m from the yard, and projects 20 + 6.00 = **26.00 m** of
+ * PLAYER-owned, 69.31 m from the yard, and projects 20 + 6.00 = **26.00 m** of
  * its own — which is why the zero-cost frontier already reaches **96.00 m** of
- * the 137.77 m ray from the yard to house one. So house one is cheap and the
+ * the 137.36 m ray from the yard to house one. (96.00 is a cell-lattice fill
+ * result and does not fall out of 69.31 + 26.00 arithmetically; it is not
+ * re-derived from the two figures beside it and did not move with them.)
+ *
+ * So house one is cheap and the
  * argument belongs to house FOUR: **3 200 credits of a 5 000 bank spent on
  * getting permission to build rather than on anything that shoots**, against
  * 1 500 for the four engineers that take the line outright. One or two posts

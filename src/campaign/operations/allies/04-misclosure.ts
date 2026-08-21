@@ -23,12 +23,12 @@
  * measured metres:
  *
  *   - **THE MUSTER.** Every scripted column forms at a Soviet forward barracks
- *     117.34 m from their Construction Yard, and the last two columns are gated
+ *     115.41 m from their Construction Yard, and the last two columns are gated
  *     on it still being THEIRS. Taking it off them deletes those two outright —
  *     7 400 credits of the 12 800 of hull this operation spends against the
  *     player, 57.8%.
- *     **THE TRAVEL IS MEASURED AND THE FIGHT IS NOT.** It stands 273.72 m from
- *     the player's yard, which is 284.3 m of Track route and **86.2 s of pure
+ *     **THE TRAVEL IS MEASURED AND THE FIGHT IS NOT.** It stands 275.81 m from
+ *     the player's yard, which is 300.3 m of Track route and **91.0 s of pure
  *     driving there and back at a Warden's 6.6 m/s**; what that buys into is
  *     800 hp of barracks behind two 480-hp Sentry Guns plus whatever the
  *     district sends back. No harness in this repo can put a number on that —
@@ -36,7 +36,7 @@
  *     deadline the raid has to beat, minute ten, is authored with the slack
  *     deliberately on the generous side.
  *   - **THE PROVISIONAL.** From minute eight the player may walk an engineer or
- *     a section into the transmitter block 60.96 m behind their own yard and
+ *     a section into the transmitter block 61.22 m behind their own yard and
  *     file what the office has so far. That WINS the operation, immediately,
  *     and fails the secondary that says otherwise. It is a real way out of a
  *     match that has gone wrong, it costs the medal, and it is the thing the
@@ -64,7 +64,7 @@
  *
  *   - **ONE THING, NOT THREE.** S5's fork is which two of three positions you
  *     stand on. Here there is nothing to choose between: the office is the only
- *     objective and it is 103.32 m from the yard. The fork is what you do with
+ *     objective and it is 106.08 m from the yard. The fork is what you do with
  *     the army that is NOT standing on it.
  *   - **THE PLAYER CAN ELECT TO END IT, AND IT COSTS THEM.** A player who is
  *     losing has a lever here: file the provisional and take a bronze. S5 has an
@@ -572,7 +572,7 @@ const op: OperationDef = {
      *
      * The chapter's ramp is 2 500 / 3 000 / 4 000 / 5 000 and this is the top of
      * it, because this operation asks one bank to pay for two things at once: a
-     * forward defence around a building outside the base, and a 284.3 m raid
+     * forward defence around a building outside the base, and a 300.3 m raid
      * that has to be affordable enough to be a decision rather than a fantasy.
      * It is still half the skirmish 10 000, which is the lever CLAUDE.md names
      * for the opening bank twice reported as a prebuilt AI base — a district
@@ -614,7 +614,7 @@ const op: OperationDef = {
     /*
      * THIS ONE PAYS, BECAUSE IT RESOLVES MID-MATCH AND THE MONEY HAS SOMEWHERE
      * TO GO. 500 credits is a Pillbox and a quarter, and it arrives at the
-     * moment the player has just spent their army on a 284.3 m round trip.
+     * moment the player has just spent their army on a 300.3 m round trip.
      *
      * **THE TITLE SAID "LEVEL" AND THE ROW COUNTS A DEED.** It resolves on
      * `ownerCount(1, 'building', 'muster', max: 0)` — destroyed and captured
@@ -667,7 +667,7 @@ const op: OperationDef = {
           do: 'dialogue',
           speaker: 'Wend',
           text: 'Their signals have it too. There is a muster on the far ridge, a hundred and '
-            + 'seventeen metres off their own yard, two guns on it, and every column they send '
+            + 'fifteen metres off their own yard, two guns on it, and every column they send '
             + 'today forms there. First at three minutes, second at six and a half. After that '
             + 'only for as long as the ridge is still theirs.',
         },
@@ -1025,7 +1025,7 @@ const op: OperationDef = {
      * (`Capture.ts` rule 1, a neutral structure flips at any health) and a
      * garrisoning squad satisfies for as long as they stand inside
      * (`GarrisonService.enter`). Both are explicit orders, which is what keeps
-     * this from firing on somebody walking past — and the block is 60.96 m
+     * this from firing on somebody walking past — and the block is 61.22 m
      * BEHIND the player's own yard, where nothing is ever fought over.
      *
      * `not elapsed(CLOSE)` is the upper bound, and it is legal where

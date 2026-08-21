@@ -224,8 +224,9 @@ export const TOWN: Point = { x: CENTRE, z: CENTRE };
 export const TOWN_AREA: Area = { x: TOWN.x, z: TOWN.z, r: 62 };
 
 /**
- * Where the crew forms up: 54.7 m out from the player's yard along the line to
- * the town.
+ * Where the crew forms up: 54.7 m out from the player's START SPOT along the
+ * line to the town — 51.6 m from the Construction Yard that spot raises, which
+ * lands at (114, 382) and is not the same point.
  *
  * DERIVED, THEN WRITTEN DOWN. `(148, -124) / 193.08` is the unit vector from
  * slot 0 to the centre; 55 m along it from (108, 380) is (150.2, 344.7), and
@@ -251,9 +252,14 @@ export const STAGE: Point = { x: 150, z: 345 };
  * player's formation, which reads as the map cheating however correct the
  * fiction is.
  *
- *     NINTH_ROAD      (369, 193)   70.33 m from its yard   129.38 m to the town
- *     ELEVENTH_ROAD   (360, 333)   64.38 m from its yard   129.40 m to the town
+ *     NINTH_ROAD      (369, 193)   66.29 m from its yard   129.38 m to the town
+ *     ELEVENTH_ROAD   (360, 333)   64.54 m from its yard   129.40 m to the town
  *     apart                                                140.29 m
+ *
+ * (Those two figures are to the YARDS, measured at (406, 138) and (402, 382).
+ * They read 70.33 and 64.38 while they were quoting the START SPOTS (404, 132)
+ * and (404, 380) under the word "yard"; the spot and the yard are different
+ * points and the yard is what `BUILD_RADIUS` is centred on.)
  *
  * **THE TWO ARE 0.02 m APART IN REACH TO THE TOWN AND THAT IS SELECTED, NOT
  * SYMMETRIC.** The mirror-image pair would have been (369, 193) and (369, 319),
@@ -311,7 +317,7 @@ const DERRICK_OFFSETS: readonly Point[] = [
 /**
  * The town's own mass, as offsets from the centre. A works hall and two blocks.
  *
- * MEASURED: the hall lands at (258, 252) — 4.47 m off the centre, 1100 hp — and
+ * MEASURED: the hall lands at (256, 254) — 2.00 m off the centre, 1100 hp — and
  * the two blocks at (236, 270) and (276, 270), 24.41 m out, 800 hp each. All
  * three are well inside the 36 m the nearest derrick stands at, so the ring
  * encloses a solid core rather than sharing ground with it.

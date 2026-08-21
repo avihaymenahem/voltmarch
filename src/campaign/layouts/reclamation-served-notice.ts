@@ -145,12 +145,12 @@
  * and `Combat.resolveTesla` pushes the damage record straight at the victim —
  * no projectile is spawned, so there is nothing for the wire to be in the way
  * of. Measured on the built world, the closest legal standing cell OUTSIDE the
- * wall square is **6.79 m of surface** from the deep block at (240, 258), which
+ * wall square is **8.91 m of surface** from the deep block at (242, 256), which
  * is inside every one of the four ranges: four Scrap Pickers, two Grinders and
  * two Arcspitters are 113.2 dps of Tesla against concrete and take that block's
  * 800 hp down in **7.1 s without opening the fence**.
  *
- * What that does NOT reach is the second block. (256, 258) is 20.86 m of
+ * What that does NOT reach is the second block. (254, 256) is 20.86 m of
  * surface from the nearest legal stand outside the wire, against a longest reach
  * of 18 m — so the counterpart still costs the wire or the gate, the operation
  * still has two documents in two sheds, and everything above happens INSIDE the
@@ -194,9 +194,9 @@
  *
  *     post                     (298,246) (298,270)   the gate pair
  *                              (258,218) (258,298)   the long sides
- *     the nearest point of each register's 8 x 12 m footprint is 36.77 m and
- *       34.00 m from the nearest box's CENTRE, so a man standing against that
- *       hull is 36.54 and 33.77 m of SURFACE distance from it — clear of the
+ *     the nearest point of each register's 12 x 8 m GROUND footprint is 35.44 m
+ *       and 34.00 m from the nearest box's CENTRE, so a man standing against
+ *       that hull is 35.21 and 33.77 m of SURFACE distance from it — clear of the
  *       22 m firing arc by 14.54 and 11.77 m and of the 23.76 m acquisition
  *       radius by 12.78 and 10.01 m.
  *
@@ -258,9 +258,19 @@
  * ============================================================================
  * THE TWO RECORD BLOCKS
  * ============================================================================
- * Two `civApartments` — 800 hp each, `ArmorClass.Concrete`, an 8 x 12 m
+ * Two `civApartments` — 800 hp each, `ArmorClass.Concrete`, a 12 x 8 m
  * footprint — owned by the DEPOT and standing in a line down the middle of the
- * yard at (240, 258) and (256, 258), 16.00 m apart.
+ * yard at (242, 256) and (254, 256), 12.00 m apart.
+ *
+ * **THE GROUND FOOTPRINT IS 12 x 8, NOT 8 x 12, AND THE PAIR USED TO STAND
+ * FOUR METRES FURTHER APART.** `civApartments` is declared 2x3 and these are
+ * raised at a yaw that quantises to 90, and since `bb83ffb` `spawnBuilding`
+ * snaps AND marks occupancy on the FACED footprint — measured on the Foot cost
+ * grid, the shallow block closes exactly two cells in z. Both blocks moved
+ * 2.83 m onto the swapped lattice, which is what took the pair from 16.00 m
+ * apart to 12.00 and every figure below with it. `BLOCKS` asks for (240, 256)
+ * and (254, 256); the old local-2x3 snap sent those to (240, 258) and
+ * (256, 258).
  *
  * DEPOT-OWNED RATHER THAN GAIA, AND THE VERB IS THE REASON. Gaia is allied to
  * everybody, so `Targeting.isValidTarget` refuses a neutral structure as a
@@ -280,11 +290,12 @@
  * **NOTHING IN THE PARTY CAN REACH EITHER BLOCK FROM OUTSIDE THE COUNTED
  * DISC.** The bound is the block FURTHEST from the halt centre, because that is
  * the one a shooter can stand furthest out to reach. Measured on the built
- * world the two land at 16.12 m and 2.00 m from the centre; each carries a
- * 7.21 m hull radius, and the longest reach the operation's roster permits is
+ * world the two land at 14.00 m and 2.00 m from the centre; each carries a
+ * 7.21 m hull radius — `hitRadius` reads the DEF footprint, so it is unmoved at
+ * 7.2111 either way — and the longest reach the operation's roster permits is
  * `grinderArc`'s 18 m. So the furthest a shot at a record block can be taken
- * from is `16.12 + 7.21 + 18` = **41.34 m** — against a counted disc of 52 m,
- * i.e. 10.66 m of margin. The nearest wire segment is 26.08 m out, so shooting
+ * from is `14.00 + 7.21 + 18` = **39.21 m** — against a counted disc of 52 m,
+ * i.e. 12.79 m of margin. The nearest wire segment is 26.08 m out, so shooting
  * THAT at maximum standoff is 46.91 m and still inside; the four corner segments
  * are 36.77 m out and reach 57.60 m, so a corner of the fence is the one thing
  * on the map that can be shot from outside the disc, and it is worth nothing.
@@ -294,7 +305,7 @@
  * **THIS SAID "the deeper block sits 2.00 m from the halt centre … 27.21 m",
  * WHICH IS THE RIGHT ARITHMETIC ON THE WRONG BLOCK.** 2.00 m is the SHALLOW
  * block — the one nearer the gate — and using it understates the standoff by
- * 14.13 m. The conclusion is unchanged and the margin is not: 10.66 m, not
+ * 12.00 m. The conclusion is unchanged and the margin is not: 12.79 m, not
  * 24.79. If either `REG_BACK` or the roster's longest reach ever grows by more
  * than ten metres, `WIRE.r` has to move with it.
  *
@@ -482,19 +493,19 @@ export const PICKUP_AREA: Area = { x: PICKUP.x, z: PICKUP.z, r: 26 };
  * It has to cover the yard (half-diagonal 36.77 m) and all four boxes (38.05 to
  * 44.27 m from the halt), and it has to be wider than the furthest point any
  * weapon the party owns can hurt the objective from. Measured, that second bound
- * is `16.12 + 7.21 + 18` = **41.34 m** — the block further from the centre, its
+ * is `14.00 + 7.21 + 18` = **39.21 m** — the block further from the centre, its
  * hull radius, and `grinderArc`'s reach — so 52 m clears the standoff by
- * 10.66 m and clears the outermost box by 7.73 m.
+ * 12.79 m and clears the outermost box by 7.73 m.
  *
  * **THE BOX BOUND IS THE BINDING ONE AND THIS SAID THE STANDOFF WAS.** It read
  * "that second bound is the binding one: the deeper record block is 2.00 m from
  * the halt centre … so 27.21 m is the whole of the standoff available. 52 m is
  * 24.79 m past it" — two errors that cancel into a right answer. 2.00 m is the
- * SHALLOW block (the standoff bound wants the far one, 16.12 m), and 41.34 m is
+ * SHALLOW block (the standoff bound wants the far one, 14.00 m), and 39.21 m is
  * BELOW the 44.27 m of the outermost box, so it never binds. The radius is set
  * by the emplacements. It is still the standoff number that must be re-derived
  * if `REG_BACK` or the roster's longest reach moves, because that is the bound
- * with only 10.66 m of room in it.
+ * with only 12.79 m of room in it.
  */
 export const WIRE: Area = { x: HALT.x, z: HALT.z, r: 52 };
 

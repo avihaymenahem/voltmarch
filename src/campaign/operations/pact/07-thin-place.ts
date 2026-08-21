@@ -58,8 +58,8 @@
  *     round trip is stated exactly and where an earlier draft of this file was
  *     four seconds wrong in the losing direction.
  *   - **`radius` is 24 and the hamlet is inside it.** The two heads stand
- *     40.00 m apart with three occupied buildings between them at 18.87 to
- *     28.00 m, so the blast that kills a head reaches the people the operation
+ *     40.00 m apart with three occupied buildings between them at 18.44 to
+ *     28.07 m, so the blast that kills a head reaches the people the operation
  *     is about. The table below is that arithmetic and it is the whole of the
  *     second decision.
  *
@@ -135,9 +135,9 @@
  * so what is left is not to kill them on the way past.
  *
  *     placed        def              hp     footprint  hitRadius   to head A / B
- *     terrace       civApartments     800     2x3        7.2111     21.26 / 18.87
+ *     terrace       civApartments     800     2x3        7.2111     21.63 / 18.44
  *     well          civOilDerrick     900     2x2        5.6569     28.00 / 24.33
- *     infirmary     civHospital     1 100     3x2        7.2111     24.74 / 26.00
+ *     infirmary     civHospital     1 100     3x2        7.2111     26.31 / 28.07
  *
  * **NOTHING ON THE BOARD CAN AIM AT THEM AT ALL, AND ONE THING CAN HIT THEM.**
  * `ScenarioBuilder.gaia` sets both directions of `allyMask`, so
@@ -170,8 +170,8 @@
  *   - **AND AN AIRSTRIKE REACHES THE ROOFS, HALVED.** `applyAirstrike` pushes a
  *     20 m record with `attacker` = an entity the CALLER owns, so unlike the
  *     Lance it IS halved against Gaia. Centred on head A the terrace is at
- *     21.26 m, i.e. 14.0492 m of surface inside a 20 m radius:
- *     `260 * (0.3 + 0.7 * (1 - 14.0492/20)^1.6) * 1.00 * 0.80 * 0.5` = **41.67 a
+ *     21.63 m, i.e. 14.4222 m of surface inside a 20 m radius:
+ *     `260 * (0.3 + 0.7 * (1 - 14.4222/20)^1.6) * 1.00 * 0.80 * 0.5` = **40.64 a
  *     call**. The bound worth stating is the WORST case rather than that one:
  *     a call centred on the terrace itself delivers `260 * 1.00 * 0.80 * 0.5` =
  *     **104.0**, and **all seven calls the notice allows, every one placed
@@ -186,9 +186,9 @@
  * That is what the primary is for, and this is what it costs:
  *
  *                      blast on head A   on head B   BOTH CENTRED    outcome
- *     terrace   800          460.0         547.9      1 007.9        DIES
+ *     terrace   800          447.3         564.8      1 012.1        DIES
  *     well      900          258.5         325.0        583.5        lives, 35%
- *     infirmary 1 100        353.7         322.3        676.0        lives, 38%
+ *     infirmary 1 100        315.3         280.1        595.4        lives, 46%
  *
  * **THIS BLOCK USED TO CLAIM THE OPERATION WAS "LOST BY DOING THE OBVIOUS THING
  * TWICE, AND ONLY TWICE". IT IS MEASURABLY FALSE.** Driven against the real
@@ -200,27 +200,28 @@
  * dies, and every cell in the table kills its own head:
  *
  *               B@0     B@2     B@4     B@6     B@8    B@10    B@12  B@13.5
- *     A@0    1007.9* 933.6*  867.5*  810.3*   763.1   727.5   707.4   460.0
- *     A@2     943.4*  869.2*  803.1*  745.9    698.6   663.1   642.9   395.6
- *     A@4     888.1*  813.8*  747.7   690.5    643.3   607.7   587.6   340.2
- *     A@6     843.0*  768.7   702.6   645.4    598.2   562.6   542.5   295.1
- *     A@8     810.0*  735.8   669.7   612.5    565.2   529.7   509.5   262.2
- *     A@10    547.9   473.6   407.5   350.3    303.1   267.5   247.4     0.0
- *     A@12    547.9   473.6   407.5   350.3    303.1   267.5   247.4     0.0
- *     A@13.5  547.9   473.6   407.5   350.3    303.1   267.5   247.4     0.0
+ *     A@0    1012.1*  936.2*  868.3*  809.1*   759.6   721.3   697.3   447.3
+ *     A@2     949.3*  873.4*  805.5*  746.3    696.8   658.5   634.5   384.5
+ *     A@4     895.8*  819.9*  751.9   692.8    643.3   605.0   581.0   331.0
+ *     A@6     852.8*  776.8   708.9   649.7    600.3   562.0   537.9   288.0
+ *     A@8     822.4*  746.5   678.6   619.4    569.9   531.7   507.6   257.6
+ *     A@10    564.8   488.9   421.0   361.8    312.3   274.0   250.0     0.0
+ *     A@12    564.8   488.9   421.0   361.8    312.3   274.0   250.0     0.0
+ *     A@13.5  564.8   488.9   421.0   361.8    312.3   274.0   250.0     0.0
  *
  * Bisected on the same rig, the lethal set is exactly: **head B centred and head
- * A inside 8.915 m; head A centred and head B inside 6.400 m; or both blasts
- * inside 3.102 m of their own collars.** Three of those cells use an offset this
+ * A inside 9.578 m; head A centred and head B inside 6.338 m; or both blasts
+ * inside 3.172 m of their own collars.** Three of those cells use an offset this
  * file used to call safe.
  *
  * **AND IT IS ORDER-DEPENDENT, WHICH IS WHAT MADE THE FAIRNESS CLAIM WRONG
  * RATHER THAN MERELY INCOMPLETE.** `t.singed` reads `entityHpBelow`, i.e. the
  * WEAKEST of the tagged set, so all it can ever see is the state after ONE
- * blast. At the shipped threshold of 0.5 the four openings A@4, A@6, A@8 and
- * B@6 — each followed by the other collar CENTRED — reach the instant defeat
- * with no warning BEFOREHAND, because a first blast at those offsets leaves the
- * terrace at 0.5747 / 0.6311 / 0.6723 / 0.5621. Fire the same two shots in the
+ * blast. At the shipped threshold of 0.5 the five openings A@2, A@4, A@6, A@8
+ * and B@6 — each followed by the other collar CENTRED — reach the instant
+ * defeat with no warning BEFOREHAND, because a first blast at those offsets
+ * leaves the terrace at 0.5194 / 0.5863 / 0.6400 / 0.6780 / 0.5478.
+ * Fire the same two shots in the
  * other order and the warning does fire. A discipline that depends on which
  * collar the player happened to take first is a coin, not a rule.
  *
@@ -230,17 +231,17 @@
  * Director appended:
  *
  *     BEFORE                shot one                shot two
- *     A@8 then B@0    [0.6723]  --            done:heads, Calvane, loss
- *     A@6 then B@0    [0.6311]  --            Hesk, done:heads, Calvane, loss
- *     B@6 then A@0    [0.5621]  --            Hesk, done:heads, Calvane, loss
- *     B@0 then A@0    [0.3152]  Hesk          done:heads, Calvane, loss
+ *     A@8 then B@0    [0.6780]  --            done:heads, Calvane, loss
+ *     A@6 then B@0    [0.6400]  --            Hesk, done:heads, Calvane, loss
+ *     B@6 then A@0    [0.5478]  --            Hesk, done:heads, Calvane, loss
+ *     B@0 then A@0    [0.2940]  Hesk          done:heads, Calvane, loss
  *     A@10 then B@10  [1.0000]  --            done:heads, Calvane
  *
  *     AFTER
- *     A@8 then B@0    [0.6723]  Hesk          loss
- *     A@6 then B@0    [0.6311]  Hesk          loss
- *     B@6 then A@0    [0.5621]  Hesk          loss
- *     B@0 then A@0    [0.3152]  Hesk          loss
+ *     A@8 then B@0    [0.6780]  Hesk          loss
+ *     A@6 then B@0    [0.6400]  Hesk          loss
+ *     B@6 then A@0    [0.5478]  Hesk          loss
+ *     B@0 then A@0    [0.2940]  Hesk          loss
  *     A@10 then B@10  [1.0000]  --            done:heads, Calvane
  *     A@10 then B@13  [1.0000]  --            done:heads, Calvane
  *
@@ -249,7 +250,7 @@
  * carries `completeObjective('heads')` and Calvane's *"Both collars are glass"*
  * ahead of *"you put it on the roofs"*; and the correct two-shot line is silent
  * exactly as it was before. **`B@10 then A@10` is the one new line**: it fires
- * the warning on shot one, at 0.6656, which is honest — a third of the terrace
+ * the warning on shot one, at 0.6575, which is honest — a third of the terrace
  * is gone and a turn remains — and is why the copy no longer predicts what the
  * second shot will do.
  *
@@ -267,7 +268,7 @@
  *
  * **THE SECOND HALF OF THE FIX IS `HEADS_STAND` ON THE SAME TRIGGER.** A warning
  * about the next turn is a lie once there is no next turn: two blasts placed ten
- * metres out end the terrace at 0.6656, which is under 0.70, and the old
+ * metres out end the terrace at 0.6575, which is under 0.70, and the old
  * threshold was set at 0.5 precisely to stay quiet in that case. Asking whether
  * a collar is still theirs says it properly — the line fires while a turn
  * remains and cannot fire once both heads are off — and that is what lets the
@@ -282,25 +283,25 @@
  * the hamlet and the head still takes 881.1 against 700, while the hamlet's
  * whole bill for both shots is
  *
- *     terrace   267.5 of 800      well   0.0 of 900      infirmary   0.0 of 1 100
+ *     terrace   274.0 of 800      well   0.0 of 900      infirmary   0.0 of 1 100
  *
  * — the well and the infirmary pass outside 24 m of surface and take LITERALLY
  * NOTHING, and the terrace ends the operation at two thirds.
  *
  * **THE PERFECT LINE EXISTS AND IS DELIBERATELY NOT ADVERTISED.** Bisected, the
- * terrace is outside the blast entirely past **9.951 m** on head A and past
- * **12.343 m** on head B, and a collar dies out to **13.726** — so A at ten
+ * terrace is outside the blast entirely past **9.578 m** on head A and past
+ * **12.772 m** on head B, and a collar dies out to **13.723** — so A at ten
  * metres and B at thirteen takes both heads and costs the hamlet **nothing at
  * all**, which the rig confirms at 0.00 on all three holdings. The window on
- * head A is 3.77 m wide; the window on head B is **1.38 m**, a third of a
- * `CELL`, which is not something a player aims at with a mouse at gameplay zoom.
- * So the brief says ten metres, the operation expects to pay the 267.5, and the
+ * head A is 4.15 m wide; the window on head B is **0.95 m**, under a quarter of
+ * a `CELL`, which is not something a player aims at with a mouse at gameplay
+ * zoom. So the brief says ten metres, the operation expects to pay the 274.0, and the
  * zero-cost line is written down here so that nobody re-derives it and so that a
  * re-seed has something to check against.
  *
  * **THE ASYMMETRY BETWEEN THE TWO SAFE RADII IS THE LAYOUT'S.** Head B stands
- * 18.87 m from the terrace and head A 21.26, so the same ten metres of offset
- * buys 2.39 m less clearance on B. That is `HAMLET_SPREAD` doing its job — see
+ * 18.44 m from the terrace and head A 21.63, so the same ten metres of offset
+ * buys 3.19 m less clearance on B. That is `HAMLET_SPREAD` doing its job — see
  * `pact-thin-place.ts` §4 — and the operation used to quote one number for both.
  *
  * **WHAT IS STILL NOT SAID ON SCREEN, AND WHY THE BRIEF NOW CARRIES THE NUMBER.**
@@ -738,7 +739,7 @@
  *
  *     home 108, 380     foe 404, 132     axis 386.161     the diagonal pair
  *     head A 336, 312   head B 368, 288  separation 40.000
- *     terrace 352, 298  well 364, 312    infirmary 342, 288
+ *     terrace 354, 300  well 364, 312    infirmary 340, 286
  *     parcel centre 352, 300             office 328, 196    ROAD 344.69, 189.52
  *
  *     parcel -> home 256.78   parcel -> foe 175.86   office -> foe  99.36
@@ -1419,22 +1420,22 @@ const op: OperationDef = {
      * reached the roofs. At 0.5 the four openings A@4, A@6, A@8 and B@6 — each
      * followed by the other collar centred — reached the instant defeat with this
      * line never firing, because one blast at those offsets leaves the terrace at
-     * 0.5747 / 0.6311 / 0.6723 / 0.5621. The header's hamlet block carries the
+     * 0.5863 / 0.6400 / 0.6780 / 0.5478. The header's hamlet block carries the
      * whole measured table.
      *
      * **`HEADS_STAND` IS WHAT LETS THE THRESHOLD BE THE RIM FLOOR.** The old 0.5
      * was set below the correct play's residue — two blasts ten metres out end
-     * the terrace at 0.6656 — so that Hesk would not warn about a second turn
+     * the terrace at 0.6575 — so that Hesk would not warn about a second turn
      * that no longer existed. Asking whether a collar is still theirs says that
      * properly and says it in the vocabulary: the line can fire while a turn
      * remains and cannot fire once both heads are off. A first shot placed
      * correctly on head A costs the terrace nothing at all (0.00 damage past
-     * 9.951 m), so the ideal line is silent from both ends.
+     * 9.578 m), so the ideal line is silent from both ends.
      *
      * It fires ONCE — the teaching moment, not a running commentary — and the
      * copy states the GEOMETRY rather than predicting the outcome, because it can
-     * now fire after a first shot that was placed correctly on head B (267.5,
-     * 0.6656) where a second centred shot would in fact leave the terrace
+     * now fire after a first shot that was placed correctly on head B (274.0,
+     * 0.6575) where a second centred shot would in fact leave the terrace
      * standing. "The roofs are inside your circle" is true in every case that
      * reaches this trigger; "the second one is what finishes them" was not.
      */

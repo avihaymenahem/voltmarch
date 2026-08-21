@@ -289,7 +289,7 @@
  * when they are elsewhere reads as the map cheating. Their march is measured
  * with a Dijkstra mirroring `Expander.step` over `costGridFor(Track)`, from the
  * forming-up point to the goal, with `COST_BLOCKED` imported from
- * `world/terrain-gen.ts` and the fill's teeth checked (4042 of 16 384 Track
+ * `world/terrain-gen.ts` and the fill's teeth checked (4057 of 16 384 Track
  * cells blocked; ringing the store makes it report UNREACHABLE):
  *
  *     t.first   3:30  4 gi + 2 grizzly      ROAD   -> counting house  614.3 m
@@ -490,9 +490,13 @@ import {
  * catch at their causes; this stops the symptom being instant.
  *
  * Twenty seconds is past the build and short of anything happening: the nearest
- * hostile unit at t = 0 is in the Allied base 301.30 m from the counting house,
- * and the fastest thing on that seat is a 6.6 m/s Warden Tank — 132 m of
- * straight line in twenty seconds, with 169 m still to go.
+ * hostile unit at t = 0 is a harvester at (118, 174), **264.92 m** from the
+ * counting house — the nearest Warden Tank is 269.71 m — and the fastest thing
+ * on that seat is a 6.6 m/s Warden Tank, so 132 m of straight line in twenty
+ * seconds leaves **137.7 m** still to go. (This used to read 301.30 m, which is
+ * the RAW CORNER's distance to the house used as a proxy for a unit's position;
+ * even the Allied Construction Yard, at 295.74 m, is 26 m past the real nearest
+ * hull. The guard still holds, by 23% less than it claimed.)
  */
 const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
 

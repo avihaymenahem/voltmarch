@@ -152,12 +152,12 @@
  * is what all three wear:
  *
  *     lot              from your yard   from theirs   what it is
- *     Number Two          80.02 m        324.75 m     rclSorter, 1250 hp
- *     the counting house 108.76 m        279.03 m     civApartments, 800 hp
- *     Number Six         213.78 m        180.28 m     rclSorter, 1250 hp
+ *     Number Two          76.03 m        324.75 m     rclSorter, 1250 hp
+ *     the counting house 112.87 m        276.27 m     civApartments, 800 hp
+ *     Number Six         212.01 m        180.28 m     rclSorter, 1250 hp
  *
  * **NUMBER SIX IS NEARER THE PACT THAN IT IS TO YOU AND NOTHING CAN CHANGE
- * THAT** — 33.50 m nearer their Conclave than your Foundry, on a map where both
+ * THAT** — 31.73 m nearer their Conclave than your Foundry, on a map where both
  * openings are fixed by `SKIRMISH_START_OFFSETS` — so it is the lot the
  * operation exists to let you give up. Number Two is 80 m out and inside the
  * reach of everything you own; the house is the primary and is not negotiable.
@@ -177,8 +177,8 @@
  *
  * **THE COUNTING HOUSE IS NOT A TOUGH BUILDING AND IS NOT MEANT TO BE.** Ten and
  * a half seconds of uninterrupted fire from the minute-seven working takes it,
- * and the working forms 194.9 m away — 25.6 s of driving for a Solarch at
- * 7.6 m/s and 51.3 s of walking for a Wayfarer at 3.8, so it arrives strung out
+ * and the working forms 192.0 m away — 25.3 s of driving for a Solarch at
+ * 7.6 m/s and 50.5 s of walking for a Wayfarer at 3.8, so it arrives strung out
  * and it arrives on a schedule the player knows. The house survives because
  * money was spent on the lot it stands on, and that money is subtracted from the
  * other primary. **That is the whole trade and it is the same number twice.**
@@ -291,9 +291,9 @@
  * anyway is not told the objective has become unreachable.
  *
  * **THE RAID IS THE SECOND DECISION AND IT IS PRICED IN THE SAME CURRENCY AS THE
- * FIRST.** The assay stands 187.93 m from the counting house and 279.21 m from
- * the yard, so a detachment is off the lot for a round trip of 375.86 m —
- * **42.7 s at an Arcspitter's 8.8 m/s, 64.8 s at a Grinder's 5.8** — plus the
+ * FIRST.** The assay stands 185.44 m from the counting house and 277.95 m from
+ * the yard, so a detachment is off the lot for a round trip of 370.88 m —
+ * **42.1 s at an Arcspitter's 8.8 m/s, 63.9 s at a Grinder's 5.8** — plus the
  * shooting. Derived against `mrdOculus`'s 650 hp of Concrete:
  *
  *     grinderArc  70 / 1.90 s  Tesla x0.60   17.68 dps   x4 = 70.74 -> 9.19 s
@@ -392,7 +392,7 @@
  *
  * The Arcspitter is carried forward from every operation in this chapter and it
  * is what makes the assay raid a detachment rather than an expedition (8.8 m/s
- * against a Grinder's 5.8). The Arc Pylon is the answer to a lot 108.76 m from
+ * against a Grinder's 5.8). The Arc Pylon is the answer to a lot 112.87 m from
  * your own yard, and it is a decision about the GRID rather than a purchase —
  * -90 against a measured net of +160. `struct.support` is new to the chapter and
  * is granted for one reason: seventeen minutes of defending three lots is the
@@ -454,14 +454,14 @@
  * the def tables bound and this operation's roster installed — the same build
  * `tests/campaign-roster-ground.spec.ts` performs:
  *
- *     Foundry (seat 0)   110, 378        Conclave (seat 1)  402, 134
- *     counting house     168, 286        Number Two         190, 380
+ *     Foundry (seat 0)   114, 382        Conclave (seat 1)  402, 134
+ *     counting house     170, 284        Number Two         190, 380
  *     Number Six         302, 284        forward assay      348, 232
  *     the two Glaives    334, 226 and 350, 254
- *     ROAD              318.3, 162.0    (194.9 m to the house, 123.1 m to Six)
+ *     ROAD              318.3, 162.0    (192.0 m to the house, 123.1 m to Six)
  *
- *     seat 0   29 buildings   19 units   power 480 / 320   net +160
- *     seat 1   27 buildings   14 units   power 640 / 315   net +325
+ *     seat 0   30 buildings   19 units   power 480 / 320   net +160
+ *     seat 1   28 buildings   14 units   power 640 / 315   net +325
  *
  * `auditConnectivity`: 2 passable regions for a tracked hull, the main one
  * holding 12 085 of 12 136 cells (99.6%); 5 placements relocated, worst 16.7 m;
@@ -511,9 +511,14 @@ import {
  * at their causes; this stops the symptom being instant.
  *
  * Twenty seconds is past the build and short of anything happening. Measured,
- * the nearest hostile unit at t = 0 is in the Meridian base 279.03 m from the
- * counting house, and the fastest thing on that seat is a 9.2 m/s Sandskiff —
- * 184 m of straight line in twenty seconds, with 95 m still to go.
+ * the nearest hostile unit at t = 0 is an `mrdSolarch` at (368.0, 146.8),
+ * **240.88 m** from the counting house, and the fastest thing on that seat is a
+ * 9.2 m/s Sandskiff — 184 m of straight line in twenty seconds, with 56.9 m
+ * still to go. (This read 279.03 m, which is a STRUCTURE distance used as a
+ * proxy for a unit, and it is a trap worth naming: the house and the Meridian
+ * start spot both shifted by (+2, -2), so the current house-to-spot distance is
+ * ALSO exactly 279.03 — the number still measures something and looks live
+ * while answering a different question.)
  */
 const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
 
@@ -783,7 +788,7 @@ const op: OperationDef = {
           speaker: 'Cregg',
           text: 'So price a lot before you defend it. Everything you spend out there comes off '
             + 'the twelve thousand, and Number Six is nearer their gate than '
-            + 'ours by thirty-three metres, and no number of Pylons moves it.',
+            + 'ours by thirty-two metres, and no number of Pylons moves it.',
         },
       ],
     },
@@ -870,7 +875,7 @@ const op: OperationDef = {
     /* -- the second working ------------------------------------------------
      * BEFORE THE EVENT RATHER THAN ON IT, WHICH IS THE ONLY WAY A SCRIPTED
      * `eva` EARNS ITS PLACE. `audio.system.ts` already speaks this line on any
-     * attack; nothing is attacking yet. The column forms 194.9 m from the
+     * attack; nothing is attacking yet. The column forms 192.0 m from the
      * counting house and a Wayfarer walks at 3.8 m/s, so the line lands 25 to 51
      * seconds ahead of contact rather than on top of it.
      */
@@ -897,7 +902,7 @@ const op: OperationDef = {
 
     /* -- the third -----------------------------------------------------------
      * The heaviest, and the fastest: three Sandskiffs at 9.2 m/s cross the
-     * 194.9 m in 21.2 s against a Solarch's 25.6 and a Wayfarer's 51.3, so this
+     * 192.0 m in 20.9 s against a Solarch's 25.3 and a Wayfarer's 50.5, so this
      * one arrives as a whole rather than strung out.
      *
      * It joins the `column` tag rather than taking its own, so one `orderTagged`

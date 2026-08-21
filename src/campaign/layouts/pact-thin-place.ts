@@ -8,7 +8,7 @@
  * and the Ninth's allocation office two thirds of the way to their opening.
  *
  * **THIS FILE OWNS EVERY NUMBER THE OPERATION HEADER ARGUES.** That header
- * quotes OUTPUTS — 40.00 m between the two collars, 21.26 and 18.87 m from the
+ * quotes OUTPUTS — 40.00 m between the two collars, 21.63 and 18.44 m from the
  * terrace to them, 42.00 m from the parcel rim to the nearest head, 95.38 m of
  * axis clearance — and every one of them is a consequence of the eight
  * constants declared below. What follows is that premise.
@@ -99,9 +99,18 @@
  * ============================================================================
  * 4. THE HAMLET — `HAMLET_SPREAD` 18
  * ============================================================================
- *     terrace     civApartments   placed 352, 298   to heads 21.26 / 18.87
+ *     terrace     civApartments   placed 354, 300   to heads 21.63 / 18.44
  *     well        civOilDerrick   placed 364, 312   to heads 28.00 / 24.33
- *     infirmary   civHospital     placed 342, 288   to heads 24.74 / 26.00
+ *     infirmary   civHospital     placed 340, 286   to heads 26.31 / 28.07
+ *
+ * **THE TERRACE AND THE INFIRMARY EACH MOVED 2.83 m AND THE WELL DID NOT, AND
+ * THAT SPLIT IS THE DIAGNOSIS.** `bb83ffb` made `spawnBuilding` snap on the
+ * FACED footprint, so a NON-SQUARE footprint at a yaw that quantises to 90 or
+ * 270 lands on the swapped lattice: `civApartments` 2x3 and `civHospital` 3x2
+ * move, `civOilDerrick` 2x2 cannot. The well reproduces its published
+ * 28.00 / 24.33 exactly, which is what makes this a footprint-parity effect
+ * rather than a seed or terrain change. Every figure in the tables below was
+ * re-derived on the landed positions.
  *
  * The terrace goes on the parcel centre and the other two flank it at
  * `+/- HAMLET_SPREAD` across the axis, which is what produces the three
@@ -109,17 +118,17 @@
  * decision. Driven against the real `DamageSystem` on this ground:
  *
  *                      hp      blast on A   on B    both centred    both 10 m out
- *     terrace         800        460.0      547.9      1 007.9  DIES     267.5
+ *     terrace         800        447.3      564.8      1 012.1  DIES     274.0
  *     well            900        258.5      325.0        583.5           0.0
- *     infirmary     1 100        353.7      322.3        676.0           0.0
+ *     infirmary     1 100        315.3      280.1        595.4           0.0
  *
  * **EXACTLY ONE HOLDING CAN DIE**, which is the property `HAMLET_SPREAD` is
  * tuned for: at a wider spread the terrace survives two centred blasts and the
  * primary stops asking anything; at a narrower one the first blast kills it and
  * the player is punished before being shown. 18 is where one centred shot leaves
- * the terrace at 340 or 252 of 800 — visible, alive — and the second kills it.
+ * the terrace at 353 or 235 of 800 — visible, alive — and the second kills it.
  * The well and the infirmary cannot die at all: two blasts can take at most
- * 583.5 of 900 and 676.0 of 1 100.
+ * 583.5 of 900 and 595.4 of 1 100.
  *
  * **THIS BLOCK USED TO SAY "AND ONLY TO THE SECOND CENTRED SHOT", AND THAT IS
  * FALSE.** Eleven of sixty-four sampled aim pairs kill the terrace, including
@@ -131,12 +140,12 @@
  *   - `nukeSplashFalloff` 0.22 is a FLOOR, not a taper, so the least a Concrete
  *     victim inside the ring can take is `1400 * 0.22 * 0.80` = **246.40** and
  *     one centimetre further out it takes **zero**. The edge is a cliff.
- *   - The terrace therefore leaves the blast entirely past **9.951 m** out on
- *     head A and past **12.343 m** on head B, both inside the 13.7257 m kill
+ *   - The terrace therefore leaves the blast entirely past **9.578 m** out on
+ *     head A and past **12.772 m** on head B, both inside the 13.723 m kill
  *     band — so a perfectly placed pair costs the hamlet nothing at all. The
- *     2.39 m of asymmetry between those two radii is exactly the 21.26 / 18.87
+ *     3.19 m of asymmetry between those two radii is exactly the 21.63 / 18.44
  *     split above, i.e. it is `HAMLET_SPREAD`'s doing, and the window it leaves
- *     on head B is **1.38 m** wide.
+ *     on head B is **0.95 m** wide.
  *
  * **THEY ARE GAIA AND NOTHING IN THE MATCH WILL EVER AIM AT THEM**, which is the
  * sentence the whole operation rests on: `ScenarioBuilder.gaia` allies the
@@ -190,7 +199,7 @@
  * `place` walks outward ring by ring for ground the footprint can legally stand
  * on, testing `footprintClear` AND `footprintBuildable`. Seven rings at `CELL` 4
  * is **28 m of silent displacement per structure** — and here that is not an
- * abstract worry, because 28 m is more than the 21.26 m the whole aim-off
+ * abstract worry, because 28 m is more than the 21.63 m the whole aim-off
  * decision is built on. A head that used the whole search would put the terrace
  * outside the blast and every number in §4 would be wrong with nothing failing.
  *
@@ -217,8 +226,8 @@
  *   - the head separation stays above 27.45 m, or one charge takes both;
  *   - the terrace stays 17 to 22 m from BOTH heads, or the aim-off decision
  *     becomes either free or unfair;
- *   - the two radii past which the terrace takes NOTHING — 9.951 m out on head A
- *     and 12.343 m on head B — both stay inside the 13.7257 m kill band, or a
+ *   - the two radii past which the terrace takes NOTHING — 9.578 m out on head A
+ *     and 12.772 m on head B — both stay inside the 13.723 m kill band, or a
  *     perfect line stops existing and the operation can only be won by paying;
  *   - the terrace's rim-floor fraction stays under `t.singed`'s `frac`. It is
  *     `(800 - 246.40) / 800` = 0.6920 against 0.70, and that threshold is
@@ -282,12 +291,12 @@ const WORKS_OFFSET = 96;
 const HEAD_SPACING = 40;
 /**
  * Metres the well and the infirmary stand either side of the terrace, across
- * the axis. TUNED: it is what puts the terrace 21.26 / 18.87 m from the two
+ * the axis. TUNED: it is what puts the terrace 21.63 / 18.44 m from the two
  * collars — dead to two centred blasts, alive to one — and the other two past
- * 24 m, where a centred pair leaves them at a third and a shot ten metres out
- * leaves them untouched. It is also what sets the two radii past which the
- * terrace takes nothing at all (9.951 m on head A, 12.343 m on head B) and the
- * 2.39 m of asymmetry between them. Header §4.
+ * 24 m, where a centred pair leaves them at a third to a half and a shot ten
+ * metres out leaves them untouched. It is also what sets the two radii past
+ * which the terrace takes nothing at all (9.578 m on head A, 12.772 m on head
+ * B) and the 3.19 m of asymmetry between them. Header §4.
  */
 const HAMLET_SPREAD = 18;
 /**
@@ -309,7 +318,7 @@ const ROAD_ACROSS = 6;
 /**
  * Cells searched outward for ground a footprint can legally stand on. Seven at
  * `CELL` 4 bounds silent displacement at 28 m per structure, which is MORE than
- * the 21.26 m the aim-off decision rests on; nothing on this seed moves more
+ * the 21.63 m the aim-off decision rests on; nothing on this seed moves more
  * than 2.2 m. Header §6.
  */
 const PLACE_RINGS = 7;

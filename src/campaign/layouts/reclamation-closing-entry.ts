@@ -7,7 +7,7 @@
  * same heightfield, same two corners. The player held four scattered lots there
  * and no base. A week and four operations later they have a yard on it, a
  * counting house forward of the yard, two working yards further out that keep
- * their own ledgers, and a Meridian forward assay two hundred and seventy-nine
+ * their own ledgers, and a Meridian forward assay two hundred and seventy-eight
  * metres up the sidings road.
  *
  * ============================================================================
@@ -56,10 +56,10 @@
  * which the allow-list is in force, and the state
  * `tests/campaign-roster-ground.spec.ts` builds in:
  *
- *     seat 0  Tallow's yard    29 buildings   19 units   power 480 / 320  +160
- *     seat 1  the district     27 buildings   14 units   power 640 / 315  +325
+ *     seat 0  Tallow's yard    30 buildings   19 units   power 480 / 320  +160
+ *     seat 1  the district     28 buildings   14 units   power 640 / 315  +325
  *
- *     Foundry     110, 378     counting house  168, 286     Number Two  190, 380
+ *     Foundry     114, 382     counting house  170, 284     Number Two  190, 380
  *     Conclave    402, 134     forward assay   348, 232     Number Six  302, 284
  *     the two Glaive Posts     334, 226  and  350, 254
  *
@@ -121,8 +121,8 @@
  * `house`, so an engineer cannot either. Three doors, three answers, and only
  * the player's is open.
  *
- * It stands at `lane(0.28, -34)` — **108.76 m from the Foundry** on the built
- * world, i.e. 53 m beyond the yard's own `BUILD_RADIUS` 56, and 279.03 m from
+ * It stands at `lane(0.28, -34)` — **112.87 m from the Foundry** on the built
+ * world, i.e. 57 m beyond the yard's own `BUILD_RADIUS` 56, and 276.27 m from
  * the Conclave. Its `store.radius` is `max(2, 3) * CELL * 0.5` = 6 m, so
  * `Placement.withinBuildRadius` gives the lot `PLACEMENT.adjacencyRadius` 20 + 6
  * = **26 m of build space**, which is the whole reason a player can fortify a
@@ -140,11 +140,11 @@
  * make a reader believe the two are connected, because they are the same
  * entity.**
  *
- *     Number Two   lane(0.16, 52) -> (190, 380)    80.02 m from the Foundry
- *     Number Six   lane(0.54, 52) -> (302, 284)   213.78 m from the Foundry,
+ *     Number Two   lane(0.16, 52) -> (190, 380)    76.03 m from the Foundry
+ *     Number Six   lane(0.54, 52) -> (302, 284)   212.01 m from the Foundry,
  *                                                 180.28 m from the Conclave
  *
- * **NUMBER SIX IS 33.50 m NEARER THE PACT THAN IT IS TO YOU**, and that is a
+ * **NUMBER SIX IS 31.73 m NEARER THE PACT THAN IT IS TO YOU**, and that is a
  * property of where the two shelves are rather than of anything this file chose:
  * both corners are fixed by `SKIRMISH_START_OFFSETS` and no `mapSeed` moves
  * them. It is the lot the operation exists to let the player give up, and Number
@@ -163,7 +163,7 @@
  * THE FORWARD ASSAY, AND WHY IT IS A REAL PACT STRUCTURE
  * ============================================================================
  * `radar` role key — `mrdOculus`, 650 hp, `power: -40` — at `lane(0.72, 40)`,
- * measured 111.89 m from the Conclave and 187.93 m from the counting house. It
+ * measured 111.89 m from the Conclave and 185.44 m from the counting house. It
  * is the Pact's second book: the operation's hidden secondary is to take it off
  * them, and the chapter's blurb ("the only complete account") is what that makes
  * literally true.
@@ -196,7 +196,7 @@
  * WHERE THE WORKINGS FORM UP
  * ============================================================================
  * `ROAD` = `lane(0.78, -32)` -> (318.3, 162.0): **88.2 m out of the Conclave's
- * gate**, comfortably past `BUILD_RADIUS` 56, 194.9 m short of the counting
+ * gate**, comfortably past `BUILD_RADIUS` 56, 192.0 m short of the counting
  * house and 123.1 m short of Number Six. A column that has formed and is about
  * to leave, rather than an army materialising inside a defended lot.
  *
@@ -374,19 +374,19 @@ function lane(along: number, off: number): Point {
 /**
  * The counting house: five of the nine ledgers, and the primary.
  *
- * Landed at (168, 286) — 108.76 m from the Foundry, 53 m past its
- * `BUILD_RADIUS`, and 279.03 m from the Conclave. Read by the trigger table as
+ * Landed at (170, 284) — 112.87 m from the Foundry, 57 m past its
+ * `BUILD_RADIUS`, and 276.27 m from the Conclave. Read by the trigger table as
  * the `orderTagged` target for the second and third workings.
  */
 export const HOUSE: Point = lane(0.28, -34);
 
-/** Number Two's yard. Landed at (190, 380), 80.02 m from the Foundry. */
+/** Number Two's yard. Landed at (190, 380), 76.03 m from the Foundry. */
 export const LEDGER_TWO: Point = lane(0.16, 52);
 
 /**
  * Number Six's yard, and the lot the operation is written to let the player let
- * go. Landed at (302, 284): 213.78 m from the Foundry against 180.28 m from the
- * Conclave, so it is **33.50 m nearer the army coming for it**.
+ * go. Landed at (302, 284): 212.01 m from the Foundry against 180.28 m from the
+ * Conclave, so it is **31.73 m nearer the army coming for it**.
  */
 export const LEDGER_SIX: Point = lane(0.54, 52);
 
@@ -405,7 +405,7 @@ export const TALLY_AREA: Area = { x: TALLY.x, z: TALLY.z, r: 46 };
 
 /**
  * Where the district's workings form up: 88.2 m out of the Conclave's gate,
- * 194.9 m short of the counting house, 123.1 m short of Number Six.
+ * 192.0 m short of the counting house, 123.1 m short of Number Six.
  *
  * All nineteen drops of the four rings fired here are standable, worst
  * clearance 4.0 m. See the header for the sweep that chose it and for why a change to any

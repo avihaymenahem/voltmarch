@@ -11,20 +11,24 @@
  * They give up their half of the map, and the numbers are measured rather than
  * hoped for. The seam runs down the opening lane with a head at each end, 92.2
  * metres apart and symmetric about the map centre; on this seed the seated slot
- * pair is antipodal too, so the two heads land one per half at exactly the same
- * distances reversed:
+ * pair is antipodal too, so the two heads land one per half at very nearly the
+ * same distances reversed:
  *
- *     player yard  (402, 378)   ->  deep head 145.0 m   control head 235.8 m
- *     enemy yard   (110, 134)   ->  deep head 235.8 m   control head 145.0 m
+ *     player spot  (404, 380)   ->  deep head 147.8 m   control head 238.7 m
+ *     enemy spot   (108, 132)   ->  deep head 238.7 m   control head 147.8 m
+ *     player yard  (402, 382)   ->  deep head 147.4 m   control head 238.5 m
+ *     enemy yard   (114, 134)   ->  deep head 232.9 m   control head 141.8 m
  *
  * That mirror is a property of `simSeed`, not of the construction — two of the
  * four entries in `START_PAIRS` are edge pairs and are not centre-symmetric.
- * The layout's header carries the measurement and the warning.
+ * It is also EXACT on the spots and only approximate on the yards, because the
+ * two seats take different cardinal base facings. The layout's header carries
+ * the measurement and the warning.
  *
  * THE READING YOU MUST TAKE IS ON YOUR SIDE; THE READING YOU MAY TAKE IS ON
- * THEIRS. The deep head is bare ore 145 m from the player's yard and it is the
+ * THEIRS. The deep head is bare ore 147 m from the player's yard and it is the
  * primary — ninety seconds standing on it. The control head is the same ore
- * with two guns dug in beside it, 145 m from the ENEMY'S yard, and it is a
+ * with two guns dug in beside it, 142 m from the ENEMY'S yard, and it is a
  * secondary worth five hundred credits that expires at five minutes.
  *
  * So the decision arrives at about minute two and it is not a build order:
@@ -61,7 +65,7 @@
  * it says the true thing instead: what the enemy reacts to is the string going
  * down, not three people walking past.
  *
- * The relief forms at the CONTROL head, which is 145 m from the enemy's own
+ * The relief forms at the CONTROL head, which is 142 m from the enemy's own
  * yard — its post and its doorstep at once — so a player who went for the
  * secondary and left a detachment there gets the wave in their lap, and a
  * player who did not gets the length of the lane as warning.
@@ -118,7 +122,7 @@ const CONTROL_READING = seconds(45);
  * When the control reading stops being worth taking.
  *
  * Chosen against the march rather than against the par. 278.8 m at 3.4 m/s is
- * 82 s of walking, the post has to be broken 145 m from the enemy's own yard,
+ * 82 s of walking, the post has to be broken 142 m from the enemy's own yard,
  * and the reading is another 45 s — call it 187 s of work inside a 300 s
  * window. The ~110 s left over is about one production cycle, which is the
  * whole intent: the player may spend a queue on this, not three. Five minutes
@@ -261,7 +265,7 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Wend',
-          text: 'The control head is a hundred and forty-five metres from their yard and '
+          text: 'The control head is a hundred and forty-two metres from their yard and '
             + 'there are two guns on it. They were put there nine days ago and nobody filed '
             + 'a reason.',
         },

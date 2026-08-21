@@ -120,7 +120,7 @@
  * 8-connected Dijkstra over the real `FlowFieldCache.costGridFor(MoveClass.Foot)`
  * on the built world returns UNREACHABLE from the player's island to Bench
  * Nine, on a grid that is demonstrably refusing something (it blocks 8 599 of
- * 16 384 cells for Naval and 1 426 for Hover). **The swimmers are a different
+ * 16 384 cells for Naval and 1 443 for Hover). **The swimmers are a different
  * class and both armies own one, ungated.** `frogman` is `Locomotor.Foot` plus
  * an `amphibious` def bit, which resolves to `MoveClass.Hover`; it costs 350,
  * its only prereq is `barracks`, it carries no `unlockedBy` at all, and seat 0
@@ -128,10 +128,22 @@
  * walks to the strand cell in **272.1 m**, which is **94 seconds** at that
  * hull's 2.9 m/s. **THE START CELL IS PART OF THE MEASUREMENT AND IS QUOTED
  * RATHER THAN LEFT TO THE READER**: (70, 358), the nearest hover-open cell to
- * the player's barracks at (72, 364), which is the ground a produced man
- * egresses onto — a route quoted from some other point on the island is a
- * different number, and trap 20 in this repo's authoring guidance is exactly
- * that mistake in the other direction. Cregg's
+ * the player's barracks, which is the ground a produced man egresses onto — a
+ * route quoted from some other point on the island is a different number, and
+ * trap 20 in this repo's authoring guidance is exactly that mistake in the
+ * other direction.
+ *
+ * **AND THAT START CELL IS NOW WRONG, WHICH IS EASIER TO SEE THAN THE METRES
+ * ARE.** The barracks stood at (72, 364) when this was written and stands at
+ * **(76, 344)** — `bb83ffb` rebuilt the procedural bases on the placement grid.
+ * (70, 362) was inside the OLD barracks' 2x2 footprint and therefore blocked,
+ * which is exactly why (70, 358) was the nearest open cell then; today (70, 362)
+ * is open. **The 272.1 m and the ninety-four seconds have NOT been re-measured**
+ * and are a fact about the old ground: an independent Dijkstra on this tree
+ * returns neither the published figure from the published start cell nor from
+ * the landed barracks, which means the goal convention was never named either.
+ * Re-take the route and the start cell together, and name the goal, before
+ * quoting any of it again. Cregg's
  * `rclDredger` (300 credits, `prereqs: ['rclRookery']`, also ungated, also
  * `amphibious`) has the identical route from his own island.
  *
@@ -186,10 +198,11 @@ import { layout } from '../layout';
  * turned a quarter turn, a swap and a sign flip, so no `sin`/`cos` enters the
  * generator — which puts seat 0 at about (97.1, 368.5), on the island's
  * SOUTH-WEST side. `Placement.withinBuildRadius` gives a Construction Yard
- * `BUILD_RADIUS` 56 m plus its own radius; the yard lands at (98, 366) on the
- * built world, and the east shore at z = 384 begins at x = 210 — **113.4 m**
- * from it. So the one coast that faces the
- * objective is more than twice the build envelope away, and a player who wanted
+ * `BUILD_RADIUS` 56 m plus its own radius; the yard lands at **(102, 370)** on
+ * the built world, and the east shore at z = 384 begins at x = 210 — **108.9 m**
+ * from it. So the one coast that faces the objective is very nearly twice the
+ * build envelope away — 108.9 m against 2 x 56 = 112, where it used to be
+ * 113.4 m and therefore over it — and a player who wanted
  * a dock there would have to creep a chain of power plants to it — the
  * 800-credits-a-step workaround `Scenarios.ts` calls "a workaround for a start
  * position, not a strategy".
@@ -260,23 +273,35 @@ export const SHINGLE: Point = { x: 314, z: 390 };
  * Reclamation seat to `rclSorter`. Tagged `crew`.
  *
  * The literal is accepted at ring zero and `spawnBuilding`'s footprint snap
- * moves it 2 m to **(370, 392)**, which is 56.0 m inland of `SHINGLE`. It is
+ * moves it 2 m to **(372, 390)**, which is 58.0 m inland of `SHINGLE`. It is
  * the near half of the objective and the one a player meets first.
+ *
+ * (It landed at (370, 392) until `bb83ffb` made the snap read the FACED
+ * footprint: `refinery` is 3x2 and this is raised at yawDeg 270, so the swapped
+ * 2x3 lattice moves it the other way. The two other points in this block are
+ * the control — SHINGLE-to-HEAD 63.8 m and CROSS-to-SHINGLE 113.2 m both still
+ * reproduce exactly.)
  */
 export const FLOOR: Point = { x: 370, z: 390 };
 
 /**
  * The breaking yard itself — `warFactory` -> `rclBreakerYard`. Tagged `crew`.
  *
- * **THE LITERAL IS THE LANDED POSITION AND IT WAS AUTHORED THE OTHER WAY
- * ROUND.** It read (396, 390) — the island centre — and the `place()` ring
- * search rejected ring zero and took it 6 m west, after which the footprint
- * snap moved it 2 m south. That is a six-metre difference nothing would ever
- * have reported: every tag lands, every gate passes, and only the distances in
- * these two headers are wrong. The literal is the measured landing now, taken
- * at ring zero, so the numbers below are exact rather than nominal.
+ * **THE LITERAL WAS THE LANDED POSITION AND IT WAS AUTHORED THAT WAY ROUND ON
+ * PURPOSE. IT IS NOT ANY MORE.** It read (396, 390) — the island centre — and
+ * the `place()` ring search rejected ring zero and took it 6 m west, after
+ * which the footprint snap moved it 2 m south. That is a six-metre difference
+ * nothing would ever have reported: every tag lands, every gate passes, and
+ * only the distances in these two headers are wrong. So the literal was
+ * corrected to the measured landing.
  *
- * 76.0 m from `SHINGLE` and 20.0 m beyond the sorting floor.
+ * **`bb83ffb` HAS SINCE UN-CORRECTED IT.** `warFactory` is 3x2 and this is
+ * raised at yawDeg 270, and `spawnBuilding` now snaps on the FACED footprint,
+ * so the structure stands at **(392, 394)** — 2.83 m off this literal again,
+ * in the opposite direction from the original slip. Every figure below is
+ * measured from where it stands.
+ *
+ * 78.1 m from `SHINGLE` and 20.4 m beyond the sorting floor.
  * **A REAL FACTORY AND NOT A PROP:**
  * `EntityFlag.IsFactory | PrimaryFactory`, so the seat produces hulls on the
  * bench for as long as it stands, which is what makes clearing the crew a
@@ -323,7 +348,8 @@ export const HEAD: Point = { x: 368, z: 356 };
  * against all five ring shapes through the real `Terrain.isPassable` for each
  * wave's own locomotor, which returned **973 clean candidates**, and this is the
  * one of them that sits due north of the breaking yard on the shore facing
- * Cregg's island. 78.0 m from `YARD` and 113.2 m from `SHINGLE`: his
+ * Cregg's island. 82.1 m from the breaking yard as it stands and 113.2 m from
+ * `SHINGLE`: his
  * reinforcement lands on the far side of his own holding from the player's,
  * which is what makes the bench a fight along an axis rather than a mêlée on a
  * beach.
@@ -428,9 +454,12 @@ export const BERTH_AREA: Area = { x: BERTH.x, z: BERTH.z, r: 34 };
 
 /**
  * The whole of what the player is being sent at, shown once, and the radius is
- * derived rather than chosen. (378, 379) is the centroid of the crew's three
- * structures, and 70 m from it reaches the sorting floor at 15.3 m, the
- * breaking yard at 17.7, the bore head at 25.1, the two posts at 30.5 and 20.2,
+ * derived rather than chosen. (378, 379) WAS the centroid of the crew's three
+ * structures and is now 1.0 m off it — the two non-square ones moved 2.83 m
+ * each under the faced-footprint snap, and the true centroid is (377.33, 380.0)
+ * — so this stays as the authored point and the six distances below are
+ * measured from it. 70 m from it reaches the sorting floor at 12.5 m, the
+ * breaking yard at 20.5, the bore head at 25.1, the two posts at 30.5 and 20.2,
  * AND the strand at 64.9 — so one reveal frames the objective and the beach it
  * is reached from in the same rectangle. At 62 m the strand falls outside it
  * and the player is shown a fight with no way in.
@@ -468,8 +497,8 @@ export const BENCH_AREA: Area = { x: 378, z: 379, r: 70 };
  * 20 m**, so neither gun bore on its own building and neither was inside the
  * scope `tests/campaign-emplacement-reach.spec.ts` §2 measures. The suite was
  * green and the operation contributed nothing to it. At [-12, 10] and [8, -12]
- * the posts land at (358, 402) and (398, 382) — **15.6 m from the sorting floor
- * and 12.8 m from the breaking yard** — so an engineer walked at either
+ * the posts land at (358, 402) and (398, 382) — **18.4 m from the sorting floor
+ * and 13.4 m from the breaking yard** — so an engineer walked at either
  * structure is under a gun, which is the content, and §2 is now measuring
  * something.
  *

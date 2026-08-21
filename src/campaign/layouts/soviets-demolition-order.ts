@@ -53,29 +53,36 @@
  * silo's `chargeSeconds` is 420, so it costs at least two of something inside an
  * eighteen-minute deadline.
  *
- * **THE THREE ARE NOT AUTHORED ON A LINE.** They sit at 134.16 m, 90.55 m and
- * 186.01 m from the Ninth's Construction Yard and at 263.06 m, 321.31 m and
- * 204.84 m from the player's — measured to the YARDS, not to the start spots,
- * which are two different points (the yards land at (402, 378) and (110, 134),
- * 380.53 m apart, while the spots the layout is handed are (404, 380) and
- * (108, 132)). So the near plant is a raid into their ground, the far plant is
- * out on the seam where the player can reach it early, and the device is
+ * **THE THREE ARE NOT AUTHORED ON A LINE.** They sit at 132.42 m, 90.20 m and
+ * 183.67 m from the Ninth's Construction Yard and at 264.97 m, 323.25 m and
+ * 206.71 m from the player's — measured to the YARDS, not to the start spots,
+ * which are two different points (the yards land at (402, 382) and (114, 134),
+ * 380.06 m apart, while the spots the layout is handed are (404, 380) and
+ * (108, 132), 386.16 m apart). So the near plant is a raid into their ground,
+ * the far plant is out on the seam where the player can reach it early, and the device is
  * between them behind its own guns. Three targets, three different prices.
  *
  * ============================================================================
- * THE INFIRMARY IS 40.05 m FROM THE DEVICE AND THAT NUMBER IS THE OPERATION
+ * THE INFIRMARY IS 38.21 m FROM THE DEVICE AND THAT NUMBER IS THE OPERATION
  * ============================================================================
  * `civHospital` is Gaia-owned, 1100 hp, and its 3x2 footprint gives it
  * `hitRadius` **7.211**. A blast reaches it when the click lands within
  * `26 + 7.211 = 33.211 m` of its centre. Measured on the built world:
  *
- *     click on DEVICE      -> infirmary surface 32.84 m   CLEAR, aim margin 6.84 m
- *     click on STACK_NEAR  -> infirmary surface 26.32 m   CLEAR, aim margin 0.32 m
- *     click on STACK_FAR   -> infirmary surface 87.04 m   CLEAR, aim margin 61.04 m
+ *     click on DEVICE      -> infirmary surface 31.00 m   CLEAR, aim margin 5.00 m
+ *     click on STACK_NEAR  -> infirmary surface 28.84 m   CLEAR, aim margin 2.84 m
+ *     click on STACK_FAR   -> infirmary surface 84.55 m   CLEAR, aim margin 58.55 m
  *
- * So a warhead put on the device spares the infirmary by **6.84 m of aiming
- * margin**, and a warhead put on the NEAR PLANT clears it by **0.32 m** — which
- * is not a margin, it is a coincidence.
+ * So a warhead put on the device spares the infirmary by **5.00 m of aiming
+ * margin**, and a warhead put on the NEAR PLANT clears it by **2.84 m** — which
+ * is still not a margin so much as an accident of where the block landed.
+ *
+ * **THE INFIRMARY IS AT (132, 258), NOT AT ITS AUTHORED (130, 256).**
+ * `civHospital` is a 3x2 footprint at a yaw that quantises to 90, and
+ * `ScenarioBuilder.spawnBuilding` snaps on the FACED footprint, so a non-square
+ * block at that yaw snaps on the swapped lattice and moves 2.83 m. That is
+ * where the 32.84 / 26.32 / 87.04 this block used to quote went, and with them
+ * the 0.32 m near-plant margin that the drift table below was keyed to.
  *
  * **WHAT THAT COINCIDENCE COSTS IS A FIFTH OF THE BUILDING, NOT THE BUILDING,
  * AND THIS BLOCK SAID OTHERWISE.** It read "a click one metre long on that plant
@@ -88,16 +95,17 @@
  * that branch at `attackerPlayer < 0`) the rim is `1400 x 0.22 x 0.80 = 246`.
  * Drifting the near-plant click straight at the infirmary, measured:
  *
- *     drift  0.32 m   surface 26.00    246 dmg   22.4% of 1100
- *     drift  1.00 m   surface 25.32    249 dmg   22.6%
- *     drift 10.00 m   surface 16.32    426 dmg   38.8%   (plant still dies)
- *     drift 26.00 m   surface  0.32   1103 dmg   DEAD    (plant survives on 322/800)
+ *     drift  2.84 m   surface 26.00    246 dmg   22.4% of 1100
+ *     drift  3.50 m   surface 25.34    249 dmg   22.6%
+ *     drift 10.00 m   surface 18.84    357 dmg   32.5%   (plant still dies)
+ *     drift 28.84 m   surface  0.00   1120 dmg   DEAD    (plant survives on 529/800)
  *
- * So the 0.32 m is the threshold at which the hospital starts paying, not the
+ * So the 2.84 m is the threshold at which the hospital starts paying, not the
  * threshold at which it falls: LOSING the secondary to the warhead needs the
- * click essentially centred on the hospital, 25.95 m off the plant, by which
- * point the plant is not dying either. The argument for not spending the warhead
- * on a 300-credit power plant survives and is worth restating in the form the
+ * click essentially centred on the hospital, 28.47 m off the plant, by which
+ * point the plant is not dying either — it takes 271 of its 800. The argument
+ * for not spending the warhead on a 300-credit power plant survives and is
+ * worth restating in the form the
  * arithmetic actually supports — you will hurt a civilian block for nothing,
  * not level one — because "stated in centimetres rather than in prose" is only
  * an improvement while the centimetres are what they claim to be.
@@ -167,9 +175,9 @@
  * is passable to Foot AND Track), so the counts may be retuned without
  * re-measuring as long as the spread stays inside it:
  *
- *     ROAD_A   (150, 188)   clearR 26   67.20 m from the Ninth's yard,  68.96 m from the device
- *     ROAD_B   ( 52, 110)   clearR 30   62.77 m from the Ninth's yard, 186.17 m from the device
- *     MUSTER   (326, 336)   clearR 28   86.83 m from the player's yard
+ *     ROAD_A   (150, 188)   clearR 26   64.90 m from the Ninth's yard,  68.96 m from the device
+ *     ROAD_B   ( 52, 110)   clearR 30   66.48 m from the Ninth's yard, 186.17 m from the device
+ *     MUSTER   (326, 336)   clearR 28   88.84 m from the player's yard
  *
  * Both Allied points sit past `BUILD_RADIUS` (56) from their yard: a column that
  * has formed up and is about to leave, which is a schedule the opponent gets
@@ -301,11 +309,11 @@ export const WORKS_AREA: Area = { x: DEVICE.x, z: DEVICE.z, r: 46 };
 export const STACK_NEAR_AREA: Area = { x: STACK_NEAR.x, z: STACK_NEAR.z, r: 34 };
 export const STACK_FAR_AREA: Area = { x: STACK_FAR.x, z: STACK_FAR.z, r: 34 };
 
-/** The spur road. 67.20 m from the Ninth's yard, 68.96 m from the device. */
+/** The spur road. 64.90 m from the Ninth's yard, 68.96 m from the device. */
 export const ROAD_A: Point = { x: 150, z: 188 };
-/** Their own rear. 62.77 m from the yard, on the far side from the works. */
+/** Their own rear. 66.48 m from the yard, on the far side from the works. */
 export const ROAD_B: Point = { x: 52, z: 110 };
-/** Where the yards put the player's one column down. 86.83 m from their yard. */
+/** Where the yards put the player's one column down. 88.84 m from their yard. */
 export const MUSTER: Point = { x: 326, z: 336 };
 /**
  * The heading the middle wave takes: the contested patch `addStartOre` lays on

@@ -161,13 +161,19 @@
  * five drew 75, and `shed` sorts by (priority, draw descending, slot ascending)
  * — so the base's three, spawned first, were permanently ahead of the compound's
  * two. Driven at an induced deficit of 85, the real `shed` darkened the coils at
- * (402, 154) and (390, 142) — **at the base, 116 m and 110 m from the office
- * mast** — and left both compound towers lit. The garrison never builds a sixth
+ * (386, 158) and (386, 134) — **at the base, 99 m and 112 m from the office
+ * mast** — and left both compound towers lit. (The three base coils stand at
+ * (386, 158), (386, 134) and (386, 110), 99.3 / 111.6 / 127.3 m from the mast.
+ * This block used to name (402, 154) and (390, 142) at 116 and 110 m, which is
+ * where `SOVIET_DEFENCE` put them before `bb83ffb` rebuilt the procedural bases
+ * on the placement grid; the mast itself is unmoved at (296, 200).)
+ *
+ * The garrison never builds a sixth
  * over fourteen minutes, so that ordering was fixed for the whole match.
  *
  * **THIS WALL IS NOW ABSOLUTE RATHER THAN MERELY TALL.** The three survivors
  * are the base's, and they are the only power-drawing defence seat 1 has. A
- * shed of any depth can only darken guns 110 m up the road from the objective;
+ * shed of any depth can only darken guns 99 m or more up the road from the objective;
  * there is nothing at the compound left to reach.
  *
  * **WHAT WOULD ACTUALLY WORK, AND WHY IT WAS REFUSED.** Beating the measured
@@ -293,7 +299,7 @@
  * which `SOVIET_DEFENCE` places inside `buildBaseFor`. Built headless with
  * `roster.ai: []`, seat 1 comes back with **zero** `teslaCoil` and a base whose
  * only defence is two `flameTower` and two `sentryGun`. Delete the line and you
- * disarm the base, 110 m up the road, silently. The player has `unit.raider` and
+ * disarm the base, 99 m up the road, silently. The player has `unit.raider` and
  * nothing else, which is a Reclamation Arcspitter: fast, sixteen metres of
  * reach, no armour, and **only reachable by building the Breaker Yard**. The
  * grant is therefore an argument for the expensive branch rather than a gift.
@@ -320,12 +326,16 @@
  * At `mapSeed` 41 207 / `simSeed` 6 412 the openings are 386.2 m apart and the
  * composition lands at:
  *
- *     Furnace  100, 328      Sorter   166, 252      office   296, 200
+ *     Furnace  100, 328      Sorter   168, 254      office   296, 200
  *     Foundry  190, 378      Rookery  284, 292      garrison 404, 132
  *
- * The Foundry moved 14.5 m and the Sorter 9.0 m from their nominal lot points
+ * The Foundry moved 14.46 m and the Sorter 8.25 m from their nominal lot points
  * to find ground `isBuildable` accepts, which is why the nominal fractions are
- * not what is written here.
+ * not what is written here. **The Sorter row is the one that moved twice**: it
+ * is the only non-square footprint among the four lots (`rclSorter` is 3x2) and
+ * the compound's inward yaw quantises to 90, so `bb83ffb`'s faced-footprint
+ * snap took it from (166, 252) to (168, 254). The other three land where they
+ * always did, which is the control.
  *
  * **RE-MEASURE IF `mapSeed`, `simSeed` OR THE LAYOUT'S LOT FRACTIONS MOVE.**
  * Nothing fails loudly if they drift — `unitsInArea` would simply stop firing
@@ -363,8 +373,14 @@ const OFFICE = { x: 296, z: 200 };
  * `tests/campaign-spawn-ground.spec.ts` is the gate.
  */
 const RELIEF = { x: 180, z: 348 };
-/** The Sorter lot — the money, and where Tallow's column is pointed. */
-const SORTER = { x: 166, z: 252 };
+/**
+ * The Sorter lot — the money, and where Tallow's column is pointed.
+ *
+ * This is the LANDED position, re-measured off `store.posX/posZ`: it read
+ * (166, 252) until `spawnBuilding` began snapping on the faced footprint, and
+ * `rclSorter` is the only 3x2 among the four lots.
+ */
+const SORTER = { x: 168, z: 254 };
 /** The Rookery lot — the deepest yard, and what the watch is sent to break. */
 const ROOKERY = { x: 284, z: 292 };
 
@@ -623,7 +639,7 @@ const op: OperationDef = {
      *
      * **74 m IS BOUNDED BY THE NEAREST PLAYER UNIT AT t = 0, WHICH IS 104 m
      * AWAY.** `unitsInArea` counts units and not buildings, so the constraint is
-     * not the Rookery at 92.8 m but its crew at 104.3 m — a 30 m margin. Move
+     * not the Rookery at 92.8 m but its crew at 104.8 m — a 30 m margin. Move
      * the Rookery lot forward and this fires on tick one, revealing the compound
      * before the player has left home.
      */

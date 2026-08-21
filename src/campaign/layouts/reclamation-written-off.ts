@@ -158,8 +158,8 @@ const HEAD_WING_ACROSS = 52;
  * the centre, 15.8 m off the point it was authored at, and further from the ore
  * than a forward dock has any business being. On the centre line at this seed a
  * 3x2 refinery footprint is REFUSED the whole way from fwd 60 to fwd 80, which
- * is why the search had to go outward to find one. At 52 it lands at (294, 224)
- * — 49.7 m out, 0.1 m off the axis, where it was asked to stand and just under
+ * is why the search had to go outward to find one. At 52 it lands at (296, 222)
+ * — 52.5 m out, 0.4 m off the axis, where it was asked to stand and just over
  * 20 m clear of the middle pocket's ore. That short haul is what makes taking
  * it worth 500 credits and a fight.
  */
@@ -382,7 +382,7 @@ export default layout({
      * 5. THE SORTING STATION
      *
      * A Soviet refinery 52 m onto their half of the field — measured at
-     * (294, 224), 49.7 m from the centre — its two emplacements, and the two
+     * (296, 222), 52.5 m from the centre — its two emplacements, and the two
      * crushers that are the reason the Soviets are on this field at all.
      *
      * THE EMPLACEMENTS ARE `pillbox` BY ROLE — `keyFor` gives the Soviets

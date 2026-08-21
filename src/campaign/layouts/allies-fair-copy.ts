@@ -18,23 +18,34 @@
  * withholds.
  *
  *     thing        key             owner    landed        hp    footprint
- *     arc head     civApartments   GAIA     (296, 242)    800     2x3
+ *     arc head     civApartments   GAIA     (298, 244)    800     3x2 as faced
  *     yards head   civApartments   GAIA     (128, 114)    800     2x3
  *     register     radar->mrdOculus MERIDIAN (336, 216)   650     2x2
  *     two posts    pillbox->mrdGlaive       (318, 234) (274, 250)
  *                                            480 each, `glaiveRepeater` at 24 m,
- *                                            **23.409 m from the head, both**
+ *                                            **22.361 m and 24.739 m from the head**
  *
- * **ALL FIVE LAND ON THEIR AUTHORED LITERALS AT RING ZERO**, and they are
- * written here as the coordinates the built world reports rather than as nominal
- * points the ring search then walks off — `allies-forced-closure` and
+ * **FOUR OF THE FIVE LAND ON THEIR AUTHORED LITERALS AT RING ZERO**, and they
+ * are written here as the coordinates the built world reports rather than as
+ * nominal points the ring search then walks off — `allies-forced-closure` and
  * `soviets-short-allocation` both record why, and it is the same trap:
  * **`place` returning a point is not the same as a structure standing on it**,
  * because `spawnBuilding` snaps the result to the footprint grid a second time.
- * A 2-wide footprint centres on a cell boundary (296 = 74*4, 128 = 32*4, 336 =
- * 84*4) and a 3-deep one on a cell centre (242 = 60*4 + 2, 114 = 28*4 + 2), so
- * the search below is a CHECK on this ground rather than the mechanism that
- * found it. The two posts are 1x1 and centre on a cell centre, so their offsets
+ *
+ * **THE ARC HEAD IS THE ONE THAT DOES NOT, AND IT MOVED THE WHOLE OF §5.** It
+ * is authored at (296, 242) and stands at **(298, 244)**. `bb83ffb` made
+ * `spawnBuilding` snap on the FACED footprint, and this block is raised at
+ * `yawDeg 90`, so its 2x3 becomes a 3x2 on the swapped lattice: the 3-wide
+ * extent centres on a cell CENTRE (298 = 74*4 + 2) and the 2-deep one on a cell
+ * BOUNDARY (244 = 61*4). Its `store.footprintW/H` reads 3x2, which is what
+ * `CaptureService.withinReach` reads, so the whole ten-cell lodging enumeration
+ * below is on a different lattice from the one the old text derived. The
+ * paragraph that used to justify the literal — "a 2-wide footprint centres on a
+ * cell boundary (296 = 74*4) and a 3-deep one on a cell centre" — is exactly the
+ * calculation that stopped being true; it still holds for the yards head and the
+ * register, which are raised at a yaw that leaves their footprints unswapped.
+ *
+ * The two posts are 1x1 and centre on a cell centre, so their offsets
  * from the arc head must satisfy `dx = 2 (mod 4)` and `dz = 0 (mod 4)`: 296 is a
  * cell BOUNDARY in x and 242 a cell CENTRE in z. A first draft used -14/+18 in
  * z, 242 - 14 is 228, that is a boundary, and `spawnBuilding` moved the post two
@@ -176,30 +187,43 @@
  * correct and not the set.
  *
  * What a man can actually stand on is a cell, and the arc head's grid phase
- * gives ten of them outside the footprint: 296 is a cell boundary in x so
- * `|dx|` is 2 or 6, 242 is a cell centre in z so `|dz|` is 0, 4 or 8, and the
- * four `(6, 8)` corners fail the rounding at `2^2 + 2^2 = 8 > 5.924`. All ten
- * are Foot-passable on this ground. A Glaive Post FIRES when
+ * gives ten of them outside the footprint. `withinReach` reads the STORE
+ * footprint, which is the FACED 3x2 — half-extents 6 m in x and 4 m in z about
+ * (298, 244) — so 298 is a cell centre in x giving `|dx|` of 0, 4 or 8, and 244
+ * is a cell boundary in z giving `|dz|` of 2 or 6; the four `(8, 6)` corners
+ * fail the rounding at `2^2 + 2^2 = 8 > 5.924`. All ten are Foot-passable on
+ * this ground. A Glaive Post FIRES when
  * `max(0, flat - hitRadius(target)) <= 24` and an engineer's `hitRadius` is his
  * radius, so the circle is **24.234 m** of centre distance; `Targeting` acquires
  * at `24 * COMBAT_TARGETING.acquireRangeMul` (1.08) + 0.234 = **26.154 m**.
  *
  *     cell           post A (318,234)   post B (274,250)   bears
- *     (294, 234)         23.77              25.38            A
- *     (298, 234)         19.77              28.61            A
- *     (302, 238)         16.26              30.23            A
- *     (302, 242)         17.65              28.89            A
- *     (302, 246)         19.77              28.05            A
- *     (290, 238)         28.05              19.77            B
- *     (290, 242)         28.89              17.65            B
- *     (290, 246)         30.23              16.26            B
- *     (294, 250)         28.61              19.77            B
- *     (298, 250)         25.38              23.77            B
+ *     (302, 238)         16.49              30.46            A
+ *     (306, 242)         14.42              32.98            A
+ *     (306, 246)         16.97              32.25            A
+ *     (298, 238)         20.40              26.83            A
+ *     (302, 250)         22.63              28.00            A
+ *     (290, 242)         29.12              17.89            B
+ *     (290, 246)         30.46              16.49            B
+ *     (294, 250)         28.84              20.00            B
+ *     (294, 238)         24.33              23.32            B
+ *     (298, 250)         25.61              24.00            B
  *
  * **EVERY LODGING CELL IS UNDER EXACTLY ONE POST. NONE IS UNDER BOTH AND NONE
- * IS UNDER NEITHER.** That is what the posts were moved for. At the authored
- * offsets `(+22, -16)` and `(-18, +16)` the same enumeration left **(294, 234)
- * and (302, 246) covered by no gun at all** — 25.06 / 28.61 and 25.38 / 26.60,
+ * IS UNDER NEITHER.** The tightest cover in that table is (298, 250) under post
+ * B at 24.000 m against a 24.234 m firing circle — **0.234 m of margin**, which
+ * is the engineer's own radius and nothing else. (294, 238) is the mirror case
+ * and is the one to read carefully: post A is 24.33 m away, which is INSIDE
+ * acquisition and OUTSIDE fire, so A tracks a man there and cannot shoot him;
+ * post B at 23.32 m is what actually covers it. Before the block moved, the
+ * whole table's tightest margin was 0.46 m.
+ *
+ * That is what the posts were moved for. At the authored
+ * offsets `(+22, -16)` and `(-18, +16)` the same enumeration — taken on the
+ * PRE-`bb83ffb` block position, and not re-derived on the current one, because
+ * it is a counterfactual about a pair of posts that never shipped — left
+ * **(294, 234) and (302, 246) covered by no gun at all**: 25.06 / 28.61 and
+ * 25.38 / 26.60,
  * both inside post A's ACQUIRE circle and outside its FIRE circle, so it slewed,
  * tracked and never shot — and `glaiveRepeater` carries `splashRadius: 0`, so
  * those two cells took literally nothing. The operation's central claim was
@@ -217,6 +241,14 @@
  *
  * 8-connected Dijkstra over the real `FlowFieldCache.costGridFor(MoveClass.Foot)`
  * from the column's own cell, octile step, corner-cutting refused.
+ *
+ * **THE FOUR ROUTE FIGURES IN THAT CONTROL AND THE EXPOSURE FIGURE BELOW WERE
+ * TAKEN ON THE PRE-`bb83ffb` BLOCK POSITION AND HAVE NOT BEEN RE-MEASURED.**
+ * Both cells they name — (290, 246) and (294, 234) — belonged to the OLD
+ * ten-cell set; only the first is still a lodging cell. The qualitative
+ * finding they support (the shipped pair leaves no gun-free lodging cell, the
+ * rejected pair did) is re-established by the corrected table above, which is
+ * a pure geometry check and needs no route. The metres are not.
  *
  * **THE GATE IS A PRICE AND NOT A WALL, AND THE PRICE IS FOUR METRES.** Minimum
  * exposure — the metres of the cheapest route that lie inside a firing circle,
@@ -244,7 +276,7 @@
  *
  * The yards head has no structure of any kind within **199.53 m**, and that is
  * the nearer of the two Glaive Posts on the OTHER head; the next thing along is
- * the arc block itself at 211.21 m and the register at 231.66 m. Measured
+ * the arc block itself at 214.01 m and the register at 231.66 m. Measured
  * centre-to-centre over every alive Building on the built world, sorted. **This
  * file used to say 202.18 m and that the nearest thing that could shoot was a
  * rampart in the Order's own base — both halves were wrong before the posts
@@ -313,8 +345,9 @@
  *     three              160     -100     DARK
  *
  * So there is a second way to open every lodging cell on the arc head and it costs
- * three structures inside the Order's own base — whose Conclave stands 154.2 m
- * from the head in a straight line, with the arrays behind it — attacked by a
+ * three structures inside the Order's own base — whose Conclave stands 151.4 m
+ * from the head in a straight line (154.2 m is the distance to their START
+ * SPOT, which is not a building), with the arrays behind it — attacked by a
  * force that cannot replace a hull. It is COSTED AND NOT RECOMMENDED — four Wardens
  * of driving to save 4.96 s of shooting — and it is written down because a
  * player who tries it should find that the file already knew, and because the
@@ -396,6 +429,13 @@
  *     Track  column -> arc head        246.0 m    37.3 s at a Warden's 6.6 m/s
  *     Track  Conclave -> arc head      152.7 m    20.1 s at a Solarch's 7.6 m/s
  *     Track  Conclave -> yards head    287.6 m    37.8 s
+ *
+ * **THE FOUR ROWS ENDING AT THE ARC HEAD WERE TAKEN BEFORE IT MOVED 2.83 m AND
+ * HAVE NOT BEEN RE-MEASURED.** See the top of this header: the block is
+ * authored at (296, 242) and stands at (298, 244). One cell of a 4 m grid is
+ * the scale of the error, and a route metre count is chain-dependent, so these
+ * are left as they are rather than nudged — re-take all seven together, on this
+ * stated instrument, if any of them is ever load-bearing again.
  *
  * **THE SERIAL ROUTE IS 467.0 m AND 137.4 SECONDS OF WALKING**, which is 12.1%
  * of a 1140-second par. The rest of the operation is the fight, and no harness
@@ -528,7 +568,9 @@ const FOE: Point = { x: 404, z: 132 };
 
 /**
  * The arc head — the relay block that repeats down the whole eastern trunk.
- * GAIA, 800 hp, and the primary. Lands on this literal at ring zero: 246.0 m of
+ * GAIA, 800 hp, and the primary. **The structure stands at (298, 244), 2.83 m
+ * off this literal** — `spawnBuilding` snaps a non-square footprint on its
+ * FACED extent and this block is raised at yaw 90; see the header. 246.0 m of
  * Foot route from the column and 152.7 m of Track route from the Order's
  * Conclave, with two Glaive Posts on it.
  */
@@ -597,9 +639,14 @@ export const REGISTER_AREA: Area = { x: REGISTER.x, z: REGISTER.z, r: 20 };
  *
  * **ONE INTEGER PAIR AND ITS EXACT NEGATION**, which is a property a reader can
  * check by eye and is why this pair was chosen out of the 313 that satisfy the
- * cover. Both stand 23.409 m from the head, each bears on five of the ten
- * lodging cells, and no cell is under both — the table in the header is the
- * measurement.
+ * cover. The offsets are applied to `place()`'s return — the pre-snap point —
+ * so both posts landed exactly where this pair puts them while the BLOCK moved
+ * (+2, +2) under the faced-footprint snap. They therefore stand **22.361 m and
+ * 24.739 m** from the head rather than 23.409 m each: the exact negation is
+ * still a property of the two offsets, and it is no longer a property of the
+ * two distances. Each still bears on five of the ten lodging cells and no cell
+ * is under both — the table in the header is the measurement, and it was
+ * re-taken on the landed block rather than on the literal.
  *
  * **THEY WERE (+22, -16) AND (-18, +16) AND THAT LEFT TWO CELLS UNDER NO GUN.**
  * (294, 234) and (302, 246) sat between the two arcs at 25.06 and 25.38 m of

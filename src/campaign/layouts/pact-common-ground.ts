@@ -53,8 +53,14 @@
  * ============================================================================
  * 1. THE FRAME
  * ============================================================================
- *     home (Order,   seat 0)   spot 108, 380   yard 110, 382
+ *     home (Order,   seat 0)   spot 108, 380   yard 114, 382
  *     foe  (salvage, seat 1)   spot 404, 380   yard 402, 382
+ *
+ * The FOE row is right and the HOME row was not, which is worth a sentence
+ * because the asymmetry looks like a typo and is not: seat 1's `facingDeg` is
+ * exactly -90 so its base facing is exactly 90, where the old raw-facing snap
+ * and the new cardinalised one land on the same cell; seat 0 takes yaw 270,
+ * where they do not.
  *     axis                     296.000 m, along +x at z 380
  *
  * `simSeed` 3 719 draws the EDGE pair. `seatedSlots` filters `START_PAIRS`
@@ -72,7 +78,7 @@
  * ============================================================================
  * 2. THE CUT — `SECTION` 274, 322
  * ============================================================================
- *     home -> the cut   174.63 m straight   195.2..206.0 foot   202.2..208.3 hover
+ *     home -> the cut   170.88 m straight   195.2..206.0 foot   202.2..208.3 hover
  *     foe  -> the cut   141.36              146.0               146.0
  *     road -> the cut    87.21               96.4                96.4
  *
@@ -142,7 +148,7 @@
  * ============================================================================
  * 3. THE PLANT — `SORTER` AND `FURNACE` ON THE CUT, `HEAP` ON THE HAUL ROAD
  * ============================================================================
- *     requested 288, 318   placed 290, 320   rclSorter   1 250 hp   16.12 m out
+ *     requested 288, 318   placed 288, 318   rclSorter   1 250 hp   14.56 m out
  *     requested 276, 304   placed 276, 304   rclFurnace    950 hp   18.11 m out
  *     requested 334, 344   placed 334, 346   rclHeap       550 hp   64.62 m out
  *
@@ -238,8 +244,8 @@
  * ============================================================================
  * 5. THE TENANTS' ROW — `ROW_A` 272, 356 AND `ROW_B` 290, 296
  * ============================================================================
- *     requested 272, 356   placed 268, 354   32.56 m from the cut
- *     requested 290, 296   placed 292, 298   30.00 m from the cut
+ *     requested 272, 356   placed 270, 352   30.27 m from the cut
+ *     requested 290, 296   placed 290, 296   30.53 m from the cut
  *
  * Two `civApartments` — 800 hp, `power: 0`, 2x3 — **on the PLAYER's seat**, and
  * that ownership is the whole design of the secondary they carry. A Gaia block
@@ -248,9 +254,9 @@
  * decoration in its own words. Owned by the Order they are ordinary enemy
  * structures to the crew.
  *
- * **THE EXPOSURE IS DELIBERATE AND ASYMMETRIC.** The near block sits **19.68 m**
+ * **THE EXPOSURE IS DELIBERATE AND ASYMMETRIC.** The near block sits **16.99 m**
  * off the straight line from the crew's forming-up road to the cut and the far
- * one **30.00 m**, against a Grinder's 26 m sight and 18 m reach — so a column
+ * one **30.53 m**, against a Grinder's 26 m sight and 18 m reach — so a column
  * that walks straight in passes one of them and not the other. Three Grinders
  * deliver 53.05 dps into Concrete and level 800 hp in **15.1 s**; the player's
  * own wrench is `REPAIR_RATE` 30 hp/s and therefore loses to three of them, so
@@ -262,12 +268,18 @@
  * `20 * COMBAT_TARGETING.acquireRangeMul (1.08) + hitRadius(2,3) (7.2111)` =
  * **28.81 m**. Measured on the placed world:
  *
- *     post 246, 326  ->  row 268, 354   35.61 m    clear by  6.80
- *     post 246, 326  ->  row 292, 298   53.85               25.04
- *     post 250, 310  ->  row 268, 354   47.54               18.73
- *     post 250, 310  ->  row 292, 298   43.68               14.87
+ *     post 246, 326  ->  row 270, 352   35.38 m    clear by  6.57
+ *     post 246, 326  ->  row 290, 296   53.25               24.44
+ *     post 250, 310  ->  row 270, 352   46.52               17.71
+ *     post 250, 310  ->  row 290, 296   42.38               13.57
  *
- * **6.80 m is the tightest number in this file and it is the one a re-seed has
+ * Both pickets are 1x1 and are unchanged at (246, 326) and (250, 310) — I
+ * re-measured them at 28.28 and 26.83 m from the cut, which is what makes this
+ * a drift in the two tenements rather than a re-seed. `bb83ffb` made
+ * `spawnBuilding` snap on the FACED footprint, and a 2x3 at a yaw that
+ * quantises to 90 or 270 moves exactly 2.83 m.
+ *
+ * **6.57 m is the tightest number in this file and it is the one a re-seed has
  * to re-check first**, because a post inside that bar burns a tenement down from
  * tick one, silently, and takes a 400-credit secondary with it before the player
  * has seen the ground. That is `pact.05.open-count`'s assessors'-station hazard
@@ -278,7 +290,9 @@
  * for its own owner — unarmed, non-production, both footprint axes at or above
  * `GARRISON.minFootprint` — so the player really can man them; a strongpoint
  * INSIDE the disc would let the primary be answered by riflemen sitting in
- * somebody's front room. At 30.00 and 32.56 m the question does not arise.
+ * somebody's front room. At 30.27 and 30.53 m the question does not arise —
+ * and note that the two are now within 0.26 m of each other, where the table
+ * this paragraph used to sit under had them 2.6 m apart in the other order.
  *
  * The crew cannot take them by either route: `refusalFor` answers `'hostile'`
  * for a building whose owner is not allied to the entrant, and `src/sim/AI.ts`
@@ -294,10 +308,10 @@
  *     requested 327, 414   placed 328, 416   rclSpotter 700 hp
  *     ROAD 313, 400        11.3 m of walked path from the office
  *
- *     office -> the cut   106.17 m straight   107.7 m walked
+ *     office -> the cut   108.41 m straight   107.7 m walked
  *     road   -> the cut    87.21               96.4
  *     road   -> the heap   57.94               66.6
- *     home   -> office    219.35              244.6
+ *     home   -> office    216.68              244.6
  *
  * `radar` rather than `barracks`, which is the same decision §3 records: a
  * forward `rclRookery` would hand the crew infantry production 107.7 m from the
@@ -351,7 +365,7 @@
  * 8. WHAT A RE-SEED HAS TO RE-CHECK, IN ORDER
  * ============================================================================
  *   1. **the picket against the row** — is the nearest post still past 28.81 m?
- *      It is 35.61 today, clear by 6.80, and this is the one that fails silently;
+ *      It is 35.38 today, clear by 6.57, and this is the one that fails silently;
  *   2. **the ore against the standing disc** — is the nearest field edge still
  *      outside 26 m of the cut? It is 38.73, clear by 12.73;
  *   3. **the exclusion control on the approach, ON BOTH LOCOMOTORS and from real
@@ -408,8 +422,8 @@ export const SECTION_AREA: Area = { x: SECTION.x, z: SECTION.z, r: 26 };
 /**
  * The opening reveal: the cut, the plant on it and the picket in front of it.
  *
- * 56 m covers the two posts at 28.28 and 26.83 m and the two tenements at 30.00
- * and 32.56, and stops **52.4 m short of the field office**, which is what keeps
+ * 56 m covers the two posts at 28.28 and 26.83 m and the two tenements at 30.27
+ * and 30.53, and stops **52.4 m short of the field office**, which is what keeps
  * the operation's `t.disclose` a reveal rather than a beat over ground the
  * player has been looking at since four seconds. `revealArea` is
  * `Vision.exploreCircle` and it is PERMANENT.
@@ -438,14 +452,14 @@ const HEAP: Point = { x: 334, z: 344 };
 
 /**
  * The two `rclSpitpost`. Closing both 20 m discs costs the cheapest approach
- * 33.8 m, and the nearer of them is 35.61 m from the nearest tenement against a
+ * 33.8 m, and the nearer of them is 35.38 m from the nearest tenement against a
  * 28.81 m acquisition bar. **Move either and re-check both.** Header §4 and §5.
  */
 const POST_A: Point = { x: 246, z: 326 };
 const POST_B: Point = { x: 248, z: 308 };
 
 /**
- * The two `civApartments`, on the PLAYER's seat. 19.68 m and 30.00 m off the
+ * The two `civApartments`, on the PLAYER's seat. 16.99 m and 30.53 m off the
  * crew's road to the cut, and both outside the 26 m standing disc. Header §5.
  */
 const ROW_A: Point = { x: 272, z: 356 };

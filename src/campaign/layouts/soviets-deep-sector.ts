@@ -53,9 +53,17 @@
  * distance in this file is a different distance.**
  *
  * The margins are deliberately loose enough that the generator cannot break
- * them: every authored point is over 100 m from either opening, against a
- * `TERRAIN_START_FLAT_RADIUS` of 58 and a `nudgeToBuildable` that is a no-op on
- * a reserved shelf. A slid start moves the bases, not the operation.
+ * them. Measured from the two openings: TAP 332.0 / 129.1, CAMP 228.1 / 288.7,
+ * GATE 194.1 / 295.0, STAGE 120.0 / 322.5, APPROACH 363.6 / **71.6**. Four of
+ * the five are over 100 m from either opening; **`APPROACH` is the deliberate
+ * exception** and its own declaration says so — a shoulder the Allied column
+ * comes round is meant to be near the Allied opening. Even that is 13.6 m clear
+ * of a `TERRAIN_START_FLAT_RADIUS` of 58, against a `nudgeToBuildable` that is
+ * a no-op on a reserved shelf. A slid start moves the bases, not the operation.
+ *
+ * (This paragraph read "every authored point is over 100 m from either
+ * opening" and contradicted line 166 of this same file, which states
+ * `APPROACH`'s 71.6 m and defends it. The prose was wrong; the layout is not.)
  *
  * ============================================================================
  * ONLY STRUCTURES DEFEND THE ALLIED POSITIONS, AND THAT IS NOT A STYLE CHOICE

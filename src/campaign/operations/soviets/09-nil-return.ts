@@ -622,11 +622,11 @@ const op: OperationDef = {
     mapSeed: 20_261_120,
     /*
      * **IT CHOOSES THE CORNERS.** `seatedSlots` draws a PAIR out of `START_PAIRS`
-     * for a two-army match, and 3203 draws **[0, 1]** — the 380.53 m diagonal,
+     * for a two-army match, and 3203 draws **[0, 1]** — the 386.16 m diagonal,
      * the widest of the four layouts on the table. The layout is handed spots
-     * (108, 380) and (404, 132); the CONSTRUCTION YARDS land at (110, 378) and
-     * (402, 134), and every distance in this file and in the layout is measured
-     * against those yards rather than against the spots.
+     * (108, 380) and (404, 132); the CONSTRUCTION YARDS land at (114, 382) and
+     * (402, 134), 380.06 m apart, and every distance in this file and in the
+     * layout is measured against those yards rather than against the spots.
      *
      * The width is the requirement rather than a preference: this is the only
      * operation in the chapter that asks the player to hold two separated

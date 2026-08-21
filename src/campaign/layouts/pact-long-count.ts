@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — src/campaign/layouts/pact-long-count.ts
  * ============================================================================
- * P2 — THE GROUND. A temperate valley, two openings 348.9 m apart, a Soviet
+ * P2 — THE GROUND. A temperate valley, two openings 386.2 m apart, a Soviet
  * pump sunk on the seam two thirds of the way across, and a Pact reading post
  * standing **32.25 m behind it** that has to be intact when the pump is gone.
  *
@@ -78,13 +78,29 @@
  * Read off a headless build — the same one `tests/campaign-maps.spec.ts`
  * performs — after `spawnBuilding` snapped every footprint:
  *
- *     home    108, 380        foe   384.0, 166.6      len 348.9
+ *     home    108, 380        foe   404, 132        len 386.161
  *     pump    316, 268   700 hp      post  344, 252   900 hp     D 32.249
  *     staging 184, 208   800 hp      seated slots [0, 1]
  *
  *     home -> pump 236.2    home -> post 268.5    home -> staging 188.0
- *     foe  -> pump 122.1    foe  -> post  94.3    foe  -> staging 204.2
+ *     foe  -> pump 162.0    foe  -> post 134.2    foe  -> staging 232.8
  *     pump -> staging 145.0                       post -> staging 165.9
+ *
+ * **THE `foe` ROW USED TO READ (384.0, 166.6) AND len 348.9, AND THAT POINT IS
+ * NOT ON THIS MAP.** It is `nudgeToBuildable`'s ring-40, bearing-4-of-12
+ * candidate off (404, 132) — `cos(120deg) * 40 = -20`, `sin(120deg) * 40 =
+ * +34.641` — i.e. a real `startSpots` output from a world whose slot-1 shelf
+ * was missing. On this seed nothing displaces it: `buildableFraction(404, 132,
+ * 30)` is 1.0000 against `START_CORE_MIN` 0.7 and `nudgeToBuildable` moves it
+ * 0.000 m. The whole `foe ->` column was computed from that phantom and is
+ * replaced above; the `home ->` column reproduces exactly and is the control
+ * that isolates it. The block was also self-contradictory — its own pump,
+ * post and staging coordinates fall out of the UN-nudged frame at ring zero,
+ * while the nudged frame would put the pump nominal at (301.7, 288.4).
+ *
+ * The Soviet CONSTRUCTION YARD is a third point again, at (402, 134): 159.2 m
+ * from the pump, 131.5 m from the post and 230.2 m from the staging. Say which
+ * of the three a figure is measured to.
  *
  * **16 of 16 384 cells on this map are water**, which is 0.098% and no coast:
  * `MAP_SEAS` carries no `temperate` row, so there is nothing for a Slipway to

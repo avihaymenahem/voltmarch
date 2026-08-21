@@ -249,8 +249,8 @@
  * ============================================================================
  * Four waves, and one of them is keyed to the player rather than to the clock:
  *
- *     on arrival   4 Conscripts, 2 Anvils   2 200 credits   at SPUR, 64.3 m out
- *     5:30         5 Conscripts, 2 Anvils   2 300           at ROAD, 82.2 m out
+ *     on arrival   4 Conscripts, 2 Anvils   2 200 credits   at SPUR, 74.6 m out
+ *     5:30         5 Conscripts, 2 Anvils   2 300           at ROAD, 85.5 m out
  *     10:00        5 Conscripts, 3 Anvils   3 200           at ROAD
  *     14:00        6 Conscripts, 4 Anvils   4 200           at ROAD
  *
@@ -276,10 +276,12 @@
  * **AND THE ONE THING THE PLAYER IS GIVEN IS THE ARITHMETIC ITSELF.** At minute
  * eight the Works send four engineers to `MUSTER`, 64.12 m behind the player's
  * own yard: exactly the four that take a full-health hall, 2000 credits, and a
- * **219.2 m walk to the WEST wall — 64.5 seconds at 3.4 m/s** before anything
+ * **231.2 m walk to the WEST wall — 68.0 seconds at 3.4 m/s** before anything
  * shoots at them. (The nearest face is 212.9 m and it is the one the guns cover;
  * both figures are the layout's re-derived instrument, which moved this from the
- * 228.2 m / 67.1 s it used to read.) Three would have been three quarters of a
+ * 228.2 m / 67.1 s it used to read, and then from a 219.2 m that turned out to
+ * be the route to the hall's own cell rather than to the west stand.) Three
+ * would have been three quarters of a
  * price nobody quoted; the fourth is what turns the door, and Aubray says so on
  * the tick they land.
  *
@@ -473,9 +475,9 @@ const op: OperationDef = {
      *     20 260 935   every literal taken, **0 of 35 drops on rock**,
      *                  709/709 samples clear around `ROAD`, 317/317 at `MUSTER`
      *     20 260 936   the card store slides 20 m off its literal, **4 drops on
-     *                  rock** across four rings, `ROAD` route 82.2 -> 150.2 m
+     *                  rock** across four rings, `ROAD` route 85.5 -> 150.2 m
      *     20 260 940   0 drops on rock, but 93.1% around `MUSTER` and the
-     *                  engineer walk to the west wall 219.2 -> 225.8 m
+     *                  engineer walk to the west wall 231.2 -> 237.8 m
      *     20 260 942   **1 drop on rock** (the watch's fourth Conscript),
      *                  95.5% around `ROAD`
      *
@@ -619,7 +621,7 @@ const op: OperationDef = {
           speaker: 'Wend',
           text: 'The model is a room, and it went to them with the plate mills at the Split. A hall '
             + 'of integrators two hundred and thirty-six metres off our own yard, three guns sitting '
-            + 'on it, and the card store forty-four metres west of that with eleven years of the arc '
+            + 'on it, and the card store forty-two metres west of that with eleven years of the arc '
             + 'in it. The run publishes at seventeen minutes.',
         },
         { do: 'revealArea', player: 0, area: STORE_AREA },
@@ -703,7 +705,7 @@ const op: OperationDef = {
      * `unitsInArea` is UNTAGGED deliberately: the question is whether the player
      * has committed anything to the works, and the answer must not depend on
      * which hulls an author remembered to name. It cannot fire on tick one — the
-     * player's nearest structure is 208.47 m from the hall and their home ore
+     * player's nearest structure is 199.53 m from the hall and their home ore
      * field is 251.87 m from it, so no harvester's route passes through this
      * disc either. That is the expensive spelling (`runtime.ts` walks the alive
      * list twice a tick for it, once for the arming pass) and `state.fired`

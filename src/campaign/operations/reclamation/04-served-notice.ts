@@ -80,7 +80,7 @@
  *     one wire segment, 300 hp                                             2.2 s
  *     cut stand to the near block's stand (32.06 m out)             8.9 m   3.0 s
  *     the near block, 800 hp                                               5.9 s
- *     on to the far block's stand (16.12 m out)                    16.0 m   5.3 s
+ *     on to the far block's stand (14.00 m out)                    16.0 m   5.3 s
  *     the far block, 800 hp                                                5.9 s
  *     back out to the rim                                          35.9 m  12.0 s
  *                                                                        ------
@@ -92,10 +92,11 @@
  * **THE TWO "STAND" FIGURES IN THAT TABLE ARE BOTH WRONG AND BOTH IN THE SAFE
  * DIRECTION.** A Slagger fires when `flat - hitRadius(target) <= 12`, and a
  * record block's `hitRadius` is its 7.21 m HALF-DIAGONAL, not the 4 m half-width
- * of its footprint. Re-derived on the built positions (240,258) and (256,258):
- * the near block can be shot from 35.27 m out, not 32.06, and the far block from
- * 19.31 m out — 16.12 is the near block's own CENTRE distance from the halt and
- * is not a stand at all. The corrected legs are 11.1 / 5.6 / 16.0 / 32.7 m, so
+ * of its footprint. Re-derived on the built positions — which are now
+ * (242, 256) and (254, 256), see the layout header — the near block can be shot
+ * from 35.27 m out, not 32.06, and the far block from 19.31 m out; 14.00 m is
+ * the far block's own CENTRE distance from the halt and is not a stand at all.
+ * The corrected legs are 11.1 / 5.6 / 16.0 / 32.7 m, so
  * the walking is 65.4 m rather than 71.8 and the visit is **35.8 s rather than
  * 38.0**. The table is left as it stands because it is the conservative reading
  * and the conclusion — comfortably inside sixty — is the same either way.
@@ -152,7 +153,7 @@
  *     arc-free — a detour of 0.0 m** — and that stand is 57.15 m of surface from
  *     the nearest box.
  *   - **A CREW CAN STAND ON EITHER BLOCK AND TAKE NO FIRE.** The two record
- *     blocks are 36.54 and 33.77 m of surface from the nearest box, clear of the
+ *     blocks are 35.21 and 33.77 m of surface from the nearest box, clear of the
  *     22 m firing arc by 14.54 and 11.77 m and of the 23.76 m acquisition radius
  *     by 12.78 and 10.01 m. Without that there is no quiet route and the premise
  *     collapses into an assault with extra steps.
@@ -174,7 +175,7 @@
  * `Combat.resolveTesla` pushes the damage record straight at the victim — no
  * projectile is spawned, so the fence is not in the way of anything. Measured on
  * the built world, the closest legal standing cell OUTSIDE the wall square is
- * **6.79 m of surface** from the deep block, inside all four ranges. The four
+ * **8.91 m of surface** from the deep block, inside all four ranges. The four
  * Pickers alone are 47.54 dps against concrete and take that block's 800 hp in
  * 16.8 s; with the two Grinders and two Arcspitters brought to bear it is
  * 113.2 dps and 7.1 s. **Either way the block goes down without the wire being
@@ -191,16 +192,16 @@
  *
  * **AND THE COUNTED GROUND CANNOT BE STOOD OFF.** The bound is the block
  * FURTHEST from the halt centre, because that is the one a shooter can stand
- * furthest out to reach: measured, the two land at **16.12 m** and 2.00 m, each
+ * furthest out to reach: measured, the two land at **14.00 m** and 2.00 m, each
  * carries a 7.21 m hull radius, and the longest reach this roster permits is
- * `grinderArc`'s 18 m — so **41.34 m** of standoff against a 52 m disc. Even
+ * `grinderArc`'s 18 m — so **39.21 m** of standoff against a 52 m disc. Even
  * shooting the nearest wire segment at maximum standoff is 46.91 m and inside.
  * The only thing on the map reachable from outside the clock is a corner of the
  * fence (36.77 + 2.83 + 18 = 57.60 m), which is worth nothing.
  *
  * **THIS SAID "the deeper block is 2.00 m from the halt centre … 27.21 m of
  * standoff", AND 2.00 m IS THE SHALLOW BLOCK.** Right arithmetic, wrong block:
- * the real standoff is 41.34 m and the margin is 10.66 m rather than 24.79. The
+ * the real standoff is 39.21 m and the margin is 12.79 m rather than 24.79. The
  * rule still cannot be dodged; it has a quarter of the room it claimed.
  *
  * ============================================================================

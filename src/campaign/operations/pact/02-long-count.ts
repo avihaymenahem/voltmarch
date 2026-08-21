@@ -190,7 +190,7 @@
  * **WHAT IT BOUGHT WAS WORSE THAN WHAT IT COST, WHICH IS WHY IT IS NOW REFUSED
  * RATHER THAN LEFT IN.** `isValidTarget` refuses an allied target, so a
  * captured post is safe from every gun YOU own — and legal for every gun THEY
- * own, because it stops being theirs. The post is 94.3 m from the Soviet
+ * own, because it stops being theirs. The post is 134.2 m from the Soviet
  * OPENING and 131.5 m from the Construction Yard that opening raises, and
  * `t.countLost` does not care who fired. So route B paid 400 credits of
  * secondary plus 500-2000 of engineer to convert *my own gunners might kill it*
@@ -201,13 +201,18 @@
  * `OperationDef.captureProof` is that installer. See the block on `count`
  * below.
  *
- * (Two corrections kept from the old paragraph. **94.3 m is the distance to the
- * START SPOT**, not to the Construction Yard, which is what the layout header's
- * `foe ->` column measures and what the sentence originally mislabelled; the
- * yard itself lands at 402, 134. And the clause *"the nearest Soviet structure
- * of any kind is 106.0 m away"* does not reproduce on the built world in either
- * reading: **the nearest of any kind is the pump itself at 32.2 m**, and the
- * nearest one that is not on this lot is a Flame Tower at 124.4 m.)
+ * (Two corrections kept from the old paragraph, one of which was itself wrong.
+ * **THE YARD FIGURE IS THE RIGHT ONE AND THE OPENING FIGURE WAS THE STALE
+ * ONE.** This used to read "94.3 m is the distance to the START SPOT, not to
+ * the Construction Yard", which had it exactly backwards: the yard lands at
+ * (402, 134) and is 131.5 m from the post, and the start spot is (404, 132) and
+ * is 134.2 m from it — 2.68 m apart, not the ~37 m the old correction implied.
+ * 94.3 m was measured to a start spot the layout header had wrong; see its
+ * `foe ->` column. And the clause *"the nearest Soviet structure of any kind is
+ * 106.0 m away"* does not reproduce on the built world in either reading:
+ * **the nearest of any kind is the pump itself at 32.2 m**, then the pump's two
+ * Sentry Guns at 48.1 and 53.1 m, and the nearest thing in the Soviet base
+ * proper is a wall segment at 92.5 m.)
  *
  * **C — THE FAR SIDE.** Never viable. See row 3 of the table above.
  *
@@ -259,7 +264,7 @@
  * PROTECTION. `Targeting.isValidTarget` refuses an ALLIED target and nothing
  * else, so a Soviet-owned post is unshootable by the Soviets and a player-owned
  * one is not; every Soviet hull that walks past it then has a legal target
- * 94.3 m from their own opening, and `t.countLost` ends the match in a loss
+ * 134.2 m from their own opening, and `t.countLost` ends the match in a loss
  * whoever fired.
  *
  * The diagnosis was right and so was the refusal to fix it from a trigger — the
@@ -399,7 +404,7 @@
  * from the start spots; the trigger table can see none of that and has to name
  * world points.
  *
- *     home    108, 380      foe  384.0, 166.6     seated slots [0, 1], len 348.9
+ *     home    108, 380      foe  404, 132        seated slots [0, 1], len 386.161
  *     pump    316, 268      post 344, 252         D 32.249     staging 184, 208
  *     APPROACH 253, 317        ROAD 200, 192
  *
@@ -565,7 +570,7 @@ const op: OperationDef = {
     mapSeed: 33_017,
     // The PAIR is chosen by this seed and not by the map roll. `seatedSlots`
     // filters `START_PAIRS` against the water, and with no sea all four
-    // survive; this one draws [0, 1] — the diagonal, 348.9 m after
+    // survive; this one draws [0, 1] — the diagonal, 386.161 m after
     // `nudgeToBuildable` — which is the pair with room for a compound two
     // thirds of the way across and a staging post 74 m off the axis.
     simSeed: 3_203,
@@ -592,8 +597,8 @@ const op: OperationDef = {
    * NEITHER SHIPPED RULE MAY END THIS.
    *
    * `annihilationWin` would hand the player a victory for flattening the
-   * Soviet base while the pump, which stands 122.1 m from the Soviet opening
-   * and 136.0 m from the nearest structure that opening raises, went
+   * Soviet base while the pump, which stands 162.0 m from the Soviet opening
+   * and 119.4 m from the nearest structure that opening raises, went
    * untouched — and worse, it would hand them one for a match in which the
    * reading post had already been levelled, since `Viability` counts assets
    * and knows nothing about which building this operation is named after.
@@ -649,7 +654,7 @@ const op: OperationDef = {
     // `t.countLost` still reads `entityDead`, deliberately — "standing" is
     // exactly what it tests, and a post the player has CAPTURED is standing and
     // still satisfies this. What that USED to leave open — a captured post is a
-    // legal Soviet target 94.3 m from their opening — is closed by
+    // legal Soviet target 134.2 m from their opening — is closed by
     // `captureProof: ['count']` above rather than by a trigger, because no
     // trigger can refuse a capture. See the block on `count` in the header.
     { id: 'count', kind: 'primary', title: 'Leave the reading post standing' },

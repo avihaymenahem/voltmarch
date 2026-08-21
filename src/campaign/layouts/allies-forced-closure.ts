@@ -19,26 +19,33 @@
  *
  *     thing        key             owner    landed        hp    footprint
  *     hall         civHospital     SOVIET   (202, 260)   1100     3x2
- *     store        civApartments   SOVIET   (160, 246)    800     2x3
+ *     store        civApartments   SOVIET   (162, 248)    800     2x3
  *     three guns   pillbox->sentryGun       (226, 246) (206, 286) (202, 234)
  *                                            480 each, `pillboxMg` at 22 m
  *
- * **ALL FIVE LAND ON THEIR AUTHORED LITERALS AT RING ZERO**, and they are
- * written here as the coordinates the built world reports rather than as nominal
- * points the ring search then walks off — `soviets-short-allocation` and
- * `allies-misclosure` both record why, and it is the same trap: **`place`
+ * **FOUR OF THE FIVE LAND ON THEIR AUTHORED LITERALS AT RING ZERO**, and they
+ * are written here as the coordinates the built world reports rather than as
+ * nominal points the ring search then walks off — `soviets-short-allocation`
+ * and `allies-misclosure` both record why, and it is the same trap: **`place`
  * returning a point is not the same as a structure standing on it**, because
- * `spawnBuilding` snaps the result to the footprint grid a second time. Both
- * literals are already on that grid — a 3-wide footprint centres on a cell
- * centre (202 = 50*4 + 2) and a 2-wide one on a cell boundary (160 = 40*4) —
- * so the search below is a CHECK on this ground rather than the mechanism that
- * found it.
+ * `spawnBuilding` snaps the result to the footprint grid a second time. So the
+ * search below is a CHECK on this ground rather than the mechanism that found
+ * it.
+ *
+ * **THE CARD STORE IS THE ONE THAT DOES NOT.** It is authored at (160, 246) and
+ * stands at (162, 248). This paragraph used to justify the literal by saying "a
+ * 2-wide one [centres] on a cell boundary (160 = 40*4)", and that is exactly
+ * the calculation `bb83ffb` invalidated: `spawnBuilding` now snaps on the FACED
+ * footprint, so a 2x3 raised at a yaw that quantises to 90 is snapped on the
+ * swapped 3-wide lattice, which centres on a cell CENTRE instead. The hall is a
+ * 3x2 whose faced extent is 2x3 and it lands on its literal because both of its
+ * axes happen to agree; the three guns are 1x1 and cannot move.
  *
  * The two openings, and they are NOT the Construction Yards:
  *
  *     start spots      (404, 132) and (108, 132)      296.00 m apart
- *     Construction     player (402, 134)              Soviet (110, 134)
- *     Yards                                           292.00 m apart
+ *     Construction     player (402, 134)              Soviet (114, 134)
+ *     Yards                                           288.00 m apart
  *
  * **THIS IS THE CHAPTER'S FIRST EDGE PAIR.** `seatedSlots(2, 7042, null)` draws
  * **[1, 3]** — two corners of the same short side, 296.00 m apart — where A2 and
@@ -180,9 +187,9 @@
  * anybody reads a turret tracking their engineer as a bug.
  *
  * All six are Foot-passable. **One face of four, and it is the one that turns
- * your back on the hall and looks at their yard** — the west stand is 151.19 m
+ * your back on the hall and looks at their yard** — the west stand is 149.02 m
  * from the Soviet Construction Yard, with the card store between them at
- * 122.65 m from that yard and 44.27 m from the hall.
+ * 123.69 m from that yard and 41.76 m from the hall.
  *
  * **AND THE SAME LINE IS A REAL TOLL ON A TANK — WHICH IS THE OPPOSITE OF WHAT
  * THIS PARAGRAPH USED TO SAY.** It read *"barely inconveniences a tank ...
@@ -235,30 +242,47 @@
  * `arid` — `cliffs` 0.55, the steepest cliff fraction of any preset — that is
  * not a formality:
  *
- *     ROAD   (150, 190)   68.82 m from the Soviet yard, 87.2 m straight and
- *                         82.2 m of Track route to the hall's footprint.
+ *     ROAD   (150, 190)   66.57 m from the Soviet yard, 87.2 m straight and
+ *                         85.5 m of Track route to the hall.
  *                         **709 of 709 two-metre samples within 30 m are
- *                         passable to Foot AND Track.**
- *     SPUR   (136, 240)   24.74 m from the store, 68.96 m straight and 64.3 m
- *                         of Track route to the hall, 109.14 m from their yard.
- *                         399 of 441 samples within 24 m passable; every point
+ *                         passable to Foot AND Track** on terrain alone; with
+ *                         occupancy folded in it is 705 of 709.
+ *     SPUR   (136, 240)   27.20 m from the store, 68.96 m straight and 74.6 m
+ *                         of Track route to the hall, 108.26 m from their yard.
+ *                         404 of 441 samples within 24 m passable; every point
  *                         of both authored rings (4 at 16 m, 2 at 11 m) clear.
  *     MUSTER (398, 198)   64.12 m behind the player's Construction Yard.
  *                         **317 of 317 samples within 20 m passable**, and the
  *                         Foot route from here to a capture stand is 212.9 m to
- *                         the nearest face and **219.2 m to the WEST one** —
- *                         64.5 s at an engineer's 3.4 m/s, and the west face is
+ *                         the nearest face and **231.2 m to the WEST one** —
+ *                         68.0 s at an engineer's 3.4 m/s, and the west face is
  *                         the only one he can survive standing on.
+ *
+ * **EVERY ROUTE ABOVE ENDS AT THE NEAREST FREE CELL TO THE TARGET, AND THE
+ * OFFSET IS PART OF THE FIGURE**: 6.00 m off the hall's centre, 2.05 m off a
+ * west-side stand, 0.43 m off the north and south ones. Descent and
+ * cheapest-predecessor chains agree on all of them, and `Terrain.passGrid` with
+ * occupancy and `FlowFieldCache.costGridFor(Track)` return the same metres.
+ *
+ * **THREE OF THOSE FIGURES MOVED SINCE THEY WERE WRITTEN AND THE CAUSES ARE
+ * DIFFERENT.** ROAD's 82.2 was quoted "to the hall's FOOTPRINT" while the other
+ * two rows were quoted to a cell; on one convention for all three it is 85.5.
+ * SPUR's 64.3 became 74.6 because the card store moved (+2, +2) into its
+ * corridor. And 219.2 is what this same instrument returns for MUSTER to the
+ * HALL's own nearest free cell, not to the west stand, which is 231.2 — the
+ * two were transposed. The nearest-face figure, 212.9, reproduces exactly, and
+ * so does MUSTER's 64.12 m off the yard; those two are the controls that give
+ * the instrument standing to correct the other three.
  *
  * **THE FOUR ROUTE FIGURES ABOVE WERE RE-DERIVED, AND THREE OF THEM MOVED.**
  * They read 95.9 / 73.3 / 228.2 and were taken with an instrument this file
  * never named. On the one it names now — the octile Dijkstra specified in the
  * gun-line paragraph, run on `Terrain.passGrid` and on
- * `FlowFieldCache.costGridFor` with identical results — they are 82.2 / 64.3 /
+ * `FlowFieldCache.costGridFor` with identical results — they are 85.5 / 74.6 /
  * 212.9. A fourth definition was tried and rejected as the possible source of
  * the old numbers: the METRIC LENGTH of the least-COST path, i.e. what a flow
  * field actually drives rather than what is shortest, which would legitimately
- * run longer over rough ground. It does not here — it returns 82.2 / 64.3 /
+ * run longer over rough ground. It does not here — it returns 85.5 / 74.6 /
  * 212.9 as well, because this ground carries no road and almost no rough. Three
  * definitions agree with each other and none reproduces the old figures, which
  * also erred in BOTH directions (the tank route was quoted 8 m short while these
@@ -324,11 +348,11 @@
  * With the roster in force the openings are:
  *
  *     player     5 G.I., 4 Warden Tanks, 1 engineer, 2 harvesters
- *                23 structures — yard, refinery, war factory, barracks, radar,
- *                4 power plants, 2 silos, 3 Pillboxes, 9 wall segments
+ *                24 structures — yard, refinery, war factory, barracks, radar,
+ *                4 power plants, 2 silos, 3 Pillboxes, 10 wall segments
  *     Soviets    6 Conscripts, 5 Anvil Tanks, 2 harvesters
  *                24 structures of base — yard, refinery, war factory, barracks,
- *                radar, 6 power plants, 2 silos, 2 Flame Towers, 9 wall
+ *                radar, 6 power plants, 2 silos, 2 Flame Towers, 10 wall
  *                segments — plus the hall, the store and three Sentry Guns
  *
  * Power on the same build: the player at 400 produced against 170 consumed, the
@@ -373,7 +397,7 @@
  *            `structureCaptured` (the medal) and by `entityDead` and
  *            `entityHpBelow` (the two lines that mark the capture window).
  * `store`  — the card store, SOVIET-owned. Read by `ownerCount` only, which is
- *            why it is not a `protectedTag` and the works disc may sit 44.27 m
+ *            why it is not a `protectedTag` and the works disc may sit 41.76 m
  *            from it — see `tests/campaign-zone-safety.spec.ts`.
  * `watch`, `col1`, `col2`, `col3` — the Ninth's four columns, and `section` —
  *            the player's four engineers. All five are produced by `spawnUnits`
@@ -423,33 +447,34 @@ const CENTRE = MAP_SIZE * 0.5;
  * this header is quoted against the yard, not against this.
  */
 const HOME: Point = { x: 404, z: 132 };
-/** The Soviet start spot at the same seeds. Their yard lands at (110, 134). */
+/** The Soviet start spot at the same seeds. Their yard lands at (114, 134). */
 const FOE: Point = { x: 108, z: 132 };
 
 /**
  * The Works computing hall — the model. SOVIET-owned, 1100 hp, and the primary.
  * Lands on this literal at ring zero: 236.38 m from the player's Construction
- * Yard and 156.01 m from theirs.
+ * Yard and 153.69 m from theirs.
  */
 export const HALL: Point = { x: 202, z: 260 };
 
 /**
  * The card store — eleven years of the eastern arc on punched card, which is
- * what the forced run is being run AGAINST. SOVIET-owned, 800 hp, 44.27 m from
- * the hall on the bearing their own yard is on, and 122.65 m from that yard.
+ * what the forced run is being run AGAINST. SOVIET-owned, 800 hp, standing at
+ * (162, 248) rather than on this literal — see the header — 41.76 m from the
+ * hall on the bearing their own yard is on, and 123.69 m from that yard.
  */
 export const STORE: Point = { x: 160, z: 246 };
 
 /**
- * Where the Ninth's timed columns form. 68.82 m off their own Construction Yard
- * and 82.2 m of Track route from the hall — 15.2 s at an Anvil's 5.4 m/s and
+ * Where the Ninth's timed columns form. 66.57 m off their own Construction Yard
+ * and 85.5 m of Track route from the hall — 15.8 s at an Anvil's 5.4 m/s and
  * 24.2 s at a Conscript's 3.4, so a column arrives spread rather than as a fist.
  */
 export const ROAD: Point = { x: 150, z: 190 };
 
 /**
  * Where the works' own watch turns out, off the card store, 68.96 m from the
- * hall straight and 64.3 m of Track route. A SECOND BEARING — it comes through
+ * hall straight and 74.6 m of Track route. A SECOND BEARING — it comes through
  * the west face, which is the one the gun line does not cover and the one an
  * engineer has to use.
  */
@@ -458,16 +483,18 @@ export const SPUR: Point = { x: 136, z: 240 };
 /**
  * Where the Works send the engineer section, 64.12 m behind the player's yard on
  * ground no column crosses. The Foot route from here to the WEST capture stand —
- * the only face of the hall an engineer can survive standing on — is 219.2 m,
- * which is 64.5 s of walking at 3.4 m/s before anything is shot at. The nearest
- * face is 212.9 m, and it is the one the gun line covers.
+ * the only face of the hall an engineer can survive standing on — is 231.2 m,
+ * which is 68.0 s of walking at 3.4 m/s before anything is shot at. The nearest
+ * face is 212.9 m, and it is the one the gun line covers. (219.2 m, which this
+ * comment used to carry, is the route to the HALL's own nearest free cell; see
+ * the header.)
  */
 export const MUSTER: Point = { x: 398, z: 198 };
 
 /**
  * The briefing reveal over the works. **34 m, NOT 44**, and the four metres are
  * the point: it covers the hall and all three guns (the furthest is 27.78 m) and
- * stops short of the store at 44.27 m, so the second beat's reveal of the store
+ * stops short of the store at 41.76 m, so the second beat's reveal of the store
  * is a reveal rather than a no-op. `revealArea` is `Vision.exploreCircle` and is
  * PERMANENT; `soviets-demolition-order` records the same trap for its two feeder
  * plants.

@@ -34,10 +34,10 @@
  * lower one; quoting 26 400 as the operation's civilian income is quoting its
  * best case, which is what the first draft of both files did.
  *
- *     HEAD_ONE    (212, 332)   111.89 m from the player's yard, 274.42 from theirs
- *     HEAD_TWO    (188, 296)   113.17 m                         268.40
- *     HEAD_THREE  (320, 244)   249.11 m                         137.20
- *     HEAD_FOUR   (284, 196)   251.79 m                         133.30
+ *     HEAD_ONE    (212, 332)   110.02 m from the player's yard, 274.42 from theirs
+ *     HEAD_TWO    (188, 296)   113.45 m                         268.40
+ *     HEAD_THREE  (320, 244)   247.95 m                         137.20
+ *     HEAD_FOUR   (284, 196)   251.98 m                         133.30
  *
  *     near pair apart   43.27 m       far pair apart   60.00 m
  *
@@ -143,7 +143,7 @@
  * ============================================================================
  * THE OFFICE IS A RADAR DOME AND IT IS PLANTED ON THE SEAM ON PURPOSE
  * ============================================================================
- *     FILING   radar   (352, 212)   700 hp   293.46 m from the player, 92.65 from theirs
+ *     FILING   radar   (352, 212)   700 hp   292.48 m from the player, 92.65 from theirs
  *     guns     pillbox (366, 202)   pillbox (346, 226)   prismTower (370, 226)
  *
  * A Radar Dome because the thing being protected is a TRANSMISSION: the
@@ -273,7 +273,8 @@
  * search a CHECK rather than a mechanism: it finds all five at ring zero today
  * and would report if the ground under one ever moved.
  *
- * `simSeed` **3203** draws the start pair **[0, 1]** — the 380.53 m diagonal,
+ * `simSeed` **3203** draws the start pair **[0, 1]** — the 386.16 m diagonal
+ * (that is the SPOT separation; the yards it raises stand 380.06 m apart),
  * the widest of the four layouts on the table and the one this operation needs,
  * because it is the only lane with room for two defended positions and 250 m
  * between them. `soviets.05.short-allocation` is the chapter's other [0, 1]
@@ -338,10 +339,10 @@ import { layout } from '../layout';
 /** The map centre. `startPointsFor` reserves a shelf here first, on a continent. */
 const CENTRE = MAP_SIZE * 0.5;
 
-/** The near pair. 111.89 m and 113.17 m from the player's yard, 43.27 m apart. */
+/** The near pair. 110.02 m and 113.45 m from the player's yard, 43.27 m apart. */
 export const HEAD_ONE: Point = { x: 212, z: 332 };
 export const HEAD_TWO: Point = { x: 188, z: 296 };
-/** The far pair. 249.11 m and 251.79 m out, 137.20 m and 133.30 m from theirs. */
+/** The far pair. 247.95 m and 251.98 m out, 137.20 m and 133.30 m from theirs. */
 export const HEAD_THREE: Point = { x: 320, z: 244 };
 export const HEAD_FOUR: Point = { x: 284, z: 196 };
 
@@ -370,7 +371,7 @@ const FILING: Point = { x: 352, z: 212 };
  * ALREADY COVERS ITS SUBJECT MAKES A BEAT INTO A REVEAL OF GROUND THE PLAYER
  * HAS BEEN LOOKING AT.** `soviets-demolition-order` and
  * `soviets-short-allocation` both record paying for that. Measured here rather
- * than argued: the opening reveal at ROAD_B is **147.24 m** from this office and
+ * than argued: the opening reveal at ROAD_B is **147.19 m** from this office and
  * its r 44 stops 103 m short; the minute-four reveal at ROAD_A is **65.51 m**
  * away and its r 42 stops 23.5 m short; and the nearest thing the player owns at
  * tick zero is HEAD_THREE, whose `sight` is **12** against 45.25 m. So all three

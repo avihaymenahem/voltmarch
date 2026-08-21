@@ -116,9 +116,12 @@
  *     played from the home island at all and the first thing it asks for is a
  *     crossing. What it does NOT ask for is a boat: `frogman` is `amphibious`,
  *     carries no `unlockedBy`, needs only the barracks seat 0 opens with, and
- *     walks the channel in 272.1 m of measured hover route — **ninety-four
- *     seconds** at 2.9 m/s — for 350 credits a man. The layout header measures
- *     that leg and prices it against the boats; this file used to claim
+ *     walks the channel for 350 credits a man. The layout header measures that
+ *     leg and prices it against the boats — **and the 272.1 m / ninety-four
+ *     seconds it used to quote here is stale**: the player's barracks moved
+ *     16.5 m when the procedural bases were rebuilt on the placement grid, so
+ *     the start cell that route was taken from is not the one a produced man
+ *     egresses onto any more. See the layout header; this file used to claim
  *     *"nothing puts anybody ashore except the two landing craft"*, which is
  *     false and was false in every shipped build.
  *   - **ONE MAN HOLDS THE SUPPLY LINE AND SIX WIN THE OBJECTIVE.** `min: 1` on
@@ -143,10 +146,16 @@
  *
  *     the water at z = 390        x 222..294        74 m — the narrowest on the map
  *     MOOR (206, 386) -> SHINGLE  108.1 m           16.4 s at a landingCraft's 6.6 m/s
- *     SHINGLE -> FLOOR             56.0 m
- *     SHINGLE -> YARD              76.0 m
+ *     SHINGLE -> FLOOR             58.0 m
+ *     SHINGLE -> YARD              78.1 m
  *     SHINGLE -> HEAD              63.8 m
- *     CROSS -> YARD                80.2 m           Cregg's own reinforcement leg
+ *     CROSS -> YARD                82.1 m           Cregg's own reinforcement leg
+ *
+ * The FLOOR and YARD rows are to the structures AS THEY STAND. Both are
+ * non-square footprints raised at yawDeg 270 and `spawnBuilding` snaps on the
+ * FACED extent, so both sit 2.83 m off their literals: the sorting floor at
+ * (372, 390) and the breaking yard at (392, 394). SHINGLE -> HEAD is the
+ * control — a 2x2 that cannot move — and it reproduces exactly.
  *
  * **THE SHORTEST WATER IS STILL WATER AND THERE IS NO FORD.**
  * `ARCHIPELAGO_SEA.shoals` lays a channel bar at (256, 390) at `depth` 1.1,
@@ -156,7 +165,7 @@
  * Falsified rather than asserted: an 8-connected Dijkstra over the real
  * `FlowFieldCache.costGridFor(MoveClass.Foot)` on the built world returns
  * UNREACHABLE from the player's island to the strand, on a grid that blocks
- * 1 426 of 16 384 cells to Hover and 8 599 to Naval and is therefore refusing
+ * 1 443 of 16 384 cells to Hover and 8 599 to Naval and is therefore refusing
  * things rather than answering yes to everything.
  *
  * **A SWIMMER IS NOT A GROUND LOCOMOTOR AND THIS BLOCK USED TO FORGET IT.** It
@@ -165,8 +174,12 @@
  * player already owns sells the bypass. `frogman` — 350 credits, `amphibious`,
  * no `unlockedBy`, `prereqs: ['barracks']` — resolves to `MoveClass.Hover`, and
  * the same Dijkstra over `costGridFor(MoveClass.Hover)` walks it from the
- * barracks' own egress ground to the strand in **272.1 m**, ninety-four seconds
- * at its 2.9 m/s. Six of them is 2 100 credits of the 6 000 bank and completes
+ * barracks' own egress ground to the strand. **The 272.1 m and ninety-four
+ * seconds this sentence used to carry are stale and are not replaced here** —
+ * the barracks moved 16.5 m and the published start cell is no longer the
+ * nearest open one; the layout header says what has to be re-taken and why. The
+ * qualitative point is untouched, and it is the one that matters: the route
+ * EXISTS, and six swimmers is 2 100 credits of the 6 000 bank and completes
  * the `ashore` primary with no boat at all. Cregg owns the twin — `rclDredger`,
  * 300 credits off the `rclRookery` in his opening base — so the route is
  * symmetric, which is the same fairness argument the north strait makes.
@@ -550,7 +563,7 @@ const op: OperationDef = {
    *
    * **THE MOVEMENT FLOOR IS 32.8 SECONDS AND THE FIGHT IS UNMEASURED, AND THIS
    * FILE WILL NOT PRETEND OTHERWISE.** One loaded round trip is 108.1 m of open
-   * water each way at a `landingCraft`'s 6.6 m/s — **2.5% of par** — plus 76.0 m
+   * water each way at a `landingCraft`'s 6.6 m/s — **2.5% of par** — plus 78.1 m
    * up the island at a Warden's 6.6 or a rifleman's 3.2. Everything else is the
    * fight, the loading and the build, and no harness in this repo can put a
    * number on any of them.
@@ -706,7 +719,7 @@ const op: OperationDef = {
    * secondary becomes unreachable on a decision no author can see and no test
    * can read. Withheld, the longest structure weapon either army can put on
    * Bench Nine is `postCoil` at 20 m, which is the two posts the layout stands
-   * at 15.6 and 12.8 m of their own structures, and the beach arithmetic in the
+   * at 18.4 and 13.4 m of their own structures, and the beach arithmetic in the
    * layout header stays true.
    *
    * **THE PLAYER'S EMPTY LIST COSTS THEM THE TOP OF THEIR OWN TREE AND THAT IS
@@ -737,9 +750,17 @@ const op: OperationDef = {
      * `destroyer`; `hydrofoil` carries `ifvChaingun` at 22), and the nearest wet
      * cell on the whole map to each objective is
      *
-     *     rclSorter        72.3 m
-     *     rclBreakerYard   91.8 m
+     *     rclSorter        75.0 m
+     *     rclBreakerYard   93.7 m
      *     civOreMine       51.0 m
+     *
+     * — sampled at 4 m cell centres against `heightAt < WATER_LEVEL`, to the
+     * structures AS THEY STAND. The bore head is a 2x2 that cannot move under
+     * the faced-footprint snap and reproduces its published 51.0 at 50.99,
+     * which is the control; the two 3x2 structures moved 2.83 m each and took
+     * their rows with them (they measured 72.7 and 92.2 at the positions this
+     * block used to name, so about 0.4 m of the old figures was a finer
+     * sampling than cell centres and the rest is the move).
      *
      * — so the closest a hull can get to the nearest of the three is
      * **seventeen metres short of its own reach**. There is no bombardment
@@ -905,7 +926,7 @@ const op: OperationDef = {
 
     /* -- Cregg feeds the bench --------------------------------------------
      * Five troops on the clock, all of them crossing the NORTH strait from his
-     * own island and landing at `CROSS` on the bench's north shore — 80.2 m
+     * own island and landing at `CROSS` on the bench's north shore — 82.1 m
      * from the breaking yard and 113.2 m from the strand. That geography is the
      * operation's fairness argument made mechanical: his reinforcement has to
      * cross seventy-two metres of water exactly as the player's does, and it

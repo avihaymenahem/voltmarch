@@ -557,8 +557,13 @@ export default layout({
      * holds each id is exact by construction.
      *
      * Both files sit clear of every footprint above: the infantry rank at
-     * v = -26..-16 is 6.8 m off the near flank post, the two hulls at v = +26
-     * and +34 are 11.7 m off the far one. Those two clearances were measured
+     * v = -26..-16 is 6.83 m off the near flank post AS IT LANDED, and the two
+     * hulls at v = +26 and +34 are 10.16 m off the far one AS IT LANDED. **Both
+     * are to the landed post, which is the convention a clearance wants**; the
+     * hull figure read 11.66 m because it was taken to the far post's NOMINAL
+     * point, and one sentence quoting two anchors is the defect this repo
+     * catalogues. The posts land at (270, 198) and (298, 226), both 26.08 m
+     * from the mast. Those two clearances were measured
      * against the Tesla Coil footprint the flanks used to carry, and they are
      * unchanged: `teslaCoil` and `sentryGun` are both `w: 1, h: 1` in
      * `BUILDING_DIMENSIONS`, and the built world puts the replacements on the

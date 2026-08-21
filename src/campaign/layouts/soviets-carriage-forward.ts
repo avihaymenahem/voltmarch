@@ -24,21 +24,28 @@
  *     picket    pillbox        (294, 198)   500 hp  seat 1   range 22, power 0
  *     WORKING   the ore body   (252, 264)   r 30    29 738 credits
  *
- *     player yard   (402, 134)        Continental yard  (110, 134)
- *     yard to yard  292.00 m
+ *     player yard   (402, 134)        Continental yard  (114, 134)
+ *     yard to yard  288.00 m
  *
  *                        from the player's yard   from Continental's
- *     WORKING                    198.49 m               192.52 m
- *     PLANT                      171.17 m               205.30 m
- *     TAP_EAST                   159.02 m               225.80 m
- *     TAP_WEST                   241.35 m               166.97 m
- *     the picket (anchor)        122.80 m               207.63 m
+ *     WORKING                    198.49 m               189.59 m
+ *     PLANT                      171.17 m               202.04 m
+ *     TAP_EAST                   159.02 m               222.44 m
+ *     TAP_WEST                   241.35 m               164.75 m
+ *     the picket (anchor)        122.80 m               203.90 m
  *
- * **THE WORKING IS 5.97 m OFF EQUIDISTANT AND THE TAPS ARE EXACTLY
+ * The LEFT column is unchanged from the day this was authored — seat 0's yaw
+ * quantises to 90 and its yard lands where it always did. The RIGHT column
+ * moved 2.2 to 3.7 m when seat 1's yard went from (110, 134) to (114, 134).
+ *
+ * **THE WORKING IS 8.91 m OFF EQUIDISTANT AND THE TAPS ARE EXACTLY
  * ANTISYMMETRIC.** `TAP_EAST` sits at (+48, -8) from the working and `TAP_WEST`
- * at (-48, +8), so both are **48.66 m** out on opposite bearings, and each is
- * 159.02 m from one yard and 241.35 m from the other. One tap is a walk and the
- * other is a raid, and which is which depends only on which army you are.
+ * at (-48, +8), so both are **48.66 m** out on opposite bearings. The near tap
+ * is 159.02 m from our yard and the far one 241.35 m; for Continental the
+ * order reverses, at 222.44 m and 164.75 m. One tap is a walk and the other is
+ * a raid, and which is which depends only on which army you are. (The two
+ * columns are NOT a mirrored pair, and this sentence used to imply they were:
+ * the taps are antisymmetric about the WORKING, and the two yards are not.)
  *
  * ============================================================================
  * THE HAUL ROAD IS ONE CORRIDOR, IT IS MEASURED, AND THE PICKET SITS ON IT
@@ -196,8 +203,8 @@
  * is passable to Foot AND Track — so the counts may be retuned without
  * re-measuring while the spread stays inside it.
  *
- *     ROAD_A   (218, 196)   clearR 30   124.53 m from their yard,  76.03 m from the working
- *     ROAD_B   (206, 110)   clearR 22    98.95 m from their yard,  54.63 m from the lane patch
+ *     ROAD_A   (218, 196)   clearR 30   121.08 m from their yard,  76.03 m from the working
+ *     ROAD_B   (206, 110)   clearR 22    95.08 m from their yard,  54.63 m from the lane patch
  *     MUSTER   (342, 176)   clearR 28    73.24 m from OUR yard,   133.82 m of route to the working
  *
  * The two roads are **86.83 m apart** on opposite bearings out of the
@@ -320,18 +327,18 @@ const CENTRE = MAP_SIZE * 0.5;
  *
  * ONE CONSTANT FOR BOTH, deliberately: the movement IS at the working, and
  * writing it twice is how a wave comes to be aimed four metres off the thing
- * the dialogue names. 198.49 m from our yard, 192.52 m from theirs.
+ * the dialogue names. 198.49 m from our yard, 189.59 m from theirs.
  */
 export const WORKING: Point = { x: 252, z: 264 };
 /** The refinery the yards pushed out last quarter. 28.64 m from the working. */
 export const PLANT: Point = { x: 278, z: 252 };
-/** The near tap. 159.02 m from our yard, 225.80 m from theirs. */
+/** The near tap. 159.02 m from our yard, 222.44 m from theirs. */
 export const TAP_EAST: Point = { x: 300, z: 256 };
-/** The far tap. The mirror image: 241.35 m and 166.97 m. */
+/** The far tap. The mirror image: 241.35 m and 164.75 m. */
 export const TAP_WEST: Point = { x: 204, z: 272 };
 /**
  * The anchor of Continental's two road posts, 122.80 m from OUR yard and
- * 207.63 m from theirs, on the run the haul corridor makes between the muster
+ * 203.90 m from theirs, on the run the haul corridor makes between the muster
  * and the seam.
  *
  * See the header: the two posts stand 14.14 m either side of this point, and
@@ -361,9 +368,9 @@ export const TAP_WEST_AREA: Area = { x: TAP_WEST.x, z: TAP_WEST.z, r: 26 };
 /** The two road posts. r = 22 — `pillboxMg`'s own range — covers both at 14.14 m. */
 export const PICKET_AREA: Area = { x: PICKET.x, z: PICKET.z, r: 22 };
 
-/** Their seam road. clearR 30, 124.53 m from their yard, 76.03 m from the working. */
+/** Their seam road. clearR 30, 121.08 m from their yard, 76.03 m from the working. */
 export const ROAD_A: Point = { x: 218, z: 196 };
-/** Their lane road, the other bearing. clearR 22, 98.95 m from their yard. */
+/** Their lane road, the other bearing. clearR 22, 95.08 m from their yard. */
 export const ROAD_B: Point = { x: 206, z: 110 };
 /**
  * Where the yards put each lift down. clearR 28, and **133.82 m of route to the
@@ -374,9 +381,13 @@ export const ROAD_B: Point = { x: 206, z: 110 };
  */
 export const MUSTER: Point = { x: 342, z: 176 };
 /**
- * The contested patch `addStartOre` lays on the midpoint of the two openings —
- * 146.01 m from each yard, and the body a player who never leaves home is
- * living on. The third movement is aimed here rather than at the seam.
+ * The contested patch `addStartOre` lays on the midpoint of the two OPENINGS —
+ * 148.00 m from each of those, which is what makes it a fair patch. It is
+ * **146.01 m from our yard and 142.01 m from Continental's**, because the two
+ * seats take different cardinal yaws and therefore different yard offsets;
+ * the equidistance is a property of the openings and not of the yards. The
+ * body a player who never leaves home is living on. The third movement is
+ * aimed here rather than at the seam.
  */
 export const PUSH: Point = { x: 256, z: 132 };
 

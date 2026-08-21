@@ -50,14 +50,22 @@
  * ACROSS the opening lane, it runs very nearly ALONG it, and the operation is
  * shaped by that rather than by the intent. Built for real and measured:
  *
- *     yard seat 0   (402, 378)     -> control 235.8 m   -> deep 145.0 m
- *     yard seat 1   (110, 134)     -> control 145.0 m   -> deep 235.8 m
+ *     spot seat 0   (404, 380)     -> control 238.7 m   -> deep 147.8 m
+ *     spot seat 1   (108, 132)     -> control 147.8 m   -> deep 238.7 m
+ *     yard seat 0   (402, 382)     -> control 238.5 m   -> deep 147.4 m
+ *     yard seat 1   (114, 134)     -> control 141.8 m   -> deep 232.9 m
  *     party         (431, 410)     -> control 278.8 m   -> deep 187.6 m
  *
- * One head in each half, at exactly the same distances reversed. That is a
- * property of the CONSTRUCTION and not of the roll: the heads are symmetric
- * about the map centre and so is any antipodal slot pair, so the mirror is
- * exact for [0,1] and [2,3] alike.
+ * One head in each half, at exactly the same distances reversed — **and that
+ * mirror is a property of the SPOTS, not of the yards.** The heads are
+ * symmetric about the map centre and so is any antipodal slot pair, so the SPOT
+ * mirror is exact for [0,1] and [2,3] alike. The YARDS break it by a few
+ * metres, because the two seats take different cardinal base facings and
+ * therefore different offsets off their spots (+(-2,+2) at yaw 90 against
+ * +(+6,+2) at yaw 270), and that pair of offsets is not antipodally symmetric.
+ * The table used to carry the spot figures under the word "yard" and called the
+ * reversal "exactly" — which was true of the row above it and not of the row it
+ * was written on.
  *
  * **IT IS NOT EXACT FOR AN EDGE PAIR.** `START_PAIRS` also holds [0,2] and
  * [1,3], which are two corners of one side and are not centre-symmetric; on
@@ -146,8 +154,8 @@ import type { Area } from '../types';
  * ========================================================================== */
 
 /**
- * Known ground, and the enemy is already dug in on it — 145.0 m from THEIR
- * yard and 235.8 m from the player's on the shipped seed.
+ * Known ground, and the enemy is already dug in on it — 141.8 m from THEIR
+ * yard and 238.5 m from the player's on the shipped seed.
  *
  * `r` is 20 rather than the 12 a marker would want. The condition counts UNITS
  * INSIDE, and three men walking as a group spread further than that the moment
@@ -157,7 +165,7 @@ import type { Area } from '../types';
 export const CONTROL_HEAD: Area = { x: 226, z: 221, r: 20 };
 
 /**
- * The deep sounding, and the primary. 145.0 m from the player's yard, bare ore,
+ * The deep sounding, and the primary. 147.4 m from the player's yard, bare ore,
  * nothing placed on it — see `build` for why that emptiness is authored.
  */
 export const DEEP_HEAD: Area = { x: 286, z: 291, r: 20 };

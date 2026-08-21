@@ -108,7 +108,7 @@
  * ore are identical to the metre.** Read off both builds:
  *
  *     home 108, 380     foe 404, 132     axis 386.161     the diagonal pair
- *     terrace 352, 298  well 364, 312    infirmary 342, 288
+ *     terrace 354, 300  well 364, 312    infirmary 340, 286
  *
  * — the three holdings land on the same three points P7's header publishes,
  * because the layout asks for the same three points and `spawnBuilding` snaps
@@ -590,7 +590,7 @@
  * never calls `setCampaignRoster`.
  *
  *     parcel centre 352, 300 r 62      station 236, 300      muster 226, 306
- *     terrace 352, 298   well 364, 312   infirmary 342, 288
+ *     terrace 354, 300   well 364, 312   infirmary 340, 286
  *     head 272, 192      posts 282, 206 and 258, 178
  *     guards 267.94, 207.51 / 256.91, 203.70 / 245.89, 199.89   (three rclPicker)
  *     stage 331.35, 140.29
@@ -958,7 +958,7 @@ const op: OperationDef = {
      * `startPointsFor(2, null, 3 733)` is the same call in both files, so the
      * heightfield, both openings and the ore are identical to the metre — which
      * is what lets this file say "the same pan, nine days later" about the
-     * pixels. The three holdings land on 352, 298 / 364, 312 / 342, 288 in both
+     * pixels. The three holdings land on 354, 300 / 364, 312 / 340, 286 in both
      * builds. What differs is seat 1's army and the two collars P7 left behind,
      * which the salvage house has bought and hauled.
      */

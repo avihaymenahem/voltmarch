@@ -413,10 +413,20 @@
  * ============================================================================
  * THE ROUTES, ON A NAMED INSTRUMENT
  * ============================================================================
- * 8-connected Dijkstra over `Terrain.passGrid`, octile step (4 m orthogonal,
- * 5.657 m diagonal), corner-cutting refused, run on the built world with the
- * roster in force and every structure standing. A cell depth is not a distance
- * and none of these is one:
+ * 8-connected Dijkstra over `FlowFieldCache.costGridFor(MoveClass.X)` — the
+ * ROUTING grid, which is terrain passability PLUS occupancy PLUS the
+ * per-class clearance rule — octile step (4 m orthogonal, 5.657 m diagonal),
+ * corner-cutting refused, run on the built world with the roster in force and
+ * every structure standing. A cell depth is not a distance and none of these
+ * is one.
+ *
+ * **THE GRID NAME MATTERS AND THIS PARAGRAPH USED TO NAME THE WRONG ONE.** It
+ * said `Terrain.passGrid`, and the sanity figure below is the `costGridFor`
+ * count: 3881 of 16 384 cells is 23.69%, while the raw `passGrid` Foot bit
+ * refuses 3749, which is 22.9%. The rows are on the cost grid too — Foot
+ * player-to-derrick reproduces at 272.33 there and comes back 267.65 on the
+ * raw bit. Two grids, 132 cells apart on this map, and enough to move an
+ * answer:
  *
  *     Foot    player  -> block head     226.1 m    70.7 s at a G.I.'s 3.2 m/s
  *     Foot    Reclam  -> block head     242.1 m
@@ -431,8 +441,8 @@
  *     Track   Reclam  -> ROAD            99.9 m
  *
  * Against the straight lines that is a ground cost of **7.6% to 18.9%**, and
- * every one of them resolved — no route came back unreachable. **23.7% of the
- * map's 16 384 cells refuse Foot**, which is the sanity check that says the grid
+ * every one of them resolved — no route came back unreachable. **3881 of the
+ * map's 16 384 cells (23.7%) refuse Foot**, which is the sanity check that says the grid
  * this file measured with can see walls at all. A route measured on a grid that refuses
  * nothing is a plausible, uniformly slightly-too-short number and a green test;
  * `COST_BLOCKED` lives in `src/world/terrain-gen.ts` and importing it from

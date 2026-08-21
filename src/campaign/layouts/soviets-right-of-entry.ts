@@ -19,7 +19,7 @@
  * TWO, BECAUSE THAT IS WHAT A COUNTERPART IS. A lease is executed in two parts
  * and each side signs one; the entry cannot be made from either half alone.
  * Mechanically it is what makes the primary a JOURNEY rather than a click: the
- * two stand **91.39 m** apart, at 191.13 m and 281.60 m from the player's
+ * two stand **91.39 m** apart, at 187.24 m and 277.77 m from the player's
  * Construction Yard and at 114.77 m and 82.97 m from the Ninth's. So the halt
  * is a push the player can make early and the office is a raid onto their
  * doorstep — two targets, two prices, and `soviets.07.right-of-entry`'s hidden
@@ -234,12 +234,12 @@
  * zero today and would report if the ground under one ever moved.
  *
  * `simSeed` **7324** draws the start pair **[0, 2]** for a two-army match — the
- * 292.00 m EAST-WEST lane, and neither of the two 386.16 m diagonals this
+ * 296.00 m EAST-WEST lane, and neither of the two 386.16 m diagonals this
  * chapter has already used (`soviets-short-allocation` [0, 1],
  * `soviets-demolition-order` [2, 3]). The layout is handed spots (108, 380) and
- * (404, 380); the CONSTRUCTION YARDS land at (110, 382) and (402, 382), 292.00 m
- * apart, and every distance in this file and in the operation is measured
- * against those yards rather than against the spots.
+ * (404, 380), 296.00 m apart; the CONSTRUCTION YARDS land at (114, 382) and
+ * (402, 382), **288.00 m** apart, and every distance in this file and in the
+ * operation is measured against those yards rather than against the spots.
  *
  * `mapSeed` **20260925** was chosen on a measured sweep of ten. Counting 4 m
  * cells through the real `Terrain.isPassable(Locomotor.Track)`: **76.61%** of
@@ -336,9 +336,9 @@ import { layout } from '../layout';
 /** The map centre. `startPointsFor` reserves a shelf here first, on a continent. */
 const CENTRE = MAP_SIZE * 0.5;
 
-/** The part. 191.13 m from the player's yard, 114.77 m from the Ninth's. */
+/** The part. 187.24 m from the player's yard, 114.77 m from the Ninth's. */
 export const REGISTER: Point = { x: 296, z: 338 };
-/** The counterpart. 281.60 m from the player's yard, 82.97 m from the Ninth's. */
+/** The counterpart. 277.77 m from the player's yard, 82.97 m from the Ninth's. */
 export const COUNTERPART: Point = { x: 380, z: 302 };
 
 /**

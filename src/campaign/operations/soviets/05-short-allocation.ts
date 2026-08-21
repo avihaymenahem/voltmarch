@@ -12,10 +12,12 @@
  * WHAT THE PLAYER GIVES UP
  * ============================================================================
  * **THREE WORKINGS, TWO REQUIRED, AND NO TWO OF THEM CAN BE COVERED AT ONCE.**
- * Measured on a headless build: they stand 93.04 m, 183.22 m and 254.81 m from
- * the player's yard along the opening-to-opening lane, the closest pair is
- * 75.47 m apart, and the longest structure weapon this operation's roster
- * leaves either army is `pillboxMg` at **22 m**. Two of those rings reach 44 m
+ * Measured on a headless build: they stand 92.48 m, 181.40 m and 252.30 m from
+ * the player's Construction Yard along the opening-to-opening lane (93.04,
+ * 183.22 and 254.81 from the OPENING, which is 6.32 m short of it and is what
+ * the layout's own table quotes). The closest pair is 75.47 m apart, and the
+ * longest structure weapon this operation's roster leaves either army is
+ * `pillboxMg` at **22 m**. Two of those rings reach 44 m
  * between them against a 75.47 m gap, so an emplacement covers exactly one
  * working and a mobile force covers one at a time and pays 75 to 168 m to
  * change its mind. Holding all three means being weak in three places.
@@ -25,14 +27,14 @@
  * more than the last:
  *
  *   - **near and middle.** The primary, and the ordinary line. The middle
- *     working is 183.22 m out, far enough to need its own answer and near
+ *     working is 181.40 m out, far enough to need its own answer and near
  *     enough that the answer can fall back. Concede the far working and you
  *     concede 300 credits a minute for the rest of the shift — 4200 by the
  *     close if it goes at minute three, which is more than the opening bank.
  *   - **all three.** 600 credits at the close, and it means holding a position
- *     137.75 m from the Ninth's yard for seventeen minutes with a 700-hp
+ *     135.09 m from the Ninth's yard for seventeen minutes with a 700-hp
  *     structure in the middle of it. The ground pays one compensation and only
- *     there: a Gaia `civApartments` 24.74 m from the far working, garrisonable,
+ *     there: a Gaia `civApartments` 22.36 m from the far working, garrisonable,
  *     which is the only firing position on the map nobody had to build.
  *   - **the tap.** Hidden until minute five. The Ninth's own derrick, 121.85 m
  *     from their opening, paying them 900 a minute behind two pillboxes. It
@@ -352,7 +354,7 @@ const op: OperationDef = {
      * `AiBrain.regroupSquads` files every untagged hull the seat owns into a
      * squad on its next pass, so the attack-move is the first thing these six
      * do and the brain owns them after that. What the wave buys is that the
-     * district's army is 68.03 m from its own gate and pointed down the lane at
+     * district's army is 66.00 m from its own yard and pointed down the lane at
      * a known minute — read it as the Ninth building faster than it could, which
      * is what `soviets-deep-sector` established about scripted waves on an AI
      * seat. The workings are on the lane precisely so the pressure does not

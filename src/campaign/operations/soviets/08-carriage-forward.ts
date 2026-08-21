@@ -573,7 +573,7 @@ const op: OperationDef = {
      * not used (`soviets.05.short-allocation` [0, 1],
      * `.06.demolition-order` [2, 3], `.07.right-of-entry` [0, 2]). The layout
      * is handed spots (404, 132) and (108, 132); the CONSTRUCTION YARDS land at
-     * (402, 134) and (110, 134), 292.00 m apart, and every distance in this
+     * (402, 134) and (114, 134), 288.00 m apart, and every distance in this
      * file and in the layout is measured against those yards rather than
      * against the spots. **Change this and they are all different distances.**
      */
@@ -786,7 +786,7 @@ const op: OperationDef = {
      * order Continental is executing is about the ROAD, and the establishment
      * executes what the order says.
      *
-     * `PICKET` (304, 208) is 122.80 m from the player's yard and 207.63 m from
+     * `PICKET` (304, 208) is 122.80 m from the player's yard and 203.90 m from
      * Continental's, and its own cell is passable to Foot — so this is an order
      * at real ground on the corridor the escort walks, which is what makes it a
      * road inspection rather than an early strike near the player's base. The
@@ -893,9 +893,10 @@ const op: OperationDef = {
 
     /* -- and then at the ground behind it -------------------------------------
      * Minute twelve, off the LANE road at `PUSH` — the contested patch
-     * `addStartOre` lays on the midpoint of the two openings, 146.01 m from each
-     * yard, which is the body a player who has sent everything forward is still
-     * living on. A second bearing rather than a second helping of the first:
+     * `addStartOre` lays on the midpoint of the two openings, 148.00 m from each
+     * of those and 146.01 / 142.01 m from the two yards, which is the body a
+     * player who has sent everything forward is still living on. A second
+     * bearing rather than a second helping of the first:
      * the two roads are 86.83 m apart on opposite sides of their gate.
      */
     {

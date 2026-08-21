@@ -59,12 +59,22 @@
  *    `HAMLET_SPREAD` 18
  * ============================================================================
  * All three are P7's, unchanged, and they must stay that way for as long as
- * both files claim to be about one piece of ground:
+ * both files claim to be about one piece of ground. **THE CLAIM IS STILL TRUE
+ * AND THE THREE COORDINATES WERE STALE ANYWAY**, which is worth a sentence: the
+ * rows were COPIED from P7 rather than re-measured here, so when `bb83ffb`
+ * moved the two non-square holdings 2.83 m each they went stale in both files
+ * together. Both operations were rebuilt to check, and they do land identically.
+ *
+ * **DATE TRIAGE GIVES THE WRONG ANSWER FOR THIS FILE.** It is commit `9b40bb5`,
+ * 2026-08-20 20:58, thirty-one minutes AFTER `bb83ffb` at 20:27 — and
+ * `git merge-base --is-ancestor bb83ffb 9b40bb5` answers NO. P8 and P9 were
+ * written on a parallel worktree that did not contain the base rebuild and were
+ * merged afterwards. Use ancestry, not the clock:
  *
  *     works requested   353.17, 299.83     placed centre   352, 300
- *     terrace     civApartments   placed 352, 298
+ *     terrace     civApartments   placed 354, 300
  *     well        civOilDerrick   placed 364, 312
- *     infirmary   civHospital     placed 342, 288
+ *     infirmary   civHospital     placed 340, 286
  *
  * `PARCEL.r` 62 lives in `operations/pact/08-struck-off.ts` and is likewise
  * P7's. The placed centre sits **95.38 m** off the opening-to-opening axis, so
@@ -335,8 +345,8 @@ const WORKS_ALONG = 0.62;
 const WORKS_OFFSET = 96;
 /**
  * Metres the well and the infirmary stand either side of the terrace, across
- * the axis. P7's, unchanged: it is what puts the three holdings on 352, 298 /
- * 364, 312 / 342, 288, which are the three lift points. Header §2.
+ * the axis. P7's, unchanged: it is what puts the three holdings on 354, 300 /
+ * 364, 312 / 340, 286, which are the three lift points. Header §2.
  */
 const HAMLET_SPREAD = 18;
 /**

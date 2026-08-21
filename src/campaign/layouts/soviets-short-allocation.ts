@@ -60,6 +60,12 @@
  *     WORKING_MID    (216, 232)   183.22 m                  212.94 m
  *     WORKING_FAR    (280, 192)   254.81 m                  137.75 m
  *
+ * **BOTH COLUMNS ARE MEASURED TO THE OPENINGS** — (108, 380) and (404, 132) —
+ * and NOT to the Construction Yards, which land at (114, 382) and (402, 134).
+ * To the yards the same six figures are 92.48 / 301.26, 181.40 / 210.24 and
+ * 252.30 / 135.09. The spot is what the generator levels a shelf at; the yard
+ * is what `BUILD_RADIUS` is centred on, so a sentence has to say which.
+ *
  *     NEAR -> MID   93.38 m     MID -> FAR   75.47 m     NEAR -> FAR   168.05 m
  *
  * All three land on their literals: nothing in this file was moved by the ring
@@ -67,10 +73,10 @@
  * and 0 stranded entities, with one passable region holding 11 648 of 11 729
  * cells (99.3%) for a tracked hull.
  *
- * The near working is 93.04 m from the yard — 37 m past `BUILD_RADIUS` (56), so
+ * The near working is 92.48 m from the yard — 36 m past `BUILD_RADIUS` (56), so
  * the base's build space does not reach it and the base's own guns do not cover
- * it, but it is one short walk from both. The far working is 137.75 m from the
- * Ninth's yard and 254.81 m from the player's: holding it is standing on
+ * it, but it is one short walk from both. The far working is 135.09 m from the
+ * Ninth's yard and 252.30 m from the player's: holding it is standing on
  * somebody else's doorstep for seventeen minutes. The middle one is the one the
  * operation is actually about.
  *
@@ -146,11 +152,11 @@
  * "which of these do you cover", and a layout that covers them has answered the
  * question on the player's behalf. What the ground gives instead is one
  * compensation, at the position that needs it: a Gaia `civApartments` (800 hp)
- * measured **24.74 m** from WORKING_FAR, which is a garrisonable building —
+ * measured **22.36 m** from WORKING_FAR, which is a garrisonable building —
  * `GarrisonService.enter` allows an allied owner and Gaia is allied to
  * everybody — so the hardest working to hold is the only one with a firing
  * position beside it. That is a real affordance and it is not scripted
- * anywhere. 24.74 m is also past the largest `splashRadius` in the weapon
+ * anywhere. 22.36 m is also past the largest `splashRadius` in the weapon
  * tables (6.5 m), so nothing in the game reaches the working and the house with
  * one shell.
  *
@@ -248,11 +254,20 @@ export const WORKING_MID: Point = { x: 216, z: 232 };
 export const WORKING_FAR: Point = { x: 280, z: 192 };
 
 /**
- * The shift house: a Gaia `civApartments` 24.74 m from the far working.
+ * The shift house: a Gaia `civApartments` 22.36 m from the far working.
  *
  * THE ONLY THING ON THE MAP THAT COMPENSATES A POSITION FOR BEING HARD TO
  * HOLD. See the header — it is garrisonable, and the far working is the one
  * that needs it.
+ *
+ * **THIS LITERAL IS THE REQUESTED POINT AND NOT THE LANDING**, which is the one
+ * place in this file that breaks the "authored at the spot they actually land
+ * on" convention stated below. `civApartments` is a 2x3 footprint raised at a
+ * yaw that quantises to 90, and `ScenarioBuilder.spawnBuilding` snaps on the
+ * FACED footprint, so a non-square block at that yaw snaps on the swapped
+ * lattice and lands at **(258, 188)** — 2.83 m out, which is where the 24.74 m
+ * this comment used to quote went. The three workings and both tap pillboxes
+ * are square or axis-neutral and do land on their literals.
  */
 const SHIFT_HOUSE: Point = { x: 256, z: 186 };
 
@@ -302,9 +317,13 @@ export const ALLIED_TAP_AREA: Area = { x: ALLIED_TAP.x, z: ALLIED_TAP.z, r: 52 }
  * wave on a blocked cell. `temperate` is the steepest preset any operation uses
  * and a symmetric-looking pair of points is not a measured one.
  *
- *     ROAD_EAST   (402, 200)   68.03 m from the Ninth's yard, lane offset +50.8
- *     ROAD_WEST   (334,  88)   82.68 m,                        lane offset -78.7
+ *     ROAD_EAST   (402, 200)   66.00 m from the Ninth's yard, lane offset +50.8
+ *     ROAD_WEST   (334,  88)   82.10 m,                        lane offset -78.7
  *     apart                   131.03 m
+ *
+ * (68.03 and 82.68 are the distances to the Ninth's START SPOT (404, 132). The
+ * yard that spot raises lands at (402, 134); the two are different points and
+ * the yard is the one a column forms up outside of.)
  *
  *     ROAD_EAST -> FAR 122.26   -> MID 188.73   -> NEAR 271.54   -> tap 63.66
  *     ROAD_WEST -> FAR 117.18   -> MID 186.17

@@ -27,16 +27,16 @@
  * at all.
  *
  * The lure is not theoretical and it is not small. Measured on the built world
- * (2026-08-19, `mapSeed` 20260819 / `simSeed` 5101, through the same headless
- * build `tests/campaign-maps.spec.ts` does):
+ * (re-measured 2026-08-21, `mapSeed` 20260819 / `simSeed` 5101, through the same
+ * headless build `tests/campaign-maps.spec.ts` does):
  *
  *   tag       def            hp    owner   from your yard   from theirs
- *   tap       civOreMine    700    seat 1      190.1 m         102.2 m
- *   derrick   civOilDerrick 900    seat 1      115.1 m         185.1 m
- *   derrick   civOilDerrick 900    seat 1      134.8 m         198.0 m
- *   derrick   civOilDerrick 900    seat 1      160.8 m         153.4 m
+ *   tap       civOreMine    700    seat 1      186.1 m         102.2 m
+ *   derrick   civOilDerrick 900    seat 1      111.3 m         185.1 m
+ *   derrick   civOilDerrick 900    seat 1      131.6 m         198.0 m
+ *   derrick   civOilDerrick 900    seat 1      157.1 m         153.4 m
  *
- * **THE THREE DERRICKS ARE NEARER TO YOU THAN TO THEM — 136.9 m mean against
+ * **THE THREE DERRICKS ARE NEARER TO YOU THAN TO THEM — 133.3 m mean against
  * 178.8 m — AND THEY ARE PAYING THE ALLIES 45 CREDITS A SECOND.**
  * `CIVILIAN_INCOME` is 15 cr/s per derrick on a 30-tick interval and
  * `civilian.system.ts#payHolders` pays whoever holds the deed, so seat 1 banks
@@ -125,8 +125,8 @@ import type { Condition, OperationDef } from '../../types';
  * guard that stops the symptom being silent.
  *
  * Twenty seconds is unmistakably past the build and unmistakably short of
- * anything being lost: the tap is 190.1 m from the player's yard and the
- * nearest derrick 115.1 m, against a starting force that has not moved.
+ * anything being lost: the tap is 186.1 m from the player's yard and the
+ * nearest derrick 111.3 m, against a starting force that has not moved.
  */
 const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
 

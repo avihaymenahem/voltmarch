@@ -641,11 +641,19 @@ const op: OperationDef = {
      * version argued that a Helios Spire would reach the counting apron; it
      * would not, and the arithmetic says so in one line. A Spire only ever
      * stands where `ALLIED_DEFENCE`'s `prismTower` slot puts it, which is the
-     * Meridian opening — 127.56 m from the nearest routable apron cell, against
+     * Meridian opening — 121.92 m from the nearest routable apron cell, against
      * an acquisition envelope of `33 x 1.08 + 2.880` = 38.52 m of centre
-     * distance. It is 89 m short. (The draft had subtracted the envelope from
-     * the distance and called the REMAINDER "inside the disc", which is the same
-     * number with the sign of the conclusion reversed.)
+     * distance. It is 83 m short. (Two corrections. The draft had subtracted the
+     * envelope from the distance and called the REMAINDER "inside the disc",
+     * which is the same number with the sign of the conclusion reversed. And
+     * 127.56 m was measured from (126, 138) — the requested point MINUS the
+     * placement snap rather than plus it. `prismTower` is 1x1 like the three
+     * `mrdGlaive` that share `ALLIED_DEFENCE` with it, and on this build all
+     * three of those land at requested + (2, 2): (128, 108) -> (130, 110),
+     * (128, 124) -> (130, 126), (128, 156) -> (130, 158). A Spire would stand
+     * at (130, 142). 75 cells of `COUNTER_AREA` are Wheel-open and the nearest
+     * of them is 121.92 m away. Counterfactual either way, and the conclusion
+     * is robust; the provenance of the number is now known.)
      *
      * What the empty list actually buys is the TECH BUILDING. `mrdZenith` is
      * `unit.specialist` and its prereqs are `['mrdForgeyard', 'mrdReliquary']`,

@@ -52,11 +52,19 @@
  * state in which the allow-list is in force, and the state
  * `tests/campaign-roster-ground.spec.ts` builds in:
  *
- *     seat 0  the yard        24 buildings  20 units  power 320/170  net +150
- *     seat 1  the works       25 buildings  12 units  power 400/170  net +230
+ *     seat 0  the yard        25 buildings  20 units  power 320/170  net +150
+ *     seat 1  the works       26 buildings  12 units  power 400/170  net +230
  *
- *     Foundry     404, 380     counting house  316, 350
- *     Allied yard 108, 132     bonded store    220, 186
+ *     raw corners 404, 380     counting house  316, 350
+ *                 108, 132     bonded store    220, 186
+ *     Construction Yards       `rclFoundry` 402, 382   `conyard` 114, 134
+ *
+ * **THE TWO CORNERS ARE NOT THE TWO YARDS, AND THIS BLOCK USED TO PRINT THE
+ * CORNERS UNDER THE WORD "yard".** Every `lane()` lot below is derived from the
+ * RAW corner and that is correct; but a sentence that names a BUILDING has to
+ * measure to the building, and the yards sit 2.83 m and 6.32 m off their
+ * corners. Where the prose says "opening", "corner" or "the yard anchor" the
+ * corner IS the referent and the figure is exactly right.
  *     stop posts  226, 230  and  250, 202
  *     forming up  ROAD 141.9, 217.8 (the works end, for the counting-house
  *                 workings) and SIDING 218.7, 279.5 (below the notice, for the
@@ -64,11 +72,16 @@
  *
  * Seat 0's opening, by key: `rclFoundry` x1, `rclBreakerYard` x1, `rclRookery`
  * x1, `rclSorter` x1, `rclFurnace` x4, `rclHeap` x2, `rclSpotter` x1,
- * `rclSpitpost` x3, `rclBarricade` x9, `civApartments` x1; `rclGrinder` x4,
+ * `rclSpitpost` x3, `rclBarricade` x10, `civApartments` x1; `rclGrinder` x4,
  * `rclSpitter` x2, `rclPicker` x5, `rclScrapper` x2, `rclTinker` x7. Seat 1's:
  * `conyard`, `powerPlant` x4, `refinery`, `warFactory`, `barracks`, `radar`,
- * `oreSilo` x2, `pillbox` x5, `wall` x9; `grizzly` x4, `gi` x5, `harvester` x2,
+ * `oreSilo` x2, `pillbox` x5, `wall` x10; `grizzly` x4, `gi` x5, `harvester` x2,
  * `engineer` x1.
+ *
+ * (Both wall rows read x9 and both seat totals were one lower, because this
+ * section was taken on a world with the OLD nine-segment row: `ALLIED_WALL_X`
+ * and its Reclamation twin have ten entries now. The unit lists reproduce
+ * exactly.)
  *
  * **THE SEVENTH `rclTinker` AND THE SINGLE `engineer` ARE BOTH LOAD-BEARING
  * AND NEITHER IS THIS FILE'S.** Six of the seven Tinkers are the clerks below;
@@ -211,8 +224,8 @@
  * corner cutting refused, **`COST_BLOCKED` imported from
  * `src/world/terrain-gen.ts`** (trap 21: imported from `config.ts` it is
  * `undefined`, every `nc >= undefined` is false, and the fill walks through
- * buildings and reports plausible short routes). It has teeth: **4042 of 16 384
- * Track cells and 3937 Foot cells read `COST_BLOCKED`**, and ringing the store
+ * buildings and reports plausible short routes). It has teeth: **4057 of 16 384
+ * Track cells and 3939 Foot cells read `COST_BLOCKED`**, and ringing the store
  * at 30..46 m makes the same query report UNREACHABLE. On Foot the same walk is
  * 703.1 m and on the HARD grid (`hardGridFor`, the clearance rule left out) it
  * is 703.1 m, so it is ground and not a planner artefact.
@@ -390,8 +403,10 @@ function lane(along: number, off: number): Point {
  * written.
  *
  * Landed at (316, 350) — **1.83 m from the authored point**, which is one grid
- * snap and not a search — 92.97 m from the Foundry, and 301.30 m from the Allied
- * yard. `lane(0.18, -34)` was tried first and landed 17.42 m out; see the
+ * snap and not a search — 91.76 m from the Foundry as it stands, and 295.74 m
+ * from the Allied Construction Yard. (92.97 and 301.30 are the distances to the
+ * two RAW CORNERS, which are not buildings.) `lane(0.18, -34)` was tried first
+ * and landed 17.42 m out; see the
  * header.
  */
 export const HOUSE: Point = lane(0.22, -34);
@@ -411,9 +426,12 @@ export const HOUSE_AREA: Area = { x: HOUSE.x, z: HOUSE.z, r: 26 };
 /**
  * The district's bonded store, and it belongs to nobody.
  *
- * Landed at (220, 186) — 0.98 m from the authored point — 124.34 m from the
- * Allied yard, 267.38 m from the Reclamation's, and 190.03 m in a straight line
- * from the counting house.
+ * Landed at (220, 186) — 0.98 m from the authored point — 118.07 m from the
+ * Allied Construction Yard, 267.47 m from the Reclamation's, and 190.03 m in a
+ * straight line from the counting house. (124.34 and 267.38 are to the two raw
+ * corners; the second is off by only 0.09 m because that bearing runs nearly
+ * perpendicular to the yaw-90 yard offset, and the first by 6.27 m because the
+ * yaw-270 one runs nearly along it.)
  *
  * **THE CLERKS' LEG IS MEASURED FROM WHERE THEY STAND TO THE DISC, NOT FROM
  * BUILDING TO BUILDING** — trap 27, and the two are different quantities. From
@@ -505,7 +523,7 @@ export const ROAD: Point = lane(0.79, -44);
  *     riflemen                          28.0 s   at `gi`'s 3.2
  *     javelins                          29.9 s   at 3.0
  *     straight lines                    93.5 m to the store, 120.2 m to the
- *                                       counting house, 210.8 m to the Foundry,
+ *                                       counting house, 210.0 m to the Foundry,
  *                                       50.1 m to the nearer stop post
  *
  * **THE KEEP-OFF IS THE OTHER HALF OF THE CHOICE AND IT IS WHY THIS IS NOT THE

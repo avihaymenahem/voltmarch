@@ -168,7 +168,7 @@ import { APPROACH, CAMP, GATE_WATCH, STAGE, TAP, TAP_HOLD } from '../../layouts/
  * empty read is not reachable in the product today; what it IS reachable for is
  * a layout that placed nothing, and `tests/campaign-maps.spec.ts` is the gate
  * that catches that cause. Twenty seconds is unmistakably past the build and
- * unmistakably short of anything happening: the nearest mast is 214.5 m from
+ * unmistakably short of anything happening: the nearest mast is 218.4 m from
  * the player's yard, 83.0 m from the nearest hull of the forward column, and
  * behind a wall.
  *

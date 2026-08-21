@@ -390,7 +390,7 @@ import {
  * carry no settle for that reason.
  *
  * Twenty seconds is unmistakably past the build and unmistakably short of
- * anything being lost: the nearer block is 191.13 m from the player's yard
+ * anything being lost: the nearer block is 187.24 m from the player's yard
  * against a starting force that has not moved, and nothing hostile is ordered
  * anywhere before minute four.
  */
@@ -496,17 +496,17 @@ const op: OperationDef = {
     /*
      * **IT CHOOSES THE CORNERS.** `seatedSlots` draws a PAIR out of
      * `START_PAIRS` for a two-army match, and 7324 draws **[0, 2]** — the
-     * EAST-WEST lane, 292.00 m yard to yard, and neither of the two 386.16 m
-     * diagonals this chapter has already used
+     * EAST-WEST lane, 296.00 m spot to spot and 288.00 m yard to yard, and
+     * neither of the two 386.16 m diagonals this chapter has already used
      * (`soviets.05.short-allocation` [0, 1], `soviets.06.demolition-order`
      * [2, 3]). The layout is handed spots (108, 380) and (404, 380); the
-     * CONSTRUCTION YARDS land at (110, 382) and (402, 382), and every distance
+     * CONSTRUCTION YARDS land at (114, 382) and (402, 382), and every distance
      * in this file and in the layout is measured against those yards rather than
      * against the spots. **Change this and they are all different distances.**
      *
      * The shorter lane is the point. This is the operation where the player has
      * to stand on the district's doorstep — the counterpart is 82.97 m from
-     * their yard — and 292 m of separation is what makes that a push rather than
+     * their yard — and 288 m of separation is what makes that a push rather than
      * an expedition.
      */
     simSeed: 7_324,

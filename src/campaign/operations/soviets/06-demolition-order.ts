@@ -58,8 +58,8 @@
  * 2500 credits out of a 4000 bank, at least one of the three is coming down on
  * the ground whatever the player does, and the interesting question is WHICH
  * one is worth 2500 credits and seven minutes. It is the device — 1000 hp
- * behind a Refractor Tower and two pillboxes, 263.06 m from the player's yard
- * and 134.16 m from the Ninth's — because a missile flies over the tower, which
+ * behind a Refractor Tower and two pillboxes, 264.97 m from the player's yard
+ * and 132.42 m from the Ninth's — because a missile flies over the tower, which
  * is `AiBrain.aimAnnihilation`'s own argument for owning one.
  *
  * **THE OPERATION CANNOT CHECK THAT THE WARHEAD WAS USED, AND DOES NOT PRETEND
@@ -188,10 +188,11 @@
  * ============================================================================
  * THE SHOWN SECONDARY IS S1's DERRICKS, PICKED BACK UP
  * ============================================================================
- * A Gaia `civHospital`, 1100 hp, **40.05 m from the device**, and the Ninth
- * sited the works around it. A warhead put on the device spares it by 6.84 m of
- * aiming margin; a warhead put on the near plant clears it by **0.32 m**, which
- * is a coincidence rather than a margin. The layout header has the full table —
+ * A Gaia `civHospital`, 1100 hp, **38.21 m from the device**, and the Ninth
+ * sited the works around it. A warhead put on the device spares it by 5.00 m of
+ * aiming margin; a warhead put on the near plant clears it by **2.84 m**, which
+ * is an accident of where the block landed rather than a margin. The layout
+ * header has the full table —
  * and, since this was measured, the correction that spending the coincidence
  * costs the hospital 246 of 1100 rather than the hospital: the rim of a nuke is
  * `nukeSplashFalloff` 0.22, so a click that drifts off the plant hurts a
@@ -246,7 +247,7 @@ import {
  * is finished before tick one, so any value above zero closes the hole; twenty
  * seconds is chosen to be unmistakably past it and unmistakably short of
  * anything being lost, since nothing hostile is ordered anywhere before minute
- * four and the works stands 263.06 m from the player's yard.
+ * four and the works stands 264.97 m from the player's yard.
  */
 const SETTLE = seconds(20);
 
@@ -359,7 +360,7 @@ const op: OperationDef = {
      * `START_PAIRS` for a two-army match, and 6614 draws **[2, 3]** — the other
      * 386.16 m diagonal, the one `soviets.05.short-allocation`'s [0, 1] does not
      * use. The layout is handed spots (404, 380) and (108, 132); the CONSTRUCTION
-     * YARDS land at (402, 378) and (110, 134), 380.53 m apart, and every distance
+     * YARDS land at (402, 382) and (114, 134), 380.06 m apart, and every distance
      * in this file and in the layout is measured against those yards rather than
      * against the spots. **Change this and they are all different distances.**
      */
@@ -423,7 +424,7 @@ const op: OperationDef = {
    * `faction` once, `GarrisonService.releaseEmptied` is the only thing that
    * writes them BACK, and it only ever runs for a host it took itself. So one
    * click permanently strips Gaia's universal alliance from a building standing
-   * 40.05 m from the device, `Targeting.isValidTarget` refuses only ALLIES, and
+   * 38.21 m from the device, `Targeting.isValidTarget` refuses only ALLIES, and
    * every Allied gun on the works acquires the thing the shown secondary is
    * about — which `t.infirmaryLost` then fails, whoever fired.
    *
@@ -547,7 +548,7 @@ const op: OperationDef = {
      * `AiBrain.regroupSquads` files every untagged hull the seat owns into a
      * squad on its next pass, so the attack-move is the first thing these six do
      * and the brain owns them after that. What the wave buys is that the
-     * district's army is 67.20 m from its own gate and 68.96 m from the works at
+     * district's army is 64.90 m from its own gate and 68.96 m from the works at
      * a known minute — read it as the Ninth screening faster than it could
      * build, which is what `soviets-deep-sector` established about scripted waves
      * on an AI seat.
@@ -617,7 +618,7 @@ const op: OperationDef = {
 
     /* -- the yards send what was on the ramp -------------------------------
      * The one thing the player is given, at minute nine, in the middle of the
-     * operation rather than at the end of it. `MUSTER` is 86.83 m from the
+     * operation rather than at the end of it. `MUSTER` is 88.84 m from the
      * player's yard with a 28 m clear radius against an 18 m ring, so the column
      * forms up behind the base and walks.
      *
@@ -656,7 +657,7 @@ const op: OperationDef = {
      * Minute ten, and it is the only wave aimed AT THE PLAYER rather than at the
      * works. `PUSH` is the contested patch `addStartOre` lays on the midpoint of
      * the two openings, which is the ground a player pushing at the works has to
-     * cross and then leave behind. It forms at `ROAD_B`, 62.77 m from the Ninth's
+     * cross and then leave behind. It forms at `ROAD_B`, 66.48 m from the Ninth's
      * gate on the far side from the works, so it is a second bearing rather than
      * a second helping of the first.
      */

@@ -43,8 +43,19 @@
  * The two openings, and they are NOT the yards:
  *
  *     start spots   (108, 380) and (404, 132)       386.16 m apart
- *     yards         player (110, 378) `conyard`
- *                   Reclamation (414, 148) `rclBreakerYard`
+ *     yards         player (114, 382) `conyard`
+ *                   Reclamation (402, 134) `rclFoundry`
+ *
+ * **THE RECLAMATION'S CONSTRUCTION YARD IS `rclFoundry`, NOT `rclBreakerYard`.**
+ * `Defs.ts` sets `conYardKey: 'rclFoundry'` for that army and the Breaker Yard's
+ * own blurb reads "Builds every Reclamation hull" — it is the WAR FACTORY, and
+ * it stands at (400, 158). This row named the war factory as the yard, and gave
+ * it the coordinate (414, 148) that the war factory itself had before `bb83ffb`
+ * rebuilt the procedural bases on the placement grid. Two defects on one line,
+ * and every "from the Reclamation yard" figure in this file was measured to
+ * that point. They are quoted to the FOUNDRY below, with the Breaker Yard's own
+ * figure beside each, because a reader coming from the old text will be looking
+ * for the second one.
  *
  * `seatedSlots(2, 7049, null)` draws **[0, 1]** — a DIAGONAL pair at 386.16 m,
  * the longest opening the two-army table offers, against
@@ -109,9 +120,10 @@
  * **THE OPERATION'S OWN COST TABLE USES A DIFFERENT SOURCE AND MUST.** These are
  * OPENING to OPENING, which is the only symmetric pair and the only fair way to
  * ask who owns which end. An engineer does not start at the opening: it comes
- * out of the barracks door at (80.0, 375.3), snapped to cell (78, 370) on the
- * WEST face of the base, and the base is an obstacle. That costs 55 m on house
- * one. `operations/allies/06-machine-time.ts` carries that table.
+ * out of the BARRACKS DOOR, and the base is an obstacle. That costs tens of
+ * metres on house one. `operations/allies/06-machine-time.ts` carries that
+ * table — **and every metre in it is measured from a barracks and a free
+ * engineer that have since moved**; see the banner over it.
  *
  * **THE TWO COLUMNS ARE NOT A RACE AND MUST NOT BE READ AS ONE.** They are
  * different move classes over different grids at different speeds — 3.4 m/s
@@ -188,12 +200,27 @@
  *     FIRES at `20 + 0.234` = **20.234 m** and ACQUIRES at
  *     `20 * COMBAT_TARGETING.acquireRangeMul + 0.234` = **21.834 m**:
  *
- *         house 4     W 17.46  N 15.68  COVERED    E 25.72  S 27.93  open
- *         house 5     W 17.46  N 15.68  COVERED    E 25.72  S 27.93  open
- *         the meter   E 12.31  S 14.21  COVERED    W 22.52  N 21.35  open
- *         houses 1, 2, 3 and 6                     nearest post 34.30 m or more
+ *         house 4     W 17.70  N 15.91  COVERED    E 25.95  S 28.16  open
+ *         house 5     W 17.70  N 15.91  COVERED    E 25.95  S 28.16  open
+ *         the meter   E 12.54  S 14.45  COVERED    W 22.75  N 21.59  open
+ *         house 6     E 22.95  N 26.24  open       W 34.58  S 33.07  open
+ *         houses 1, 2 and 3                        nearest stand 34.53 m or more
  *
- *     The meter's north stand at 21.35 m is outside the firing circle and inside
+ *     **EVERY FIGURE IN THAT TABLE IS A GUN-CENTRE TO STAND-CENTRE DISTANCE**,
+ *     which is the same quantity the 20.234 and 21.834 circles above are
+ *     thresholds on. It used to hold the SURFACE distance instead — each entry
+ *     was 0.234 m smaller, the engineer's own hull radius subtracted once — and
+ *     was compared against circles that had that radius ADDED, so the two sides
+ *     of every comparison disagreed by half a metre. No COVERED/open verdict
+ *     changes either way; the arithmetic is now self-consistent.
+ *
+ *     **HOUSE SIX HAS ITS OWN ROW NOW AND USED TO BE FILED UNDER "34.30 m OR
+ *     MORE".** `bb83ffb` moved the three `rclSpitpost` in the Reclamation's own
+ *     base from (406, 154) / (394, 146) / (382, 126) to (386, 158) / (386, 142)
+ *     / (386, 110), and the middle of those is 22.95 m from house six's east
+ *     stand. Still outside both circles, and by 1.1 m rather than by 12.
+ *
+ *     The meter's north stand at 21.59 m is outside the firing circle and inside
  *     acquisition, so a post tracks a man there and never pulls the trigger —
  *     the same disagreement `allies-forced-closure` records for its
  *     west-north-west stand, and worth knowing before somebody reads a turret
@@ -203,7 +230,9 @@
  * **AND HERE IS THE WALK.** Metres of the engine's own route spent inside a
  * seat-1 firing circle before the capture resolves, minimised and maximised over
  * the shortest routes to the goal cell `snapToReachable` returns, from the
- * barracks door (78, 370) and from the free engineer's spawn (98, 378):
+ * barracks door and from the free engineer's spawn. **BOTH OF THOSE STARTS
+ * HAVE MOVED AND THESE METRES HAVE NOT BEEN RE-MEASURED** — see the banner in
+ * `operations/allies/06-machine-time.ts`:
  *
  *     houses 1-3     0.0 m from either start
  *     house 4        0.0 m from the free engineer; 21.0 - 35.3 m from the door
@@ -212,7 +241,7 @@
  *     the meter      45.7 - 97.3 m from both          posts #1, #2 and #3
  *
  * **THE EXCLUSION CONTROL IS THE INSTRUMENT** (CLAUDE.md trap 18), not the
- * distance: re-run the fill with all **418** cells within 20.234 m of a seat-1
+ * distance: re-run the fill with all **434** cells within 20.234 m of a seat-1
  * gun impassable — the three line posts plus the three `rclSpitpost` that
  * `buildBaseFor` puts in the Reclamation's own base, because a control that
  * closes some guns and not others is measuring a third map — and compare the
@@ -275,11 +304,13 @@
  * `ScenarioBuilder.spawnUnit`, which this file uses and which does search. So
  * what this file owes the trigger table is GROUND rather than a point:
  *
- *     PLANT  (328, 150)   86.02 m from the Reclamation yard and 115.2 m of
+ *     PLANT  (328, 150)   75.71 m from the Foundry (72.44 from the Breaker
+ *                         Yard) and 115.2 m of
  *                         wheeled route to house three — 19.9 s at a Grinder's
  *                         5.8 m/s. Six rings authored on it (4 at 16 m, 2 at
  *                         10, 6 at 20, 2 at 11, 6 at 20, 3 at 12).
- *     CUT    (208, 204)   213.48 m from the Reclamation yard, 81.3 m of wheeled
+ *     CUT    (208, 204)   206.24 m from the Foundry (197.43 from the Breaker
+ *                         Yard), 81.3 m of wheeled
  *                         route to house three and 215.8 m to the hall — the
  *                         FLANK of the line rather than either end. Four rings
  *                         authored on it (3 at 12 and 3 at 18, twice).
@@ -311,8 +342,11 @@
  * `addStartOre` and nothing else. It lays one home field per opening and one
  * contested patch on the CENTROID of the two:
  *
- *     (150, 402) r30   home, 46.6 m from the player's yard
- *     (362, 110) r30   home, 64.4 m from the Reclamation's
+ *     (150, 402) r30   home, 41.2 m from the player's yard
+ *     (362, 110) r30   home, 46.7 m from the Foundry (61.3 from the Breaker
+ *                      Yard). `addStartOre` clamps rather than snaps, so the
+ *                      true centres are (150.06, 402.17) and (361.94, 109.83);
+ *                      the rounded pair above is what this table prints.
  *     (256, 256) r22   contested — and **15.62 m from house three**
  *
  * So the contested patch COVERS the middle of the tramway, and both economies
@@ -444,10 +478,10 @@ const CENTRE = MAP_SIZE * 0.5;
  * `startSpots` because the OPERATION has to name world points in static data;
  * `build` seats both bases from the real `startSpots` and warns if the two ever
  * stop describing one world. **It is not the Construction Yard** — that lands at
- * (110, 378) — and every distance in this header is quoted against the yard.
+ * (114, 382) — and every distance in this header is quoted against the yard.
  */
 const HOME: Point = { x: 108, z: 380 };
-/** The Reclamation start spot at the same seeds. Their yard lands at (414, 148). */
+/** The Reclamation start spot at the same seeds. `rclFoundry` lands at (402, 134). */
 const FOE: Point = { x: 404, z: 132 };
 
 /**
@@ -494,13 +528,13 @@ export const LINE_FOURTH: Point = FEEDERS[3];
 /**
  * The plant's load meter. RECLAMATION-owned `civOreMine`, 700 hp, and it pays
  * its holder 5 credits a second through `CIVILIAN_INCOME_SOURCES` — 300 a
- * minute, which `Civilians.ts` prices at 0.57 of a measured harvester. 55.17 m
+ * minute, which `Civilians.ts` prices at 0.57 of a measured harvester. 59.93 m
  * from the Reclamation yard, and covered on two of its four capture stands.
  */
 export const METER: Point = { x: 376, z: 188 };
 
 /**
- * Where the Reclamation's tramway columns form. 86.02 m off their own yard and
+ * Where the Reclamation's tramway columns form. 75.71 m off their own Foundry and
  * 115.2 m of wheeled route to house three — 19.9 s at a Grinder's 5.8 m/s.
  */
 export const PLANT: Point = { x: 328, z: 150 };
@@ -560,7 +594,7 @@ export const LINE_FAR: Area = { x: FEEDERS[4].x, z: FEEDERS[4].z, r: 52 };
  *
  * **A FOURTH POST OVER HOUSE SIX WAS CUT, AND IT IS SETTLED NOW RATHER THAN
  * ARGUED.** The rejection used to be a distance claim — house six is 328.0 m out
- * and 58.31 m from the Reclamation yard, so a player who wants it is already
+ * and 55.32 m from the Reclamation's Foundry, so a player who wants it is already
  * standing inside the brain's own army, and the nearest post to any of its four
  * STANDS is 35.58 m — which is the stand-table mistake this file has now been
  * corrected for twice. The exclusion control answers it properly: house six's

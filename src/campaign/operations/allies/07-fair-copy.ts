@@ -582,7 +582,9 @@ const op: OperationDef = {
      * `cliffs` 0.35 is the mildest combination in `MAP_PRESETS`, which is also
      * what a nineteen-minute walk with unarmed men wants: the layout's route
      * table is 246.0 / 289.5 / 221.0 m against straight-line 233.2 / 266.8 /
-     * 211.2, so the ground costs between 4.6% and 8.5% and never traps.
+     * 214.0, so the ground costs between 3.3% and 8.5% and never traps. (The
+     * third straight line is column-to-block and moved when the arc block did;
+     * the route beside it was not re-measured. See the layout header.)
      */
     preset: 'temperate',
     biome: 'temperate',

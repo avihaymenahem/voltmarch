@@ -13,12 +13,16 @@
  * ============================================================================
  * There are three places to meet her and each one is only there for a while:
  *
- *     the first change point     until minute 3     234 m out, 3 posts,
- *                                                   165 m from the Pact yard
- *     the second change point    minute 3 to 8      283 m out, 4 posts,
- *                                                   110 m from the Pact yard
- *     the benchmark              minute 8 to 15     336 m out, 5 posts,
- *                                                    82 m from the Pact yard
+ *     the first change point     until minute 3     230 m out, 3 posts,
+ *                                                   163 m from the Pact yard
+ *     the second change point    minute 3 to 8      279 m out, 4 posts,
+ *                                                   107 m from the Pact yard
+ *     the benchmark              minute 8 to 15     331 m out, 5 posts,
+ *                                                    78 m from the Pact yard
+ *
+ * (Both columns are measured to the CONSTRUCTION YARDS, which land at
+ * (114, 382) and (402, 134). They used to be measured to the START SPOTS
+ * (108, 380) and (404, 132) under the word "yard"; see the layout header.)
  *
  * Three units on the disc she is working, inside the window she is working it,
  * and the operation is over. Miss all three and the line closes at minute
@@ -26,9 +30,9 @@
  *
  * **SO THE DECISION IS MADE IN THE FIRST THIRTY SECONDS AND CANNOT BE
  * REVISITED.** The opening garrison is the only army that can reach the first
- * change point inside three minutes — 273 m of route at a Warden's 6.6 m/s is
- * 41 s of driving before anything is shot at — and sending it means sending all
- * of it, 234 m from a base with nothing left standing over it. Every later
+ * change point inside three minutes — 245 m of route at a Warden's 6.6 m/s is
+ * 37 s of driving before anything is shot at — and sending it means sending all
+ * of it, 230 m from a base with nothing left standing over it. Every later
  * window is reachable by an army the player BUILT, and every later window is
  * further into Pact ground. That is the trade, it is priced in metres and
  * seconds below, and there is no third option because the operation offers no
@@ -61,8 +65,9 @@
  *   - **Late is not merely slower, it is a different fight.** S3's fast route
  *     is the dangerous one — its tap sits 129 m from the Allied base — so
  *     waiting is SAFER there. Here it is the exact reverse: the benchmark is
- *     82.1 m off the Pact's Construction Yard with their nearest structure
- *     48.4 m away, so every five minutes the meeting point moves closer to
+ *     78.1 m off the Pact's Construction Yard with their nearest base
+ *     structure 45.1 m away, so every five minutes the meeting point moves
+ *     closer to
  *     everything they have built since the match began.
  *
  * ============================================================================
@@ -75,13 +80,19 @@
  * the hull in question and nothing else: no fighting, no formation, no target
  * acquisition.
  *
- *     first change point     273 m route (234 m straight)    41.4 s at 6.6 m/s
- *     second change point    320 m route (283 m straight)    48.5 s
- *     the benchmark          382 m route (336 m straight)    57.9 s
- *     the tide gauge         119 m route (112 m straight)    18.0 s
+ *     first change point     245 m route (230 m straight)    37.1 s at 6.6 m/s
+ *     second change point    293 m route (279 m straight)    44.3 s
+ *     the benchmark          354 m route (331 m straight)    53.6 s
+ *     the tide gauge         107 m route (106 m straight)    16.2 s
+ *
+ * Routes are from the nearest open cell to the player's Construction Yard,
+ * 8.0 m off its centre; straight lines are yard centre to station centre. Both
+ * columns used to be anchored on the START SPOT rather than on the yard, and
+ * the benchmark row additionally quoted a station position the faced-footprint
+ * snap has since moved 2.83 m. See the layout header for both.
  *
  * A G.I. walks at 3.2 m/s, so an opening force that keeps its infantry with it
- * reaches the first change point in **85 s** rather than 41, and that is the
+ * reaches the first change point in **77 s** rather than 37, and that is the
  * first real decision inside the first one: the armour can be there in half the
  * time and arrives without a screen. The opening garrison is measured, not
  * assumed — **4 Warden Tanks, 5 G.I.s, 1 engineer and 2 harvesters**, counted

@@ -383,10 +383,12 @@ const ROAD = { x: 336, z: 135 };
  * causes; this is the guard that stops the symptom being instant.
  *
  * Twenty seconds is unmistakably past the build and unmistakably short of
- * anything happening. Measured on the built world, the mast is **289.0 m** from
- * the nearest player unit, and the fastest thing on the player's seat is a
- * 9.2 m/s Sandskiff — **184 m of straight line in twenty seconds** — against
- * 700 hp that has to be taken to zero, or to 350 and then walked into.
+ * anything happening. Measured on the built world, the mast is **263.7 m** from
+ * the nearest player unit (an `mrdSolarch` of the opening escort at
+ * (144.1, 365.5); it read 289.0 m before `bb83ffb` moved the garrison anchor),
+ * and the fastest thing on the player's seat is a 9.2 m/s Sandskiff — **184 m
+ * of straight line in twenty seconds** — against 700 hp that has to be taken
+ * to zero, or to 350 and then walked into.
  * `soviets.01.first-tap` and `soviets.03.deep-sector` guard their own primaries
  * with the same constant for the same reason.
  */
@@ -576,7 +578,7 @@ const op: OperationDef = {
      * `store.alive` twice a tick — the arming pass and the real pass — until it
      * fires, and `state.fired` then retires it for the rest of the match.
      *
-     * **56 m IS BOUNDED BY THE NEAREST PLAYER UNIT AT t = 0, WHICH IS 247.5 m
+     * **56 m IS BOUNDED BY THE NEAREST PLAYER UNIT AT t = 0, WHICH IS 225.9 m
      * AWAY** — read off the built world rather than off the opening, because
      * `buildAlliedGarrison` parks the escort forward of the yard and it is the
      * escort that this counts. Move `CUT_ALONG` toward the player's opening and

@@ -112,7 +112,18 @@
  * Both halves measured on the built world — Dijkstra over the real
  * `FlowFieldCache.costGridFor(Hover)` under the engine's own expander rules,
  * started from the four `mrdSolarch` the layout actually spawns at
- * (116.2, 373.4), (116.4, 365.3), (117.2, 389.9) and (117.5, 382.5):
+ * (143.2, 373.4), (143.4, 365.3), (144.2, 389.9) and (144.5, 382.5):
+ *
+ * **THOSE FOUR COORDINATES MOVED 27.00 m ALONG +x AND THE ROUTE FIGURES BELOW
+ * HAVE NOT BEEN RE-MEASURED.** `bb83ffb` moved `buildAlliedGarrison`'s armour
+ * anchor from `toWorld(cx, cz, -2, -9, ...)` to `toWorld(cx, cz, -2, -36, ...)`.
+ * This map is the clean case for reading that: seat 0's `facingDeg` is exactly
+ * 90, so the base facing is exactly 270 and cardinalisation is a no-op, leaving
+ * the local `dz` change as the only variable — every z above matches to 0.1 m
+ * and every x is short by exactly 27.00. The formation's internal jitter is
+ * unchanged. Everything downstream of these four points is anchored 27 m nearer
+ * the enemy than it was, so re-take the routes together with the exposure
+ * metres rather than nudging either:
  *
  *   - **ATTACK-MOVE TO THE CUT.** Route 202.2..208.3 m, of which **45.7 m lies
  *     inside a post's 22.790 m envelope** and 41.7 m of that inside BOTH — the
@@ -166,7 +177,7 @@
  * ============================================================================
  * Three structures, 2 750 hp of `ArmorClass.Concrete`, read off the built world:
  *
- *     rclSorter    1 250 hp   290, 320    16.12 m from the cut
+ *     rclSorter    1 250 hp   288, 318    14.56 m from the cut
  *     rclFurnace     950 hp   276, 304    18.11 m from the cut
  *     rclHeap        550 hp   334, 346    64.62 m — out on the haul road
  *
@@ -256,7 +267,7 @@
  *
  * **THE SORTER IS THE ONE WORTH TAKING RATHER THAN LEVELLING**, and that is the
  * decision this operation hands the player rather than an instruction: it is a
- * REFINERY, it stands 16.12 m from the cut, and the contested ore patch is
+ * REFINERY, it stands 14.56 m from the cut, and the contested ore patch is
  * 38.73 m of edge away — so a captured sorter is a second unloading point on the
  * ground the player has to hold anyway. It arrives at or under half health,
  * because `Capture.resolve` writes `st.hp` on its FRIENDLY branch only: **at
@@ -309,16 +320,16 @@
  * THE TENANTS' ROW, AND WHY IT NEEDS NO `captureProof`
  * ============================================================================
  * Two `civApartments` on **seat 0** — 800 hp each, `power: 0`, 2x3 — at
- * (268, 354) and (292, 298), 32.56 and 30.00 m from the cut. They are the people
+ * (270, 352) and (290, 296), 30.27 and 30.53 m from the cut. They are the people
  * the concession displaces, they are the only thing on this map that 07 inherits
  * directly, and they are the player's own so that they can be LOST: a Gaia block
  * is allied to everybody and `Targeting.isValidTarget` refuses ALLIES, so a
  * neutral row is a secondary that cannot fail, which `pact.05.open-count` calls
  * decoration in its own words.
  *
- * **THE THREAT IS REAL AND IT IS PRICED.** The near block sits **19.68 m** off
+ * **THE THREAT IS REAL AND IT IS PRICED.** The near block sits **16.99 m** off
  * the straight line from the crew's forming-up road to the cut and the far one
- * **30.00 m**, against a Grinder's 26 m sight and 18 m reach. Three Grinders
+ * **30.53 m**, against a Grinder's 26 m sight and 18 m reach. Three Grinders
  * deliver 53.05 dps into Concrete and level 800 hp in **15.1 s**; four do it in
  * 11.3. The player's own wrench is 30 hp/s and therefore **loses to three
  * Grinders**, so the row is defended by meeting the column, not by mending under
@@ -441,7 +452,7 @@
  *
  * So the assault is not the operation and is not meant to be: it is the price of
  * admission, and the eight minutes after it are a hostile base 146.0 m from the
- * cut, four columns, a tenement row 19.68 m off their road and a field office
+ * cut, four columns, a tenement row 16.99 m off their road and a field office
  * 107.7 m the other way. **The modal run is a judgement and is labelled as one:
  * 13:00 to 15:30.**
  *
@@ -471,18 +482,18 @@
  * `layouts/pact-common-ground.ts` rather than restated — a number written in two
  * files is a number that will disagree the first time either is tuned.
  *
- *     home yard 110, 382    crew yard 402, 382    axis 296.000 (the edge pair)
+ *     home yard 114, 382    crew yard 402, 382    axis 296.000 (the edge pair)
  *     the cut 274, 322      the office 328, 416   the road 313, 400
- *     sorter 290, 320   furnace 276, 304   heap 334, 346
+ *     sorter 288, 318   furnace 276, 304   heap 334, 346
  *     picket 246, 326   and   250, 310
- *     row 268, 354   and   292, 298
+ *     row 270, 352   and   290, 296
  *
- *     home -> the cut   174.63 straight   195.2..206.0 foot   202.2..208.3 hover
+ *     home -> the cut   170.88 straight   195.2..206.0 foot   202.2..208.3 hover
  *     crew -> the cut   141.36            146.0        146.0
  *     road -> the cut    87.21             96.4         96.4
  *     the cut -> the heap 64.62            64.2         64.2
- *     the cut -> the office 106.17        107.7        107.7
- *     home -> the office 219.35           244.6        244.6
+ *     the cut -> the office 108.41        107.7        107.7
+ *     home -> the office 216.68           244.6        244.6
  *
  * Measured by flood-filling the REAL `FlowFieldCache.costGridFor` with the
  * engine's own expander rules — 8-connected, destination-cell weight,
@@ -505,7 +516,7 @@
  *
  * **RE-MEASURE IF EITHER SEED MOVES**, in this order: the picket against the row
  * (is the nearest post still past `20 * COMBAT_TARGETING.acquireRangeMul 1.08 +
- * hitRadius(2,3) 7.211` = 28.81 m — it is 35.61 m today, clear by 6.80); the ore
+ * hitRadius(2,3) 7.211` = 28.81 m — it is 35.38 m today, clear by 6.57); the ore
  * against the standing disc; the exclusion control on the approach, ON BOTH
  * LOCOMOTORS and from real unit starts; the engineer fork — is the Chapterhouse
  * door still on the exposed side of it, and is the opening Artificer still on

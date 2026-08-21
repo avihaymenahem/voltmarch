@@ -19,45 +19,68 @@
  *
  *     thing        key             owner    landed        hp    footprint
  *     office       civHospital     PLAYER   (326, 308)   1100     3x2
- *     transmitter  civApartments   Gaia     (448, 418)    800     2x3
+ *     transmitter  civApartments   Gaia     (450, 420)    800     2x3
  *     muster       barracks        Soviet   (168, 236)    800     2x2
  *     two guns     pillbox->sentryGun       (186, 222) and (182, 254), 480 each
  *
- * **ALL THREE LAND ON THEIR AUTHORED LITERALS AT RING ZERO.** They are written
- * here as the coordinates the built world reports rather than as nominal points
- * the search then walks off — `soviets-short-allocation` records why, and it is
- * the same trap: **`place` returning a point is not the same as a structure
- * standing on it**, because `spawnBuilding` snaps the result to the footprint
- * grid a second time. The ring search below is therefore a CHECK on this ground
- * rather than the mechanism that found it, and it would report if the terrain
- * under any of the three ever moved.
+ * **THE OFFICE AND THE MUSTER LAND ON THEIR AUTHORED LITERALS AT RING ZERO;
+ * THE TRANSMITTER DOES NOT.** They are written here as the coordinates the
+ * built world reports rather than as nominal points the search then walks off —
+ * `soviets-short-allocation` records why, and it is the same trap: **`place`
+ * returning a point is not the same as a structure standing on it**, because
+ * `spawnBuilding` snaps the result to the footprint grid a second time. The
+ * ring search below is therefore a CHECK on this ground rather than the
+ * mechanism that found it, and it would report if the terrain under any of the
+ * three ever moved.
+ *
+ * The transmitter is authored at (448, 418) and stands at **(450, 420)**,
+ * because `spawnBuilding` snaps on the FACED footprint: `civApartments` is 2x3
+ * raised at a yaw that quantises to 90, a 3-wide extent centres on a cell
+ * centre (x = 2 mod 4) and a 2-deep one on a cell boundary (z = 0 mod 4), so
+ * the point moves 2.83 m. Every distance to the transmitter below is measured
+ * from where it stands.
  *
  * The two openings, and they are NOT the Construction Yards:
  *
  *     start spots      (404, 380) facing -129.958   (108, 132) facing 50.042
  *                      386.16 m apart
- *     Construction     player (402, 378)            Soviet (110, 134)
- *     Yards            380.53 m apart
+ *     Construction     player (402, 382)            Soviet (114, 134)
+ *     Yards            380.06 m apart
  *
- * That gap is 2.83 m per seat, and it matters because every distance a briefing
- * quotes is a distance to a BUILDING. Each number below names the thing it
- * measures.
+ * That gap is 2.83 m at seat 0 and 6.32 m at seat 1 — the two seats take
+ * different cardinal base facings, so their yard offsets differ — and it
+ * matters because every distance a briefing quotes is a distance to a
+ * BUILDING. Each number below names the thing it measures.
  *
  * ============================================================================
- * THE OFFICE IS 103.32 m FROM THE PLAYER'S YARD AND THAT IS THE OPERATION
+ * THE OFFICE IS 106.08 m FROM THE PLAYER'S YARD AND THAT IS THE OPERATION
  * ============================================================================
  * Far enough that the base's own guns and its build space do not reach it, near
  * enough that the whole opening army can be there inside a minute.
  *
- *     office -> the player's Construction Yard    103.32 m   route  99.2 m
- *     office -> the Soviet Construction Yard      277.37 m   route 293.9 m
- *     office -> the nearest PLAYER structure       85.44 m   (a wall segment)
+ *     office -> the player's Construction Yard    106.08 m   route 110.51 m
+ *     office -> the Soviet Construction Yard      274.26 m   route 294.27 m
+ *     office -> the nearest PLAYER structure       66.84 m   (a wall segment)
  *     office -> the nearest SOVIET structure      153.79 m   (a muster gun)
  *
- * `route` is 8-connected Dijkstra over the real `Terrain.passGrid` for
- * `Locomotor.Track` with occupancy included, measured between the nearest free
- * cell to each centre — 8.0 m off the yard and 6.0 m off the office — because
- * both centres are under a footprint and no hull ever stands on either.
+ * `route` is 8-connected octile Dijkstra over the real `Terrain.passGrid` for
+ * `Locomotor.Track` with occupancy included (4198 of 16 384 cells refused),
+ * measured between the nearest free cell to each centre — 8.0 m off each yard
+ * and 6.0 m off the office — because both centres are under a footprint and no
+ * hull ever stands on either. The descent chain and the cheapest-predecessor
+ * chain agree on both routes.
+ *
+ * **THE PLAYER-STRUCTURE ROW MOVED 18.6 m AND THE PLAYER YARD MOVED 4.5 m, AND
+ * NEITHER IS A LAYOUT CHANGE.** `bb83ffb` rebuilt the procedural bases on the
+ * placement grid: the yard's local offset went from dz -2 to dz -4 and the base
+ * facing is now cardinalised, and the wall row went from local z -20 with nine
+ * segments to z -28 with ten. The old row put a wall at (398, 354), exactly the
+ * 85.44 m this table used to carry; the new one puts the nearest at (378, 350).
+ * The Soviet-gun row at 153.79 m is unchanged and is the control that says the
+ * instrument is the same one. The route to the player yard was 99.2 m and is
+ * not reproducible on ANY grid today — cost or metre minimising, occupancy in
+ * or out, from the new yard cell, the old yard cell or the start spot, all give
+ * 105.8 to 110.5 — so it was a number about occupancy the old base no longer has.
  *
  * **NOTHING THE PLAYER OWNS AT TICK ZERO MAKES THAT GROUND LEGAL TO BUILD ON,
  * AND THE OFFICE DOES.** `withinBuildRadius` gives an `IsBuilder` structure
@@ -66,17 +89,22 @@
  * CENTRE of the thing being placed. Taken over every other player structure on
  * the built world:
  *
- *     the Construction Yard   103.32 m away, projects 56 + 6.00 = 62.00
- *                             -> 41.32 m SHORT, and it is the best of them
- *     the nearest wall         85.44 m away, projects 20 + 2.00 = 22.00
- *                             -> 63.44 m short
+ *     the Construction Yard   106.08 m away, projects 56 + 6.00 = 62.00
+ *                             -> 44.08 m SHORT, and it is still the best of them
+ *     the nearest wall          66.84 m away, projects 20 + 2.00 = 22.00
+ *                             -> 44.84 m short
  *
  * **THE NEAREST STRUCTURE IS NOT THE ONE THAT COMES CLOSEST TO REACHING, AND
- * THIS BLOCK SAID IT WAS.** It quoted the wall's 63.44 m as "the best any of
- * them does", which is the smallest DISTANCE and the largest DEFICIT: the yard
- * is 18 m further away and projects 40 m more. Sort by `d - projection`, never
- * by `d`. The conclusion survives the correction — 41.32 m is still short — and
- * the number to quote is 41.32.
+ * THIS BLOCK SAID IT WAS.** It quoted the wall's deficit as "the best any of
+ * them does", which is the smallest DISTANCE and the largest DEFICIT. Sort by
+ * `d - projection`, never by `d`. The conclusion survives — 44.08 m is still
+ * short — and the number to quote is 44.08.
+ *
+ * **THE MARGIN BETWEEN THE TWO IS NOW 0.76 m RATHER THAN 22.12 m**, because
+ * the widened wall row walked a segment 18.6 m nearer the office while the
+ * yard moved 4.5 m further from it. The rule is unchanged and the ordering is
+ * unchanged; the illustration is a great deal less vivid than it was, and it
+ * would be honest to pick a different pair if this row is ever re-authored.
  *
  * The office projects 20 + 6.00 = **26.00 m**, and **102 of the 134 cells inside
  * that ring are ground `isBuildable` accepts (76.1%)**. 134, not the 137 this
@@ -92,8 +120,11 @@
  *
  * **WHAT IT DOES NOT BUY IS EXCLUSIVITY, AND THIS BLOCK CLAIMED IT DID.** It
  * read "and it goes up ONLY because the office is standing", which is false and
- * measured false: the yard's own radius reaches to **43.86 m** from the office
- * centre, and **one 100-credit Concrete Wall** founded out there projects 22 m,
+ * measured false: the yard's own radius reaches to within **44.08 m** of the
+ * office centre (106.08 less its 62.00 of projection — the 43.86 this line
+ * used to carry follows from neither the old distance nor the new one and is
+ * not reproducible), and **one 100-credit Concrete Wall** founded out there
+ * projects 22 m,
  * which lands inside the office's ring. One structure, two seconds of build
  * time, a tenth of the Pillbox's price. The office saves the player 100 credits
  * and one click; it is a CONVENIENCE with a facing, not the only key to that
@@ -149,25 +180,31 @@
  * ============================================================================
  * THE TRANSMITTER IS GAIA, IT PAYS NOTHING, AND BOTH ARE DELIBERATE
  * ============================================================================
- * `civApartments` at (448, 418), **60.96 m behind the player's Construction
- * Yard** and 164.27 m from the office, on the far side of the base from every
+ * `civApartments` authored at (448, 418) and standing at (450, 420),
+ * **61.22 m behind the player's Construction Yard** and 167.09 m from the
+ * office, on the far side of the base from every
  * approach. The operation's early-out is `structureCaptured` on it, so what this
  * file owes the trigger table is that taking it is always POSSIBLE and never
  * ACCIDENTAL:
  *
  *   - **Always possible.** Gaia is allied to everybody, so no Soviet column can
- *     level the player's way out of a bad match. **72 of the 78 cells** within
+ *     level the player's way out of a bad match. **70 of the 78 cells** within
  *     20 m of it are foot-passable — this said 75 of 81, which is the count on a
- *     both-axes-centred lattice; the block's own x lands on a cell boundary
- *     (448 = 112*4) so the real disc holds three fewer cells. Six are shut
- *     either way. The walk is 78.9 m of Foot route from the
- *     player's yard — 23.2 s at an engineer's 3.4 m/s — against 175.8 m from the
- *     office, which is 51.7 s and is the honest price of sending the man who is
- *     already forward.
+ *     both-axes-centred lattice; the block's own z lands on a cell boundary
+ *     (420 = 105*4) so the real disc holds three fewer cells. The DENOMINATOR
+ *     is 78 at the authored point and at the landed one alike, which is what
+ *     confirms the lattice reasoning; the numerator moved from 72 to 70 only
+ *     because the block did. Eight are shut with occupancy folded in, two
+ *     without it. The walk is 71.6 m of Foot route from the player's yard —
+ *     21.1 s at an engineer's 3.4 m/s — against 182.1 m from the office, which
+ *     is 53.6 s and is the honest price of sending the man who is already
+ *     forward. (Routes on the occupancy-inclusive Foot `passGrid`, endpoints
+ *     6.0 m off the transmitter, 8.0 m off the yard, 6.0 m off the office;
+ *     descent and cheapest-predecessor chains agree.)
  *   - **Never accidental.** Both routes to `structureCaptured` are explicit
  *     orders: `Capture.ts` rule 1 flips a neutral structure outright for one
  *     engineer, and `GarrisonService.enter` flips it for as long as a squad
- *     stands inside. Neither happens by walking past. It is 60.96 m BEHIND the
+ *     stands inside. Neither happens by walking past. It is 61.22 m BEHIND the
  *     yard, on ground no column ever crosses, so it is not a firing position
  *     anybody would take for its own sake either.
  *
@@ -180,8 +217,8 @@
  * ============================================================================
  * THE MUSTER, AND THE ONE BUILDING THE WHOLE FORK RESTS ON
  * ============================================================================
- * A Soviet `barracks` at (168, 236) — **117.34 m from their own Construction
- * Yard**, 273.72 m from the player's, 173.63 m from the office — with two
+ * A Soviet `barracks` at (168, 236) — **115.41 m from their own Construction
+ * Yard**, 275.81 m from the player's, 173.63 m from the office — with two
  * `pillbox` keys that `ScenarioBuilder.keyFor` turns into **Sentry Guns** on a
  * Soviet seat (480 hp, `pillboxMg` at 22 m, `power: 0`, so they do not fall
  * silent with the rest of the base). Both stand 22.80 m from the muster.
@@ -234,9 +271,9 @@
  * the guarantee this file owes is about GROUND, not about a point:
  *
  *     ROAD (212, 240)   44.18 m from the muster,  132.74 m from the office,
- *                       147.11 m from the Soviet Construction Yard,
- *                       234.83 m from the player's,
- *                       141.8 m of Track route to the office
+ *                       144.36 m from the Soviet Construction Yard,
+ *                       237.20 m from the player's,
+ *                       142.5 m of Track route to the office
  *
  * **Every 2 m sample within 30 m of it is passable to Foot AND to Track**, on
  * the built world with both bases, the muster and its two guns standing — so any
@@ -264,10 +301,18 @@
  * flank away from the lane and one contested patch on the centroid of the two,
  * which on this seeded pair is the map centre exactly:
  *
- *     (418.46, 334.71) r30   46.3 m from the player's yard,  96.2 m from the office
- *     ( 93.54, 177.29) r30   46.3 m from the Soviet yard,    94.8 m from the muster
+ *     (418.46, 334.71) r30   50.1 m from the player's yard,  96.2 m from the office
+ *     ( 93.54, 177.29) r30   47.9 m from the Soviet yard,    94.8 m from the muster
  *     (256.00, 256.00) r22   87.2 m from the office, 90.2 m from the muster,
- *                            190.3 m from each yard
+ *                            192.9 m from the player's yard and
+ *                            187.2 m from the Soviet one
+ *
+ * The two home fields are 46.31 m from their own START SPOTS — the number this
+ * table used to carry under the word "yard" — and the contested patch is
+ * 190.26 m from each spot. "From each yard" has stopped being a single number
+ * because the two seats take different cardinal base facings and therefore
+ * different yard offsets. The four office- and muster-anchored figures in the
+ * same block are unmoved, which is what isolates the drift to the yards.
  *
  * **THE CONTESTED PATCH IS 87.2 m FROM THE OFFICE, AND THAT IS THE POINT.**
  * Holding the office does not hold the ore and mining the ore does not defend
@@ -289,8 +334,8 @@
  * Two builds, identical except for `setCampaignRoster`:
  *
  *     seat            with the roster                cleared (the control)
- *     player          12 units, 24 structures        14 units, 26 structures
- *     Soviets         13 units, 27 structures        16 units, 31 structures
+ *     player          12 units, 25 structures        14 units, 27 structures
+ *     Soviets         13 units, 28 structures        16 units, 32 structures
  *
  *     the player loses   2 Sabre IFVs, a Proving Ground and a Refractor Tower
  *     the Soviets lose   1 Sledge Tank, 2 Attack Dogs, a Proving Ground
@@ -299,15 +344,15 @@
  * With the roster in force the openings are:
  *
  *     player     5 G.I., 4 Warden Tanks, 1 engineer, 2 harvesters
- *                23 structures of base — yard, refinery, war factory, barracks,
- *                radar, 4 power plants, 2 silos, 3 Pillboxes, 9 wall segments —
+ *                24 structures of base — yard, refinery, war factory, barracks,
+ *                radar, 4 power plants, 2 silos, 3 Pillboxes, 10 wall segments —
  *                plus the office
  *     Soviets    6 Conscripts, 5 Anvil Tanks, 2 harvesters
- *                24 structures of base — yard, refinery, war factory, barracks,
- *                radar, 6 power plants, 2 silos, 2 Flame Towers, 9 wall
+ *                25 structures of base — yard, refinery, war factory, barracks,
+ *                radar, 6 power plants, 2 silos, 2 Flame Towers, 10 wall
  *                segments — plus the muster and its two guns
  *
- * 23 against 24. The asymmetry this operation ships is the ground and the
+ * 24 against 25. The asymmetry this operation ships is the ground and the
  * schedule, not the size of the opening. Power on the same build: the player at
  * 400 produced against 170 consumed, the Soviets at 600 against 230.
  *
@@ -385,29 +430,30 @@ const CENTRE = MAP_SIZE * 0.5;
  * separation. This is a literal rather than a call to `startSpots` because the
  * OPERATION has to name world points in static data; `build` seats both bases
  * from the real `startSpots` and warns if the two ever stop describing one
- * world. **It is not the Construction Yard** — that lands at (402, 378) — and
+ * world. **It is not the Construction Yard** — that lands at (402, 382) — and
  * every distance in the header is quoted against the yard, not against this.
  */
 const HOME: Point = { x: 404, z: 380 };
-/** The Soviet start spot at the same seeds. Their yard lands at (110, 134). */
+/** The Soviet start spot at the same seeds. Their yard lands at (114, 134). */
 const FOE: Point = { x: 108, z: 132 };
 
 /**
  * The Works reduction office. PLAYER-OWNED, 1100 hp, and the primary objective.
- * Lands on this literal at ring zero: 103.32 m from the player's Construction
- * Yard and 277.37 m from the Soviet one.
+ * Lands on this literal at ring zero: 106.08 m from the player's Construction
+ * Yard and 274.26 m from the Soviet one.
  */
 export const OFFICE: Point = { x: 326, z: 308 };
 
 /**
- * The transmitter block. Gaia, 800 hp, 60.96 m behind the player's yard, and the
+ * The transmitter block. Gaia, 800 hp, standing at (450, 420) — 2.83 m off
+ * this literal, see the header — 61.22 m behind the player's yard, and the
  * operation's authored early-out. See the header for why it is neutral, why it
  * pays nothing, and why capturing it cannot happen by accident.
  */
 export const MAST: Point = { x: 448, z: 418 };
 
 /**
- * The Soviet forward muster: a real `barracks` on their seat, 117.34 m from
+ * The Soviet forward muster: a real `barracks` on their seat, 115.41 m from
  * their yard. Both late columns are gated on it still being THEIRS — the deed,
  * not the corpse; see the TAGS block above.
  */
@@ -438,7 +484,7 @@ export const MAST_AREA: Area = { x: MAST.x, z: MAST.z, r: 34 };
  * enough from `ROAD` that no spawn ring can land on their footprints: measured
  * 31.62 m and 33.11 m from it against a 20 m ring. Two rather than three,
  * because the raid is the operation's fork and a third gun makes it a wall
- * rather than a fight — the price of going is already 284.3 m of Track route
+ * rather than a fight — the price of going is already 300.3 m of Track route
  * each way plus whatever the office takes while its army is away.
  */
 type Offset = readonly [dx: number, dz: number];
@@ -496,7 +542,7 @@ export default layout({
      * because the trigger table needs world points as static data; `build` seats
      * the bases from the real `startSpots`. A generator change that slid an
      * opening would move the BASES and leave the office, the transmitter and the
-     * muster exactly where they are — and the transmitter, 60.96 m behind the
+     * muster exactly where they are — and the transmitter, 61.22 m behind the
      * yard, is the one with the least room to absorb it. Four metres is one cell.
      */
     if (Math.abs(home.x - HOME.x) > 4 || Math.abs(home.z - HOME.z) > 4
