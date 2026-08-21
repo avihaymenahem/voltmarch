@@ -1608,7 +1608,7 @@ accounting. Do not touch the pitch.**
 ### P1-6 — CLOSED: clearcoat is masked per procedural atlas class
 
 The four faction coats remain the authored top-level finish, but they no longer cover every texel.
-`greeble-gen.ts#applyArchitectureSurfaceClasses` writes a normalized coat factor into the unused
+`greeble-gen.ts#applyMaterialSurfaceClasses` writes a normalized coat factor into the unused
 alpha channel of the existing ORM atlas: painted panels keep the faction coat, while concrete,
 bare metal, treads, vents, grilles and emissive machinery remove it. `BuildingFactory.ts` consumes
 that channel inside `PhysicalMaterial.clearcoat`; `StructureNodeMaterial.ts` consumes the same byte
@@ -1620,17 +1620,19 @@ split and no draw call. Pads remain fully matte by class rather than by accident
 `ArtDirection.surfaces.buildingPanel`, `buildingConcrete`, `vehicleGlass` and `vehicleTread` now
 drive the procedural architecture atlas. Painted walls and concrete pads are constrained to their
 declared roughness bands, and the class clearcoat values author the ORM-alpha mask described above.
-This closes the building-material request and overturns the old "no readers" claim. The wider
-table is not declared globally complete: edge wear, grime and several non-architecture archetypes
-still have their older dedicated implementations, so those rows remain specifications rather than
-universal runtime controls.
+This closes the building-material request and overturns the old "no readers" claim. The 2026-08-21
+follow-up also gives `vehicleArmor` a hull reader, confines `edgeWear` to the atlas patch sampled by
+real chamfer geometry, and applies architecture grime as three broad downward
+albedo/roughness/AO bands. It never modifies height or normals and never puts grime on live
+vehicles, preserving the no-sandpaper and clean-unit laws. The wider table is still not declared
+globally complete: several non-architecture archetypes retain dedicated implementations.
 
 ### P0-2 — how the 0.47 shadow/lit ratio splits between the multiplier and the hemisphere
 
 **How the 0.47 splits, which is what makes the pairing plannable.** Removing the leak alone takes
 the shadow/lit ratio from ~0.47 to ~0.40, against the bible's 0.33. So `shadowIntensity` owns
 roughly a third of the excess and `LIGHTING.hemiSkyIntensity` (0.60) owns the rest; a trim toward
-~0.48 alongside `shadowIntensity: 1.0` is the balanced first thing to measure. **The bracket on
+~0.48 alongside `shadowIntensity: 1.0` was the balanced first thing to measure. **The bracket on
 the low side is already measured and is not far away:** cutting `hemiSkyIntensity` to 0.26 put
 shadowed grass at 0.030 / 0.069 / 0.162 of lit, against §13 #7's required 0.20-0.26 / 0.29-0.35 /
 0.46-0.56 — shadows that dark are not contrasty, they are holes. That capture is why the note at
@@ -1638,15 +1640,36 @@ shadowed grass at 0.030 / 0.069 / 0.162 of lit, against §13 #7's required 0.20-
 measurement is no longer true. Any paired change lands between those two bounds, and scorecard
 #9's emerald window has to be re-read in the same pass.
 
-### P0-4 follow-up — one pad atlas and one pad material per faction
+**Closed 2026-08-21.** The paired production values are `shadowIntensity: 1.0` and hemisphere fill
+`0.52`. The first 0.48 capture made the combat fixture's pixels below luma 0.08 rise from 7.3% to
+13.2%, so the fill was eased upward without restoring any blocked key light. On the reviewed 13-shot
+2560x1440 set, median luminance spans 0.151 (intentional dusk) to 0.408, p1 spans 0.013-0.039, all
+thirteen green-leak checks remain under the 0.02 hard ceiling, and the recalibrated regression grade
+is 99.4%. The one remaining failure is dusk's pre-existing exact saturation-curve check, not a
+permission to weaken shadows.
 
-**Every structure of a faction shares one pad, and only its SIZE varies.**
-`BuildingFactory.ts:1843,1860` key the pad atlas and material as `` `${list.faction}.pad` `` — one
-256 px atlas and one material across all 22+ structures of an army, every slab sampling the same
-`paintSmall` tile. That is cheap and deliberate (one material, one draw class), and it is why
-aprons still read as repeated after the albedo fix took the Allied pad from V 0.19 to V 0.66.
-Per-structure tile variation is the follow-up, scoped as separate from the colour fix on purpose:
-the colour was the half that could be measured against the ground beside it.
+### P0-4 follow-up — varied pads, still one atlas and one material per faction
+
+**Closed 2026-08-21.** `BuildingFactory.padSurfaceSlot` hashes the stable structure content key and
+selects one of the three authored slab plans for foundation paint. Stripe, emissive, insignia and
+other identity slots are never remapped. Every faction still owns exactly one 256 px pad atlas, one
+material and one draw class; the variation is only a different UV rectangle inside already-merged
+geometry, so it adds no texture, material, batch or draw call.
+
+### Procedural wreck decision — SHIPPED, not abandoned
+
+The formerly unreachable `src/art/Wrecks.ts` is now the runtime death-art source. The integration
+registers five factions x five vehicle classes plus five factions x three building-rubble sizes:
+40 deterministic geometries, with stable Wreck-kind-only ids in `src/core/wrecks.ts`. Dead vehicles
+select a hulk from their authored radius. Dead structures leave low, non-blocking faction rubble
+that burns briefly and then persists until salvaged or covered by a replacement foundation.
+Meridian ruins retain shattered aperture/journal forms; Reclamation ruins retain welded rails,
+coil and hazard plate; Allied and Soviet palettes keep their existing silhouette languages.
+
+The whole set is prepared at boot but `RenderBridge` creates batches lazily, so an untouched match
+pays zero wreck draw calls. Wrecks now share the prop material path, which finally consumes their
+authored emissive ember and gloss attributes; `aSway` remains zero. This closes Visual DNA's
+persistent-rubble requirement without adding downloaded models or a second material program.
 
 ### P3-14 — alpha-tested leaf cards were costed and refused on plumbing, not on look
 

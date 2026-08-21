@@ -31,27 +31,19 @@
  * comes from `FALLBACK_PROPS` so a crate registers as a Crate and a hulk as a
  * Wreck, which is what the bridge keys on first.
  *
- * Wrecks are ALSO registered at `defId = -1`, because `sim/Damage.ts#spawnWreck`
- * allocates the hulk a dead vehicle leaves behind with no def at all. Without
- * that second registration, every kill in the `battle` shot would leave a
- * hazard box on the field.
+ * Wreck ids live in `core/wrecks.ts`: five hull classes and three ruin sizes,
+ * each resolved by faction. `defId = -1` remains only as a compatibility
+ * fallback for old saves and authored scenarios that predate those ids.
  *
  * COST
  * ----
- * One `MeshStandardMaterial`, seven library geometries and five wreck variants.
- * The bridge still allocates batches lazily, so only content actually present
- * in the scenario costs a draw call. The ordinary props come from
- * `PropLibrary`, so a scenario boulder is the same object as a scattered
- * boulder and the frame reads as one world rather than two. Killed vehicles
- * resolve through their faction registration and therefore keep the visual
- * language of the army that produced them.
- *
- * The material is NOT `createPropMaterial()`. That one carries the wind shader,
- * whose `aSway` attribute is authored per-vertex for a canopy standing still on
- * the ground; an InstancedMesh of them is fine, but the entity population is
- * tens of objects, not thousands, and paying for a second shader program and a
- * per-frame uniform to make a boulder that cannot sway "sway" is not a trade
- * worth making. Flat vertex colours, one program, shared with nothing.
+ * Forty deterministic wreck geometries are prepared at boot: five factions by
+ * five hull classes plus five factions by three ruin sizes. Registration is
+ * cheap: the bridge allocates a batch only when that exact corpse appears, so
+ * an untouched map pays zero wreck draw calls. The set uses the same prop
+ * material program as scenery; authored `aGloss` and `aEmit` now survive the
+ * integration seam, while wreck vertices keep `aSway = 0`. Entity trees share
+ * the shader and therefore sway exactly like their scattered twins.
  * ============================================================================
  */
 
@@ -59,13 +51,16 @@ import * as THREE from 'three';
 import { nodePath } from '../render/gpu-path';
 
 import { defineSystem } from '../core/loop';
-import { EntityKind, Faction, Phase } from '../core/types';
+import { EntityKind, Faction, Phase, RenderPhase, type RenderContext } from '../core/types';
+import {
+  BUILDING_RUBBLE_DEF, RUBBLE_SIZES, VEHICLE_WRECK_DEF, WRECK_CLASSES,
+} from '../core/wrecks';
 import { ctx } from '../game/context';
 import { FALLBACK_PROPS, PROP_DEF_ID } from '../game/Scenarios';
-import { applyShroudTint } from '../render/FogOfWar';
 import { FACTION_ANY, registerKindMesh, type KindMesh } from '../render/RenderBridge';
-import { PropLibrary, propPalette } from './PropLibrary';
-import { buildVehicleWreck, type WreckFaction } from '../art/Wrecks';
+import type { PropMaterialSetLike } from '../render/gpu-path';
+import { createPropMaterial, PropLibrary, propPalette } from './PropLibrary';
+import { buildWreckSet, type WreckFaction, type WreckSet } from '../art/Wrecks';
 import { isBiomeName, type BiomeName } from './Biomes';
 import { getTerrain } from './Terrain';
 
@@ -100,10 +95,9 @@ function activeBiome(): BiomeName {
  * MODULE
  * ========================================================================== */
 
-let material: THREE.Material | null = null;
+let materials: PropMaterialSetLike | null = null;
 let library: PropLibrary | null = null;
-let ownedGeometry: THREE.BufferGeometry | null = null;
-let ownedFactionWrecks: THREE.BufferGeometry[] = [];
+let wreckSet: WreckSet | null = null;
 
 export default defineSystem({
   id: 'art.entityProps',
@@ -113,6 +107,7 @@ export default defineSystem({
   // braces rather than load-bearing.
   phase: Phase.Command,
   order: 45,
+  renderPhase: RenderPhase.Bridge,
 
   init(): void {
     const { debug } = ctx();
@@ -126,30 +121,13 @@ export default defineSystem({
 
     // One parameter object, two constructors — see the same note in
     // `ore.system.ts`.
-    const propParams: THREE.MeshStandardMaterialParameters = {
-      color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.82,
-      metalness: 0.0,
-    };
     const np = nodePath();
-    if (np !== null) {
-      material = np.createShroudTintedStandard(propParams);
-      material.name = 'EntityPropMaterial';
-    } else {
-      const glsl = new THREE.MeshStandardMaterial(propParams);
-      glsl.name = 'EntityPropMaterial';
-      // Props and wrecks are `isStaticKind`, i.e. drawn from MEMORY inside
-      // explored territory — the same category as buildings. Without the
-      // self-tint a remembered wreck would sit at full daylight in the fog.
-      glsl.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-      glsl.customProgramCacheKey = () => 'vm.entityprop.shroud.v1';
-      material = glsl;
-    }
+    materials = np !== null ? np.createPropMaterials() : createPropMaterial();
+    materials.material.name = 'EntityPropMaterial';
 
     // Neutral remains the def-id fallback for scenery-authored wrecks. Vehicle
     // deaths bind more specifically by EntityStore faction below.
-    ownedGeometry = buildVehicleWreck(palette, 'neutral', 'medium');
+    wreckSet = buildWreckSet(palette);
 
     let registered = 0;
     const missing: string[] = [];
@@ -162,9 +140,10 @@ export default defineSystem({
       if (fb === undefined) return;
       const mesh: KindMesh = {
         geometry,
-        material: material as THREE.Material,
+        material: materials!.material,
         castShadow: true,
         receiveShadow: true,
+        customDepthMaterial: materials!.depthMaterial ?? undefined,
       };
       registerKindMesh(fb.kind, faction, mesh, defId);
       registered++;
@@ -177,9 +156,20 @@ export default defineSystem({
       [Faction.Reclaim, 'reclaim'],
     ];
     for (const [faction, artFaction] of wreckFactions) {
-      const geo = buildVehicleWreck(palette, artFaction, 'medium');
-      ownedFactionWrecks.push(geo);
-      register('wreck', geo, -1, faction);
+      for (const cls of WRECK_CLASSES) {
+        register('wreck', wreckSet.hulk(artFaction, cls), VEHICLE_WRECK_DEF[cls], faction);
+      }
+      for (const size of RUBBLE_SIZES) {
+        register('wreck', wreckSet.ruin(artFaction, size), BUILDING_RUBBLE_DEF[size], faction);
+      }
+    }
+    // Unknown/neutral owners still get the right size, and scenario-authored
+    // legacy wrecks keep their medium fallback.
+    for (const cls of WRECK_CLASSES) {
+      register('wreck', wreckSet.hulk('neutral', cls), VEHICLE_WRECK_DEF[cls]);
+    }
+    for (const size of RUBBLE_SIZES) {
+      register('wreck', wreckSet.ruin('neutral', size), BUILDING_RUBBLE_DEF[size]);
     }
 
     for (const key of Object.keys(FALLBACK_PROPS)) {
@@ -187,10 +177,10 @@ export default defineSystem({
       if (defId === undefined) continue;
 
       if (key === 'wreck') {
-        register(key, ownedGeometry, defId);
-        // AND at -1: `sim/Damage.ts#spawnWreck` allocates with no def, so every
-        // battlefield kill would otherwise leave a hazard box behind.
-        register(key, ownedGeometry, -1);
+        const neutral = wreckSet.hulk('neutral', 'medium');
+        register(key, neutral, defId);
+        // AND at -1 for pre-classification saves and legacy authored content.
+        register(key, neutral, -1);
         continue;
       }
 
@@ -206,7 +196,8 @@ export default defineSystem({
     debug.counters.entityPropModels = registered;
     console.info(
       `%c[props]%c ${registered} entity-prop registration(s) on the ${biome} palette ` +
-      `(${library.count} library archetypes, ${library.totalTriangles} tris)`,
+      `(${library.count} library archetypes, ${library.totalTriangles} prop tris, ` +
+      `${wreckSet.triangles} wreck tris)`,
       'color:#9c7', 'color:inherit',
     );
     for (const m of missing) {
@@ -214,16 +205,20 @@ export default defineSystem({
     }
   },
 
+  frame(r: RenderContext): void {
+    // Wrecks have aSway=0, but entity trees share this material and retain the
+    // same wind/emissive/gloss language as their scattered twins.
+    materials?.setTime(r.time);
+  },
+
   dispose(): void {
     // The bridge's own `clearKindMeshes()` drops the registrations; these are
     // the GPU objects nobody else holds a reference to.
-    ownedGeometry?.dispose();
-    ownedGeometry = null;
-    for (const g of ownedFactionWrecks) g.dispose();
-    ownedFactionWrecks = [];
+    wreckSet?.dispose();
+    wreckSet = null;
     library?.dispose();
     library = null;
-    material?.dispose();
-    material = null;
+    materials?.dispose();
+    materials = null;
   },
 });

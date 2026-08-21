@@ -3400,6 +3400,23 @@ export class ProductionService implements QueueHooks {
     const pz = (cz + fh * 0.5) * CELL;
     const py = this.world.terrain.heightAt(px, pz);
 
+    // Placement deliberately treats wrecks and crates as crushable scenery.
+    // Retire their real entities at the commit point too, or a persistent
+    // building ruin remains visibly threaded through the replacement's pad.
+    for (const kind of [EntityKind.Wreck, EntityKind.Crate] as const) {
+      const list = st.byKind[kind];
+      const n = st.byKindCount[kind];
+      const minX = cx * CELL, maxX = (cx + fw) * CELL;
+      const minZ = cz * CELL, maxZ = (cz + fh) * CELL;
+      for (let a = 0; a < n; a++) {
+        const j = list[a];
+        if ((st.flags[j] & EntityFlag.PendingDestroy) !== 0) continue;
+        if (st.posX[j] < minX || st.posX[j] > maxX) continue;
+        if (st.posZ[j] < minZ || st.posZ[j] > maxZ) continue;
+        st.markDead(st.handleOf(j));
+      }
+    }
+
     const id = st.alloc(EntityKind.Building, entry.defId, p.id, p.faction, px, py, pz, yaw);
     if (id === NONE) return NONE;
     const i = st.index(id);

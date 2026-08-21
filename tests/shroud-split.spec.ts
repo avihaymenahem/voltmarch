@@ -98,7 +98,6 @@ describe('everything that draws above the ground tints itself', () => {
     ['src/art/UnitFactory.ts', 'units'],
     ['src/art/BuildingFactory.ts', 'structures'],
     ['src/world/PropLibrary.ts', 'scatter props'],
-    ['src/world/entity-props.system.ts', 'entity props'],
     ['src/render/RenderBridge.ts', 'the placeholder box'],
   ];
 
@@ -107,6 +106,18 @@ describe('everything that draws above the ground tints itself', () => {
       expect(code(read(file))).toContain('applyShroudTint(shader)');
     });
   }
+
+  it('entity props use the same shroud-aware material as scatter props', () => {
+    // The entity integration deliberately stopped cloning a smaller material:
+    // that clone dropped aEmit/aGloss and drifted from the node path. Pin the
+    // shared route and the implementation it reaches instead of demanding a
+    // duplicate inline shader hook in the caller.
+    const entities = code(read('src/world/entity-props.system.ts'));
+    const props = code(read('src/world/PropLibrary.ts'));
+    expect(entities).toContain('createPropMaterial()');
+    expect(entities).toContain('np.createPropMaterials()');
+    expect(props).toContain('applyShroudTint(shader)');
+  });
 
   it('water carries the same formula, by its own route', () => {
     // Water cannot use `applyShroudTint`: its surface sits at WATER_LEVEL in an

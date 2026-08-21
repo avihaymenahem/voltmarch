@@ -303,9 +303,6 @@ with no number is untracked, and that is itself the bug.
 
 Decisions, not work. Nobody should sweep them without an answer.
 
-- **`src/art/Wrecks.ts`** — 743 lines, 13 exports, completely unreachable. Decide whether wrecks are a
-  feature that was never wired or a direction that was abandoned; the file is the only record either
-  way.
 - **`docs/surface-refs/ours-*.png`** — 4 files, 4.6 MB, tracked and unreferenced. Reference captures
   of our own output. Cite them from the look bible or delete them.
 - **The selection-card portrait API** — `kindMeshFor`, `kindMeshVersion`, `HUD_PORTRAIT`.

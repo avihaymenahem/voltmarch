@@ -1641,15 +1641,16 @@ export function speckleRatio(s: Surface): number {
  * roughness / metalness readers, so it carries a normalized coat mask at zero
  * extra texture or draw-call cost.
  */
-function applyArchitectureSurfaceClasses(s: Surface, spec: GreebleSpec): void {
-  if (spec.surfaceClass === 'hull') return;
-
-  const panel = DEFAULT_ART.surfaces.buildingPanel;
+function applyMaterialSurfaceClasses(s: Surface, spec: GreebleSpec): void {
+  const panel = spec.surfaceClass === 'hull'
+    ? DEFAULT_ART.surfaces.vehicleArmor
+    : DEFAULT_ART.surfaces.buildingPanel;
   const concrete = DEFAULT_ART.surfaces.buildingConcrete;
   const glass = DEFAULT_ART.surfaces.vehicleGlass;
   const tread = DEFAULT_ART.surfaces.vehicleTread;
   const panelCoat = Math.max(panel.clearcoat, 1e-4);
   const mechanical = new Set<SlotName>(['bareMetal', 'tread', 'vent', 'grille', 'emissive']);
+  const paint = new Set<SlotName>(PAINT_SLOTS);
 
   for (const slot of SLOT_NAMES) {
     const r = tileRect(slot, s.size);
@@ -1666,6 +1667,11 @@ function applyArchitectureSurfaceClasses(s: Surface, spec: GreebleSpec): void {
       ? tread
       : look;
     const coatScale = clamp01(coatLook.clearcoat / panelCoat);
+    const bevelOff = Math.round(r.w * UNIT_GREEBLE.tileInsetFraction);
+    const bevelSize = Math.round(r.w * UNIT_GREEBLE.bevelPatchFraction);
+    // Phase changes per atlas, never per boot. Three broad runs are wider than
+    // the 16-texel minimum feature budget even on a Medium-tier 256 atlas.
+    const grimePhase = ((spec.seed ^ (SLOT_NAMES.indexOf(slot) * 0x9e3779b1)) >>> 0) / 0xffff_ffff;
 
     for (let y = 0; y < r.h; y++) {
       for (let x = 0; x < r.w; x++) {
@@ -1675,6 +1681,37 @@ function applyArchitectureSurfaceClasses(s: Surface, spec: GreebleSpec): void {
         if (slot !== 'bareMetal') {
           s.roughness[i] = Math.max(look.roughnessMin,
             Math.min(look.roughnessMax, s.roughness[i]));
+        }
+        // Chamfer geometry samples this reserved patch. Edge wear therefore
+        // lives on real convex edges, not as random bright flecks over a flat
+        // panel, and the authored SurfaceLook.edgeWear finally has a reader.
+        const onBevel = paint.has(slot)
+          && x >= bevelOff && x < bevelOff + bevelSize
+          && y >= bevelOff && y < bevelOff + bevelSize;
+        if (onBevel) {
+          s.roughness[i] = Math.max(look.roughnessMin,
+            s.roughness[i] - look.edgeWear * 0.14);
+          s.metalness[i] = clamp01(Math.max(
+            s.metalness[i], look.metalness + look.edgeWear * 0.18,
+          ));
+        }
+
+        // Live vehicles stay clean by the look bible. Architecture alone gets
+        // broad downward accumulation, derived from authored grime and applied
+        // only to albedo/roughness/AO—never to normals or height. It reads as
+        // weathering without reviving the sandpaper texture the surface budget
+        // was written to prevent.
+        if (spec.surfaceClass !== 'hull' && paint.has(slot) && look.grime > 0) {
+          const u = (x + 0.5) / r.w;
+          const v = (y + 0.5) / r.h;
+          const band = 0.5 + 0.5 * Math.sin((u * 3 + grimePhase) * Math.PI * 2);
+          const grime = look.grime * 0.11 * (0.30 + v * 0.70) * (0.30 + band * 0.70);
+          const o = i * 3;
+          s.albedo[o] *= 1 - grime;
+          s.albedo[o + 1] *= 1 - grime;
+          s.albedo[o + 2] *= 1 - grime;
+          s.roughness[i] = Math.min(look.roughnessMax, s.roughness[i] + grime * 0.45);
+          s.ao[i] = Math.max(0, s.ao[i] - grime * 0.20);
         }
         s.alpha[i] = coatScale;
       }
@@ -1830,7 +1867,7 @@ export function generateGreebleAtlas(spec: GreebleSpec, elapsedMs = 0): GreebleA
     record(tileRect(slot, size));
   }
 
-  applyArchitectureSurfaceClasses(s, spec);
+  applyMaterialSurfaceClasses(s, spec);
 
   const relief = UNIT_GREEBLE.normalRelief;
 
