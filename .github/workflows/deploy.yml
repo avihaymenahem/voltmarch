@@ -53,6 +53,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Public configuration, not a credential. The menu still probes the
+          # relay before enabling Multiplayer, so an outage fails closed.
+          VITE_RELAY_URL: wss://relay.voltmarch.com/ws
 
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -1,0 +1,91 @@
+name: Deploy multiplayer relay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production-relay
+    env:
+      RELAY_HOST: ${{ vars.RELAY_SSH_HOST }}
+      RELAY_PORT: ${{ vars.RELAY_SSH_PORT || '22' }}
+      RELAY_USER: voltmarch-deploy
+      RELAY_URL: wss://relay.voltmarch.com/ws
+      GAME_ORIGIN: https://avihaymenahem.github.io
+      RELAY_PRIVATE_KEY: ${{ secrets.RELAY_SSH_PRIVATE_KEY }}
+      RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$RELAY_HOST" ]] || { echo 'Repository variable RELAY_SSH_HOST is missing'; exit 1; }
+          [[ "$RELAY_PORT" =~ ^[0-9]+$ ]] || { echo 'RELAY_SSH_PORT is invalid'; exit 1; }
+          [[ -n "$RELAY_PRIVATE_KEY" ]] || { echo 'RELAY_SSH_PRIVATE_KEY is missing'; exit 1; }
+          [[ -n "$RELAY_KNOWN_HOSTS" ]] || { echo 'RELAY_SSH_KNOWN_HOSTS is missing'; exit 1; }
+
+      - name: Install relay dependencies
+        run: npm ci --prefix server
+
+      - name: Audit relay dependencies
+        run: npm --prefix server run audit
+
+      - name: Test relay
+        run: npm run server:test
+
+      - name: Package immutable release
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version=$(node -p "require('./package.json').version")
+          archive="/tmp/voltmarch-relay-${GITHUB_SHA}.tgz"
+          cp server/deploy/smoke.mjs server/smoke.mjs
+          tar -C server -czf "$archive" dist package.json package-lock.json smoke.mjs
+          rm server/smoke.mjs
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Configure deployment SSH key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d ~/.ssh
+          printf '%s\n' "$RELAY_PRIVATE_KEY" > ~/.ssh/voltmarch-relay
+          printf '%s\n' "$RELAY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/voltmarch-relay ~/.ssh/known_hosts
+
+      - name: Upload release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          scp -i ~/.ssh/voltmarch-relay -P "$RELAY_PORT" \
+            "${{ steps.release.outputs.archive }}" \
+            "$RELAY_USER@$RELAY_HOST:/tmp/voltmarch-relay-${GITHUB_SHA}.tgz"
+
+      - name: Activate release with automatic rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -i ~/.ssh/voltmarch-relay -p "$RELAY_PORT" "$RELAY_USER@$RELAY_HOST" \
+            "sudo /usr/local/sbin/voltmarch-relay-deploy '$GITHUB_SHA' '${{ steps.release.outputs.version }}' '/tmp/voltmarch-relay-${GITHUB_SHA}.tgz'"
+
+      - name: Verify public Cloudflare route
+        run: node server/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}'
