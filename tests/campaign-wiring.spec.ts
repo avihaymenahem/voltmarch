@@ -65,9 +65,12 @@ describe('campaign credit wiring', () => {
     const callers: string[] = [];
     for (const file of campaignFiles()) {
       const calls = code(file).match(/\.grant\s*\(/g) ?? [];
-      for (let i = 0; i < calls.length; i++) callers.push(file.slice(REPO.length + 1));
+      // GitHub's deployment runner is Linux while local campaign work is also
+      // done on Windows. Compare repository paths, not host path separators.
+      const relative = file.slice(REPO.length + 1).replaceAll('\\', '/');
+      for (let i = 0; i < calls.length; i++) callers.push(relative);
     }
-    expect(callers).toEqual(['src\\campaign\\runtime.ts']);
+    expect(callers).toEqual(['src/campaign/runtime.ts']);
 
     const runtime = code(join(CAMPAIGN, 'runtime.ts'));
     expect(runtime.match(/\.grant\s*\(/g)).toHaveLength(1);
@@ -91,4 +94,3 @@ describe('campaign credit wiring', () => {
     expect(operationSources).not.toMatch(/\bReward\b/);
   });
 });
-
