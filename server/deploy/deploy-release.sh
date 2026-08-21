@@ -36,7 +36,21 @@ staging="$RELEASES/.${sha}.new"
 if [[ -e $release ]]; then
   active=''
   if [[ -L $CURRENT ]]; then active=$(readlink -f "$CURRENT" || true); fi
-  [[ $active != "$release" ]] || die "release $sha is already active"
+  if [[ $active == "$release" ]]; then
+    current_build=$(sed -n 's/^VM_REQUIRE_BUILD=//p' "$ENV_FILE" | head -n1)
+    [[ $current_build == "$version" ]] || die 'active release build does not match deployment request'
+    [[ -f $release/dist/src/net/protocol.js && -f $release/smoke.mjs ]] \
+      || die 'active release is incomplete'
+    origin=$(sed -n 's/^VM_ORIGINS=//p' "$ENV_FILE" | cut -d, -f1)
+    protocol=$(node -p "require('$release/dist/src/net/protocol.js').PROTOCOL_VERSION")
+    [[ $origin == https://* && $protocol =~ ^[1-9][0-9]*$ ]] \
+      || die 'active release configuration is invalid'
+    sudo -u voltmarch env HOME=/tmp node "$release/smoke.mjs" \
+      ws://127.0.0.1:8787/ws "$origin" "$version" "$protocol"
+    rm -f -- "$archive"
+    printf '[relay-deploy] %s is already active and healthy (build %s)\n' "$sha" "$version"
+    exit 0
+  fi
   [[ -d $release && ! -L $release ]] || die 'existing inactive release path is unsafe'
   rm -rf -- "$release"
 fi

@@ -48,7 +48,8 @@ button.
 - `bootstrap-host.sh` — idempotent operating-system and reverse-proxy setup.
 - `deploy-release.sh` — restricted atomic release installer and rollback.
 - `voltmarch-relay.service` — sandboxed unprivileged Node process.
-- `nginx.cloudflare.conf` — TLS/WebSocket proxy and connection limits.
+- `nginx.conf` — TLS/WebSocket proxy and connection limits. The bootstrap
+  substitutes the production hostname into this canonical template.
 - `smoke.mjs` — validates WebSocket, Origin, protocol and build together.
 
 ## Routine releases

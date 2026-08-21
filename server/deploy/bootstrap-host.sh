@@ -23,7 +23,7 @@ for origin in "${origins[@]}"; do
 done
 
 readonly SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-[[ -f $SCRIPT_DIR/deploy-release.sh && -f $SCRIPT_DIR/nginx.cloudflare.conf ]] \
+[[ -f $SCRIPT_DIR/deploy-release.sh && -f $SCRIPT_DIR/nginx.conf ]] \
   || die 'run from the checked-out server/deploy directory'
 
 export DEBIAN_FRONTEND=noninteractive
@@ -119,11 +119,8 @@ done
 install -o root -g root -m 0644 "$realip_tmp" /etc/nginx/conf.d/cloudflare-realip.conf
 rm -f "$realip_tmp"
 
-sed \
-  -e "s|__RELAY_HOSTNAME__|$RELAY_HOSTNAME|g" \
-  -e "s|__SSL_CERTIFICATE__|/etc/letsencrypt/live/$RELAY_HOSTNAME/fullchain.pem|g" \
-  -e "s|__SSL_CERTIFICATE_KEY__|/etc/letsencrypt/live/$RELAY_HOSTNAME/privkey.pem|g" \
-  "$SCRIPT_DIR/nginx.cloudflare.conf" > /etc/nginx/sites-available/voltmarch-relay
+sed "s|relay.example.com|$RELAY_HOSTNAME|g" \
+  "$SCRIPT_DIR/nginx.conf" > /etc/nginx/sites-available/voltmarch-relay
 
 nginx -t
 systemctl reload nginx

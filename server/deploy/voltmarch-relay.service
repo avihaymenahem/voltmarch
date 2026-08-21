@@ -6,7 +6,7 @@
 # after dependencies install and is rolled back if the service probe fails.
 #
 # The relay binds 127.0.0.1 ONLY. nginx terminates TLS and is the sole route in
-# — see nginx.cloudflare.conf. Do not open 8787 on the firewall.
+# — see nginx.conf. Do not open 8787 on the firewall.
 # ============================================================================
 
 [Unit]
