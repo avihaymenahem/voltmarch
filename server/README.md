@@ -11,9 +11,14 @@ fingerprints that came with them.
 npm ci
 npm run build
 npm start          # 127.0.0.1:8787
-npm test           # 31 tests, no sockets, no timers
-npm run audit      # gate, not a suggestion — see ws below
+npm test           # 100 tests in 21 suites, no sockets, no timers
+npm run audit      # NOT a CI gate. Run it by hand; see `ws` is pinned, below
 ```
+
+The test count said "31" long after it stopped being 31. Re-count it rather than
+adjusting it, and note that it includes the COMPILE: `npm run server:test` builds
+first, so the four-file import closure is only real because something compiles
+through it.
 
 From the repo root: `npm run server`, `npm run server:test`, and
 `npm run typecheck` (which now runs four tsc invocations, this being the fourth).
@@ -95,16 +100,26 @@ strictness.
 
 | | |
 |---|---|
-| `wss://` only | Forced anyway: a browser blocks a plaintext socket from an https page |
+| `wss://` only | Enforced by the CLIENT — `net-link.ts` refuses a `ws://` URL to any non-loopback target. NOT by the browser: that rule covers a browser and stopped covering the desktop build, which is a secure context on an `app:` scheme |
 | Origin allowlist | `ws` does not check `Origin`, and WebSockets bypass CORS entirely |
 | No cookies, no credentials | Nothing for a cross-site socket to steal, so CSWSH has no prize |
 | `maxPayload` 64 KB | `ws` closes rather than buffering |
 | `perMessageDeflate: false` | Compression is a CPU amplification primitive; there is nothing to save on 300-byte frames |
-| Heartbeat, 2 missed pongs | Kills slowloris and half-open sockets that TCP would hold for hours |
+| Heartbeat, ONE missed pong | Kills slowloris and half-open sockets TCP would hold for hours. Measured at `VM_HEARTBEAT_MS=1500`: one ping at +692 ms, terminated at +2201 ms. Dead-peer detection is therefore 30 s, not 45 s — size `proxy_read_timeout` against that |
 
 `Origin` is trivially forged by anything that is not a browser. It is stated
 here as hygiene, **not** authentication — the reason a forged one wins nothing
 is that an anonymous socket has no privileges to begin with.
+
+**`app://voltmarch` is on the allowlist unconditionally, and `VM_ORIGINS` cannot
+remove it.** That is the packaged desktop build's origin, measured on a real
+Electron launch: exact string, no trailing slash, and `app://voltmarch/` WITH one
+is refused. It is unioned in rather than defaulted because `VM_ORIGINS` REPLACES
+the compiled list, so an entry living only in the fallback would be gone on any
+deployed relay and the desktop build would be refused at the handshake with 401 —
+which the client, unable to see an HTTP status, reports to the player as "the
+match server is not answering". It weakens nothing: no browser can mint an `app:`
+origin, and the browser-driven case is the only one this check exists to close.
 
 ### Resource caps
 
@@ -113,6 +128,13 @@ overridable by environment. Connections (global and per address), message rate
 (token bucket), commands per turn, turn lookahead, match count, match lifetime,
 lobby idle, code TTL. Plus `limit_conn`/`limit_req` at nginx and `MemoryMax` /
 `TasksMax` in systemd, so an application-level miss still has a floor under it.
+
+**A per-address limit counts against a /64 for IPv6**, not a /128 — see
+`src/address.ts#limitKey`. The smallest allocation a customer gets is a /64, so
+per-address means per-customer only if the key is the prefix; counting exact
+addresses let one host walk out of every cap at once.
+
+**A value the parser cannot understand is fatal, not defaulted.** See Deploying.
 
 ### Invite codes
 
@@ -129,7 +151,14 @@ unlimited attempts walks it in an afternoon. Three things together do:
 No accounts, no personal data, no message contents logged. Addresses are hashed
 with a **per-boot random salt** — enough to count connections and rate-limit
 joins, useless as a record of who played from where, and meaningless after a
-restart.
+restart. Three log lines exist in the whole process and none carries an address.
+
+**That guarantee is only as good as the proxy in front of it**, and the nginx
+template shipped in `deploy/` defeated it: with no `access_log` directive, the
+distribution's http-level default applies and writes `$remote_addr` for every
+socket to `/var/log/nginx/access.log`. `location = /ws` now sets
+`access_log off;`. If you turn it back on for a debugging session, know what you
+are turning on.
 
 ### Audit findings, and what they were
 
@@ -150,6 +179,32 @@ The pattern worth noticing: **four of the six were limits that appeared to be
 enforced and were not.** A cap that silently applies to the wrong scope is worse
 than no cap, because the counter still moves and nobody looks again.
 
+### The second pass, before the first deploy
+
+The relay had not been touched since it was written, while the game moved three
+major versions past it. Every row below is fixed and covered by a test that was
+run against the broken build first and watched to fail.
+
+| | Was | Why it mattered |
+|---|---|---|
+| **No unit could be bought at all** | `WIRE_LIMITS.maxDefId` 4095 against `UNIT_PUBLIC_ID_BASE` 4096 | **The worst of them: it made multiplayer unplayable.** A unit's `Command.defId` is its `publicId`, `4096 + index` — one above the ceiling — so `validateCommand` answered `bounds` for all sixty units and `TurnRelay` emptied the WHOLE submission, taking every other order in that 100 ms turn with it. Invisible because the reasoning existed everywhere else: `Production.ts` argues that upgrades sit at 2048 *because* of this ceiling, and two specs assert their own half against it. Nobody ever asserted the unit half. Now 8191, bound to the real catalog in both directions. |
+| **A refusal counted as a sign of life** | `lastSubmit` stamped before validation | A submission the relay REJECTED still refreshed the silence clock, so one ~120-byte frame every ten seconds — free against a 40/s rate — kept a hostile peer alive indefinitely. The damage inverted: a starved client stalls, so the VICTIM fell silent first and was the one retired. Any losing player could convert a loss into a win. Fixed in two places, because the stamp alone was not enough: the sweep also had to stop retiring by index order, since the victim's freshness margin is one lookahead (~400 ms) against a 1 s sample. |
+| **A turn could complete out of order** | `emitted = s.turn`, no succession rule | Submit only the TOP turn of the lookahead and it completes; `emitted` jumps past every turn below it and those can never be resubmitted, so the opponent blocks forever. A second, independent route to the same stolen win. Closed structurally: each slot must submit consecutive turns from `TURN_DELAY`, which is exactly what `TurnScheduler` sends, so it refuses nothing a real client does. It also makes `emitted` monotonic, which `duplicate-turn` rests on entirely. |
+| **Per-address limits were per-/128** | `ipKey(address)` | The smallest IPv6 allocation a customer receives is a /64. 63 addresses out of one ordinary /64 is 504 sockets against a GLOBAL cap of 500 — measured end to end, including a legitimate player on an unrelated network then being refused 401. nginx does not bind either: `$binary_remote_addr` is all 16 bytes. Now grouped to a /64, with IPv4 and IPv4-mapped addresses untouched. |
+| **A cap of 32 bit a legal gesture** | `maxCommandsPerTurn` 32 | Self-destruct fans out to one command per selected unit, up to `MAX_SELECTION` 100, so a player who box-selected 33 hulls and confirmed lost the whole turn. Now 128; the resulting frame is ~20 kB against a 64 kB payload cap, so the limit that actually protects the server did not move. |
+| **The desktop build could not connect** | no `app://voltmarch` origin | Measured at both ends: the packaged app sends `Origin: app://voltmarch`, and a correctly-deployed relay answered 401 before the upgrade. See Transport above. |
+| **A malformed limit fell back silently** | `num()` returning the default | `VM_MAX_CONNECTIONS_PER_IP=0` gave 8, `-5` gave 500, `abc` gave 15000. Always toward LESS restriction, always without a word — the same shape as four of the six above. |
+| **A comment promised a refusal that did not exist** | `allowAnyOrigin` | *"Development only; refuses to run with TLS off in prod."* Nothing refused anything, and the sentence was unimplementable besides: this process cannot observe TLS, because nginx terminates it a hop away and proxies plain `http://` to loopback. Half was implemented (`NODE_ENV=production` now refuses to start), half was deleted rather than restated. |
+| **A listen failure killed the process silently** | no `wss.on('error')` | `ws` forwards the http server's `error` event and an unhandled one is rethrown, so a port held by a stale instance produced a raw `EADDRINUSE` stack trace — and with `Restart=always`, a restart loop whose journal said nothing actionable. |
+| **A retired slot earned a second grace period** | `peerLost(-1)` | `Lobby.leave` passes `slotOf(peer)`, which is -1 once the silence sweep has already nulled that seat; the guard read `peers[-1]`, `undefined` rather than `null`, so it fell through and restarted the survivor's countdown. Reachable on the ordinary path — the 15 s heartbeat kills a dead client inside the 30 s grace window, so this is what a crashed opponent looked like. |
+| **The deploy templates did not work** | `nginx.conf`, the unit file | `listen 443 ssl` with both certificate lines commented out will not load, and `certbot --nginx` cannot repair a config it must first pass `nginx -t` on. `http2 on;` is rejected outright below nginx 1.25.1 — Ubuntu 22.04/24.04 and Debian 12 — and buys a WebSocket endpoint nothing. And the distribution's default `access_log` wrote every player's real address to disk, defeating the per-boot-salt guarantee stated two sections above: the relay was honouring it exactly; nginx was not. |
+
+The pattern in this pass is different from the first. **Six of the eleven were
+correct code whose CALLER, CONSTANT or CONFIGURATION had moved underneath it**,
+and the unit-id ceiling had been wrong for as long as the relay had gone
+untouched. The first pass found things nobody had thought about; this one found
+things that used to be true.
+
 ### `ws` is pinned, and the pin has a reason
 
 `8.21.3` exactly. The first pin here was `8.18.3` and `npm audit` refused it on
@@ -159,7 +214,10 @@ two high-severity advisories that are precisely this server's threat model:
 - **GHSA-96hv-2xvq-fx4p** — memory exhaustion from tiny fragments. This happens
   *below* the message boundary, so no application-level rate limit can see it.
 
-Run `npm run audit` before every deploy.
+**Run `npm run audit` before every deploy — by hand.** It is a script in
+`server/package.json` and nothing runs it: `.github/workflows/deploy.yml` mentions
+`server/` exactly twice, `npm ci --prefix server` and `npm run server:test`. This
+line used to call it a gate. It is a habit.
 
 ### What lockstep cannot protect
 
@@ -192,7 +250,29 @@ Two things worth reading before editing them:
 - **Set `VM_REQUIRE_BUILD`** to the deployed client version once you are past
   testing. GitHub Pages can serve a cached bundle to one player and a fresh one
   to the other; two builds of a deterministic simulation desync on contact, and
-  refusing the pairing is far kinder than a desync forty seconds in.
+  refusing the pairing is far kinder than a desync forty seconds in. Read the
+  number out of `package.json`: the commented example in the unit file said
+  `1.33.0` for three major versions, and uncommenting it as written would have
+  refused every real client.
+- **`VM_ORIGINS` REPLACES the compiled list.** Whatever is on that line is the
+  entire browser allowlist. Measured: with the shipped unit's single entry,
+  `http://localhost:5173` — which IS in `config.ts`'s fallback array — is
+  answered 401. The desktop origin is the exception and must not be added there.
+- **Obtain the certificate BEFORE enabling the nginx site.** `certbot --nginx`
+  cannot bootstrap a `listen 443 ssl` block with no certificate: nginx refuses to
+  load one and certbot config-tests before it edits. The header of
+  `deploy/nginx.conf` runs `certonly --standalone` first for that reason.
+- **A malformed limit now refuses to start.** `VM_MAX_CONNECTIONS=-5` used to
+  give you 500 and say nothing. It exits 1 naming the variable, which
+  `Restart=always` plus `StartLimitBurst` turns into five restarts and a journal
+  line rather than a cap you believe you set.
+- **`systemd-analyze security voltmarch-relay.service` is the right instrument**
+  for the sandbox block, and it has never been run on a real target. Two
+  directives were considered and deliberately left out: `PrivateUsers=yes`, which
+  is the item on that list most likely to break a Node service and belongs behind
+  a first-boot test, and `AF_UNIX` in `RestrictAddressFamilies`, which looks
+  necessary and is probably not (the relay binds an IP literal, so node never
+  calls getaddrinfo, and journald hands it a pre-connected fd).
 
 ---
 

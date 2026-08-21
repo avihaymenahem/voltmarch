@@ -21,7 +21,7 @@ import { describe, it } from 'node:test';
 import { Match, type Peer } from '../src/Match';
 import { Lobby, makeCode } from '../src/Lobby';
 import { CODE_ALPHABET, CONFIG } from '../src/config';
-import { TURN_LOOKAHEAD } from '../../src/net/protocol';
+import { TURN_DELAY, TURN_LOOKAHEAD, WIRE_LIMITS } from '../../src/net/protocol';
 import type { ServerMessage, WireCommand } from '../../src/net/protocol';
 import { ROOM_LIST_LIMIT } from '../../src/net/protocol';
 
@@ -53,8 +53,14 @@ function makeMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: Re
   const a = new FakePeer();
   const b = new FakePeer();
   const match = new Match([a, b], {
-    id: 'm1', seed: 12345, map: 'crossroads', factions: [0, 1],
+    id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
     graceMs: CONFIG.graceMs, silenceMs: CONFIG.silenceMs, now: c.now,
+    // TURNS FROM ZERO, so every case below reads as "turn 0, turn 1, turn 2"
+    // rather than starting at TURN_DELAY. The product's own baseline is covered
+    // separately, by name, in `a slot must submit turns in order` — with the
+    // default, so a change to TURN_DELAY is caught there rather than silently
+    // renumbering every assertion in this file.
+    firstTurn: 0,
   });
   return { match, a, b, c };
 }
@@ -668,5 +674,216 @@ describe('the live-match cap holds on every path', () => {
       if (lobby.joinRoom(new FakePeer(), room.id, 1).ok) started++;
     }
     assert.ok(started <= CONFIG.maxMatches, `started ${started} matches, cap is ${CONFIG.maxMatches}`);
+  });
+});
+
+/* ==========================================================================
+ * WHAT THE GATE COULD NOT SEE BEFORE
+ *
+ * Every suite below names a defect that shipped rather than the feature it
+ * lives in, because in each case the feature was already tested and the defect
+ * got past it anyway.
+ * ========================================================================== */
+
+/** A match on the PRODUCT's turn baseline, unlike `makeMatch`. */
+function realMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: ReturnType<typeof clock> } {
+  const a = new FakePeer();
+  const b = new FakePeer();
+  const match = new Match([a, b], {
+    id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
+    graceMs: CONFIG.graceMs, silenceMs: CONFIG.silenceMs, now: c.now,
+  });
+  return { match, a, b, c };
+}
+
+/**
+ * THE FATAL. `WIRE_LIMITS.maxDefId` was 4095 and `UNIT_PUBLIC_ID_BASE` is 4096,
+ * so every unit in the game carried a `defId` one above the ceiling,
+ * `validateCommand` answered `bounds`, and `TurnRelay` emptied the WHOLE
+ * submission — taking every other order issued in the same 100 ms turn with it.
+ * A multiplayer player could not buy a single hull.
+ *
+ * The literal here is deliberate. This file may not import
+ * `src/sim/Production.ts` — the four-file include list in `server/tsconfig.json`
+ * is the security boundary — so it pins the SHAPE, and
+ * `tests/net-protocol.spec.ts` binds the NUMBER to the shipped roster through
+ * the real catalog. Neither half is sufficient alone, which is why both exist.
+ */
+const UNIT_PUBLIC_ID_BASE = 4096;
+
+describe('a unit can actually be bought over the wire', () => {
+  it('forwards a ProductionStart carrying a unit publicId', () => {
+    const { match, a } = makeMatch();
+    const buy = command({
+      kind: 2 /* ProductionStart */, tab: 3 /* Vehicles */,
+      defId: UNIT_PUBLIC_ID_BASE, arg: 1, entities: [],
+    });
+    match.submit(0, 0, [buy], CHECK);
+    match.submit(1, 0, [], CHECK);
+
+    const frame = a.of('frame')[0];
+    assert.equal(frame.commands.length, 1, 'the purchase must reach both clients');
+    assert.equal(frame.commands[0].defId, UNIT_PUBLIC_ID_BASE);
+    assert.equal(a.of('error').length, 0, 'and nothing may be reported as invalid');
+  });
+
+  it('still refuses an id past the ceiling', () => {
+    const { match, a } = makeMatch();
+    match.submit(0, 0, [command({ kind: 2, tab: 3, defId: WIRE_LIMITS.maxDefId + 1, entities: [] })], CHECK);
+    match.submit(1, 0, [], CHECK);
+    assert.equal(a.of('frame')[0].commands.length, 0, 'the structural ceiling is still a ceiling');
+  });
+
+  it('carries a full selection fanning out inside one turn', () => {
+    // Self-destruct issues ONE command per selected unit, up to MAX_SELECTION
+    // (100). At the old cap of 32, a player who box-selected 33 hulls and
+    // confirmed had the whole turn emptied and every other order in it lost.
+    const { match, a } = makeMatch();
+    const many = Array.from({ length: 100 }, () => command({ kind: 11 /* SelfDestruct */, entities: [7] }));
+    match.submit(0, 0, many, CHECK);
+    match.submit(1, 0, [], CHECK);
+    assert.equal(a.of('frame')[0].commands.length, 100);
+    assert.equal(a.of('error').length, 0);
+  });
+});
+
+describe('a REFUSED submission is silence, not a sign of life', () => {
+  /**
+   * THE STOLEN WIN. `Match.submit` stamped `lastSubmit` before it asked the
+   * relay whether the submission was legal, so a refusal — `duplicate-turn`,
+   * `turn-out-of-window`, even a structurally invalid `bad-message` — kept the
+   * silence clock fresh while contributing nothing to any turn. One ~120-byte
+   * frame every ten seconds is free against a 40/s message rate.
+   *
+   * The damage is not the freeze it looks like. A faithful client STALLS when it
+   * is starved (`TurnScheduler.mayStep`), so the victim stops submitting first,
+   * the victim's clock goes stale first, and the VICTIM is the one retired —
+   * handing the match to the attacker. This drives exactly that: the attacker
+   * spams refusals and the honest peer, correctly, sends nothing.
+   *
+   * The existing silence suite passes against the broken build, because it only
+   * ever drives a peer that sends NOTHING.
+   */
+  const FLAVOURS: readonly (readonly [string, number])[] = [
+    ['duplicate-turn', 0],
+    ['turn-out-of-window', 999],
+    ['bad-message', -1],
+  ];
+
+  for (const [name, turn] of FLAVOURS) {
+    it(`retires the attacker, not the victim, for a ${name} refusal`, () => {
+      const { match, a, c } = makeMatch();
+      // One honest turn from both, so the match is genuinely under way.
+      match.submit(0, 0, [], CHECK);
+      match.submit(1, 0, [], CHECK);
+
+      // THE VICTIM MODELLED FAITHFULLY. A real client keeps stepping until it
+      // runs out of window and then STALLS — `TurnScheduler.mayStep` returns
+      // false with no frame in hand — so it submits its whole lookahead and
+      // then nothing. Driving a victim that never submits at all measures a
+      // mutual stall instead of an attack, which is what the first version of
+      // this test did.
+      c.advance(100);
+      for (let t = 1; t <= TURN_LOOKAHEAD; t++) { match.submit(0, t, [], CHECK); c.advance(10); }
+
+      let refusals = 0;
+      for (let elapsed = 0; elapsed < CONFIG.silenceMs + CONFIG.graceMs + 5000; elapsed += 1000) {
+        if (match.submit(1, turn, [], CHECK) !== null) refusals++;
+        c.advance(1000);
+        match.tick();
+        if (match.over) break;
+      }
+
+      assert.ok(refusals > 0, 'the harness must actually be sending refusals');
+      assert.equal(match.over, true, 'the match must not run to the two-hour TTL');
+      assert.equal(a.of('peerLost').length, 1, 'the attacker is the one retired');
+      assert.equal(a.of('over')[0].winnerSlot, 0, 'the victim must win, not the attacker');
+    });
+  }
+});
+
+describe('a slot must submit turns in order', () => {
+  /**
+   * THE OUT-OF-ORDER COMPLETION. The honest peer submits the whole lookahead;
+   * the attacker submits only the TOP turn of it. That turn completes, `emitted`
+   * jumps past every turn below it, and those can never be resubmitted because
+   * `turn <= emitted` answers `duplicate-turn` from then on. The honest client
+   * blocks at the missing turn forever — and since both peers then fall silent,
+   * the sweep retires whichever went quiet first, which is the victim. A second
+   * independent route to the same stolen win.
+   */
+  it('refuses a submission that would skip a turn', () => {
+    const { match } = makeMatch();
+    match.submit(0, 0, [], CHECK);
+    match.submit(0, 1, [], CHECK);
+    assert.equal(match.submit(1, 1, [], CHECK), 'turn-out-of-window',
+      'slot 1 has not reported turn 0 and may not complete turn 1');
+    // The honest route is untouched: fill the gap, then carry on.
+    assert.equal(match.submit(1, 0, [], CHECK), null);
+    assert.equal(match.submit(1, 1, [], CHECK), null);
+  });
+
+  it('broadcasts frames consecutively, with no turn stranded', () => {
+    const { match, a } = makeMatch();
+    for (let turn = 0; turn < 4; turn++) {
+      match.submit(0, turn, [], CHECK);
+      match.submit(1, turn, [], CHECK);
+    }
+    assert.deepEqual(a.of('frame').map((f) => f.turn), [0, 1, 2, 3]);
+    assert.equal(match.relay.lastTurn, 3);
+  });
+
+  it('starts at TURN_DELAY, because the bootstrap turns never reach a relay', () => {
+    // `TurnScheduler` pre-seeds turns 0..TURN_DELAY-1 empty on every client, so
+    // the first turn a real client ever sends is TURN_DELAY. A relay starting at
+    // -1 would read that first legal submission as a skip; `makeMatch` above
+    // passes `firstTurn: 0` so the rest of this file can count from zero.
+    const { match, a } = realMatch();
+    assert.equal(match.submit(0, 0, [], CHECK), 'duplicate-turn');
+    assert.equal(match.submit(0, TURN_DELAY, [], CHECK), null);
+    assert.equal(match.submit(1, TURN_DELAY, [], CHECK), null);
+    assert.deepEqual(a.of('frame').map((f) => f.turn), [TURN_DELAY]);
+  });
+
+  it('still tolerates a peer running ahead inside the lookahead window', () => {
+    // The rule refuses a SKIP, not a lead. Running ahead is what the window is
+    // for, and a cap that bit it would break every real match.
+    const { match } = makeMatch();
+    for (let turn = 0; turn < TURN_LOOKAHEAD; turn++) {
+      assert.equal(match.submit(0, turn, [], CHECK), null, `turn ${turn} must be accepted`);
+    }
+    assert.equal(match.submit(0, TURN_LOOKAHEAD, [], CHECK), 'turn-out-of-window');
+  });
+});
+
+describe('a slot retired for silence does not earn a second grace period', () => {
+  /**
+   * `Lobby.leave` calls `match.peerLost(match.slotOf(peer))`, and `slotOf` is an
+   * `indexOf` that answers -1 once the silence sweep has already nulled that
+   * seat. The guard read `this.peers[-1]`, which is `undefined` rather than
+   * `null`, so it did not fire: execution fell through, the survivor was handed
+   * a SECOND countdown, and `peers` grew an own property named '-1'. Reachable
+   * on the ordinary path — the 15 s heartbeat terminates a dead client squarely
+   * inside the 30 s grace window, so this is what a crashed opponent looked like.
+   */
+  it('ignores a peerLost for a slot that has already gone', () => {
+    const { match, a, c } = makeMatch();
+    // Slot 0 plays; slot 1 never answers, so slot 1 is the stalest slot.
+    match.submit(0, 0, [], CHECK);
+    c.advance(100);
+    match.submit(0, 1, [], CHECK);
+    c.advance(CONFIG.silenceMs + 1);
+    match.tick();
+    assert.equal(a.of('peerLost').length, 1, 'slot 1 is retired for silence');
+
+    // The socket closes ten seconds later. `slotOf` now answers -1.
+    c.advance(10_000);
+    match.peerLost(-1);
+    assert.equal(a.of('peerLost').length, 1, 'no second countdown');
+
+    // And the deadline is still the one the silence sweep set, not a new one.
+    c.advance(CONFIG.graceMs - 10_000);
+    assert.equal(match.tick(), true);
+    assert.equal(a.of('over')[0].winnerSlot, 0);
   });
 });

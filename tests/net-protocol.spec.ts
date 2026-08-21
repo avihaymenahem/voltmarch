@@ -28,17 +28,25 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { MAP_CELLS, MAP_SIZE, MAX_PLAYERS, MAX_SELECTION } from '../src/core/config';
-import { CommandKind, FACTION_COUNT } from '../src/core/types';
+import { BUILD_TAB_COUNT, CommandKind, FACTION_COUNT } from '../src/core/types';
 import { Channels } from '../src/core/events';
 import {
-  PROTOCOL_VERSION, TURN_DELAY, TURN_LOOKAHEAD, TURN_TICKS, WIRE_LIMITS,
-  isKnownCommandKind, parseMessage,
+  PROTOCOL_VERSION, TURN_DELAY, TURN_LOOKAHEAD, TURN_TICKS, VOCABULARY_SIZES, WIRE_LIMITS,
+  isKnownCommandKind, parseMessage, validateCommand,
 } from '../src/net/protocol';
+import { ProductionCatalog, UNIT_PUBLIC_ID_BASE } from '../src/sim/Production';
+import { resolveDefBinding } from '../src/game/Scenarios';
 import type { WireCommand } from '../src/net/protocol';
-import { applyCommand } from '../src/net/applyCommand';
+import { applyCommand, toWire } from '../src/net/applyCommand';
 
 const ROOT = join(__dirname, '..');
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8');
+
+/** A structurally valid command, for tests that vary exactly one field. */
+const WIRE_TEMPLATE: WireCommand = {
+  kind: CommandKind.Order, player: 0, order: 0, target: 0, x: 1, z: 1,
+  defId: -1, tab: 0, cx: 1, cz: 1, stance: 0, queued: false, arg: 0, entities: [],
+};
 
 /* ========================================================================== */
 
@@ -68,6 +76,95 @@ describe('the wire limits mirror the engine, and are checked for it', () => {
     // so the checksum agrees the entire way down and never says a word.
     expect(WIRE_LIMITS.factions).toBe(FACTION_COUNT);
     expect(WIRE_LIMITS.factions).toBeLessThan(WIRE_LIMITS.maxPlayers);
+  });
+
+  /**
+   * THE ONE LIMIT THAT MIRRORED NOTHING, AND IT WAS THE ONE THAT WAS WRONG.
+   *
+   * `maxDefId` was 4095 while `UNIT_PUBLIC_ID_BASE` is 4096, so EVERY unit in
+   * the game carried a `Command.defId` one above the ceiling and `validateCommand`
+   * answered `{ fault: 'bounds' }` for all sixty of them. `TurnRelay` empties the
+   * whole submission on one bad command, so a multiplayer player could not buy a
+   * hull and lost every other order issued in the same 100 ms turn with it.
+   *
+   * It was invisible because the reasoning existed everywhere except here:
+   * `Production.ts` argues that upgrades sit at 2048 and powers at 3072 BECAUSE
+   * of this ceiling, `tests/upgrades.spec.ts` and `tests/command-post.spec.ts`
+   * each assert their own half against it, and `tests/net-lockstep.spec.ts` only
+   * ever constructs `Order` and `SetStance`. Nobody asserted the unit half.
+   *
+   * Driven through the REAL bound catalog rather than `4096 + index`, because a
+   * re-implemented formula nobody checks is the same defect wearing the other
+   * hat — and asserted in BOTH directions, so removing the ceiling to "fix" a
+   * future overflow fails here too.
+   */
+  it('leaves room for every buildable the catalog can name, units included', async () => {
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    const ids = catalog.entries.map((e) => e.publicId);
+    const highest = Math.max(...ids);
+
+    expect(ids.length).toBeGreaterThan(100);
+    expect(highest).toBeGreaterThanOrEqual(UNIT_PUBLIC_ID_BASE);
+    expect(highest, `publicId ${highest} is above WIRE_LIMITS.maxDefId ${WIRE_LIMITS.maxDefId}`)
+      .toBeLessThanOrEqual(WIRE_LIMITS.maxDefId);
+
+    // And the real command, through the real validator: the failure was never
+    // visible in the number, only in the verdict.
+    for (const defId of [Math.min(...ids), UNIT_PUBLIC_ID_BASE, highest]) {
+      const check = validateCommand({
+        ...WIRE_TEMPLATE, kind: CommandKind.ProductionStart, defId,
+      });
+      expect(check.ok, `defId ${defId} must be relayable`).toBe(true);
+    }
+
+    // The other direction. This is a structural ceiling, not an absent one.
+    expect(WIRE_LIMITS.maxDefId).toBeLessThan(UNIT_PUBLIC_ID_BASE * 2);
+    expect(validateCommand({ ...WIRE_TEMPLATE, defId: WIRE_LIMITS.maxDefId + 1 }).ok).toBe(false);
+  });
+
+  /**
+   * ONE LEGAL GESTURE EMITS UP TO `MAX_SELECTION` COMMANDS.
+   *
+   * Self-destruct fans out to one command per selected unit, and deploy and
+   * set-primary have the same shape — so at the old cap of 32 a player who
+   * box-selected 33 hulls and confirmed had the entire turn emptied. A cap that
+   * bites legitimate play is a worse defect than the one it closes.
+   */
+  it('leaves room for a full selection to fan out inside one turn', () => {
+    expect(WIRE_LIMITS.maxCommandsPerTurn).toBeGreaterThanOrEqual(MAX_SELECTION);
+    // And the frame it produces still fits what `ws` will accept, which is the
+    // limit that actually protects the server. Worst realistic turn: a full
+    // selection of self-destructs plus one order carrying every id.
+    const worst = JSON.stringify({
+      t: 'turn',
+      turn: 1,
+      check: { tick: 1, hash: 1 },
+      commands: [
+        ...Array.from({ length: MAX_SELECTION }, () => WIRE_TEMPLATE),
+        { ...WIRE_TEMPLATE, entities: Array.from({ length: MAX_SELECTION }, (_, i) => i + 1) },
+      ],
+    });
+    expect(worst.length).toBeLessThan(WIRE_LIMITS.maxMessageBytes);
+  });
+});
+
+/**
+ * The version, and the mechanism that makes bumping it non-optional.
+ *
+ * `PROTOCOL_VERSION` sat at 1 through three separate widenings of the wire
+ * vocabulary — `OrderKind.Unload`, `CommandKind.UsePower` and `BuildTab.Powers`
+ * — because a number nobody is forced to look at is a number nobody looks at.
+ * Pinning the SIZE of each allowlist is the forcing function: adding an enum
+ * member fails here, and the only way to make it pass is to state whether the
+ * wire changed.
+ */
+describe('the protocol version is pinned to the vocabulary it describes', () => {
+  it('names the vocabulary it was last bumped for', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
+    expect(VOCABULARY_SIZES.kinds, 'a CommandKind was added or removed').toBe(13);
+    expect(VOCABULARY_SIZES.orders, 'an OrderKind was added or removed').toBe(17);
+    expect(VOCABULARY_SIZES.tabs, 'a BuildTab was added or removed').toBe(BUILD_TAB_COUNT);
+    expect(VOCABULARY_SIZES.stances, 'a Stance was added or removed').toBe(4);
   });
 });
 
@@ -210,5 +307,43 @@ describe('parseMessage refuses what it cannot route', () => {
   it('does not let a __proto__ key reach Object.prototype', () => {
     parseMessage('{"t":"hello","__proto__":{"pwned":true}}');
     expect(({} as Record<string, unknown>).pwned).toBeUndefined();
+  });
+});
+
+describe('an off-map click does not cost the player the whole turn', () => {
+  /**
+   * `screenToGround` unprojects onto the ground plane and returns the raw
+   * intersection — no clamp anywhere between it and `CommandBus.issueOrder`.
+   * With the camera at a map edge that leaves real, clickable ground OUTSIDE
+   * the map under the cursor: 30.4 m past the focus at `CAMERA.defaultDistance`
+   * 55, 77.4 m at `maxDistance` 140, computed from the shipped pitch (52) and
+   * fov (36) with `clampWorld`'s zero margin letting the focus sit on x = 0.
+   *
+   * `validateCommand` requires `0 <= x <= MAP_SIZE` and `TurnRelay` empties the
+   * WHOLE submission on one bad command, so a single stray right-click near the
+   * border took every other order in that 100 ms turn with it.
+   */
+  it('sends an on-map coordinate for a click past the border', () => {
+    const ch = new Channels();
+    ch.commands.issueOrder(0 as never, 1 as never, [1], 1, -12.5, MAP_SIZE + 40, 0 as never, false);
+    let sent: WireCommand | null = null;
+    ch.commands.harvest((cmd) => { sent = toWire(cmd); });
+    const wire = sent as WireCommand | null;
+    expect(wire).not.toBeNull();
+    expect(wire?.x).toBe(0);
+    expect(wire?.z).toBe(MAP_SIZE);
+    expect(validateCommand(wire).ok, 'and the relay must accept it').toBe(true);
+  });
+
+  it('leaves an ordinary coordinate exactly as it was', () => {
+    // The falsifier. A clamp that moved a legal order would be a worse defect
+    // than the one it closes, and it would be invisible.
+    const ch = new Channels();
+    ch.commands.issueOrder(0 as never, 1 as never, [1], 1, 123.456, 0, 0 as never, false);
+    let sent: WireCommand | null = null;
+    ch.commands.harvest((cmd) => { sent = toWire(cmd); });
+    const wire = sent as WireCommand | null;
+    expect(wire?.x).toBe(123.456);
+    expect(wire?.z).toBe(0);
   });
 });

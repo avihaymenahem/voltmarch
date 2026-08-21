@@ -66,8 +66,29 @@ import { BuildTab, CommandKind, OrderKind, Stance } from '../core/types';
  * survive. A mismatch REFUSES the connection rather than negotiating down: a
  * client that half-understands the protocol is a client that desyncs, and
  * "it mostly worked" is the outcome this number exists to prevent.
+ *
+ * ── WHY THIS IS 2 AND WAS 1 FOR THREE VOCABULARY CHANGES ───────────────────
+ *
+ * `git log -S` on this line returns exactly one commit — the one that wrote it.
+ * `git log --follow` on the file returns three later ones that each WIDENED
+ * what a legal command is and left the number alone:
+ *
+ *   `OrderKind.Unload`      added to ORDERS
+ *   `CommandKind.UsePower`  added to KINDS
+ *   `BuildTab.Powers`       added to TABS   (`BUILD_TAB_COUNT` 4 -> 5)
+ *
+ * Every one of those makes an older peer reject a command a newer peer sends —
+ * as a TRIPWIRE, so the match ends rather than desyncing, which is the good
+ * failure but not a good experience. Nothing was ever broken by it because no
+ * build has ever carried a relay address (`VITE_RELAY_URL` is set nowhere), so
+ * two builds have never paired. That is luck, and it expires the day this is
+ * deployed.
+ *
+ * The number alone installs no mechanism, which is why `tests/net-protocol.spec`
+ * pins the SIZE of each allowlist next to it: adding an enum member fails that
+ * test, and the only way to make it pass is to state whether the wire changed.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /* ==========================================================================
  * 2. TURN SCHEDULE
@@ -144,10 +165,50 @@ export const WIRE_LIMITS = {
    * and the relay cannot know their length, so this only rejects the absurd;
    * an unknown-but-plausible id is refused by the simulation, which already
    * returns undefined for one and does nothing.
+   *
+   * IT WAS 4095 AND THAT REJECTED EVERY UNIT IN THE GAME. `Command.defId` on a
+   * production command is a `BuildEntry.publicId`, and `UNIT_PUBLIC_ID_BASE` is
+   * **4096** — exactly one above the old ceiling. So every `ProductionStart` and
+   * `ProductionCancel` for a unit (measured: publicIds 4096..4155 over the
+   * shipped 60-unit roster) came back `{ fault: 'bounds' }`, `TurnRelay` emptied
+   * the WHOLE submission, and a multiplayer player could not buy a single hull —
+   * losing every other order issued in the same 100 ms turn with it.
+   *
+   * The ceiling was understood everywhere except where it bit. `Production.ts`
+   * argues at length that `UPGRADE_PUBLIC_ID_BASE` sits at 2048 and
+   * `POWER_PUBLIC_ID_BASE` at 3072 *because* an id above this is dropped by the
+   * relay; `tests/upgrades.spec.ts` and `tests/command-post.spec.ts` each assert
+   * their own half against it. Nobody ever asserted the unit half, and the unit
+   * half is the one that was wrong.
+   *
+   * 8191 is `UNIT_PUBLIC_ID_BASE * 2 - 1`: the unit window is now exactly as
+   * wide as the whole id space beneath it, so the roster can grow by two orders
+   * of magnitude before this is a question again. Widening rejects no case the
+   * old value caught — 4096 of the 4096 ids below it were already
+   * unknown-but-plausible, and `ProductionCatalog.resolve` answers `undefined`
+   * for an unknown id in either range. `tests/net-protocol.spec.ts` binds this
+   * to the real roster in BOTH directions so it cannot drift again.
    */
-  maxDefId: 4095,
-  /** Commands one slot may contribute to one turn. */
-  maxCommandsPerTurn: 32,
+  maxDefId: 8191,
+  /**
+   * Commands one slot may contribute to one turn.
+   *
+   * IT WAS 32, AND ONE LEGAL GESTURE EMITS UP TO 100. Self-destruct fans out to
+   * one command per selected unit (`Hud.ts` walks a `MAX_SELECTION`-sized id
+   * buffer), and deploy and set-primary have the same shape — so a player who
+   * box-selected 33 hulls and pressed the confirm key had the entire turn
+   * emptied and every other order in it lost. A cap that bites legitimate play
+   * is a worse defect than the one it closes.
+   *
+   * 128 is `MAX_SELECTION` (100) plus headroom, because `TURN_TICKS` is 3 and a
+   * turn therefore banks up to three sim ticks of fan-out. The ceiling that
+   * matters for resources is `maxMessageBytes` below, not this: 128 commands
+   * with no entity lists is ~17 kB and the worst realistic turn — 100
+   * self-destructs plus a 100-entity move order — is under 20 kB, comfortably
+   * inside the 64 kB frame `ws` will accept. Raising `maxMessageBytes` to buy
+   * room here would be a real DoS regression traded for an imaginary one.
+   */
+  maxCommandsPerTurn: 128,
   /** Bytes. Anything larger is closed on, not parsed. */
   maxMessageBytes: 64 * 1024,
 } as const;
@@ -369,6 +430,23 @@ function realIn(v: unknown, lo: number, hi: number): boolean {
  * out of the bloom pass as an entirely black frame — a remote peer must not be
  * able to post one deliberately.
  */
+/**
+ * The size of each allowlist above, so a test can pin the vocabulary next to
+ * `PROTOCOL_VERSION`.
+ *
+ * EXPORTED FOR ONE REASON: the version sat at 1 through three widenings of
+ * these four sets, because nothing forced anybody to look at it. Adding an enum
+ * member now fails `tests/net-protocol.spec.ts` by name, and the only way to
+ * make it pass is to decide, out loud, whether the wire changed. The sets
+ * themselves stay private — they are a validator's internals, not a contract.
+ */
+export const VOCABULARY_SIZES = {
+  kinds: KINDS.size,
+  orders: ORDERS.size,
+  tabs: TABS.size,
+  stances: STANCES.size,
+} as const;
+
 export function validateCommand(raw: unknown): CommandCheck {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return fault('shape', 'not an object');
@@ -403,6 +481,16 @@ export function validateCommand(raw: unknown): CommandCheck {
   if (!intIn(c.cz, 0, WIRE_LIMITS.mapCells - 1)) return fault('bounds', `cz ${String(c.cz)} is off the grid`);
 
   // -1 is the live "no def" sentinel the bus itself resets to.
+  //
+  // `defId` IS ALWAYS A `ProductionCatalog.publicId` AND NEVER A STORE-SPACE ID.
+  // Worth stating because the id-space reasoning in this file is the thing
+  // people get wrong — `maxDefId` was one below every unit for as long as units
+  // had ids. `Command.defId` is written in exactly four places in
+  // `core/events.ts` (the reset to -1 and the three production constructors)
+  // and every caller passes a `publicId`. Store-space ids — wrecks at 30000+,
+  // scatter props — live in a different space entirely and are only ever READ
+  // from `store.defId[]` for capability lookups; none of those five call sites
+  // writes a command field, so nothing from that space can reach this check.
   if (!intIn(c.defId, -1, WIRE_LIMITS.maxDefId)) {
     return fault('bounds', `defId ${String(c.defId)} is not a plausible def`);
   }

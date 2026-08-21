@@ -15,8 +15,19 @@
 
 [Unit]
 Description=VOLTMARCH lockstep relay
-After=network-online.target
-Wants=network-online.target
+# `network.target`, not `network-online.target`. The relay binds an IP LITERAL
+# on loopback, so it needs no address to have been configured and no name to
+# resolve; waiting for the online target only delays boot.
+After=network.target
+
+# IN [Unit], NOT [Service]. systemd moved both of these in v229; `StartLimitBurst`
+# survives in [Service] as a compatibility alias but `StartLimitIntervalSec` does
+# NOT, so the interval was being ignored and only the default 10 s applied. The
+# guarantee happened to survive (RestartSec=2 against a 10 s window still trips
+# at five starts) but it survived by accident. `systemd-analyze verify` on the
+# target box is the instrument that settles this.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -45,19 +56,31 @@ Environment=VM_PORT=8787
 # proxy — a forwarded header is a client-supplied string, and trusting one from
 # a direct connection lets anyone mint a fresh identity per request.
 Environment=VM_TRUSTED_PROXIES=127.0.0.1,::1,::ffff:127.0.0.1
-# Set this to the origin the game is actually served from. An empty list would
-# reject everything; a wrong one rejects your own players.
+# The origin the game is actually served from.
+#
+# THIS REPLACES THE COMPILED DEFAULT LIST, IT DOES NOT EXTEND IT. Measured: with
+# this line as written, `http://localhost:5173` — which IS in `config.ts`'s
+# fallback array — is answered 401. So whatever is listed here is the complete
+# browser allowlist, and a wrong one rejects your own players. Comma-separated.
+#
+# The DESKTOP build's origin (`app://voltmarch`) does not belong here and must
+# not be added: `config.ts` unions it in unconditionally, precisely because this
+# variable replaces the list and an entry that lived only in the fallback would
+# vanish the moment an operator set this. `app:` is not a scheme any browser can
+# mint, so allowing it costs nothing.
 Environment=VM_ORIGINS=https://avihaymenahem.github.io
 # Set to the deployed client version to refuse mismatched builds outright.
 # Leave unset only while testing — two builds of a deterministic simulation
 # desync on contact, and refusing the pairing is far kinder than a desync.
-#Environment=VM_REQUIRE_BUILD=1.33.0
+#
+# THE EXAMPLE MUST TRACK `package.json`. It read 1.33.0 for three major versions
+# and uncommenting it as written would have refused every real client, which is
+# a self-inflicted outage on the first deploy. Read the version, do not copy it.
+#Environment=VM_REQUIRE_BUILD=3.0.2
 
+# A crash loop must not become a busy loop — see StartLimit* in [Unit] above.
 Restart=always
 RestartSec=2
-# A crash loop must not become a busy loop.
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # -- sandbox ---------------------------------------------------------------
 # The relay reads no files, writes no files, and talks to nothing but its
@@ -83,6 +106,35 @@ LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete
+# WITHOUT THIS A FILTERED SYSCALL IS SIGSYS: the process dies with no message
+# and systemd reports a signal, not a reason. `~@resources` denies `setrlimit`
+# and `sched_setaffinity`, which node and V8 do touch at startup on some
+# builds — so this is the difference between a diagnosable EPERM and a silent
+# crash loop on a box nobody here owns.
+SystemCallErrorNumber=EPERM
+# Pairs with ProtectProc=invisible: /proc holds only this process's own pids.
+ProcSubset=pid
+RemoveIPC=yes
+UMask=0077
+
+# THE NETWORK HALF OF THE SANDBOX, which was entirely missing while the comment
+# above promised an RCE "has nowhere to go". The relay makes ZERO outbound
+# connections — it binds an IP literal, so node never even calls getaddrinfo —
+# so denying everything but loopback costs nothing and inbound from nginx on
+# 127.0.0.1 still passes. journald's socket is AF_UNIX and unaffected.
+#
+# IF YOU EVER SET VM_HOST TO A PUBLIC ADDRESS, THIS BREAKS THE SERVICE. That is
+# the correct trade for this deployment (the relay must not be routable) but it
+# is a trap worth knowing about before you change the bind address.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+# `User=` plus `NoNewPrivileges=` already means this process holds no
+# capabilities. Stating the empty set costs nothing and makes that explicit to
+# `systemd-analyze security`, which is the right instrument for auditing all of
+# the above on the target box.
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 # MemoryDenyWriteExecute MUST STAY OFF.
 # V8 is a JIT: it writes machine code and then executes it, which is exactly

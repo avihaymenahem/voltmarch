@@ -344,7 +344,7 @@ describe('a client cannot run ahead of the frame it is missing', () => {
 
 describe('the relay is the only thing that decides', () => {
   it('stamps the sender slot over whatever the client claimed', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     const lie: WireCommand = {
       kind: CommandKind.Order, player: 0, order: OrderKind.Move, target: 0,
       x: CX, z: CX, defId: -1, tab: 0, cx: 1, cz: 1, stance: 0,
@@ -361,7 +361,7 @@ describe('the relay is the only thing that decides', () => {
   });
 
   it('reports a divergence rather than merging two different worlds', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 30, hash: 0xaaaa } });
     const res = relay.submit({ slot: 1, turn: 0, commands: [], check: { tick: 30, hash: 0xbbbb } });
     expect(res.ok).toBe(true);
@@ -372,14 +372,14 @@ describe('the relay is the only thing that decides', () => {
   });
 
   it('says nothing when the two agree', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 30, hash: 0xcafe } });
     const res = relay.submit({ slot: 1, turn: 0, commands: [], check: { tick: 30, hash: 0xcafe } });
     expect(res.ok && res.desync).toBeNull();
   });
 
   it('refuses a turn already broadcast, and one too far ahead', () => {
-    const relay = new TurnRelay(1, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(1, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 1, hash: 0 } });
     const replayed = relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 1, hash: 0 } });
     expect(replayed).toEqual({ ok: false, code: 'duplicate-turn' });
@@ -393,14 +393,14 @@ describe('the relay is the only thing that decides', () => {
   });
 
   it('refuses a second submission for a turn from the same slot', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 1, hash: 0 } });
     const again = relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 1, hash: 0 } });
     expect(again).toEqual({ ok: false, code: 'duplicate-turn' });
   });
 
   it('drops a whole submission that carries one invalid command, and still completes the turn', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     const poison = {
       kind: CommandKind.Order, player: 1, order: OrderKind.Move, target: 0,
       x: Number.NaN, z: CX, defId: -1, tab: 0, cx: 1, cz: 1, stance: 0,
@@ -419,7 +419,7 @@ describe('the relay is the only thing that decides', () => {
   });
 
   it('lets the survivor keep playing when a slot is retired mid-turn', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.submit({ slot: 0, turn: 0, commands: [], check: { tick: 1, hash: 0 } });
     relay.submit({ slot: 0, turn: 1, commands: [], check: { tick: 4, hash: 0 } });
     expect(relay.openTurns).toBe(2);
@@ -437,7 +437,7 @@ describe('the relay is the only thing that decides', () => {
    * not catch it; `server/test/relay.spec.ts` did, on the first run.
    */
   it('never waits on a retired slot again, not even on a turn it has not seen yet', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.retire(1);
     for (let turn = 0; turn < 3; turn++) {
       const res = relay.submit({ slot: 0, turn, commands: [], check: { tick: turn * 3 + 1, hash: 0 } });
@@ -449,7 +449,7 @@ describe('the relay is the only thing that decides', () => {
   });
 
   it('refuses anything further from a slot that has been retired', () => {
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0); // firstTurn 0: hand-written turns, not scheduler-driven. See TurnRelay.nextTurn.
     relay.retire(1);
     expect(relay.submit({ slot: 1, turn: 0, commands: [], check: { tick: 1, hash: 0 } }))
       .toEqual({ ok: false, code: 'not-in-match' });
@@ -463,7 +463,7 @@ describe('the harness can actually detect a divergence', () => {
    */
   it('catches a client that executed a DIFFERENT command', () => {
     const clients = [new Client(0), new Client(1)];
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD); // default firstTurn: driven by real TurnSchedulers, which start at TURN_DELAY.
 
     for (let t = 1; t <= 120; t++) {
       if (t === 10) clients[0].issueMove(CX + 30);
@@ -505,7 +505,7 @@ describe('the harness can actually detect a divergence', () => {
    */
   it('cannot see a duplicated idempotent command, which is why the relay rejects duplicates', () => {
     const clients = [new Client(0), new Client(1)];
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD); // default firstTurn: driven by real TurnSchedulers, which start at TURN_DELAY.
 
     for (let t = 1; t <= 120; t++) {
       if (t === 10) clients[0].issueMove(CX + 30);
@@ -530,7 +530,7 @@ describe('the harness can actually detect a divergence', () => {
   it('catches a client that skipped a turn', () => {
     const a = new Client(0);
     const b = new Client(1);
-    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD); // default firstTurn: driven by real TurnSchedulers, which start at TURN_DELAY.
     for (let t = 1; t <= 120; t++) {
       if (t === 10) a.issueMove(CX + 30);
       for (const c of [a, b]) {

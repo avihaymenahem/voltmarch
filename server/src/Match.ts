@@ -40,6 +40,12 @@ export interface MatchOptions {
   silenceMs: number;
   /** Injected so tests do not need a real clock. */
   now: () => number;
+  /**
+   * The first turn a client may submit. Defaults to `TURN_DELAY`, which is what
+   * `TurnScheduler` sends — see `TurnRelay.nextTurn`. Only a harness that drives
+   * turns by hand from zero has any reason to pass this.
+   */
+  firstTurn?: number;
 }
 
 export class Match {
@@ -62,7 +68,7 @@ export class Match {
     this.opts = opts;
     this.id = opts.id;
     this.startedAt = opts.now();
-    this.relay = new TurnRelay(peers.length, TURN_LOOKAHEAD);
+    this.relay = new TurnRelay(peers.length, TURN_LOOKAHEAD, opts.firstTurn ?? TURN_DELAY);
     this.lastSubmit = new Array<number>(peers.length).fill(this.startedAt);
   }
 
@@ -102,9 +108,26 @@ export class Match {
   submit(slot: number, turn: number, commands: unknown[], check: WireCheck): ErrorCode | null {
     if (this.finished) return 'not-in-match';
 
-    this.lastSubmit[slot] = this.opts.now();
     const res = this.relay.submit({ slot, turn, commands, check });
     if (!res.ok) return res.code;
+
+    // STAMPED ONLY ON AN ACCEPTED SUBMISSION, AND THE ORDER IS THE WHOLE POINT.
+    //
+    // This used to be the first line of the method, so a submission the relay
+    // REFUSED — `duplicate-turn`, `turn-out-of-window`, even a structurally
+    // invalid `bad-message` — still counted as a sign of life. `index.ts` keeps
+    // the connection open on a refusal by design, so one ~120-byte frame every
+    // ten seconds is free against a 40/s message rate, and it kept the silence
+    // clock fresh forever while contributing nothing to any turn.
+    //
+    // Measured, the damage was not the freeze it looks like: a faithful client
+    // stalls when it is starved (`TurnScheduler.mayStep`), so the VICTIM stops
+    // submitting first, ITS `lastSubmit` goes stale first, and `tick` below
+    // retires the victim and awards the match to the attacker. A losing player
+    // could turn a loss into a win with one garbage frame every ten seconds.
+    //
+    // A refusal is now silence, which is what it always was.
+    this.lastSubmit[slot] = this.opts.now();
 
     if (res.warning !== null) this.peers[slot]?.send({ t: 'error', code: res.warning });
 
@@ -137,6 +160,19 @@ export class Match {
    */
   peerLost(slot: number): void {
     if (this.finished) return;
+    // TOTAL OVER `slot`, because a caller can hand it -1 and one did.
+    // `Lobby.leave` calls `match.peerLost(match.slotOf(peer))`, and `slotOf` is
+    // an `indexOf` that answers -1 for a peer this match has already dropped —
+    // which the silence sweep above does without telling the lobby. The guard
+    // below reads `this.peers[-1]`, which is `undefined` rather than `null`, so
+    // it did not fire: execution fell through, `peers[-1]` was assigned as an
+    // own property of the array, and the survivor was handed a SECOND grace
+    // period. Measured: a peer retired for silence at 15 s whose socket then
+    // closed at 30 s pushed the end from 45 s out to 60 s, with one spurious
+    // `peerLost` restarting the countdown on screen. Reachable on the ordinary
+    // path — the 15 s heartbeat terminates a dead client squarely inside the
+    // grace window — so this is what a crashed opponent looked like.
+    if (slot < 0 || slot >= this.peers.length) return;
     if (this.peers[slot] === null) return;
     this.peers[slot] = null;
 
@@ -169,13 +205,36 @@ export class Match {
     //
     // Treated as a disconnect, because from the other player's side it is
     // indistinguishable from one and has exactly the same remedy.
+    //
+    // WHICH SLOT IS RETIRED WHEN BOTH ARE SILENT DECIDES WHO WINS, and the old
+    // loop took the first in index order — so an attacker that could make the
+    // sweep see two silent slots at once always beat the host.
+    //
+    // THE STAMP FIX ABOVE IS NOT SUFFICIENT ON ITS OWN, and reasoning said it
+    // was until a test disagreed. A starved victim IS fresher than the peer
+    // starving it — it runs its whole lookahead out and submits every turn of it
+    // after the attacker's last accepted one — but that margin is only
+    // `TURN_LOOKAHEAD` turns, about 400 ms, and this sweep samples once a
+    // second. So the sample usually lands after BOTH have crossed the threshold,
+    // and index order then hands the match to the attacker. The margin is real
+    // and far too small to bet on.
+    //
+    // Longest-silent decides it on the only evidence there is. TIES KEEP THE
+    // EARLIER SLOT, exactly as before: an exact tie means both peers fell silent
+    // in the same millisecond, which is a mutual stall rather than an attack,
+    // and re-deciding it would change an outcome nothing is wrong with.
     if (this.graceDeadline === 0) {
+      let worst = -1;
+      let longest = 0;
       for (let slot = 0; slot < this.peers.length; slot++) {
         if (this.peers[slot] === null) continue;
-        if (now - this.lastSubmit[slot] < this.opts.silenceMs) continue;
-        this.peerLost(slot);
-        break;
+        const quiet = now - (this.lastSubmit[slot] ?? now);
+        if (quiet < this.opts.silenceMs) continue;
+        if (worst >= 0 && quiet <= longest) continue;
+        worst = slot;
+        longest = quiet;
       }
+      if (worst >= 0) this.peerLost(worst);
     }
 
     if (this.graceDeadline !== 0 && now >= this.graceDeadline) {

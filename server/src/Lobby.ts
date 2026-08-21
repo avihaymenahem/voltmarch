@@ -323,6 +323,10 @@ export class Lobby {
     const match = this.byPeer.get(peer);
     if (match === undefined) return;
     this.byPeer.delete(peer);
+    // `slotOf` can answer -1 here: `Match.tick`'s silence sweep retires a slot
+    // without telling the lobby, so a socket that closes afterwards arrives with
+    // no seat left. `peerLost` is TOTAL over `slot` for that reason — the guard
+    // belongs in the callee, because a second caller cannot be seen from here.
     match.peerLost(match.slotOf(peer));
     if (match.over) this.sweepMatch(match);
   }
