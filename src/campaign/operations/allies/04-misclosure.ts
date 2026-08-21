@@ -24,8 +24,9 @@
  *
  *   - **THE MUSTER.** Every scripted column forms at a Soviet forward barracks
  *     117.34 m from their Construction Yard, and the last two columns are gated
- *     on it still standing. Levelling it deletes them outright — 7 400 credits
- *     of the 12 800 of hull this operation spends against the player, 57.8%.
+ *     on it still being THEIRS. Taking it off them deletes those two outright —
+ *     7 400 credits of the 12 800 of hull this operation spends against the
+ *     player, 57.8%.
  *     **THE TRAVEL IS MEASURED AND THE FIGHT IS NOT.** It stands 273.72 m from
  *     the player's yard, which is 284.3 m of Track route and **86.2 s of pure
  *     driving there and back at a Warden's 6.6 m/s**; what that buys into is
@@ -47,7 +48,7 @@
  * complete, so two secondaries that compete for the same minutes would be a
  * medal nobody can earn — `allies.03.ground-truth` refused a second secondary
  * for exactly that reason and paid its find in credits instead. These two point
- * the same way: levelling the muster is how a player AFFORDS the last four
+ * the same way: taking the muster off them is how a player AFFORDS the last four
  * minutes, and the provisional is what a player takes when they did not.
  *
  * ============================================================================
@@ -151,7 +152,12 @@
  * What it guards is the build that FAILED: `entityDead` reads TRUE before a tag
  * has ever existed, so an office that `spawnBuilding` refused would end the
  * operation in defeat on tick one, in silence, before a word of the briefing had
- * played. `soviets.05.short-allocation` guards its own thresholds the same way
+ * played. **`t.musterDown` is the third consumer and it arrived with the
+ * ownership migration**: `ownerCount(..., max: 0)` reads TRUE against an empty
+ * tag registry for exactly the same reason, so an unplaced muster would complete
+ * a 500-credit secondary on tick one rather than end the match on it. One
+ * constant, three triggers, one failure mode.
+ * `soviets.05.short-allocation` guards its own thresholds the same way
  * and for the same reason. The real gate on that failure is
  * `campaign-maps.spec.ts`, which builds this operation headless and refuses a
  * declared tag that landed on nothing; the settle only makes the symptom legible
@@ -181,7 +187,7 @@
  * right ENDING and both endings' dialogue, four toasts deep.
  *
  * ============================================================================
- * THE COLUMNS, AND WHAT KILLING THE MUSTER IS ACTUALLY WORTH
+ * THE COLUMNS, AND WHAT TAKING THE MUSTER IS ACTUALLY WORTH
  * ============================================================================
  * Four columns, all forming at `ROAD` — 44.18 m outside the muster, 141.8 m of
  * Track route from the office. An Anvil covers that in 26.3 s at 5.4 m/s and a
@@ -189,22 +195,28 @@
  *
  *     3:00    4 Conscripts, 2 Anvils    2 200 credits   unconditional
  *     6:30    5 Conscripts, 3 Anvils    3 200           unconditional
- *     10:00   5 Conscripts, 3 Anvils    3 200           only if the muster stands
- *     13:30   6 Conscripts, 4 Anvils    4 200           only if the muster stands
+ *     10:00   5 Conscripts, 3 Anvils    3 200           only while it is theirs
+ *     13:30   6 Conscripts, 4 Anvils    4 200           only while it is theirs
  *
- * 12 800 credits of hull if the muster survives, against `soviets.05`'s 13 100
- * over seventeen minutes — the same band, weighted toward armour because
+ * 12 800 credits of hull if the muster stays theirs, against `soviets.05`'s
+ * 13 100 over seventeen minutes — the same band, weighted toward armour because
  * `conscript` is 100 credits to a `gi`'s 200 and `rhino` is 900 to a `grizzly`'s
- * 700.
+ * 700. **RE-DERIVED off the bound def tables on the built world when the gate
+ * moved to ownership, rather than carried forward: 2 200 / 3 200 / 3 200 /
+ * 4 200, total 12 800, gated 7 400 = 57.8%.** The migration below changes WHEN
+ * the last two are withheld and not what they cost.
  *
- * **THE GATE IS `entityAlive`, WHICH IS MONOTONE, AND THAT IS THE WHOLE REASON
- * THE FORK IS SAFE.** A structure can go from alive to dead and never back, so a
- * one-shot trigger reading it either fires at its own minute or can never fire
- * at all. The obvious alternative — two triggers per column, one for each state —
- * has a hole a designer cannot see: the dead-arm's condition stays satisfiable
- * for the rest of the match, so killing the muster at 14:00 would summon the
- * column that was already sent at 13:30. One monotone gate, no window, no
- * bound to tune.
+ * **THE GATE IS MONOTONE, AND THAT IS THE WHOLE REASON THE FORK IS SAFE.** A
+ * one-shot trigger reading a monotone gate either fires at its own minute or can
+ * never fire at all. The obvious alternative — two triggers per column, one for
+ * each state — has a hole a designer cannot see: the false-arm's condition stays
+ * satisfiable for the rest of the match, so taking the muster at 14:00 would
+ * summon the column that was already sent at 13:30. One monotone gate, no
+ * window, no bound to tune.
+ *
+ * **BUT THE GATE IS `ownerCount` NOW, AND MONOTONICITY IS NO LONGER FREE.**
+ * Death is one-way by construction; a deed is not. See the next section for the
+ * migration and for the premise that keeps this paragraph true.
  *
  * **AND THE COLUMNS ARE A FLOOR ON THE PRESSURE RATHER THAN THE WHOLE OF IT.**
  * `AiBrain` has a base, a 5 000 bank, sixteen minutes of income and a brain;
@@ -217,10 +229,95 @@
  * honours are its own `GROUP_*` state — which is exactly the finding the layout
  * header records for a PARKED hull on an objective, one file away. Read the four
  * columns as the district being stronger at 3:00, 6:30,
- * 10:00 and 13:30 than it could otherwise have been. Killing the muster also
+ * 10:00 and 13:30 than it could otherwise have been. Taking the muster also
  * costs them a PRODUCER — `AiBrain.census` counts it and the infantry queue runs
  * slower without it — which is a consequence this table never mentions and does
  * not have to.
+ *
+ * ============================================================================
+ * THE MUSTER IS READ BY OWNERSHIP, NOT BY LIFE, AND ALL THREE READS MOVED AT
+ * ONCE
+ * ============================================================================
+ * `Director.holds` answers `entityAlive` with `aliveWithTag(tag) > 0` and
+ * `entityDead` with `=== 0`, and **a captured building is still alive**. Seat 0
+ * has an `engineer` standing at tick zero and stands both of its prereqs
+ * (`barracks` + `refinery`), so the capture ladder is available for the whole
+ * sixteen minutes. Read through liveness — which is how this file shipped — a
+ * player who took the muster with engineers got a position nobody can defend:
+ *
+ *   - `t.musterDown` never fired, so the 500-credit secondary was UNREACHABLE;
+ *   - `t.musterStanding` affirmatively FAILED it at 16:00;
+ *   - and `t.col3` and `t.col4` went on spawning Soviet columns off a barracks
+ *     ON THE PLAYER'S OWN BOOKS, with Wend saying "The muster is still forming
+ *     them".
+ *
+ * The third is indefensible under any reading of the secondary, so the two
+ * column gates had to move whatever was decided about the objective. All three
+ * reads are `ownerCount(1, 'building', 'muster', ...)` now — `min: 1` for the
+ * gates, `max: 0` for the payment — which is `soviets.06.demolition-order`'s
+ * shape and its `t.spurMissed` argument almost word for word.
+ *
+ * **THE OBJECTIVE MOVED WITH THEM, AND THAT IS THE AUTHORING DECISION.** A
+ * MIXED reading — columns on ownership, secondary on life — hands the player who
+ * captures the muster a stopped column flow AND a failed objective at 16:00: the
+ * operation would reward the play in the world and punish it on the debrief,
+ * which is worse than either pure reading. So the row means *the Soviets no
+ * longer hold the ridge* and the title says so rather than saying "Level". That
+ * WIDENS what the secondary accepts, and the widening is the honest reading of
+ * the operation's own claim: the briefing says every column they send today
+ * forms there, and a barracks they do not own forms nothing for them.
+ *
+ * **WHY NOT `captureProof`, WHICH ELEVEN OPERATIONS DECLARE.** `types.ts` gives
+ * the case that field exists for: a structure the player was told to PROTECT,
+ * where migrating to `ownerCount` makes a LOSS reachable by capture — defeat on
+ * the tick the player took the thing into protective custody. The muster is the
+ * opposite of that, an enemy structure the operation PAYS to have removed, so
+ * there is no loss to open; and refusing an engineer at an enemy forward
+ * barracks would forbid an ordinary play for no reason this fiction can give.
+ * The price ordering closes the rest: capture is not a cheap shortcut to the
+ * secondary, it is the expensive route to the same place.
+ *
+ *     the four-engineer ladder   `Capture.resolve` softens an ENEMY structure by
+ *                                `maxHp * CAPTURE.softenFrac` (0.25) through
+ *                                `ARMOR_MATRIX[HighExplosive][Concrete]` (1.00)
+ *                                and `COMBAT_DAMAGE.globalMul` (0.80) = 0.20 of
+ *                                max per engineer, against a `captureHpFrac`
+ *                                gate of 0.50. The muster is 800 hp of
+ *                                `barracks`, so 1.00 -> 0.80 -> 0.60 -> 0.40 and
+ *                                the fourth man takes it: 4 x 500 = **2 000
+ *                                credits, 40% of the opening bank**.
+ *     the same road, slower      Measured on the built world, the 8-connected
+ *                                walk from the player's yard to the muster is
+ *                                the SAME length for `Locomotor.Foot` as for
+ *                                `Locomotor.Track` — the engineer has no
+ *                                shortcut the tanks do not — and he covers it at
+ *                                3.4 m/s against a Warden's 6.6.
+ *     and the guns come first    Both Sentry Guns stand 22.80 m from the muster
+ *                                carrying `pillboxMg` at 22 m, so an engineer at
+ *                                the barracks wall is inside both arcs. 5 x 13
+ *                                over a 0.79 s cycle through
+ *                                `ARMOR_MATRIX[SmallArms][Infantry]` (1.00) and
+ *                                `globalMul` is 65.8 dps against a 90 hp
+ *                                engineer: **1.37 s under one gun, 0.68 s under
+ *                                both**. The raid has to happen either way.
+ *
+ * So the capture costs the whole raid PLUS 2 000 credits, and buys the same
+ * secondary and the same two deleted columns. What it buys ON TOP is a
+ * `barracks` on the player's own seat — `ProductionService.census` counts it, so
+ * their Infantry queue picks up `FACTORY_SPEED_BONUS` while it stands — and the
+ * moment it is theirs it is an Allied building alone in a Soviet district that
+ * every gun they own may shoot. A prize with a short life, not a second base.
+ *
+ * **AND MONOTONICITY NOW RESTS ON A PREMISE `entityAlive` DID NOT NEED.** The
+ * two gated columns are safe only because seat 1 can never take the muster
+ * BACK. It cannot: `AiBrain` issues no `OrderKind.Capture` anywhere in
+ * `src/sim/AI.ts` — CLAUDE.md's capability audit, and the layout's own header
+ * re-derives it for the parked-hull question — and `GarrisonService.refusalFor`
+ * answers `'hostile'` for any structure the entrant is not allied to, so no
+ * conscript can walk it back either. **If the brain ever learns the verb, this
+ * paragraph is one of the things that breaks**, which is the same exclusion
+ * `tests/campaign-capture-blind.spec.ts` names as the first thing to delete on
+ * that day.
  *
  * ============================================================================
  * THE ROSTER IS EMPTY ON BOTH SIDES, AND THE ARGUMENT IS THE FORK
@@ -303,6 +400,10 @@ import {
  * world is finished before tick one, so on a correct build neither loss can hold
  * at 0:00 — this makes an office that never got placed fail AFTER the briefing
  * rather than before it.
+ *
+ * THREE CONSUMERS, NOT TWO: `t.razed`, `t.beaten` and — since the muster reads
+ * moved to ownership — `t.musterDown`, whose `ownerCount(..., max: 0)` reads
+ * TRUE against an empty tag registry for precisely the reason `entityDead` did.
  */
 const SETTLE = seconds(20);
 
@@ -329,14 +430,29 @@ const EARLY = minutes(8);
 const CLOSE = minutes(16);
 
 /**
- * The muster is still standing, so it is still forming columns.
+ * The Soviets still hold the muster, so it is still forming columns FOR THEM.
  *
- * MONOTONE, WHICH IS WHAT MAKES THE TWO GATED COLUMNS SAFE. A structure goes
- * from alive to dead and never back, so a one-shot trigger reading this either
- * fires at its own minute or can never fire at all. See the header for the
- * two-arm alternative that has a hole in it.
+ * `ownerCount` RATHER THAN `entityAlive`, AND THAT IS NOT A SPELLING CHANGE.
+ * `Director.holds` answers `entityAlive` by counting LIVE entities and a
+ * captured barracks is still alive, so read through liveness this gate went on
+ * spawning Soviet columns off a structure standing on the PLAYER'S books. The
+ * header carries the migration, the price of the capture, and the objective
+ * that moved with these two gates rather than being left behind them.
+ *
+ * `min: 1` IS THE SAFE POLARITY AND NEEDS NO SETTLE GUARD. It reads FALSE
+ * against a tag registry that is still empty, so a build that placed nothing
+ * WITHHOLDS the two late columns rather than asserting anything;
+ * `t.musterDown`'s `max: 0` is the other way round and carries `SETTLE` for
+ * exactly that reason.
+ *
+ * STILL MONOTONE, on a premise `entityAlive` did not need: seat 1 cannot take
+ * it back, because `AiBrain` issues no `OrderKind.Capture` and
+ * `GarrisonService.refusalFor` answers `'hostile'` for a structure the entrant
+ * is not allied to. See the header for what breaks if the brain learns it.
  */
-const MUSTER_UP: Condition = { on: 'entityAlive', tag: 'muster' };
+const MUSTER_UP: Condition = {
+  on: 'ownerCount', player: 1, role: 'building', tag: 'muster', min: 1,
+};
 
 /** The office is still standing. Its exact complement is `t.razed`'s condition. */
 const OFFICE_UP: Condition = { on: 'entityAlive', tag: 'office' };
@@ -499,11 +615,18 @@ const op: OperationDef = {
      * THIS ONE PAYS, BECAUSE IT RESOLVES MID-MATCH AND THE MONEY HAS SOMEWHERE
      * TO GO. 500 credits is a Pillbox and a quarter, and it arrives at the
      * moment the player has just spent their army on a 284.3 m round trip.
+     *
+     * **THE TITLE SAID "LEVEL" AND THE ROW COUNTS A DEED.** It resolves on
+     * `ownerCount(1, 'building', 'muster', max: 0)` — destroyed and captured
+     * alike — so a title naming only the first would be the operation asking
+     * for one thing and paying for another, which is precisely what it did
+     * while `t.musterDown` read `entityDead`. The header argues the widening;
+     * the wording is what a player actually reads, so it moved with it.
      */
     {
       id: 'muster',
       kind: 'secondary',
-      title: 'Level the Soviet forward muster',
+      title: 'Take the Soviet forward muster off them',
       credits: 500,
     },
   ],
@@ -546,7 +669,7 @@ const op: OperationDef = {
           text: 'Their signals have it too. There is a muster on the far ridge, a hundred and '
             + 'seventeen metres off their own yard, two guns on it, and every column they send '
             + 'today forms there. First at three minutes, second at six and a half. After that '
-            + 'only if the muster is still standing.',
+            + 'only for as long as the ridge is still theirs.',
         },
         { do: 'revealArea', player: 0, area: MUSTER_AREA },
       ],
@@ -666,22 +789,46 @@ const op: OperationDef = {
      * its header: a resolved objective does not un-resolve, so the completion
      * has to be applied before the failure that shares its tick can be.
      *
-     * `entityDead` on a tag the layout stamps, which `campaign-maps.spec.ts`
-     * proves landed. The 500 credits are paid by `ObjectiveDef.credits` through
+     * `ownerCount ... max: 0` ON A TAG THE LAYOUT STAMPS, which
+     * `campaign-maps.spec.ts` proves landed. It was `entityDead`, and
+     * `Director.holds` answers that by counting LIVE entities — so a player who
+     * walked four engineers up the ridge and took the muster could never
+     * complete this row at all, and `t.musterStanding` then FAILED it at 16:00.
+     * `max: 0` is true when the Soviets no longer own it, which covers
+     * destroyed and captured alike and is the same predicate `MUSTER_UP` reads
+     * from the other side; the two stay exact complements over seat 1's deed,
+     * as they were over the corpse.
+     *
+     * `SETTLE` IS THE PRICE OF THAT POLARITY AND IT IS NOT OPTIONAL. A count of
+     * zero reads TRUE before the layout has stamped the tag, exactly as
+     * `entityDead` did — so a build that never placed the muster would complete
+     * this row AND PAY THE 500 CREDITS on tick one, before a word of the
+     * briefing. The same twenty seconds `t.razed` uses, for the same reason and
+     * out of the same constant: it makes a failed build legible after the
+     * briefing rather than before it, and `campaign-maps.spec.ts` is the gate
+     * that actually catches one.
+     *
+     * The 500 credits are paid by `ObjectiveDef.credits` through
      * `CampaignSession.setObjective`, once ever — the `paid` set rides in the
-     * save chunk beside completion, so reloading before it and killing the
+     * save chunk beside completion, so reloading before it and taking the
      * muster again does not pay twice.
      */
     {
       id: 't.musterDown',
-      when: { on: 'entityDead', tag: 'muster' },
+      when: {
+        on: 'all',
+        of: [
+          { on: 'elapsed', ticks: SETTLE },
+          { on: 'ownerCount', player: 1, role: 'building', tag: 'muster', max: 0 },
+        ],
+      },
       then: [
         { do: 'completeObjective', id: 'muster' },
         {
           do: 'dialogue',
           speaker: 'Wend',
-          text: 'Muster is down. Nothing else forms on that ridge today — whatever they had '
-            + 'written for it is written for nowhere.',
+          text: 'The muster is off them. Nothing else forms on that ridge today — whatever they '
+            + 'had written for it is written for nowhere.',
         },
         {
           do: 'dialogue',
@@ -819,8 +966,21 @@ const op: OperationDef = {
     /* -- the secondary that resolves at the close -------------------------
      * ABOVE `t.close`: `t.close` sets the outcome, and a row left `active` when
      * the operation ends reads on the debrief as unfinished rather than as
-     * missed. It cannot wrongly fire on a muster already levelled — that row is
+     * missed. It cannot wrongly fire on a muster already taken — that row is
      * `complete` by then and a resolved objective does not un-resolve.
+     *
+     * `MUSTER_UP` IS OWNERSHIP NOW, WHICH IS WHAT MAKES THAT SENTENCE TRUE
+     * AGAIN. Through `entityAlive` this trigger failed the secondary at 16:00
+     * for a muster the player had CAPTURED — the row was still `active`,
+     * because `t.musterDown` could not see a deed move, so there was nothing to
+     * refuse the un-resolve. Both reads moved together for that reason; see the
+     * header on why a mixed pair is worse than either whole one.
+     *
+     * THE ID STILL SAYS `Standing` AND THE CONDITION NOW SAYS THEIRS. It is
+     * kept: a trigger id is not player-visible, `allies.05.forced-closure`
+     * cites this one by name, and `OperationState.fired` is keyed by id and
+     * saved. The condition is one line below and cannot be misread for the
+     * name.
      */
     {
       id: 't.musterStanding',

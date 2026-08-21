@@ -190,10 +190,16 @@
  * could not:
  *
  *   - it is a PRODUCER, so `AiBrain.census` counts it and the Soviet infantry
- *     queue runs faster while it stands (`FACTORY_SPEED_BONUS`) — levelling it
- *     therefore costs them something the trigger table never mentions;
+ *     queue runs faster while it stands (`FACTORY_SPEED_BONUS`) — taking it off
+ *     them therefore costs them something the trigger table never mentions, and
+ *     a player who takes it with ENGINEERS rather than shells gets the same
+ *     producer on their own seat, because `ProductionService.census` counts a
+ *     `barracks` for whoever holds the deed;
  *   - it is a BUILDING on an AI seat, which is what `campaign-maps.spec.ts`
- *     requires of any tag an `entity*` condition reads. A parked hull would be
+ *     requires of any tag a world condition reads — and since the migration the
+ *     reads are `ownerCount(..., role: 'building')`, so "a building on seat 1"
+ *     is now the LITERAL text of the predicate rather than an implication of it.
+ *     A parked hull would be
  *     filed into a squad by `regroupSquads` on the first brain pass and driven
  *     off the ridge. That measurement is in `campaign-maps.spec.ts`'s own
  *     header, taken on `soviets.02.common-standard`: two Wardens parked on an
@@ -206,11 +212,17 @@
  *
  * **`barracks` CARRIES NO `UNLOCK_TAGS` ROW, WHICH IS LOAD-BEARING UNDER AN
  * EMPTY ROSTER.** `spawnBuilding` consults the progression gate, so a tagged key
- * here would return `NONE`, the tag would land on nothing, and `entityAlive`
- * would read FALSE for the whole match — deleting both late columns on tick one,
- * silently, with every gate green. `sentryGun` and `civHospital` are untagged
- * for the same reason, and `campaign-maps.spec.ts` checks the declaration in
- * both directions.
+ * here would return `NONE`, the tag would land on nothing, and
+ * `ownerCount(1, 'building', 'muster', min: 1)` would read FALSE for the whole
+ * match — deleting both late columns on tick one, silently, with every gate
+ * green. **The other polarity is worse and it is why `t.musterDown` carries a
+ * settle guard**: `max: 0` reads TRUE against an empty registry, so the same
+ * failed placement would COMPLETE the 500-credit secondary and pay it out.
+ * (Both were true of the `entityAlive` / `entityDead` pair this replaced, for
+ * the same reason and in the same directions; the migration did not create the
+ * hazard, it inherited it.) `sentryGun` and `civHospital` are untagged for the
+ * same reason, and `campaign-maps.spec.ts` checks the declaration in both
+ * directions.
  *
  * ============================================================================
  * `ROAD` IS WHERE THE COLUMNS LAND, AND IT IS A RING RATHER THAN A POINT
@@ -325,8 +337,16 @@
  *             proves it landed: an early-out over bare ground is a way out the
  *             player is told about and cannot take, and nothing else would
  *             notice.
- * `muster`  — the Soviet forward barracks. Read by `entityAlive`, which gates
- *             both late columns, and by `entityDead`, which pays the raid.
+ * `muster`  — the Soviet forward barracks. Read by `ownerCount` ON SEAT 1 and by
+ *             nothing else: `min: 1` gates both late columns, `max: 0` pays the
+ *             raid. **It was `entityAlive` / `entityDead`, and those count LIVE
+ *             entities**, so neither could see the deed move — a barracks the
+ *             player had captured with engineers went on gating Soviet columns
+ *             from their own books, and the secondary that pays for removing it
+ *             was unreachable and then failed at the close. See
+ *             `operations/allies/04-misclosure.ts`'s header for the migration
+ *             and `tests/campaign-capture-blind.spec.ts` for the sweep that
+ *             found it.
  * `col1`..`col4` — the four columns, produced by `spawnUnits` in the trigger
  *             table and never by this file. Declared anyway, so a reader asking
  *             where the pressure comes from finds the answer in the file that
@@ -388,7 +408,8 @@ export const MAST: Point = { x: 448, z: 418 };
 
 /**
  * The Soviet forward muster: a real `barracks` on their seat, 117.34 m from
- * their yard. Both late columns are gated on it still standing.
+ * their yard. Both late columns are gated on it still being THEIRS — the deed,
+ * not the corpse; see the TAGS block above.
  */
 export const MUSTER: Point = { x: 168, z: 236 };
 

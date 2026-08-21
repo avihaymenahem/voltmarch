@@ -16,6 +16,13 @@
  * migrating to `ownerCount(foeSeat, tag, max: 0 / min: 1)` behind a settle
  * guard. There are **thirty-seven** now and nothing would catch a new one.
  *
+ * A SEVENTH WAS MIGRATED OUT OF THIS FILE'S OWN `REPORTED, NOT FIXED` SET on
+ * 2026-08-21: `allies.04.misclosure`'s `muster`, whose two column gates were
+ * spawning Soviet waves off a barracks the player had captured. All three of
+ * its muster reads are `ownerCount` on seat 1 now and its secondary is titled
+ * for the deed rather than for the corpse, so the pair is gone from `DECLARED`
+ * entirely rather than re-declared.
+ *
  * ── THE PREDICATE, STATED ────────────────────────────────────────────────────
  * For every `entityDead` / `entityAlive` condition in every trigger of every
  * shipped operation, the tag it names is a HAZARD when, on the operation's own
@@ -56,7 +63,8 @@
  *     operation both hold, and an over-report is the safe direction.
  *   - **Which DIRECTION the blindness hurts.** Whether capture denies a win
  *     (`soviets.03`'s bore-head), keeps a scripted enemy wave coming
- *     (`allies.04`'s muster) or is the operation's own intent
+ *     (`allies.04`'s muster, which is what got that one migrated) or is the
+ *     operation's own intent
  *     (`reclamation.10`'s exchange) is an AUTHORING question. This file demands
  *     that every pair be DECLARED — by `captureProof` or by a line in the table
  *     below carrying its reason — and does not try to grade them.
@@ -462,16 +470,6 @@ const DECLARED: Readonly<Record<string, string>> = {
 
   /* -- NOT argued by the operation. Reported, not fixed. ------------------ */
 
-  'allies.04.misclosure/muster':
-    'REPORTED, NOT FIXED. `muster` is the SOVIET forward barracks on seat 1 and nothing in the '
-    + 'file mentions capture anywhere near it. An Allied `engineer` stands on seat 0 at t=0, so '
-    + 'the four-engineer ladder is available: a captured muster is alive, so t.musterDown never '
-    + 'completes the 500-credit secondary, t.musterStanding FAILS it at 16:00, and t.col3 / '
-    + "t.col4 keep spawning Soviet columns off `MUSTER_UP` from a barracks on the player's own "
-    + 'books, with Wend saying "The muster is still forming them". Migration is an authoring '
-    + 'decision — the title reads "Level the Soviet forward muster" — so it is declared here '
-    + 'rather than changed under a test.',
-
   'pact.01.shallow-road/gun':
     'REPORTED, NOT FIXED. t.wade reads `entityAlive` over the two ENEMY emplacements at the cut, '
     + 'to mean "while the cut is still standing". A captured emplacement is still standing, so '
@@ -697,20 +695,27 @@ describe('every capture-blind liveness condition is declared', () => {
     }
   });
 
-  it('the three not argued by their own operation are named, and only those three', () => {
+  it('the two not argued by their own operation are named, and only those two', () => {
     /*
-     * THE HALF THAT KEEPS THE TABLE HONEST. Fourteen of the seventeen entries quote
-     * the operation's own block; three quote nothing, because the operation says
+     * THE HALF THAT KEEPS THE TABLE HONEST. Fourteen of the sixteen entries quote
+     * the operation's own block; two quote nothing, because the operation says
      * nothing. Splitting them out means a future reader can tell "reviewed and
-     * correct" from "reviewed and left alone", and adding a fourth silent one
+     * correct" from "reviewed and left alone", and adding a third silent one
      * costs an edit here rather than a sentence nobody checks.
+     *
+     * IT WAS THREE. `allies.04.misclosure/muster` was MIGRATED rather than
+     * argued — all three of its muster reads are `ownerCount` on seat 1 now and
+     * its secondary is titled for the deed rather than for the corpse — so the
+     * pair stopped being a hazard and its line came out of `DECLARED` on the
+     * same commit. That is the shape this table is meant to force: the number
+     * here falls when somebody FIXES one, and it can only fall by an edit that
+     * somebody had to justify.
      */
     const undeclared = Object.entries(DECLARED)
       .filter(([, why]) => why.startsWith('REPORTED, NOT FIXED'))
       .map(([k]) => k)
       .sort();
     expect(undeclared).toEqual([
-      'allies.04.misclosure/muster',
       'pact.01.shallow-road/gun',
       'reclamation.03.sold-twice/post',
     ]);
