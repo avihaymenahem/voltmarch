@@ -52,7 +52,14 @@ import * as THREE from 'three';
 
 import { RA3_UNIT_PALETTE } from '../core/config';
 import { Rng } from '../core/math';
+import {
+  RUBBLE_SIZES, WRECK_CLASSES, WRECK_LENGTH, rubbleSizeForFootprint, wreckClassForLength,
+  type RubbleSize, type WreckClass,
+} from '../core/wrecks';
 import { PropMesh, type PropPalette } from '../world/PropLibrary';
+
+export { WRECK_LENGTH } from '../core/wrecks';
+export type { RubbleSize, WreckClass } from '../core/wrecks';
 
 /* ==========================================================================
  * 1. VOCABULARY
@@ -67,20 +74,6 @@ export type WreckFaction = 'allies' | 'soviets' | 'meridian' | 'reclaim' | 'neut
  * that left it reads as a bug and one that is twice the footprint blocks a lane
  * the pathfinder thinks is clear.
  */
-export type WreckClass = 'light' | 'medium' | 'heavy' | 'support' | 'naval';
-
-/** Ruin size classes, by structure footprint. */
-export type RubbleSize = 'small' | 'medium' | 'large';
-
-/** Long-axis metres each hulk class is built to. */
-export const WRECK_LENGTH: Readonly<Record<WreckClass, number>> = {
-  light: 4.6,
-  medium: 6.4,
-  heavy: 8.2,
-  support: 8.8,
-  naval: 13.0,
-};
-
 /**
  * Pick a hulk class from the dead unit's hull length in metres.
  *
@@ -88,18 +81,12 @@ export const WRECK_LENGTH: Readonly<Record<WreckClass, number>> = {
  * wants the size to track the corpse can pass `radius * 2`.
  */
 export function wreckClassFor(hullLengthMeters: number): WreckClass {
-  if (hullLengthMeters >= 11.0) return 'naval';
-  if (hullLengthMeters >= 8.2) return 'support';
-  if (hullLengthMeters >= 7.0) return 'heavy';
-  if (hullLengthMeters >= 5.6) return 'medium';
-  return 'light';
+  return wreckClassForLength(hullLengthMeters);
 }
 
 /** Pick a ruin size from a structure footprint in cells (w * h). */
 export function rubbleSizeFor(footprintCells: number): RubbleSize {
-  if (footprintCells >= 6) return 'large';
-  if (footprintCells >= 4) return 'medium';
-  return 'small';
+  return rubbleSizeForFootprint(footprintCells);
 }
 
 /** The key a built geometry is filed under in a `WreckSet`. */
@@ -582,7 +569,11 @@ const RUBBLE: Readonly<Record<RubbleSize, RubbleSpec>> = {
 };
 
 function rubbleSeed(faction: WreckFaction, size: RubbleSize): number {
-  const f = faction === 'allies' ? 0x41 : faction === 'soviets' ? 0x53 : 0x4e;
+  const f = faction === 'allies' ? 0x41
+    : faction === 'soviets' ? 0x53
+      : faction === 'meridian' ? 0x4d
+        : faction === 'reclaim' ? 0x52
+          : 0x4e;
   const c = ['small', 'medium', 'large'].indexOf(size) + 1;
   return (0x52_55_00_00 ^ (f << 8) ^ (c * 0x85eb)) >>> 0;
 }
@@ -607,6 +598,8 @@ export function buildBuildingRubble(
   const spec = RUBBLE[size];
   const S = spec.span;
   const soviet = faction === 'soviets';
+  const meridian = faction === 'meridian';
+  const reclaim = faction === 'reclaim';
   const rng = new Rng(rubbleSeed(faction, size));
   const m = new PropMesh();
   m.ao(0.50, 0, S * 0.5).gloss(0.05);
@@ -619,7 +612,7 @@ export function buildBuildingRubble(
     // A stub, not a wall: the ruin has to stay low enough that a unit walking
     // past it still reads as being in front of the site, not behind a building.
     const h = S * rng.range(0.15, 0.25);
-    const t = soviet ? S * 0.10 : S * 0.055;
+    const t = soviet ? S * 0.10 : meridian ? S * 0.042 : reclaim ? S * 0.065 : S * 0.055;
     slab(m, [Math.cos(a) * dist, h * 0.5, Math.sin(a) * dist],
       [S * rng.range(0.22, 0.36), h, t],
       [rng.range(-0.10, 0.10), a + rng.range(-0.4, 0.4), rng.range(-0.14, 0.14)],
@@ -662,6 +655,36 @@ export function buildBuildingRubble(
       [rng.range(-0.20, 0.20), a, rng.range(-0.18, 0.18)], S * 0.05);
   }
 
+  if (meridian) {
+    // The Pact's architecture is a system of apertures and solar ribs.  A
+    // generic concrete heap erased that identity, so its ruin keeps two
+    // shattered annuli and a fallen gold journal spine above the pale plates.
+    const rr = S * 0.13;
+    m.color(b.char).bevel(b.tear).gloss(0.16);
+    drum(m, [-S * 0.18, rr * 0.62, S * 0.03], rr, rr * 0.74, rr * 0.20,
+      14, rr * 0.05, [0.28, -0.44, 0.18], false, true);
+    drum(m, [S * 0.19, rr * 0.48, -S * 0.10], rr * 0.82, rr * 0.60, rr * 0.17,
+      14, rr * 0.04, [-0.20, 0.62, -0.24], false, true);
+    m.color(b.team).bevel(b.tear).gloss(0.24);
+    slab(m, [S * 0.02, S * 0.13, S * 0.20], [S * 0.10, S * 0.12, S * 0.52],
+      [0.18, -0.38, 0.24], S * 0.025);
+  } else if (reclaim) {
+    // Reclamation structures fail as welded machines: crossed frame rails,
+    // a thrown arc coil and one hazard plate, never somebody else's masonry.
+    m.color(b.deep).bevel(b.rust).gloss(0.12);
+    slab(m, [-S * 0.10, S * 0.10, 0], [S * 0.09, S * 0.12, S * 0.72],
+      [0.16, 0.72, -0.18], S * 0.025);
+    slab(m, [S * 0.14, S * 0.08, -S * 0.04], [S * 0.08, S * 0.10, S * 0.62],
+      [-0.12, -0.80, 0.22], S * 0.022);
+    const rr = S * 0.11;
+    m.color(b.team).bevel(b.tear).gloss(0.20);
+    drum(m, [S * 0.24, rr * 0.36, S * 0.16], rr, rr * 0.72, rr * 0.18,
+      12, rr * 0.04, [0.22, 0.48, 0.16], false, true);
+    m.color('#D6A531').bevel(b.deep);
+    tornPlate(m, [-S * 0.26, 0.10, -S * 0.20], S * 0.28, S * 0.18,
+      [0.10, -0.50, 0.08], S * 0.035);
+  }
+
   /* -- one surviving scrap of the owner's colours -------------------------- */
   m.color(b.team).bevel(b.tear).gloss(0.20);
   slab(m, [S * 0.16, S * 0.10, -S * 0.20], [S * 0.20, S * 0.11, 0.10],
@@ -697,13 +720,14 @@ export interface WreckSet {
 }
 
 const FACTIONS: readonly WreckFaction[] = ['allies', 'soviets', 'meridian', 'reclaim', 'neutral'];
-const CLASSES: readonly WreckClass[] = ['light', 'medium', 'heavy', 'support', 'naval'];
-const SIZES: readonly RubbleSize[] = ['small', 'medium', 'large'];
+const CLASSES = WRECK_CLASSES;
+const SIZES = RUBBLE_SIZES;
 
 /**
  * Build every hulk and every ruin: 5 factions x 5 classes + 5 factions x 3
- * sizes = 40 geometries. The live integration builds only the four medium
- * faction hulks plus one neutral fallback; the full set exists for fixtures.
+ * sizes = 40 geometries. The live integration registers the complete set so a
+ * dead scout, heavy tank, support hull, ship or structure keeps its real scale
+ * and faction language instead of collapsing to one generic medium hulk.
  *
  * That is 24 potential batches, but only the ones a match actually kills are
  * ever drawn — `InstanceBatcher` allocates on first instance, not on

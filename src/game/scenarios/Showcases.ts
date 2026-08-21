@@ -187,10 +187,10 @@ export function buildBattle(b: ScenarioBuilder, cx: number, cz: number): void {
   // between the two forces, where the eye goes first.
   const alliedFaction = b.world.player(b.allies).faction;
   const sovietFaction = b.world.player(b.soviets).faction;
-  b.spawnWreck(cx - 2, cz + 8, alliedFaction, true);
-  b.spawnWreck(cx + 5, cz - 3, sovietFaction, true);
-  b.spawnWreck(cx + 1, cz - 15, sovietFaction, false);
-  b.spawnWreck(cx - 8, cz - 9, alliedFaction, false);
+  b.spawnWreck(cx - 2, cz + 8, alliedFaction, true, 'heavy');
+  b.spawnWreck(cx + 5, cz - 3, sovietFaction, true, 'medium');
+  b.spawnWreck(cx + 1, cz - 15, sovietFaction, false, 'support');
+  b.spawnWreck(cx - 8, cz - 9, alliedFaction, false, 'light');
 
   // Damaged survivors on both sides: a fight where everything is at full HP
   // reads as a parade that happens to be pointed the wrong way.

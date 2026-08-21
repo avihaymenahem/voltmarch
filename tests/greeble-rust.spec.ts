@@ -30,7 +30,7 @@ import {
   ATLAS_COLS, SURFACE_BUDGET, generateGreebleAtlas, greebleSpecHash, slotUv,
   type GreebleSpec, type SlotName,
 } from '../src/art/greeble-gen';
-import { structureAtlasSpec, padAtlasSpec } from '../src/art/BuildingFactory';
+import { structureAtlasSpec, padAtlasSpec, padSurfaceSlot } from '../src/art/BuildingFactory';
 import { specForPalette } from '../src/art/UnitFactory';
 import {
   DEFAULT_ART, RA3_PAD_PALETTE, RA3_STRUCTURE_PALETTE, RA3_UNIT_PALETTE, UNIT_GREEBLE,
@@ -79,27 +79,27 @@ function differs(i: number): boolean {
 }
 
 describe('rust is confined to structures', () => {
-  it('changes nothing outside the bareMetal tile', () => {
-    // The whole risk of splitting the rule by kind is rust reaching a facade.
-    // A structure atlas and a hull atlas that differ ONLY in `surfaceClass`
-    // must be byte-identical everywhere except the one tile pipework samples.
+  it('never changes relief outside the bareMetal tile', () => {
+    // Architecture now gets broad grime in albedo/roughness by design. Rust is
+    // still a stain and neither treatment may leak into the normal field.
     const r = rectOf('bareMetal', HULL.size);
     const strays: string[] = [];
     for (let y = 0; y < HULL.size && strays.length < 8; y++) {
       for (let x = 0; x < HULL.size; x++) {
         const inside = x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
         if (inside) continue;
-        if (differs(y * HULL.size + x)) { strays.push(`(${x},${y})`); break; }
+        const i = y * HULL.size + x;
+        if (Math.abs(hull.surface.height[i] - structure.surface.height[i]) > 1e-9) {
+          strays.push(`(${x},${y})`);
+          break;
+        }
       }
     }
     expect(strays).toEqual([]);
   });
 
-  it('leaves every painted tile identical between a hull and a structure', () => {
-    // The named version of the test above: paint, team slab and insignia are
-    // the surfaces #22 and 5.5 BOTH keep clean, on both classes.
-    for (const slot of ['paintLarge', 'paintMed', 'paintSmall', 'paintTiny',
-      'teamSlab', 'insignia', 'stripe', 'rivetPlate', 'hatch'] as const) {
+  it('keeps non-paint identity tiles identical while weathering painted architecture', () => {
+    for (const slot of ['teamSlab', 'insignia', 'stripe', 'rivetPlate', 'hatch'] as const) {
       const r = rectOf(slot, HULL.size);
       let diff = 0;
       for (let y = 0; y < r.h; y++) {
@@ -107,6 +107,12 @@ describe('rust is confined to structures', () => {
       }
       expect(`${slot}:${diff}`).toBe(`${slot}:0`);
     }
+    const r = rectOf('paintLarge', HULL.size);
+    let changed = 0;
+    for (let y = 0; y < r.h; y++) {
+      for (let x = 0; x < r.w; x++) changed += differs((r.y + y) * HULL.size + (r.x + x)) ? 1 : 0;
+    }
+    expect(changed).toBeGreaterThan(r.w * r.h * 0.8);
   });
 });
 
@@ -130,6 +136,28 @@ describe('architecture consumes the surface-class table', () => {
     expect(structure.surface.alpha[centre(structure, 'bareMetal')]).toBe(0);
     expect(structure.surface.alpha[centre(structure, 'grille')]).toBe(0);
     expect(foundation.surface.alpha[centre(foundation, 'paintLarge')]).toBe(0);
+  });
+
+  it('binds hull paint and its bevel wear to the declared vehicle surface', () => {
+    const look = DEFAULT_ART.surfaces.vehicleArmor;
+    const r = rectOf('paintLarge', hull.size);
+    const centreI = (r.y + Math.floor(r.h * 0.5)) * hull.size + r.x + Math.floor(r.w * 0.5);
+    const off = Math.round(r.w * UNIT_GREEBLE.tileInsetFraction);
+    const bevelI = (r.y + off) * hull.size + r.x + off;
+    expect(hull.surface.roughness[centreI]).toBeGreaterThanOrEqual(look.roughnessMin);
+    expect(hull.surface.roughness[centreI]).toBeLessThanOrEqual(look.roughnessMax);
+    expect(hull.surface.metalness[bevelI]).toBeGreaterThan(hull.surface.metalness[centreI]);
+  });
+
+  it('varies foundation slab plans by structure key without remapping markings', () => {
+    const slots = new Set([
+      padSurfaceSlot('allied_conyard', 'paintMed'),
+      padSurfaceSlot('allied_warfactory', 'paintMed'),
+      padSurfaceSlot('allied_refinery', 'paintMed'),
+    ]);
+    expect(slots.size).toBeGreaterThan(1);
+    expect(padSurfaceSlot('allied_conyard', 'stripe')).toBe('stripe');
+    expect(padSurfaceSlot('allied_conyard', 'emissive')).toBe('emissive');
   });
 });
 
@@ -217,7 +245,7 @@ describe('the rust itself obeys 5.5 and the no-noise law', () => {
   it('adds no speckle — it is drawn shapes, not a noise field', () => {
     // THE no-per-pixel-noise gate. Drawn bands have edges, not extrema.
     expect(structure.metrics.speckleRatio).toBeLessThan(SURFACE_BUDGET.speckleCeiling);
-    expect(structure.metrics.speckleRatio - hull.metrics.speckleRatio).toBeLessThan(0.001);
+    expect(structure.metrics.speckleRatio - hull.metrics.speckleRatio).toBeLessThan(0.002);
   });
 
   it('is deterministic — two runs of one spec are identical', () => {

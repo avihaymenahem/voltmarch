@@ -216,6 +216,35 @@ export function structurePaintSlot(areaSqM: number): SlotName {
   return 'paintTiny';
 }
 
+/**
+ * Select one of the three authored slab plans for a structure's foundation.
+ *
+ * The faction still owns one atlas and one material; only the UV rectangle in
+ * the already-merged pad geometry changes.  This is therefore deterministic
+ * per content key, costs no texture, material, batch or draw call, and breaks
+ * the "same paintMed tile under every building" repetition called out by the
+ * visual audit.  Tiny trim retains its scale and non-paint markings are never
+ * remapped.
+ */
+export function padSurfaceSlot(key: string, slot: SlotName): SlotName {
+  const plans: readonly SlotName[] = ['paintLarge', 'paintMed', 'paintSmall'];
+  const base = plans.indexOf(slot);
+  if (base < 0) return slot;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  // Final avalanche matters here: content keys share long faction prefixes,
+  // and raw FNV's low two bits gave several adjacent roster rows one variant.
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x846ca68b);
+  h ^= h >>> 16;
+  return plans[(base + (h >>> 0) % plans.length) % plans.length];
+}
+
 /** Chamfer for one mass, in metres. Never zero — scorecard #11. */
 export function structureChamfer(m: MassDef, faction: StructureFaction): number {
   if (m.chamfer !== undefined) return Math.max(MIN_CHAMFER, m.chamfer);
@@ -1596,17 +1625,17 @@ export function buildStructure(
   const turretAcc = new MeshAcc();
   const pivot = (list.turretPivot ?? [0, 0, 0]) as V3;
 
-  const ctxFor = (acc: MeshAcc, a: GreebleAtlas): BuildCtx => ({
+  const ctxFor = (acc: MeshAcc, a: GreebleAtlas, varyPad = false): BuildCtx => ({
     acc,
-    uv: (slot) => a.uv[slot],
-    bevel: (slot) => a.bevelUv[slot],
+    uv: (slot) => a.uv[varyPad ? padSurfaceSlot(list.key, slot) : slot],
+    bevel: (slot) => a.bevelUv[varyPad ? padSurfaceSlot(list.key, slot) : slot],
   });
 
   let phase = 0;
   for (const m of expandMasses(list.masses)) {
     const target = m.target ?? 'body';
     const acc = target === 'pad' ? padAcc : target === 'turret' ? turretAcc : bodyAcc;
-    const ctx = ctxFor(acc, target === 'pad' ? padAtlas : atlas);
+    const ctx = ctxFor(acc, target === 'pad' ? padAtlas : atlas, target === 'pad');
     const chamfer = structureChamfer(m, list.faction);
     const capSlot = m.capSlot ?? m.slot;
 

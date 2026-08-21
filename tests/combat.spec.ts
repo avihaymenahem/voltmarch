@@ -20,6 +20,9 @@ import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
   ARMOR_MATRIX, BURN_HP_THRESHOLD, COMBAT_DAMAGE, SIM_DT, VETERANCY_KILLS, MAX_PROJECTILES,
 } from '../src/core/config';
+import {
+  BUILDING_RUBBLE_DEF, VEHICLE_WRECK_DEF, vehicleWreckDefForRadius,
+} from '../src/core/wrecks';
 
 import {
   DamageSystem, armorMultiplier, estimatedHeight, hitRadius, setArmorMatrix,
@@ -280,6 +283,8 @@ describe('death, wrecks and veterancy', () => {
     const wrecks = rig.world.store.byKindCount[EntityKind.Wreck];
     expect(wrecks).toBe(1);
     const wi = rig.world.store.byKind[EntityKind.Wreck][0];
+    expect(rig.world.store.defId[wi]).toBe(vehicleWreckDefForRadius(2));
+    expect(rig.world.store.defId[wi]).toBe(VEHICLE_WRECK_DEF.light);
     expect(rig.world.store.flags[wi] & EntityFlag.Burning).toBeTruthy();
     expect(rig.world.store.flags[wi] & EntityFlag.NotATarget).toBeTruthy();
   });
@@ -351,7 +356,7 @@ describe('death, wrecks and veterancy', () => {
     expect(rig.world.store.byKindCount[EntityKind.Wreck]).toBe(0);
   });
 
-  it('a structure leaves no hulk but does emit a killed event', () => {
+  it('a structure leaves persistent, non-blocking faction rubble', () => {
     const base = spawn(rig, P1, 100, 100, {
       kind: EntityKind.Building, hp: 20, armor: ArmorClass.Concrete, footprint: 3,
     });
@@ -359,8 +364,21 @@ describe('death, wrecks and veterancy', () => {
     rig.channels.damage.push(base, 0 as EntityId, 900, WarheadClass.HighExplosive, 100, 0, 100);
     rig.damage.damageTick(rig.ctx());
     rig.damage.cleanupTick(rig.ctx());
-    expect(rig.world.store.byKindCount[EntityKind.Wreck]).toBe(0);
+    expect(rig.world.store.byKindCount[EntityKind.Wreck]).toBe(1);
+    const rubble = rig.world.store.byKind[EntityKind.Wreck][0];
+    expect(rig.world.store.defId[rubble]).toBe(BUILDING_RUBBLE_DEF.large);
+    expect(rig.world.store.flags[rubble] & EntityFlag.NotATarget).toBeTruthy();
     expect(rig.world.store.isAlive(base)).toBe(false);
+
+    // Vehicle hulks time out at 26 seconds; ruins are battlefield history and
+    // remain until salvaged or covered by a new foundation.
+    const ticks = Math.ceil(COMBAT_DAMAGE.wreckSeconds / SIM_DT) + 2;
+    for (let k = 0; k < ticks; k++) {
+      rig.tick++;
+      rig.damage.cleanupTick(rig.ctx());
+    }
+    expect(rig.world.store.byKindCount[EntityKind.Wreck]).toBe(1);
+    expect(rig.world.store.flags[rubble] & EntityFlag.Burning).toBeFalsy();
   });
 
   it('promotes a killer at VETERANCY_KILLS[0] and raises its max HP', () => {

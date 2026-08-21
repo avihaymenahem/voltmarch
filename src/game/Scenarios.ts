@@ -61,6 +61,7 @@ import {
   TERRAIN_START_FLAT_RADIUS, UNIT_DIMENSIONS, WATER_LEVEL, placementPadWeight,
   type SeaIsland, type SeaSpec
 } from '../core/config';
+import { VEHICLE_WRECK_DEF, WRECK_LENGTH, type WreckClass } from '../core/wrecks';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
   Stance, UnitState,
@@ -3037,10 +3038,16 @@ export class ScenarioBuilder {
   }
 
   /** A burning hulk. Reads as "this frame is 30 seconds into a fight". */
-  spawnWreck(x: number, z: number, faction: Faction, burning = true): EntityId {
+  spawnWreck(
+    x: number, z: number, faction: Faction, burning = true, cls: WreckClass = 'medium',
+  ): EntityId {
     const id = this.spawnProp('wreck', x, z, { burning });
     const i = this.world.store.index(id);
-    if (i >= 0) this.world.store.faction[i] = faction;
+    if (i >= 0) {
+      this.world.store.faction[i] = faction;
+      this.world.store.defId[i] = VEHICLE_WRECK_DEF[cls];
+      this.world.store.radius[i] = WRECK_LENGTH[cls] * 0.45;
+    }
     return id;
   }
 

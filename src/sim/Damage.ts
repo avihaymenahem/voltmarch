@@ -56,6 +56,9 @@ import type { World } from '../core/world';
 import type { Channels } from '../core/events';
 import { PerEntityF32, PerEntityU32 } from '../core/world';
 import { clamp, clamp01 } from '../core/math';
+import {
+  buildingRubbleDefForFootprint, rubbleSizeForDef, vehicleWreckDefForRadius,
+} from '../core/wrecks';
 import { upgradeMul } from './Upgrades';
 // The nav cache, reached through its module accessor rather than injected: this
 // file has one use for it (handing a corpse's flow field back) and must degrade
@@ -943,13 +946,38 @@ export class DamageSystem {
       const cz = Math.round(z / CELL - fh * 0.5);
       w.terrain.clearOccupied(cx, cz, fw, fh);
     }
+    this.spawnBuildingRubble(s, i, x, y, z, fw, fh);
+  }
+
+  /** Leave a persistent, non-blocking ruin after a structure collapses. */
+  private spawnBuildingRubble(
+    s: SimContext, i: number, x: number, y: number, z: number, fw: number, fh: number,
+  ): void {
+    const st = this.world.store;
+    const h = st.alloc(
+      EntityKind.Wreck, buildingRubbleDefForFootprint(fw * fh),
+      st.owner[i] as PlayerId, st.faction[i] as Faction,
+      x, y, z, st.seed[i] * 6.283185,
+    );
+    if (h === NONE) return;
+    const j = st.index(h);
+    if (j < 0) return;
+    st.spawnTick[j] = s.tick;
+    // Query radius follows the old footprint but the ruin never blocks nav.
+    st.radius[j] = Math.hypot(fw * CELL, fh * CELL) * 0.42;
+    st.maxHp[j] = 1;
+    st.hp[j] = 1;
+    st.armorClass[j] = ArmorClass.Wood;
+    st.flags[j] |= EntityFlag.NotATarget | EntityFlag.NotSelectable | EntityFlag.Burning;
+    this.wreckAge.setAt(j, 0);
+    this.stats.wrecks++;
   }
 
   /** Build the burning hulk a dead vehicle leaves behind. */
   private spawnWreck(s: SimContext, i: number, x: number, y: number, z: number): void {
     const st = this.world.store;
     const h = st.alloc(
-      EntityKind.Wreck, -1,
+      EntityKind.Wreck, vehicleWreckDefForRadius(st.radius[i]),
       st.owner[i] as PlayerId, st.faction[i] as Faction,
       x, y, z, st.yaw[i],
     );
@@ -983,8 +1011,17 @@ export class DamageSystem {
       const age = this.wreckAge.getAt(i) + s.dt;
       this.wreckAge.setAt(i, age);
 
+      const persistentRubble = rubbleSizeForDef(st.defId[i]) !== null;
+
       if (age > COMBAT_DAMAGE.wreckBurnSeconds) st.flags[i] &= ~EntityFlag.Burning;
-      if (age >= COMBAT_DAMAGE.wreckSeconds) { st.markDead(st.handleOf(i)); continue; }
+      if (!persistentRubble && age >= COMBAT_DAMAGE.wreckSeconds) {
+        st.markDead(st.handleOf(i));
+        continue;
+      }
+      // Building ruins stay until salvaged or paved over, but their smoke does
+      // not.  The permanent silhouette is the history; a permanent particle
+      // column would be visual noise and a bounded-pool leak.
+      if (persistentRubble && age >= COMBAT_DAMAGE.wreckSeconds) continue;
 
       if (s.time - this.lastSmoke.getAt(i) >= COMBAT_DAMAGE.wreckSmokeInterval) {
         this.lastSmoke.setAt(i, s.time);

@@ -680,9 +680,9 @@ const SUN_NOON = {
    * what the bible sentence above means, not a leak in the shadow itself.
    * `hemiSkyIntensity` below is the knob that sentence points at.
    *
-   * SO WHY IS IT STILL 0.80? Because setting it to 1.0 ALONE is measurably
-   * worse, and this was bisected rather than argued. One capture with only this
-   * knob moved, everything else in this commit held constant:
+   * WHY DID IT STAY AT 0.80? Because setting it to 1.0 ALONE was measurably
+   * worse, and this was bisected rather than argued. One capture with only that
+   * knob moved, everything else in the commit held constant:
    *
    *                        grade   weight-3 failures
    *     0.80 (this)        91.1%   1  (03 p99, owned by the Allied albedo)
@@ -703,14 +703,14 @@ const SUN_NOON = {
    * bluer than the bible's, which is a statement about `hemiSky`/`hemiGround`
    * and the env probe, not about this line.
    *
-   * SO THIS KNOB IS NOT A ONE-LINE FIX, IT IS A PAIRED CHANGE: go to 1.0 and
-   * re-balance the hemisphere in the same commit, then re-measure #9 and the
-   * shadow/lit ratio together. Deliberately NOT bundled with the albedo and
-   * environment-response fixes around it, which are unambiguous and land clean.
-   * Do not raise this to 1.0 on the strength of the bible quote alone without
-   * doing the fill half — the capture above is what that costs.
+   * RESOLVED 2026-08-21 AS THE PAIRED CHANGE the note required: the multiplier
+   * is now 1.0 and `hemiSkyIntensity` below is 0.52. The first 0.48 bracket made
+   * the combat fixture's near-black population jump from 7.3% to 13.2%; 0.52
+   * restores readable undersides while keeping a true blocked key. This must
+   * remain paired: weakening either half recreates the lifted olive shadow or
+   * the unreadable blue-black hole documented above.
    */
-  shadowIntensity: 0.80,
+  shadowIntensity: 1.00,
   /**
    * ONE shadow camera, fitted per frame to the visible ground quad and clamped
    * to this radius, texel-snapped so shadows do not crawl when the camera pans.
@@ -756,8 +756,10 @@ const ATMOSPHERE_NOON = {
    */
   hemiSky: '#D6CFC0',
   /**
-   * Held near the original 0.55, and that is the point worth recording: the
-   * blue-grey mould cast was the fill's COLOUR, not its strength.
+   * Paired with `shadowIntensity: 1.0` above. 0.52 is deliberately close to the
+   * original fill strength: the blue-grey mould cast was the fill's COLOUR,
+   * not its strength, while the removed 20% key leak supplies the missing
+   * contrast.
    *
    * Cutting this to 0.26 alongside the recolour did make the frame contrastier
    * and it also broke the bible outright. Measured on `03-terrain-closeup`, the
@@ -770,7 +772,7 @@ const ATMOSPHERE_NOON = {
    * Contrast belongs to the grade (GRADE_PIVOT / GRADE_WHITE in post.ts), which
    * can widen the histogram without emptying the shadow end of it.
    */
-  hemiSkyIntensity: 0.60,
+  hemiSkyIntensity: 0.52,
   /** Warm bounce from the ground. Stops undersides going dead grey. */
   hemiGround: '#7A6248',
   hemiGroundIntensity: 0.34,
