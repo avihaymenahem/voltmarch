@@ -12,7 +12,7 @@
  *   list of changed paths so dragging a volume slider does not re-push the
  *   entire graphics config sixty times a second.
  *
- *   `SettingsScreen` — four tabs over that translation. Every control writes
+ *   `SettingsScreen` — seven grouped categories over that translation. Every control writes
  *   through `SettingsStore.patch()`, which normalises, persists and notifies;
  *   the shell's subscription then calls `applySettings` with the diff. There is
  *   no "Apply" button and no pending state, because there is no way for the UI
@@ -380,15 +380,29 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
  * real one is the difference between six distinct glyphs and five.
  */
 type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'manual' | 'credits' | 'diagnostics';
+type TabGroup = 'configure' | 'reference';
 
-const TABS: ReadonlyArray<{ id: TabId; label: string; icon: string }> = [
-  { id: 'graphics', label: 'Graphics', icon: 'monitor' },
-  { id: 'audio', label: 'Audio', icon: 'volume' },
-  { id: 'gameplay', label: 'Gameplay', icon: 'target' },
-  { id: 'controls', label: 'Controls', icon: 'keyboard' },
-  { id: 'manual', label: 'Manual', icon: 'folder' },
-  { id: 'credits', label: 'Credits', icon: 'info' },
-  { id: 'diagnostics', label: 'Diagnostics', icon: 'gauge' },
+interface SettingsTab {
+  readonly id: TabId;
+  readonly label: string;
+  readonly hint: string;
+  readonly icon: string;
+  readonly group: TabGroup;
+}
+
+const TAB_GROUP_LABEL: Readonly<Record<TabGroup, string>> = {
+  configure: 'Configuration',
+  reference: 'Reference & Support',
+};
+
+const TABS: readonly SettingsTab[] = [
+  { id: 'graphics', label: 'Graphics', hint: 'Display & quality', icon: 'monitor', group: 'configure' },
+  { id: 'audio', label: 'Audio', hint: 'Mixer & playback', icon: 'volume', group: 'configure' },
+  { id: 'gameplay', label: 'Gameplay', hint: 'Interface & profile', icon: 'target', group: 'configure' },
+  { id: 'controls', label: 'Controls', hint: 'Camera & bindings', icon: 'keyboard', group: 'configure' },
+  { id: 'diagnostics', label: 'Diagnostics', hint: 'Live system report', icon: 'gauge', group: 'reference' },
+  { id: 'manual', label: 'Manual', hint: 'Field reference', icon: 'folder', group: 'reference' },
+  { id: 'credits', label: 'Credits', hint: 'Licences & attribution', icon: 'info', group: 'reference' },
 ];
 
 /* -- diagnostics helpers ---------------------------------------------------- *
@@ -499,6 +513,8 @@ export class SettingsScreen implements Screen {
   private manualPage: string | null = null;
   /** Restore Defaults, kept so the Manual tab can hide it. */
   private resetButton: HTMLButtonElement | null = null;
+  /** Command reference belongs to Controls, not every settings category. */
+  private helpButton: HTMLButtonElement | null = null;
   /** Keybind id currently waiting for a chord, or null. */
   private listening: string | null = null;
   private listeningButton: HTMLButtonElement | null = null;
@@ -537,20 +553,36 @@ export class SettingsScreen implements Screen {
     if (this.returnTo !== 'menu') host.classList.add('is-modal');
 
     const frame = pageFrame('Settings', () => this.leave());
+    frame.root.classList.add('vm-settings-panel');
+    frame.body.id = 'vm-settings-body';
 
-    const tabs = el('div', 'vm-tabs');
+    const tabs = el('nav', 'vm-tabs vm-settings-nav');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Settings categories');
+    let group: TabGroup | null = null;
     for (const t of TABS) {
+      if (t.group !== group) {
+        group = t.group;
+        tabs.appendChild(el('span', 'vm-settings-nav-group', TAB_GROUP_LABEL[group]));
+      }
       const b = el('button', 'vm-tab');
       b.type = 'button';
+      b.id = `vm-settings-tab-${t.id}`;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-controls', frame.body.id);
       b.setAttribute('aria-selected', t.id === this.tab ? 'true' : 'false');
       b.appendChild(icon(t.icon, 16));
-      b.appendChild(el('span', undefined, t.label));
+      const copy = el('span', 'vm-settings-tab-copy');
+      copy.appendChild(el('span', 'vm-settings-tab-label', t.label));
+      copy.appendChild(el('span', 'vm-settings-tab-hint', t.hint));
+      b.appendChild(copy);
       focusable(b);
       b.addEventListener('click', () => this.selectTab(t.id, tabs));
       tabs.appendChild(b);
     }
-    // The tab strip is its own band between the title bar and the scrolling
-    // body, so it never scrolls away from the content it selects.
+    frame.body.setAttribute('aria-labelledby', `vm-settings-tab-${this.tab}`);
+    // Desktop uses this as a grouped left rail. Narrow windows restyle the same
+    // semantic tablist as a horizontal strip, without rebuilding the screen.
     frame.root.insertBefore(tabs, frame.body);
 
     this.body = frame.body;
@@ -617,10 +649,13 @@ export class SettingsScreen implements Screen {
     this.resetButton = reset;
     this.syncFoot();
     frame.foot.appendChild(reset);
-    frame.foot.appendChild(button('All Commands', {
+    const help = button('All Commands', {
       iconName: 'info',
       onClick: () => this.openHelp(),
-    }));
+    });
+    this.helpButton = help;
+    frame.foot.appendChild(help);
+    this.syncFoot();
     frame.foot.appendChild(el('div', 'vm-spacer'));
     frame.foot.appendChild(button('Done', { variant: 'primary', onClick: () => this.leave() }));
 
@@ -699,6 +734,8 @@ export class SettingsScreen implements Screen {
     for (let i = 0; i < buttons.length; i++) {
       buttons[i].setAttribute('aria-selected', TABS[i].id === id ? 'true' : 'false');
     }
+    this.body?.setAttribute('aria-labelledby', `vm-settings-tab-${id}`);
+    if (this.body !== null) this.body.scrollTop = 0;
     this.renderTab();
   }
 
@@ -743,6 +780,7 @@ export class SettingsScreen implements Screen {
     if (this.resetButton !== null) {
       this.resetButton.hidden = this.tab === 'manual' || this.tab === 'credits';
     }
+    if (this.helpButton !== null) this.helpButton.hidden = this.tab !== 'controls';
   }
 
   /* -- manual -------------------------------------------------------------- *
@@ -1617,8 +1655,7 @@ export class SettingsScreen implements Screen {
       onChange: (v) => set({ ambience: v }),
     })));
 
-    const note = el('p', 'vm-body');
-    note.style.padding = '4px 18px 16px';
+    const note = el('p', 'vm-body vm-settings-note');
     note.textContent = audio()?.engine == null
       ? 'No audio device is attached to this session. Levels are saved and will apply on the next match.'
       : 'Levels apply immediately. Every sound in the game is synthesised at boot — nothing is streamed.';
@@ -1837,8 +1874,7 @@ export class SettingsScreen implements Screen {
       body.insertBefore(note, body.firstChild);
     }
 
-    const help = el('p', 'vm-body');
-    help.style.padding = '6px 18px 18px';
+    const help = el('p', 'vm-body vm-settings-note');
     help.textContent =
       'Select a command, then press the key or chord. Backspace clears a binding, Escape cancels. ' +
       'Camera and order keys are separate surfaces: sharing a key between them is intentional and is not flagged. ' +
@@ -1907,8 +1943,7 @@ export class SettingsScreen implements Screen {
     };
     const mult = (v: number): string => `${Math.round(v * 100)}%`;
 
-    const how = el('p', 'vm-body');
-    how.style.padding = '2px 18px 10px';
+    const how = el('p', 'vm-body vm-settings-note');
     how.textContent =
       'Trackpad: two fingers zoom, Shift + two fingers pans, pinch zooms. ' +
       'Mouse: the wheel zooms toward the cursor. ' +

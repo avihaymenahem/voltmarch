@@ -635,7 +635,8 @@ describe('the options screen offers it', () => {
     // `HelpPanel` is the live view of THIS machine's bindings. The manual is
     // seventeen static pages about the game. Folding one into the other would
     // bury the screen that answers "which key did I put Attack Move on".
-    expect(SETTINGS).toMatch(/frame\.foot\.appendChild\(button\('All Commands'/);
+    expect(SETTINGS).toMatch(/const help = button\('All Commands'/);
+    expect(SETTINGS).toMatch(/this\.helpButton\.hidden = this\.tab !== 'controls'/);
     expect(SETTINGS).toMatch(/new HelpPanel\(/);
   });
 

@@ -3593,6 +3593,244 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   box-shadow: 0 0 10px rgba(var(--vm-accent-rgb), 0.36);
 }
 
+/* Settings is a category browser, not a seven-item toolbar. A stable left rail
+   gives the labels room to explain themselves and keeps the content rectangle
+   identical while moving between short and long tabs. */
+.vm-shell .vm-settings-panel {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(760px, calc(100dvh - 32px));
+}
+
+.vm-shell .vm-settings-panel > .vm-page-head,
+.vm-shell .vm-settings-panel > .vm-page-foot {
+  grid-column: 1 / -1;
+}
+
+.vm-shell .vm-settings-panel > .vm-page-head { grid-row: 1; }
+.vm-shell .vm-settings-panel > .vm-page-foot { grid-row: 3; }
+
+.vm-shell .vm-settings-panel > .vm-settings-nav {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 14px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid rgba(var(--vm-accent-rgb), 0.18);
+  border-bottom: 0;
+  background:
+    linear-gradient(180deg, rgba(var(--vm-accent-rgb), 0.055), transparent 42%),
+    rgba(3, 8, 16, 0.68);
+}
+
+.vm-shell .vm-settings-panel > .vm-page-body {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.vm-shell .vm-settings-nav-group {
+  padding: 7px 10px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.23em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--vm-accent-dim);
+}
+
+.vm-shell .vm-settings-nav-group:not(:first-child) {
+  margin-top: 11px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-settings-nav .vm-tab {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid transparent;
+}
+
+.vm-shell .vm-settings-nav .vm-tab:hover,
+.vm-shell .vm-settings-nav .vm-tab:focus-visible {
+  border-color: rgba(var(--vm-accent-rgb), 0.16);
+  background: rgba(var(--vm-accent-rgb), 0.045);
+}
+
+.vm-shell .vm-settings-nav .vm-tab.is-focus:not([aria-selected='true']) {
+  border-color: rgba(var(--vm-accent-rgb), 0.12);
+  background: transparent;
+}
+
+.vm-shell .vm-settings-nav .vm-tab[aria-selected='true'] {
+  border-color: rgba(var(--vm-accent-rgb), 0.26);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.15), transparent 82%),
+    rgba(10, 19, 31, 0.72);
+}
+
+.vm-shell .vm-settings-nav .vm-tab::after {
+  left: -1px;
+  right: auto;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  height: auto;
+  transform: scaleY(0);
+}
+
+.vm-shell .vm-settings-nav .vm-tab[aria-selected='true']::after {
+  transform: scaleY(1);
+}
+
+.vm-shell .vm-settings-tab-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vm-shell .vm-settings-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-settings-tab-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--vm-text-faint);
+}
+
+/* Each category becomes one instrument well. The old layout used only vertical
+   whitespace, so adjacent sections blurred into one long list when scrolled. */
+.vm-shell .vm-settings-panel .vm-page-body:not(.is-manual) > .vm-section {
+  margin: 12px 14px;
+  padding: 0 0 4px;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.14);
+  background:
+    linear-gradient(180deg, rgba(var(--vm-accent-rgb), 0.035), transparent 68px),
+    rgba(5, 10, 19, 0.46);
+}
+
+.vm-shell .vm-settings-panel .vm-page-body:not(.is-manual) > .vm-section + .vm-section {
+  margin-top: 14px;
+}
+
+.vm-shell .vm-settings-panel .vm-section > .vm-h3 {
+  margin: 0;
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid var(--vm-line-soft);
+  background: rgba(3, 8, 16, 0.38);
+}
+
+.vm-shell .vm-settings-panel .vm-section > .vm-row {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.vm-shell .vm-settings-panel .vm-section > .vm-body {
+  margin: 0;
+  padding: 11px 14px 5px;
+}
+
+.vm-shell .vm-settings-panel .vm-settings-note {
+  margin: 12px 14px;
+  padding: 10px 13px;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(var(--vm-accent-rgb), 0.035);
+  color: var(--vm-text-dim);
+}
+
+/* Component rules set explicit display modes, which outrank the browser's weak
+   `[hidden]` default. Logical visibility must win everywhere in the shell. */
+.vm-shell [hidden] {
+  display: none !important;
+}
+
+@media (max-width: 800px) {
+  .vm-shell .vm-settings-panel {
+    display: flex;
+    height: calc(100dvh - 24px);
+  }
+
+  .vm-shell .vm-settings-panel > .vm-settings-nav {
+    flex: 0 0 auto;
+    min-height: 42px;
+    flex-direction: row;
+    gap: 3px;
+    padding: 0 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--vm-line);
+  }
+
+  .vm-shell .vm-settings-nav-group,
+  .vm-shell .vm-settings-tab-hint {
+    display: none;
+  }
+
+  .vm-shell .vm-settings-nav .vm-tab {
+    width: auto;
+    min-height: 42px;
+    display: flex;
+    gap: 7px;
+    padding: 9px 11px;
+    border: 0;
+  }
+
+  .vm-shell .vm-settings-nav .vm-tab::after {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: -1px;
+    width: auto;
+    height: 2px;
+    transform: scaleX(0);
+  }
+
+  .vm-shell .vm-settings-nav .vm-tab[aria-selected='true']::after {
+    transform: scaleX(1);
+  }
+
+  .vm-shell .vm-settings-tab-copy { display: block; }
+
+  /* At compact desktop sizes Controls has three contextual actions. Give the
+     visible actions equal ownership of the footer instead of letting the
+     desktop spacer consume the few pixels needed by their labels. */
+  .vm-shell .vm-settings-panel > .vm-page-foot {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .vm-shell .vm-settings-panel > .vm-page-foot .vm-spacer {
+    flex: 0 0 0;
+  }
+
+  .vm-shell .vm-settings-panel > .vm-page-foot .vm-btn {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
 .vm-shell .vm-section {
   padding-top: 18px;
 }
