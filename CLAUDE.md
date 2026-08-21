@@ -124,13 +124,13 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6122 across 243 files (+4 opt-in probes)
+npm test             # vitest, currently 6126 across 244 files (+4 opt-in probes)
                      #   11 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across `manual`, `webgpu-bundle-isolation` and
                      #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 6111 and skips 15. Re-measure BOTH numbers rather than
+                     #   reports 6115 and skips 15. Re-measure BOTH numbers rather than
                      #   adjusting them by hand — run it once, `npm run build`, run it
-                     #   again. The gated set has held at 11 across seven re-measures;
+                     #   again. The gated set has held at 11 across eight re-measures;
                      #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
@@ -2043,7 +2043,7 @@ argument for why draping rather than grading the heightfield.
 
 ## There are two renderers now, and a WebGL player downloads exactly one of them
 
-`?gpu=webgpu` used to throw. It boots the real game since v3.0.0-dev: every shader in the project
+`?gpu=webgpu` used to throw. It boots the real game (shipped in v3.0.0): every shader in the project
 exists twice, once as GLSL and once as a TSL node graph, and `src/render/gpu-path.ts` is the seam
 that picks. **The default is still WebGL** and nothing in the product selects the other one.
 
