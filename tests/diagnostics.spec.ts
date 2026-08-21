@@ -672,7 +672,7 @@ describe('the unlock-everything toggle', () => {
     expect(report.environment.unlockAll).toBe(true);
     const notes = report.notes.join(' ');
     expect(notes).toContain('UNLOCK EVERYTHING IS ON');
-    expect(notes, 'and that it binds the AI too').toContain('mirrorAI');
+    expect(notes, 'and that the AI roster is unaffected').toContain('opponents are unrestricted');
     setProduction(null); setCaptureService(null);
     setGarrisonService(null); setTransportService(null);
   });

@@ -40,11 +40,8 @@
  * DEGRADING IS THE DEFAULT, NOT THE EDGE CASE
  * -------------------------------------------
  * The progression handle is read from `globalThis.__vmProgression` and may be
- * absent: a `?shot=` boot never publishes one, and the module is being written
- * in parallel with this file. With no handle the screen renders an honest empty
- * state and the export/import/reset controls are simply not built, because
- * offering a player a "Reset Progress" button that cannot reset anything is
- * worse than offering nothing.
+ * absent: a `?shot=` boot never publishes one. With no handle the screen
+ * renders an honest empty state. Profile file management lives in Settings.
  * ============================================================================
  */
 
@@ -380,15 +377,9 @@ export class MissionsPanel {
 
   private readonly body: HTMLElement;
   private readonly summary: HTMLElement;
-  private readonly status: HTMLElement;
   private readonly sections = new Map<string, HTMLElement>();
   private readonly progression: ProgressionView | null;
-  private readonly fileInput: HTMLInputElement | null = null;
   private unsubscribe: (() => void) | null = null;
-  /** Timer id for the reset confirmation window. */
-  private resetTimer = 0;
-  private resetArmed = false;
-  private resetButton: HTMLButtonElement | null = null;
 
   constructor(options: MissionsPanelOptions) {
     this.progression = options.progression ?? readProgression();
@@ -410,35 +401,6 @@ export class MissionsPanel {
     this.body.classList.add('vm-missions-body');
 
     /* -- foot ----------------------------------------------------------- */
-    this.status = el('p', 'vm-missions-status', '');
-    frame.foot.appendChild(this.status);
-
-    if (this.progression !== null) {
-      this.fileInput = el('input');
-      this.fileInput.type = 'file';
-      this.fileInput.accept = 'application/json,.json';
-      this.fileInput.className = 'vm-sr';
-      this.fileInput.addEventListener('change', () => { void this.onFileChosen(); });
-      frame.foot.appendChild(this.fileInput);
-
-      frame.foot.appendChild(button('Export', {
-        iconName: 'folder',
-        hint: 'JSON',
-        onClick: () => this.exportProfile(),
-      }));
-      frame.foot.appendChild(button('Import', {
-        iconName: 'restore',
-        onClick: () => this.fileInput?.click(),
-      }));
-      const reset = button('Reset Progress', {
-        iconName: 'refresh',
-        variant: 'danger',
-        onClick: () => this.onResetClicked(),
-      });
-      this.resetButton = reset;
-      frame.foot.appendChild(reset);
-    }
-
     frame.foot.appendChild(button('Close', { variant: 'primary', onClick: options.onClose }));
 
     this.root.appendChild(frame.root);
@@ -453,14 +415,10 @@ export class MissionsPanel {
     }
   }
 
-  /** Drop the subscription and any pending confirmation. The host removes DOM. */
+  /** Drop the subscription. The host removes DOM. */
   dispose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    if (this.resetTimer !== 0) {
-      window.clearTimeout(this.resetTimer);
-      this.resetTimer = 0;
-    }
   }
 
   /**
@@ -652,118 +610,6 @@ export class MissionsPanel {
     return box;
   }
 
-  /* -------------------------------------------------------------------- */
-  /* profile management                                                    */
-  /* -------------------------------------------------------------------- */
-
-  private say(text: string, bad = false): void {
-    this.status.textContent = text;
-    this.status.classList.toggle('is-bad', bad);
-  }
-
-  /**
-   * Write the profile out as a file.
-   *
-   * The design doc calls a cleared browser store "a wiped account" and it is
-   * right: localStorage is evicted by the browser without asking anyone. This
-   * is the only backstop the player has, so it is a first-class button rather
-   * than a console incantation.
-   */
-  private exportProfile(): void {
-    const p = this.progression;
-    if (p === null) return;
-    try {
-      const json = p.exportProfile();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = el('a');
-      a.href = url;
-      a.download = `voltmarch-profile-${stamp()}.json`;
-      // Not appended to the document: a synthetic click on a detached anchor
-      // downloads in every browser the game supports and cannot disturb layout
-      // or the focus ring for the frame it exists.
-      a.click();
-      // One task later, so the navigation has taken the blob.
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      this.say(`Exported ${json.length.toLocaleString('en-US')} bytes.`);
-    } catch (err) {
-      this.say(`Export failed: ${String(err)}`, true);
-    }
-  }
-
-  private async onFileChosen(): Promise<void> {
-    const input = this.fileInput;
-    const p = this.progression;
-    if (input === null || p === null) return;
-    const file = input.files?.[0];
-    // Cleared immediately so re-importing the same file fires `change` again.
-    input.value = '';
-    if (file === undefined) return;
-
-    try {
-      const text = await file.text();
-      const ok = p.importProfile(text);
-      if (ok) {
-        this.say(`Imported ${file.name}.`);
-        this.render();
-      } else {
-        this.say(`${file.name} is not a Voltmarch profile. Nothing was changed.`, true);
-      }
-    } catch (err) {
-      this.say(`Import failed: ${String(err)}. Nothing was changed.`, true);
-    }
-  }
-
-  /**
-   * Reset is two clicks with a four-second window between them.
-   *
-   * Not a `confirm()` — a native dialog over a fullscreen canvas steals focus,
-   * cannot be driven by a gamepad and looks like a browser error. The button
-   * relabelling itself with the consequence written on it is both clearer and
-   * reversible by doing nothing.
-   */
-  private onResetClicked(): void {
-    const p = this.progression;
-    const b = this.resetButton;
-    if (p === null || b === null) return;
-
-    if (!this.resetArmed) {
-      this.resetArmed = true;
-      const label = b.querySelector('.vm-btn-label');
-      if (label !== null) label.textContent = 'Confirm — erase all';
-      b.classList.add('is-armed');
-      this.say('Erases every unlock and every counter. Export first.', true);
-      // The warning is cleared with the arming, not left standing over a button
-      // that no longer does what it threatens to.
-      this.resetTimer = window.setTimeout(() => {
-        this.disarmReset();
-        this.say('Reset cancelled — nothing was changed.');
-      }, 4000);
-      return;
-    }
-
-    this.disarmReset();
-    try {
-      p.resetProfile();
-      this.say('Profile reset. Everything is available to earn again.');
-    } catch (err) {
-      this.say(`Reset failed: ${String(err)}`, true);
-    }
-    this.render();
-  }
-
-  private disarmReset(): void {
-    if (this.resetTimer !== 0) {
-      window.clearTimeout(this.resetTimer);
-      this.resetTimer = 0;
-    }
-    this.resetArmed = false;
-    const b = this.resetButton;
-    if (b === null) return;
-    const label = b.querySelector('.vm-btn-label');
-    if (label !== null) label.textContent = 'Reset Progress';
-    b.classList.remove('is-armed');
-  }
 }
 
 const STATE_LABEL: Readonly<Record<MissionState, string>> = {
@@ -792,13 +638,6 @@ function rewardCard(r: Reward, earned: boolean): HTMLElement {
     box.appendChild(tick);
   }
   return box;
-}
-
-/** `2026-08-04-1432`, for an export filename that sorts. */
-function stamp(): string {
-  const d = new Date();
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 /* ==========================================================================

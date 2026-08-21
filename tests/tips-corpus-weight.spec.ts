@@ -21,7 +21,7 @@
  * kilobyte against a 2 734 234-byte entry chunk is a bad trade.
  *
  * IT IS A BAD TRADE AT THIS SIZE AND A GOOD ONE AT SOME OTHER SIZE, AND
- * NOTHING IN THE TREE COULD TELL THE DIFFERENCE. `TIPS_BUILD_SPEC.md` §2.4
+ * NOTHING IN THE TREE COULD TELL THE DIFFERENCE. This file's weight contract
  * checked: `tests/campaign-bundle-isolation.spec.ts` §1 is scoped to
  * `CAMPAIGN_SYSTEM` alone and its §2 fires only on `*.system.ts -> src/shell/**`,
  * so `src/sim/tips.system.ts -> src/sim/tip-rows.ts` is caught by nothing. The
@@ -225,7 +225,7 @@ describe('the corpus is one declared module behind one static edge', () => {
   });
 
   /**
-   * `TIPS_BUILD_SPEC.md` §4 decided tips stay ON in PvP, and the property that
+   * `tips.system.ts` deliberately keeps tips ON in PvP, and the property that
    * makes that safe is that nothing in this feature reads a fact a peer does
    * not have. `tests/tips-brownout.spec.ts` §6 asserts it on the director's
    * source; the corpus is the other half and would be the easier place to
@@ -266,7 +266,7 @@ function walkSrc(): string[] {
  *   tutorial-steps.ts prose      5511 bytes   -> the leak not to repeat
  *
  * 1024 is chosen so the NEXT author can add two or three rows without
- * ceremony, and the sixteenth forces the conversation. `TIPS_BUILD_SPEC.md`
+ * ceremony, and the sixteenth forces the conversation. The entry-budget contract
  * scoped this corpus at six to twelve rows; a cap at fifteen sits one step
  * outside the design and five steps inside the leak.
  * ========================================================================== */

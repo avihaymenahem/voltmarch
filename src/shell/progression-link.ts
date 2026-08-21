@@ -140,17 +140,14 @@ export function isMapUnlocked(mapId: string): boolean {
  *
  * "Does the AI resolve against my unlocks, or against nothing?"
  *
- * The default is MIRROR: the opponent fields exactly the roster the player can
- * field. An AI rolling out a unit the player has never seen and cannot build
- * reads as the game cheating, and it burns the reveal that the unlock exists to
- * deliver. The toggle exists for the player who would rather have the harder
- * game than the reveal — and turning the mirror off makes the AI UNRESTRICTED,
- * not restricted differently.
+ * The default is UNRESTRICTED: progression is the player's journey through the
+ * catalogue, not an AI handicap. The optional mirror remains for players who
+ * prefer both sides to use exactly their unlocked roster.
  *
  * WHY THE PREFERENCE LIVES HERE AND NOT ON THE GATE
  * -------------------------------------------------
  * `progression.system.ts` runs `init` on EVERY match boot and constructs a
- * fresh `UnlockGate` with `mirrorAI: true`. A toggle written straight onto the
+ * fresh `UnlockGate`. A toggle written straight onto the
  * gate from the lobby would therefore be erased by the very match it was set
  * for. So the preference is owned here, persisted next to the profile, and
  * re-applied to whatever gate exists at `beginMatch`.
@@ -168,9 +165,9 @@ function readStoredFlag(key: string, fallback: boolean): boolean {
   }
 }
 
-/** Does the AI resolve against the human's unlocks? Default true. */
+/** Does the AI resolve against the human's unlocks? Default false. */
 export function aiMirrorsUnlocks(): boolean {
-  return readStoredFlag(MIRROR_AI_KEY, true);
+  return readStoredFlag(MIRROR_AI_KEY, false);
 }
 
 /** Set the policy and push it at the live gate immediately. */

@@ -234,7 +234,7 @@ describe('Shell.TIPS', () => {
   /**
    * No shipped tip has ever carried a digit, so that gate goes in green and
    * has never been seen fail. This is its falsifier. It is worth having:
-   * `TIPS_BUILD_SPEC.md` §2.3 spot-checked six candidate tips and three were
+   * The corpus survey in `src/sim/tip-rows.ts` spot-checked six candidates and three were
    * wrong about their own numbers, which is the class of error the ban
    * deletes by construction rather than by proofreading.
    */

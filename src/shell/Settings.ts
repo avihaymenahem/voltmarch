@@ -103,6 +103,7 @@ import {
   unlockAllActive,
   unlockAllFromBootFlag,
 } from './unlockall.system';
+import { readProgression } from '../ui/Objectives';
 
 import {
   button,
@@ -517,6 +518,13 @@ export class SettingsScreen implements Screen {
   private diagText = '';
   /** The one-line result of the last Copy or Save, or ''. */
   private diagStatus: HTMLElement | null = null;
+  /** Profile file picker, rebuilt with the Gameplay tab. */
+  private profileFileInput: HTMLInputElement | null = null;
+  /** Status for profile import/export/reset. */
+  private profileStatus: HTMLElement | null = null;
+  private profileResetTimer = 0;
+  private profileResetArmed = false;
+  private profileResetButton: HTMLButtonElement | null = null;
 
   constructor(
     private readonly shell: Shell,
@@ -677,6 +685,7 @@ export class SettingsScreen implements Screen {
   /* -------------------------------------------------------------------- */
 
   private leave(): void {
+    this.disarmProfileReset();
     // Returning to a paused match re-opens the pause menu over the same frozen
     // frame; returning to the title screen must NOT re-boot the backdrop that
     // is already rendering behind us.
@@ -696,6 +705,9 @@ export class SettingsScreen implements Screen {
   private renderTab(): void {
     const body = this.body;
     if (body === null) return;
+    // A reset confirmation belongs to the DOM that owns its armed button. If
+    // the player changes tabs, cancel it before that button is detached.
+    this.disarmProfileReset();
     // The manual holds a load promise and a subtree; leaving the tab drops both
     // rather than leaving a detached view listening for a chunk to arrive.
     this.manual?.dispose();
@@ -704,6 +716,9 @@ export class SettingsScreen implements Screen {
     // pending clipboard promise resolving into a detached node would write into
     // nothing and look like the copy having silently failed.
     this.diagStatus = null;
+    this.profileFileInput = null;
+    this.profileStatus = null;
+    this.profileResetButton = null;
     body.replaceChildren();
     // The manual is its own two-pane scroller sized to the frame, so the frame
     // must not also scroll. Every other tab is a plain flow and does.
@@ -985,10 +1000,8 @@ export class SettingsScreen implements Screen {
        *
        *   1. IT PERSISTS. The player explicitly asked for the setting to survive
        *      a desktop restart; the toggle is the visible authority for it.
-       *   2. THE AI GETS IT TOO. `UnlockGate.mirrorAI` resolves the opponent
-       *      against the HUMAN's profile, so this is symmetric by construction
-       *      and not a bug — but a player who turns it on and is met with an
-       *      Sledge will read it as one unless it is stated first.
+       *   2. THE AI DOES NOT NEED IT. Progression gates the commander only;
+       *      computer opponents retain their complete faction roster.
        *   3. NOTHING IS EARNED. The gate only changes what `isUnlocked`
        *      ANSWERS; it never writes the profile. That is what makes it safe
        *      to ship to everyone, and it is the sentence that stops it reading
@@ -999,9 +1012,8 @@ export class SettingsScreen implements Screen {
           + 'Reload without the flag to get your real progression back.'
         : 'Turns off every progression gate and saves that preference for future launches. '
           + 'Nothing is earned or written into your progression profile. '
-          + 'It applies to the AI as well, because the opponent is resolved against your '
-          + 'unlocks: expect it to start fielding things you have not seen. On a fresh profile '
-          + 'neither side can build a superweapon at all, so this is how you see that content.',
+          + 'Computer opponents already retain their complete faction roster; this changes only '
+          + 'what you can build.',
     );
     prog.appendChild(unlockRow);
     if (bootFlag) {
@@ -1641,6 +1653,132 @@ export class SettingsScreen implements Screen {
       format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`),
       onChange: (v) => set({ screenShake: v }),
     })));
+
+    this.renderProfileManagement(body);
+  }
+
+  /** Profile files belong in Options, beside the preferences they protect. */
+  private renderProfileManagement(body: HTMLElement): void {
+    const section = this.section(body, 'Profile');
+    const profile = readProgression();
+    if (profile === null) {
+      section.appendChild(el('p', 'vm-body', 'Profile management is unavailable in this session.'));
+      return;
+    }
+
+    section.appendChild(el(
+      'p',
+      'vm-body',
+      'Export a portable backup, restore one, or erase your progression. Desktop profiles are '
+        + 'stored directly in the app data folder; browser data is not imported automatically.',
+    ));
+
+    const input = el('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.className = 'vm-sr';
+    input.addEventListener('change', () => { void this.onProfileFileChosen(); });
+    section.appendChild(input);
+    this.profileFileInput = input;
+
+    const actions = el('div', 'vm-diag-actions');
+    actions.appendChild(button('Export Profile', {
+      variant: 'primary', iconName: 'folder', onClick: () => this.exportProfile(),
+    }));
+    actions.appendChild(button('Import Profile', {
+      iconName: 'restore', onClick: () => this.profileFileInput?.click(),
+    }));
+    const reset = button('Reset Progress', {
+      iconName: 'refresh', variant: 'danger', onClick: () => this.onProfileResetClicked(),
+    });
+    actions.appendChild(reset);
+    this.profileResetButton = reset;
+    section.appendChild(actions);
+
+    const status = el('p', 'vm-diag-status', 'No profile operation has been performed.');
+    this.profileStatus = status;
+    section.appendChild(status);
+  }
+
+  private sayProfile(text: string, bad = false): void {
+    const status = this.profileStatus;
+    if (status === null) return;
+    status.textContent = text;
+    status.classList.toggle('is-bad', bad);
+  }
+
+  private exportProfile(): void {
+    const profile = readProgression();
+    if (profile === null) return;
+    try {
+      const json = profile.exportProfile();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = el('a');
+      anchor.href = url;
+      anchor.download = `voltmarch-profile-${diagStamp()}.json`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.sayProfile(`Exported ${json.length.toLocaleString('en-US')} bytes.`);
+    } catch (err) {
+      this.sayProfile(`Export failed: ${String(err)}`, true);
+    }
+  }
+
+  private async onProfileFileChosen(): Promise<void> {
+    const input = this.profileFileInput;
+    const profile = readProgression();
+    if (input === null || profile === null) return;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file === undefined) return;
+    try {
+      const ok = profile.importProfile(await file.text());
+      this.sayProfile(
+        ok ? `Imported ${file.name}.` : `${file.name} is not a Voltmarch profile. Nothing changed.`,
+        !ok,
+      );
+    } catch (err) {
+      this.sayProfile(`Import failed: ${String(err)}. Nothing changed.`, true);
+    }
+  }
+
+  private onProfileResetClicked(): void {
+    const profile = readProgression();
+    const reset = this.profileResetButton;
+    if (profile === null || reset === null) return;
+    if (!this.profileResetArmed) {
+      this.profileResetArmed = true;
+      const label = reset.querySelector('.vm-btn-label');
+      if (label !== null) label.textContent = 'Confirm — erase all';
+      reset.classList.add('is-armed');
+      this.sayProfile('Erases every unlock, medal and counter. Export first.', true);
+      this.profileResetTimer = window.setTimeout(() => {
+        this.disarmProfileReset();
+        this.sayProfile('Reset cancelled — nothing changed.');
+      }, 4000);
+      return;
+    }
+    this.disarmProfileReset();
+    try {
+      profile.resetProfile();
+      this.sayProfile('Profile reset. Everything is available to earn again.');
+    } catch (err) {
+      this.sayProfile(`Reset failed: ${String(err)}`, true);
+    }
+  }
+
+  private disarmProfileReset(): void {
+    if (this.profileResetTimer !== 0) {
+      window.clearTimeout(this.profileResetTimer);
+      this.profileResetTimer = 0;
+    }
+    this.profileResetArmed = false;
+    const reset = this.profileResetButton;
+    if (reset === null) return;
+    const label = reset.querySelector('.vm-btn-label');
+    if (label !== null) label.textContent = 'Reset Progress';
+    reset.classList.remove('is-armed');
   }
 
   /* -- controls ---------------------------------------------------------- *

@@ -2180,8 +2180,8 @@ export class Shell {
    * Open the missions and unlocks board.
    *
    * Reachable from the title screen and from the pause menu, and it renders
-   * with no progression handle at all (an empty board with the export/import
-   * footer), so the route is safe under the `?shot=` harness.
+   * with no progression handle at all, so the route is safe under the
+   * `?shot=` harness. Profile file management lives in Settings.
    */
   openMissions(returnTo: ShellState = 'menu'): void {
     this.show(new MissionsScreen(this, () => {

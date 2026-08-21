@@ -74,7 +74,7 @@ is what stops the two systems feeling bolted together.
 
 ```
 src/progression/
-  profile-store.ts      versioned localStorage profile; export/import as JSON
+  profile-store.ts      versioned platform profile; export/import as JSON
   MissionTracker.ts     subscribes to the event bus, advances mission counters
   UnlockGate.ts         resolves "what can this player build right now"
   progression.system.ts SystemModule; wires the tracker to channels

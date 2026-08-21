@@ -723,9 +723,9 @@ function notesFor(input: DiagnosticsInput): string[] {
     // FIRST-CLASS, not a field buried in the environment block. Anything
     // measured in an ungated session is a measurement of a different game.
     notes.push(
-      'UNLOCK EVERYTHING IS ON. Every progression gate is off for this session, for the AI as '
-      + 'well as for you (UnlockGate.mirrorAI resolves the AI against your profile). Rosters, '
-      + 'available battlefields and anything either side has built may not match a normal '
+      'UNLOCK EVERYTHING IS ON. Every player progression gate is off for this session. Computer '
+      + 'opponents are unrestricted by default, so their roster is unchanged. Available '
+      + 'battlefields and anything you have built may not match a normal '
       + 'profile. Nothing was written to the profile.',
     );
   }

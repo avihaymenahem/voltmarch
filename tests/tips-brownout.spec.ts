@@ -2,7 +2,7 @@
  * ============================================================================
  * tests/tips-brownout.spec.ts — ONE SITUATIONAL TIP, END TO END
  * ============================================================================
- * `TIPS_BUILD_SPEC.md` §6 Commit 2. The feature is one trigger, one string and
+ * The first feature slice was one trigger, one string and
  * one surface, and it exists to prove four properties that every later tip
  * inherits. Each has a section here, and each has a falsifier, because a gate
  * nobody has seen fail is a gate nobody knows works.
@@ -18,9 +18,8 @@
  *       here, and the answer is that WITHOUT the `answeringPower` gate it does
  *       exactly that — a player who reacts on the brownout's first tick is
  *       still holding an unplaced plant fifteen seconds later.
- *   §4  THE SURFACE. The toast clips both lines at about forty-three
- *       characters; the two authored strings are inside that and the spec's
- *       one-sentence draft is not.
+ *   §4  THE SURFACE. Tip keys select the wider chip variant and its detail can
+ *       wrap to three lines without changing ordinary event toasts.
  *   §5  THE TOGGLE, BY DELETION. `gameplay.tips: false` posts nothing.
  *   §6  SUPPRESSION, THROUGH THE REAL MODULE. Campaign, replay and tutorial;
  *       PvP deliberately NOT suppressed.
@@ -193,7 +192,7 @@ const REPLAY: ReplayFile = {
  * 1. THE TIP IS TRUE
  *
  * Both halves of the string are claims about shipped code, and this is where
- * they are re-derived rather than trusted. `TIPS_BUILD_SPEC.md` §2.3 found
+ * they are re-derived rather than trusted. The corpus survey found
  * three of six spot-checked candidate tips were wrong about their own facts;
  * the digit ban deletes the arithmetic class of that error and this deletes
  * the ordering class.
@@ -493,7 +492,7 @@ describe('the player who is already answering', () => {
 /* ==========================================================================
  * 4. THE SURFACE — TWO BUDGETS, NOT ONE, AND BOTH MEASURED IN A BROWSER
  *
- * `TIPS_BUILD_SPEC.md` §2.1 quotes the CSS: both lines are
+ * The original surface survey quotes the CSS: both lines are
  * `white-space: nowrap` + `text-overflow: ellipsis` at
  * `font-size: calc(10 * var(--vm-u))` inside `.vm-toasts { max-width: calc(250
  * * var(--vm-u)) }`. Reasoning from that — 250 less 22 of padding, 13 of icon
@@ -521,7 +520,7 @@ describe('the player who is already answering', () => {
  * multiples of `--vm-u`.
  * ========================================================================== */
 
-describe('the tip fits the chip it is posted into', () => {
+describe('the tip surface', () => {
   /** Measured, not derived. See the section header. */
   const TITLE_CHARS = 26;
   const DETAIL_CHARS = 44;
@@ -530,6 +529,15 @@ describe('the tip fits the chip it is posted into', () => {
     expect(TIP_BROWNOUT.title.length, 'uppercase and tracked — half the room')
       .toBeLessThanOrEqual(TITLE_CHARS);
     expect(TIP_BROWNOUT.detail.length).toBeLessThanOrEqual(DETAIL_CHARS);
+  });
+
+  it('namespaces tips into the wider wrapping chip without widening events', () => {
+    const chrome = readFileSync(join(import.meta.dirname, '../src/ui/Chrome.ts'), 'utf8');
+    const css = readFileSync(join(import.meta.dirname, '../src/ui/hud.css'), 'utf8');
+    expect(chrome).toContain("key.startsWith('tip.') ? ' is-tip' : ''");
+    expect(css).toMatch(/\.vm-hud \.vm-toast\.is-tip\s*\{[^}]*width:\s*calc\(330 \* var\(--vm-u\)\)/s);
+    expect(css).toMatch(/\.vm-toast\.is-tip \.vm-toast-detail\s*\{[^}]*white-space:\s*normal/s);
+    expect(css).toMatch(/\.vm-toast\.is-tip \.vm-toast-detail\s*\{[^}]*-webkit-line-clamp:\s*3/s);
   });
 
   /**
@@ -631,7 +639,7 @@ describe('gameplay.tips', () => {
  * whether the caller skipped a call passes against exactly that defect.
  *
  * THREE PREDICATES, NOT FOUR. PvP is deliberately not one of them
- * (`TIPS_BUILD_SPEC.md` §4), and the last case pins that so nobody "fixes" it
+ * (the suppression contract in `tips.system.ts`), and the last case pins that so nobody "fixes" it
  * back on the assumption that a suppression list should be as long as
  * possible.
  * ========================================================================== */
@@ -719,7 +727,7 @@ describe('scripted content silences tips', () => {
 
   /**
    * PvP IS NOT ON THE LIST, AND THAT WAS A DECISION. Two surveys assumed
-   * opposite answers in silence; `TIPS_BUILD_SPEC.md` §4 decided ON. A tip is
+   * opposite answers in silence; the suppression contract decided ON. A tip is
    * local-only DOM that cannot desync, and the player most likely to want
    * ore-crisis-shaped advice is the one being beaten by a person. This case
    * exists so the decision has to be re-argued rather than quietly reversed.
@@ -746,7 +754,7 @@ describe('scripted content silences tips', () => {
  * FALL BACK TO THE DEFAULT when it is absent, which is right for them. It is
  * wrong here: `gameplay.tips` defaults to `true`, so the same idiom makes a
  * shell-less boot — the `?shot=` harness, a headless test, a dedicated
- * server — default to SHOWING tips. That is trap 2 in `TIPS_BUILD_SPEC.md` §3
+ * server — default to SHOWING tips. That is the no-shell trap documented in `tips.system.ts`
  * and nobody had written the inversion down.
  * ========================================================================== */
 

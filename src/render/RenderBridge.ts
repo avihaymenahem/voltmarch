@@ -383,36 +383,6 @@ export function registerKindMesh(
 }
 
 /**
- * The registered art for one (kind, faction, defId), most-specific-first, or
- * null when nothing is registered and the entity would fall through to the
- * placeholder box.
- *
- * Exported for `src/ui/Cameos.ts` (`CameoRenderer`), which renders the real mesh
- * into the HUD's selection cards. The name in this comment used to be
- * `src/ui/ModelPortrait.ts`, which no longer exists. Deliberately returns null rather than the placeholder:
- * a portrait of a grey cube is worse than the drawn glyph it would replace, so
- * the caller needs to be able to tell the difference. The bridge's own private
- * `resolve()` keeps falling through, because a MISSING unit on the battlefield
- * must still be visible.
- */
-export function kindMeshFor(
-  kind: EntityKind, faction: number, defId: number,
-): KindMesh | null {
-  const e = byKey.get(packKey(kind, faction, defId))
-    ?? byKey.get(packKey(kind, FACTION_ANY, defId))
-    ?? byKey.get(packKey(kind, faction, -1))
-    ?? byKey.get(packKey(kind, FACTION_ANY, -1));
-  if (e === undefined || e.placeholder) return null;
-  for (const [mesh, entry] of byMesh) if (entry === e) return mesh;
-  return null;
-}
-
-/** Bumped by every registration. Lets a cache know its keys may have moved. */
-export function kindMeshVersion(): number {
-  return registryVersion;
-}
-
-/**
  * Drop every registration, every batch and the generated placeholder assets.
  * Called between matches; art modules re-register from their own `init()`.
  */

@@ -47,7 +47,7 @@
  * be told what is happening to their defences.
  *
  * ── EVERY CLAIM IS CHECKABLE AGAINST SHIPPED CODE ──────────────────────────
- * `TIPS_BUILD_SPEC.md` §2.3 spot-checked six candidate tips and THREE were
+ * The corpus survey spot-checked six candidate tips and THREE were
  * measurably wrong about their own facts. Two mechanisms answer that. The
  * digit ban (`tests/loading-tips.spec.ts`) deletes the arithmetic class by
  * construction. `tests/tips-corpus.spec.ts` §1 re-derives the ORDERING and

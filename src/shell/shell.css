@@ -1691,32 +1691,6 @@
   flex: 0 0 auto;
 }
 
-/* -- the footer status line ----------------------------------------------- */
-
-/* Four buttons and a sentence do not fit a 1000px footer at the shell's stock
-   150px minimum, and the sentence ended up painted underneath Export. The
-   footer is allowed to wrap and the buttons here are narrower — this screen is
-   the only place in the product with four footer actions. */
-.vm-shell .vm-missions .vm-page-foot {
-  flex-wrap: wrap;
-}
-
-.vm-shell .vm-missions .vm-page-foot .vm-btn {
-  min-width: 112px;
-}
-
-.vm-shell .vm-missions-status {
-  flex: 1 1 180px;
-  min-width: 0;
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
-  letter-spacing: 0.04em;
-  color: var(--vm-text-faint);
-}
-
-.vm-shell .vm-missions-status.is-bad { color: var(--vm-danger); }
-
 /* An armed destructive button. The label already carries the consequence; this
    makes the second click impossible to make by accident. */
 .vm-shell .vm-btn.is-armed {

@@ -44,6 +44,7 @@ describe('platform persistence selection', () => {
     vi.stubGlobal('indexedDB', { open: () => { throw new Error('desktop must not open IndexedDB'); } });
 
     const storage = persistentStorage();
+    expect(storage.getItem('vm.missing')).toBeNull();
     storage.setItem('vm.test', 'native');
     expect(storage.getItem('vm.test')).toBe('native');
 

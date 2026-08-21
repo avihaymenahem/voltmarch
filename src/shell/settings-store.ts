@@ -251,7 +251,7 @@ export interface GameplaySettings {
    * ON by default, and READ — `src/sim/tips.system.ts` is its consumer and
    * landed in the same commit as this row, deliberately: four rows on this
    * interface are persisted, normalised and consumed by nobody, and a fifth
-   * would be indistinguishable from them. See `TIPS_BUILD_SPEC.md` §6.
+   * would be indistinguishable from them. See `src/sim/tips.system.ts`.
    *
    * No `SETTINGS_VERSION` bump. `normalizeSettings` is total over any input,
    * so a blob written before this row existed comes back with the default.

@@ -4,8 +4,8 @@
  * ============================================================================
  * SITUATIONAL TIPS: THE DIRECTOR.
  *
- * `TIPS_BUILD_SPEC.md` §6 Commit 2 built one trigger, one string and one
- * surface, to prove four things every later tip inherits: the trigger cannot
+ * The first shipped row built one trigger, one string and one surface to prove
+ * four things every later tip inherits: the trigger cannot
  * fire under `?shot=`, the settings toggle has a reader, the suppression set
  * is enforced where it cannot be bypassed, and a boot with no shell is silent
  * rather than default-on. Commit 3 turned the trigger into a TABLE and left
@@ -24,7 +24,7 @@
  * to the AI and to a peer: two clients of a lockstep match can disagree about
  * whether a tip was shown (one player has them off, or has muted the row) and
  * the simulation is bit-identical either way. That is what makes it safe to
- * leave tips ON in PvP, which `TIPS_BUILD_SPEC.md` §4 decided deliberately
+ * leave tips ON in PvP, which the suppression contract deliberately requires
  * after two surveys assumed opposite answers in silence.
  *
  * `?shot=` CANNOT REACH THIS, AND IT IS TRUE TWICE OVER. `GameLoop.advanceFrames`
@@ -43,26 +43,20 @@
  * behind `production.system.ts` (Phase.Production, 200), so the queues every
  * `answered` predicate walks are this tick's too.
  *
- * THE SURFACE IS STILL THE TOAST, AND THE NEXT OPTION IS COSTED
- * -------------------------------------------------------------
- * `postTip` is the seam every later surface comes through: a card replaces the
- * body of one function and the gates above it do not move. It is not a card
- * yet because `Hud.hudFrameShare()` already measures 15.83% against
+ * THE SURFACE IS A WIDER TOAST, AND THE OTHER OPTION IS COSTED
+ * ------------------------------------------------------------
+ * `postTip` is the seam every later surface comes through. It is not a card
+ * because `Hud.hudFrameShare()` already measures 15.83% against
  * `RA3_LOOK_BIBLE.md` §38's 12-16% ceiling, and a card is a FOURTH claimant
  * (HUD + objectives + toasts + card) on a budget with no headroom. Any card
  * lands with a frame-share number and a `tools/shot-compare.mjs` control
  * capture, and neither is cheap: no `?shot=` fixture shows a tip, because
  * `simTick` does not run under `advanceFrames`.
  *
- * **THE CHEAPER NEXT OPTION, IF 26/44 EVER PROVES TOO TIGHT, IS A WIDER CHIP
- * AND NOT A CARD.** An `is-tip` variant on `.vm-toast` letting the DETAIL wrap
- * to two or three lines fixes §2.1's actual cause — `white-space: nowrap` —
- * inside a claimant the frame-share budget has already paid for. It was NOT
- * taken now because the evidence says it is not needed: all seven rows say
- * something true and useful inside 26 and 44 characters, seven of seven, and
- * terse is the right register for something that interrupts a player
- * mid-match. Widening on a hunch would buy prose nobody has asked for and cost
- * a re-measurement of the one budget in the product that is already over.
+ * The shipped `is-tip` variant on `.vm-toast` lets the DETAIL wrap to three
+ * lines and fixes the actual cause — `white-space: nowrap` — inside a claimant
+ * the frame-share budget already pays for. `ToastStack` selects it from the
+ * `tip.*` key namespace, so none of the gates here move.
  * ============================================================================
  */
 
@@ -205,7 +199,7 @@ interface SettingsBridge {
  * truthful answer. It is wrong here. `gameplay.tips` defaults to `true`, so the
  * same idiom would make a shell-less boot — the `?shot=` harness, a headless
  * test, a dedicated server — DEFAULT TO SHOWING TIPS, which is trap 2 in
- * `TIPS_BUILD_SPEC.md` §3.
+ * the no-shell gate documented above.
  *
  * So: no store is not "the default", it is OFF. `=== true` rather than `?? true`
  * on the field for the same reason, one level down — a store that exists but has
@@ -258,7 +252,7 @@ function tipMemory(): TipMemory | null {
  * for a reason a PvP skirmish does not share: an operation authors its own
  * guidance, a replay is not the viewer's match to advise on, and the tutorial
  * is already saying something. A match against a person is none of those, and
- * `TIPS_BUILD_SPEC.md` §4 decided deliberately that tips stay ON there rather
+ * the suppression contract deliberately keeps tips ON there rather
  * than letting the third survey's silent assumption win.
  *
  * `scriptedRunning()` in `outcome.system.ts` is the same OR of the first and
@@ -295,7 +289,7 @@ function suppressed(): boolean {
  *   5. HOST         there is a chip stack to post into at all.
  *   6. ARBITER      the stack is holding something the player needs more.
  *
- * **GATE 6 IS THE ONE `TIPS_BUILD_SPEC.md` §7 ASKED FOR AND DID NOT HAVE.**
+ * **GATE 6 IS THE HUD ARBITER.**
  * `TOAST_MAX` is 5 and `EVA_TOASTS` turns fifteen announcer lines into chips,
  * so a tip competes with *"Base under attack"* — and `ToastStack.push` retires
  * the OLDEST chip when the stack is full, so a tip arriving at capacity does

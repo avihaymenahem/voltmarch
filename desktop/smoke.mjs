@@ -200,7 +200,7 @@ await third.app.close();
  * export/import as a HARD DEPENDENCY for exactly that reason: losing mission
  * counters is annoying, losing ten hours of campaign is a refund request.
  *
- * The export path is `Missions.exportProfile`: a Blob, an object URL, and a
+ * The export path is `Settings.exportProfile`: a Blob, an object URL, and a
  * synthetic click on a DETACHED anchor carrying `download`. That works in every
  * browser the game supports. **Whether it works under a privileged custom
  * scheme in Electron is a different question, and it is the kind that fails

@@ -2566,6 +2566,27 @@
   color: var(--vm-text);
 }
 
+/* Situational tips are instructions, not telemetry. Give only that namespaced
+   toast variant a wider measure and let its detail use up to three lines; event
+   chips remain compact and single-line so a burst cannot become a wall. */
+.vm-hud .vm-toast.is-tip {
+  box-sizing: border-box;
+  align-self: center;
+  width: calc(330 * var(--vm-u));
+  max-width: calc(100vw - 20 * var(--vm-u));
+  align-items: flex-start;
+}
+
+.vm-hud .vm-toast.is-tip .vm-toast-detail {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .vm-hud .vm-toast.is-warn { border-left-color: var(--vm-warn); }
 .vm-hud .vm-toast.is-alert { border-left-color: var(--vm-danger); }
 .vm-hud .vm-toast.is-good { border-left-color: var(--vm-ok); }

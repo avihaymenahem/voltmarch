@@ -32,24 +32,12 @@ function memoryStorage(): PersistentStorage {
 
 let memory: PersistentStorage | null = null;
 
-/**
- * Native filesystem storage in Electron, browser storage on the web.
- *
- * A native miss checks the old web store once per key and imports a value when
- * present. That is a migration path for existing desktop installs, never the
- * active desktop backend; every subsequent read comes from `userData/storage`.
- */
+/** Native filesystem storage in Electron, browser storage on the web. */
 export function persistentStorage(): PersistentStorage {
   const bridge = desktopBridge();
   if (bridge !== null) {
     return {
-      getItem(key: string): string | null {
-        const native = bridge.storageGet(key);
-        if (native !== null) return native;
-        const legacy = browserStorage()?.getItem(key) ?? null;
-        if (legacy !== null) bridge.storageSet(key, legacy);
-        return legacy;
-      },
+      getItem: (key) => bridge.storageGet(key),
       setItem: (key, value) => bridge.storageSet(key, value),
       removeItem: (key) => bridge.storageRemove(key),
     };

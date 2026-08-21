@@ -4,7 +4,7 @@
 //
 //   node tools/crop-surfaces.mjs
 //
-// Crop geometry matches the pre-overhaul docs/surface-refs/ours-*.png set:
+// Crop geometry matches the pre-overhaul reference framing:
 // a 620x420 window from a 2560x1440 shot, doubled to 1240x840.
 import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';

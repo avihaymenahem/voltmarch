@@ -659,7 +659,7 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   SHOWING, because `.vm-toasts` is `pointer-events: none` — a chip cannot be clicked, so "dismiss" is
   not an act the player can perform and a mute waiting for one would never fire. Marked AFTER the
   chip is raised, so a row any gate refused has not been spent. The only route back is `resetProfile`.
-- **Tips stay ON in PvP** (`TIPS_BUILD_SPEC.md` §4) and the module writes NOTHING to the world, which
+- **Tips stay ON in PvP** (`src/sim/tips.system.ts` suppression contract) and the module writes NOTHING to the world, which
   is what makes that safe. Suppression is three predicates — campaign, replay, tutorial — not four.
 
 ## An economy can stop dead, and one rule exists to unstick it
@@ -783,8 +783,9 @@ original defect with a different noun.
   The old rule was *content required to reach the enemy is never progression-gated*, and it fired
   only where `mapForcesSeaCrossing` — water present AND ground split — which is Sunder Atoll and
   nowhere else. So on Contested Strait and Coral Shore, the two battlefields the lobby sells as
-  naval, a partially progressed profile got no dock, no lift and no warship; `UnlockGate.mirrorAI`
-  resolves the AI against the human's profile, so BOTH sides were dead and the water was scenery.
+  naval, a partially progressed profile got no dock, no lift and no warship; the then-default
+  `UnlockGate.mirrorAI` policy resolved the AI against the human too, so BOTH sides were dead and
+  the water was scenery.
   The maps also arrive long before their content — Contested Strait is paid by one win under
   fifteen minutes, `struct.naval` wanted ten wins on an independent chain — and its own lobby blurb
   reads "Naval yards earn their cost here."
@@ -1454,8 +1455,9 @@ same empty gate silently removes repair depots, refractor tanks and the commande
 and the traces had been printing `blocked: repairDepot: Locked — complete a mission` for two tasks
 before anyone read it. **Any AI harness that stubs `UnlockGate` is measuring a different game.**
 
-On a fresh profile the AI genuinely cannot build one — and neither can the player, because
-`UnlockGate.mirrorAI` resolves the AI against the human's profile. Symmetric and deliberate.
+The production default is now an unrestricted AI: a fresh player profile gates the commander, not
+the opponent. A probe that wants the older mirrored policy must request it explicitly; otherwise
+installing an empty `UnlockGate` measures a stricter game than the one that ships.
 
 **A WOUNDED HULL WITHDRAWS NOW — AND `flee=0` WAS A VACUOUS METRIC.** Three separate reports
 cited "no combat unit ever enters `UnitState.Fleeing`" as evidence the AI had no retreat. That

@@ -9,28 +9,6 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
-## Tips
-
-- **Situational in-match tips — THE SURFACE is all that remains.** *(untracked; the plan is
-  `TIPS_BUILD_SPEC.md`, whose §6 is down to one row and which names its own deletion condition.)*
-  Commits 1, 2 and 3 shipped: the loading-screen tips no longer lie about rebound keys, and the
-  feature is now a seven-row corpus (`src/sim/tip-rows.ts`) driven by a table in
-  `src/sim/tips.system.ts`, with an entry-chunk weight cap, an arbiter that yields to alerts, and a
-  per-row mute persisted at `PROFILE_VERSION` 4.
-
-  What is left is ONE question, and it is not "build the card": a tip has one surface and two
-  candidate replacements at very different prices. **A wider chip** (`is-tip` on `.vm-toast`, the
-  detail wrapping) fixes §2.1's actual cause inside a claimant the frame-share budget already pays
-  for. **A card** is a fourth claimant on a budget measured at 15.83% against a 12-16% ceiling, and
-  it cannot be photographed at all — `simTick` does not run under `advanceFrames`, so no `?shot=`
-  fixture can show a tip without a new harness affordance.
-
-  **The trigger for widening is measured and has not fired.** The chip holds 26 characters of title
-  and 44 of detail, and seven of seven shipped rows fit — titles 22-25, details 27-40. The evidence
-  that would open this is a row that cannot say something true and useful inside those two numbers.
-
----
-
 ## Multiplayer
 
 - **Teams shipped; three follow-ups it deliberately did not do.** *(untracked — the task tool was
@@ -57,10 +35,6 @@ with no number is untracked, and that is itself the bug.
 
 ## Desktop
 
-- **#56 — desktop players start with an empty profile.** Partly closed: export/import verified
-  working under `app://` on a real Electron launch. What remains is that nothing migrates
-  automatically, the buttons sit on the Missions screen rather than Options, and an empty profile
-  also disarms the AI (`UnlockGate.mirrorAI` resolves it against the human's profile).
 - **#57 — distribution and signing.** Research only.
 
 ---
@@ -70,19 +44,6 @@ with no number is untracked, and that is itself the bug.
 No open renderer/doc implementation items remain from this round. WebGPU GPU time now comes from
 Three's real `timestamp-query` path; the intentionally unavailable colour-pass split still reads
 `n/a`, because total draws are not a substitute for colour draws.
-
----
-
-## Cleanup: calls that were left for a human, and still are
-
-Decisions, not work. Nobody should sweep them without an answer.
-
-- **`docs/surface-refs/ours-*.png`** — 4 files, 4.6 MB, tracked and unreferenced. Reference captures
-  of our own output. Cite them from the look bible or delete them.
-- **The selection-card portrait API** — `kindMeshFor`, `kindMeshVersion`, `HUD_PORTRAIT`.
-- **Further dead exports** — this round removed 56 declarations only after repository-wide symbol
-  searches and typecheck. Automated scans still include dynamic entrypoints and intentionally public
-  types, so any further removal remains a per-symbol review rather than a bulk cleanup.
 
 ---
 

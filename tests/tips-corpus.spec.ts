@@ -8,7 +8,7 @@
  * here. This file is what Commit 3 added:
  *
  *   §1  THE ROWS SAY SOMETHING TRUE, re-derived from the live tables rather
- *       than proof-read. `TIPS_BUILD_SPEC.md` §2.3 spot-checked six candidate
+ *       than proof-read. The corpus survey in `src/sim/tip-rows.ts` spot-checked six candidate
  *       tips and three were measurably wrong about their own facts.
  *   §2  THE CONTRACT. Two predicates on every row, and they are not the same
  *       function; unique keys; holds that a survey can actually reach; two

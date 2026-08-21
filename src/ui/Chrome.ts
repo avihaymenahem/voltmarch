@@ -651,7 +651,10 @@ export class ToastStack {
     entry.detailNode.nodeValue = detail;
     entry.detailEl.hidden = detail === '';
     entry.countEl.hidden = true;
-    entry.root.className = `vm-toast is-${kind} is-enter`;
+    // Tips share the stack but need room for an instructional sentence. Their
+    // namespaced key is the stable discriminator; ordinary event chips retain
+    // the compact one-line treatment.
+    entry.root.className = `vm-toast is-${kind}${key.startsWith('tip.') ? ' is-tip' : ''} is-enter`;
     entry.root.style.opacity = '';
 
     // Rebuild the leading icon: it is per-kind and the chip is pooled.

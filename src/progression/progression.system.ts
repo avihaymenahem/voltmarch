@@ -266,6 +266,10 @@ export default defineSystem({
     tracker = new MissionTracker(MISSIONS, store);
     gate = new UnlockGate(() => store?.get().unlocked ?? EMPTY, {
       knownUnlockIds: MISSION_UNLOCK_IDS,
+      // Progression is the PLAYER'S campaign through the catalogue, not an AI
+      // handicap. A new desktop profile therefore starts the commander at tier
+      // one while computer opponents retain their complete faction roster.
+      mirrorAI: false,
       // WHICH MISSION, NOT "a mission". This is the ONE call site that knows
       // both halves — the mission table and the gate — so it is where the join
       // is made. `UnlockGate` must keep importing nothing but its own types
