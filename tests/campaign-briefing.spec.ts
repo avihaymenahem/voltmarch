@@ -34,6 +34,8 @@
  * vacuous-metric trap and records walking into it three times.
  * ========================================================================== */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /* ==========================================================================
@@ -239,6 +241,21 @@ describe('the shipped table', () => {
  * ========================================================================== */
 
 describe('BriefingScreen', () => {
+  it('keeps a four-sided safe area and does not cap the content inside a wider panel', () => {
+    const css = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'shell.css'), 'utf8');
+    const at = css.indexOf('.vm-shell .vm-camp-brief {');
+    const end = css.indexOf('\n}', at);
+    const rule = css.slice(at, end);
+
+    expect(at, 'the briefing container rule was renamed').toBeGreaterThan(-1);
+    expect(rule, 'the wide panel must not grow a dead column beside the portrait')
+      .toContain('width: calc(100% - 36px)');
+    expect(rule, 'the short-height layout needs the same inset above as at either side')
+      .toContain('margin: 18px');
+    expect(rule, 'the old cap created the reported empty right column')
+      .not.toMatch(/width:\s*min\(980px/);
+  });
+
   it('gives the gold-master opening operation an authored command portrait and directive', async () => {
     const host = await mountBriefing('soviets.01.first-tap');
     const portraits = byClass(host, 'vm-camp-command-portrait');
@@ -250,6 +267,28 @@ describe('BriefingScreen', () => {
     expect(directives.map((line) => line.textContent)).toEqual([
       'Take the Allied survey tap. The three derricks stay with the town.',
     ]);
+  });
+
+  it('continues the gold-master treatment into Common Standard with Vosk', async () => {
+    const host = await mountBriefing('soviets.02.common-standard');
+    const portraits = byClass(host, 'vm-camp-command-portrait');
+    const directives = byClass(host, 'vm-camp-command-directive');
+
+    expect(portraits).toHaveLength(1);
+    expect(portraits[0]?.getAttribute('src')).toMatch(/campaign\/portraits\/vosk\.webp$/);
+    expect(portraits[0]?.getAttribute('alt')).toMatch(/Vosk.*Field Operations/i);
+    expect(directives.map((line) => line.textContent)).toEqual([
+      'Eight hulls. No yard, no replacements. Hold Survey 40 with five.',
+    ]);
+  });
+
+  it('briefs Deep Sector with Vosk before Wend appears on the intercepted net', async () => {
+    const host = await mountBriefing('soviets.03.deep-sector');
+    const portraits = byClass(host, 'vm-camp-command-portrait');
+    expect(portraits).toHaveLength(1);
+    expect(portraits[0]?.getAttribute('src')).toMatch(/campaign\/portraits\/vosk\.webp$/);
+    expect(byClass(host, 'vm-camp-command-directive').map((line) => line.textContent))
+      .toEqual(['Take the survey instruments off them, then take the tap properly.']);
   });
 
   it('does not fabricate a portrait for an operation without authored presentation', async () => {

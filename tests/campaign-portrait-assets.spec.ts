@@ -14,11 +14,15 @@ function publicPath(url: string): string {
 }
 
 describe('campaign portrait presentation', () => {
-  it('ships every portrait referenced by the opening operation', () => {
+  it('ships every portrait referenced by the gold-master operations', () => {
     const briefing = campaignBriefing('soviets.01.first-tap');
     expect(briefing).not.toBeNull();
 
-    const speakers = [briefing?.commander, campaignSpeaker('Vosk')].filter((v) => v !== undefined);
+    const speakers = [
+      briefing?.commander,
+      campaignSpeaker('Vosk'),
+      campaignSpeaker('Wend, intercepted'),
+    ].filter((v) => v !== undefined);
     for (const speaker of speakers) {
       const path = publicPath(speaker.portrait);
       expect(existsSync(path), `${speaker.name} points at missing ${path}`).toBe(true);
@@ -31,6 +35,10 @@ describe('campaign portrait presentation', () => {
     const intercepted = campaignSpeaker('Rakhalt, intercepted');
     expect(intercepted.portrait).toMatch(/rakhalt\.webp$/);
     expect(intercepted.role).toBe('Intercepted Signal');
+
+    const wend = campaignSpeaker('Wend, intercepted');
+    expect(wend.portrait).toMatch(/wend\.webp$/);
+    expect(wend.role).toBe('Intercepted Signal');
   });
 
   it('fails soft for an unauthored speaker', () => {
@@ -42,4 +50,3 @@ describe('campaign portrait presentation', () => {
     });
   });
 });
-

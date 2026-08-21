@@ -1147,6 +1147,10 @@
   overflow: hidden;
 }
 
+.vm-shell .vm-end-panel.has-campaign {
+  width: min(960px, 94vw);
+}
+
 /* Pinned: all three are fixed-size and must never be the thing that scrolls
    away. The action row especially — it is the only exit from this screen. */
 .vm-shell .vm-end-panel > .vm-end-head,
@@ -3178,9 +3182,13 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 /* -- the briefing ---------------------------------------------------------- */
 
 .vm-shell .vm-camp-brief {
-  width: min(980px, calc(100% - 36px));
+  /* The body is already capped by `.vm-page-panel`. A second 980px cap left a
+     blank column between the command portrait and the panel edge on wide
+     windows. Own the full body width and keep the same 18px safe area on all
+     four sides — the top inset matters most in a short, wide desktop window. */
+  width: calc(100% - 36px);
   max-width: none;
-  margin: 0 18px;
+  margin: 18px;
 }
 
 .vm-shell .vm-camp-brief-grid {
@@ -3475,6 +3483,233 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--vm-text-faint);
+}
+
+/* -- campaign after-action report ----------------------------------------- *
+ * The campaign grader has always produced a medal, but the result screen used
+ * to throw that value away visually. This band makes the award, objective
+ * state and command response one scan: report on the left, human consequence
+ * on the right. It lives inside `.vm-end-body`, the screen's only scrollable
+ * region, so a 640px-high window never loses Retry or Next Operation.         */
+
+.vm-shell .vm-camp-after-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.72fr);
+  gap: 1px;
+  margin: 18px;
+  overflow: hidden;
+  border: 1px solid var(--vm-line);
+  border-radius: var(--vm-notch-sm);
+  background: var(--vm-line-soft);
+  clip-path: polygon(0 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 13px 100%, 0 calc(100% - 13px));
+}
+
+.vm-shell .vm-camp-after-report {
+  min-width: 0;
+  padding: 18px 20px;
+  background:
+    linear-gradient(135deg, rgba(var(--vm-accent-rgb), 0.055), transparent 44%),
+    rgba(3, 7, 15, 0.94);
+}
+
+.vm-shell .vm-camp-after-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.vm-shell .vm-camp-after-kicker,
+.vm-shell .vm-camp-after-operation {
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-after-kicker {
+  color: var(--vm-accent);
+  font-size: 10px;
+}
+
+.vm-shell .vm-camp-after-operation {
+  overflow: hidden;
+  color: var(--vm-text-faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-award {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 154, 184, 0.18);
+  background: rgba(11, 18, 29, 0.7);
+}
+
+.vm-shell .vm-camp-award-seal {
+  display: grid;
+  grid-template-columns: repeat(3, 12px);
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.vm-shell .vm-camp-award-mark {
+  width: 12px;
+  height: 20px;
+  transform: skewX(-13deg);
+  border: 1px solid rgba(139, 160, 184, 0.24);
+  background: rgba(87, 103, 124, 0.08);
+}
+
+.vm-shell .vm-camp-award-mark.is-on {
+  border-color: #e2b85d;
+  background: linear-gradient(180deg, #f5dc83, #a66b25);
+  box-shadow: 0 0 12px rgba(225, 166, 55, 0.25);
+}
+
+.vm-shell .vm-camp-award.is-tier-1 .vm-camp-award-mark.is-on {
+  border-color: #c88754;
+  background: linear-gradient(180deg, #d99a68, #7e4528);
+}
+
+.vm-shell .vm-camp-award.is-tier-2 .vm-camp-award-mark.is-on {
+  border-color: #c8d3dd;
+  background: linear-gradient(180deg, #edf4f7, #788b9e);
+}
+
+.vm-shell .vm-camp-award-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vm-shell .vm-camp-award-label {
+  color: var(--vm-text);
+  font-size: 14px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-award-detail {
+  overflow: hidden;
+  color: var(--vm-text-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-debrief-command {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(142px, 1fr) auto;
+  min-width: 0;
+  overflow: hidden;
+  background: #050810;
+}
+
+.vm-shell .vm-camp-debrief-visual {
+  position: relative;
+  min-height: 142px;
+  overflow: hidden;
+}
+
+.vm-shell .vm-camp-debrief-visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 44%, rgba(5, 8, 16, 0.94) 100%);
+  pointer-events: none;
+}
+
+.vm-shell .vm-camp-debrief-portrait {
+  width: 100%;
+  height: 100%;
+  min-height: 142px;
+  object-fit: cover;
+  object-position: 50% 19%;
+  filter: saturate(0.8) contrast(1.08);
+}
+
+.vm-shell .vm-camp-debrief-scan {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.22;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(222, 240, 255, 0.08) 3px 4px);
+  pointer-events: none;
+}
+
+.vm-shell .vm-camp-debrief-copy {
+  position: relative;
+  z-index: 2;
+  margin-top: -22px;
+  padding: 8px 14px 14px;
+  background: linear-gradient(180deg, transparent, rgba(5, 8, 16, 0.98) 22px);
+}
+
+.vm-shell .vm-camp-debrief-channel,
+.vm-shell .vm-camp-debrief-role {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-debrief-channel { color: #eb7c88; }
+
+.vm-shell .vm-camp-debrief-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.vm-shell .vm-camp-debrief-name {
+  color: var(--vm-text);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-camp-debrief-role { color: #9b8b92; }
+
+.vm-shell .vm-camp-debrief-message {
+  margin: 7px 0 0;
+  color: var(--vm-text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.vm-shell .vm-camp-after-action.is-loss .vm-camp-after-kicker,
+.vm-shell .vm-camp-after-action.is-loss .vm-camp-result-row.is-failed {
+  color: var(--vm-danger);
+}
+
+@media (max-width: 720px) {
+  .vm-shell .vm-camp-after-action {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 12px;
+  }
+
+  .vm-shell .vm-camp-debrief-command {
+    grid-template-columns: 128px minmax(0, 1fr);
+    grid-template-rows: minmax(128px, auto);
+  }
+
+  .vm-shell .vm-camp-debrief-visual,
+  .vm-shell .vm-camp-debrief-portrait {
+    min-height: 128px;
+  }
+
+  .vm-shell .vm-camp-debrief-copy {
+    margin: 0;
+    padding: 16px 14px;
+    background: rgba(5, 8, 16, 0.96);
+  }
 }
 
 /* ==========================================================================

@@ -54,6 +54,7 @@ import {
   type CatalogueEntry,
   type Reward,
 } from '../ui/Objectives';
+import { campaignDebrief } from './CampaignPresentation';
 import {
   button,
   el,
@@ -190,6 +191,86 @@ function campaignObjectiveList(c: CampaignResult): HTMLElement {
   return wrap;
 }
 
+export interface CampaignMedalPresentation {
+  readonly tier: 0 | 1 | 2 | 3;
+  readonly label: string;
+  readonly detail: string;
+}
+
+/** The persisted medal translated into the promise the campaign grader made. */
+export function campaignMedalPresentation(medal: number): CampaignMedalPresentation {
+  const safe = Number.isFinite(medal) ? medal : 0;
+  const tier = Math.max(0, Math.min(3, Math.floor(safe))) as 0 | 1 | 2 | 3;
+  if (tier === 3) return {
+    tier,
+    label: 'Gold Medal',
+    detail: 'Gold standard · all bonus objectives · Hard or above',
+  };
+  if (tier === 2) return {
+    tier,
+    label: 'Silver Medal',
+    detail: 'Silver standard · all bonus objectives',
+  };
+  if (tier === 1) return {
+    tier,
+    label: 'Bronze Medal',
+    detail: 'Operation complete',
+  };
+  return { tier, label: 'No Medal', detail: 'No campaign award recorded' };
+}
+
+/** Campaign-only material that belongs in the screen's one scrollable band. */
+function campaignAfterAction(c: CampaignResult, won: boolean): HTMLElement {
+  const wrap = el('section', `vm-camp-after-action ${won ? 'is-win' : 'is-loss'}`);
+  const report = el('div', 'vm-camp-after-report');
+
+  const heading = el('div', 'vm-camp-after-heading');
+  heading.appendChild(el('span', 'vm-camp-after-kicker', 'After action report'));
+  heading.appendChild(el('span', 'vm-camp-after-operation', c.title));
+  report.appendChild(heading);
+
+  const award = campaignMedalPresentation(c.medal);
+  const medal = el('div', `vm-camp-award is-tier-${award.tier}`);
+  const seal = el('div', 'vm-camp-award-seal');
+  seal.setAttribute('aria-label', award.label);
+  for (let i = 0; i < 3; i++) {
+    seal.appendChild(el('span', `vm-camp-award-mark${i < award.tier ? ' is-on' : ''}`));
+  }
+  const awardCopy = el('div', 'vm-camp-award-copy');
+  awardCopy.appendChild(el('strong', 'vm-camp-award-label', award.label));
+  awardCopy.appendChild(el('span', 'vm-camp-award-detail', award.detail));
+  medal.appendChild(seal);
+  medal.appendChild(awardCopy);
+  report.appendChild(medal);
+  report.appendChild(campaignObjectiveList(c));
+  wrap.appendChild(report);
+
+  const debrief = campaignDebrief(c.operationId, won);
+  if (debrief !== null) {
+    const command = el('aside', 'vm-camp-debrief-command');
+    const visual = el('div', 'vm-camp-debrief-visual');
+    const portrait = document.createElement('img');
+    portrait.className = 'vm-camp-debrief-portrait';
+    portrait.src = debrief.commander.portrait;
+    portrait.alt = `${debrief.commander.name}, ${debrief.commander.role}`;
+    portrait.decoding = 'async';
+    visual.appendChild(portrait);
+    visual.appendChild(el('span', 'vm-camp-debrief-scan'));
+    command.appendChild(visual);
+
+    const copy = el('div', 'vm-camp-debrief-copy');
+    copy.appendChild(el('span', 'vm-camp-debrief-channel', debrief.channel));
+    const identity = el('div', 'vm-camp-debrief-identity');
+    identity.appendChild(el('strong', 'vm-camp-debrief-name', debrief.commander.name));
+    identity.appendChild(el('span', 'vm-camp-debrief-role', debrief.commander.role));
+    copy.appendChild(identity);
+    copy.appendChild(el('blockquote', 'vm-camp-debrief-message', debrief.message));
+    command.appendChild(copy);
+    wrap.appendChild(command);
+  }
+  return wrap;
+}
+
 interface StatCell {
   label: string;
   value: string;
@@ -315,6 +396,7 @@ export class EndScreen implements Screen {
     const r = this.result;
     const p = panel('vm-end-panel');
     this.card = p;
+    if (r.campaign !== undefined) p.classList.add('has-campaign');
 
     /* -- verdict ---------------------------------------------------------- */
     const head = el('div', 'vm-end-head');
@@ -359,7 +441,6 @@ export class EndScreen implements Screen {
         : `${r.factionName} has no units and no structures remaining on ${r.mapName}.`)
       : campaignLine(c, r.won)));
 
-    if (c !== undefined) head.appendChild(campaignObjectiveList(c));
     p.appendChild(head);
 
     /* -- the reward reveal, above everything it was earned by --------------
@@ -382,8 +463,10 @@ export class EndScreen implements Screen {
      */
     const reveal = this.buildReveal();
     const progress = this.buildProgress();
-    if (reveal !== null || progress !== null) {
+    const afterAction = c === undefined ? null : campaignAfterAction(c, r.won);
+    if (afterAction !== null || reveal !== null || progress !== null) {
       const body = el('div', 'vm-end-body');
+      if (afterAction !== null) body.appendChild(afterAction);
       if (reveal !== null) body.appendChild(reveal);
       if (progress !== null) body.appendChild(progress);
       p.appendChild(body);
