@@ -2,10 +2,12 @@
  * ============================================================================
  * tests/campaign-length.spec.ts — the ten-hour claim, made falsifiable
  * ============================================================================
- * The campaign is sold on a number: **37 operations, 10.7 hours at authored
- * par**. Nobody has ever timed a VOLTMARCH operation, because until this week
- * none existed — so that figure is AUTHORED, not measured, and the plan says so
- * about itself.
+ * The campaign is sold on a number: **37 operations at authored par**. The table
+ * is complete as of 2026-08-21 and sums to 10.62 hours, which is the first time
+ * this file has had a real total to report rather than a plan. Exactly ONE of the
+ * thirty-seven has ever been timed by a person (S1, 15:09.7 against a harness
+ * figure of 11:00) — so every other row is AUTHORED, not measured, and the plan
+ * says so about itself.
  *
  * This file is the half of the claim that can be checked by arithmetic. It
  * cannot tell you an operation is fun, or that par is achievable; it can tell
@@ -26,6 +28,13 @@
  * number, with no edit required** — and if the sum comes up short then, the
  * choice the plan describes (more operations, or longer ones, or say 8.7 hours
  * out loud) arrives as a failing test rather than as a review nobody scheduled.
+ *
+ * **IT ARMED ON 2026-08-21 AND PASSED BY 2 220 SECONDS** — 38 220 against a floor of
+ * 36 000, with `reclamation.10.without-recourse`. That is the first time anything
+ * in this file was load-bearing. The margin is 37 minutes, which is longer than the
+ * longest single row (22 min), so no ONE deletion or retune can break it and TWO of
+ * the long rows can: 637 - 22 = 615 min clears, 637 - 22 - 22 = 593 does not. Do not
+ * read the pass as slack.
  *
  * The PER-OPERATION checks below are hard from the first row, because they are
  * about a single authored value being sane rather than about the corpus being

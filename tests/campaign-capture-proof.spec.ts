@@ -637,10 +637,10 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
  * 7. THE SHIPPED TABLE — the six, by name, in both directions
  * ========================================================================== */
 
-describe('exactly ten operations declare captureProof', () => {
+describe('exactly eleven operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the ten whose headers say so', () => {
+  it('and they are the eleven whose headers say so', () => {
     /*
      * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
@@ -741,6 +741,28 @@ describe('exactly ten operations declare captureProof', () => {
      * the one door on the map that the arithmetic does not already refuse (see
      * its header's capture block, where one capture is affordable and two are
      * not) — and `refuse()` is the branch that hands the man back.
+     *
+     * `reclamation.10.without-recourse` is the eleventh, and it is the
+     * `reclamation.06.in-duplicate` shape carried to the end of the chapter: FOUR
+     * Gaia bonded stores, one per house, and the operation's second primary is
+     * that one of the player's own units is standing inside each of the four
+     * discs at one moment while the endorsement is read. `Capture.resolve` rule 1
+     * takes a neutral structure OUTRIGHT at any health for one engineer and
+     * `consume` spends him — so without the veto the single most natural click in
+     * the operation, select an `rclTinker` and right-click the store you were
+     * just told to stand in, costs 500 credits and puts NOBODY in the disc. With
+     * it, `resolveContextOrder`'s neutral branch is guarded by `capturableNow`,
+     * the cursor never offers Capture, `caps.canCapture` skips the garrison
+     * branch below it, and the order resolves to Move — which is exactly what
+     * `unitsInArea` is waiting for. The veto does not merely refuse the click; it
+     * corrects it. It is also the operation's thesis as a flag bit: a bonded
+     * store the Reclamation holds is not bonded, which is the whole of what the
+     * chapter's last operation is arguing.
+     *
+     * `exchange` is deliberately NOT in that list — the operation's FIRST primary
+     * is `structureCaptured('exchange', 0)`, so a blanket would make its own
+     * objective unreachable, which is `soviets.06.demolition-order`'s rule
+     * restated on a different map.
      */
     const declared = ALL
       .filter((o) => o.captureProof !== undefined)
@@ -756,6 +778,7 @@ describe('exactly ten operations declare captureProof', () => {
       'reclamation.05.closing-entry = house,ledger',
       'reclamation.06.in-duplicate = house,bond',
       'reclamation.07.payment-in-kind = office',
+      'reclamation.10.without-recourse = store',
       'soviets.06.demolition-order = infirmary',
     ]);
   });

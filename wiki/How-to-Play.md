@@ -14,8 +14,9 @@ The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, 
 **Load Game**, **Replays** and **Settings**. The credits are a tab inside Settings.
 
 **Campaign** is the story mode — authored operations with a briefing, a fixed map, fixed objectives
-and a medal. It is partial: [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists which
-operations ship, and says why none of them advances your missions or unlocks.
+and a medal. Thirty-seven of them, across four chapters:
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists every one, and says why none of them
+advances your missions or unlocks.
 
 The **Tutorial** is a stepped, spotlit walkthrough that takes over the screen and points at the
 thing it is talking about. Fourteen steps, in order: Move The View, Find Your Way Home, Select A

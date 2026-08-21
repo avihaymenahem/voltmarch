@@ -7,9 +7,9 @@ a power grid that gates production, fog of war, engineer capture, neutral civili
 fighting over, superweapons, and an AI opponent that plays a real game.
 
 There is a **story campaign** as well — authored operations, each with a briefing, a fixed map, its
-own objectives and a medal, reached from **Campaign** on the title screen. It is **partial**, and
-[Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists exactly which operations ship rather than
-describing the plan. It is also deliberately walled off from skirmish progression: an operation
+own objectives and a medal, reached from **Campaign** on the title screen. **Thirty-seven operations
+across four chapters**, and [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists every one with
+its par. It is deliberately walled off from skirmish progression: an operation
 advances no mission and grants no unlock, and the same page says why.
 
 There is also deterministic-lockstep 1v1, with one caveat worth stating on the front page rather

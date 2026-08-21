@@ -567,6 +567,43 @@ const GUNS: Readonly<Record<string, string>> = {
   // this seat is 85 hit points — `rclPicker`, and the `rclTinker` the `held`
   // secondary is priced around. Delete the empty list and one appears here.
   'reclamation.09.book-value': 'pillbox x5',
+  // TWO from `SOVIET_DEFENCE`'s doctrinal opening and TWO the layout stands
+  // either side of the district exchange. `op.foe` is Soviet, so the layout's
+  // `pillbox` role key resolves through `keyFor` to the SENTRY GUN —
+  // `pillboxMg`, 22 m, `power: 0` so no brownout opens it, and `chainCount` 0 —
+  // and `flameJet` does not chain either, so §2 is satisfied by NEITHER row
+  // chaining rather than by distance. That matters here because both exchange
+  // posts genuinely ARE in §2's scope: they land 18.44 and 17.09 m of centre
+  // distance from the `exchange` tag, which both of that operation's primaries
+  // read, and covering the objective is what an emplacement is for.
+  //
+  // THE EMPTY `roster.ai` IS WHAT KEEPS `teslaCoil` OFF THIS ROW, and on this
+  // operation that is the difference between a hard fight and an impossible one.
+  // `SOVIET_DEFENCE` seeds THREE; `teslaBolt` is 30 m with `chainCount` 2, and
+  // one pull is 153.60 then 92.16 against `ArmorClass.Infantry`. Every man who
+  // decides that operation is 85 hit points — the `rclTinker` who walk the
+  // capture ladder up to the exchange and the `rclPicker` who stand at the four
+  // bonded stores — so two would die per trigger pull, which is
+  // `reclamation.01.held-paper`'s defect exactly.
+  //
+  // THE FOUR BONDED STORES CARRY NO POST AT ALL, and that is a property of the
+  // composition rather than a gap in this roster: they stand on the NEUTRAL
+  // slot, `ScenarioBuilder.gaia` allies that slot to everybody in both
+  // directions, and `Targeting.isValidTarget` refuses ALLIES — so no gun on that
+  // map can acquire one WHILE IT IS STILL NOBODY'S, and the operation never asks
+  // the player to defend them. The qualifier is load-bearing and this comment
+  // shipped without it: `GarrisonService.enter` calls `captureBuilding()`
+  // directly for a Neutral host, past the operation's own `captureProof` veto,
+  // so a store the player garrisons is a seat-0 building and a legal Soviet
+  // target. That is priced in the operation's header, with its exclusion
+  // control; it changes nothing for THIS file, whose scope is the ground the
+  // trigger table names and whose subject is which gun a role key resolves to.
+  //
+  // `guard` IS NAMED BY A `when` CLAUSE AS OF `t.posts`, so both exchange posts
+  // are in §2's scope twice over — once for the `exchange` tag they stand on and
+  // once for their own. `pillboxMg` does not chain, so the answer is the same
+  // either way, and no `flameTower` comes within reach of either tag.
+  'reclamation.10.without-recourse': 'flameTower x2, sentryGun x2',
 };
 
 describe('§1 the guns every operation points at the player', () => {

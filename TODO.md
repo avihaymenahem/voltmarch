@@ -26,26 +26,29 @@ with no number is untracked, and that is itself the bug.
 
 ## Campaign
 
-- **#66 — Phases 6-7. 36 of a planned 37 operations are authored; 1 remains.** Chapters run
-  9 / 9 / 9 / 9 (Soviets, Allies, Pact, Reclamation) for 615 minutes of authored par against a
-  10-hour table. **THREE CHAPTERS ARE COMPLETE at nine** — Hold the Seam, The Timetable and The Crust all
-  play end to end, Soviets first, which is the order the campaign screen recommends. Targets are
-  9 / 9 / 9 / 10, so what remains is R10 and nothing else. **180-320 person-hours for the whole
-  table, roughly 3-5x the engine**, of which ~35 hours is human play no agent can do. That ratio
-  is the single most important fact about the campaign.
+- **#66 — AUTHORING IS DONE. 37 of 37 operations, 9 / 9 / 9 / 10, 637 minutes.** Closed 2026-08-21
+  with `reclamation.10.without-recourse`. All four chapters play end to end; Soviets first is the
+  order the campaign screen recommends.
 
-  **The length question is DECIDED and does not need re-deriving before authoring continues:** author
-  at 37 and add more if it comes up short, because the cheapest of the three answers is also the one
-  that can be taken LAST, after the table is timed. `tests/campaign-length.spec.ts` arms itself at
-  the 37th row and will force the question then regardless.
+  **`tests/campaign-length.spec.ts` ARMED AND PASSED** — the ten-hour floor became load-bearing
+  at the 37th row exactly as designed, and the table clears it by 2 220 s (38 220 against 36 000).
+  The length question therefore never had to be re-opened: authoring at 37 was enough, and the
+  cheapest of the three answers stayed unspent.
 
-- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Thirty-five are authored, adversarially verified
-  and gate-green; exactly one has a play time. Every par past S1 is an author's estimate, and
-  `tools/op-harness.mjs`'s header now records how far a harness figure sits from a play time (11:00
-  against 15:09.7 on the one operation where both exist). This is not a defect and it is not
-  blocking authoring — it is the debt authoring is taking on, written down.
+  **WHAT IS NOT DONE IS THE HUMAN PLAY, AND IT IS THE ENTRY BELOW.** Of the 180-320 person-hours
+  this table was costed at, the ~35 hours no agent can do is what remains. Authoring being finished
+  moves that from 'a debt authoring is taking on' to 'the only thing left', which is a change of
+  status rather than of scope.
 
-- **THE CAPTURE HAZARD SWEEP — 7 of 17 operations, audited 2026-08-19.** `Capture.resolve`
+- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN, AND THAT IS NOW ALL THIRTY-SIX OF THEM.**
+  Thirty-seven are authored, adversarially verified and gate-green; exactly one has a play time.
+  Every par past S1 is an author's estimate, and `tools/op-harness.mjs`'s header records how far a
+  harness figure sits from a play time (11:00 against 15:09.7 on the one operation where both
+  exist). It was written down as the debt authoring was taking on; authoring has now finished and
+  the debt has not, so this is **the top of the campaign list** rather than a footnote under it.
+  ~35 hours, and no agent can do any of it.
+
+- **THE CAPTURE HAZARD SWEEP — 7 of 37 operations, audited 2026-08-19.** `Capture.resolve`
   consumes the capturing unit on EVERY non-refused outcome — capture, soften and friendly repair
   alike — and a NEUTRAL structure has no health gate, so the flip is instant. The three
   `canCapture` defs (`engineer`, `mrdArtificer`, `rclTinker`) carry **no `unlockedBy`**, so no

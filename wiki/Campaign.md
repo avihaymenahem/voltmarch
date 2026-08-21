@@ -119,16 +119,19 @@ its operations you have finished; each operation is a row with its par time and 
 | 07 | Payment in Kind | Salvage Rights | 19 | 2 | 2 |
 | 08 | Contra Entry | Salvage Rights | 20 | 1 | 2 |
 | 09 | Book Value | Salvage Rights | 21 | 2 | 2 |
+| 10 | Without Recourse | Salvage Rights | 22 | 2 | 1 |
 
-**That is 36 of a planned 37 operations, and this page will not pretend otherwise.** The
-thirty-six add up to 615 minutes of authored par; the full table is meant to reach 10 hours.
-All four chapters now have at least one operation, so all four have a card on the campaign
-screen — and **three are complete at nine**: Hold the Seam, The Timetable and The Crust
-all play end to end, Soviets first. Only Salvage Rights is short, at nine of ten.
+**That is 37 of a planned 37 operations, and the table is complete.** The thirty-seven add up to
+637 minutes of authored par against a plan written to reach 10 hours. All four chapters now have a
+card on the campaign screen and all four play end to end — Hold the Seam, The Timetable and
+The Crust at nine operations each, Salvage Rights at ten. Soviets first is the order the screen
+recommends.
 
-Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
-being authored against, and it is quoted here because a manual that quietly implied a finished
-campaign would be the same defect this page was rewritten to fix.
+**Every par in that table is an author's estimate, not a measured time.** One operation has ever
+been played end to end by a person, and the harness figure for it sat four minutes under the play
+time. So read the column as what the operation was designed around rather than as how long it will
+take you — the table is now complete in the sense that every operation exists, is verified
+against the engine and plays; it is not complete in the sense that anybody has timed it.
 
 ---
 
@@ -142,7 +145,7 @@ nothing else.
   pay are worth 400 to 1200 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Eighteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Nineteen shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.

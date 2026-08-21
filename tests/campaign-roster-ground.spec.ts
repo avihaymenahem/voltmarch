@@ -506,11 +506,13 @@ describe('the roster reaches the world it is installed for', () => {
    * "Nothing the roster refuses is standing" is satisfied by an empty roster,
    * an inert binding and a broken `isBuildable` alike. The only thing that
    * separates those from a roster genuinely in force is the same predicate over
-   * the UNROSTERED build coming back NON-EMPTY. Measured 2026-08-19, 16 of the
-   * 17 shipped operations remove something from their own build — between 4 and
-   * 15 entities each, and the withheld def keys are named in the message below.
+   * the UNROSTERED build coming back NON-EMPTY. Measured 2026-08-19 over the
+   * then-17 operations, all but one removed between 4 and 15 entities each, and
+   * the withheld def keys are named in the message below. **Re-checked 2026-08-21
+   * at the full table of 37**, where the exempt set is still exactly one row — the
+   * per-operation RANGE was not re-derived, so do not quote 4..15 at 37.
    *
-   * The seventeenth is real and legitimate, so it is NAMED rather than covered
+   * The one exemption is real and legitimate, so it is NAMED rather than covered
    * by a loose bound. `reclamation.01.held-paper` opens `'force'` — no base is
    * built at all — and everything its layout does place is either untagged or
    * on its own two-id roster, so there is nothing for the allow-list to

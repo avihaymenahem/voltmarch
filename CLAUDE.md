@@ -124,13 +124,13 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6050 across 241 files (+4 opt-in probes)
+npm test             # vitest, currently 6067 across 241 files (+4 opt-in probes)
                      #   11 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across `manual`, `webgpu-bundle-isolation` and
                      #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 6039 and skips 15. Re-measure BOTH numbers rather than
+                     #   reports 6056 and skips 15. Re-measure BOTH numbers rather than
                      #   adjusting them by hand — run it once, `npm run build`, run it
-                     #   again. The gated set has held at 11 across four re-measures;
+                     #   again. The gated set has held at 11 across five re-measures;
                      #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
@@ -340,6 +340,14 @@ Three things worth keeping from how that was found and fixed:
 
 ## There is a campaign now, and it is a SECOND CONSUMER of the engine
 
+**IT IS COMPLETE AS OF 2026-08-21: 37 operations, 9 / 9 / 9 / 10, 637 minutes of authored par.**
+`tests/campaign-length.spec.ts` was built to arm itself at the 37th row and become a hard ten-hour
+floor with no edit required; it did, and the table clears it by 2 220 s (38 220 against 36 000). The
+margin is 37 minutes, which is longer than the longest single row — so no ONE retune or deletion
+can break it and two of the long rows can. **Every par except S1's is an author's estimate**: exactly
+one operation has ever been played end to end by a person, and that is the standing debt, not a
+defect. Do not read "the campaign is done" as "the campaign is timed".
+
 `src/campaign/` is a story mode of authored operations: a declarative trigger table per operation,
 evaluated by a pure director inside `simTick`. **It is not a widening of the mission system and it
 shares no rule language with `MissionRule`** — `RULE_KINDS` evaluates counters over the EVENT STREAM
@@ -388,7 +396,7 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
   layouts and the prose arrive through ONE `await import('../campaign/campaign-install')` in
   `Shell.startOperation`. Measured at the time: entry +3.31 kB, campaign chunk 23.1 kB, Shell chunk +7.5 kB. **The
-  chunk figure is a snapshot of ONE operation, not a budget** — it is 390 kB at thirty-six, and it
+  chunk figure is a snapshot of ONE operation, not a budget** — it is 406 kB at thirty-seven, and it
   is meant to grow. The entry delta is the number that must not move, and
   `campaign-bundle-isolation.spec.ts` is what holds it.
   **Never `import` anything under `src/campaign/` from a `*.system.ts` except those three.**
@@ -529,8 +537,9 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   install the roster, or you are measuring a different game in a way that looks like a pass.
   `tests/campaign-roster-ground.spec.ts` does both, builds every operation TWICE so a missing tag
   can be attributed to the roster rather than to placement, and pins the guard case that catches its
-  own vacuity. 16 of 17 rosters measurably withhold content; the seventeenth is declared by name
-  with its reason, so a new permissive operation fails rather than quietly joining it.
+  own vacuity. 36 of 37 rosters measurably withhold content; the thirty-seventh (`reclamation.01.held-paper`,
+  which opens `'force'` and seeds no base) is declared by name with its reason, so a new permissive
+  operation fails rather than quietly joining it.
 - **NEITHER SHIPPED OUTCOME RULE MAY END AN OPERATION BY DEFAULT.** `Shell.pollOutcome` and
   `outcome.system.ts` both read `campaign/policy.ts`. Four reachable failures against a scripted
   match, all in shipped code: an eight-minute hold won at minute three; a seat whose forces arrive
