@@ -1331,6 +1331,13 @@ export interface MassStats {
   turretWidthRatio: number;
   /** Fraction of total surface area painted in the team colour. */
   teamFraction: number;
+  /**
+   * Visible chromatic faction-family share, including glass and the coloured
+   * insignia field. This is intentionally separate from the explicit identity
+   * slabs held to R-T1: faction material and player identity are different
+   * channels in ART_DIRECTION_V2.
+   */
+  factionColourFraction: number;
   insigniaCount: number;
   /** Fraction of total surface area that actually emits. */
   emissiveFraction: number;
@@ -1365,6 +1372,7 @@ export function validateUnit(
   bounds: [number, number, number],
   triangles: number,
   emissiveTileCover: number,
+  factionColourTileCover: Readonly<Record<SlotName, number>>,
 ): MassStats {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -1484,6 +1492,10 @@ export function validateUnit(
   visibleArea = Math.max(1e-6, visibleArea);
 
   const teamArea = visible.teamSlab ?? 0;
+  let factionColourArea = 0;
+  for (const slot of Object.keys(visible) as SlotName[]) {
+    factionColourArea += (visible[slot] ?? 0) * factionColourTileCover[slot];
+  }
   const insigniaArea = visible.insignia ?? 0;
   const emissiveArea = (visible.emissive ?? 0) * emissiveTileCover;
   const paintArea =
@@ -1493,6 +1505,7 @@ export function validateUnit(
   const metalArea = (visible.bareMetal ?? 0) + (visible.tread ?? 0) + (visible.grille ?? 0);
 
   const teamFraction = teamArea / visibleArea;
+  const factionColourFraction = factionColourArea / visibleArea;
   const emissiveFraction = emissiveArea / visibleArea;
   const teamBand = (list.cls === 'infantry' || list.cls === 'walker')
     ? V.teamFractionInfantry : V.teamFractionVehicle;
@@ -1567,6 +1580,7 @@ export function validateUnit(
     centroidY,
     turretWidthRatio,
     teamFraction,
+    factionColourFraction,
     insigniaCount,
     emissiveFraction,
     paintFraction,
@@ -1586,7 +1600,8 @@ export function formatStats(s: MassStats): string {
     `${s.key.padEnd(20)} masses ${s.primaryCount}+${s.greebleCount}  ` +
     `dom ${pct(s.dominantFraction)}@${pct(s.dominantCentreY)}  ` +
     `turret ${s.turretWidthRatio.toFixed(2)}  ` +
-    `team ${pct(s.teamFraction)}  emis ${pct(s.emissiveFraction)}  ` +
+    `team ${pct(s.teamFraction)}  faction ${pct(s.factionColourFraction)}  ` +
+    `emis ${pct(s.emissiveFraction)}  ` +
     `boxy ${pct(s.boxiness.score)}  ` +
     `${s.bounds.map((b) => b.toFixed(1)).join('x')} m  ${s.triangles} tris`
   );

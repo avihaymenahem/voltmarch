@@ -1184,7 +1184,8 @@ pixels changed at a mean of +50.9/255**, which is not an AO difference; it is tw
 composites. With the grade last on both arms the tail is identical and a difference between two
 rungs is a difference in the pass that was added.
 
-`setPostEnabled(false)` is unusable for the same reason and worse — see the open item at the end.
+At the time of this measurement `setPostEnabled(false)` was unusable for the same reason and worse.
+That bypass is now fixed; the closure is recorded at the end of this section.
 
 ### The decomposition. p99 luminance, and it is additive
 
@@ -1248,7 +1249,7 @@ targets; what was false was a reference identity, and the only way to see one is
 and look. Mutation-tested both ways: restoring the swap reddens it, deleting the type writes reddens
 it.
 
-### Defect 2: the node path's AO is ~1.85x stronger, and it is OPEN
+### Defect 2: CLOSED — the node path's newer GTAO integral needed an explicit energy calibration
 
 Same fixture, `ao-grade` minus `grade-only`, binned by pre-pass |laplacian|:
 
@@ -1271,32 +1272,30 @@ really does assign each of them (it is not silently dropping the object into a `
 installer has the stale-binding bug SMAA had — `installAoDepthGBuffer`'s wrapper rebinds `tDepth` on
 all three materials every frame.
 
-**THE NEXT PROBE IS TO READ THE AO TERM ITSELF, NOT THE COMPOSITE.** `GTAOPass.output =
-GTAOPass.OUTPUT.Denoise` on one arm against the node `denoised` RTT on the other, same fixture, same
-size, and compare the occlusion buffers directly. Everything above measures AO through the grade,
-which is monotone but not linear, so "1.85x" is a display-space figure and the real ratio is
-unknown. Two things worth checking in the same pass: three's TSL `getNormalFromDepth` swaps the roles
-of the `b`/`t` taps relative to the GLSL `computeNormalFromDepth` that `post.ts` transcribed
-(consistently, so it negates `dpdy` and therefore the normal — which may be deliberate WGSL
-Y-convention compensation, or may not), and `GTAOShader` takes `SAMPLES` as a `#define` while
-`GTAONode` takes it as a uniform.
+The cause is upstream implementation drift, not a missing shared parameter. In three 0.185,
+`GTAONode` uses the newer foreshortening-weighted Activision slice integral; `GTAOShader`, used by
+`GTAOPass`, still uses the older simplified integral. The two algorithms accept the same radius,
+thickness, samples, power and denoise settings but do not produce the same term. Replacing either
+implementation would increase maintenance and discard the newer node shape, so
+`AO_NODE_INTENSITY_SCALE` calibrates only the node path's final mix.
 
-### Two open items this run turned up and did not close
+**Re-measured 2026-08-21**, same fixture/size/adapter with the shipped graph. At 0.475 the displayed
+AO effect (`ao-grade - grade-only`) is 0.0062 mean luma on WebGL and 0.0065 on WebGPU. Per-channel
+signed darkening is WebGL -1.831/-1.578/-0.860 and WebGPU -1.929/-1.663/-0.859 levels: within
+5.4% / 5.4% / 0.1%, while retaining the newer integral's local shape.
 
-- **`setPostEnabled(false)` DOES NOTHING ON THE NODE PATH, AND HALF-DOES SOMETHING WORSE.**
-  `PostChain.render`'s contract says "Falls back to renderer.render() when inactive", and the WebGL
-  implementation does. `createNodeBackedPostChain.render` calls `chain.render()` unconditionally —
-  so the whole graph still draws, while `applyToneMapping` has meanwhile switched the RENDERER back
-  to AgX with the grade still in the graph doing AgX itself. `NodeRendererLike` publishes no
-  `render(scene, camera)`, which is why it was left rather than patched in passing.
-- **The halo's ADDED ENERGY still differs by ~13% with AO out of the picture.**
-  `bloom-grade` minus `grade-only`: webgl 0.1389/255 over 3.297% of pixels, webgpu 0.1214/255 over
-  2.415%, same peak (+104.8 / +105.1). p99 and blown-pixel fraction are identical, so this is a
-  slightly tighter halo rather than a dimmer one, and the most likely cause is the one structural
-  difference between the two passes: `UnrealBloomPass`'s high pass samples a TEXTURE (a bilinear 2x2
-  downsample of the composited HDR), while `BloomNode`'s high pass re-evaluates the input
-  EXPRESSION at half resolution. With AO in the chain that is `bilinear(colour * ao)` against
-  `bilinear(colour) * bilinear(ao)`. Not chased; it moves no scorecard check.
+### The two other open items are closed in the same measured pass
+
+- **Post disable is a true bypass now.** The node-backed chain retains the current scene and camera
+  and calls `nodeRenderer.render(scene, camera)` when disabled. The graph does not run, and restoring
+  renderer AgX therefore cannot double-tone-map a still-live grade. `tests/compositing.spec.ts`
+  pins the branch.
+- **Bloom now samples a materialised HDR input.** `PostBloomInput` is a full-resolution RGBA16F RTT,
+  matching the composer's buffer before `UnrealBloomPass` performs its half-resolution high pass.
+  The old expression path evaluated at half resolution and therefore changed the sampling
+  footprint. Re-measured without AO, `bloom-grade - grade-only` is 0.1543/255 over 1.524% of pixels
+  on WebGL and 0.1603/255 over 1.532% on WebGPU, a 3.9% energy difference with essentially the same
+  support and peak (+131.8 / +132.1), down from the former ~13% mismatch.
 
 ---
 
@@ -1584,13 +1583,10 @@ six compact response fetches, zero materials and zero draw calls. Worker generat
 adoption, biome swaps and both render backends share the same bytes and are pinned by the terrain
 and worker specs.
 
-### P2-12 — the team-colour validator counts one surface out of four; this OVERTURNS a live §3 claim
+### P2-12 — CLOSED: faction colour and player identity are measured separately
 
-**AND THE VALIDATOR IS ALSO UNDER-COUNTING — two defects, not one.** The paragraph above concluded
-"the validator is right and the camera is defeating it", and that is half the story.
-`MassList.ts:1486` is `const teamArea = visible.teamSlab ?? 0`, while `visibleArea` in the
-denominator is the sum over EVERY slot. `glass`, `insignia` and the building pad are in the
-denominator and in no numerator — and on the Allies all four are the same blue:
+The old validator measured only explicit `teamSlab` area while `glass`, `insignia` and building-pad
+paint remained in the denominator. On the Allies all four live in the same broad blue family:
 
 ```
   teamSlab        #2A2ED0   hue 238   counted
@@ -1600,10 +1596,20 @@ denominator and in no numerator — and on the Allies all four are the same blue
 ```
 
 Measured on an Allied tank crop: **52.2% of chromatic pixels at 220-240 degrees, plus 13.4% at
-200-220.** So R-T1's 8-14% band can read green while the camera sees a two-thirds blue vehicle.
-The camera pitch explains part of the discrepancy; this explains the rest, and it is the half that
-is fixable without re-deriving thirteen shot poses and `tests/shot-camera.spec.ts`. **Fix the
-accounting. Do not touch the pitch.**
+200-220.** The missing accounting was real, but `ART_DIRECTION_V2.md` now makes an important
+distinction the old proposal did not: faction readability and player/team identity are different
+channels. Reclassifying every cobalt glass or foundation texel as player ownership would "fix" the
+number by violating that law.
+
+The architecture atlas now records `factionColourTileCover` per slot by measuring saturated texels
+within 26 degrees of the faction's primary or secondary hue. `validateUnit` and
+`validateStructure` area-weight that coverage across visible surfaces; structures include the
+separate foundation atlas through `padSurfaceSlot`. `teamFraction` deliberately remains the strict
+explicit-identity metric used by R-T1, while `factionColourFraction` reports the wider palette read.
+This counts glass, insignia and authored pad paint without pretending bare Allied blue-grey metal is
+a team slab. `tests/faction-colour-coverage.spec.ts` pins the classification and
+`tests/vertical-slice-art.spec.ts` proves all four faction leaders expose more faction colour than
+explicit team colour.
 
 ### P1-6 — CLOSED: clearcoat is masked per procedural atlas class
 

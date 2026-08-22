@@ -67,6 +67,7 @@ import {
 import {
   AO_DENOISE_RADIUS_EXPONENT,
   AO_HALF_RES_SCALE,
+  AO_NODE_INTENSITY_SCALE,
   AO_NOISE_SEED,
   aoDenoiseParams,
   aoMarchParams,
@@ -568,6 +569,14 @@ describe('AO: the depth G-buffer saving, rebuilt', () => {
     expect(aoResolutionScale(true)).toBe(AO_HALF_RES_SCALE);
     expect(aoResolutionScale(false)).toBe(1);
   });
+
+  it('calibrates the newer node integral to the established WebGL energy', () => {
+    // Three's GTAONode uses a newer foreshortening-weighted integral; this is
+    // deliberately a final-mix calibration, not a hidden change to art config.
+    expect(AO_NODE_INTENSITY_SCALE).toBeCloseTo(0.475, 12);
+    expect(AO_NODE_INTENSITY_SCALE).toBeGreaterThan(0);
+    expect(AO_NODE_INTENSITY_SCALE).toBeLessThan(1);
+  });
 });
 
 /* ========================================================================== */
@@ -678,7 +687,15 @@ describe('the assembled node chain', () => {
     expect(g.built.bloom).toBeUndefined();
     expect(g.ao).toBeNull();
     expect(g.bloom).toBeNull();
+    expect(g.bloomInput).toBeNull();
     expect(g.built.render).toBe(true);
+    g.dispose();
+  });
+
+  it('materialises full-resolution HDR before bloom samples it', () => {
+    const g = graphFor(postConfigCopy());
+    expect(g.bloomInput).not.toBeNull();
+    expect(g.bloomInput!.renderTarget.texture.name).toBe('PostBloomInput');
     g.dispose();
   });
 

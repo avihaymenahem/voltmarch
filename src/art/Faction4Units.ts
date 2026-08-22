@@ -942,6 +942,33 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
     }),
   );
 
+  if (o.key === 'reclaim_grinder') {
+    masses.push(
+      // The Grinder's casemate roof was one uninterrupted dark slab from the
+      // RTS camera. Two exposed salvage rails make the gun house read as a
+      // braced structure—the faction's core promise—without closing its gaps.
+      greeble('roofRail', 'taperedBox', [W * 0.09, H * 0.07, L * 0.42],
+        [W * 0.23, houseRoof + H * 0.025, -L * 0.08], 'bareMetal', {
+          mirrorX: true, group: 'houseClad', rot: [0, -0.05, 0],
+          shape: { topScaleX: 0.54, topScaleZ: 0.88, shear: L * 0.012 },
+        }),
+      // An asymmetric radiator cassette occupies the open flank opposite the
+      // large salvaged plate. Its dark slots give the top plane scale and keep
+      // the faction visibly improvised rather than merely low-poly.
+      greeble('roofRadiator', 'taperedBox', [W * 0.34, H * 0.055, L * 0.26],
+        [-W * 0.24, houseRoof + H * 0.024, -L * 0.18], 'grille', {
+          group: 'houseClad', rot: [0, 0.10, -0.03],
+          shape: { topScaleX: 0.88, topScaleZ: 0.84, cornerCut: 0.10 },
+        }),
+      // A transverse keeper visually ties the two rails into the fixed gun
+      // mount instead of leaving them as unrelated strips.
+      greeble('roofKeeper', 'taperedBox', [W * 0.64, H * 0.055, L * 0.08],
+        [0, houseRoof + H * 0.045, L * 0.08], 'bareMetal', {
+          group: 'houseClad', shape: { topScaleX: 0.84, topScaleZ: 0.58 },
+        }),
+    );
+  }
+
   /* -- team colour (R-T1: 8-14% of visible surface, flat slabs only) ------ */
   masses.push(
     slab('spineFlank', [0.07, spineH * 0.60, L * 0.46], [W * 0.42, spineY, -L * 0.04], { mirrorX: true }),
@@ -955,7 +982,8 @@ function scrapHull(o: ScrapHullOpts): UnitMassList {
   masses.push(
     // The arc conduit: one long thin lit line down the spine. RECLAIM-6 — the
     // emissive is always a LINE, never a blob.
-    glow('conduit', [0.07, 0.08, L * 0.56], [W * 0.30, deckY + 0.06, -L * 0.06]),
+    glow('conduit', [o.key === 'reclaim_grinder' ? 0.09 : 0.07, 0.09, L * 0.56],
+      [W * 0.30, deckY + 0.06, -L * 0.06]),
     glow('sternLamp', [0.30, 0.20, 0.06], [-W * 0.22, deckY + 0.10, -L * 0.48]),
   );
 

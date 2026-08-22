@@ -424,7 +424,8 @@ describe('the taper reaches the geometry, not just the metric', () => {
    * measures zero dead-vertical flank here. What the table is measuring is the
    * `tracks` constant — see `tests/flank-model.spec.ts`.
    *
-   * Restricted to those two primitives DELIBERATELY. `revolve`, `extrude`,
+   * Restricted to those two primitives plus authored convex `hull` masses
+   * DELIBERATELY. `revolve`, `extrude`,
    * `plate` and `tracks` all carry dead-vertical polygons by construction — a
    * lathe wall is vertical wherever its profile is, a plate's rim is vertical
    * wherever its outline edge is — and their de-boxifying property is that
@@ -444,18 +445,20 @@ describe('the taper reaches the geometry, not just the metric', () => {
     .filter((l) => TRACKED_HULLS.includes(l.key))
     .flatMap((l) => expandMasses(l.masses)
       .filter((m) => m.role === MassRole.Primary
-        && (m.primitive === 'taperedBox' || m.primitive === 'planPrism'))
+        && (m.primitive === 'taperedBox' || m.primitive === 'planPrism'
+          || (m.primitive === 'hull' && m.name === 'turret')))
       .map((m) => [l, m] as const));
 
   it('finds a sloped-wall primary on every one of the ten tracked hulls', () => {
-    // 17 at the time of writing: 14 `taperedBox` and 3 `planPrism`. If a hull
+    // At least 17: tapered boxes, plan prisms and the Dominion's authored
+    // convex hammerhead gun houses. If a hull
     // is ever re-authored back onto a legacy primitive it drops out of this
     // list silently, so the count and the per-unit coverage are both pinned.
     expect(trackedWalls.length).toBeGreaterThanOrEqual(17);
     const covered = new Set(trackedWalls.map(([l]) => l.key));
     expect([...covered].sort()).toEqual([...TRACKED_HULLS].sort());
     const kinds = new Set(trackedWalls.map(([, m]) => m.primitive));
-    expect([...kinds].sort()).toEqual(['planPrism', 'taperedBox']);
+    expect([...kinds].sort()).toEqual(['hull', 'planPrism', 'taperedBox']);
   });
 
   for (const [l, m] of trackedWalls) {

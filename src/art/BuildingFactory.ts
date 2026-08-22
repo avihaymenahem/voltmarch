@@ -1168,6 +1168,8 @@ export interface StructureStats {
   dominantFraction: number;
   dominantName: string;
   teamFraction: number;
+  /** Structure + foundation share in the faction's chromatic colour family. */
+  factionColourFraction: number;
   emissiveFraction: number;
   insigniaCount: number;
   /** Area-weighted DRAWN-DETAIL coverage over the atlas tiles this model
@@ -1390,11 +1392,13 @@ export function structureBoxiness(list: StructureMassList): StructureBoxinessRep
 export function validateStructure(
   list: StructureMassList,
   visible: Map<SlotName, number>,
+  padVisible: Map<SlotName, number>,
   raw: Map<SlotName, number>,
   bounds: [number, number, number],
   triangles: number,
   parts: number,
   atlas: GreebleAtlas,
+  padAtlas: GreebleAtlas,
 ): StructureStats {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -1468,6 +1472,17 @@ export function validateStructure(
   for (const a of raw.values()) surfaceArea += a;
 
   const teamFraction = (visible.get('teamSlab') ?? 0) / visibleArea;
+  let factionColourArea = 0;
+  for (const [slot, area] of visible) {
+    factionColourArea += area * atlas.metrics.factionColourTileCover[slot];
+  }
+  let factionVisibleArea = visibleArea;
+  for (const [slot, area] of padVisible) {
+    factionVisibleArea += area;
+    factionColourArea += area
+      * padAtlas.metrics.factionColourTileCover[padSurfaceSlot(list.key, slot)];
+  }
+  const factionColourFraction = factionColourArea / Math.max(1e-6, factionVisibleArea);
   const emissiveFraction =
     ((visible.get('emissive') ?? 0) * atlas.metrics.emissiveTileCover) / visibleArea;
 
@@ -1571,6 +1586,7 @@ export function validateStructure(
     dominantFraction,
     dominantName: dominant?.name ?? '(none)',
     teamFraction,
+    factionColourFraction,
     emissiveFraction,
     insigniaCount,
     detailCoverage: detailFrac,
@@ -1592,6 +1608,7 @@ export function formatStructureStats(s: StructureStats): string {
   return (
     `${s.key.padEnd(22)} ${s.primaryCount}+${s.greebleCount}  ` +
     `dom ${pct(s.dominantFraction)}  team ${pct(s.teamFraction)}  ` +
+    `faction ${pct(s.factionColourFraction)}  ` +
     `emis ${pct(s.emissiveFraction)}  detail ${pct(s.detailCoverage)}  ` +
     `sobel ${pct(s.edgeCoverage)}  speckle ${pct(s.speckleRatio)}  ` +
     `boxy ${pct(s.boxiness.score)}/${pct(s.boxiness.axisFraction)}  ` +
@@ -1712,9 +1729,13 @@ export function buildStructure(
   // one of those fractions below its band while nothing about the building
   // itself had changed.
   const visible = new Map<SlotName, number>();
+  const padVisible = new Map<SlotName, number>();
   const raw = new Map<SlotName, number>();
   for (const acc of [bodyAcc, turretAcc]) {
     for (const [s, a] of acc.visibleAreaBySlot) visible.set(s, (visible.get(s) ?? 0) + a);
+  }
+  for (const [s, a] of padAcc.visibleAreaBySlot) {
+    padVisible.set(s, (padVisible.get(s) ?? 0) + a);
   }
   for (const acc of [bodyAcc, padAcc, turretAcc]) {
     for (const [s, a] of acc.areaBySlot) raw.set(s, (raw.get(s) ?? 0) + a);
@@ -1722,9 +1743,9 @@ export function buildStructure(
 
   const parts = 1 + (padAcc.isEmpty() ? 0 : 1) + (turretAcc.isEmpty() ? 0 : 1);
   const stats = validateStructure(
-    list, visible, raw, bounds,
+    list, visible, padVisible, raw, bounds,
     bodyAcc.triangles + padAcc.triangles + turretAcc.triangles,
-    parts, atlas,
+    parts, atlas, padAtlas,
   );
 
   if (stats.errors.length > 0) {

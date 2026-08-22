@@ -274,6 +274,16 @@ describe('post chain construction', () => {
   it('skips the frame entirely while the GL context is lost', () => {
     expect(POST_TS).toMatch(/handle\.isContextLost\(\)/);
   });
+
+  it('really bypasses the node graph when post is disabled', () => {
+    // The old node-backed implementation kept calling `chain.render()` after
+    // setEnabled(false), while also restoring renderer tone mapping. That ran
+    // the grade graph and renderer AgX together instead of drawing the scene
+    // directly like the WebGL implementation does.
+    expect(POST_TS).toMatch(
+      /if \(enabled\) chain\.render\(\);\s*else nodeRenderer\.render\(scene, camera\);/,
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------- */

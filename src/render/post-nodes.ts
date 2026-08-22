@@ -50,13 +50,12 @@
  *     additive quad over the read buffer; here the `.add()` is a term in the
  *     same composite.
  *
- * ── AND ONE IT GAINS ─────────────────────────────────────────────────────────
- * The grade SAMPLES ITS INPUT AT OFFSETS (the unsharp mask taps four
- * neighbours), so the composite has to be materialised into a texture before the
- * grade can read it. That is one full-resolution pass — `gradeInput` below.
- * The WebGL chain gets the same materialisation for free because AO and bloom
- * each wrote into the read buffer on the way past. Net, this chain runs FEWER
- * full-screen passes; the point of listing it is that it is not zero.
+ * ── AND THE MATERIALISATIONS IT GAINS ─────────────────────────────────────────
+ * Bloom's high pass and grade's unsharp mask SAMPLE their inputs at offsets, so
+ * both must see textures rather than re-evaluated expressions. `bloomInput`
+ * reproduces the full-resolution HDR buffer UnrealBloomPass reads; `gradeInput`
+ * gives the grade its four neighbour taps. The WebGL composer gets both buffers
+ * from its ping-pong chain. The node graph has to state them explicitly.
  */
 
 import { HalfFloatType, RGBAFormat, RenderPipeline, UnsignedByteType, Vector2 } from 'three/webgpu';
@@ -121,6 +120,8 @@ export interface PostGraph {
   readonly scenePass: ScenePassNode;
   readonly ao: AoNodes | null;
   readonly bloom: BloomNodes | null;
+  /** Full-resolution HDR materialisation sampled by BloomNode's half-res high pass. */
+  readonly bloomInput: RttNode | null;
   readonly gradeUniforms: GradeNodeUniforms | null;
   /**
    * Construction errors, keyed by pass id. Empty on a healthy boot.
@@ -264,9 +265,24 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
    * `nodes/bloom-node.ts`.
    */
   let bloom: BloomNodes | null = null;
+  let bloomInput: RttNode | null = null;
   let composited: Node<'vec4'> = lit;
   if (want.bloom) {
-    bloom = createBloomNodes(lit, cfg.bloom);
+    /*
+     * UnrealBloomPass downsamples a MATERIALISED full-resolution HDR buffer.
+     * Feeding BloomNode `lit` directly makes its half-resolution high pass
+     * re-evaluate the expression there instead: bilinear(colour) *
+     * bilinear(ao), not bilinear(colour * ao). Even with AO disabled the scene
+     * expression's sampling footprint produced a measurably tighter halo.
+     */
+    bloomInput = rtt(lit, null, null, {
+      type: HalfFloatType,
+      format: RGBAFormat,
+      depthBuffer: false,
+      stencilBuffer: false,
+    }) as unknown as RttNode;
+    bloomInput.renderTarget.texture.name = 'PostBloomInput';
+    bloom = createBloomNodes(bloomInput, cfg.bloom);
     composited = (lit as unknown as { add(n: Node<'vec4'>): Node<'vec4'> }).add(bloom.node);
     built.bloom = true;
   }
@@ -333,6 +349,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     scenePass,
     ao,
     bloom,
+    bloomInput,
     gradeUniforms,
     failures,
 
@@ -354,6 +371,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     dispose(): void {
       ao?.dispose();
       bloom?.dispose();
+      bloomInput?.renderTarget.dispose();
       smaaNode?.dispose();
       gradeInput?.renderTarget.dispose();
       scenePass.dispose();

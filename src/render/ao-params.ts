@@ -87,6 +87,18 @@ export const AO_NOISE_SEED = 0x5eed_a011;
 export const AO_NOISE_SIZE = 64;
 
 /**
+ * Visual-energy calibration for Three's newer node GTAO integral.
+ *
+ * `GTAONode` is not a literal TSL port of `GTAOShader`: it uses the newer
+ * foreshortening-weighted Activision integral, while `GTAOPass` still ships the
+ * older simplified slice integral. With identical march, denoise and composite
+ * parameters the node result darkened every measured Laplacian bin by
+ * 1.78-1.96x. Scaling only the final mix preserves the newer integral's shape
+ * while matching the established WebGL art target.
+ */
+export const AO_NODE_INTENSITY_SCALE = 0.475;
+
+/**
  * The AO march's parameters, derived from config.
  *
  * `scale` is GTAO's contrast curve on the occlusion term, which is where the art
