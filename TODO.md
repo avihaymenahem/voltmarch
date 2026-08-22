@@ -11,31 +11,6 @@ with no number is untracked, and that is itself the bug.
 
 ## Multiplayer
 
-- **THE RELAY HAS NEVER BEEN DEPLOYED, AND THAT IS WHY A FATAL BUG SURVIVED SIX WEEKS.**
-  `VITE_RELAY_URL` is set nowhere — not in `vite.config.ts`, not in
-  `.github/workflows/deploy.yml` — so the shipped client reports "No match server
-  configured" and no PvP match has ever been played against a real relay. `WIRE_LIMITS.maxDefId`
-  was one below `UNIT_PUBLIC_ID_BASE`, so the relay rejected the id of **every unit in the game**,
-  and nothing noticed. Audited and hardened 2026-08-21 (see the commit); the relay's own suite
-  went 60 to 100.
-
-  **WHAT IS STILL NEEDED, and none of it is code:**
-
-  1. A host for `server/`, and a domain with TLS. `server/deploy/nginx.conf` and
-     `voltmarch-relay.service` are the shipped topology and both were corrected in that pass
-     — the nginx template as previously shipped would not have loaded at all.
-  2. `VITE_RELAY_URL=wss://<host>/ws` added to the Pages workflow's build step. **It is a build
-     define, so the game and the relay have to go live together** — a client built without
-     it offers no multiplayer no matter what is running.
-  3. `VM_ORIGINS` on the relay host. It **REPLACES** the default list rather than extending it.
-     Do NOT add the desktop origin there: `DESKTOP_ORIGIN` is unioned in by `config.ts` for
-     exactly this reason.
-  4. `VM_REQUIRE_BUILD` pinned to the deployed version, or two Pages cache generations desync
-     on contact.
-
-  **THE FIRST REAL MATCH IS THE TEST NOTHING ELSE SUBSTITUTES FOR.** Every property above is
-  gated by `npm run server:test`, and the fatal one was gated by nothing because no test asked
-  the catalog what a unit's id actually is. Play one PvP match end to end before announcing it.
 - **Teams shipped; three follow-ups it deliberately did not do.** *(untracked — the task tool was
   disconnected when these were found)*
   1. ~~**The minimap paints an ally in your own accent**~~ — **CLOSED 2026-08-19.**
