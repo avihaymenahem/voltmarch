@@ -990,10 +990,13 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
   if (path === null || handle.node === null) {
     throw new Error('[post] node-backed chain requested without an installed node path');
   }
+  const nodeRenderer = handle.node;
 
   const cfg = RENDER_CONFIG.post;
-  const chain = path.createPostChain(handle.node, options.scene, options.camera);
+  const chain = path.createPostChain(nodeRenderer, options.scene, options.camera);
   const zeros: DrawCallBreakdown = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  let scene = options.scene;
+  let camera = options.camera;
   let enabled = cfg.enabled;
   let disposed = false;
 
@@ -1028,12 +1031,19 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
     render(dt: number): void {
       if (disposed) return;
       if (handle.isContextLost()) return;
-      chain.render();
+      if (enabled) chain.render();
+      else nodeRenderer.render(scene, camera);
       void dt;
     },
 
-    setCamera(camera: THREE.Camera): void { chain.setCamera(camera); },
-    setScene(scene: THREE.Scene): void { chain.setScene(scene); },
+    setCamera(nextCamera: THREE.Camera): void {
+      camera = nextCamera;
+      chain.setCamera(nextCamera);
+    },
+    setScene(nextScene: THREE.Scene): void {
+      scene = nextScene;
+      chain.setScene(nextScene);
+    },
 
     setEnabled(v: boolean): void {
       if (enabled === v) return;

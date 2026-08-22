@@ -813,6 +813,7 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
     list, areas, visible, bounds,
     hullMb.triangles + turretMb.triangles,
     atlas.metrics.emissiveTileCover,
+    atlas.metrics.factionColourTileCover,
   );
   // R1 — "units ship as untextured grey primitives" — gated on DRAWN structure,
   // not on Sobel coverage.

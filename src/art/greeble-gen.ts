@@ -1794,7 +1794,85 @@ export interface GreebleMetrics {
   atlasEdgeCoverage: number;
   /** Fraction of the emissive tile that actually emits. */
   emissiveTileCover: number;
+  /**
+   * Per-tile share of pixels that belong to the faction's chromatic family.
+   *
+   * This is deliberately not the atlas alpha/team mask. That channel marks
+   * every painted panel for material work, including neutral hull paint. The
+   * visual validator needs the colours the camera actually reads as the army's
+   * accent: the explicit slab, the coloured field inside the insignia, allied
+   * cobalt glass, Meridian jade glass, Reclamation violet glass, and similarly
+   * hued foundation paint.
+   */
+  factionColourTileCover: Readonly<Record<SlotName, number>>;
   generateMs: number;
+}
+
+/** Minimum HSV saturation for a texel to read as faction colour, not grey. */
+const FACTION_COLOUR_MIN_SATURATION = 0.18;
+/** Circular hue distance from either authored faction accent, in turns. */
+const FACTION_COLOUR_HUE_RADIUS = 26 / 360;
+
+function hueAndSaturation(r: number, g: number, b: number): readonly [number, number] {
+  const hi = Math.max(r, g, b);
+  const lo = Math.min(r, g, b);
+  const d = hi - lo;
+  const saturation = hi > 1e-6 ? d / hi : 0;
+  if (d < 1e-6) return [0, saturation];
+  let hue = hi === r
+    ? ((g - b) / d) % 6
+    : hi === g
+      ? (b - r) / d + 2
+      : (r - g) / d + 4;
+  hue /= 6;
+  if (hue < 0) hue += 1;
+  return [hue, saturation];
+}
+
+function hueDistance(a: number, b: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, 1 - d);
+}
+
+/**
+ * Measure the chromatic faction-family pixels a geometry sampling `slot` will
+ * actually see. The UV inset is honoured, so unused tile gutters cannot make a
+ * validator pass. This is exported for the art regression tests.
+ */
+export function factionColourCoverage(
+  s: Surface, spec: GreebleSpec, slot: SlotName,
+): number {
+  const foundationPaint = spec.surfaceClass === 'foundation' && PAINT_SLOTS.includes(slot);
+  if (!foundationPaint && slot !== 'teamSlab' && slot !== 'insignia' && slot !== 'glass') {
+    return 0;
+  }
+  const primary = new Float32Array(3);
+  const secondary = new Float32Array(3);
+  hexToRgb(spec.teamColor, primary);
+  hexToRgb(spec.teamSecondary, secondary);
+  const [primaryHue] = hueAndSaturation(primary[0], primary[1], primary[2]);
+  const [secondaryHue] = hueAndSaturation(secondary[0], secondary[1], secondary[2]);
+
+  const uv = slotUv(slot, s.size);
+  const x0 = Math.max(0, Math.ceil(uv.u0 * s.size));
+  const y0 = Math.max(0, Math.ceil(uv.v0 * s.size));
+  const x1 = Math.min(s.size, Math.floor(uv.u1 * s.size));
+  const y1 = Math.min(s.size, Math.floor(uv.v1 * s.size));
+  let matching = 0;
+  let sampled = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const o = (y * s.size + x) * 3;
+      const [hue, saturation] = hueAndSaturation(
+        s.albedo[o], s.albedo[o + 1], s.albedo[o + 2],
+      );
+      sampled++;
+      if (saturation < FACTION_COLOUR_MIN_SATURATION) continue;
+      if (Math.min(hueDistance(hue, primaryHue), hueDistance(hue, secondaryHue))
+          <= FACTION_COLOUR_HUE_RADIUS) matching++;
+    }
+  }
+  return sampled > 0 ? matching / sampled : 0;
 }
 
 /** Stable identity for a spec. Same inputs, same atlas, same key. */
@@ -1887,6 +1965,11 @@ export function generateGreebleAtlas(spec: GreebleSpec, elapsedMs = 0): GreebleA
     }
   }
 
+  const factionColourTileCover = {} as Record<SlotName, number>;
+  for (const slot of SLOT_NAMES) {
+    factionColourTileCover[slot] = factionColourCoverage(s, spec, slot);
+  }
+
   return {
     key: greebleSpecHash(spec),
     size,
@@ -1907,6 +1990,7 @@ export function generateGreebleAtlas(spec: GreebleSpec, elapsedMs = 0): GreebleA
       paintEdgeCoverage: paintEdge,
       atlasEdgeCoverage: edgeCoverage(s),
       emissiveTileCover: emissiveArea / (er.w * er.h),
+      factionColourTileCover,
       generateMs: elapsedMs,
     },
   };

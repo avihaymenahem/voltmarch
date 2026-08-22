@@ -852,6 +852,36 @@ function pactTank(o: PactTankOpts): UnitMassList {
     }),
   );
 
+  if (o.key === 'meridian_solarch') {
+    masses.push(
+      // The Solarch's lance used to leave the broad drum through one round
+      // collar, making the expensive main-line hull read less resolved than
+      // its simpler siblings. A low hexagonal yoke now bridges the barrel into
+      // the turret cheeks and repeats the Pact's faceted ceramic language.
+      greeble('lanceYoke', 'planPrism', [turretW * 0.66, H * 0.10, turretL * 0.20],
+        [0, gunY + H * 0.09, turretL * 0.36], 'paintMed', {
+          turret: true, capSlot: 'paintTiny', group: 'mantlet',
+          shape: {
+            plan: hexPlan(turretW * 0.66, turretL * 0.20),
+            topScaleX: 0.82, topScaleZ: 0.78,
+          },
+        }),
+      // One offset optical jewel, not a symmetric pair: the Pact stays
+      // ceremonial and precise instead of drifting into Allied twin optics.
+      greeble('lanceOptic', 'lathe', [W * 0.18, H * 0.075, W * 0.18],
+        [-turretW * 0.24, gunY + H * 0.18, turretL * 0.31], 'glass', {
+          turret: true, profile: 'dome', segments: 12, group: 'mantlet',
+        }),
+      // A pair of shallow crown ribs catches the tactical light and breaks the
+      // old featureless rear arc without repainting the whole turret roof.
+      greeble('crownRib', 'taperedBox', [W * 0.08, H * 0.055, turretL * 0.32],
+        [W * 0.22, turretRoof + H * 0.018, -turretL * 0.18], 'bareMetal', {
+          turret: true, mirrorX: true, group: 'mantlet', rot: [0, 0.08, 0],
+          shape: { topScaleX: 0.58, topScaleZ: 0.86, shear: -L * 0.01 },
+        }),
+    );
+  }
+
   /* -- team colour (R-T1: 8-14% of visible surface, flat slabs only) ------ */
   masses.push(
     slab('turretCheek', [0.07, turretH * 0.56, turretL * 0.52], [turretW * 0.42, turretY + turretH * 0.04, -turretL * 0.04], { turret: true, mirrorX: true }),

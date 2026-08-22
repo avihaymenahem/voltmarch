@@ -86,13 +86,11 @@ const WANT = flag('shots', '03-terrain-closeup,01-establishing-base').split(',')
 /**
  * The rungs, expressed as a PASS SET rather than as `setPostEnabled`.
  *
- * `setPostEnabled(false)` IS NOT ARM-SYMMETRIC AND CANNOT BE USED HERE.
- * `post.ts`'s WebGL chain falls back to `renderer.render(scene, camera)` when
- * it is inactive; `createNodeBackedPostChain.render` calls `chain.render()`
- * unconditionally, so on the node arm the whole graph still draws — and
- * `applyToneMapping` has meanwhile switched the RENDERER back to AgX while the
- * grade is still in the graph doing AgX itself. One arm would have been
- * measuring a scene and the other a double-tonemapped graph.
+ * This instrument predates the node post-disable fix. It still expresses each
+ * rung as an explicit pass set because that records the graph shape beside the
+ * pixels and isolates one pass at a time. `setPostEnabled(false)` is now
+ * arm-symmetric: both paths draw the scene directly and apply renderer AgX
+ * once; `tests/compositing.spec.ts` pins the node bypass.
  *
  * Emptying the pass list instead leaves both arms in the same shape: exactly
  * one scene draw, tonemapped and sRGB-encoded exactly once, by the renderer on

@@ -72,6 +72,7 @@ import { Rng } from '../../core/math';
 import type { AoConfig } from '../renderer';
 import {
   AO_HALF_RES_SCALE,
+  AO_NODE_INTENSITY_SCALE,
   AO_NOISE_SEED,
   AO_NOISE_SIZE,
   aoDenoiseParams,
@@ -325,7 +326,7 @@ export function createAoNodes(options: CreateAoOptions): AoNodes {
   denoised.setResolutionScale(scale);
   denoised.renderTarget.texture.name = 'AoDenoised';
 
-  const intensity = uniform(cfg.intensity);
+  const intensity = uniform(cfg.intensity * AO_NODE_INTENSITY_SCALE);
 
   const nodes: AoNodes = {
     normals,
@@ -349,7 +350,7 @@ export function createAoNodes(options: CreateAoOptions): AoNodes {
       denoiseLike.normalPhi.value = d.normalPhi;
       denoiseLike.radius.value = d.radius;
 
-      intensity.value = next.intensity;
+      intensity.value = next.intensity * AO_NODE_INTENSITY_SCALE;
 
       /*
        * `halfRes` moves three render targets, so it is a TRANSITION rather than

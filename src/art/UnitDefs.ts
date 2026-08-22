@@ -992,7 +992,7 @@ function tank(o: TankOpts): UnitMassList {
 
     /* -- 3. turret: lathed, 14 facets, no flat side at all --------------- */
     v2Style === 'precision'
-        ? primary('turret', 'hull', [turretW * 1.24, turretH, turretL * 1.12], [0, turretY, turretZ], 'paintLarge', {
+        ? primary('turret', 'hull', [turretW * 1.26, turretH, turretL * 1.18], [0, turretY, turretZ], 'paintLarge', {
         turret: true, capSlot: 'paintLarge',
         shape: {
           points: [
@@ -1007,16 +1007,23 @@ function tank(o: TankOpts): UnitMassList {
         },
       })
       : v2Style === 'dominion'
-        // A cast, slab-shouldered gun house. The previous revolved turret made
-        // the Soviet silhouette a rounder version of the Allied one; this puts
-        // the mass in broad cheeks, a low roof and a visibly sheared rear.
-        ? primary('turret', 'taperedBox', [turretW * 1.18, turretH, turretL * 1.08],
+        // A cast hammerhead gun house. The earlier tapered box had sloped walls
+        // but kept a rectangular plan from the gameplay camera; this convex
+        // casting pushes mass into the trunnion cheeks, pinches the engine-side
+        // tail and gives every corner a different plane.
+        ? primary('turret', 'hull', [turretW * 1.18, turretH, turretL * 1.18],
           [0, turretY, turretZ], 'paintLarge', {
             turret: true, capSlot: 'paintLarge',
             shape: {
-              topScaleX: 0.82, topScaleZ: 0.68,
-              bottomScaleX: 1.04, bottomScaleZ: 0.98,
-              shear: -turretL * 0.09, cornerCut: turretW * 0.10,
+              points: [
+                [0.38, 0.34, 0.48], [-0.38, 0.34, 0.48],
+                [0.50, 0.10, 0.30], [-0.50, 0.10, 0.30],
+                [0.46, -0.42, 0.38], [-0.46, -0.42, 0.38],
+                [0.50, -0.38, -0.24], [-0.50, -0.38, -0.24],
+                [0.31, 0.26, -0.50], [-0.31, 0.26, -0.50],
+                [0.36, -0.34, -0.46], [-0.36, -0.34, -0.46],
+              ],
+              chamfer: 0.055,
             },
           })
       : primary('turret', 'revolve', [turretW, turretH, turretL], [0, turretY, turretZ], 'paintLarge', {
@@ -1045,6 +1052,37 @@ function tank(o: TankOpts): UnitMassList {
           turret: true, group: 'command fin',
           shape: { topScaleX: 0.45, topScaleZ: 0.54, shear: -0.08 },
         }),
+      // A second, thinner shell over the fairing gives the running gear a
+      // deliberate aerospace shoulder instead of one deep slab. It remains in
+      // the fairings group, so the added geometry costs no readable-greeble
+      // budget and still merges into the existing hull draw.
+      armour('fairingBlade', taperOutline(L * 0.50, trackH * 0.40, 0.64, 0.86), 0.07,
+        [W * 0.615, trackH * 0.88, -L * 0.015],
+        [0, HALF_PI, HALF_PI - 0.18], 'paintSmall', 'hull armour', { mirrorX: true }),
+      // A broad cobalt sensor canopy is the secondary read against the white
+      // monocoque. It is a faceted wedge, not a dark texture patch, so it keeps
+      // its silhouette and specular break after the atlas detail disappears.
+      greeble('sensorCanopy', 'hull', [turretW * 0.62, H * 0.10, turretL * 0.34],
+        [0, turretRoof + H * 0.032, turretZ + turretL * 0.07], 'glass', {
+          turret: true, group: 'cupola',
+          shape: {
+            points: [
+              [0, 0.50, 0.44], [0.46, 0.10, 0.30], [-0.46, 0.10, 0.30],
+              [0.40, -0.50, 0.38], [-0.40, -0.50, 0.38],
+              [0.32, 0.24, -0.50], [-0.32, 0.24, -0.50],
+              [0.38, -0.50, -0.42], [-0.38, -0.50, -0.42],
+            ],
+            chamfer: 0.045,
+          },
+        }),
+      // Twin vector exhausts are a rear-facing counter-read to the spear prow.
+      // Dark apertures and swept housings are visible at gameplay pitch without
+      // adding another colour patch to the quiet macro shell.
+      greeble('vectorVent', 'taperedBox', [W * 0.17, H * 0.12, L * 0.15],
+        [W * 0.29, deckY + H * 0.055, -L * 0.43], 'grille', {
+          mirrorX: true, group: 'hull.spineRun',
+          shape: { topScaleX: 0.64, topScaleZ: 0.72, shear: -L * 0.025, cornerCut: 0.06 },
+        }),
     );
   } else if (v2Style === 'dominion') {
     masses.push(
@@ -1062,6 +1100,31 @@ function tank(o: TankOpts): UnitMassList {
         [W * 0.36, deckY + H * 0.15, -L * 0.30], 'bareMetal', {
           mirrorX: true, group: 'power pack', shape: { segments: 12, rTop: 0.76 },
         }),
+      // A thick forged brow makes the roof a stepped casting rather than the
+      // top face of a tapered box. Its shallow forward rake remains readable
+      // after the panel texture has disappeared at RTS distance.
+      armour('turretBrow', taperOutline(turretW * 0.76, turretL * 0.21, 0.76), 0.12,
+        [0, turretRoof + 0.035, turretZ + turretL * 0.31], [-0.12, 0, 0],
+        'paintMed', 'turret armour', { turret: true }),
+      // Cast trunnion bosses lock the broad gun house to the collar. The old
+      // turret had one uninterrupted vertical cheek and read as a crate.
+      greeble('cheekBoss', 'cylinder', [H * 0.16, H * 0.12, H * 0.16],
+        [turretW * 0.51, turretY - turretH * 0.02, turretZ + turretL * 0.08], 'bareMetal', {
+          turret: true, mirrorX: true, rot: [0, 0, HALF_PI], group: 'turret armour',
+          shape: { segments: 10, rTop: 0.90, capChamfer: 0.045 },
+        }),
+      // One offset armoured searchlight is a functional asymmetry cue without
+      // changing the Dominion's otherwise disciplined bilateral massing.
+      greeble('searchlight', 'cylinder', [H * 0.14, H * 0.11, H * 0.14],
+        [turretW * 0.34, turretY + turretH * 0.12, turretZ + turretL * 0.48], 'glass', {
+          turret: true, rot: [HALF_PI, 0, 0], group: 'cupola',
+          shape: { segments: 10, rTop: 0.86, capChamfer: 0.04 },
+        }),
+      // Segmented applique over the upper track run gives the lower silhouette
+      // the same forged hierarchy as the turret and preserves visible tracks.
+      armour('skirtApron', taperOutline(L * 0.48, trackH * 0.70, 0.78, 0.90), 0.09,
+        [W * 0.575, trackH * 0.68, -L * 0.035],
+        [0, HALF_PI, HALF_PI - 0.10], 'paintSmall', 'power pack', { mirrorX: true }),
     );
   }
 
@@ -1233,8 +1296,11 @@ function tank(o: TankOpts): UnitMassList {
       slab('glacisBand', [W * 0.42, 0.07, L * 0.09], [0, deckY, L * 0.40], { k: TEAM_K.tank }),
     );
   }
+  const insigniaZ = v2Style === 'dominion'
+    ? turretZ - turretL * 0.22
+    : turretZ - turretL * 0.16;
   masses.push(insignia([turretW * 0.30, 0.06, turretW * 0.30],
-    [turretW * 0.20, turretRoof + 0.02, turretZ + turretL * 0.18], { turret: true }));
+    [turretW * 0.20, turretRoof + 0.02, insigniaZ], { turret: true }));
   // R-T5 wants emissive at 1-3% of surface. The atlas masks 42% of each plate,
   // so the plates are sized against that, not against their own area.
   masses.push(
