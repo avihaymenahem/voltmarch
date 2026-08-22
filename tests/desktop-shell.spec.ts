@@ -505,6 +505,32 @@ describe('the relay and the desktop app agree on the desktop origin', () => {
   });
 });
 
+describe('the packaged desktop renderer carries the production relay', () => {
+  const builderPath = path.join(REPO, 'desktop', 'renderer-build.mjs');
+  const builder = readFileSync(builderPath, 'utf8');
+
+  it('uses the same relay URL as the Pages deployment', () => {
+    const relay = /PRODUCTION_RELAY_URL\s*=\s*'([^']+)'/.exec(builder)?.[1];
+    expect(relay).toBe('wss://relay.voltmarch.com/ws');
+
+    const workflow = readFileSync(path.join(REPO, '.github', 'workflows', 'deploy.yml'), 'utf8');
+    expect(workflow).toContain(`VITE_RELAY_URL: ${relay}`);
+  });
+
+  it('makes both package and preview builds use the configured renderer builder', () => {
+    for (const file of ['dist.mjs', 'preview.mjs']) {
+      const source = readFileSync(path.join(REPO, 'desktop', file), 'utf8');
+      expect(source, file).toContain("from './renderer-build.mjs'");
+      expect(source, file).toContain('buildDesktopRenderer()');
+    }
+  });
+
+  it('refuses to package a bundle that does not contain the relay URL', () => {
+    expect(builder).toContain(".includes(relayUrl)");
+    expect(builder).toContain('desktop renderer does not contain relay URL');
+  });
+});
+
 /* ========================================================================== *
  * 3c. THE BRIDGE CONTRACT — two declarations that must not drift
  * ========================================================================== */

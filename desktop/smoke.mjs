@@ -118,7 +118,23 @@ check(mainGpu?.vendorId === 0x10de, 'active adapter is the DISCRETE GPU (0x10de)
 const workerDead = messages.some((m) => /worker unavailable|texture worker failed/i.test(m));
 check(!workerDead, 'texture worker did not disable itself');
 
-// 7. No CSP violations — the header is delivered by the protocol handler, and
+// 7. The packaged renderer carries the production relay and the relay accepts
+//    app://voltmarch. This is the exact route a local desktop player uses.
+await page.waitForFunction(() => {
+  const button = [...document.querySelectorAll('button')]
+    .find((node) => node.textContent?.includes('Multiplayer'));
+  return button !== undefined && !button.disabled;
+}, null, { timeout: 10_000 }).catch(() => { /* reported below */ });
+const multiplayer = await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')]
+    .find((node) => node.textContent?.includes('Multiplayer'));
+  return { found: button !== undefined, enabled: button !== undefined && !button.disabled,
+    text: button?.textContent?.trim() ?? '' };
+});
+check(multiplayer.found && multiplayer.enabled,
+  'packaged desktop reaches the production multiplayer relay', multiplayer.text);
+
+// 8. No CSP violations — the header is delivered by the protocol handler, and
 //    index.html's inline boot script is exactly what would trip a strict one.
 const csp = messages.filter((m) => /Content Security Policy/i.test(m));
 check(csp.length === 0, 'no CSP violations', csp[0] ?? '');

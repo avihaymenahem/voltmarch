@@ -36,6 +36,7 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDesktopRenderer } from './renderer-build.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -52,10 +53,8 @@ async function isUp() {
   }
 }
 
-const run = (cmd, args, cwd) => spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: true });
-
 console.log('[vm] building dist/ — a preview of a stale build is worse than none');
-if (run('npm', ['run', 'build'], ROOT).status !== 0) process.exit(1);
+if (buildDesktopRenderer() !== 0) process.exit(1);
 
 const built = spawnSync(process.execPath, [path.join(HERE, 'build.mjs')], {
   cwd: HERE,
