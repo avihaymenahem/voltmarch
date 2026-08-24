@@ -2,9 +2,12 @@
  * VOLTMARCH desktop update controller.
  *
  * Installed NSIS builds use electron-updater and the latest.yml published with
- * every GitHub release. Portable builds cannot replace the executable they are
- * running from, so they perform the same version check and offer the release
- * page instead. Development never contacts GitHub automatically.
+ * every GitHub release. Applying an already-downloaded update is silent: the
+ * game closes, NSIS replaces the locked application files, and the new build
+ * opens without presenting the ordinary setup wizard. Portable builds cannot
+ * replace the executable they are running from, so they perform the same
+ * version check and offer the release page instead. Development never contacts
+ * GitHub automatically.
  */
 import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
@@ -170,7 +173,11 @@ async function downloadDesktopUpdate(): Promise<DesktopUpdateState> {
 
 function installDesktopUpdate(): void {
   if (state.mode !== 'installed' || state.status !== 'downloaded') return;
-  autoUpdater.quitAndInstall(false, true);
+  // Windows cannot replace Electron or resources while this process owns them,
+  // so NSIS still performs the file swap after shutdown. `isSilent=true` makes
+  // that an updater operation instead of showing the full install wizard;
+  // `isForceRunAfter=true` brings the player straight back into the new build.
+  autoUpdater.quitAndInstall(true, true);
 }
 
 export function installDesktopUpdater(): void {

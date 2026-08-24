@@ -49,6 +49,8 @@ describe('desktop updater shipping contract', () => {
     const prompt = read('src/shell/DesktopUpdatePrompt.ts');
     expect(controller).toContain('autoUpdater.autoDownload = false');
     expect(controller).toContain('autoUpdater.autoInstallOnAppQuit = true');
+    expect(controller).toContain('autoUpdater.quitAndInstall(true, true)');
+    expect(controller).not.toContain('autoUpdater.quitAndInstall(false, true)');
     expect(controller).toContain("if (!app.isPackaged) return 'development'");
     expect(controller).toContain('PORTABLE_EXECUTABLE_DIR');
     expect(prompt).toContain("this.shellState === 'menu'");

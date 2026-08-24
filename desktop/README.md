@@ -117,6 +117,9 @@ Installed NSIS builds check the GitHub release channel 20 seconds after launch a
 hours. A result never covers a match: the prompt is retained by the main process and appears on
 the title screen. Downloads start only after the player chooses **Download Update**, and install
 only after **Restart & Update** (or when the player later quits after a completed download).
+The explicit restart applies the update in silent NSIS mode: Windows still has to close the game
+before replacing its locked executable and resources, but the ordinary setup wizard never appears
+and the new build launches automatically when the file swap finishes.
 Settings → Updates is the manual check and recovery route, and also links to the latest and full
 GitHub release archive.
 
