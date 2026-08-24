@@ -224,9 +224,15 @@ Above the key list on the same tab:
 
 ### Elsewhere in Settings
 
-The **Gameplay** tab carries Tooltips, Floating Damage Numbers, EVA Subtitles and a Screen Shake
-slider. Camera and navigation are deliberately *not* there — they are on Controls, which is where
-you would go looking for "why does my trackpad pan instead of zoom".
+The **Gameplay** tab begins with Accessibility: text scaling from 90–150% (115% by default), a
+high-contrast presentation and reduced interface motion. The same tab carries Tooltips, Floating
+Damage Numbers, EVA Subtitles and a Screen Shake slider. Camera and navigation are deliberately
+*not* there — they are on Controls, which is where you would go looking for "why does my trackpad
+pan instead of zoom".
+
+The **Updates** tab reports the running version, edition and release status. Installed desktop
+builds can check, download, and restart into an update there; portable builds open the matching
+manual download. The tab also links to the latest release and the full GitHub release archive.
 
 ---
 

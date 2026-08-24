@@ -124,8 +124,13 @@ describe('panel blur — the ?blur= override cannot be disarmed', () => {
     expect(guard!.index).toBeLessThan(call!.index);
   });
 
-  it('the shell applies the blur at construction, not only at match launch', () => {
+  it('the shell applies blur and accessibility at construction, not only at match launch', () => {
     const src = readFileSync(join(ROOT, 'src/shell/Shell.ts'), 'utf8');
-    expect(src).toMatch(/applySettings\(\s*this\.settings\.get\(\),\s*null,\s*\['graphics\.panelBlur'\]\s*\)/);
+    const initial = /applySettings\(\s*this\.settings\.get\(\),\s*null,\s*\[([\s\S]*?)\]\s*\)/.exec(src);
+    expect(initial).not.toBeNull();
+    expect(initial![1]).toContain("'graphics.panelBlur'");
+    expect(initial![1]).toContain("'gameplay.textScale'");
+    expect(initial![1]).toContain("'gameplay.highContrast'");
+    expect(initial![1]).toContain("'gameplay.reducedMotion'");
   });
 });

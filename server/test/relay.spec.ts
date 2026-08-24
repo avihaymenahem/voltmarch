@@ -4,10 +4,8 @@
  * ============================================================================
  * `Match` and `Lobby` take a `Peer` interface and a `now()`, so every rule they
  * enforce can be driven with two fake peers and a fake clock: no ports, no
- * timers, no waiting. Which means the disconnect path, the grace expiry and the
- * code-expiry path are actually TESTED rather than reasoned about — and those
- * are exactly the paths nobody exercises by hand because they take thirty
- * seconds each in real life.
+ * timers, no waiting. Which means disconnect takeover and code expiry are
+ * actually TESTED rather than reasoned about.
  *
  * Runs on `node --test` against the compiled output, so it also proves the
  * server BUILDS — the import-closure boundary in `server/tsconfig.json` is only
@@ -43,7 +41,7 @@ class FakePeer implements Peer {
   last(): ServerMessage | undefined { return this.sent[this.sent.length - 1]; }
 }
 
-/** A controllable clock, so grace and TTL are testable in microseconds. */
+/** A controllable clock, so silence and TTL are testable in microseconds. */
 function clock(start = 1_000_000): { now: () => number; advance: (ms: number) => void } {
   let t = start;
   return { now: () => t, advance: (ms) => { t += ms; } };
@@ -54,7 +52,7 @@ function makeMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: Re
   const b = new FakePeer();
   const match = new Match([a, b], {
     id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
-    graceMs: CONFIG.graceMs, silenceMs: CONFIG.silenceMs, now: c.now,
+    silenceMs: CONFIG.silenceMs, now: c.now,
     // TURNS FROM ZERO, so every case below reads as "turn 0, turn 1, turn 2"
     // rather than starting at TURN_DELAY. The product's own baseline is covered
     // separately, by name, in `a slot must submit turns in order` — with the
@@ -165,33 +163,32 @@ describe('a disconnect does not freeze the survivor', () => {
     assert.equal(a.of('peerLost').length, 1);
   });
 
-  it('keeps running for the whole grace period', () => {
-    const { match, a, c } = makeMatch();
+  it('keeps running instead of awarding an early win', () => {
+    const { match, a } = makeMatch();
     match.peerLost(1);
-    c.advance(CONFIG.graceMs - 1);
     assert.equal(match.tick(), false);
     assert.equal(a.of('over').length, 0);
-    // And the survivor can still play during it.
     assert.equal(match.submit(0, 0, [], CHECK), null);
     assert.equal(a.of('frame').length, 1);
   });
 
-  it('awards the match to the survivor when grace expires', () => {
-    const { match, a, c } = makeMatch();
+  it('delegates the retired logical player to the survivor only', () => {
+    const { match, a } = makeMatch();
     match.peerLost(1);
-    c.advance(CONFIG.graceMs);
-    assert.equal(match.tick(), true);
-    const over = a.of('over')[0];
-    assert.equal(over.reason, 'opponent-left');
-    assert.equal(over.winnerSlot, 0);
+    assert.deepEqual(a.of('peerLost'), [{ t: 'peerLost', slot: 1 }]);
+
+    // The AI's command claims player 1. Match passes its server-owned
+    // delegation into TurnRelay, so the identity stamp preserves that player.
+    match.submit(0, 0, [command({ player: 1 })], CHECK);
+    assert.equal(a.of('frame')[0].commands[0].player, 1);
+    assert.equal(a.of('over').length, 0);
   });
 
   it('just ends when everybody has gone', () => {
-    const { match, c } = makeMatch();
+    const { match } = makeMatch();
     match.peerLost(0);
     match.peerLost(1);
     assert.equal(match.over, true);
-    c.advance(CONFIG.graceMs * 2);
     assert.equal(match.tick(), true);
   });
 });
@@ -365,7 +362,7 @@ describe('leaving cleans up everywhere a peer could be', () => {
     assert.equal(a.of('peerLost').length, 1);
   });
 
-  it('sweeps the match once grace expires, freeing the slot', () => {
+  it('keeps the match for the survivor, then sweeps when they leave', () => {
     const c = clock();
     const lobby = lobbyWith(c);
     const a = new FakePeer();
@@ -374,10 +371,9 @@ describe('leaving cleans up everywhere a peer could be', () => {
     lobby.enqueue(b, 1);
     assert.equal(lobby.matchCount, 1);
     lobby.leave(b);
-    c.advance(CONFIG.graceMs + 1);
-    lobby.tick();
+    assert.equal(lobby.matchCount, 1, 'the survivor is still playing the AI');
+    lobby.leave(a);
     assert.equal(lobby.matchCount, 0, 'a finished match must not leak');
-    assert.equal(a.of('over')[0].reason, 'opponent-left');
   });
 
   it('kills a match that outlives the hard ceiling', () => {
@@ -622,9 +618,8 @@ describe('the idle sweep asks the lobby rather than trusting a flag', () => {
 
 describe('a peer that goes silent without closing its socket', () => {
   it('is treated as gone, so the survivor is not frozen until the TTL', () => {
-    // The grace timer only ever started on a socket CLOSE. A client that stops
-    // submitting while still answering pings left the other player stuck at a
-    // turn boundary for the full two-hour match TTL.
+    // A client that stops submitting while still answering pings must get the
+    // same AI handoff as a socket close instead of holding the match hostage.
     const { match, a, c } = makeMatch();
     // Slot 0 keeps playing throughout; only slot 1 goes quiet. Letting BOTH go
     // quiet retires slot 0 first and tests nothing — which is what the first
@@ -637,13 +632,10 @@ describe('a peer that goes silent without closing its socket', () => {
     }
     c.advance(1000);
     match.submit(0, turn++, [], CHECK);
-    assert.equal(match.tick(), false, 'not over yet — the grace period starts now');
+    assert.equal(match.tick(), false, 'the survivor continues against AI');
     assert.equal(a.of('peerLost').length, 1, 'the survivor must be told');
-
-    c.advance(CONFIG.graceMs + 1);
-    assert.equal(match.tick(), true);
-    assert.equal(a.of('over')[0].reason, 'opponent-left');
-    assert.equal(a.of('over')[0].winnerSlot, 0);
+    assert.equal(a.of('peerLost')[0].slot, 1);
+    assert.equal(a.of('over').length, 0);
   });
 
   it('leaves a match alone while both slots keep submitting', () => {
@@ -691,7 +683,7 @@ function realMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: Re
   const b = new FakePeer();
   const match = new Match([a, b], {
     id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
-    graceMs: CONFIG.graceMs, silenceMs: CONFIG.silenceMs, now: c.now,
+    silenceMs: CONFIG.silenceMs, now: c.now,
   });
   return { match, a, b, c };
 }
@@ -787,17 +779,17 @@ describe('a REFUSED submission is silence, not a sign of life', () => {
       for (let t = 1; t <= TURN_LOOKAHEAD; t++) { match.submit(0, t, [], CHECK); c.advance(10); }
 
       let refusals = 0;
-      for (let elapsed = 0; elapsed < CONFIG.silenceMs + CONFIG.graceMs + 5000; elapsed += 1000) {
+      for (let elapsed = 0; elapsed < CONFIG.silenceMs + 5000; elapsed += 1000) {
         if (match.submit(1, turn, [], CHECK) !== null) refusals++;
         c.advance(1000);
         match.tick();
-        if (match.over) break;
+        if (a.of('peerLost').length > 0) break;
       }
 
       assert.ok(refusals > 0, 'the harness must actually be sending refusals');
-      assert.equal(match.over, true, 'the match must not run to the two-hour TTL');
       assert.equal(a.of('peerLost').length, 1, 'the attacker is the one retired');
-      assert.equal(a.of('over')[0].winnerSlot, 0, 'the victim must win, not the attacker');
+      assert.equal(a.of('peerLost')[0].slot, 1, 'the victim must control the attacker AI');
+      assert.equal(a.of('over').length, 0, 'retirement is continuity, not an awarded win');
     });
   }
 });
@@ -856,15 +848,13 @@ describe('a slot must submit turns in order', () => {
   });
 });
 
-describe('a slot retired for silence does not earn a second grace period', () => {
+describe('a slot retired for silence is not delegated twice', () => {
   /**
    * `Lobby.leave` calls `match.peerLost(match.slotOf(peer))`, and `slotOf` is an
    * `indexOf` that answers -1 once the silence sweep has already nulled that
    * seat. The guard read `this.peers[-1]`, which is `undefined` rather than
-   * `null`, so it did not fire: execution fell through, the survivor was handed
-   * a SECOND countdown, and `peers` grew an own property named '-1'. Reachable
-   * on the ordinary path — the 15 s heartbeat terminates a dead client squarely
-   * inside the 30 s grace window, so this is what a crashed opponent looked like.
+   * `null`, so it did not fire: execution fell through and the survivor was
+   * notified twice while `peers` grew an own property named '-1'.
    */
   it('ignores a peerLost for a slot that has already gone', () => {
     const { match, a, c } = makeMatch();
@@ -879,11 +869,8 @@ describe('a slot retired for silence does not earn a second grace period', () =>
     // The socket closes ten seconds later. `slotOf` now answers -1.
     c.advance(10_000);
     match.peerLost(-1);
-    assert.equal(a.of('peerLost').length, 1, 'no second countdown');
-
-    // And the deadline is still the one the silence sweep set, not a new one.
-    c.advance(CONFIG.graceMs - 10_000);
-    assert.equal(match.tick(), true);
-    assert.equal(a.of('over')[0].winnerSlot, 0);
+    assert.equal(a.of('peerLost').length, 1, 'no second delegation');
+    match.submit(0, 2, [], CHECK);
+    assert.equal(match.tick(), false, 'the survivor keeps playing');
   });
 });

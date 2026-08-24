@@ -226,17 +226,14 @@ export const CONFIG = {
   codeTtlMs: num('VM_CODE_TTL_MS', 10 * 60_000),
   /** Hard ceiling on a single match. Nothing legitimate runs this long. */
   matchTtlMs: num('VM_MATCH_TTL_MS', 2 * 60 * 60_000),
-  /** How long the survivor waits before the match is awarded to them. */
-  graceMs: num('VM_GRACE_MS', 30_000),
   /**
    * How long a slot may go without submitting a turn before it is treated as
    * disconnected.
    *
-   * The grace timer only starts when a SOCKET CLOSES. A client that stops
-   * submitting while still answering pings — hung, suspended, or deliberately
-   * holding its opponent hostage — froze the other player at a turn boundary
-   * until the two-hour match TTL. A healthy client submits ten times a second,
-   * so 15 s is three orders of magnitude of slack.
+   * A client that stops submitting while still answering pings — hung,
+   * suspended, or deliberately holding its opponent hostage — must trigger the
+   * same AI handoff as a closed socket. A healthy client submits ten times a
+   * second, so 15 s is three orders of magnitude of slack.
    */
   silenceMs: num('VM_SILENCE_MS', 15_000),
 

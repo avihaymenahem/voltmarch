@@ -65,7 +65,7 @@
   border: 1px solid var(--vm-hairline, rgba(255, 255, 255, 0.16));
   color: var(--vm-text, #eaf2fa);
   font-family: 'Rajdhani', 'Oswald', 'Consolas', 'SF Mono', ui-monospace, monospace;
-  font-size: calc(9 * var(--vm-u, 1px));
+  font-size: calc(9 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   line-height: 1;
   letter-spacing: 0.06em;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
@@ -89,7 +89,7 @@
 .vm-perf-title {
   /* The panel's name is never the part that gets cut. */
   flex: 0 0 auto;
-  font-size: calc(8 * var(--vm-u, 1px));
+  font-size: calc(8 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -106,7 +106,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: calc(8 * var(--vm-u, 1px));
+  font-size: calc(8 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--vm-faint, #74818f);
@@ -126,7 +126,7 @@
 }
 
 .vm-perf-big {
-  font-size: calc(20 * var(--vm-u, 1px));
+  font-size: calc(20 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.02em;
@@ -134,13 +134,13 @@
 }
 
 .vm-perf-unit {
-  font-size: calc(9 * var(--vm-u, 1px));
+  font-size: calc(9 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   color: var(--vm-dim, #9dabba);
 }
 
 .vm-perf-fps {
   margin-left: auto;
-  font-size: calc(10 * var(--vm-u, 1px));
+  font-size: calc(10 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   color: var(--vm-faint, #74818f);
 }
 
@@ -161,14 +161,14 @@
 }
 
 .vm-perf-state {
-  font-size: calc(9 * var(--vm-u, 1px));
+  font-size: calc(9 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .vm-perf-reason {
-  font-size: calc(8 * var(--vm-u, 1px));
+  font-size: calc(8 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   color: var(--vm-faint, #74818f);
   letter-spacing: 0.04em;
 }
@@ -210,7 +210,7 @@
   color: var(--vm-faint, #74818f);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: calc(8 * var(--vm-u, 1px));
+  font-size: calc(8 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
 }
 
 /* `min-width: 0` is what makes the ellipsis reachable — a flex item's default

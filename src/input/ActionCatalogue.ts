@@ -18,7 +18,9 @@
  *   src/input/input.system.ts  derives its default chord tables from
  *                              `defaultCommandChords()` and
  *                              `defaultCameraCodes()`. There is no hard-coded
- *                              scheme left in that file.
+ *                              rebindable scheme left in that file; fixed
+ *                              control groups and camera bookmarks remain
+ *                              fixed by definition.
  *   src/shell/Settings.ts      renders the Controls tab's rebind rows from
  *                              `rebindableActions()`, so a new action appears
  *                              on the options screen the day it is added here.
@@ -46,9 +48,10 @@
  *                 `tests/action-catalogue.spec.ts` asserts the two tables agree
  *                 on ids, defaults and surfaces so they cannot drift.
  *   'fixed'       a key or chord the engine hard-codes. F3 is read straight off
- *                 `KeyboardEvent.code` in src/render/debug.ts; the control-group
- *                 digits are resolved in input.system.ts ahead of the binding
- *                 table. Neither can be rebound, and neither pretends it can.
+ *                 `KeyboardEvent.code` in src/render/debug.ts; control-group
+ *                 digits and F5-F8 camera bookmarks are resolved in
+ *                 input.system.ts ahead of the binding table. None can be
+ *                 rebound, and none pretends it can.
  *   'gesture'     mouse, trackpad or on-screen control. No key involved.
  *
  * NO IMPORTS, ON PURPOSE
@@ -384,8 +387,9 @@ export const ACTIONS: readonly ActionDef[] = [
    * out, and no support answer either.
    *
    * `=` and `-` are the genre convention and both were free — the whole
-   * default scheme is arrows, Q, E, H, A, D, F, G, S, X, Y, Z, Backslash,
-   * Escape, F3, F12 — so `findConflicts` has nothing to flag.
+   * default scheme is arrows, Q, E, H, W, A, D, F, G, S, X, Y, Z,
+   * Backslash, Escape, F3, F5-F8 and F12 — so `findConflicts` has nothing to
+   * flag for `=` or `-`.
    *
    * POLLED WHILE HELD (`surface: 'camera'` puts them in `CAMERA_KEY_IDS`), not
    * dispatched, so `CAMERA_NAV.keyZoomNotchesPerSecond` is a RATE. See the
@@ -421,6 +425,29 @@ export const ACTIONS: readonly ActionDef[] = [
     surface: 'command',
     binding: 'rebindable',
     defaultChord: chord('KeyH'),
+  },
+  {
+    id: 'cam.bookmarkStore',
+    label: 'Store Camera Bookmark',
+    description:
+      'Save the current map position, angle and zoom into one of four camera slots. '
+      + 'Bookmarks last for the current battle and never change the simulation.',
+    category: 'camera',
+    surface: 'command',
+    binding: 'fixed',
+    defaultChord: null,
+    fixedChips: ['Ctrl', 'F5 – F8'],
+  },
+  {
+    id: 'cam.bookmarkRecall',
+    label: 'Jump To Camera Bookmark',
+    description:
+      'Return to a saved camera position without disturbing the current selection or orders.',
+    category: 'camera',
+    surface: 'command',
+    binding: 'fixed',
+    defaultChord: null,
+    fixedChips: ['F5 – F8'],
   },
   {
     id: 'cam.trackpadPan',
@@ -599,6 +626,17 @@ export const ACTIONS: readonly ActionDef[] = [
     surface: 'command',
     binding: 'rebindable',
     defaultChord: chord('KeyA', { ctrl: true }),
+  },
+  {
+    id: 'sel.idleHarvester',
+    label: 'Cycle Idle Harvester',
+    description:
+      'Select and centre the next ore harvester that is standing idle. Repeated presses '
+      + 'walk every idle harvester you own and wrap back to the first.',
+    category: 'selection',
+    surface: 'command',
+    binding: 'rebindable',
+    defaultChord: chord('KeyW'),
   },
   {
     id: 'sel.groupSet',

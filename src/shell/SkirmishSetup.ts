@@ -135,8 +135,10 @@ import {
   teamsPlayable,
   withArmyCount,
   type MatchSetup,
+  type MapChoice,
 } from './settings-store';
 import { persistentStorage } from '../platform/storage';
+import { mapPreview } from './MapPreview';
 
 import {
   button,
@@ -659,6 +661,8 @@ export class SkirmishSetupScreen implements Screen {
 
     /* -- map -------------------------------------------------------------- */
     const maps = this.section(col, 'Battlefield');
+    const selectedMap: MapChoice = mapById(this.setup.map);
+    maps.appendChild(mapPreview(selectedMap));
     const list = el('div', 'vm-maplist');
     for (const m of MAPS) {
       // A locked map is SHOWN, disabled, with the reason on it — not hidden.
@@ -687,6 +691,13 @@ export class SkirmishSetupScreen implements Screen {
           // out of a four-way has to move it. Repaint both.
           if (this.reconcile()) this.renderLeft();
           this.renderRight();
+          // The chosen row may have been near the bottom of the scrolling
+          // roster. Repainting replaces that focused button, so keeping the
+          // old scroll offset would immediately hide the preview that changed.
+          // Return the shared setup body to its survey; the selected row stays
+          // visibly marked in the compact list underneath.
+          const body = this.host?.querySelector<HTMLElement>('.vm-page-body');
+          if (body !== null && body !== undefined) body.scrollTop = 0;
         });
       } else {
         item.classList.add('is-locked');

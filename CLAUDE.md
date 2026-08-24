@@ -277,8 +277,16 @@ the build.
 game code. Read `server/README.md` before touching either.
 
 - **The relay stamps identity; the simulation enforces authority.** Every inbound command
-  has `player` overwritten with the slot of the socket it came from, and the sim already
-  refuses anything a slot does not own. So a spoofed slot does nothing.
+  has `player` overwritten with the slot of the socket it came from. The sole widening is a
+  server-owned disconnect delegation: after a seat is retired, one surviving socket may preserve
+  that logical player id for the AI it was told to activate. The client cannot widen that list.
+  The sim still refuses anything the stamped player does not own.
+- **Disconnect continuity is AI takeover, not reconnect.** `Match.peerLost` retires the missing
+  contribution, delegates its logical seat, and sends `peerLost { slot }` only to the chosen
+  controller. `Shell.activateAiTakeover` flips that seat to non-human; `ai.system.ts` watches the
+  eligibility mask as well as player count and constructs the brain on the next tick. Its commands
+  are harvested, relayed, validated, and recorded exactly like the departed human's commands.
+  The dropped client still ends locally because catching it up requires stream replay.
 - **`validateCommand` in `src/net/protocol.ts` is ONE pure function with TWO callers**, and
   they do different things with a rejection. The server FILTERS (before broadcast, so it is
   consistent for everyone). A client TRIPWIRES — it ends the match rather than dropping the
@@ -954,6 +962,17 @@ predicate, `mapSeed 0x5e1ec7` / `simSeed 90210`, in CREDITS rather than field co
   which is why it is argued here.
 
 ## Skirmish starts are authored per map and vary by seed
+
+The skirmish lobby owns a deterministic tactical survey in `src/shell/MapPreview.ts`. It derives
+the sketch from the same `MapChoice` preset, biome, pinned `mapSeed` and seat count the boot reads;
+there is no parallel thumbnail table to drift when a battlefield changes. The preview must expose
+water topology, lanes, ore and starts before it spends pixels on decoration.
+
+Genre navigation lives in the action catalogue with the rest of the controls: `W` is the
+rebindable idle-harvester cycle, while four match-local camera positions use fixed
+`Ctrl+F5..F8` store / `F5..F8` recall chords. Results consume `Shell.latestReplay()` only after
+`endMatch` has captured the recorder, so **Watch Replay** launches the exact match that produced
+the screen, campaign identity included.
 
 `MAP_START_TABLES` in `Scenarios.ts` is the authoritative opening geometry for every map preset.
 Each entry owns integer offsets and its valid two-player pairings; coast entries also own the
@@ -2212,6 +2231,23 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   `desktop/`, so the IPC shapes are declared on both sides and `tests/desktop-shell.spec.ts`
   compares the two declarations rather than letting an import paper over the boundary.
 
+- **RELEASE MANAGEMENT HAS ITS OWN SETTINGS TAB.** `Settings → Updates` is the player-facing
+  surface for current/available version, updater status, Check Now, installer download/restart,
+  portable-build handoff, release notes, and links to both the latest and complete GitHub release
+  archive. Do not move it back into Diagnostics: update progress subscriptions intentionally
+  rerender only the Updates tab, in five-percent buckets, so network events cannot rebuild the
+  diagnostic export several times per second. Browser and development builds state their limits
+  instead of presenting updater actions that cannot work.
+
+- **DISCORD ANNOUNCEMENTS ARE DOWNSTREAM OF THE RELEASE, NOT ANOTHER PUBLISHER.** The `discord`
+  job in `.github/workflows/desktop.yml` needs the completed Windows job, reads the already-created
+  GitHub release through `tools/post-discord-release.mjs`, and uses only the
+  `DISCORD_RELEASE_WEBHOOK_URL` repository secret. It sends `allowed_mentions.parse = []`, caps the
+  visible embed to Discord's limit, and attaches the complete generated Markdown notes. Keep it a
+  separate job: if Discord is unavailable, rerunning failed jobs must not rebuild or recreate the
+  release. Never print the webhook, pass it on the command line, or replace the local script with a
+  third-party action that receives the secret.
+
   **`bridge` is a VERSION and the check is EQUALITY** — v5 added native key/value and binary-save
   capabilities. A bump on
   one side only makes the game fall silently back to web behaviour: no Display section, no error,
@@ -2401,6 +2437,16 @@ before touching `edgeCoverage` and §4 before retrying anything on it.
 `docs/SPEC_DRIFT_AUDIT.md` catalogues claims that stopped being true; `RENDER_FINDINGS.md` is the
 opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not
 by appending a contradiction.
+
+## Interface accessibility is one persisted scale, not per-screen patches
+
+`gameplay.textScale` defaults to 1.15 and is clamped to 0.9–1.5. `Settings.ts` publishes it as the
+inherited `--vm-text-scale`; every shell, HUD, objective, performance, tutorial, replay, save and
+updater type rule consumes that token. Do not enlarge isolated labels to solve readability — that
+reintroduces inconsistent sizing and bypasses the player preference. `gameplay.highContrast` and
+`gameplay.reducedMotion` are equally live, persisted rows: they toggle the matching classes on all
+current shell/HUD roots and on `<html>` for auxiliary surfaces created later. The Settings rail is
+scrollable and deliberately wide enough for its labels at 150%.
 
 ## Graphics are MEASURED ONCE at first run, and adaptive resolution is off
 

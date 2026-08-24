@@ -50,6 +50,12 @@ export interface Submission {
   /** Untrusted. Validated here; never trusted as `WireCommand[]` on entry. */
   commands: unknown[];
   check: WireCheck;
+  /**
+   * Logical players this connection may command. Normally just `slot`; after
+   * a disconnect the Match may add the retired seat assigned to this peer.
+   * The list is server-owned and never comes from the wire.
+   */
+  controlledPlayers?: readonly number[];
 }
 
 /** The frame to broadcast once every slot has reported. */
@@ -122,7 +128,7 @@ export class TurnRelay {
    * WITHOUT THIS, `retire` only half works. It fills a departed slot's blank
    * into the turns ALREADY open, so the survivor unfreezes — and then their
    * very next turn opens a fresh `Pending` that waits for the slot that just
-   * left, and they freeze again for the whole grace period. The bug survived
+   * left, and they freeze again indefinitely. The bug survived
    * being written, reviewed and commented; `relay.spec` caught it on the first
    * run, which is the argument for the fake clock.
    */
@@ -229,10 +235,14 @@ export class TurnRelay {
           accepted = [];
           break;
         }
-        // THE IDENTITY STAMP. Whatever the client claimed, this command belongs
-        // to the socket that sent it. `Command.player` in core/types.ts says it
-        // outright: "The bus stamps this; never trust a client-set value."
-        check.value.player = s.slot;
+        // THE IDENTITY STAMP. Normally every claim is replaced by the socket's
+        // slot. Once Match has explicitly delegated a retired logical seat,
+        // that seat is also legal — and ONLY that server-owned list can widen
+        // the authority. A client cannot put `controlledPlayers` on the wire.
+        const claimed = check.value.player;
+        check.value.player = s.controlledPlayers?.includes(claimed) === true
+          ? claimed
+          : s.slot;
         accepted.push(check.value);
       }
     }
@@ -298,7 +308,7 @@ export class TurnRelay {
    *
    * Returns the turns that completed as a result. A player who disconnects
    * mid-turn would otherwise leave the match frozen for the survivor for the
-   * whole grace period, which reads as a crash rather than as a disconnect.
+   * AI takeover, which reads as a crash rather than as a disconnect.
    */
   retire(slot: number): MergedFrame[] {
     if (slot < 0 || slot >= this.slots) return [];

@@ -433,7 +433,7 @@ describe('the relay is the only thing that decides', () => {
    * THE REGRESSION. `retire` originally filled the departed slot's blank only
    * into the turns already open, so the survivor unfroze — and then their very
    * next turn opened a fresh accumulator that waited for the slot that had just
-   * left, and they froze again for the whole grace period. Reading the code did
+   * left, and they froze again indefinitely. Reading the code did
    * not catch it; `server/test/relay.spec.ts` did, on the first run.
    */
   it('never waits on a retired slot again, not even on a turn it has not seen yet', () => {
@@ -453,6 +453,23 @@ describe('the relay is the only thing that decides', () => {
     relay.retire(1);
     expect(relay.submit({ slot: 1, turn: 0, commands: [], check: { tick: 1, hash: 0 } }))
       .toEqual({ ok: false, code: 'not-in-match' });
+  });
+
+  it('preserves a retired player id only under server-owned delegation', () => {
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0);
+    relay.retire(1);
+    const delegated = {
+      kind: CommandKind.Order, player: 1, order: OrderKind.Move, target: 0,
+      x: 12, z: 12, defId: -1, tab: 0, cx: 3, cz: 3,
+      stance: Stance.Defensive, queued: false, arg: 0, entities: [],
+    };
+    const res = relay.submit({
+      slot: 0, turn: 0, commands: [delegated], check: { tick: 1, hash: 0 },
+      controlledPlayers: [0, 1],
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.frame?.commands[0]?.player).toBe(1);
   });
 });
 

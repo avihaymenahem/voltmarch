@@ -205,7 +205,7 @@ describe('catalogue -> engine tables', () => {
     const handled = [
       'sel.allArmy', 'ord.attackMove', 'ord.stop', 'ord.guard', 'ord.scatter',
       'ord.deploy', 'ord.forceAttack', 'ord.rally', 'ord.stance', 'ord.ability',
-      'cam.home',
+      'cam.home', 'sel.idleHarvester',
     ].sort();
     expect([...COMMAND_ACTION_IDS].sort()).toEqual(handled);
   });

@@ -119,6 +119,7 @@ import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
 import { suppressProgression } from '../progression/suppress';
 import { outcomePolicy, seatIgnored } from '../campaign/policy';
+import { enableAiTakeover } from '../sim/ai.system';
 
 /**
  * The subset of `OperationDef.map` this file needs.
@@ -875,7 +876,7 @@ export class Shell {
    * through each of them, so there is exactly one thing to check and exactly one
    * place to clear.
    */
-  private pvp: { session: Session; info: MatchStart } | null = null;
+  private pvp: { session: Session; info: MatchStart; takeoverSlots: Set<number> } | null = null;
   /**
    * The bank every PvP match starts on, on both clients.
    *
@@ -1020,7 +1021,12 @@ export class Shell {
     // `applySettings` (which wants a live game) out of the constructor. Without
     // this a player who turns the blur off sees it come back on every cold boot,
     // right up until they launch a match.
-    applySettings(this.settings.get(), null, ['graphics.panelBlur']);
+    applySettings(this.settings.get(), null, [
+      'graphics.panelBlur',
+      'gameplay.textScale',
+      'gameplay.highContrast',
+      'gameplay.reducedMotion',
+    ]);
 
     this.rafHandle = requestAnimationFrame(this.tick);
   }
@@ -1146,17 +1152,21 @@ export class Shell {
    * 3. SPEED IS PINNED TO 1x AND PAUSE IS DISABLED — see `applySimPostBoot` and
    *    `setPaused`. Neither can desync (a tick is a tick whenever it runs) but
    *    both are meaningless when the other player is not waiting for you.
-   * 4. LOCKSTEP IS ATTACHED ONLY AFTER THE WORLD EXISTS. The step gate reads
-   *    `loop.tick`, so there has to be a loop before the gate can be installed.
+   * 4. LOCKSTEP IS ARMED BEFORE BOOT. `net.system` installs the step gate from
+   *    its own init, before tick 1 can open without sending its frame.
    */
   async startMultiplayerMatch(session: Session, info: MatchStart): Promise<void> {
     if (this.busy || this.disposed) return;
     const map = mapById(info.map);
 
-    this.pvp = { session, info };
+    // Kept even before the world exists: a peer can disappear while this
+    // client is still asynchronously booting assets. Losing that one message
+    // would leave the delegated seat human forever and the server waiting on
+    // AI commands this client never generates.
+    this.pvp = { session, info, takeoverSlots: new Set<number>() };
     session.attach({
       onOver: (_reason, winnerSlot, message) => { this.endMultiplayer(winnerSlot, message); },
-      onPeerLost: (graceMs) => { this.setNetNotice(`Opponent disconnected — ${Math.round(graceMs / 1000)}s`); },
+      onPeerLost: (slot) => { this.activateAiTakeover(slot); },
       onNotice: (message) => { this.setNetNotice(message); },
     });
 
@@ -1204,7 +1214,15 @@ export class Shell {
 
     await this.startMatch(setup, { persist: false });
 
-    if (this.game === null) { this.pvp = null; suppressUnlockGate(false); return; }
+    const livePvp = this.pvp;
+    if (this.game === null || livePvp === null) {
+      this.pvp = null;
+      suppressUnlockGate(false);
+      return;
+    }
+    // Catch a handoff that arrived after `seatPvpPlayers` ran but before the
+    // asynchronous boot completed.
+    for (const slot of livePvp.takeoverSlots) this.activateAiTakeover(slot);
   }
 
   /**
@@ -1225,8 +1243,38 @@ export class Shell {
   }
 
   /**
+   * Convert a relay-delegated PvP seat into the ordinary skirmish AI.
+   *
+   * The relay remains the authority: this callback is reachable only from its
+   * `peerLost` message, and the server accepts commands carrying this player id
+   * only from the connection it selected. `isHuman` is deliberately NOT part
+   * of the deterministic checksum; after the other simulation is gone it is a
+   * local controller choice, while every command the brain emits still enters
+   * the replay and lockstep stream normally.
+   */
+  private activateAiTakeover(slot: number): void {
+    const pvp = this.pvp;
+    if (pvp === null) return;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= pvp.info.factions.length) return;
+    if (slot === pvp.info.slot) return;
+    pvp.takeoverSlots.add(slot);
+    enableAiTakeover();
+    const world = this.game?.ctx.world;
+    if (world === undefined || slot >= world.players.length) return;
+
+    const player = world.players[slot];
+    player.isHuman = false;
+    player.isLocal = false;
+    // PvP seats are initialised at difficulty 0 only because no brain exists.
+    // A takeover should be a credible Normal opponent, not a passive Easy one.
+    player.aiDifficulty = Math.max(1, player.aiDifficulty);
+    player.name = 'Opponent AI';
+    this.setNetNotice('Opponent disconnected — AI command has taken over.');
+  }
+
+  /**
    * A one-line banner over the HUD for anything the network needs to say:
-   * an opponent disconnecting, a grace countdown, a desync, a refusal.
+   * an opponent disconnecting, an AI takeover, a desync, a refusal.
    *
    * `textContent`, never markup — and the string is always one of this build's
    * own, never one the relay supplied. See the header of `src/net/Session.ts`.
@@ -2214,9 +2262,9 @@ export class Shell {
   /** Drop the current match and return to the title screen. */
   async quitToMenu(): Promise<void> {
     if (this.busy) return;
-    // Tell the relay BEFORE tearing anything down. A client that simply stops
-    // answering makes its opponent sit through the full grace period staring at
-    // a countdown; leaving cleanly ends it for them at once.
+    // Tell the relay BEFORE tearing anything down. The survivor can then retire
+    // this socket immediately and hand its army to the AI without waiting for
+    // the silence detector.
     if (this.pvp !== null) {
       this.pvp.session.leave();
       this.pvp = null;
@@ -3006,6 +3054,12 @@ export class Shell {
       p.name = slot === pvp.info.slot ? 'You' : 'Opponent';
       p.aiDifficulty = 0;
       p.aiPersonality = 0;
+      if (pvp.takeoverSlots.has(slot)) {
+        p.isHuman = false;
+        p.isLocal = false;
+        p.aiDifficulty = 1;
+        p.name = 'Opponent AI';
+      }
     }
     world.localPlayer = pvp.info.slot as PlayerId;
   }
@@ -3576,7 +3630,14 @@ export class Shell {
   };
 
   private readonly onSettingsChanged = (settings: Settings, changed: readonly string[]): void => {
-    if (this.game === null) return;
+    if (this.game === null) {
+      if (touched(changed, 'gameplay.textScale')
+        || touched(changed, 'gameplay.highContrast')
+        || touched(changed, 'gameplay.reducedMotion')) {
+        applySettings(settings, null, changed);
+      }
+      return;
+    }
 
     /*
      * `graphics.calibrated` IS THE WHOLE PROTOCOL, in both directions.

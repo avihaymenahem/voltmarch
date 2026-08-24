@@ -24,6 +24,7 @@ const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 let installed = false;
 let checking: Promise<DesktopUpdateState> | null = null;
 let periodic: ReturnType<typeof setInterval> | null = null;
+let lastPublishedDownloadPercent = -1;
 
 function updateMode(): DesktopUpdateMode {
   if (!app.isPackaged) return 'development';
@@ -75,6 +76,7 @@ function wireInstalledUpdater(): void {
     });
   });
   autoUpdater.on('update-available', (info) => {
+    lastPublishedDownloadPercent = -1;
     publish({
       status: 'available', availableVersion: info.version, progress: null,
       releaseNotes: releaseNotesText(info.releaseNotes),
@@ -82,12 +84,16 @@ function wireInstalledUpdater(): void {
     });
   });
   autoUpdater.on('download-progress', (info) => {
+    const percent = Math.max(0, Math.min(100, Math.round(info.percent)));
+    if (percent === lastPublishedDownloadPercent) return;
+    lastPublishedDownloadPercent = percent;
     publish({
-      status: 'downloading', progress: Math.max(0, Math.min(100, info.percent)),
-      message: `Downloading ${Math.round(info.percent)}%`,
+      status: 'downloading', progress: percent,
+      message: `Downloading ${percent}%`,
     });
   });
   autoUpdater.on('update-downloaded', (info) => {
+    lastPublishedDownloadPercent = 100;
     publish({
       status: 'downloaded', availableVersion: info.version, progress: 100,
       releaseNotes: releaseNotesText(info.releaseNotes) || state.releaseNotes,
@@ -95,6 +101,7 @@ function wireInstalledUpdater(): void {
     });
   });
   autoUpdater.on('error', (error) => {
+    lastPublishedDownloadPercent = -1;
     publish({ status: 'error', progress: null, message: messageOf(error) });
   });
 }
@@ -151,6 +158,7 @@ export function checkForDesktopUpdate(): Promise<DesktopUpdateState> {
 
 async function downloadDesktopUpdate(): Promise<DesktopUpdateState> {
   if (state.mode !== 'installed' || state.status !== 'available') return snapshot();
+  lastPublishedDownloadPercent = 0;
   publish({ status: 'downloading', progress: 0, message: 'Preparing update download…' });
   try {
     await autoUpdater.downloadUpdate();

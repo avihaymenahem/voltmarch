@@ -1281,7 +1281,7 @@ The shipped director stopped after fourteen steps. It covered camera, selection,
 attack-move, MCV deployment, power/refinery/harvest, one factory/unit/rally point, then explained
 victory. It did not teach control groups, stances, formations, garrison, engineer capture, repair,
 sell, transports, naval crossings, commander abilities, base-wide powers, superweapons or
-veterancy. The Help catalogue documenting 67 actions made the omission measurable: the beginner
+veterancy. The Help catalogue documenting 70 actions made the omission measurable: the beginner
 path presented roughly a third of the actual command vocabulary and none of the systems that make
 VOLTMARCH more than its build order.
 

@@ -117,7 +117,8 @@ Installed NSIS builds check the GitHub release channel 20 seconds after launch a
 hours. A result never covers a match: the prompt is retained by the main process and appears on
 the title screen. Downloads start only after the player chooses **Download Update**, and install
 only after **Restart & Update** (or when the player later quits after a completed download).
-Options → Diagnostics → Desktop Updates is the manual check and recovery route.
+Settings → Updates is the manual check and recovery route, and also links to the latest and full
+GitHub release archive.
 
 Portable builds use the same release discovery but cannot safely replace their running
 self-extracting executable. They show **Open Download Page** instead. Development builds never
@@ -128,6 +129,12 @@ assets with deterministic URL-safe names: installer, installer blockmap, portabl
 `latest.yml`. Do not upload only the two executables: the installed updater cannot discover or
 verify a release without the manifest and blockmap. The first updater-capable version still needs
 one manual install; updates after that are in-app.
+
+After the Windows job publishes the GitHub release, the separate `discord` job reads those exact
+generated notes back through `gh` and posts them through the `DISCORD_RELEASE_WEBHOOK_URL`
+repository secret. The Discord card contains the readable summary and release link; the complete,
+unabridged Markdown log is attached. Keeping this as a dependent job is intentional: a Discord
+failure can be retried without rebuilding or republishing the release.
 
 ## Verification
 

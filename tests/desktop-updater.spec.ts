@@ -22,10 +22,28 @@ describe('desktop release version comparison', () => {
       .toBe('One\nline\n\nTwo');
     expect(releaseNotesText('x'.repeat(3000))).toHaveLength(2400);
     expect(releaseNotesText({ html: '<script>bad()</script>' })).toBe('');
+    expect(releaseNotesText(
+      '<p><strong>Full Changelog</strong>: <a href="https://example.test">v3.2.0...v3.3.0</a></p>',
+    )).toBe('Full Changelog: v3.2.0...v3.3.0');
+    expect(releaseNotesText('<ul><li>Sharper HUD &amp; menus</li><li>Fixed flicker</li></ul>'))
+      .toBe('• Sharper HUD & menus\n• Fixed flicker');
   });
 });
 
 describe('desktop updater shipping contract', () => {
+  it('has a player-facing Settings tab for version status, update actions and release links', () => {
+    const settings = read('src/shell/Settings.ts');
+    expect(settings).toContain("{ id: 'updates', label: 'Updates'");
+    expect(settings).toContain("case 'updates': this.renderUpdates(body)");
+    expect(settings).toContain("if (this.tab === 'updates'");
+    expect(settings).toContain("updateBridge.checkForUpdates()");
+    expect(settings).toContain("updateBridge.downloadUpdate()");
+    expect(settings).toContain("updateBridge.installUpdate()");
+    expect(settings).toContain('https://github.com/avihaymenahem/voltmarch/releases');
+    expect(settings).toContain("button('Latest Release'");
+    expect(settings).toContain("button('All Releases'");
+  });
+
   it('never auto-downloads and never interrupts a live match with its prompt', () => {
     const controller = read('desktop/src/updater.ts');
     const prompt = read('src/shell/DesktopUpdatePrompt.ts');
@@ -33,9 +51,11 @@ describe('desktop updater shipping contract', () => {
     expect(controller).toContain('autoUpdater.autoInstallOnAppQuit = true');
     expect(controller).toContain("if (!app.isPackaged) return 'development'");
     expect(controller).toContain('PORTABLE_EXECUTABLE_DIR');
-    expect(prompt).toContain("this.shellState !== 'menu'");
+    expect(prompt).toContain("this.shellState === 'menu'");
     expect(prompt).toContain('copy.textContent =');
     expect(prompt).not.toContain('innerHTML');
+    expect(prompt).not.toContain('this.root.replaceChildren()');
+    expect(controller).toContain('percent === lastPublishedDownloadPercent');
   });
 
   it('publishes exact updater metadata and URL-safe Windows asset names', () => {

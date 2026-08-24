@@ -12,7 +12,7 @@
  *   list of changed paths so dragging a volume slider does not re-push the
  *   entire graphics config sixty times a second.
  *
- *   `SettingsScreen` — seven grouped categories over that translation. Every control writes
+ *   `SettingsScreen` — eight grouped categories over that translation. Every control writes
  *   through `SettingsStore.patch()`, which normalises, persists and notifies;
  *   the shell's subscription then calls `applySettings` with the diff. There is
  *   no "Apply" button and no pending state, because there is no way for the UI
@@ -136,6 +136,19 @@ const SHADOW_MAP_SIZE: Record<ShadowChoice, number> = {
 /** Audio bus name -> the settings field that drives it. */
 const AUDIO_BUSES = ['music', 'sfx', 'voice', 'ui', 'ambience'] as const;
 
+/** Apply interface-only accessibility preferences to every current UI root. */
+export function applyAccessibilitySettings(settings: Settings): void {
+  const p = settings.gameplay;
+  const html = document.documentElement;
+  html.style.setProperty('--vm-text-scale', String(p.textScale));
+  html.classList.toggle('vm-high-contrast', p.highContrast);
+  html.classList.toggle('vm-reduced-motion', p.reducedMotion);
+  for (const root of document.querySelectorAll<HTMLElement>('.vm-shell, .vm-hud')) {
+    root.classList.toggle('vm-high-contrast', p.highContrast);
+    root.classList.toggle('vm-reduced-motion', p.reducedMotion);
+  }
+}
+
 /**
  * Push settings into the running engine.
  *
@@ -149,6 +162,10 @@ export function applySettings(
 ): void {
   const all = changed === undefined;
   const want = (prefix: string): boolean => all || touched(changed, prefix);
+
+  if (want('gameplay.textScale') || want('gameplay.highContrast') || want('gameplay.reducedMotion')) {
+    applyAccessibilitySettings(settings);
+  }
 
   /* -- graphics ---------------------------------------------------------- */
 
@@ -380,7 +397,7 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
  * in `Shell.ts` and an unknown name silently degrades to `info`, so naming a
  * real one is the difference between six distinct glyphs and five.
  */
-type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'manual' | 'credits' | 'diagnostics';
+type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'updates' | 'manual' | 'credits' | 'diagnostics';
 type TabGroup = 'configure' | 'reference';
 
 interface SettingsTab {
@@ -401,6 +418,7 @@ const TABS: readonly SettingsTab[] = [
   { id: 'audio', label: 'Audio', hint: 'Mixer & playback', icon: 'volume', group: 'configure' },
   { id: 'gameplay', label: 'Gameplay', hint: 'Interface & profile', icon: 'target', group: 'configure' },
   { id: 'controls', label: 'Controls', hint: 'Camera & bindings', icon: 'keyboard', group: 'configure' },
+  { id: 'updates', label: 'Updates', hint: 'Version & releases', icon: 'refresh', group: 'reference' },
   { id: 'diagnostics', label: 'Diagnostics', hint: 'Live system report', icon: 'gauge', group: 'reference' },
   { id: 'manual', label: 'Manual', hint: 'Field reference', icon: 'folder', group: 'reference' },
   { id: 'credits', label: 'Credits', hint: 'Licences & attribution', icon: 'info', group: 'reference' },
@@ -421,6 +439,22 @@ const TABS: readonly SettingsTab[] = [
  * really there, so it can never read as the whole thing.
  */
 const DIAG_PREVIEW_CHARS = 8000;
+
+const GITHUB_RELEASES_URL = 'https://github.com/avihaymenahem/voltmarch/releases';
+const GITHUB_LATEST_RELEASE_URL = `${GITHUB_RELEASES_URL}/latest`;
+
+/**
+ * Open a trusted project URL without allowing it to retain a handle to the game.
+ * Electron denies the new window and hands HTTPS links to the system browser;
+ * browsers follow the same anchor normally.
+ */
+function openProjectLink(url: string): void {
+  const a = el('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.click();
+}
 
 /**
  * The seed the terrain was actually generated from, or 0.
@@ -598,18 +632,18 @@ export class SettingsScreen implements Screen {
         const previous = this.desktopUpdate;
         this.desktopUpdate = state;
         // Download progress can arrive many times per second. Five-percent
-        // display buckets keep Diagnostics responsive without rebuilding the
+        // display buckets keep Updates responsive without rebuilding the
         // complete page for every network packet.
         const progressBucket = Math.floor((state.progress ?? 0) / 5);
         const previousBucket = Math.floor((previous?.progress ?? 0) / 5);
-        if (this.tab === 'diagnostics'
+        if (this.tab === 'updates'
           && (previous?.status !== state.status || progressBucket !== previousBucket)) {
           this.renderTab();
         }
       });
       void desktop.updateState().then((state) => {
         this.desktopUpdate = state;
-        if (this.tab === 'diagnostics') this.renderTab();
+        if (this.tab === 'updates') this.renderTab();
       }).catch(() => { /* The Check Now button is the visible retry path. */ });
     }
 
@@ -620,7 +654,7 @@ export class SettingsScreen implements Screen {
         // button is hidden. The guard is here anyway because `button()` attaches
         // its handler unconditionally — see the block in `Shell.ts#button`.
         const tab = this.tab;
-        if (tab === 'manual' || tab === 'credits') return;
+        if (tab === 'manual' || tab === 'credits' || tab === 'updates') return;
         /*
          * DIAGNOSTICS OWNS EXACTLY ONE PERSISTED ROW — `graphics.perfOverlay`.
          * `reset()` takes a SECTION, and the section this tab's row lives in is
@@ -792,6 +826,7 @@ export class SettingsScreen implements Screen {
       case 'audio': this.renderAudio(body); break;
       case 'gameplay': this.renderGameplay(body); break;
       case 'controls': this.renderControls(body); break;
+      case 'updates': this.renderUpdates(body); break;
       case 'manual': this.renderManual(body); break;
       case 'credits': this.renderCredits(body); break;
       case 'diagnostics': this.renderDiagnostics(body); break;
@@ -801,10 +836,11 @@ export class SettingsScreen implements Screen {
 
   /** Footer buttons that are not offered on every tab. */
   private syncFoot(): void {
-    // Neither the Manual nor the Credits tab stores anything, so neither has
-    // anything to restore.
+    // Reference-only tabs store nothing, so none has anything to restore.
     if (this.resetButton !== null) {
-      this.resetButton.hidden = this.tab === 'manual' || this.tab === 'credits';
+      this.resetButton.hidden = this.tab === 'manual'
+        || this.tab === 'credits'
+        || this.tab === 'updates';
     }
     if (this.helpButton !== null) this.helpButton.hidden = this.tab !== 'controls';
   }
@@ -856,6 +892,133 @@ export class SettingsScreen implements Screen {
     s.appendChild(el('h3', 'vm-h3', title));
     parent.appendChild(s);
     return s;
+  }
+
+  /* -- updates ------------------------------------------------------------- *
+   * Release management used to be buried at the top of Diagnostics. That made
+   * a normal player wade into a developer report to answer the ordinary
+   * question "am I current?". This tab is deliberately read-only: installer
+   * actions go through Electron's updater bridge, while browser builds link to
+   * the same public GitHub release history.
+   * ------------------------------------------------------------------------ */
+
+  private renderUpdates(body: HTMLElement): void {
+    const updateBridge = desktopBridge();
+    const state = this.desktopUpdate;
+    const release = this.section(body, 'Release Channel');
+
+    if (updateBridge === null) {
+      release.appendChild(row('Current Version', diagValue(buildVersion())));
+      release.appendChild(row('Edition', diagValue('Web browser')));
+      release.appendChild(row('Status', diagValue('Updates arrive with each deployment')));
+      release.appendChild(diagNote(
+        'The browser edition does not install local packages. Reload the game to use the newest '
+        + 'deployed build, or open GitHub below to review downloadable desktop releases.',
+      ));
+    } else if (state === null) {
+      release.appendChild(row('Current Version', diagValue(buildVersion())));
+      release.appendChild(row('Status', diagValue('Reading release channel…')));
+      release.appendChild(diagNote(
+        'VOLTMARCH is contacting the desktop update service. You can leave this tab while it checks.',
+      ));
+    } else {
+      const mode = state.mode === 'installed'
+        ? 'Installed desktop'
+        : state.mode === 'portable'
+          ? 'Portable desktop'
+          : 'Development build';
+      release.appendChild(row('Current Version', diagValue(state.currentVersion)));
+      if (state.availableVersion !== null && state.availableVersion.length > 0) {
+        release.appendChild(row('Available Version', diagValue(state.availableVersion)));
+      }
+      release.appendChild(row('Edition', diagValue(mode)));
+      release.appendChild(row('Status', diagValue(
+        state.status === 'downloading'
+          ? `${state.message} ${Math.round(state.progress ?? 0)}%`
+          : state.message,
+      )));
+
+      if (state.mode === 'portable') {
+        release.appendChild(diagNote(
+          'Portable Windows builds cannot safely replace themselves while running. VOLTMARCH '
+          + 'still detects releases and opens the exact download page for manual replacement.',
+        ));
+      } else if (state.mode === 'installed') {
+        release.appendChild(diagNote(
+          'Checks run shortly after launch and every four hours. Updates never interrupt a battle: '
+          + 'download and restart happen only when you request them.',
+        ));
+      } else {
+        release.appendChild(diagNote(
+          'Automatic release checks are disabled in development builds. Packaged installer and '
+          + 'portable builds use the public GitHub release channel.',
+        ));
+      }
+
+      const actions = el('div', 'vm-diag-actions vm-update-actions');
+      actions.appendChild(button('Check Now', {
+        iconName: 'refresh',
+        disabled: state.mode === 'development'
+          || state.status === 'checking'
+          || state.status === 'downloading'
+          || state.status === 'downloaded',
+        onClick: () => {
+          void updateBridge.checkForUpdates().then((next) => {
+            this.desktopUpdate = next;
+            this.renderTab();
+          });
+        },
+      }));
+      if (state.status === 'available') {
+        actions.appendChild(button(
+          state.canAutoInstall ? 'Download Update' : 'Open Download Page',
+          {
+            variant: 'primary',
+            iconName: 'folder',
+            onClick: () => {
+              if (state.canAutoInstall) {
+                void updateBridge.downloadUpdate().then((next) => {
+                  this.desktopUpdate = next;
+                  this.renderTab();
+                });
+              } else {
+                void updateBridge.openUpdatePage();
+              }
+            },
+          },
+        ));
+      }
+      if (state.status === 'downloaded') {
+        actions.appendChild(button('Restart & Update', {
+          variant: 'primary',
+          iconName: 'restore',
+          onClick: () => updateBridge.installUpdate(),
+        }));
+      }
+      release.appendChild(actions);
+
+      if (state.releaseNotes.trim().length > 0) {
+        const notes = this.section(body, 'What’s New');
+        notes.appendChild(el('div', 'vm-update-notes', state.releaseNotes));
+      }
+    }
+
+    const links = this.section(body, 'GitHub Releases');
+    links.appendChild(diagNote(
+      'Release notes, Windows installers, portable executables and previous versions live in the '
+      + 'public VOLTMARCH release archive.',
+    ));
+    const linkActions = el('div', 'vm-diag-actions vm-update-actions');
+    linkActions.appendChild(button('Latest Release', {
+      iconName: 'folder',
+      variant: 'primary',
+      onClick: () => openProjectLink(GITHUB_LATEST_RELEASE_URL),
+    }));
+    linkActions.appendChild(button('All Releases', {
+      iconName: 'folder',
+      onClick: () => openProjectLink(GITHUB_RELEASES_URL),
+    }));
+    links.appendChild(linkActions);
   }
 
   /* -- diagnostics --------------------------------------------------------- *
@@ -980,91 +1143,6 @@ export class SettingsScreen implements Screen {
   private renderDiagnostics(body: HTMLElement): void {
     const game = this.shell.getGame();
     this.diagText = this.diagnosticsText();
-
-    /* -- desktop release updates --------------------------------------- */
-
-    const updateBridge = desktopBridge();
-    if (updateBridge !== null) {
-      const updates = this.section(body, 'Desktop Updates');
-      const state = this.desktopUpdate;
-      if (state === null) {
-        updates.appendChild(diagNote('Reading the desktop release channel…'));
-      } else {
-        const mode = state.mode === 'installed'
-          ? 'Installed (automatic install supported)'
-          : state.mode === 'portable'
-            ? 'Portable (manual replacement required)'
-            : 'Development build';
-        updates.appendChild(row('Current Version', diagValue(state.currentVersion)));
-        updates.appendChild(row('Edition', diagValue(mode)));
-        updates.appendChild(row('Status', diagValue(
-          state.status === 'downloading'
-            ? `${state.message} ${Math.round(state.progress ?? 0)}%`
-            : state.message,
-        )));
-
-        if (state.mode === 'portable') {
-          updates.appendChild(diagNote(
-            'Portable Windows executables cannot safely replace themselves while running. '
-            + 'VOLTMARCH will still detect releases and open the exact download page; use the '
-            + 'installed edition for one-click download, restart and install.',
-          ));
-        } else if (state.mode === 'installed') {
-          updates.appendChild(diagNote(
-            'Checks run shortly after launch and every four hours. Updates never interrupt a '
-            + 'battle: the prompt waits for the title screen, downloads only when requested, '
-            + 'and installs only after you choose Restart & Update.',
-          ));
-        } else {
-          updates.appendChild(diagNote(
-            'Automatic release checks are disabled in development builds. Packaged installer '
-            + 'and portable builds use the GitHub release channel.',
-          ));
-        }
-
-        const actions = el('div', 'vm-diag-actions');
-        actions.appendChild(button('Check Now', {
-          iconName: 'refresh',
-          disabled: state.mode === 'development'
-            || state.status === 'checking'
-            || state.status === 'downloading'
-            || state.status === 'downloaded',
-          onClick: () => {
-            void updateBridge.checkForUpdates().then((next) => {
-              this.desktopUpdate = next;
-              this.renderTab();
-            });
-          },
-        }));
-        if (state.status === 'available') {
-          actions.appendChild(button(
-            state.canAutoInstall ? 'Download Update' : 'Open Download Page',
-            {
-              variant: 'primary',
-              iconName: 'folder',
-              onClick: () => {
-                if (state.canAutoInstall) {
-                  void updateBridge.downloadUpdate().then((next) => {
-                    this.desktopUpdate = next;
-                    this.renderTab();
-                  });
-                } else {
-                  void updateBridge.openUpdatePage();
-                }
-              },
-            },
-          ));
-        }
-        if (state.status === 'downloaded') {
-          actions.appendChild(button('Restart & Update', {
-            variant: 'primary',
-            iconName: 'restore',
-            onClick: () => updateBridge.installUpdate(),
-          }));
-        }
-        updates.appendChild(actions);
-      }
-    }
 
     /* -- what the game currently thinks ---------------------------------- */
 
@@ -1781,6 +1859,23 @@ export class SettingsScreen implements Screen {
       this.shell.settings.patch({ gameplay: patch });
     };
 
+    const accessibility = this.section(body, 'Accessibility');
+    accessibility.appendChild(row('Text Size', slider({
+      min: 0.9, max: 1.5, step: 0.05, value: p.textScale,
+      format: (v) => `${Math.round(v * 100)}%`,
+      onChange: (v) => set({ textScale: v }),
+    }), 'Scales text throughout menus, the tactical HUD, tutorials and notifications.'));
+    accessibility.appendChild(row(
+      'High Contrast',
+      toggle(p.highContrast, (v) => set({ highContrast: v })),
+      'Brightens secondary text and strengthens panel edges without replacing faction colours.',
+    ));
+    accessibility.appendChild(row(
+      'Reduce Interface Motion',
+      toggle(p.reducedMotion, (v) => set({ reducedMotion: v })),
+      'Suppresses non-essential menu and HUD animation. Camera movement and combat remain unchanged.',
+    ));
+
     // Camera and navigation live on the CONTROLS tab, not here — that is where
     // a player goes looking for "why does my trackpad zoom instead of pan".
 
@@ -1940,9 +2035,10 @@ export class SettingsScreen implements Screen {
    * a row here with no edit to this file.
    *
    * A `fixed` action gets a row too, as a flat chip rather than a button. F3
-   * was previously offered as rebindable and was not — the debug layer reads the
-   * key code directly — and a rebind button that does nothing is the same class
-   * of lie as a help screen that shows the defaults.
+   * was previously offered as rebindable and was not — the debug layer reads
+   * the key code directly — and camera bookmarks are the same fixed contract.
+   * A rebind button that does nothing is the same class of lie as a help screen
+   * that shows the defaults.
    * ----------------------------------------------------------------------- */
 
   private renderControls(body: HTMLElement): void {

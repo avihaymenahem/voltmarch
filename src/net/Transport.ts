@@ -21,10 +21,10 @@
  *
  * ── NO RECONNECT, DELIBERATELY ─────────────────────────────────────────────
  *
- * A dropped socket ends the match. Reconnecting would mean replaying the whole
- * command log at speed to catch up, which the replay machinery could do and
- * which is explicitly out of scope for v1. A transport that silently reconnects
- * mid-match without that catch-up would rejoin a simulation that has moved on.
+ * THIS CLIENT'S dropped socket ends its match. Reconnecting would mean replaying
+ * the whole command log at speed to catch up, which is still out of scope. The
+ * surviving client does not reconnect anybody: the relay retires the departed
+ * source and delegates its logical seat to the survivor's ordinary AI brain.
  * ============================================================================
  */
 

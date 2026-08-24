@@ -586,6 +586,19 @@ export class EndScreen implements Screen {
         }));
       }
     }
+    // THE RECORDING IS ALREADY HERE. `Shell.endMatch` captures it before this
+    // screen is constructed, so making the player return to the title screen,
+    // open Replays and find "Last match" was pure navigation tax at the exact
+    // moment the replay is most valuable. The same route works for operations:
+    // `startReplay` reads the campaign identity from the recording and re-arms
+    // its authored scenario before boot.
+    const replay = this.shell.latestReplay();
+    if (replay !== null) {
+      foot.appendChild(button('Watch Replay', {
+        iconName: 'monitor',
+        onClick: () => { void this.shell.startReplay(replay); },
+      }));
+    }
     foot.appendChild(el('div', 'vm-spacer'));
     if (c === undefined) {
       foot.appendChild(button('New Skirmish', {

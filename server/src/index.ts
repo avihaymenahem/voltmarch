@@ -13,9 +13,10 @@
  * with an answer; the design does not need one. What matters is:
  *
  *   1. A peer must not be able to act as the OTHER peer.
- *      -> `TurnRelay` stamps `player` from the socket's slot. The simulation
- *         then refuses anything the slot does not own — every applier already
- *         checks (`Commands.ts:868`, `Production.ts:1897`, `Relocate.ts:283`).
+ *      -> `TurnRelay` stamps `player` from the socket's slot. Only a server-side
+ *         delegation created after that other socket is retired may preserve a
+ *         second logical player id, for AI takeover. The simulation then
+ *         refuses anything the stamped player does not own.
  *
  *   2. A peer must not be able to put hostile VALUES into the other's process.
  *      -> `validateCommand` rebuilds every command from a closed allowlist
@@ -29,8 +30,8 @@
  *
  *   4. A peer must not be able to hang the other one.
  *      -> A refused submission never blocks the turn: `TurnRelay` empties it
- *         and completes anyway. A disconnect retires the slot immediately
- *         rather than freezing the survivor for the whole grace period.
+ *         and completes anyway. A disconnect retires the slot immediately and
+ *         delegates its army to the survivor's AI rather than ending the game.
  *
  *   5. A peer must not be able to inject anything into the other's UI.
  *      -> The server never relays a free-text string. `ErrorCode` and

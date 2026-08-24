@@ -55,6 +55,21 @@ Seven battlefields, three of which carry a real sea. **Sunder Atoll** is the one
 four islands, one army each, 53.8% of the map underwater and no land route between any two of them,
 so every crossing is by ship or it does not happen.
 
+The skirmish lobby paints a deterministic tactical survey for the selected battlefield before the
+match loads: land/water split, lanes, ore and every available start. In battle, `W` cycles idle
+harvesters and four camera bookmarks live on `Ctrl + F5–F8` / `F5–F8`. Every match records itself,
+and the result screen can launch that recording immediately with **Watch Replay**.
+
+Interface text defaults to a more readable **115%** across menus, the tactical HUD, tutorials and
+notifications. **Settings → Gameplay → Accessibility** offers 90–150% text scaling, a high-contrast
+presentation and reduced interface motion; all three apply immediately and persist with the player
+settings. **Settings → Updates** shows the running version and update state, exposes desktop
+download/install actions where the build supports them, and links directly to the latest release
+and the complete [GitHub release archive](https://github.com/avihaymenahem/voltmarch/releases).
+Version-tag releases are also announced automatically in the official Discord after GitHub has
+published every Windows artifact; the post carries the generated summary and attaches the complete
+release log.
+
 Every army fields a full naval line: a recon hull with the widest sight in the game, a four-slot
 landing ship, an eight-slot heavy, an escort, a capital ship, and infantry who swim across on their
 own. Cargo is measured in **slots** rather than seats — a rifleman costs one and a vehicle costs two
@@ -196,6 +211,12 @@ fingerprints the simulation per tick with per-block divergence reporting. Those 
 lockstep client and a desync detector, written for replay and pointed at a socket here — so a PvP
 match also produces a correct replay, with no extra machinery.
 
+If the opponent's socket disappears, the relay retires that command source and delegates its
+logical seat to the survivor. The existing Normal AI takes over on the next simulation step, its
+orders travel through the same validated lockstep frames, and the remaining player can finish the
+match instead of receiving an automatic win. There is still no reconnect or late join: the dropped
+client cannot catch up without replaying the stream it missed.
+
 ```bash
 npm run server          # the relay, on 127.0.0.1:8787
 npm run desync-probe    # do the unspecified Math.* functions agree across engines?
@@ -203,7 +224,7 @@ npm run desync-probe    # do the unspecified Math.* functions agree across engin
 
 The relay lives in [`server/`](server/README.md) with its own `package.json` and a tsconfig whose
 include list is four files — importing `three` or `src/sim/**` is a build error rather than a
-review note. Its README carries the threat model, the limits, and the six defects an audit of it
+review note. Its README carries the threat model, the limits, and the defects an audit of it
 found. Multiplayer only appears in the menu when a relay actually answers a handshake; set
 `VITE_RELAY_URL` at build time, or `?relay=` for a one-off.
 
@@ -216,7 +237,8 @@ only issue commands, and one that fudges its own state diverges and is named by 
 
 A save is a binary snapshot of the world; a replay is the command stream plus the header needed to
 rebuild the boot. Both refuse rather than load wrong, and both say why in a sentence meant for a
-person.
+person. The just-finished recording is offered directly on the result screen as well as in the
+title-screen replay browser.
 
 **Commander powers shipped as a fifth build tab, and that invalidates every earlier save.**
 `BUILD_TAB_COUNT` went from 4 to 5, and it is one of the ten constants in `structuralHash()` — the

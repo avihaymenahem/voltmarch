@@ -50,7 +50,7 @@
   color: var(--vt-text);
   font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
                'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
-  font-size: calc(12 * var(--vt-u));
+  font-size: calc(12 * var(--vt-u) * var(--vm-text-scale, 1));
   line-height: 1.15;
   -webkit-font-smoothing: antialiased;
   user-select: none;
@@ -88,7 +88,7 @@
     0 100%
   );
   pointer-events: auto;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* -- head ------------------------------------------------------------------ */
@@ -101,7 +101,7 @@
 
 .vt-eyebrow {
   flex: 0 0 auto;
-  font-size: calc(10 * var(--vt-u));
+  font-size: calc(10 * var(--vt-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -113,7 +113,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: calc(15 * var(--vt-u));
+  font-size: calc(15 * var(--vt-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -140,7 +140,7 @@
 
 .vt-body {
   margin: 0;
-  font-size: calc(12 * var(--vt-u));
+  font-size: calc(12 * var(--vt-u) * var(--vm-text-scale, 1));
   line-height: 1.5;
   letter-spacing: 0.02em;
   color: var(--vt-dim);
@@ -165,7 +165,7 @@
 .vt-keyrow-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: calc(11 * var(--vt-u));
+  font-size: calc(11 * var(--vt-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--vt-faint);
@@ -194,7 +194,7 @@
   border: 1px solid var(--vt-hairline);
   background: rgba(255, 255, 255, 0.06);
   color: var(--vt-text);
-  font-size: calc(10 * var(--vt-u));
+  font-size: calc(10 * var(--vt-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   font-variant-numeric: tabular-nums;
@@ -242,7 +242,7 @@
   display: flex;
   align-items: center;
   gap: calc(6 * var(--vt-u));
-  font-size: calc(11 * var(--vt-u));
+  font-size: calc(11 * var(--vt-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.04em;
   color: var(--vt-dim);
 }
@@ -278,7 +278,7 @@
   background: rgba(255, 255, 255, 0.04);
   color: var(--vt-dim);
   font: inherit;
-  font-size: calc(10 * var(--vt-u));
+  font-size: calc(10 * var(--vt-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -334,6 +334,16 @@
    ring is the instruction, the pulse is only emphasis. */
 @media (prefers-reduced-motion: reduce) {
   .vt-spot { animation: none; }
+}
+
+html.vm-reduced-motion .vt-spot { animation: none; }
+
+html.vm-high-contrast .vt-layer {
+  --vt-glass: rgba(2, 5, 10, 0.99);
+  --vt-hairline: rgba(255, 255, 255, 0.38);
+  --vt-text: #fff;
+  --vt-dim: #dce6ef;
+  --vt-faint: #b7c3cf;
 }
 
 /* ==========================================================================

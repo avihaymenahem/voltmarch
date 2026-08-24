@@ -70,7 +70,7 @@ import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
 import {
-  EntityFlag, EntityKind, NONE, OrderKind, Phase, RenderPhase, Stance,
+  EntityFlag, EntityKind, NONE, OrderKind, Phase, RenderPhase, Stance, UnitState,
 } from '../core/types';
 import type { DefTables, EntityId, RenderContext } from '../core/types';
 import {
@@ -82,6 +82,7 @@ import {
 import { clampWorld, DEG2RAD } from '../core/math';
 import { ctx } from '../game/context';
 import { RENDER_CONFIG } from '../render/renderer';
+import type { CameraPose } from '../render/camera';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
 import { resolveDefBinding } from '../game/Scenarios';
 
@@ -118,6 +119,11 @@ let selection: Selection | null = null;
 let executor: OrderExecutor | null = null;
 let overlay: Overlay | null = null;
 let projector: RigProjector | null = null;
+
+/** Four classic RTS camera slots, F5-F8. Match-local by design. */
+const cameraBookmarks: Array<CameraPose | null> = [null, null, null, null];
+/** Last idle miner selected, so the next press advances instead of sticking. */
+let lastIdleHarvester: EntityId = NONE;
 
 /** The armed mode. Cleared by Escape, by a right-click, or by using it. */
 let mode: CommandMode = CommandMode.None;
@@ -1095,6 +1101,15 @@ const handlers = {
     if (placementActive() && k.code === 'Escape') return false;
     const { cameraRig } = ctx();
 
+    // --- camera bookmarks: Ctrl+F5..F8 stores, F5..F8 recalls ------------
+    const bookmark = cameraBookmarkSlot(k.code);
+    if (bookmark >= 0 && !k.shift && !k.alt && !k.meta) {
+      if (k.repeat) return true;
+      if (k.ctrl) storeCameraBookmark(bookmark);
+      else recallCameraBookmark(bookmark);
+      return true;
+    }
+
     // --- control groups: Digit0..9 ---------------------------------------
     if (k.code.length === 6 && k.code.startsWith('Digit')) {
       const n = k.code.charCodeAt(5) - 48;
@@ -1130,6 +1145,11 @@ const handlers = {
       // the Select All Army row on the options screen do nothing.
       case 'sel.allArmy':
         selection.selectAllArmy();
+        refreshResolution();
+        return true;
+
+      case 'sel.idleHarvester':
+        cycleIdleHarvester();
         refreshResolution();
         return true;
 
@@ -1350,6 +1370,74 @@ function centreOnHome(): void {
     n++;
   }
   if (n > 0) cameraRig.setFocus(sx / n, sz / n);
+}
+
+/** F5..F8 -> 0..3, or -1 for every other key. */
+export function cameraBookmarkSlot(code: string): number {
+  const n = /^F([5-8])$/.exec(code);
+  return n === null ? -1 : Number(n[1]) - 5;
+}
+
+function storeCameraBookmark(slot: number): void {
+  const rig = ctx().cameraRig;
+  cameraBookmarks[slot] = { ...rig.getPose() };
+  hud()?.toast?.(
+    'info', `camera:bookmark:${slot}`, `Camera bookmark ${slot + 1} saved`,
+    `Press F${slot + 5} to return`,
+  );
+}
+
+function recallCameraBookmark(slot: number): void {
+  const pose = cameraBookmarks[slot];
+  if (pose === null) {
+    hud()?.toast?.(
+      'info', `camera:bookmark:${slot}`, `Camera bookmark ${slot + 1} is empty`,
+      `Press Ctrl + F${slot + 5} to save this view`,
+    );
+    return;
+  }
+  // Let pitch keep following zoom; storing it as an override would make a
+  // recalled bookmark permanently flatten/steepen subsequent wheel zooms.
+  ctx().cameraRig.clearPitchOverride();
+  ctx().cameraRig.setPose({
+    x: pose.x, z: pose.z, yaw: pose.yaw, distance: pose.distance,
+    immediate: false,
+  });
+}
+
+/** Select, centre, and advance through the local player's idle miners. */
+function cycleIdleHarvester(): void {
+  if (selection === null) return;
+  const { world, cameraRig } = ctx();
+  const s = world.store;
+  const local = world.localPlayer as number;
+  let first: EntityId = NONE;
+  let after: EntityId = NONE;
+  let seenLast = lastIdleHarvester === NONE;
+
+  for (let a = 0; a < s.aliveCount; a++) {
+    const i = s.alive[a];
+    if (s.owner[i] !== local) continue;
+    if ((s.flags[i] & EntityFlag.IsHarvester) === 0) continue;
+    if ((s.flags[i] & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
+    if (s.state[i] !== UnitState.Idle) continue;
+    const id = s.handleOf(i);
+    if (first === NONE) first = id;
+    if (seenLast && id !== lastIdleHarvester) { after = id; break; }
+    if (id === lastIdleHarvester) seenLast = true;
+  }
+
+  const next = after !== NONE ? after : first;
+  if (next === NONE) {
+    lastIdleHarvester = NONE;
+    hud()?.toast?.('info', 'harvester:none-idle', 'No idle harvesters', 'Every ore miner is working');
+    return;
+  }
+  const idx = s.index(next);
+  if (idx < 0) return;
+  lastIdleHarvester = next;
+  selection.select(next, SelectMode.Replace);
+  cameraRig.setFocus(s.posX[idx], s.posZ[idx]);
 }
 
 /* ==========================================================================
@@ -1577,6 +1665,8 @@ export default defineSystem({
     const { world, channels, sceneRig, cameraRig, handle } = ctx();
 
     selection = new Selection(world, channels);
+    cameraBookmarks.fill(null);
+    lastIdleHarvester = NONE;
     executor = new OrderExecutor(world, channels);
     overlay = new Overlay(sceneRig.scene);
     (globalThis as unknown as { __vmInputCommands?: typeof HUD_COMMAND_SERVICE })
@@ -1675,6 +1765,8 @@ export default defineSystem({
     overlay = null;
     executor = null;
     projector = null;
+    cameraBookmarks.fill(null);
+    lastIdleHarvester = NONE;
     setCommandMode(CommandMode.None);
     const commandGlobal = globalThis as unknown as {
       __vmInputCommands?: typeof HUD_COMMAND_SERVICE;

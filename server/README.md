@@ -52,15 +52,17 @@ class, so what that test proves is what this server runs.
 
 The governing sentence:
 
-> **The relay stamps identity. The simulation enforces authority. Validation
+> **The relay stamps identity and server-issued delegation. The simulation enforces authority. Validation
 > rejects structure. Nothing silently drops.**
 
 ### Identity and authority
 
 Every inbound command has its `player` field **overwritten** with the slot of
-the socket it arrived on. A client's claim is discarded, never trusted —
-`Command.player` in `src/core/types.ts` has said so since long before any of
-this existed: *"The bus stamps this; never trust a client-set value."*
+the socket it arrived on. The one exception is server-owned: after a socket is
+retired, `Match` delegates its logical player to one survivor and passes that
+closed list directly into `TurnRelay`. A command may preserve a claimed player
+only when it appears in that list; the list never crosses the wire, so a client
+cannot grant itself authority. Before delegation, the claim is still discarded.
 
 The simulation then refuses anything a slot does not own; every applier already
 checks (`Commands.ts:868`, `Production.ts:1897`, `Relocate.ts:283`,
@@ -202,7 +204,7 @@ run against the broken build first and watched to fail.
 | **A malformed limit fell back silently** | `num()` returning the default | `VM_MAX_CONNECTIONS_PER_IP=0` gave 8, `-5` gave 500, `abc` gave 15000. Always toward LESS restriction, always without a word — the same shape as four of the six above. |
 | **A comment promised a refusal that did not exist** | `allowAnyOrigin` | *"Development only; refuses to run with TLS off in prod."* Nothing refused anything, and the sentence was unimplementable besides: this process cannot observe TLS, because nginx terminates it a hop away and proxies plain `http://` to loopback. Half was implemented (`NODE_ENV=production` now refuses to start), half was deleted rather than restated. |
 | **A listen failure killed the process silently** | no `wss.on('error')` | `ws` forwards the http server's `error` event and an unhandled one is rethrown, so a port held by a stale instance produced a raw `EADDRINUSE` stack trace — and with `Restart=always`, a restart loop whose journal said nothing actionable. |
-| **A retired slot earned a second grace period** | `peerLost(-1)` | `Lobby.leave` passes `slotOf(peer)`, which is -1 once the silence sweep has already nulled that seat; the guard read `peers[-1]`, `undefined` rather than `null`, so it fell through and restarted the survivor's countdown. Reachable on the ordinary path — the 15 s heartbeat kills a dead client inside the 30 s grace window, so this is what a crashed opponent looked like. |
+| **A retired slot was processed twice** | `peerLost(-1)` | `Lobby.leave` passes `slotOf(peer)`, which is -1 once the silence sweep has already nulled that seat; the guard read `peers[-1]`, `undefined` rather than `null`, so it fell through and notified the survivor twice. `peerLost` is now total over its slot input and delegation is idempotent. |
 | **The deploy templates did not work** | `nginx.conf`, the unit file | `listen 443 ssl` with both certificate lines commented out will not load, and `certbot --nginx` cannot repair a config it must first pass `nginx -t` on. `http2 on;` is rejected outright below nginx 1.25.1 — Ubuntu 22.04/24.04 and Debian 12 — and buys a WebSocket endpoint nothing. And the distribution's default `access_log` wrote every player's real address to disk, defeating the per-boot-salt guarantee stated two sections above: the relay was honouring it exactly; nginx was not. |
 
 The pattern in this pass is different from the first. **Six of the eleven were
@@ -290,6 +292,12 @@ connection rather than negotiating down — a peer that half-understands the
 protocol is a peer that desyncs, and "it mostly worked" is what the number
 exists to prevent. Same discipline as `parseReplay`, which refuses a file rather
 than half-reading it.
+
+Version 3 names the logical slot in `peerLost` and authorises the survivor to
+run that seat's AI. It deliberately does **not** reconnect the dropped client:
+that still requires replaying missed turns into a late joiner. The surviving
+match continues, and delegated AI orders are ordinary validated commands that
+are included in the recording.
 
 The server never sends a free-text string for a client to display. `ErrorCode`
 and `OverReason` are closed unions the client maps to its own local strings —

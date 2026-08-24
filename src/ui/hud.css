@@ -189,7 +189,7 @@
   color: var(--vm-text);
   font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
                'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
-  font-size: calc(12 * var(--vm-u));
+  font-size: calc(12 * var(--vm-u) * var(--vm-text-scale, 1));
   /* 1.15 is a display leading and every multi-line string in the HUD is body
      copy, not a headline. Set once here so a wrapped tooltip, a map hint and a
      toast detail all breathe the same amount. */
@@ -217,7 +217,7 @@
 .vm-hud .vm-res-label,
 .vm-hud .vm-legend-text,
 .vm-hud .vm-sel-sub {
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 600;
@@ -233,7 +233,7 @@
   height: calc(9 * var(--vm-u));
   padding: 0 calc(1.5 * var(--vm-u));
   border: 1px solid var(--vm-hairline);
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.04em;
@@ -676,7 +676,7 @@
 }
 
 .vm-hud .vm-res-label {
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.20em;
   color: var(--vm-faint);
   line-height: 1;
@@ -691,7 +691,7 @@
 }
 
 .vm-hud .vm-res-value {
-  font-size: calc(16 * var(--vm-u));
+  font-size: calc(16 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1;
@@ -720,7 +720,7 @@
 }
 
 .vm-hud .vm-res-cap {
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   line-height: 1;
   color: var(--vm-faint);
@@ -758,7 +758,7 @@
 }
 
 .vm-hud .vm-res-tell .vm-res-value {
-  font-size: calc(12 * var(--vm-u));
+  font-size: calc(12 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   color: var(--vm-dim);
 }
@@ -771,7 +771,7 @@
   position: absolute;
   left: calc(20 * var(--vm-u));
   top: calc(-9 * var(--vm-u));
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: var(--vm-danger);
   opacity: 0;
@@ -824,7 +824,7 @@
 }
 
 .vm-hud .vm-power-value {
-  font-size: calc(12 * var(--vm-u));
+  font-size: calc(12 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: var(--vm-text);
   min-width: calc(44 * var(--vm-u));
@@ -834,7 +834,7 @@
 .vm-hud .vm-power-value.is-down { color: var(--vm-danger); }
 
 .vm-hud .vm-power-state {
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 700;
@@ -860,7 +860,7 @@
   50%      { opacity: 0.35; }
 }
 
-.vm-hud .vm-res-clock .vm-res-value { font-size: calc(14 * var(--vm-u)); }
+.vm-hud .vm-res-clock .vm-res-value { font-size: calc(14 * var(--vm-u) * var(--vm-text-scale, 1)); }
 
 /* -- THE FOUR TIERS ------------------------------------------------------- *
  *
@@ -963,14 +963,14 @@
 }
 
 .vm-hud .vm-dock-map .vm-dock-title {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.16em;
   color: var(--vm-dim);
 }
 
 .vm-hud .vm-map-offline {
   color: var(--vm-danger);
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.12em;
 }
 
@@ -1011,7 +1011,7 @@
   right: calc(3 * var(--vm-u));
   bottom: calc(2 * var(--vm-u));
   text-align: center;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.04em;
@@ -1024,7 +1024,7 @@
 .vm-hud .vm-map-hint > b {
   display: block;
   color: var(--vm-danger);
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.16em;
   margin-bottom: calc(2 * var(--vm-u));
 }
@@ -1141,7 +1141,7 @@
 }
 
 .vm-hud .vm-sel-title {
-  font-size: calc(14 * var(--vm-u));
+  font-size: calc(14 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1177,7 +1177,7 @@
 }
 
 .vm-hud .vm-sel-count {
-  font-size: calc(14 * var(--vm-u));
+  font-size: calc(14 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: var(--vm-accent);
   flex: 0 0 auto;
@@ -1308,7 +1308,7 @@
   right: calc(3 * var(--vm-u));
   bottom: calc(7 * var(--vm-u));
   text-align: center;
-  font-size: calc(7 * var(--vm-u));
+  font-size: calc(7 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 600;
@@ -1327,7 +1327,7 @@
   right: calc(1 * var(--vm-u));
   top: calc(1 * var(--vm-u));
   padding: 0 calc(2 * var(--vm-u));
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: calc(10 * var(--vm-u));
   color: #060a10;
@@ -1380,7 +1380,7 @@
 
 .vm-hud .vm-sel-sub {
   color: var(--vm-dim);
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.08em;
   white-space: nowrap;
   overflow: hidden;
@@ -1430,7 +1430,7 @@
 }
 
 .vm-hud .vm-stat-key {
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--vm-faint);
@@ -1439,7 +1439,7 @@
 /* `letter-spacing` and `font-variant-numeric` are stated for the same reason
    as `.vm-stat` above.  // shell guard */
 .vm-hud .vm-stat-value {
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums lining-nums;
@@ -1457,7 +1457,7 @@
 }
 
 .vm-hud .vm-stance-label {
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--vm-faint);
@@ -1516,7 +1516,7 @@
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent);
   background: rgba(var(--vm-accent-rgb), 0.18);
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1548,7 +1548,7 @@
 }
 
 .vm-hud .vm-cargo {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1565,7 +1565,7 @@
 .vm-hud .vm-primary-row { margin-left: calc(6 * var(--vm-u)); }
 
 .vm-hud .vm-primary {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1582,7 +1582,7 @@
 .vm-hud .vm-destruct-row { margin-left: calc(6 * var(--vm-u)); }
 
 .vm-hud .vm-destruct {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1710,7 +1710,7 @@
 
 .vm-hud .vm-super-label {
   overflow: hidden;
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.05em;
   text-transform: uppercase;
   text-overflow: ellipsis;
@@ -1719,7 +1719,7 @@
 
 .vm-hud .vm-super-time {
   flex: 0 0 auto;
-  font-size: calc(8.5 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1));
   color: var(--vm-text);
 }
 
@@ -1786,7 +1786,7 @@
    class, so it gets the room the countdown does not need — a power's charge is
    under four minutes and never needs the H:MM the superweapon clock allows. */
 .vm-hud .vm-power-row .vm-super-label { flex: 1 1 auto; }
-.vm-hud .vm-power-row .vm-super-time { font-size: calc(8 * var(--vm-u)); }
+.vm-hud .vm-power-row .vm-super-time { font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1)); }
 
 /* -- the health bar: full width, number laid over it ---------------------- */
 
@@ -1871,7 +1871,7 @@
   right: calc(7 * var(--vm-u));
   top: 50%;
   transform: translateY(-50%);
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1887,7 +1887,7 @@
   left: calc(7 * var(--vm-u));
   top: 50%;
   transform: translateY(-50%);
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.06em;
   color: #04070d;
@@ -1906,7 +1906,7 @@
   gap: calc(7 * var(--vm-u));
   height: calc(16 * var(--vm-u));
   flex: 0 0 auto;
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.03em;
   color: var(--vm-dim);
   white-space: nowrap;
@@ -2000,7 +2000,7 @@
 
 .vm-hud .vm-tab-label {
   max-width: 100%;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.10em;
   line-height: 1;
   white-space: nowrap;
@@ -2011,7 +2011,7 @@
 .vm-hud .vm-tab .vm-hk {
   min-width: calc(8 * var(--vm-u));
   height: calc(8 * var(--vm-u));
-  font-size: calc(6.5 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1));
   flex: 0 0 auto;
 }
 
@@ -2190,7 +2190,7 @@
 
 .vm-hud .vm-brief-name {
   display: block;
-  font-size: calc(8.5 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1));
   line-height: calc(9.5 * var(--vm-u));
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2207,7 +2207,7 @@
   -webkit-line-clamp: 4;
   line-clamp: 4;
   overflow: hidden;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   line-height: calc(9 * var(--vm-u));
   color: var(--vm-dim);
 }
@@ -2259,7 +2259,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(4 * var(--vm-u));
-  font-size: calc(8.5 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-dim);
@@ -2283,7 +2283,7 @@
   top: calc(3 * var(--vm-u));
   min-width: calc(8 * var(--vm-u));
   height: calc(8 * var(--vm-u));
-  font-size: calc(6.5 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1));
   border-color: var(--vm-hairline-soft);
 }
 
@@ -2303,7 +2303,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: #060a10;
   background: var(--vm-accent);
@@ -2316,7 +2316,7 @@
   right: 0;
   bottom: calc(4 * var(--vm-u));
   text-align: center;
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.18em;
   color: var(--vm-ok);
   pointer-events: none;
@@ -2331,7 +2331,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(4 * var(--vm-u));
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-accent-hi);
@@ -2360,7 +2360,7 @@
   align-items: center;
   justify-content: center;
   gap: calc(3.5 * var(--vm-u));
-  font-size: calc(6.5 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
@@ -2415,6 +2415,24 @@
 .vm-hud .vm-slot.is-building {
   border-color: rgba(var(--vm-accent-rgb), 0.55);
   background: rgba(var(--vm-accent-rgb), 0.10);
+}
+
+.vm-hud.vm-high-contrast {
+  --vm-glass: rgba(3, 7, 14, 0.98);
+  --vm-glass-deep: rgba(1, 3, 8, 0.99);
+  --vm-hairline: rgba(255, 255, 255, 0.34);
+  --vm-hairline-soft: rgba(255, 255, 255, 0.24);
+  --vm-text: #ffffff;
+  --vm-dim: #dce6ef;
+  --vm-faint: #b7c3cf;
+}
+
+.vm-hud.vm-reduced-motion *,
+.vm-hud.vm-reduced-motion *::before,
+.vm-hud.vm-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 .vm-hud .vm-slot.is-ready {
@@ -2487,7 +2505,7 @@
 }
 
 .vm-hud .vm-tip-title {
-  font-size: calc(13 * var(--vm-u));
+  font-size: calc(13 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--vm-text);
@@ -2495,7 +2513,7 @@
 
 .vm-hud .vm-tip-key {
   margin-left: auto;
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   padding: calc(2.5 * var(--vm-u)) calc(5 * var(--vm-u));
   border: 1px solid var(--vm-hairline);
   color: var(--vm-dim);
@@ -2505,7 +2523,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: calc(5 * var(--vm-u)) calc(12 * var(--vm-u));
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   color: var(--vm-dim);
 }
@@ -2514,20 +2532,20 @@
 .vm-hud .vm-tip-stat.is-drain { color: var(--vm-warn); }
 
 .vm-hud .vm-tip-blurb {
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1));
   line-height: 1.35;
   color: var(--vm-dim);
 }
 
 .vm-hud .vm-tip-prereq {
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--vm-faint);
 }
 
 .vm-hud .vm-tip-req {
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: var(--vm-danger);
 }
@@ -2606,14 +2624,14 @@
 }
 
 .vm-hud .vm-toast-title {
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .vm-hud .vm-toast-detail {
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   color: var(--vm-dim);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -2623,7 +2641,7 @@
 
 .vm-hud .vm-toast-count {
   margin-left: auto;
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   color: var(--vm-dim);
 }
@@ -2726,7 +2744,7 @@
 .vm-hud .vm-obj-head:hover { color: var(--vm-text); }
 
 .vm-hud .vm-obj-title {
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   letter-spacing: 0.20em;
   text-transform: uppercase;
@@ -2736,7 +2754,7 @@
 
 .vm-hud .vm-obj-count {
   margin-left: auto;
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-accent);
@@ -2784,7 +2802,7 @@
 .vm-hud .vm-obj-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -2796,7 +2814,7 @@
 
 .vm-hud .vm-obj-value {
   flex: 0 0 auto;
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-dim);
@@ -2853,7 +2871,7 @@
   display: flex;
   align-items: center;
   height: calc(15 * var(--vm-u));
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
@@ -3003,7 +3021,7 @@ html.vm-no-blur .vm-hud {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 700;
   line-height: calc(11 * var(--vm-u));
   color: var(--vm-ink);
@@ -3086,7 +3104,7 @@ html.vm-no-blur .vm-hud {
   z-index: 40;
   max-width: min(90vw, 640px);
   padding: 8px 18px;
-  font-size: 14px;
+  font-size: calc(14px * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-align: center;
   color: #e8eef4;

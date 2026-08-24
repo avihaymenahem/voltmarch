@@ -332,7 +332,7 @@ export class Lobby {
   }
 
   /**
-   * Drive every time-based rule: grace expiry, match TTL, stale rooms, a
+   * Drive every time-based rule: silent peers, match TTL, stale rooms, a
    * queue entry nobody ever matched.
    */
   tick(): void {
@@ -378,7 +378,6 @@ export class Lobby {
       seed: this.opts.randomSeed(),
       map,
       factions,
-      graceMs: CONFIG.graceMs,
       silenceMs: CONFIG.silenceMs,
       now: this.opts.now,
     });

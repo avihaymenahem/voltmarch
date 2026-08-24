@@ -80,7 +80,8 @@ waits, the second starts a match immediately. There is no rating and no matchmak
 **Joining starts the match at once.** There is no waiting room, no ready check, no host kick and no
 lobby chat. The moment a second player enters, the room is deleted and the match begins.
 
-**Matches are strictly 1v1.** There are no teams, no free-for-all, no AI slots and no spectators.
+**Matches are strictly 1v1.** There are no configurable AI slots, teams, free-for-all or spectators.
+An AI can appear only as continuity for a player who disconnects after the match starts.
 
 **There are no player names.** Every string you see in the lobby is derived from a map id or a faction
 index — never from anything another person typed. You are *You*; the other player is *Opponent*.
@@ -91,7 +92,7 @@ index — never from anything another person typed. You are *You*; the other pla
 
 | Setting | In a PvP match |
 | --- | --- |
-| Opponent | The other player. No AI. |
+| Opponent | The other player; Normal AI takes over if their socket is permanently lost. |
 | Difficulty, personality | Not offered — there is no AI to configure |
 | Starting credits | Forced to **10,000** on both clients |
 | Game speed | Forced to **1×** |
@@ -153,18 +154,19 @@ that fails validation on the client, an unparseable frame. In each case the matc
 the command being silently dropped, because dropping it on one machine and not the other is a desync
 with no findable cause.
 
-**There is no reconnection.** A dropped socket ends the match. This is stated in the source as a
-deliberate v1 scope decision, not an oversight.
+**There is no reconnection.** Catching a dropped client up still requires replaying every missed
+turn, so that client stops locally. The surviving match no longer ends: the relay retires the dead
+command source, delegates its logical seat, and the existing Normal AI continues that army through
+the same command bus.
 
 | What happens | Result |
 | --- | --- |
-| Your opponent's socket drops | You keep playing — the relay fills their turns with blanks — and see *"Opponent disconnected — 30s"* |
-| …and they do not come back | After the 30-second grace, **you win**: *"Your opponent disconnected. The match is yours."* |
-| Your opponent stops sending but still answers pings | After 15 seconds of silence it is treated as a disconnect and the same grace runs |
-| Your opponent quits cleanly | The same 30-second countdown runs. There is no instant resignation. |
+| Your opponent's socket drops | Their seat is delegated immediately and you see *"Opponent disconnected — AI command has taken over."* |
+| Your opponent stops sending but still answers pings | After 15 seconds of silence it receives the same AI takeover |
+| Your opponent quits cleanly | Their seat is handed to AI immediately |
 | **Your** socket drops | The match stops and is **scored as a loss for you** |
 
-There is no AI takeover, no pause-on-disconnect and no rejoin.
+There is AI takeover for the survivor, but still no pause-on-disconnect or rejoin.
 
 ---
 
@@ -173,7 +175,7 @@ There is no AI takeover, no pause-on-disconnect and no rejoin.
 Stated plainly, because it is quicker than finding out:
 
 - The hosted service is anonymous 1v1 only; it has no account or social layer.
-- No reconnect, and no rejoin after a drop.
+- No reconnect or rejoin after a drop; the survivor continues against AI.
 - No spectators or observers.
 - No teams, no 2v2, no free-for-all — 1v1 only.
 - No chat, pings, emotes, taunts or player names.
@@ -214,10 +216,9 @@ Every one of these is an environment-variable override on the relay, and these a
 | Room-browser idle timeout | 60 s |
 | Invite code lifetime | 10 minutes, single use |
 | Match lifetime | 2 hours |
-| Disconnect grace | 30 s |
 | Peer silence before disconnect | 15 s |
 | Maximum message size | 64 KB |
-| Commands per turn | 32 (a turn over the cap is emptied, not truncated) |
+| Commands per turn | 128 (a turn over the cap is emptied, not truncated) |
 | Entities per command | 100 |
 | Room list length | 60 shown, true total reported |
 

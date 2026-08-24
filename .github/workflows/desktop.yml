@@ -97,3 +97,19 @@ jobs:
             if (-not (Test-Path -LiteralPath $asset)) { throw "Missing release asset: $asset" }
           }
           gh release create $tag @assets --verify-tag --generate-notes --title "VOLTMARCH $version"
+
+  discord:
+    name: Announce release on Discord
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Post generated release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+        run: node tools/post-discord-release.mjs "${{ github.ref_name }}"

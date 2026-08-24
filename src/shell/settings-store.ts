@@ -202,6 +202,12 @@ export type PointerDeviceChoice = 'auto' | 'mouse' | 'trackpad';
 export type TrackpadScrollChoice = 'zoom' | 'pan';
 
 export interface GameplaySettings {
+  /** Multiplier applied to menu, HUD, tutorial and auxiliary UI type. */
+  textScale: number;
+  /** Raises text and control-edge contrast without changing faction colours. */
+  highContrast: boolean;
+  /** Suppresses non-essential menu and HUD animation. */
+  reducedMotion: boolean;
   /**
    * Screen-edge panning. **Off by default.** See `CAMERA.edgePanPixels` in
    * core/config for why: on a laptop the cursor reaches an edge every time the
@@ -403,6 +409,7 @@ export const KEYBINDS: readonly KeybindDef[] = [
    * `sel.allArmy` IS reachable, but it is resolved ahead of the binding table
    * in `input.system.ts` because Ctrl+A shares its code with Attack Move.      */
   { id: 'sel.allArmy', label: 'Select All Army', category: 'Selection', scope: 'command', def: chord('KeyA', { ctrl: true }) },
+  { id: 'sel.idleHarvester', label: 'Cycle Idle Harvester', category: 'Selection', scope: 'command', def: chord('KeyW') },
 
   /* -- system ------------------------------------------------------------- */
   { id: 'sys.menu', label: 'Pause Menu', category: 'System', scope: 'global', def: chord('Escape') },
@@ -561,6 +568,11 @@ export function defaultSettings(): Settings {
       muted: false,
     },
     gameplay: {
+      // Comfortable on modern high-DPI displays while remaining dense enough
+      // for the tactical HUD. Players can return to 100% in Accessibility.
+      textScale: 1.15,
+      highContrast: false,
+      reducedMotion: false,
       edgeScroll: false,
       edgeScrollSpeed: 46,
       panSpeed: 42,
@@ -738,6 +750,9 @@ export function normalizeSettings(raw: unknown): Settings {
       muted: bool(a.muted, d.audio.muted),
     },
     gameplay: {
+      textScale: num(p.textScale, 0.9, 1.5, d.gameplay.textScale),
+      highContrast: bool(p.highContrast, d.gameplay.highContrast),
+      reducedMotion: bool(p.reducedMotion, d.gameplay.reducedMotion),
       edgeScroll: bool(p.edgeScroll, d.gameplay.edgeScroll),
       edgeScrollSpeed: num(p.edgeScrollSpeed, 10, 120, d.gameplay.edgeScrollSpeed),
       panSpeed: num(p.panSpeed, 10, 120, d.gameplay.panSpeed),

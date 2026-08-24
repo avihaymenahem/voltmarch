@@ -160,7 +160,10 @@ describe('the wire limits mirror the engine, and are checked for it', () => {
  */
 describe('the protocol version is pinned to the vocabulary it describes', () => {
   it('names the vocabulary it was last bumped for', () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+    // v3 changes peerLost from a countdown into a server-authorised logical
+    // seat delegation. An older client would end the match instead of starting
+    // the AI, so this cannot be negotiated down safely.
+    expect(PROTOCOL_VERSION).toBe(3);
     expect(VOCABULARY_SIZES.kinds, 'a CommandKind was added or removed').toBe(13);
     expect(VOCABULARY_SIZES.orders, 'an OrderKind was added or removed').toBe(17);
     expect(VOCABULARY_SIZES.tabs, 'a BuildTab was added or removed').toBe(BUILD_TAB_COUNT);

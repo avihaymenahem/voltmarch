@@ -19,8 +19,8 @@
  * sits at `Phase.Cleanup` with `order: 10000` so it inits dead last. That means
  * the players and the starting base do not exist when this module's `init()`
  * runs. So `init()` only wires plumbing; the brain list is (re)built lazily on
- * the first `simTick`, and re-checked whenever the player count changes. That
- * is also what makes a mid-match "add an AI" work without touching Bootstrap.
+ * the first `simTick`, and re-checked whenever player control changes. That is
+ * also what makes a disconnected human become an AI without touching Bootstrap.
  * ============================================================================
  */
 
@@ -256,9 +256,20 @@ let director: AiDirector | null = null;
 let counters: DebugCounters | null = null;
 /** Player count the brain list was last built against. */
 let knownPlayers = -1;
-/** Set true once `?ai=off` is seen; the module then does nothing at all. */
+/** Eligible AI seats last seen. Player control can change without count changing. */
+let knownAiMask = -1;
+/** Set by `?ai=off`; a live multiplayer takeover may explicitly clear it. */
 let disabled = false;
 let announced = false;
+
+/**
+ * A relay-authorised disconnect handoff outranks the developer `?ai=off` flag.
+ * The flag is useful for art shots, but it must not turn a live multiplayer
+ * delegation into a permanently idle army.
+ */
+export function enableAiTakeover(): void {
+  disabled = false;
+}
 
 export default defineSystem({
   id: 'sim.ai',
@@ -277,8 +288,7 @@ export default defineSystem({
     const aiFlag = flag('ai');
     if (aiFlag !== null && aiFlag.toLowerCase() === 'off') {
       disabled = true;
-      console.info('[ai] disabled by ?ai=off');
-      return;
+      console.info('[ai] disabled by ?ai=off (a multiplayer takeover may re-enable it)');
     }
 
     director = new AiDirector(world, channels);
@@ -345,11 +355,18 @@ export default defineSystem({
     if (disabled || director === null) return;
     const { world, debug } = ctx();
 
-    // Players are created by Bootstrap and by the scenario, both of which run
-    // after this module's init. Rebuilding on a count change is cheap and is
-    // what makes "add an AI mid-match" work.
-    if (world.players.length !== knownPlayers) {
+    // Players are created after this module's init, and a multiplayer human can
+    // become AI after a socket loss without changing the table length. Eight
+    // bit checks per tick are negligible and make that control handoff visible
+    // on the very next simulation step.
+    let aiMask = 0;
+    for (let seat = 0; seat < world.players.length; seat++) {
+      const p = world.players[seat];
+      if (!p.isHuman && !p.isLocal && p.faction !== Faction.Neutral) aiMask |= 1 << seat;
+    }
+    if (world.players.length !== knownPlayers || aiMask !== knownAiMask) {
       knownPlayers = world.players.length;
+      knownAiMask = aiMask;
       director.rebuild(seedFlag());
       // Hand the difficulty handicap to the module that owns `credits`. The AI
       // computes `resourceBonus` but may not write the column from Phase.AI, so
@@ -388,6 +405,7 @@ export default defineSystem({
     director?.dispose();
     director = null;
     knownPlayers = -1;
+    knownAiMask = -1;
     disabled = false;
     announced = false;
   },

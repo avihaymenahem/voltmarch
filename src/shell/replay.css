@@ -34,7 +34,7 @@
 .vm-shell .vm-replays-lede {
   margin: 0 18px;
   color: var(--vm-text-dim);
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--vm-text-scale, 1));
   line-height: 1.6;
   max-width: 64ch;
 }
@@ -49,7 +49,7 @@
 .vm-shell .vm-replays-note {
   margin: 0;
   color: var(--vm-text-faint);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--vm-text-scale, 1));
   line-height: 1.55;
   max-width: 64ch;
 }
@@ -65,7 +65,7 @@
   margin: 0;
   min-height: 1.4em;
   color: var(--vm-text-dim);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--vm-text-scale, 1));
   line-height: 1.5;
 }
 
@@ -143,7 +143,7 @@
   padding: 3px 9px;
   border: 1px solid var(--vm-accent-dim);
   color: var(--vm-accent);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -174,7 +174,7 @@
   flex: 0 0 auto;
   width: auto;
   padding: 6px 12px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--vm-text-scale, 1));
   letter-spacing: 0.14em;
   gap: 8px;
 }
@@ -217,7 +217,7 @@
 
 .vm-shell .vm-replay-clock {
   flex: none;
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   color: var(--vm-text-dim);
   white-space: nowrap;
 }
@@ -231,7 +231,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--vm-text-scale, 1));
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--vm-text-faint);
@@ -250,7 +250,7 @@
   background: var(--vm-glass-strong);
   border: 1px solid var(--vm-line);
   color: var(--vm-text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   line-height: 1.5;
 }
 

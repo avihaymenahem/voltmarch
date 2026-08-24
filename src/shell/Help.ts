@@ -20,8 +20,9 @@
  * Three kinds of row, and the screen never blurs them:
  *
  *   rebindable  resolved from the store, changeable in Options
- *   fixed       hard-coded in the engine — the control-group digits, F3, and
- *               the Shift / Ctrl / Alt order modifiers. Marked FIXED.
+ *   fixed       hard-coded in the engine — the control-group digits, F3,
+ *               F5-F8 camera bookmarks, and the Shift / Ctrl / Alt order
+ *               modifiers. Marked FIXED.
  *   gesture     mouse or trackpad. Written as plain words, because a drawing of
  *               a two-finger swipe is worse than the sentence "two-finger
  *               swipe".
@@ -90,7 +91,7 @@ const HELP_CSS = `
 
 /* The head carries one extra element: a live count of what has been changed. */
 .vm-help-scheme {
-  font-size: 11px;
+  font-size: calc(11px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -119,7 +120,7 @@ const HELP_CSS = `
   background: rgba(255, 255, 255, 0.03);
   color: var(--vm-text-dim);
   font: inherit;
-  font-size: 11px;
+  font-size: calc(11px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -174,7 +175,7 @@ const HELP_CSS = `
   border: 1px solid var(--vm-line);
   background: rgba(255, 255, 255, 0.05);
   color: var(--vm-text);
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   font-variant-numeric: tabular-nums;
@@ -219,7 +220,7 @@ const HELP_CSS = `
   padding: 9px 18px;
   border-bottom: 1px solid var(--vm-line);
   border-left: 2px solid var(--vm-danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   line-height: 1.5;
   letter-spacing: 0.03em;
   color: var(--vm-text-dim);
@@ -233,7 +234,7 @@ const HELP_CSS = `
 }
 
 .vm-help-gesture {
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   color: var(--vm-accent);
 }
@@ -242,7 +243,7 @@ const HELP_CSS = `
 
 .vm-help-name {
   display: block;
-  font-size: 13px;
+  font-size: calc(13px * var(--vm-text-scale, 1));
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -252,7 +253,7 @@ const HELP_CSS = `
 .vm-help-desc {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: calc(12px * var(--vm-text-scale, 1));
   line-height: 1.45;
   letter-spacing: 0.02em;
   color: var(--vm-text-dim);
@@ -264,7 +265,7 @@ const HELP_CSS = `
   align-self: center;
   padding: 2px 7px;
   border: 1px solid var(--vm-line);
-  font-size: 10px;
+  font-size: calc(10px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -287,7 +288,7 @@ const HELP_CSS = `
 .vm-help-foot-note {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--vm-text-scale, 1));
   line-height: 1.5;
   letter-spacing: 0.04em;
   color: var(--vm-text-faint);

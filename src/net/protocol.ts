@@ -67,7 +67,15 @@ import { BuildTab, CommandKind, OrderKind, Stance } from '../core/types';
  * client that half-understands the protocol is a client that desyncs, and
  * "it mostly worked" is the outcome this number exists to prevent.
  *
- * ── WHY THIS IS 2 AND WAS 1 FOR THREE VOCABULARY CHANGES ───────────────────
+ * ── WHY THIS IS 3 ──────────────────────────────────────────────────────────
+ *
+ * Version 3 replaces the disconnect countdown with a logical-seat delegation:
+ * `peerLost` now names the retired slot, and the survivor runs its AI. An older
+ * client cannot understand that authority transfer and would end the match, so
+ * pairing it with a v3 relay is not survivable.
+ *
+ * Version 2 was the first deliberate bump after version 1 missed three
+ * vocabulary changes:
  *
  * `git log -S` on this line returns exactly one commit — the one that wrote it.
  * `git log --follow` on the file returns three later ones that each WIDENED
@@ -88,7 +96,7 @@ import { BuildTab, CommandKind, OrderKind, Stance } from '../core/types';
  * pins the SIZE of each allowlist next to it: adding an enum member fails that
  * test, and the only way to make it pass is to state whether the wire changed.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /* ==========================================================================
  * 2. TURN SCHEDULE
@@ -635,8 +643,12 @@ export type ServerMessage =
   /** The merged, validated, identity-stamped frame for one turn. */
   | { t: 'frame'; turn: number; commands: WireCommand[] }
   | { t: 'desync'; turn: number; tick: number; hashes: number[] }
-  | { t: 'peerLost'; graceMs: number }
-  | { t: 'peerBack' }
+  /**
+   * A socket is permanently gone and its logical player is now controlled by
+   * the AI on this client. The relay sends this only to a surviving peer and
+   * accepts that seat's commands only from the survivor it delegated to.
+   */
+  | { t: 'peerLost'; slot: number }
   | { t: 'over'; reason: OverReason; winnerSlot: number }
   | { t: 'error'; code: ErrorCode };
 

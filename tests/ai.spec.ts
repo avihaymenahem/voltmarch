@@ -877,6 +877,29 @@ describe('AiDirector', () => {
     expect(channels.events.totalListeners()).toBe(0);
   });
 
+  it('adopts a human seat when multiplayer hands it to the AI', () => {
+    const world = new World();
+    const channels = new Channels();
+    world.addPlayer(Faction.Allies, 'Survivor', true, true);
+    const departed = world.addPlayer(Faction.Soviets, 'Departed', true, false);
+    const d = new AiDirector(world, channels);
+
+    d.rebuild(77);
+    expect(d.brains).toHaveLength(0);
+
+    world.player(departed).isHuman = false;
+    d.rebuild(77);
+    expect(d.brains).toHaveLength(1);
+    expect(d.brains[0].player).toBe(departed);
+
+    // Rebuilding again keeps the same brain, including its memory and RNG.
+    const adopted = d.brains[0];
+    d.rebuild(77);
+    expect(d.brains[0]).toBe(adopted);
+    d.dispose();
+    expect(channels.events.totalListeners()).toBe(0);
+  });
+
   it('publishes the economic handicap rather than applying it', () => {
     const h = makeHarness({ difficulty: 3 });
     const before = h.world.player(P_AI).credits;

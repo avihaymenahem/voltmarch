@@ -96,7 +96,7 @@
   border: 1px solid var(--vm-hairline);
   background: rgba(0, 0, 0, 0.35);
   font: inherit;
-  font-size: calc(8 * var(--vm-u, 1px));
+  font-size: calc(8 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1;
@@ -288,7 +288,7 @@
 }
 
 .vm-objdone-kicker {
-  font-size: calc(9 * var(--vm-u, 1px));
+  font-size: calc(9 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.26em;
   line-height: 1;
@@ -303,7 +303,7 @@
 }
 
 .vm-objdone-name {
-  font-size: calc(15 * var(--vm-u, 1px));
+  font-size: calc(15 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1.15;
@@ -315,7 +315,7 @@
 }
 
 .vm-objdone-sub {
-  font-size: calc(10 * var(--vm-u, 1px));
+  font-size: calc(10 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
   font-weight: 600;
   letter-spacing: 0.10em;
   line-height: 1;
@@ -401,7 +401,7 @@
 .vm-hud .vm-objectives .vm-obj-desc {
   /* A step below the 10u title, and dim rather than full-strength: this is
      supporting text. If it competes with the title the row stops scanning. */
-  font-size: calc(8.5 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1));
   font-weight: 400;
   letter-spacing: 0.01em;
   color: var(--vm-dim);

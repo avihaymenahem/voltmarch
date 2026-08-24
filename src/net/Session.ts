@@ -15,12 +15,12 @@
  * `tests/foundation.spec.ts` grew a markup gate is that this UI is about to
  * start rendering strings that another player influenced.
  *
- * ── THE MATCH ENDS RATHER THAN LIMPS ───────────────────────────────────────
+ * ── CORRUPTION ENDS; A MISSING OPPONENT IS DELEGATED ───────────────────────
  *
- * Desync, a command this build cannot apply, a mangled frame, a dropped socket:
- * all of them end the match. None of them is recoverable without a catch-up
- * mechanism that does not exist yet, and every one of them, if survived, means
- * two players watching different games while both believe they are winning.
+ * Desync, a command this build cannot apply, a mangled frame, or THIS client's
+ * dropped socket ends the match. An opponent's dropped socket is different:
+ * the relay retires that command source and delegates its logical seat to this
+ * client, which runs the existing AI through the same command bus.
  * ============================================================================
  */
 
@@ -65,8 +65,8 @@ export interface SessionEvents {
   onRooms(rooms: RoomSummary[], total: number): void;
   /** The relay has paired us. Boot the match. */
   onStart(info: MatchStart): void;
-  /** The opponent's socket went; `graceMs` until the match is awarded. */
-  onPeerLost(graceMs: number): void;
+  /** The opponent's socket went; activate AI control for this logical seat. */
+  onPeerLost(slot: number): void;
   /** The match is over, for any reason. `message` is already display-ready. */
   onOver(reason: OverReason, winnerSlot: number, message: string): void;
   /** Something went wrong that is worth telling the player about. */
@@ -237,10 +237,12 @@ export class Session {
         return;
 
       case 'peerLost':
-        this.events.onPeerLost(msg.graceMs);
-        return;
-
-      case 'peerBack':
+        if (!Number.isInteger(msg.slot) || msg.slot < 0 || msg.slot >= WIRE_LIMITS.maxPlayers
+          || msg.slot === this.slot) {
+          this.fatalCode('bad-message', 'the relay delegated an unusable player slot');
+          return;
+        }
+        this.events.onPeerLost(msg.slot);
         return;
 
       case 'over':

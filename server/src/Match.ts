@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * server/src/Match.ts — two sockets, one TurnRelay, and a grace timer
+ * server/src/Match.ts — two sockets, one TurnRelay, and AI seat delegation
  * ============================================================================
  * Everything about a live match that is not the merge rule. The merge rule
  * itself is `src/net/TurnRelay.ts`, shared with the client tests, so what is
@@ -32,7 +32,6 @@ export interface MatchOptions {
   map: string;
   /** Faction per slot, index === slot. */
   factions: number[];
-  graceMs: number;
   /**
    * How long a slot may go without submitting a turn before it is treated as
    * gone. See the check in `tick`.
@@ -57,8 +56,8 @@ export class Match {
   private readonly peers: (Peer | null)[];
   private readonly opts: MatchOptions;
 
-  /** When the grace period expires, or 0 when nobody is missing. */
-  private graceDeadline = 0;
+  /** Logical player -> live socket slot authorised to command it. */
+  private readonly controller: number[];
   private finished = false;
   /** Last time each slot submitted a turn. Index === slot. */
   private readonly lastSubmit: number[];
@@ -70,6 +69,8 @@ export class Match {
     this.startedAt = opts.now();
     this.relay = new TurnRelay(peers.length, TURN_LOOKAHEAD, opts.firstTurn ?? TURN_DELAY);
     this.lastSubmit = new Array<number>(peers.length).fill(this.startedAt);
+    this.controller = new Array<number>(peers.length);
+    for (let slot = 0; slot < peers.length; slot++) this.controller[slot] = slot;
   }
 
   get over(): boolean { return this.finished; }
@@ -108,7 +109,9 @@ export class Match {
   submit(slot: number, turn: number, commands: unknown[], check: WireCheck): ErrorCode | null {
     if (this.finished) return 'not-in-match';
 
-    const res = this.relay.submit({ slot, turn, commands, check });
+    const res = this.relay.submit({
+      slot, turn, commands, check, controlledPlayers: this.controlledPlayers(slot),
+    });
     if (!res.ok) return res.code;
 
     // STAMPED ONLY ON AN ACCEPTED SUBMISSION, AND THE ORDER IS THE WHOLE POINT.
@@ -153,10 +156,10 @@ export class Match {
    * A slot's socket has gone.
    *
    * The survivor is NOT left frozen: `TurnRelay.retire` completes every turn the
-   * departed slot was holding open, so the match keeps running for the whole
-   * grace period. Without that the survivor's screen locks solid the instant
-   * the opponent's connection drops, which reads as a crash rather than as a
-   * disconnect, and the 30 seconds of grace would be 30 seconds of nothing.
+   * departed slot was holding open. The empty logical seat is then delegated
+   * to one surviving socket, whose client activates the ordinary AI brain.
+   * There is no reconnect in this protocol, so making the player wait through
+   * a fake grace countdown before the same irreversible handoff buys nothing.
    */
   peerLost(slot: number): void {
     if (this.finished) return;
@@ -182,8 +185,15 @@ export class Match {
 
     if (this.livePeers === 0) { this.finished = true; return; }
 
-    this.graceDeadline = this.opts.now() + this.opts.graceMs;
-    this.broadcast({ t: 'peerLost', graceMs: this.opts.graceMs });
+    const controller = this.firstLiveSlot;
+    // Re-home this seat and anything it had already inherited. Only the chosen
+    // controller is told to run those brains; every other survivor receives
+    // their commands through ordinary merged frames and must not duplicate them.
+    for (let player = 0; player < this.controller.length; player++) {
+      if (this.controller[player] !== slot) continue;
+      this.controller[player] = controller;
+      this.peers[controller]?.send({ t: 'peerLost', slot: player });
+    }
   }
 
   /**
@@ -197,18 +207,17 @@ export class Match {
 
     // A PEER THAT STOPS SENDING WITHOUT CLOSING ITS SOCKET.
     //
-    // The grace timer only starts on `peerLost`, which only fires when the
-    // socket closes. A client that simply stops submitting — hung, suspended,
-    // paused in a debugger, or deliberately holding its opponent hostage — left
-    // the other player frozen at a turn boundary until the two-hour match TTL.
-    // The heartbeat does not help: that peer is still answering pings.
+    // A socket close calls `peerLost`, but a client can simply stop submitting
+    // while still answering pings — hung, suspended, paused in a debugger, or
+    // deliberately holding its opponent hostage. Without this sweep the other
+    // player remains frozen at a turn boundary until the two-hour match TTL.
     //
     // Treated as a disconnect, because from the other player's side it is
     // indistinguishable from one and has exactly the same remedy.
     //
-    // WHICH SLOT IS RETIRED WHEN BOTH ARE SILENT DECIDES WHO WINS, and the old
-    // loop took the first in index order — so an attacker that could make the
-    // sweep see two silent slots at once always beat the host.
+    // WHICH SLOT IS RETIRED WHEN BOTH ARE SILENT decides who receives whose AI
+    // authority, and the old loop took the first in index order — so an attacker
+    // that starved a victim could make the relay retire the victim.
     //
     // THE STAMP FIX ABOVE IS NOT SUFFICIENT ON ITS OWN, and reasoning said it
     // was until a test disagreed. A starved victim IS fresher than the peer
@@ -216,35 +225,25 @@ export class Match {
     // after the attacker's last accepted one — but that margin is only
     // `TURN_LOOKAHEAD` turns, about 400 ms, and this sweep samples once a
     // second. So the sample usually lands after BOTH have crossed the threshold,
-    // and index order then hands the match to the attacker. The margin is real
+    // and index order then hands the victim's army to the attacker. The margin is real
     // and far too small to bet on.
     //
     // Longest-silent decides it on the only evidence there is. TIES KEEP THE
     // EARLIER SLOT, exactly as before: an exact tie means both peers fell silent
     // in the same millisecond, which is a mutual stall rather than an attack,
     // and re-deciding it would change an outcome nothing is wrong with.
-    if (this.graceDeadline === 0) {
-      let worst = -1;
-      let longest = 0;
-      for (let slot = 0; slot < this.peers.length; slot++) {
-        if (this.peers[slot] === null) continue;
-        const quiet = now - (this.lastSubmit[slot] ?? now);
-        if (quiet < this.opts.silenceMs) continue;
-        if (worst >= 0 && quiet <= longest) continue;
-        worst = slot;
-        longest = quiet;
-      }
-      if (worst >= 0) this.peerLost(worst);
+    let worst = -1;
+    let longest = 0;
+    for (let slot = 0; slot < this.peers.length; slot++) {
+      if (this.peers[slot] === null) continue;
+      const quiet = now - (this.lastSubmit[slot] ?? now);
+      if (quiet < this.opts.silenceMs) continue;
+      if (worst >= 0 && quiet <= longest) continue;
+      worst = slot;
+      longest = quiet;
     }
-
-    if (this.graceDeadline !== 0 && now >= this.graceDeadline) {
-      // v1 policy: the match ends and the survivor takes it. Reconnect and AI
-      // takeover are both possible on top of this — the command log is all
-      // either would need — and both are deliberately out of scope.
-      this.end('opponent-left', this.firstLiveSlot);
-      return true;
-    }
-    return false;
+    if (worst >= 0) this.peerLost(worst);
+    return this.finished;
   }
 
   /** True when the match has outlived the hard ceiling and must be swept. */
@@ -285,5 +284,14 @@ export class Match {
   private get firstLiveSlot(): number {
     for (let i = 0; i < this.peers.length; i++) if (this.peers[i] !== null) return i;
     return -1;
+  }
+
+  /** Logical players delegated to one live connection. Server-owned authority. */
+  private controlledPlayers(connectionSlot: number): number[] {
+    const out: number[] = [];
+    for (let player = 0; player < this.controller.length; player++) {
+      if (this.controller[player] === connectionSlot) out.push(player);
+    }
+    return out;
   }
 }
