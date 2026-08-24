@@ -30,9 +30,16 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          npm ci
+          # basisu's optional cpu-features probe cannot detect MSVC in the
+          # hosted PowerShell environment. None of the release/test commands
+          # execute basisu; skip root lifecycle scripts while still installing
+          # every package. Electron keeps scripts enabled so its binary lands.
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm ci --prefix desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm ci --prefix server
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify release version
         if: startsWith(github.ref, 'refs/tags/')
@@ -47,8 +54,11 @@ jobs:
         shell: pwsh
         run: |
           npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run desktop:typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build installer, portable executable and update manifest
         run: npm run desktop:dist
