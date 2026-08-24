@@ -150,6 +150,7 @@ import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
 import { MissionsScreen } from './Missions';
+import { ProfileScreen } from './Profile';
 import { TutorialDirector, tutorialSetup } from './Tutorial';
 import {
   AutosaveScheduler,
@@ -181,6 +182,8 @@ export type ShellState =
   | 'ended'
   /** The missions and unlocks board. Reachable from the menu and from pause. */
   | 'missions'
+  /** Lifetime stats, faction record, campaign record and earned cosmetics. */
+  | 'profile'
   /** The save-slot list. Reachable from the title screen only. */
   | 'load'
   /** The recordings list. Reachable from the title screen only. */
@@ -2052,11 +2055,11 @@ export class Shell {
    * THREE THINGS ARE FORCED AND EACH ONE COSTS SOMETHING, so they are all
    * stated here rather than buried in `tutorialSetup`:
    *
-   *   - A FIXED SEED and the starter map, so the terrain a step describes is
-   *     the terrain the player has. `MapChoice.mapSeed` already pins the
-   *     landscape; `TUTORIAL_SEED` pins the sim.
+   *   - A FIXED SEED and Contested Strait, so the neutral structures and sea
+   *     crossing the advanced steps describe really exist. `MapChoice.mapSeed`
+   *     already pins the landscape; `TUTORIAL_SEED` pins the sim.
    *   - `?start=mcv`, written onto the query in `bootGame`. The tutorial's
-   *     third step is "deploy the construction vehicle", which does not exist
+   *     build-chain step is "deploy the construction vehicle", which does not exist
    *     in a pre-built-base opening, and `?start=` on the URL is the only
    *     channel that outranks whatever the lobby last chose.
    *   - THE OPPONENT STAYS AWAKE, on Easy and Turtle. This is the compromise
@@ -2274,8 +2277,14 @@ export class Shell {
   openMissions(returnTo: ShellState = 'menu'): void {
     this.show(new MissionsScreen(this, () => {
       if (returnTo === 'paused') this.pause();
+      else if (returnTo === 'profile') this.openProfile();
       else this.showMenu();
     }), 'missions');
+  }
+
+  /** Open the persistent career and honours record from the title screen. */
+  openProfile(): void {
+    this.show(new ProfileScreen(this), 'profile');
   }
 
   /* ---------------------------------------------------------------------- */
@@ -2508,6 +2517,7 @@ export class Shell {
       case 'credits':
       case 'settings':
       case 'missions':
+      case 'profile':
       case 'load':
       case 'replays':
         this.showMenu();
@@ -2680,13 +2690,12 @@ export class Shell {
     const query = buildMatchQuery(this.setup, settings, location.search, seed);
     if (backdrop) {
       query.set('ai', 'off');
-      // The menu needs an immediate moving battlefield, not the entire authored
-      // architecture catalogue decoded behind an opaque UI. art.buildings uses
-      // this private marker to retain the procedural fallback family here.
-      query.set('title', '1');
-    } else {
-      query.delete('title');
     }
+    // Historical builds put `title=1` on the backdrop to suppress imported
+    // architecture. That made the first thing a player saw disagree with the
+    // actual game, and stale URLs can retain the marker across upgrades. It no
+    // longer has a renderer meaning; scrub it on every launch route.
+    query.delete('title');
     // The tutorial teaches deploying the MCV, so it cannot inherit a lobby that
     // last asked for a pre-built base. `?start=` is the only channel that
     // outranks `setPlannedStart` — see `chooseStart` in game/Scenarios.ts.

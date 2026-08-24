@@ -2,6 +2,18 @@
 
 Working notes for Claude Code in this repository. Read this before changing anything.
 
+## Licensing is a release gate
+
+The original VOLTMARCH source and assets are proprietary; root `LICENSE` is the controlling
+project notice and every package declares `"license": "UNLICENSED"`. Third-party material is
+catalogued in `THIRD_PARTY_NOTICES.md`. The Rajdhani OFL text is shipped separately under
+`licenses/`, and Kevin MacLeod's three CC BY 4.0 score credits are mandatory licence terms.
+
+Any new downloaded asset must update `THIRD_PARTY_NOTICES.md`, the in-game credits where a player
+can see it, and the relevant provenance README in the same change. Never infer licence terms from
+a source-code comment: `tests/credits-truthful.spec.ts` is the drift gate, and the bundled/source
+licence is the authority.
+
 ## What this project is
 
 VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
@@ -392,6 +404,29 @@ outside `simTick`, an operation needs state predicates over the WORLD inside it,
 languages on opposite sides of the determinism boundary. `tutorial-steps.ts` refused the same merge
 first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposing a third way.
 
+## The tutorial is the complete command school, not only the build order
+
+`src/shell/tutorial-steps.ts` now declares **26 measured steps**. The opening drill covers camera,
+selection, control groups, move/attack-move, stances and explicit formations. The real-match half
+covers deployment, economy and production, then garrison, engineer capture, accepted structure
+repair, sale, transport board/unload, commander ability, army power, committed superweapon fire,
+veterancy and victory. A new lesson must still add a monotonic fact and an independent driver in
+`tests/tutorial.spec.ts`; prose or a dismissible acknowledgement is not proof that the verb was used.
+
+The training match is pinned to **Contested Strait** because its two-player composition is the one
+shipped map that supplies both neutral civilian targets and a real sea crossing. It starts with
+30,000 training credits, forces the MCV opening, and `progression.system.ts` makes the unlock gate
+unrestricted only while `__vmTutorial.wantsMatch` is live. Do not express that policy as a sticky
+`?unlockall` query: the tutorial must neither inherit the profile's omissions nor leak an unlocked
+roster into the match opened after it.
+
+Several advanced verbs do not share one event surface. `tutorial.system.ts` owns engine-confirmed
+capture, sale, veterancy, garrison/transport order classification and repair-state observation;
+HUD/input-only verbs reach `notifyTutorialAction` in the import-free, prose-free
+`src/core/tutorial.ts`, structurally through `__vmTutorial`. Keep that bridge semantic
+(`stance-change`, not “clicked stance button”), so hotkeys and HUD controls satisfy the same lesson
+without importing the lazy shell or its 45 kB curriculum into another eager system edge.
+
 - **THE VOCABULARY IS FROZEN: 12 conditions, 3 combinators, 11 effects.** Adding one after content
   authoring begins is a schema change across every operation file. Two were considered and CUT with
   the reasons written into `types.ts` so nobody re-derives them — `spawnBuildings` (no runtime
@@ -673,9 +708,10 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   the tip was decided and "the corpus had not arrived" is a SILENT NO-TIP. The caps are 1024 bytes of
   authored copy (ships 477) and 10 240 of comment-stripped module (ships 6 777); both bite at about
   fifteen rows, and the failure message names the lazy route. **Trip a cap and MOVE the corpus; do not
-  raise the number.** `src/shell/tutorial-steps.ts` is the declared leak not to repeat — 17 162 bytes
-  of stripped code carrying 5 511 of prose, in `index-*.js` today. (Its often-quoted "33 kB of prose"
-  is the RAW FILE SIZE; comments do not survive the bundler.)
+  raise the number.** `src/shell/tutorial-steps.ts` is the declared leak not to repeat — now a
+  45 kB raw source after the complete 26-step curriculum, and still measured live as larger than
+  both caps by `tests/tips-corpus-weight.spec.ts`. Comments do not survive the bundler; the live
+  comparisons are authoritative, not an old copied stripped-byte count.
 - **THE CHIP HOLDS 26 CHARACTERS OF TITLE AND 44 OF DETAIL, measured in Chromium, not derived.** The
   title inherits `text-transform: uppercase`, weight 600 and 0.18em of tracking; the detail is as
   authored. Reasoning from the box width gives ONE budget for both and ships a clipped title past a
@@ -789,9 +825,25 @@ payload of one mission — Armour Column, Continental Yield and Hostile Takeover
 RETIRED rather than repaid, because the def catalogue has nothing left that a new `UNLOCK_TAGS` group
 could legally cover: what is still ungated is either the opening path, naval, non-mirrored (`gate`,
 `flameTower`), or the deliberately-open Command Posts. The survey is written out inside `UNLOCKS` in
-`src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them cosmetics
-or credits** — both are declared gaps in `tests/reward-wiring.spec.ts` and paying into one is the
-original defect with a different noun.
+`src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them credits** —
+objective credits remain a declared gap in `tests/reward-wiring.spec.ts`, and paying into one is the
+original defect with a different noun. Cosmetics are no longer an invisible sink: the Service
+Record consumes the typed cosmetic reward, joins ownership through `profile.unlocked`, and renders
+all 17 honours with their source mission and progress.
+
+## The Service Record is the public profile contract
+
+`MissionTracker` has long persisted matches, wins, losses, current/best streak and wins by faction.
+Those fields are now part of `ProfileView` and are rendered by `src/shell/Profile.ts` alongside
+campaign medals, mission completion and the honours collection. Keep the join one-way and derived:
+the profile supplies ownership and counters; `catalogue()` supplies the current build's cosmetic
+rows and their awarding missions. Do not create a second cosmetic catalogue in the shell.
+
+The title menu keeps its nine-row 720p height budget by replacing the old direct **Missions** row
+with **Service Record**; the record footer opens Missions and returns to the record on Back. The
+honours table is currently 17 rows — ten insignia and seven field decals — and
+`tests/profile-screen.spec.ts` derives those counts from `MISSIONS`, so adding or retiring a reward
+moves the UI and its check together.
 
 - **The 54% is a ceiling, not a taste.** A start shelf needs 96 m of dry ground in EVERY direction
   (`TERRAIN_START_FLAT_RADIUS` 58 + `TERRAIN_START_EDGE_WOBBLE` 14 + band 6 + waviness 8 +

@@ -65,6 +65,9 @@ docs/surface-refs/ra3-*
 # ~140 MB electron binary out of the root install and therefore out of Pages CI.
 desktop/out/
 desktop/release/
+# Versioned local staging directories used when Windows holds the standard
+# electron-builder output path open. They contain the same generated binaries.
+desktop/release-v*/
 desktop/*.log
 
 # vite / vitest caches

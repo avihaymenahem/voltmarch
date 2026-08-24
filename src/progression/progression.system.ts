@@ -73,6 +73,12 @@ function isShotHarness(): boolean {
   return new URLSearchParams(location.search).get('shot') !== null;
 }
 
+/** A live tutorial teaches the complete roster regardless of profile age. */
+function isTutorialRun(): boolean {
+  const g = globalThis as unknown as { __vmTutorial?: { readonly wantsMatch?: boolean } };
+  return g.__vmTutorial?.wantsMatch === true;
+}
+
 /**
  * `?unlockall` — DEVELOPER FLAG. Every gated unit, structure and mission reward
  * is treated as owned for this page load.
@@ -136,7 +142,18 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
         if (def.scope !== 'profile') continue;
         missions.push(t.progressOf(def.id));
       }
-      return { version: p.version, unlocked: p.unlocked, missions, campaign: p.campaign };
+      return {
+        version: p.version,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        unlocked: p.unlocked,
+        missions,
+        stats: {
+          ...p.stats,
+          winsByFaction: { ...p.stats.winsByFaction },
+        },
+        campaign: p.campaign,
+      };
     },
 
     catalogue(): readonly MissionEntry[] {
@@ -261,6 +278,7 @@ export default defineSystem({
   init(): void {
     const harness = isShotHarness();
     const unlockAll = isUnlockAll();
+    const tutorial = isTutorialRun();
 
     store = new ProfileStore(harness ? memoryStorage() : browserStorage());
     tracker = new MissionTracker(MISSIONS, store);
@@ -296,7 +314,10 @@ export default defineSystem({
       // absent-handle path stays exercised by a real configuration.
       // `?unlockall` rides the same policy the harness uses. See `isUnlockAll`
       // for why this is read-only and cannot contaminate the stored profile.
-      unrestricted: harness || unlockAll,
+      // The advanced tutorial reaches naval transport, commander and
+      // superweapon lessons. It must teach the shipped game, not only the
+      // subset this profile happened to unlock before opening training.
+      unrestricted: harness || unlockAll || tutorial,
     });
 
     if (unlockAll) {

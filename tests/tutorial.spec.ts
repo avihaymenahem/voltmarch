@@ -58,6 +58,7 @@ import {
   noteRallyMove,
   noteSelection,
   noteStructure,
+  noteTutorialAction,
   noteUnitProduced,
   progressHint,
   resumeIndex,
@@ -77,13 +78,18 @@ import {
 
 describe('tutorial — the step list is well formed', () => {
   it('has a lesson for every part of the loop the brief names', () => {
+    expect(TUTORIAL_STEPS).toHaveLength(26);
     const ids = TUTORIAL_STEPS.map((s) => s.id);
     for (const wanted of [
       'camera.move', 'camera.home',
       'select.one', 'select.group',
-      'order.move', 'order.attackMove',
+      'select.controlGroups',
+      'order.move', 'order.attackMove', 'order.stance', 'order.formation',
       'build.deploy', 'build.power', 'build.refinery',
       'economy.harvest', 'build.factory', 'build.produce', 'build.rally',
+      'field.garrison', 'field.capture', 'base.repair', 'base.sell',
+      'naval.transport', 'powers.commanderAbility', 'powers.commander',
+      'powers.superweapon', 'combat.veterancy',
       'match.victory',
     ]) {
       expect(ids).toContain(wanted);
@@ -129,12 +135,15 @@ describe('tutorial — the step list is well formed', () => {
     }
   });
 
-  /** A build lesson can only be re-run; an input lesson can be skipped on a replay. */
-  it('marks exactly the build chain as world-dependent', () => {
+  /** World-state lessons can only be re-run; pure input drills can be resumed. */
+  it('marks every lesson that needs the rebuilt match as world-dependent', () => {
     const worldDependent = TUTORIAL_STEPS.filter((s) => s.worldDependent).map((s) => s.id);
     expect(worldDependent).toEqual([
       'build.deploy', 'build.power', 'build.refinery',
       'economy.harvest', 'build.factory', 'build.produce', 'build.rally',
+      'field.garrison', 'field.capture', 'base.repair', 'base.sell',
+      'naval.transport', 'powers.commanderAbility', 'powers.commander',
+      'powers.superweapon', 'combat.veterancy',
     ]);
   });
 });
@@ -343,6 +352,20 @@ const SIGNALS: Readonly<Record<string, (f: TutorialFacts) => void>> = {
   moveOrder: (f) => noteOrder(f, ORDER_MOVE, 3),
   /** `order:issued`, OrderKind.AttackMove. */
   attackMoveOrder: (f) => noteOrder(f, ORDER_ATTACK_MOVE, 3),
+  controlGroupStore: (f) => noteTutorialAction(f, 'control-group-store'),
+  controlGroupRecall: (f) => noteTutorialAction(f, 'control-group-recall'),
+  stance: (f) => noteTutorialAction(f, 'stance-change'),
+  formation: (f) => noteTutorialAction(f, 'formation-use'),
+  garrison: (f) => noteTutorialAction(f, 'garrison-enter'),
+  capture: (f) => noteTutorialAction(f, 'building-capture'),
+  repair: (f) => noteTutorialAction(f, 'repair-start'),
+  sell: (f) => noteTutorialAction(f, 'building-sell'),
+  transportBoard: (f) => noteTutorialAction(f, 'transport-board'),
+  transportUnload: (f) => noteTutorialAction(f, 'transport-unload'),
+  commanderAbility: (f) => noteTutorialAction(f, 'commander-ability'),
+  commanderPower: (f) => noteTutorialAction(f, 'commander-power'),
+  superweapon: (f) => noteTutorialAction(f, 'superweapon-fire'),
+  veterancy: (f) => noteTutorialAction(f, 'veterancy-rank'),
   /** `building:completed` -> classifyStructure -> 'conyard'. */
   conyard: (f) => noteStructure(f, 'conyard'),
   /** ...'power'. */
@@ -388,8 +411,11 @@ const DRIVERS: Readonly<Record<string, readonly string[]>> = {
   'camera.home': ['cameraHome'],
   'select.one': ['selectOne'],
   'select.group': ['selectGroup'],
+  'select.controlGroups': ['controlGroupStore', 'controlGroupRecall'],
   'order.move': ['moveOrder'],
   'order.attackMove': ['attackMoveOrder'],
+  'order.stance': ['stance'],
+  'order.formation': ['formation'],
   'build.deploy': ['conyard'],
   'build.power': ['power'],
   'build.refinery': ['refinery'],
@@ -397,6 +423,15 @@ const DRIVERS: Readonly<Record<string, readonly string[]>> = {
   'build.factory': ['factory'],
   'build.produce': ['unitProduced'],
   'build.rally': ['rally'],
+  'field.garrison': ['garrison'],
+  'field.capture': ['capture'],
+  'base.repair': ['repair'],
+  'base.sell': ['sell'],
+  'naval.transport': ['transportBoard', 'transportUnload'],
+  'powers.commanderAbility': ['commanderAbility'],
+  'powers.commander': ['commanderPower'],
+  'powers.superweapon': ['superweapon'],
+  'combat.veterancy': ['veterancy'],
   'match.victory': ['acknowledge'],
 };
 
@@ -657,9 +692,27 @@ describe('tutorial — progress survives a reload and never traps the player', (
 
   it('round-trips a real record', () => {
     const p: TutorialProgress = {
-      version: 1, furthest: 4, completed: ['camera.move', 'select.one'], done: false,
+      version: 2, furthest: 4, completed: ['camera.move', 'select.one'], done: false,
     };
     expect(decodeProgress(encodeProgress(p))).toEqual(p);
+  });
+
+  it('reopens a finished v1 tutorial at the first new lesson without losing old steps', () => {
+    const old = decodeProgress(JSON.stringify({
+      version: 1,
+      furthest: 14,
+      completed: [
+        'camera.move', 'camera.home', 'select.one', 'select.group',
+        'order.move', 'order.attackMove', 'build.deploy', 'build.power',
+        'build.refinery', 'economy.harvest', 'build.factory', 'build.produce',
+        'build.rally', 'match.victory',
+      ],
+      done: true,
+    }));
+    expect(old.version).toBe(2);
+    expect(old.done).toBe(false);
+    expect(old.completed).toContain('camera.move');
+    expect(resumeIndex(old)).toBe(stepIndex('select.controlGroups'));
   });
 
   it('drops step ids that no longer exist and clamps the cursor', () => {
@@ -702,21 +755,21 @@ describe('tutorial — progress survives a reload and never traps the player', (
 
     const inputSteps = TUTORIAL_STEPS.filter((s) => !s.worldDependent).map((s) => s.id);
     const all: TutorialProgress = {
-      version: 1, furthest: TUTORIAL_STEPS.length, completed: inputSteps, done: false,
+      version: 2, furthest: TUTORIAL_STEPS.length, completed: inputSteps, done: false,
     };
     // Stops at the first world-dependent step, never past it.
     expect(resumeIndex(all)).toBe(stepIndex('build.deploy'));
 
     // A gap in the input drill stops the cursor at the gap.
     const partial: TutorialProgress = {
-      version: 1, furthest: 5, completed: ['camera.move', 'select.one'], done: false,
+      version: 2, furthest: 5, completed: ['camera.move', 'select.one'], done: false,
     };
     expect(resumeIndex(partial)).toBe(stepIndex('camera.home'));
   });
 
   it('never resumes past the end of the list', () => {
     const done: TutorialProgress = {
-      version: 1,
+      version: 2,
       furthest: TUTORIAL_STEPS.length,
       completed: TUTORIAL_STEPS.map((s) => s.id),
       done: true,
@@ -726,9 +779,9 @@ describe('tutorial — progress survives a reload and never traps the player', (
 
   it('prints a hint the menu can use at every stage', () => {
     expect(progressHint(emptyProgress())).toBe('Start here');
-    expect(progressHint({ version: 1, furthest: 4, completed: [], done: false }))
+    expect(progressHint({ version: 2, furthest: 4, completed: [], done: false }))
       .toBe(`Step 5 of ${TUTORIAL_STEPS.length}`);
-    expect(progressHint({ version: 1, furthest: 2, completed: [], done: true })).toBe('Complete');
+    expect(progressHint({ version: 2, furthest: 2, completed: [], done: true })).toBe('Complete');
   });
 });
 
@@ -826,6 +879,11 @@ describe('tutorial — the HUD classes it rings still exist', () => {
 describe('tutorial — the shell launches and tears it down correctly', () => {
   const shell = readFileSync(join(ROOT, 'src/shell/Shell.ts'), 'utf8');
   const menu = readFileSync(join(ROOT, 'src/shell/MainMenu.ts'), 'utf8');
+  const tutorial = readFileSync(join(ROOT, 'src/shell/Tutorial.ts'), 'utf8');
+  const progression = readFileSync(join(ROOT, 'src/progression/progression.system.ts'), 'utf8');
+  const tutorialSystem = readFileSync(join(ROOT, 'src/shell/tutorial.system.ts'), 'utf8');
+  const inputSystem = readFileSync(join(ROOT, 'src/input/input.system.ts'), 'utf8');
+  const hud = readFileSync(join(ROOT, 'src/ui/Hud.ts'), 'utf8');
 
   /**
    * `?start=` is the only channel that outranks the lobby's last choice, and
@@ -834,6 +892,39 @@ describe('tutorial — the shell launches and tears it down correctly', () => {
    */
   it('forces the MCV opening for a tutorial boot', () => {
     expect(shell).toMatch(/if \(!backdrop && this\.tutorial !== null\) query\.set\('start', 'mcv'\)/);
+  });
+
+  it('runs the complete curriculum on a coast with training capital', () => {
+    expect(tutorial).toMatch(/TUTORIAL_MAP = 'contested-strait'/);
+    expect(tutorial).toMatch(/startingCredits: 30000/);
+  });
+
+  it('opens the complete roster only while the tutorial director is live', () => {
+    expect(progression).toMatch(/const tutorial = isTutorialRun\(\)/);
+    expect(progression).toMatch(/unrestricted: harness \|\| unlockAll \|\| tutorial/);
+    expect(shell).not.toMatch(/this\.tutorial !== null[^\n]*unlockall/);
+  });
+
+  it('wires the input-only advanced verbs on every shipped control surface', () => {
+    for (const action of ['control-group-store', 'control-group-recall', 'formation-use']) {
+      expect(inputSystem, `${action} is not emitted by input`).toContain(`'${action}'`);
+    }
+    expect(inputSystem).toContain("'stance-change'");
+    expect(hud).toContain("'stance-change'");
+    expect(inputSystem).toContain("'commander-ability'");
+    expect(hud).toContain("'commander-ability'");
+    expect(hud).toContain("'commander-power'");
+  });
+
+  it('confirms world verbs from simulation events or authoritative state', () => {
+    for (const event of ['building:captured', 'building:sold', 'entity:veterancy', 'order:issued']) {
+      expect(tutorialSystem, `${event} is not observed`).toContain(`'${event}'`);
+    }
+    expect(tutorialSystem).toContain('EntityFlag.BeingRepaired');
+    expect(tutorialSystem).toContain("'garrison-enter'");
+    expect(tutorialSystem).toContain("'transport-board'");
+    expect(tutorialSystem).toContain("'transport-unload'");
+    expect(tutorialSystem).toContain("'superweapon-fire'");
   });
 
   /** Writing the tutorial's forced map and seed over the lobby would reset it. */

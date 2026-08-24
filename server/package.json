@@ -2,6 +2,7 @@
   "name": "voltmarch-relay",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "VOLTMARCH lockstep relay. Forwards turn frames between two clients and runs no game code.",
   "main": "dist/server/src/index.js",
   "scripts": {

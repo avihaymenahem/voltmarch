@@ -764,7 +764,7 @@ describe('the entry-chunk closure is the real one', () => {
  */
 const DECLARED_SHELL_LEAKS: Readonly<Record<string, string>> = {
   /*
-   * MEASURED, NOT SUSPECTED: `src/shell/tutorial-steps.ts` is 33 kB of authored
+   * MEASURED, NOT SUSPECTED: `src/shell/tutorial-steps.ts` is 45 kB of authored
    * step prose, and it is in the entry chunk today. Two of its own strings —
    * "Slide the view across the field" and "Zoom the camera in and out" — appear
    * in `dist/assets/index-*.js` and in no other emitted chunk, so every player
@@ -780,7 +780,7 @@ const DECLARED_SHELL_LEAKS: Readonly<Record<string, string>> = {
    * a dynamic import the way `Manual.ts#loadManual` loads the wiki corpus.
    */
   'shell/tutorial.system.ts -> shell/tutorial-steps.ts':
-    '33 kB of tutorial step prose, confirmed in the entry chunk',
+    '45 kB raw tutorial source, with step prose confirmed in the entry chunk',
 };
 
 function shellEdgesOf(file: string): string[] {

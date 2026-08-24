@@ -1,6 +1,7 @@
 {
   "name": "voltmarch-desktop",
   "private": true,
+  "license": "UNLICENSED",
   "description": "VOLTMARCH desktop shell. Wraps the UNMODIFIED web build in Electron so the discrete GPU can be enforced and a match survives alt-tab.",
   "main": "out/main.js",
   "scripts": {

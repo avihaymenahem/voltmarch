@@ -812,6 +812,16 @@ describe('ProgressionView — the shape the UI codes against', () => {
     const p = view.profile();
     expect(p.version).toBe(PROFILE_VERSION);
     expect(p.missions.length).toBe(MISSIONS.filter((m) => m.scope === 'profile').length);
+    expect(p.stats).toEqual({
+      matchesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      winsByFaction: {},
+    });
+    expect(p.createdAt).toBeGreaterThan(0);
+    expect(p.updatedAt).toBeGreaterThan(0);
 
     view.endMatch({ won: true, durationSec: 500 });
     expect(view.isUnlocked(UNLOCKS.insigniaBronze)).toBe(true);

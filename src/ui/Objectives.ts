@@ -192,8 +192,20 @@ export type CatalogueEntry = ActiveObjective & { locked: boolean };
 
 export interface ProfileView {
   version: number;
+  /** Optional only so an older/screenshot handle still satisfies this seam. */
+  createdAt?: number;
+  updatedAt?: number;
   unlocked: readonly string[];
   missions: readonly MissionProgress[];
+  /** Lifetime career record. Optional for an older/screenshot handle. */
+  stats?: {
+    readonly matchesPlayed: number;
+    readonly wins: number;
+    readonly losses: number;
+    readonly currentStreak: number;
+    readonly bestStreak: number;
+    readonly winsByFaction: Readonly<Record<string, number>>;
+  };
   /** Best medal by authored operation. Optional for older/screenshot handles. */
   campaign?: Readonly<Record<string, number>>;
 }

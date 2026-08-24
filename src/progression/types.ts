@@ -110,11 +110,28 @@ export type MissionEntry = MissionDef & { progress: MissionProgress; locked: boo
 /** A match objective with its live progress merged in — what the HUD panel renders. */
 export type ObjectiveEntry = MissionDef & { progress: MissionProgress };
 
+/** The lifetime record collected by `MissionTracker`, exposed read-only to UI. */
+export interface ProfileStatsView {
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  currentStreak: number;
+  bestStreak: number;
+  /** `Faction` enum value (as a decimal string key) -> wins with it. */
+  winsByFaction: Readonly<Record<string, number>>;
+}
+
 /** The persisted half, as the UI sees it. Never mutate what this returns. */
 export interface ProfileView {
   version: number;
+  /** Epoch ms. Used by the Service Record for the enlistment line. */
+  createdAt: number;
+  /** Epoch ms. Used to distinguish a dormant record from an active one. */
+  updatedAt: number;
   unlocked: readonly string[];
   missions: readonly MissionProgress[];
+  /** Matches, outcomes, streaks and wins by faction. */
+  stats: ProfileStatsView;
   /**
    * Campaign operation id -> the BEST medal ever earned. Empty for a player
    * who has not opened the campaign.

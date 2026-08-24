@@ -3341,12 +3341,17 @@ class CommandDeck {
     const hasSelection = view.count > 0;
     const canMove = hasSelection && view.stanceEnabled;
     const canAttack = canMove && view.damage !== '' && view.damage !== '—';
-    const state = `${hasSelection ? 1 : 0}${canMove ? 1 : 0}${canAttack ? 1 : 0}`;
+    // Formation availability changes when a single mobile selection becomes a
+    // group even though every other command capability stays identical. Keep
+    // that bit in the render key or the buttons remain disabled after the
+    // tutorial's natural click-one -> box-select progression.
+    const canForm = canMove && view.count >= 2;
+    const state = `${hasSelection ? 1 : 0}${canMove ? 1 : 0}${canAttack ? 1 : 0}${canForm ? 1 : 0}`;
     if (state === this.lastState) return;
     this.lastState = state;
     this.root.classList.toggle('is-idle', !hasSelection);
     for (const control of this.root.querySelectorAll<HTMLButtonElement>('.vm-formation')) {
-      control.disabled = !canMove || view.count < 2;
+      control.disabled = !canForm;
       control.setAttribute('aria-disabled', !control.disabled ? 'false' : 'true');
     }
 

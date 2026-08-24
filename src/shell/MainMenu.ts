@@ -60,14 +60,14 @@ import { tutorialMenuHint, tutorialUntouched } from './Tutorial';
  * row rather than printing "0 / 0" — the `?shot=` harness and any build with
  * `src/progression/**` removed get a plain button, not a broken counter.
  */
-function missionsHint(): string {
+function profileHint(): string {
   const p = readProgression();
   if (p === null) return '';
   try {
-    const rows = p.catalogue().filter((m) => m.scope === 'profile');
-    if (rows.length === 0) return '';
-    const done = rows.reduce((n, m) => n + (m.progress.complete ? 1 : 0), 0);
-    return `${done} / ${rows.length}`;
+    const profile = p.profile();
+    const honours = profile.unlocked.filter((id) => id.startsWith('cosmetic.')).length;
+    const wins = profile.stats?.wins ?? 0;
+    return `${honours} honours · ${wins} wins`;
   } catch {
     return '';
   }
@@ -196,15 +196,14 @@ export class MainMenuScreen implements Screen {
     // reason: no server configured, wrong scheme, or simply not answering.
     nav.appendChild(this.multiplayerButton());
 
-    // Directly under Skirmish, because the missions board is where a player
-    // finds out that a Refractor Tank exists and what it costs them to get one.
-    // Buried under Options it would be a screen most players never open, and
-    // the whole progression layer would then be an invisible restriction
-    // instead of a visible reward.
-    nav.appendChild(button('Missions', {
+    // One retention surface for the lifetime record, campaign medals, faction
+    // wins and cosmetic collection. Its footer opens the complete mission
+    // catalogue, keeping both halves of progression one click from the menu
+    // without growing the title screen past its nine-row height budget.
+    nav.appendChild(button('Service Record', {
       iconName: 'trophy',
-      hint: missionsHint(),
-      onClick: () => this.shell.openMissions('menu'),
+      hint: profileHint(),
+      onClick: () => this.shell.openProfile(),
     }));
 
     const saves = saveSlots().length;

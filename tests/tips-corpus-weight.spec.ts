@@ -263,7 +263,7 @@ function walkSrc(): string[] {
  *   this commit, 7 rows           477 bytes   (measured; 68 a row)
  *   the cap                      1024 bytes   -> 2.15x headroom, ~15 rows
  *   a hundred-row corpus         6814 bytes   -> 6.7x over. Trips. §4.
- *   tutorial-steps.ts prose      5511 bytes   -> the leak not to repeat
+ *   tutorial-steps.ts prose      measured live -> the leak not to repeat
  *
  * 1024 is chosen so the NEXT author can add two or three rows without
  * ceremony, and the sixteenth forces the conversation. The entry-budget contract
@@ -351,7 +351,7 @@ function stringLiteralBytes(src: string): number {
  *   this module, stripped         6 777 bytes  (measured)
  *   the cap                      10 240 bytes  -> 1.51x headroom
  *   a hundred-row corpus         ~15 kB of table ALONE. Trips. §4.
- *   tutorial-steps.ts stripped   17 162 bytes  -> the leak not to repeat
+ *   tutorial-steps.ts stripped   measured live -> the leak not to repeat
  *
  * THE TWO CAPS ARE SET TO BITE IN THE SAME PLACE, at about fifteen rows. The
  * fixed machinery here — three shared walks, six named matches, two world

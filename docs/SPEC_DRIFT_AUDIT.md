@@ -1274,3 +1274,23 @@ have gone wrong. Extend it to require a desktop-runtime credit whenever a deskto
 configured.
 
 Then `CLAUDE.md`'s "WHAT IS STILL WEB-ONLY PROSE" bullet should point here instead of at the deleted plan.
+
+### 67. R8 — the tutorial taught the opening build and omitted the game's defining verbs — **FIXED**
+
+The shipped director stopped after fourteen steps. It covered camera, selection, move and
+attack-move, MCV deployment, power/refinery/harvest, one factory/unit/rally point, then explained
+victory. It did not teach control groups, stances, formations, garrison, engineer capture, repair,
+sell, transports, naval crossings, commander abilities, base-wide powers, superweapons or
+veterancy. The Help catalogue documenting 67 actions made the omission measurable: the beginner
+path presented roughly a third of the actual command vocabulary and none of the systems that make
+VOLTMARCH more than its build order.
+
+Fixed by expanding the director to 26 independently driven steps. The new steps do not complete
+from prose: capture, sale and veterancy consume confirmed simulation events; repair waits for an
+owned building to enter the authoritative repair state; garrison/transport/superweapon orders are
+classified by their real order and target; input/HUD-only actions use the structural tutorial
+bridge. Training moved from Temperate Valley to Contested Strait so neutral structures and a sea
+crossing physically exist, receives 30,000 non-persistent training credits, and temporarily lifts
+the unlock gate only while the tutorial director is live. `tests/tutorial.spec.ts` requires one
+independent driver for every step and rejects completion from all foreign signals. Fixed
+2026-08-24.

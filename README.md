@@ -106,6 +106,10 @@ The deliberate non-runtime-generated shipped content is:
   identity and medal-bearing after-action reports across all 37 operations. Briefings disclose
   deployment, starting reserve, field-catalogue authorization, medal standards and visible bonus
   payouts; live objectives carry those payouts through completion and after action.
+- **Persistent Service Record** — lifetime matches, victories, defeats, current and best streaks,
+  wins by faction, campaign medals and mission completion, plus a durable honours gallery derived
+  from all 17 earnable insignia and field decals. Every locked honour names its awarding mission and
+  live progress; every earned one remains visible after its end-of-match reveal.
 - **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
@@ -292,3 +296,15 @@ be registered by hand.
 ## Stack
 
 Vite · TypeScript · Three.js (pinned exact). No React, no game engine, no external art pipeline.
+
+## License and third-party notices
+
+VOLTMARCH's original source code and assets are proprietary and all rights are reserved. Public
+source access and the deployed browser build do not grant permission to copy, redistribute, or
+create derivative works. See [`LICENSE`](LICENSE) for the project terms.
+
+Bundled third-party material keeps its own licence. The required Kevin MacLeod music attribution,
+Rajdhani's SIL Open Font License, the CC0 sound-bank provenance, EVA voice provenance, and the
+OpenAI/Meshy asset disclosures are collected in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The music credit is a **CC BY 4.0 licence
+condition** and must remain in every web, desktop, and store distribution.

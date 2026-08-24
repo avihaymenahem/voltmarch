@@ -1005,6 +1005,42 @@ export const ACTIONS: readonly ActionDef[] = [
     defaultChord: null,
     gesture: 'Sell tool, then a structure',
   },
+  {
+    id: 'ord.formations',
+    label: 'Set Formation',
+    description:
+      'Arrange a multi-unit selection into a line, box, wedge or arc. The order is replay-safe ' +
+      'and each unit receives its own deliberate slot rather than collapsing onto one point.',
+    category: 'orders',
+    surface: 'pointer',
+    binding: 'gesture',
+    defaultChord: null,
+    gesture: 'Click a formation shape',
+  },
+  {
+    id: 'power.call',
+    label: 'Call Commander Power',
+    description:
+      'Open the Powers tab after building a Command Post, buy a power, then click its charged ' +
+      'row and choose a point on the battlefield.',
+    category: 'building',
+    surface: 'pointer',
+    binding: 'gesture',
+    defaultChord: null,
+    gesture: 'Ready power, then the ground',
+  },
+  {
+    id: 'power.superweapon',
+    label: 'Fire Superweapon',
+    description:
+      'A completed superweapon structure exposes its own countdown. When it is charged, click ' +
+      'the countdown and choose the target point.',
+    category: 'building',
+    surface: 'pointer',
+    binding: 'gesture',
+    defaultChord: null,
+    gesture: 'Ready superweapon, then the ground',
+  },
 
   /* ------------------------------------------------------------- interface */
 

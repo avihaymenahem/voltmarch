@@ -72,6 +72,8 @@ import {
   type StoredBindings,
 } from '../input/ActionCatalogue';
 import { persistentStorage } from '../platform/storage';
+import type { TutorialAction } from '../core/tutorial';
+export type { TutorialAction } from '../core/tutorial';
 
 /* ==========================================================================
  * 1. THE OBSERVATION RECORD
@@ -93,6 +95,34 @@ export interface TutorialFacts {
   moveOrders: number;
   /** `order:issued` with `OrderKind.AttackMove`, from the local player. */
   attackMoveOrders: number;
+  /** A selection was stored into one of the ten control groups. */
+  controlGroupsStored: number;
+  /** A stored control group was recalled. */
+  controlGroupsRecalled: number;
+  /** The selected force was assigned a combat stance. */
+  stanceChanges: number;
+  /** The explicit formation planner arranged a multi-unit selection. */
+  formationsUsed: number;
+  /** An `Enter` order addressed a garrisonable structure. */
+  garrisonOrders: number;
+  /** A building actually changed hands to the local player. */
+  buildingsCaptured: number;
+  /** A damaged local structure actually entered drip-repair. */
+  repairsStarted: number;
+  /** A local structure was sold and paid its refund. */
+  buildingsSold: number;
+  /** An `Enter` order addressed a troop transport. */
+  transportBoards: number;
+  /** A loaded transport received an unload order. */
+  transportUnloads: number;
+  /** A selected commander's personal ability was fired. */
+  commanderAbilities: number;
+  /** A base-wide commander power was called from the Powers bar. */
+  commanderPowers: number;
+  /** A charged superweapon received its committed fire order. */
+  superweaponsFired: number;
+  /** A local unit gained a veterancy rank through combat. */
+  veterancyRanks: number;
   /** `building:completed` classified as a construction yard. */
   conyards: number;
   /** ...classified as a power source. */
@@ -124,6 +154,20 @@ export function emptyFacts(): TutorialFacts {
     groupSelections: 0,
     moveOrders: 0,
     attackMoveOrders: 0,
+    controlGroupsStored: 0,
+    controlGroupsRecalled: 0,
+    stanceChanges: 0,
+    formationsUsed: 0,
+    garrisonOrders: 0,
+    buildingsCaptured: 0,
+    repairsStarted: 0,
+    buildingsSold: 0,
+    transportBoards: 0,
+    transportUnloads: 0,
+    commanderAbilities: 0,
+    commanderPowers: 0,
+    superweaponsFired: 0,
+    veterancyRanks: 0,
     conyards: 0,
     powerPlants: 0,
     refineries: 0,
@@ -163,6 +207,34 @@ export function noteOrder(f: TutorialFacts, order: number, count: number): void 
   if (count <= 0) return;
   if (order === ORDER_MOVE) f.moveOrders++;
   else if (order === ORDER_ATTACK_MOVE) f.attackMoveOrders++;
+}
+
+/**
+ * Player verbs that are not all represented by one engine event.
+ *
+ * The strings are deliberately semantic rather than tied to a button: stance
+ * can be changed from a key or a HUD icon, commander ability can be fired from
+ * either surface, and the tutorial must accept both. The bridge below is also
+ * used by input/HUD actions that write directly to the command bus and
+ * therefore never produce `order:issued`.
+ */
+export function noteTutorialAction(f: TutorialFacts, action: TutorialAction): void {
+  switch (action) {
+    case 'control-group-store': f.controlGroupsStored++; break;
+    case 'control-group-recall': f.controlGroupsRecalled++; break;
+    case 'stance-change': f.stanceChanges++; break;
+    case 'formation-use': f.formationsUsed++; break;
+    case 'garrison-enter': f.garrisonOrders++; break;
+    case 'building-capture': f.buildingsCaptured++; break;
+    case 'repair-start': f.repairsStarted++; break;
+    case 'building-sell': f.buildingsSold++; break;
+    case 'transport-board': f.transportBoards++; break;
+    case 'transport-unload': f.transportUnloads++; break;
+    case 'commander-ability': f.commanderAbilities++; break;
+    case 'commander-power': f.commanderPowers++; break;
+    case 'superweapon-fire': f.superweaponsFired++; break;
+    case 'veterancy-rank': f.veterancyRanks++; break;
+  }
 }
 
 /** `building:completed`, already classified by `classifyStructure`. */
@@ -432,10 +504,25 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
       'Drag a box across your units to take all of them at once. Dragging over your own base is ' +
       'safe: if the box holds any mobile units, only those come back, so you never end up with six ' +
       'buildings you cannot order.',
-    actions: ['sel.box', 'sel.add', 'sel.toggle', 'sel.allArmy', 'sel.groupSet', 'sel.groupRecall'],
+    actions: ['sel.box', 'sel.add', 'sel.toggle', 'sel.allArmy'],
     spotlight: ['.vm-dock-selection'],
     goals: [
       { label: 'Select two or more units at once', fact: 'groupSelections', delta: 1 },
+    ],
+    worldDependent: false,
+  },
+  {
+    id: 'select.controlGroups',
+    title: 'Make The Army Recallable',
+    body:
+      'A drag box is for assembling a force once; a control group is how you keep that force ' +
+      'for the whole battle. Store the current selection in any numbered group, clear or change ' +
+      'the selection, then recall the group. Double-recalling it also takes the camera there.',
+    actions: ['sel.groupSet', 'sel.groupAppend', 'sel.groupRecall', 'sel.groupAdd', 'sel.groupCentre'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Store the selected force as a control group', fact: 'controlGroupsStored', delta: 1 },
+      { label: 'Recall a stored control group', fact: 'controlGroupsRecalled', delta: 1 },
     ],
     worldDependent: false,
   },
@@ -465,6 +552,34 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     spotlight: [],
     goals: [
       { label: 'Issue one attack-move order', fact: 'attackMoveOrders', delta: 1 },
+    ],
+    worldDependent: false,
+  },
+  {
+    id: 'order.stance',
+    title: 'Choose How They Fight',
+    body:
+      'Stance controls what units do when you are looking elsewhere. Aggressive pursues, ' +
+      'defensive answers nearby fire, hold fire preserves concealment, and hold ground refuses ' +
+      'the chase. Change the selected group once and watch the stance badge update.',
+    actions: ['ord.stance', 'ord.stanceButtons'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Change the selection stance', fact: 'stanceChanges', delta: 1 },
+    ],
+    worldDependent: false,
+  },
+  {
+    id: 'order.formation',
+    title: 'Shape The Formation',
+    body:
+      'A column is fast through a road and terrible under artillery. Use the formation strip to ' +
+      'turn a selected group into a line, box, wedge or arc; the game assigns a real destination ' +
+      'to every unit, so this is positioning rather than a cosmetic icon.',
+    actions: ['ord.formations', 'ord.scatter'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Arrange at least two units into a formation', fact: 'formationsUsed', delta: 1 },
     ],
     worldDependent: false,
   },
@@ -571,13 +686,140 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     worldDependent: true,
   },
   {
+    id: 'field.garrison',
+    title: 'Occupy Civilian Cover',
+    body:
+      'The civilian blocks around the central lane are battlefield cover, not scenery. Send an ' +
+      'infantry squad into one to protect it behind the building armour; selecting the occupied ' +
+      'block exposes the same deploy command to evacuate its defenders.',
+    actions: ['ord.context', 'ord.deploy'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Order infantry into a civilian structure', fact: 'garrisonOrders', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'field.capture',
+    title: 'Capture With An Engineer',
+    body:
+      'Engineers take structures instead of merely damaging them. Select one, send it to a ' +
+      'neutral or hostile building, and keep it alive until the deed changes hands; captured ' +
+      'civilian income and production both work for their new owner.',
+    actions: ['ord.context'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Capture one structure with an engineer', fact: 'buildingsCaptured', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'base.repair',
+    title: 'Repair Before It Falls',
+    body:
+      'Damaged structures do not heal by waiting. Arm the repair tool and click one of your ' +
+      'damaged buildings; it spends credits over time and can be toggled off the same way. The ' +
+      'lesson advances only after a real damaged structure begins repairing.',
+    actions: ['bld.repair'],
+    spotlight: ['.vm-dock-build'],
+    goals: [
+      { label: 'Start repairing a damaged structure', fact: 'repairsStarted', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'base.sell',
+    title: 'Sell What You Cannot Hold',
+    body:
+      'A doomed or misplaced building is still money and crew. Arm the sell tool and choose a ' +
+      'structure you can spare; damaged structures refund less, so selling before the final hit ' +
+      'is an economic decision rather than a surrender animation.',
+    actions: ['bld.sell'],
+    spotlight: ['.vm-dock-build'],
+    goals: [
+      { label: 'Sell one of your structures', fact: 'buildingsSold', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'naval.transport',
+    title: 'Make An Amphibious Crossing',
+    body:
+      'This strait has no safe land shortcut. Build a naval yard and transport, order troops ' +
+      'aboard by sending them to the hull, cross the water, then unload on the far shore. The ' +
+      'cargo row on a selected transport shows exactly how many seats are occupied.',
+    actions: ['ord.context', 'ord.deploy'],
+    spotlight: ['.vm-dock-selection', '.vm-dock-build'],
+    goals: [
+      { label: 'Order troops aboard a transport', fact: 'transportBoards', delta: 1 },
+      { label: 'Unload a transport after the crossing', fact: 'transportUnloads', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'powers.commanderAbility',
+    title: 'Use The Commander In The Field',
+    body:
+      'Each faction commander carries a personal ability centred on their current position. ' +
+      'Produce and select the commander, move them where the effect matters, then fire the ' +
+      'ability from the selection panel or its live binding.',
+    actions: ['ord.ability'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Fire a commander ability', fact: 'commanderAbilities', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'powers.commander',
+    title: 'Call A Commander Power',
+    body:
+      'A Command Post opens the Powers tab. Buy one base-wide power there, wait for its charge, ' +
+      'then arm the ready row and choose a target point; unlike the commander ability, this ' +
+      'belongs to the whole army and still works when the commander is elsewhere.',
+    actions: ['bld.tab', 'bld.queue', 'power.call'],
+    spotlight: ['.vm-dock-build'],
+    goals: [
+      { label: 'Call one charged commander power', fact: 'commanderPowers', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'powers.superweapon',
+    title: 'Commit A Superweapon',
+    body:
+      'Superweapons are structures with a global countdown, not ordinary unit abilities. Build ' +
+      'one from the late-tech chain, protect it until the countdown is ready, then arm its row ' +
+      'and commit the target. The enemy sees the same race and can destroy the structure first.',
+    actions: ['bld.queue', 'bld.place', 'power.superweapon'],
+    spotlight: ['.vm-dock-build'],
+    goals: [
+      { label: 'Fire one charged superweapon', fact: 'superweaponsFired', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
+    id: 'combat.veterancy',
+    title: 'Keep Veterans Alive',
+    body:
+      'Units that survive combat earn veterancy ranks and become better assets than fresh ' +
+      'replacements. Let one of your units secure enough combat experience to gain a chevron, ' +
+      'then pull damaged veterans back instead of feeding them into the next exchange.',
+    actions: ['ord.attackMove', 'ord.guard', 'ord.stanceButtons'],
+    spotlight: ['.vm-dock-selection'],
+    goals: [
+      { label: 'Promote one unit through combat', fact: 'veterancyRanks', delta: 1 },
+    ],
+    worldDependent: true,
+  },
+  {
     id: 'match.victory',
     title: 'How A Match Ends',
     body:
       'The match is over when one side has no buildings and no units left standing. Optional ' +
       'objectives — extra goals that pay out unlocks — appear in the panel at the top right, and the ' +
-      'pause menu lists them in full alongside every command in the game. That is the whole loop: ' +
-      'harvest, build, push.',
+      'pause menu lists them in full alongside every command in the game. You now know both loops: ' +
+      'harvest, build and push — then preserve, reposition and spend the advantages you earned.',
     actions: ['sys.menu', 'ui.help'],
     spotlight: ['.vm-objectives', '.vm-resources'],
     goals: [
@@ -746,7 +988,9 @@ export function stepKeyRows(
  * ========================================================================== */
 
 export const TUTORIAL_STORAGE_KEY = 'vm.tutorial.v1';
-export const TUTORIAL_PROGRESS_VERSION = 1;
+// Version 2 is the complete 26-step curriculum. Version 1's `done` meant the
+// old fourteen-step opening drill and must not hide the new field school.
+export const TUTORIAL_PROGRESS_VERSION = 2;
 
 export interface TutorialProgress {
   readonly version: number;
@@ -785,11 +1029,14 @@ export function decodeProgress(raw: string | null | undefined): TutorialProgress
   }
   const furthestRaw = typeof r.furthest === 'number' && Number.isFinite(r.furthest) ? r.furthest : 0;
   const furthest = Math.max(0, Math.min(TUTORIAL_STEPS.length, Math.floor(furthestRaw)));
+  const storedVersion = typeof r.version === 'number' ? Math.floor(r.version) : 0;
   return {
     version: TUTORIAL_PROGRESS_VERSION,
     furthest,
     completed,
-    done: r.done === true,
+    // Preserve the old completed ids for resume, but an old 14-step Finish is
+    // not completion of the newly added curriculum.
+    done: storedVersion === TUTORIAL_PROGRESS_VERSION && r.done === true,
   };
 }
 

@@ -81,6 +81,7 @@ src/progression/
 src/data/Missions.ts    the declarative mission table
 src/ui/Objectives.ts    in-match objective panel
 src/shell/Missions.ts   menu screen: chains, progress, rewards
+src/shell/Profile.ts    Service Record: career stats, faction wins, medals, honours collection
 ```
 
 ### The determinism boundary — non-negotiable
@@ -134,7 +135,9 @@ Superweapons are the one deliberate exception and sit at the end of long chains.
 
 **3. Rewards must be visible.**
 An unlock the player does not notice is not a reward. Every unlock gets an end-screen reveal, a
-"NEW" badge on its cameo, and an entry in the missions screen.
+"NEW" badge on its cameo, and an entry in the missions screen. Insignia and field decals remain
+visible in the Service Record honours collection, joined to the mission that awarded each one;
+career counters collected beside those missions are rendered on the same surface.
 
 **4. A battlefield can turn optional content into the only road.**
 The three rules above are all about CONTENT, and they were all satisfied when `Sunder Atoll` shipped:

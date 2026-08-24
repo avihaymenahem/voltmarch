@@ -5,9 +5,10 @@
  * WHAT THIS IS
  * ------------
  * A self-contained director that watches a REAL match and walks a new player
- * through fourteen steps: camera, selection, orders, deploying the MCV, the
- * power/refinery/harvest economy loop, production, rally points, and how a
- * match ends. It drives its own step list from `tutorial-steps.ts`, resolves
+ * through the complete command vocabulary: camera, selection and control
+ * groups; movement, stances and formations; the economy and production loop;
+ * capture, garrison, repair, transports, powers, veterancy and match victory.
+ * It drives its own step list from `tutorial-steps.ts`, resolves
  * every key it names against the live settings store, and rings the HUD element
  * a step is talking about from its own layer.
  *
@@ -70,6 +71,7 @@ import {
   noteRallyMove,
   noteSelection,
   noteStructure,
+  noteTutorialAction,
   noteUnitProduced,
   progressHint,
   readTutorialProgress,
@@ -79,6 +81,7 @@ import {
   withStepCompleted,
   writeTutorialProgress,
   type StructureRole,
+  type TutorialAction,
   type TutorialFacts,
   type TutorialProgress,
   type TutorialStep,
@@ -105,6 +108,7 @@ export interface TutorialFeed {
   unitProduced(): void;
   harvestDeposit(): void;
   rallyMoved(): void;
+  action(action: TutorialAction): void;
   cameraSample(x: number, z: number, distance: number, homeX: number, homeZ: number): void;
 
   /** Per rendered frame, from `RenderPhase.Hud`. */
@@ -348,6 +352,11 @@ export class TutorialDirector implements TutorialFeed {
   rallyMoved(): void {
     if (!this.live()) return;
     noteRallyMove(this.facts);
+  }
+
+  action(action: TutorialAction): void {
+    if (!this.live()) return;
+    noteTutorialAction(this.facts, action);
   }
 
   cameraSample(x: number, z: number, distance: number, homeX: number, homeZ: number): void {
@@ -635,8 +644,11 @@ export class TutorialDirector implements TutorialFeed {
  */
 export const TUTORIAL_SEED = 0x7010a1;
 
-/** The starter map. Wooded, three ore fields, the gentlest terrain we ship. */
-export const TUTORIAL_MAP = 'temperate-valley';
+/**
+ * The complete-training map. Two dry openings, neutral garrison/capture
+ * targets on the fair centre line, and a real sea crossing for transports.
+ */
+export const TUTORIAL_MAP = 'contested-strait';
 
 /**
  * The tutorial's match configuration, laid over whatever the player last used.
@@ -657,7 +669,10 @@ export function tutorialSetup(base: Readonly<MatchSetup>): MatchSetup {
     map: TUTORIAL_MAP,
     difficulty: 0,
     personality: 0,
-    startingCredits: 10000,
+    // The advanced half asks the player to reach a Command Post, naval yard
+    // and one late-tech structure. This is training capital, not a balance
+    // preset: starving that chain turns instruction into an ore waiting room.
+    startingCredits: 30000,
     speed: 1,
     seed: TUTORIAL_SEED,
     // ONE OPPONENT, EXPLICITLY. The lesson is written against a single enemy

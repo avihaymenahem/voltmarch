@@ -15,8 +15,11 @@ nothing on your profile — no mission, no unlock, no win, no streak, no lifetim
 rule and the reason for it. If what you want is the Refractor Tank, what you want is the mission table,
 and you get it by playing skirmishes.
 
-There is also a separate **tutorial** on the main menu — a director that watches a real match and
-prompts you through the verbs. It is neither of the above and grants nothing.
+There is also a separate **26-step tutorial** on the main menu — a director that watches a real
+match and verifies the full command vocabulary, from control groups and formations through
+capture, garrison, amphibious transport, commander powers, superweapons and veterancy. It is
+neither of the above, grants nothing, and temporarily exposes the complete roster only inside its
+training match.
 
 ---
 
@@ -612,9 +615,11 @@ So those five rewards are correct about the direction of travel and wrong about 
 
 ### Cosmetics
 
-Seventeen insignia and decals. Awarding one shows a banner and adds a line to the Missions screen.
-Nothing renders them — no unit, structure or HUD element reads a cosmetic id. Three of the seventeen
-are the new payouts for Theatre Command, Fleet Admiral and Untouched.
+Seventeen collectible honours: ten command insignia and seven field decals. Awarding one shows the
+end-of-match reveal and permanently adds it to **Service Record → Honours Collection**, where its
+vector mark, awarding mission and live progress remain visible. The same record also shows lifetime
+matches, wins, losses, current and best streaks, faction wins and campaign medals. Three of the
+seventeen are the newer payouts for Theatre Command, Fleet Admiral and Untouched.
 
 ### Old Guard used to be impossible
 

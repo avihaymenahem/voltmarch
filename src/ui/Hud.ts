@@ -130,6 +130,7 @@ import { readProgression } from './Objectives';
 import { describeBuildable } from '../data/Descriptions';
 import { iconForUnitKey, makeIcon, type IconName } from './icons';
 import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
+import { notifyTutorialAction } from '../core/tutorial';
 
 import './hud.css';
 import './hud-redesign.css';
@@ -1604,6 +1605,7 @@ export class Hud {
     const sel = this.world.selection;
     if (sel.count === 0) return;
     this.channels.commands.issueSetStance(this.world.localPlayer, sel.ids, sel.count, stance);
+    notifyTutorialAction('stance-change');
   }
 
   /**
@@ -2829,6 +2831,7 @@ export class Hud {
     this.armedPowerId = 0;
     const spec = COMMANDER_POWERS[id];
     this.channels.commands.issueUsePower(this.world.localPlayer, id, x, z);
+    notifyTutorialAction('commander-power');
     if (spec !== undefined) {
       this.toast('info', `power:${spec.key}`, spec.label, spec.hint);
     }
@@ -2860,6 +2863,7 @@ export class Hud {
       this.world.localPlayer, OrderKind.UseAbility, sel.ids, 1,
       store.posX[idx], store.posZ[idx],
     );
+    notifyTutorialAction('commander-ability');
     this.toast('info', 'ability', action.label, action.hint);
   }
 

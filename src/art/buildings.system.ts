@@ -1738,21 +1738,6 @@ function paradeRequested(): boolean {
 }
 
 /**
- * The title backdrop deliberately uses the procedural family.
- *
- * Loading every authored KTX2 shell before the first menu made the product
- * path wait on the whole architecture catalogue even though those textures are
- * hidden behind the menu. The procedural models are already built as runtime
- * fallbacks and make a detailed animated base at a fraction of the cold-boot
- * transfer and decode cost. Matches and screenshot fixtures still load every
- * imported replacement normally.
- */
-function importedStructuresRequested(): boolean {
-  if (typeof location === 'undefined') return true;
-  return new URLSearchParams(location.search).get('title') !== '1';
-}
-
-/**
  * A deterministic display rack: every structure, one per slot, on a grid
  * pitched at 1.35x the widest. Exists so a visual critic can score silhouette,
  * bevel, team-colour coverage and greeble density from one screenshot without
@@ -1834,8 +1819,10 @@ export default defineSystem({
 
     /* -- hand off to RenderBridge ------------------------------------------ */
     const importedMeshes = new Map<string, KindMesh>();
-    const importedResults = importedStructuresRequested()
-      ? await mapConcurrent(IMPORTED_STRUCTURES, 3, async (spec) => {
+    // The title backdrop is the game's front window, not a reduced art mode.
+    // Load the same authored structures there as in a match so a player never
+    // sees the retired procedural family while deciding whether to play.
+    const importedResults = await mapConcurrent(IMPORTED_STRUCTURES, 3, async (spec) => {
         const model = buildingLibrary.get(spec.key);
         if (model === undefined) return null;
         try {
@@ -1846,8 +1833,7 @@ export default defineSystem({
           console.warn(`[buildings] Meshy ${spec.label} unavailable: ${String(error)}`);
           return null;
         }
-      })
-      : [];
+      });
     for (const result of importedResults) {
       if (result !== null) importedMeshes.set(result[0], result[1]);
     }

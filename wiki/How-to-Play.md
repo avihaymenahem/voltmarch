@@ -10,20 +10,24 @@ If you have played Command & Conquer, most of this will be familiar and you can 
 
 ## Starting a match
 
-The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, **Missions**,
-**Load Game**, **Replays** and **Settings**. The credits are a tab inside Settings.
+The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, **Service Record**,
+**Load Game**, **Replays** and **Settings**. Service Record holds lifetime stats, faction wins,
+campaign medals and the honours collection; its **Missions** action opens the complete progression
+catalogue. The credits are a tab inside Settings.
 
 **Campaign** is the story mode — authored operations with a briefing, a fixed map, fixed objectives
 and a medal. Thirty-seven of them, across four chapters:
 [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists every one, and says why none of them
 advances your missions or unlocks.
 
-The **Tutorial** is a stepped, spotlit walkthrough that takes over the screen and points at the
-thing it is talking about. Fourteen steps, in order: Move The View, Find Your Way Home, Select A
-Unit, Select The Whole Group, Give A Move Order, Attack Move, Deploy The Construction Vehicle,
-Power Comes First, Build A Refinery, Watch The Money Arrive, Build Something That Produces, Produce
-A Unit, Set A Rally Point, How A Match Ends. It is the fastest way to learn the interface and it
-costs you nothing.
+The **Tutorial** is a 26-step, spotlit field school that watches a real match and points at the
+thing it is talking about. Its first half covers camera movement, selection, control groups,
+orders, stances, formations, MCV deployment, power, ore, production and rally points. Its second
+half teaches the verbs that make VOLTMARCH distinct: garrisoning civilian cover, engineer capture,
+repair and sell, amphibious transports, commander abilities, base-wide powers, superweapons and
+veterancy. It runs on Contested Strait so the civilian and naval lessons have real targets, opens
+the complete training roster without changing your profile, and gives you 30,000 training credits
+so late-tech instruction is not an ore waiting room. Every lesson is still skippable.
 
 **Skirmish** is a single match against the computer. The setup screen has four blocks:
 

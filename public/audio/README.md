@@ -39,8 +39,7 @@ does not warrant it elsewhere; and a public-domain dedication disposes of copyri
 without transferring the reader's voice likeness. For an unnamed announcer in a free game the
 exposure is negligible, but no licence in the chain addresses it.
 
-The voice model is ~109 MB and is **gitignored** (`tools/tts-voices/`). Only the ~460 kB of `.ogg`
-The voice model is ~109 MB and is **gitignored** (`tools/tts-voices/`). Only the ~450 kB of `.ogg`
+The voice model is ~109 MB and is **gitignored** (`tools/tts-voices/`). Only the ~405 kB of `.ogg`
 is committed.
 
 ## Provenance

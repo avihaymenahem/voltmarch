@@ -209,35 +209,35 @@ export function rewardCopy(r: Reward): RewardCopy {
         effect: 'Selectable in the skirmish lobby.',
         iconName: 'map',
       };
-    /* -- THE FOURTEEN THAT NOTHING WEARS ---------------------------------
-     * This said "Worn by your army. No effect on the battle." The second
-     * sentence was true and the first was not, and the first is the one a
-     * player acts on.
-     *
-     * Fourteen cosmetic ids ship — eight insignia, six decals — and NOTHING
-     * consumes one. `profile.unlocked` records them, this screen and
-     * `ui/ObjectiveBanner.ts` name them, and that is the entire set of readers:
-     * the insignia plate on a structure is `MassRole.Insignia` in
-     * `art/BuildingDefs.ts`, chosen per FACTION from `FACTION_PALETTE`, and it
-     * has never once looked at a profile. There is no code path from
-     * `cosmetic.insignia.gold` to a pixel.
-     *
-     * So the copy says what is true. It is a record of what the player has
-     * done, which is a real thing to want and is why the ids are not being
-     * retired — retiring them would strip earned rewards off every existing
-     * profile to fix a sentence. `tests/reward-wiring.spec.ts` carries the
-     * matching GAP claim, so the day something does render one, that test
-     * fails and forces this line to be rewritten with it.                    */
+    /* Cosmetics are collection rewards, not combat modifiers. Profile.ts
+     * derives its gallery from the typed rewards, joins ownership through
+     * profile.unlocked, and keeps the object plus its awarding mission visible
+     * after the one-frame banner has gone. */
     case 'cosmetic':
       return {
-        kind: 'Insignia',
+        kind: r.cosmeticId.includes('.decal.') ? 'Field Decal' : 'Insignia',
         name: unlockLabel(r.cosmeticId),
-        effect: 'A record on your profile. Nothing in a match reads it yet.',
+        effect: 'Added permanently to your Service Record honours collection.',
         iconName: 'flag',
       };
     default:
       return { kind: 'Reward', name: 'Unknown', effect: '', iconName: 'info' };
   }
+}
+
+/**
+ * Maps and cosmetics carry a generic ownership reward plus a typed twin. The
+ * generic row feeds persistence/gating; the typed row feeds presentation.
+ * Showing both produces two cards for one award and makes a decal claim it is
+ * "buildable from the sidebar", so exact twins collapse to the typed row.
+ */
+export function presentableRewards(rewards: readonly Reward[]): Reward[] {
+  const typed = new Set<string>();
+  for (const reward of rewards) {
+    if (reward.kind === 'map') typed.add(reward.mapId);
+    else if (reward.kind === 'cosmetic') typed.add(reward.cosmeticId);
+  }
+  return rewards.filter((reward) => reward.kind !== 'unlock' || !typed.has(reward.unlockId));
 }
 
 /* ==========================================================================
@@ -596,7 +596,9 @@ export class MissionsPanel {
     /* -- rewards --------------------------------------------------------- */
     if (entry.reward.length > 0) {
       const rewards = el('div', 'vm-mission-rewards');
-      for (const r of entry.reward) rewards.appendChild(rewardCard(r, state === 'complete'));
+      for (const r of presentableRewards(entry.reward)) {
+        rewards.appendChild(rewardCard(r, state === 'complete'));
+      }
       card.appendChild(rewards);
     }
 

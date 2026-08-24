@@ -24,7 +24,7 @@
  * ============================================================================
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -33,6 +33,10 @@ import { CREDITS } from '../src/shell/MainMenu';
 const ROOT = join(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 const IMPORTED_WORLD_ASSETS = join(ROOT, 'src', 'assets');
+
+function rootText(file: string): string {
+  return readFileSync(join(ROOT, file), 'utf8');
+}
 
 /** Every file under `public/`, recursively, relative to it. */
 function publicAssets(dir = PUBLIC, prefix = ''): string[] {
@@ -60,6 +64,62 @@ function importedWorldAssets(dir = IMPORTED_WORLD_ASSETS, prefix = ''): string[]
 const allText = CREDITS.flatMap((g) => [g.title, ...g.lines]).join('\n');
 
 describe('the credits describe the product that actually ships', () => {
+  it('ships an explicit project licence and machine-readable package policy', () => {
+    expect(existsSync(join(ROOT, 'LICENSE')), 'public source needs an explicit root LICENSE').toBe(true);
+    expect(rootText('LICENSE')).toMatch(/Copyright \(c\) 2026 Avihay Menahem/i);
+    expect(rootText('LICENSE')).toMatch(/all rights reserved/i);
+
+    for (const file of ['package.json', 'desktop/package.json', 'server/package.json']) {
+      const packageJson = JSON.parse(rootText(file)) as { private?: boolean; license?: string };
+      expect(packageJson.private, `${file} must remain private`).toBe(true);
+      expect(packageJson.license, `${file} must not imply an open-source grant`).toBe('UNLICENSED');
+    }
+
+    expect(rootText('README.md')).toMatch(/^## License and third-party notices$/m);
+    expect(rootText('README.md')).toContain('[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)');
+  });
+
+  it('keeps every mandatory music attribution in source and distribution notices', () => {
+    const musicSource = rootText('src/audio/TrackMusic.ts');
+    const notices = rootText('THIRD_PARTY_NOTICES.md');
+
+    expect(musicSource, 'the playback owner must not call CC BY music CC0').not.toMatch(/three CC0 tracks/i);
+    expect(musicSource).toMatch(/Kevin MacLeod tracks licensed under CC BY 4\.0/i);
+
+    for (const title of ['Colossus', 'Industrial Revolution', 'Clash Defiant']) {
+      expect(notices, `third-party notices omit the shipped score cue ${title}`).toContain(title);
+      expect(allText, `in-game credits omit the shipped score cue ${title}`).toContain(title);
+    }
+    expect(notices).toMatch(/creativecommons\.org\/licenses\/by\/4\.0/);
+    expect(notices).toMatch(/trimmed to a 72-second Ogg\s+loop/i);
+  });
+
+  it('catalogues the font, CC0 banks, voice provenance, and generated assets', () => {
+    const notices = rootText('THIRD_PARTY_NOTICES.md');
+    expect(notices).toMatch(/Rajdhani/i);
+    expect(notices).toMatch(/Indian Type Foundry/i);
+    expect(notices).toMatch(/SIL Open Font License 1\.1/i);
+    expect(existsSync(join(ROOT, 'licenses', 'Rajdhani-OFL-1.1.txt'))).toBe(true);
+    expect(notices).toMatch(/Recorded sound effects and unit voices — CC0 1\.0/i);
+    expect(notices).toMatch(/Kenney/i);
+    expect(notices).toMatch(/Warfork[\s\S]*Team Forbidden/i);
+    expect(notices).toMatch(/LibriVox public-domain material/i);
+    expect(notices).toMatch(/OpenAI image generation/i);
+    expect(notices).toMatch(/Meshy AI/i);
+  });
+
+  it('copies the canonical notices into the web tree that Electron embeds', () => {
+    const vite = rootText('vite.config.ts');
+    for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'Rajdhani-OFL-1.1.txt']) {
+      expect(vite, `the production bundle does not copy ${file}`).toContain(file);
+    }
+    expect(vite).toMatch(/plugins:\s*\[releaseNoticesPlugin\(\)\]/);
+
+    const desktop = rootText('desktop/electron-builder.yml');
+    expect(desktop, 'Electron must embed the same legal-bearing dist tree as the web release')
+      .toMatch(/extraResources:[\s\S]*from:\s*\.\.\/dist[\s\S]*to:\s*dist/);
+  });
+
   it('does not claim there are NO downloaded assets while shipping one', () => {
     const assets = publicAssets();
     const unqualified = /no downloaded assets,? anywhere/i.test(allText);

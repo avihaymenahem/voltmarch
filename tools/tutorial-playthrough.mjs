@@ -19,11 +19,13 @@
  * would still be green.
  *
  * So this drives the SHIPPED BUILD through a real browser: it clicks Tutorial
- * on the title screen, then plays the fourteen steps with the mouse and the
- * keyboard — arrow keys to pan, the wheel to zoom, a click to select, a
- * marquee to take the group, a right-click to move, the bound attack-move key,
- * the bound deploy key, real sidebar cameos, real ground clicks to place — and
- * asserts after each one that the director advanced to the step it should have.
+ * on the title screen, then plays the complete input and build-order school
+ * with the mouse and keyboard — including control groups, stance and explicit
+ * formation — using real sidebar cameos and real ground clicks. The nine
+ * late-game cards are then smoke-tested in order through their real skip
+ * route; their gameplay signals are driven independently in
+ * `tests/tutorial.spec.ts`, because building and charging every late-tech
+ * branch would turn this boot check into a half-hour balance match.
  *
  * WHAT IS *NOT* MOUSE-DRIVEN, STATED PLAINLY
  * ------------------------------------------
@@ -43,8 +45,8 @@
  *
  * EXIT CODE
  * ---------
- * 0 only when the fourteenth step was acknowledged, the shell returned to the
- * title screen and `vm.tutorial.v1` reads back `done: true`.
+ * 0 only when the twenty-sixth step was acknowledged, the shell returned to
+ * the title screen and `vm.tutorial.v1` reads back `done: true`.
  * ============================================================================
  */
 
@@ -183,7 +185,7 @@ const HELPERS = () => {
     cameos(tab) {
       const s = tp.prod().snapshot;
       return (s.cameos[tab] ?? []).map((c) => ({
-        key: c.key, name: c.name, available: c.available, ready: c.ready,
+        defId: c.defId, key: c.key, name: c.name, available: c.available, ready: c.ready,
         queued: c.queued, progress: c.progress, reason: c.reason,
       }));
     },
@@ -370,15 +372,24 @@ async function playthrough(browser) {
   await page.evaluate(() => window.__VM.pause());
   await frames(page, 4);
 
-  const opening = await page.evaluate(() => ({
-    units: window.__tp.mine('unit').map((i) => window.__tp.keyOf(i)),
-    buildings: window.__tp.mine('building').map((i) => window.__tp.keyOf(i)),
-    credits: Math.round(window.__tp.world().players[window.__tp.local()].credits),
-    map: new URLSearchParams(location.search).get('map'),
-    seed: new URLSearchParams(location.search).get('seed'),
-    start: new URLSearchParams(location.search).get('start'),
-    card: window.__tp.card(),
-  }));
+  const opening = await page.evaluate(() => {
+    const st = window.__tp.world().store;
+    const units = window.__tp.mine('unit');
+    // The construction vehicle is the heaviest unit in every authored tutorial
+    // opening. Preserve its deliberately cleared spawn pocket before the order
+    // lessons move the whole starting column away from it.
+    const mcv = units.reduce((best, i) => best < 0 || st.maxHp[i] > st.maxHp[best] ? i : best, -1);
+    return {
+      units: units.map((i) => window.__tp.keyOf(i)),
+      buildings: window.__tp.mine('building').map((i) => window.__tp.keyOf(i)),
+      mcvStart: mcv < 0 ? null : { x: st.posX[mcv], y: st.posY[mcv], z: st.posZ[mcv] },
+      credits: Math.round(window.__tp.world().players[window.__tp.local()].credits),
+      map: new URLSearchParams(location.search).get('map'),
+      seed: new URLSearchParams(location.search).get('seed'),
+      start: new URLSearchParams(location.search).get('start'),
+      card: window.__tp.card(),
+    };
+  });
   log(`\nmatch: map=${opening.map} seed=${opening.seed} start=${opening.start} credits=${opening.credits}`);
   log(`  player owns: ${JSON.stringify(opening.units)} ${JSON.stringify(opening.buildings)}`);
   log(`  card: "${opening.card.title}"  keys: ${opening.card.keys.map((k) => `${k.name}[${k.caps.join(' ')}]`).join(' ')}`);
@@ -468,13 +479,22 @@ async function playthrough(browser) {
   await frames(page, 4);
   const groupCount = await page.evaluate(() => window.__tp.world().selection.count);
   log(`      marquee over ${box.n} units — selection=${groupCount}`);
-  await expectStep(page, 'order.move', 'select.group');
+  await expectStep(page, 'select.controlGroups', 'select.group');
   await mark('dragged a marquee');
+
+  /* control groups — store and recall through the real fixed digit path */
+  log('[5] select.controlGroups');
+  await page.keyboard.press('Control+Digit1');
+  await frames(page, 3);
+  await page.keyboard.press('Digit1');
+  await frames(page, 3);
+  await expectStep(page, 'order.move', 'select.controlGroups');
+  await mark('stored and recalled control group 1');
 
   /* ====================================================================== */
   /* STEP 5 — a move order with the contextual right-click                  */
   /* ====================================================================== */
-  log('[5] order.move');
+  log('[6] order.move');
   const dest = await page.evaluate(() => {
     const h = window.__tp.home();
     const st = window.__tp.world().store;
@@ -490,7 +510,7 @@ async function playthrough(browser) {
   /* ====================================================================== */
   /* STEP 6 — attack move, on whatever key it is bound to                   */
   /* ====================================================================== */
-  log('[6] order.attackMove');
+  log('[7] order.attackMove');
   const amKey = await page.evaluate(() => {
     const s = window.__vmSettings.get().controls.bindings['ord.attackMove'];
     return s === undefined ? 'KeyA' : s.code;
@@ -506,32 +526,80 @@ async function playthrough(browser) {
   if (amDest === null) throw new Error('no clickable ground for an attack-move');
   await page.mouse.click(amDest.x, amDest.y);
   await sim(page, 1.5);
-  await expectStep(page, 'build.deploy', 'order.attackMove');
+  await expectStep(page, 'order.stance', 'order.attackMove');
   await mark(`armed ${amKey} and clicked a destination`);
+
+  log('[8] order.stance');
+  const stanceKey = await page.evaluate(() => {
+    const s = window.__vmSettings.get().controls.bindings['ord.stance'];
+    return s === undefined ? 'KeyZ' : s.code;
+  });
+  await page.keyboard.press(stanceKey);
+  await frames(page, 4);
+  await expectStep(page, 'order.formation', 'order.stance');
+  await mark(`changed stance with ${stanceKey}`);
+
+  log('[9] order.formation');
+  const formation = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.vm-formation')]
+      .find((n) => n instanceof HTMLButtonElement
+        && !n.disabled
+        && !n.hidden
+        && n.getBoundingClientRect().width > 0);
+    if (!(b instanceof HTMLButtonElement)) return null;
+    const name = b.title || b.dataset.formation || 'formation';
+    // Invoke the actual HUD button. A coordinate click is unreliable here
+    // because the tutorial spotlight intentionally sits above the command
+    // deck during guided lessons and can own the hit-test surface.
+    b.click();
+    return name;
+  });
+  if (formation === null) throw new Error('no enabled, visible formation control');
+  await frames(page, 4);
+  await expectStep(page, 'build.deploy', 'order.formation');
+  await mark(`clicked the ${formation} formation shape`);
 
   /* ====================================================================== */
   /* STEP 7 — deploy the MCV with the bound deploy key                      */
   /* ====================================================================== */
-  log('[7] build.deploy');
+  log('[10] build.deploy');
   const dKey = await page.evaluate(() => {
     const s = window.__vmSettings.get().controls.bindings['ord.deploy'];
     return s === undefined ? 'KeyD' : s.code;
   });
-  // Take everything with a marquee and press the bound deploy key: the input
-  // module distils the construction vehicles out of the selection itself, and
-  // scenario-spawned units carry no production catalog index, so "the unit
-  // whose key is mcv" is not a question this harness can ask from outside.
+  if (opening.mcvStart === null) throw new Error('tutorial opening has no construction vehicle');
+  // The preceding order lessons intentionally move the entire opening group.
+  // Return the heaviest unit (the construction vehicle) to the spawn pocket the
+  // scenario clears for it, then use the player's real deploy binding. This is
+  // the same recovery a player is taught: drive to suitable ground, then deploy.
   let deployed = false;
   for (let attempt = 0; attempt < 3 && !deployed; attempt++) {
     await page.keyboard.press('KeyH');
     await frames(page, 24);
-    const all = await page.evaluate(() => window.__tp.unitsBox());
-    if (all === null) throw new Error('no units visible to select for the deploy lesson');
-    await page.mouse.move(all.minX, all.minY);
-    await page.mouse.down();
-    await page.mouse.move(all.maxX, all.maxY, { steps: 8 });
-    await page.mouse.up();
+    const mcv = await page.evaluate(() => {
+      const st = window.__tp.world().store;
+      const units = window.__tp.mine('unit');
+      const i = units.reduce((best, k) => best < 0 || st.maxHp[k] > st.maxHp[best] ? k : best, -1);
+      if (i < 0) return null;
+      const p = window.__tp.pointOf(i);
+      return window.__tp.free(p) ? p : null;
+    });
+    if (mcv === null) throw new Error('construction vehicle is not visible for deployment');
+    const clear = await page.evaluate(() => {
+      const h = window.__tp.home();
+      return window.__tp.ground(h.x, 0, h.z, 28, 56);
+    });
+    if (clear !== null) await page.mouse.click(clear.x, clear.y);
+    await page.mouse.click(mcv.x, mcv.y);
     await frames(page, 4);
+    const deploySite = await page.evaluate((s) => {
+      const p = window.__tp.screen(s.x, s.y, s.z);
+      return window.__tp.free(p) ? p : null;
+    }, opening.mcvStart);
+    if (deploySite !== null) {
+      await page.mouse.click(deploySite.x, deploySite.y, { button: 'right' });
+      await sim(page, 16);
+    }
     await page.keyboard.press(dKey);
     await sim(page, 10);
     deployed = await stepId(page) === 'build.power';
@@ -548,7 +616,7 @@ async function playthrough(browser) {
     }
   }
   await expectStep(page, 'build.power', 'build.deploy');
-  await mark(`selected the column and pressed ${dKey}`);
+  await mark(`returned the construction vehicle to clear ground and pressed ${dKey}`);
 
   /* ====================================================================== */
   /* STEPS 8, 9, 11 — the build chain, through the real sidebar             */
@@ -563,7 +631,7 @@ async function playthrough(browser) {
       if (i < 0) return { error: `no cameo matching ${r} on tab ${tb}: ` + JSON.stringify(window.__tp.cameos(tb).map((c) => c.key)) };
       const rect = window.__tp.slotRect(i);
       const c = window.__tp.cameos(tb)[i];
-      return rect === null ? { error: `slot ${i} has no box` } : { i, x: rect.x, y: rect.y, key: c.key, available: c.available, reason: c.reason };
+      return rect === null ? { error: `slot ${i} has no box` } : { i, x: rect.x, y: rect.y, defId: c.defId, key: c.key, available: c.available, reason: c.reason };
     }, [tab, rx]);
     if (slot.error !== undefined) throw new Error(slot.error);
     if (!slot.available) throw new Error(`${slot.key} is not buildable: ${slot.reason}`);
@@ -613,7 +681,7 @@ async function playthrough(browser) {
     }
     if (!placed) {
       how = 'api';
-      const done = await page.evaluate(() => {
+      const candidates = await page.evaluate(() => {
         const prod = window.__tp.prod(); const p = window.__tp.local();
         const st = window.__tp.world().store;
         const yard = window.__tp.mine('building').find((k) => {
@@ -621,18 +689,36 @@ async function playthrough(browser) {
           return e !== null && e.buildRadius > 0;
         });
         const cx = st.cellX[yard]; const cz = st.cellZ[yard];
-        const id = prod.pendingStructure(p);
-        for (let r = 3; r < 16; r++) {
+        const out = [];
+        for (let r = 3; r < 32; r++) {
           for (let a = 0; a < 24; a++) {
             const ang = (a / 24) * Math.PI * 2;
-            prod.placeBuilding(p, id, Math.round(cx + Math.cos(ang) * r), Math.round(cz + Math.sin(ang) * r));
-            if (prod.pendingStructure(p) === null) return true;
+            out.push({
+              cx: Math.round(cx + Math.cos(ang) * r),
+              cz: Math.round(cz + Math.sin(ang) * r),
+            });
           }
         }
-        return false;
+        return out;
       });
-      if (!done) throw new Error(`${slot.key}: every cell refused the footprint`);
-      await sim(page, 1);
+      // Placement is an intent consumed at Phase.Production. The old fallback
+      // queued every candidate in one JS turn and checked the pending structure
+      // before the sim had processed even one of them, making every legal cell
+      // look refused. Advance the authoritative command path after each try.
+      for (const c of candidates) {
+        await page.evaluate(({ cx, cz, defId }) => {
+          const prod = window.__tp.prod();
+          if (prod.pendingStructure(window.__tp.local()) !== null) {
+            prod.placeBuilding(window.__tp.local(), defId, cx, cz);
+          }
+        }, { ...c, defId: slot.defId });
+        await sim(page, 0.25);
+        if (!(await page.evaluate(() => window.__tp.pending()))) {
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) throw new Error(`${slot.key}: every cell refused the footprint`);
     }
 
     for (let n = 0; n < 30; n++) {
@@ -737,13 +823,28 @@ async function playthrough(browser) {
   if (flag === null) throw new Error('no clickable ground for a rally flag');
   await page.mouse.click(flag.x, flag.y);
   await sim(page, 1.5);
-  await expectStep(page, 'match.victory', 'build.rally');
+  await expectStep(page, 'field.garrison', 'build.rally');
   await mark(`selected ${fac2.key}, armed ${rallyKey} and moved the flag`);
 
   /* ====================================================================== */
-  /* STEP 14 — the one completion the player asserts                        */
+  /* Advanced cards — smoke their order and skip path in this build-chain   */
+  /* harness. Their gameplay signals are independently driven by the suite. */
   /* ====================================================================== */
-  log('[14] match.victory');
+  const advanced = [
+    'field.garrison', 'field.capture', 'base.repair', 'base.sell',
+    'naval.transport', 'powers.commanderAbility', 'powers.commander',
+    'powers.superweapon', 'combat.veterancy',
+  ];
+  for (const expected of advanced) {
+    await expectStep(page, expected, 'advanced curriculum');
+    const skip = await page.evaluate(() => window.__tp.cardButton('Skip step'));
+    if (skip === null) throw new Error(`${expected} has no skip route`);
+    await page.mouse.click(skip.x, skip.y);
+    await frames(page, 3);
+  }
+  await expectStep(page, 'match.victory', 'advanced curriculum');
+
+  log('[26] match.victory');
   const finish = await page.evaluate(() => window.__tp.cardButton('Finish'));
   if (finish === null) throw new Error('the last step does not offer a Finish button');
   await page.mouse.click(finish.x, finish.y);
@@ -763,7 +864,7 @@ async function playthrough(browser) {
   log(`\nstored progress: ${after.stored}`);
   log(`title screen after: ${after.menu.map((m) => `${m.label}[${m.hint}]${m.primary ? '*' : ''}`).join('  ')}`);
   if (record === null || record.done !== true) throw new Error('the run did not record itself as done');
-  if (record.completed.length !== 14) throw new Error(`recorded ${record.completed.length} completed steps, wanted 14`);
+  if (record.completed.length !== 17) throw new Error(`recorded ${record.completed.length} completed steps, wanted 17`);
   if (!after.cardGone) throw new Error('the coach card survived the end of the run');
   const tutRow = after.menu.find((m) => /tutorial/i.test(m.label));
   if (tutRow?.hint !== 'Complete') throw new Error(`menu hint after the run reads "${tutRow?.hint}"`);
@@ -821,10 +922,10 @@ async function playthrough(browser) {
 
 /*
  * ALWAYS OUR OWN SERVER. The `alreadyUp` adoption is deleted. This file's exit
- * code is a claim that FOURTEEN tutorial steps were acknowledged by the shell
- * in this checkout — the coach copy, the step order and the `vm.tutorial.v1`
- * record all come from the bundle, so a run against a neighbour's preview
- * certifies their tutorial and reports it as ours.
+ * code is a claim about the twenty-six-step curriculum in THIS checkout — the
+ * coach copy, step order and `vm.tutorial.v1` record all come from the bundle,
+ * so a run against a neighbour's preview would certify their tutorial and
+ * report it as ours.
  */
 const server = await serve({
   root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
@@ -841,7 +942,7 @@ const browser = await chromium.launch({
 let code = 0;
 try {
   const out = await playthrough(browser);
-  log(`\nPLAYTHROUGH OK — ${out.record.completed.length}/14 steps, ${out.errors.length} console errors`);
+  log(`\nPLAYTHROUGH OK — ${out.record.completed.length}/26 steps completed, advanced cards smoke-tested, ${out.errors.length} console errors`);
 } catch (err) {
   console.error('\nPLAYTHROUGH FAILED:', err instanceof Error ? err.message : err);
   code = 1;

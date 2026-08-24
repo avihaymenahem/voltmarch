@@ -101,6 +101,8 @@ import {
   type OrderResolution, type SelectionCapabilities,
 } from './Commands';
 import { isDeployable } from '../sim/Deploy';
+import { abilities } from '../sim/Abilities';
+import { notifyTutorialAction } from '../core/tutorial';
 import {
   CAMERA_KEY_IDS, COMMAND_ACTION_IDS, defaultCameraCodes, defaultCommandChords,
   type ActionChord,
@@ -186,6 +188,7 @@ function invokeHudFormation(shape: FormationShape): boolean {
     );
   }
   feedback(OrderKind.Move, dest[0], dest[1]);
+  notifyTutorialAction('formation-use');
   return true;
 }
 
@@ -848,14 +851,20 @@ function issueAbility(): number {
 
   let issued = 0;
   for (let k = 0; k < sel.count; k++) {
-    const i = s.index(sel.ids[k] as EntityId);
+    const id = sel.ids[k] as EntityId;
+    const i = s.index(id);
     if (i < 0 || s.owner[i] !== (player as number)) continue;
     const kind = s.kind[i];
     if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
+    // Observation only: the service remains the sole authority and still
+    // receives/refuses the command below. This snapshot prevents a tutorial
+    // step from accepting the ability key on an ordinary tank or on cooldown.
+    const willFire = abilities()?.isReady(id) === true;
     ONE_ID[0] = sel.ids[k];
     const x = s.posX[i];
     const z = s.posZ[i];
     issueOrder(world, channels, player, OrderKind.UseAbility, ONE_ID, 1, x, z);
+    if (willFire) notifyTutorialAction('commander-ability');
     overlay?.spawn(FeedbackKind.Special, x, groundY(x, z), z);
     issued++;
   }
@@ -1095,6 +1104,7 @@ const handlers = {
       if (k.ctrl) {
         if (k.shift) selection.addToGroup(n);
         else selection.setGroup(n);
+        notifyTutorialAction('control-group-store');
         return true;
       }
       const now = nowMs();
@@ -1102,6 +1112,7 @@ const handlers = {
       lastGroupKey = n;
       lastGroupTime = now;
       selection.recallGroup(n, k.shift);
+      notifyTutorialAction('control-group-recall');
       if (doubleTap && selection.groupCentroid(n, V2)) {
         cameraRig.setFocus(V2[0], V2[1]);
       }
@@ -1312,6 +1323,7 @@ function cycleStance(): void {
   const current = first >= 0 ? (s.stance[first] as Stance) : Stance.Aggressive;
   const next = ((current + 1) % 4) as Stance;
   channels.commands.issueSetStance(world.localPlayer, ORDER_IDS, n, next);
+  notifyTutorialAction('stance-change');
 }
 
 /** Centre the camera on the player's first structure, else on their army. */

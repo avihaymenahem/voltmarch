@@ -30,6 +30,9 @@ apex back at the game or attach `play` to this Pages project.
 Every push to `main` that changes `launch-site/` triggers the Cloudflare project. The root game
 workflow deploys independently to GitHub Pages from `dist/`.
 
+The public community invite is `https://discord.gg/pvJGJyafU3`; keep the header, hero community CTA,
+and footer link in `public/index.html` aligned if the invite changes.
+
 ## Key art
 
 `public/assets/hero-1920.webp`, `hero-1100.webp`, and `og-voltmarch.webp` are delivery derivatives of an original poster generated for VOLTMARCH with OpenAI's built-in image-generation tool on 24 August 2026. The final prompt intentionally reserves the left side for live HTML copy and forbids baked text, logos, watermarks, UI, screenshots, and recognizable third-party designs.

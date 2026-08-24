@@ -961,7 +961,7 @@ const REWARD_CLASSES: readonly RewardClass[] = [
   {
     row: 'Cosmetics',
     is: (r) => r.kind === 'cosmetic',
-    why: 'insignia and decals, rendered by nothing',
+    why: 'insignia and decals collected on the Service Record',
   },
 ];
 

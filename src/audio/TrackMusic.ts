@@ -2,8 +2,10 @@
  * ============================================================================
  * VOLTMARCH — src/audio/TrackMusic.ts
  * ============================================================================
- * RECORDED SCORE. Three CC0 tracks, crossfaded by combat heat, replacing the
- * procedural sequencer as the default while keeping it as the fallback.
+ * RECORDED SCORE. Three Kevin MacLeod tracks licensed under CC BY 4.0,
+ * crossfaded by combat heat, replacing the procedural sequencer as the default
+ * while keeping it as the fallback. Attribution is a licence condition: keep
+ * the in-game credit and THIRD_PARTY_NOTICES.md in every distribution.
  *
  * WHY STREAMS AND NOT THE SAMPLE BANK
  * -----------------------------------

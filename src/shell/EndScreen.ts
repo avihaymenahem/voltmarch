@@ -47,7 +47,8 @@
 import type { PlayerStats } from '../core/types';
 import { DIFFICULTIES, opponentChips, type OpponentSummary } from './settings-store';
 import { formatClock, currentObjectives, objectiveLine } from './PauseMenu';
-import { MissionsPanel, humaniseId, rewardCopy } from './Missions';
+import { MissionsPanel, humaniseId, presentableRewards, rewardCopy } from './Missions';
+import { cosmeticKind, cosmeticMark } from './CosmeticMarks';
 import {
   readProgression,
   type ActiveObjective,
@@ -428,7 +429,7 @@ export class EndScreen implements Screen {
         catalogue = [];
       }
     }
-    this.earned = earned;
+    this.earned = presentableRewards(earned);
     this.catalogue = catalogue;
   }
 
@@ -652,7 +653,14 @@ export class EndScreen implements Screen {
       cardEl.style.animationDelay = `${160 + i * 220}ms`;
 
       const glyph = el('div', 'vm-reveal-icon');
-      glyph.appendChild(icon(copy.iconName, 22));
+      const reward = this.earned[i];
+      if (reward.kind === 'cosmetic') {
+        const kind = cosmeticKind(reward.cosmeticId);
+        if (kind !== null) glyph.appendChild(cosmeticMark(reward.cosmeticId, kind, 38));
+        else glyph.appendChild(icon(copy.iconName, 22));
+      } else {
+        glyph.appendChild(icon(copy.iconName, 22));
+      }
       cardEl.appendChild(glyph);
 
       const text = el('div', 'vm-reveal-text');

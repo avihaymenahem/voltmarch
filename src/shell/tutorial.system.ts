@@ -43,12 +43,16 @@
 import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
-import { CreditReason, EntityFlag, EntityKind, RenderPhase, type RenderContext } from '../core/types';
+import {
+  CreditReason, EntityFlag, EntityKind, OrderKind, RenderPhase, type RenderContext,
+} from '../core/types';
 import type { World } from '../core/world';
 import { ctx } from '../game/context';
 import { production } from '../sim/Production';
 
-import { classifyStructure, type StructureRole } from './tutorial-steps';
+import {
+  classifyStructure, type StructureRole, type TutorialAction,
+} from './tutorial-steps';
 
 /* ==========================================================================
  * 1. THE SEAM
@@ -70,6 +74,7 @@ interface TutorialFeed {
   unitProduced(): void;
   harvestDeposit(): void;
   rallyMoved(): void;
+  action(action: TutorialAction): void;
   cameraSample(x: number, z: number, distance: number, homeX: number, homeZ: number): void;
   frame(dt: number): void;
 }
@@ -91,6 +96,7 @@ function readTutorial(): TutorialFeed | null {
   if (typeof v.cameraSample !== 'function') return null;
   if (typeof v.orderIssued !== 'function') return null;
   if (typeof v.structureCompleted !== 'function') return null;
+  if (typeof v.action !== 'function') return null;
   if (v.wantsMatch !== true) return null;
   return t as TutorialFeed;
 }
@@ -116,6 +122,9 @@ let unsubscribes: Array<() => void> = [];
  * existed is the player. The tutorial counts the second and ignores the first.
  */
 const lastRally = new Map<number, { x: number; z: number }>();
+/** Local buildings that were already repairing on the previous rendered frame. */
+let repairingPrevious = new Set<number>();
+let repairingCurrent = new Set<number>();
 /** Metres a flag must move to count. Below this it is float noise. */
 const RALLY_EPSILON = 0.5;
 
@@ -191,6 +200,32 @@ export default defineSystem({
     off.push(bus.on('order:issued', (p) => {
       if ((p.player as number) !== local) return;
       feed?.orderIssued(p.order as number, p.count);
+
+      const target = world.store.index(p.target);
+      if (p.order === OrderKind.Enter && target >= 0) {
+        feed?.action(world.store.kind[target] === EntityKind.Building
+          ? 'garrison-enter' : 'transport-board');
+      } else if (p.order === OrderKind.Unload && target >= 0
+        && world.store.kind[target] !== EntityKind.Building) {
+        feed?.action('transport-unload');
+      } else if (p.order === OrderKind.UseAbility && target >= 0
+        && world.store.kind[target] === EntityKind.Building) {
+        // Superweapon commits address their gating structure. A staged
+        // Displacement Ring source uses NONE and deliberately does not count.
+        feed?.action('superweapon-fire');
+      }
+    }));
+
+    off.push(bus.on('building:captured', (p) => {
+      if ((p.toPlayer as number) === local) feed?.action('building-capture');
+    }));
+
+    off.push(bus.on('building:sold', (p) => {
+      if ((p.player as number) === local) feed?.action('building-sell');
+    }));
+
+    off.push(bus.on('entity:veterancy', (p) => {
+      if ((p.player as number) === local && p.rank > 0) feed?.action('veterancy-rank');
     }));
 
     off.push(bus.on('building:completed', (p) => {
@@ -217,6 +252,8 @@ export default defineSystem({
     }));
 
     lastRally.clear();
+    repairingPrevious.clear();
+    repairingCurrent.clear();
     unsubscribes = off;
     feed.matchStarted();
     console.info('[tutorial] director attached — feeding a live match');
@@ -253,6 +290,24 @@ export default defineSystem({
       }
     }
 
+    /* -- accepted structure repairs: sampled from authoritative state ---- */
+    const store = world.store;
+    const local = world.localPlayer as number;
+    const buildings = store.byKind[EntityKind.Building];
+    const buildingCount = store.byKindCount[EntityKind.Building];
+    repairingCurrent.clear();
+    for (let a = 0; a < buildingCount; a++) {
+      const i = buildings[a];
+      if (store.owner[i] !== local) continue;
+      if ((store.flags[i] & EntityFlag.BeingRepaired) === 0) continue;
+      const id = store.handleOf(i) as number;
+      repairingCurrent.add(id);
+      if (!repairingPrevious.has(id)) f.action('repair-start');
+    }
+    const swap = repairingPrevious;
+    repairingPrevious = repairingCurrent;
+    repairingCurrent = swap;
+
     f.frame(r.dt);
   },
 
@@ -260,6 +315,8 @@ export default defineSystem({
     for (const off of unsubscribes) off();
     unsubscribes = [];
     lastRally.clear();
+    repairingPrevious.clear();
+    repairingCurrent.clear();
     feed?.matchEnded();
     feed = null;
   },

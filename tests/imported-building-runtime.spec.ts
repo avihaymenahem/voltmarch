@@ -109,10 +109,10 @@ describe('imported building runtime contract', () => {
     expect(source).toContain('spec.style.envMapIntensity * IMPORTED_STRUCTURE_EXPOSURE');
   });
 
-  it('keeps the title backdrop on the fast procedural fallback family', () => {
-    expect(source).toContain("get('title') !== '1'");
-    expect(source).toContain('importedStructuresRequested()');
-    expect(shellSource).toContain("query.set('title', '1')");
+  it('uses the approved imported architecture on the title backdrop too', () => {
+    expect(source).not.toContain("get('title') !== '1'");
+    expect(source).not.toContain('importedStructuresRequested()');
+    expect(shellSource).not.toContain("query.set('title', '1')");
     expect(shellSource).toContain("query.delete('title')");
   });
 

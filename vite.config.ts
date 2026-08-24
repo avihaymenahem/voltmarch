@@ -1,7 +1,10 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 /** The one version number. Everything else must derive from it, never restate it. */
 const PKG_VERSION: string = JSON.parse(
@@ -9,14 +12,37 @@ const PKG_VERSION: string = JSON.parse(
 ).version;
 
 /**
+ * Copy canonical licence artefacts into the web distribution. Electron embeds
+ * this same dist/ tree, so one source serves the repository, web and desktop
+ * releases without a second notice file that can drift.
+ */
+function releaseNoticesPlugin() {
+  return {
+    name: 'voltmarch-release-notices',
+    apply: 'build' as const,
+    writeBundle(output: { dir?: string }) {
+      const legal = resolve(ROOT, output.dir ?? 'dist', 'legal');
+      mkdirSync(legal, { recursive: true });
+      copyFileSync(resolve(ROOT, 'LICENSE'), resolve(legal, 'LICENSE.txt'));
+      copyFileSync(resolve(ROOT, 'THIRD_PARTY_NOTICES.md'), resolve(legal, 'THIRD_PARTY_NOTICES.md'));
+      copyFileSync(
+        resolve(ROOT, 'licenses', 'Rajdhani-OFL-1.1.txt'),
+        resolve(legal, 'Rajdhani-OFL-1.1.txt'),
+      );
+    },
+  };
+}
+
+/**
  * VOLTMARCH build config.
  *
- * DELIBERATELY PLUGIN-FREE.
+ * DELIBERATELY FREE OF CODE-TRANSFORM PLUGINS.
  *
  * There is no type-checking plugin here and there must never be one: esbuild
  * strips types, so a stray type error in one of ~15 parallel modules must never
  * be able to stop the game from running. `tsc --noEmit` is a separate gate
- * (`npm run typecheck`), not part of `npm run build`.
+ * (`npm run typecheck`), not part of `npm run build`. The one plugin below
+ * copies legal notices after bundling and never observes or transforms code.
  */
 export default defineConfig(({ command }) => ({
   // Relative base so the built bundle runs from a file:// path or any subdir -
@@ -28,6 +54,8 @@ export default defineConfig(({ command }) => ({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+
+  plugins: [releaseNoticesPlugin()],
 
   server: {
     /*

@@ -55,6 +55,11 @@ const code = (rel: string): string => at(rel)
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
+/** The durable career surface which consumes every authored cosmetic reward. */
+const profileSource = code('src/shell/Profile.ts');
+const endScreenSource = code('src/shell/EndScreen.ts');
+const cosmeticMarksSource = code('src/shell/CosmeticMarks.ts');
+
 /* ==========================================================================
  * 1. THE CLAIMS
  * ========================================================================== */
@@ -110,7 +115,6 @@ const MAP_CATALOGUE: ReadonlySet<string> = new Set(
     .map((m) => m[1]!),
 );
 const powerService = code('src/sim/CommanderPowers.ts');
-const rewardCopySource = code('src/shell/Missions.ts');
 
 /**
  * The claim for one reward. One function so the two directions cannot drift:
@@ -149,38 +153,16 @@ function claimFor(r: Reward): Claim | null {
         };
       }
 
-      /* -- THE FOURTEEN COSMETICS, NOW DECLARED FOR WHAT THEY ARE ----------
-       * This used to claim `rewardCopy` as a CONSUMER on the grounds that the
-       * copy said "No effect on the battle", so display was the whole
-       * contract. That was half right. The copy also said the insignia was
-       * "Worn by your army", which nothing has ever made true: the insignia
-       * plate on a structure is `MassRole.Insignia`, chosen per FACTION out of
-       * `FACTION_PALETTE`, and there is no path from `cosmetic.insignia.gold`
-       * to a pixel. A screen that names a reward is not a consumer of it — by
-       * that standard the five commander powers were "wired" too, and this
-       * file exists because they were not.
-       *
-       * So it is a gap, with the honest reason, and `stillMissing` will fail
-       * the day anything outside the two mission screens reads a cosmetic id.  */
+      /* Cosmetics are collection rewards. The Service Record walks the typed
+       * cosmetic rewards, joins ownership through profile.unlocked and renders
+       * both the earned object and its awarding mission. That is a durable
+       * consumer rather than a one-frame reward announcement. */
       if (id.startsWith('cosmetic.')) {
         return {
-          gap: 'NOTHING WEARS THESE. Fourteen ids ship (eight insignia, six decals) and the '
-            + 'only readers are src/shell/Missions.ts#rewardCopy and src/ui/ObjectiveBanner.ts, '
-            + 'both of which merely NAME the reward. They are kept rather than retired because '
-            + 'retiring an id strips it off every profile that earned it; the copy now says '
-            + '"A record on your profile. Nothing in a match reads it yet." rather than '
-            + '"Worn by your army".',
-          stillMissing: () => {
-            // The screens that name it are allowed. Anything in the art, render
-            // or sim layers reading a cosmetic id would be a real consumer.
-            for (const rel of ['src/art/BuildingDefs.ts', 'src/art/UnitDefs.ts',
-              'src/render/render-bridge.system.ts', 'src/progression/UnlockGate.ts']) {
-              if (/cosmetic\./.test(code(rel))) return false;
-            }
-            // ...and the copy must still be telling the truth about it.
-            return rewardCopySource.includes("case 'cosmetic':")
-              && rewardCopySource.includes('Nothing in a match reads it yet');
-          },
+          consumer: 'src/shell/Profile.ts#cosmeticCollection -> awardCard',
+          resolves: () => profileSource.includes("reward.kind !== 'cosmetic'")
+            && profileSource.includes('owned.has(id)')
+            && profileSource.includes('awardCard(award'),
         };
       }
 
@@ -196,13 +178,14 @@ function claimFor(r: Reward): Claim | null {
         resolves: () => lobbySource.includes('isMapUnlocked(') && MAP_CATALOGUE.has(r.mapId),
       };
 
-    // The typed twin of the `cosmetic.*` unlock above, and the same gap. See
-    // there for why it is one.
+    // The typed twin is what the Service Record enumerates. The generic unlock
+    // half answers ownership; this half supplies kind and catalogue provenance.
     case 'cosmetic':
       return {
-        gap: 'display only — the reward is named on the missions screen and nothing else '
-          + 'in the product reads it. See the cosmetic branch of the `unlock` case.',
-        stillMissing: () => rewardCopySource.includes('Nothing in a match reads it yet'),
+        consumer: 'src/shell/Profile.ts#cosmeticCollection -> awardCard',
+        resolves: () => profileSource.includes("reward.kind !== 'cosmetic'")
+          && profileSource.includes('missionTitle: mission.title')
+          && profileSource.includes('awardCard(award'),
       };
 
     case 'credits':
@@ -280,6 +263,14 @@ describe('every reward the mission table pays is accounted for', () => {
       }
     }
     expect(closed).toEqual([]);
+  });
+});
+
+describe('cosmetic presentation', () => {
+  it('shows the earned insignia or decal itself in the post-match reveal', () => {
+    expect(endScreenSource).toContain("reward.kind === 'cosmetic'");
+    expect(endScreenSource).toContain('cosmeticMark(reward.cosmeticId');
+    expect(cosmeticMarksSource).toContain('vm-profile-mark-glyph');
   });
 });
 

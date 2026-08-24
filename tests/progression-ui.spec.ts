@@ -43,6 +43,7 @@ import {
   buildChains,
   humaniseId,
   missionState,
+  presentableRewards,
   rewardCopy,
   summarise,
   unlockLabel,
@@ -350,6 +351,28 @@ describe('rewardCopy', () => {
   it('falls back rather than throwing on a reward kind it has never seen', () => {
     const rogue = { kind: 'holiday', destination: 'Yalta' } as unknown as Parameters<typeof rewardCopy>[0];
     expect(rewardCopy(rogue).name).toBe('Unknown');
+  });
+});
+
+describe('presentableRewards', () => {
+  it('collapses generic ownership twins for a cosmetic and a map', () => {
+    expect(presentableRewards([
+      { kind: 'unlock', unlockId: 'cosmetic.insignia.gold' },
+      { kind: 'cosmetic', cosmeticId: 'cosmetic.insignia.gold' },
+      { kind: 'unlock', unlockId: 'map.frozen-sector' },
+      { kind: 'map', mapId: 'map.frozen-sector' },
+    ])).toEqual([
+      { kind: 'cosmetic', cosmeticId: 'cosmetic.insignia.gold' },
+      { kind: 'map', mapId: 'map.frozen-sector' },
+    ]);
+  });
+
+  it('keeps ordinary unlocks and mismatched ids', () => {
+    const rows = [
+      { kind: 'unlock', unlockId: 'unit.raider' },
+      { kind: 'cosmetic', cosmeticId: 'cosmetic.insignia.gold' },
+    ] as const;
+    expect(presentableRewards(rows)).toEqual(rows);
   });
 });
 
