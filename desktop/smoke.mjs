@@ -24,6 +24,8 @@
  * ============================================================================
  */
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +40,13 @@ const rootRequire = createRequire(path.join(HERE, '..', 'package.json'));
 const deskRequire = createRequire(path.join(HERE, 'package.json'));
 const { _electron: electron } = rootRequire('playwright');
 const ELECTRON_EXE = deskRequire('electron');
+// Never boot the smoke harness against a player's actual persistent profile.
+// Besides being invasive, a saved in-progress match bypasses the main menu and
+// makes the multiplayer probe/profile assertions inspect the wrong screen.
+const SMOKE_PROFILE = mkdtempSync(path.join(tmpdir(), 'voltmarch-desktop-smoke-'));
+process.on('exit', () => {
+  try { rmSync(SMOKE_PROFILE, { recursive: true, force: true }); } catch { /* best effort */ }
+});
 
 let failures = 0;
 const check = (ok, label, detail = '') => {
@@ -46,7 +55,12 @@ const check = (ok, label, detail = '') => {
 };
 
 async function launch(extraArgs = []) {
-  const app = await electron.launch({ args: ['.', ...extraArgs], cwd: HERE, executablePath: ELECTRON_EXE });
+  const app = await electron.launch({
+    args: ['.', `--user-data-dir=${SMOKE_PROFILE}`, ...extraArgs],
+    cwd: HERE,
+    executablePath: ELECTRON_EXE,
+    env: { ...process.env, VM_DESKTOP_USER_DATA: SMOKE_PROFILE },
+  });
   const page = await app.firstWindow();
   const messages = [];
   page.on('console', (m) => messages.push(m.text()));
@@ -124,7 +138,13 @@ await page.waitForFunction(() => {
   const button = [...document.querySelectorAll('button')]
     .find((node) => node.textContent?.includes('Multiplayer'));
   return button !== undefined && !button.disabled;
-}, null, { timeout: 10_000 }).catch(() => { /* reported below */ });
+// A cold Windows profile must initialise the selected GPU, compile the first
+// WebGPU pipelines and generate the procedural title theatre before the menu
+// mounts. Ten seconds made this a race against shader compilation rather than
+// a relay test on real hardware. The engine readiness assertion above retains
+// its own hard deadline; this allowance only waits for the menu entry that
+// performs the production handshake.
+}, null, { timeout: 60_000 }).catch(() => { /* reported below */ });
 const multiplayer = await page.evaluate(() => {
   const button = [...document.querySelectorAll('button')]
     .find((node) => node.textContent?.includes('Multiplayer'));

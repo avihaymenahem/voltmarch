@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(resolve('src/art/buildings.system.ts'), 'utf8');
 const bridgeSystem = readFileSync(resolve('src/render/render-bridge.system.ts'), 'utf8');
+const shellSource = readFileSync(resolve('src/shell/Shell.ts'), 'utf8');
 
 describe('imported building runtime contract', () => {
   it('uses derived caster proxies for static imports without putting them in colour or AO', () => {
@@ -106,6 +107,13 @@ describe('imported building runtime contract', () => {
     expect(source).toContain('.multiplyScalar(IMPORTED_STRUCTURE_EXPOSURE)');
     expect(source).toContain('spec.style.ambientIntensity * IMPORTED_STRUCTURE_EXPOSURE');
     expect(source).toContain('spec.style.envMapIntensity * IMPORTED_STRUCTURE_EXPOSURE');
+  });
+
+  it('keeps the title backdrop on the fast procedural fallback family', () => {
+    expect(source).toContain("get('title') !== '1'");
+    expect(source).toContain('importedStructuresRequested()');
+    expect(shellSource).toContain("query.set('title', '1')");
+    expect(shellSource).toContain("query.delete('title')");
   });
 
   it('can reject baked studio gloss for dry hard-surface families', () => {

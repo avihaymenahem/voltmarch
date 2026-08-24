@@ -531,9 +531,17 @@ describe('the packaged desktop renderer carries the production relay', () => {
   });
 });
 
+describe('the title-menu relay probe', () => {
+  it('allows a cold WebGPU renderer to process the welcome before timing out', () => {
+    const link = readFileSync(path.join(process.cwd(), 'src/shell/net-link.ts'), 'utf8');
+    expect(link).toContain('const PROBE_TIMEOUT_MS = 12_000');
+  });
+});
+
 describe('the desktop content-security policy', () => {
   it('permits generated WebGPU worker modules to fetch their blob URL', () => {
     const main = readFileSync(path.join(process.cwd(), 'desktop/src/main.ts'), 'utf8');
+    expect(main).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'");
     expect(main).toContain("connect-src 'self' blob: ws: wss:");
     expect(main).toContain("worker-src 'self' blob:");
   });

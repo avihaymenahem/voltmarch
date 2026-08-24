@@ -180,7 +180,12 @@ export function unavailableReason(): string {
  * worth catching before the player commits to the screen.
  * ========================================================================== */
 
-const PROBE_TIMEOUT_MS = 4000;
+// Cold WebGPU startup can keep the renderer event loop busy while the socket's
+// welcome is already queued. Four seconds let the timer task win that race and
+// permanently labelled a healthy relay unavailable until the next probe TTL.
+// The relay's own connect/match deadlines remain unchanged; this is only the
+// lightweight title-menu capability check.
+const PROBE_TIMEOUT_MS = 12_000;
 /** How long a verdict is trusted. Long enough not to probe on every menu open. */
 const PROBE_TTL_MS = 60_000;
 

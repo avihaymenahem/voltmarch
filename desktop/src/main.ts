@@ -50,6 +50,15 @@ import {
 import type { DisplayInfo, DisplayPatch, DisplayPrefs, DisplayState } from './display';
 import { NativeStorage } from './storage';
 
+// Test and diagnostic launches may isolate native settings/saves without
+// touching a player's real profile. Chromium's --user-data-dir does not change
+// Electron's app.getPath('userData'), so the main process must opt in before
+// any settings file or NativeStorage path is resolved.
+const userDataOverride = process.env.VM_DESKTOP_USER_DATA?.trim();
+if (userDataOverride !== undefined && userDataOverride !== '') {
+  app.setPath('userData', path.resolve(userDataOverride));
+}
+
 /* -------------------------------------------------------------------------- */
 /* 1. Where the web build lives                                                */
 /* -------------------------------------------------------------------------- */
@@ -229,7 +238,11 @@ protocol.registerSchemesAsPrivileged([
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // Basis/KTX2's Emscripten bindings compile WebAssembly and use Function()
+  // to craft their typed invokers inside the isolated blob worker. Both tokens
+  // are therefore required; omitting unsafe-eval leaves the title backdrop
+  // waiting forever for texture preparation and the main menu never appears.
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",

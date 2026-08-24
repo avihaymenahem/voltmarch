@@ -2673,7 +2673,15 @@ export class Shell {
 
     const settings = this.settings.get();
     const query = buildMatchQuery(this.setup, settings, location.search, seed);
-    if (backdrop) query.set('ai', 'off');
+    if (backdrop) {
+      query.set('ai', 'off');
+      // The menu needs an immediate moving battlefield, not the entire authored
+      // architecture catalogue decoded behind an opaque UI. art.buildings uses
+      // this private marker to retain the procedural fallback family here.
+      query.set('title', '1');
+    } else {
+      query.delete('title');
+    }
     // The tutorial teaches deploying the MCV, so it cannot inherit a lobby that
     // last asked for a pre-built base. `?start=` is the only channel that
     // outranks `setPlannedStart` — see `chooseStart` in game/Scenarios.ts.
