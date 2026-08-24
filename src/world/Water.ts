@@ -413,6 +413,7 @@ export class Water {
 
         const mesh = new THREE.Mesh(geo, this.materials.material);
         mesh.name = `water.chunk.${cx}.${cz}`;
+        mesh.userData.vmGpuPass = 'water';
         mesh.position.set(ox, 0, oz);
         mesh.castShadow = false;
         mesh.receiveShadow = false;

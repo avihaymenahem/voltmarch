@@ -114,6 +114,14 @@ import { el, label } from './Chrome';
  * instead of a copy in this file that drifts from the renderer's.
  */
 import type { LiveBackend } from '../render/backend';
+import {
+  GPU_PASS_COUNT,
+  gpuPassIndex,
+  installGpuPassTimer,
+  type GpuPassId,
+  type GpuPassSnapshot,
+  type GpuPassTimerSink,
+} from '../render/gpu-pass-timings';
 
 import './perf.css';
 
@@ -196,8 +204,8 @@ const VERDICT_UNITS = 11;
 const ROW_UNITS = 11;
 const ROW_GAP_UNITS = 1;
 const BLOCK_GAP_UNITS = 3;
-/** p95/min, cpu, gpu, draws, tris, tier, device, self. */
-export const PERF_ROW_COUNT = 8;
+/** Core diagnostics plus four GPU/CPU subsystem rows. */
+export const PERF_ROW_COUNT = 12;
 
 /**
  * Panel height in design units.
@@ -540,8 +548,13 @@ function isTimerExt(v: unknown): v is TimerExt {
   return typeof e.TIME_ELAPSED_EXT === 'number' && typeof e.GPU_DISJOINT_EXT === 'number';
 }
 
-/** Queries in flight. Three is enough for a driver that lags two frames. */
-const TIMER_POOL = 3;
+/**
+ * Queries in flight. Pass sampling rotates one category per frame; the larger
+ * pool covers a particle frame (three meshes) plus several frames of driver
+ * latency without ever blocking for a result.
+ */
+const TIMER_POOL = 24;
+const TIMER_SAMPLE_RING = 32;
 
 /**
  * Why the GPU row is or is not showing a number.
@@ -566,25 +579,39 @@ export type GpuTimerStatus =
   | 'ok';
 
 /** The timer surface consumed by the panel, independent of graphics API. */
-export interface GpuTimerLike {
+export interface GpuTimerLike extends Partial<GpuPassTimerSink> {
   readonly available: boolean;
   readonly gpuMs: number | null;
   readonly status: GpuTimerStatus;
+  readonly passSnapshot?: GpuPassSnapshot;
   tick(): void;
-  /** Optional activation hook; WebGPU uses it to avoid timestamp writes while hidden. */
+  /** Optional activation hook; writes stop when neither HUD nor governor needs them. */
   setActive?(active: boolean): void;
   dispose(): void;
 }
 
 export class GpuTimer implements GpuTimerLike {
-  /** Milliseconds of the most recently resolved frame, or null. */
-  private lastMs: number | null = null;
   private readonly ext: TimerExt | null = null;
   private readonly queries: object[] = [];
-  /** Indices of ended-but-unresolved queries, oldest first. Fixed length. */
   private readonly pending: Int32Array = new Int32Array(TIMER_POOL);
+  private readonly querySample: Int32Array = new Int32Array(TIMER_POOL).fill(-1);
+  private readonly samplePass: Int8Array = new Int8Array(TIMER_SAMPLE_RING).fill(-1);
+  private readonly samplePending: Int8Array = new Int8Array(TIMER_SAMPLE_RING);
+  private readonly sampleClosed: Uint8Array = new Uint8Array(TIMER_SAMPLE_RING);
+  private readonly sampleSum: Float32Array = new Float32Array(TIMER_SAMPLE_RING);
+  private readonly passValues: Array<number | null> = Array<number | null>(GPU_PASS_COUNT).fill(null);
+  private readonly snapshot: { revision: number; values: ReadonlyArray<number | null> } = {
+    revision: 0,
+    values: this.passValues,
+  };
   private pendingCount = 0;
   private open = -1;
+  private openSample = -1;
+  private active = false;
+  private target = gpuPassIndex('total');
+  private sampleSerial = 0;
+  private currentSample = -1;
+  private sceneArmed = false;
   private disjointSeen = false;
 
   constructor(private readonly gl: TimerQueryGl | null) {
@@ -611,14 +638,49 @@ export class GpuTimer implements GpuTimerLike {
 
   /** The last resolved GPU frame time, or null when nothing is measurable. */
   get gpuMs(): number | null {
-    return this.ext === null ? null : this.lastMs;
+    return this.ext === null ? null : this.passValues[gpuPassIndex('total')];
   }
+
+  get passSnapshot(): GpuPassSnapshot { return this.snapshot; }
 
   /** Why the readout is empty, for the panel's own row. */
   get status(): GpuTimerStatus {
     if (this.ext === null) return 'absent';
     if (this.disjointSeen) return 'disjoint';
-    return this.lastMs === null ? 'waiting' : 'ok';
+    return this.gpuMs === null ? 'waiting' : 'ok';
+  }
+
+  setActive(active: boolean): void {
+    this.active = active;
+    if (!active) this.closeOpen();
+  }
+
+  beginPass(id: GpuPassId): void {
+    if (!this.active || this.ext === null || this.currentSample < 0) return;
+    const idx = gpuPassIndex(id);
+    if (idx !== this.target) {
+      // The scene query begins only after Three's nested shadow submission.
+      if (id === 'scene' && this.target === gpuPassIndex('scene')) this.sceneArmed = true;
+      return;
+    }
+    if (id === 'scene') {
+      this.sceneArmed = true;
+      return;
+    }
+    this.openQuery();
+  }
+
+  endPass(id: GpuPassId): void {
+    if (!this.active || this.ext === null || this.currentSample < 0) return;
+    if (id === 'shadow' && this.sceneArmed && this.target === gpuPassIndex('scene')) {
+      // `WebGLRenderer.render()` has just returned from shadowMap.render; the
+      // remaining work in the outer RenderPass is the colour scene exactly.
+      this.openQuery();
+      return;
+    }
+    if (gpuPassIndex(id) !== this.target) return;
+    this.closeOpen();
+    if (id === 'scene') this.sceneArmed = false;
   }
 
   /**
@@ -629,13 +691,10 @@ export class GpuTimer implements GpuTimerLike {
   tick(): void {
     const gl = this.gl;
     const ext = this.ext;
-    if (gl === null || ext === null) return;
+    if (gl === null || ext === null || !this.active) return;
 
-    if (this.open >= 0) {
-      gl.endQuery(ext.TIME_ELAPSED_EXT);
-      if (this.pendingCount < TIMER_POOL) this.pending[this.pendingCount++] = this.open;
-      this.open = -1;
-    }
+    this.closeOpen();
+    this.closeSample();
 
     // A disjoint event means every query in flight is garbage — the GPU was
     // preempted or the clock was reset. Throw the window away rather than
@@ -648,9 +707,15 @@ export class GpuTimer implements GpuTimerLike {
     }
     if (disjoint) {
       this.pendingCount = 0;
-      this.lastMs = null;
+      this.passValues.fill(null);
+      this.querySample.fill(-1);
+      this.samplePending.fill(0);
+      this.sampleClosed.fill(0);
       this.disjointSeen = true;
-    } else if (this.pendingCount > 0) {
+    } else {
+      // Harvest every ready query at the head. Results are ordered by issue,
+      // so the first unavailable one is also the boundary for this poll.
+      while (this.pendingCount > 0) {
       const idx = this.pending[0];
       const q = this.queries[idx];
       let ready = false;
@@ -659,7 +724,7 @@ export class GpuTimer implements GpuTimerLike {
       } catch {
         ready = false;
       }
-      if (ready) {
+        if (!ready) break;
         let ns = 0;
         try {
           const raw = gl.getQueryParameter(q, gl.QUERY_RESULT);
@@ -667,26 +732,96 @@ export class GpuTimer implements GpuTimerLike {
         } catch {
           ns = 0;
         }
-        this.lastMs = ns / 1e6;
+        const sample = this.querySample[idx];
+        if (sample >= 0) {
+          this.sampleSum[sample] += ns / 1e6;
+          if (this.samplePending[sample] > 0) this.samplePending[sample]--;
+          this.publishSample(sample);
+        }
+        this.querySample[idx] = -1;
         this.disjointSeen = false;
         for (let i = 1; i < this.pendingCount; i++) this.pending[i - 1] = this.pending[i];
         this.pendingCount--;
       }
     }
 
-    // Open the next one on a query that is not waiting for a result.
+    this.beginSample();
+    if (this.target === gpuPassIndex('total')) this.openQuery();
+  }
+
+  private beginSample(): void {
+    const slot = this.sampleSerial++ % TIMER_SAMPLE_RING;
+    // A driver more than 32 sampled frames behind is not a clock we should
+    // steer from. Leave that old slot pending and skip this sample.
+    if (this.samplePending[slot] !== 0) {
+      this.currentSample = -1;
+      return;
+    }
+    this.currentSample = slot;
+    this.target = this.sampleSerial % GPU_PASS_COUNT;
+    this.samplePass[slot] = this.target;
+    this.sampleClosed[slot] = 0;
+    this.sampleSum[slot] = 0;
+    this.sceneArmed = false;
+  }
+
+  private closeSample(): void {
+    const sample = this.currentSample;
+    if (sample < 0) return;
+    this.sampleClosed[sample] = 1;
+    this.publishSample(sample);
+    this.currentSample = -1;
+    this.sceneArmed = false;
+  }
+
+  private publishSample(sample: number): void {
+    if (this.sampleClosed[sample] === 0 || this.samplePending[sample] !== 0) return;
+    const pass = this.samplePass[sample];
+    if (pass >= 0) {
+      this.passValues[pass] = this.sampleSum[sample] > 0 ? this.sampleSum[sample] : null;
+      this.snapshot.revision++;
+    }
+    this.sampleClosed[sample] = 0;
+    this.samplePass[sample] = -1;
+    this.sampleSum[sample] = 0;
+  }
+
+  private openQuery(): void {
+    const gl = this.gl;
+    const ext = this.ext;
+    if (gl === null || ext === null || this.open >= 0 || this.currentSample < 0) return;
     for (let i = 0; i < this.queries.length; i++) {
-      let busy = false;
-      for (let p = 0; p < this.pendingCount; p++) if (this.pending[p] === i) busy = true;
-      if (busy) continue;
+      if (this.querySample[i] >= 0) continue;
       try {
         gl.beginQuery(ext.TIME_ELAPSED_EXT, this.queries[i]);
         this.open = i;
+        this.openSample = this.currentSample;
       } catch {
         this.open = -1;
+        this.openSample = -1;
       }
       return;
     }
+  }
+
+  private closeOpen(): void {
+    const gl = this.gl;
+    const ext = this.ext;
+    if (gl === null || ext === null || this.open < 0) return;
+    const idx = this.open;
+    const sample = this.openSample;
+    try {
+      gl.endQuery(ext.TIME_ELAPSED_EXT);
+      if (this.pendingCount < TIMER_POOL && sample >= 0) {
+        this.pending[this.pendingCount++] = idx;
+        this.querySample[idx] = sample;
+        this.samplePending[sample]++;
+      }
+    } catch {
+      this.querySample[idx] = -1;
+    }
+    this.open = -1;
+    this.openSample = -1;
   }
 
   dispose(): void {
@@ -710,14 +845,33 @@ export class GpuTimer implements GpuTimerLike {
     }
     this.queries.length = 0;
     this.pendingCount = 0;
+    this.currentSample = -1;
   }
 }
 
 /** Structural surface of Three's WebGPU timestamp-query path. */
 export interface WebGpuTimestampRenderer {
-  readonly info: { readonly render: { timestamp: number } };
-  readonly backend: { trackTimestamp?: boolean };
+  readonly info: { readonly frame?: number; readonly render: { timestamp: number } };
+  readonly backend: WebGpuTimestampBackend;
   resolveTimestampsAsync(type?: string): Promise<number | undefined>;
+}
+
+interface WebGpuRenderContextLike {
+  readonly id?: number;
+  readonly camera?: { readonly isOrthographicCamera?: boolean } | null;
+  readonly clippingContext?: { readonly shadowPass?: boolean } | null;
+  readonly textures?: ReadonlyArray<{ readonly name?: string }> | null;
+}
+
+interface WebGpuTimestampPoolLike {
+  readonly timestamps?: Map<string, number>;
+}
+
+interface WebGpuTimestampBackend {
+  trackTimestamp?: boolean;
+  beginRender?(context: WebGpuRenderContextLike): void;
+  getTimestampUID?(context: WebGpuRenderContextLike): string;
+  readonly timestampQueryPool?: { readonly render?: WebGpuTimestampPoolLike };
 }
 
 /** Resolve often enough to keep Three's fixed query pool bounded, not per frame. */
@@ -727,28 +881,52 @@ const WEBGPU_RESOLVE_FRAMES = 15;
  * Real WebGPU GPU time from Three's `timestamp-query` integration.
  *
  * The feature is requested when the renderer is created, but timestamp writes
- * are disabled while the overlay is hidden. While visible, every fifteenth
- * frame resolves the accumulated queries asynchronously; the renderer reports
- * the sum for the latest complete frame in milliseconds.
+ * run only while the overlay or governor needs them. Every fifteenth sampled
+ * frame resolves asynchronously; the renderer reports the latest complete
+ * frame in milliseconds.
  */
-export class WebGpuTimer implements GpuTimerLike {
+export class WebGpuTimer implements GpuTimerLike, GpuPassTimerSink {
   private readonly supported: boolean;
   private active = false;
   private pending = false;
   private failed = false;
   private frames = 0;
   private lastMs: number | null = null;
+  private readonly passValues: Array<number | null> = Array<number | null>(GPU_PASS_COUNT).fill(null);
+  private readonly snapshot: { revision: number; values: ReadonlyArray<number | null> } = {
+    revision: 0,
+    values: this.passValues,
+  };
+  private readonly contextUids: string[] = new Array<string>(2048);
+  private readonly contextPass: Int8Array = new Int8Array(2048);
+  private readonly contextFrame: Int32Array = new Int32Array(2048);
+  private contextCount = 0;
+  private readonly sums = new Float32Array(GPU_PASS_COUNT);
+  private readonly baseBeginRender: ((context: WebGpuRenderContextLike) => void) | null;
 
   constructor(private readonly renderer: WebGpuTimestampRenderer) {
     // WebGPUBackend folds the constructor request together with actual adapter
     // support during init. Reading this after init is therefore the capability
     // test; do not infer support from the requested backend.
     this.supported = renderer.backend.trackTimestamp === true;
-    renderer.backend.trackTimestamp = false;
+    const backend = renderer.backend;
+    const begin = backend.beginRender;
+    this.baseBeginRender = typeof begin === 'function' ? begin.bind(backend) : null;
+    if (this.supported && this.baseBeginRender !== null) {
+      const self = this;
+      backend.beginRender = function timedBeginRender(context: WebGpuRenderContextLike): void {
+        self.captureContext(context);
+        self.baseBeginRender!(context);
+      };
+    }
+    // Capability and activity are separate. PerfHud explicitly activates the
+    // timer after installing it; direct users retain the prior opt-in contract.
+    backend.trackTimestamp = false;
   }
 
   get available(): boolean { return this.supported && !this.failed; }
   get gpuMs(): number | null { return this.available ? this.lastMs : null; }
+  get passSnapshot(): GpuPassSnapshot { return this.snapshot; }
   get status(): GpuTimerStatus {
     if (!this.available) return 'absent';
     return this.lastMs === null ? 'waiting' : 'ok';
@@ -761,6 +939,9 @@ export class WebGpuTimer implements GpuTimerLike {
     if (!active) this.frames = 0;
   }
 
+  beginPass(_id: GpuPassId): void { /* Render contexts are the WebGPU pass boundaries. */ }
+  endPass(_id: GpuPassId): void { /* See captureContext(). */ }
+
   tick(): void {
     if (!this.active || !this.available || this.pending) return;
     this.frames++;
@@ -769,7 +950,12 @@ export class WebGpuTimer implements GpuTimerLike {
     this.pending = true;
     void this.renderer.resolveTimestampsAsync('render').then((ms) => {
       this.pending = false;
-      if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) this.lastMs = ms;
+      if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) {
+        this.lastMs = ms;
+        this.passValues[gpuPassIndex('total')] = ms;
+        this.resolveContexts();
+        this.snapshot.revision++;
+      }
     }, () => {
       this.pending = false;
       this.failed = true;
@@ -778,9 +964,79 @@ export class WebGpuTimer implements GpuTimerLike {
     });
   }
 
+  private captureContext(context: WebGpuRenderContextLike): void {
+    if (!this.active || !this.available || this.contextCount >= this.contextUids.length) return;
+    const getUid = this.renderer.backend.getTimestampUID;
+    if (typeof getUid !== 'function') return;
+    let uid = '';
+    try {
+      uid = getUid.call(this.renderer.backend, context);
+    } catch {
+      return;
+    }
+    if (uid === '') return;
+    const i = this.contextCount++;
+    this.contextUids[i] = uid;
+    this.contextPass[i] = this.classifyContext(context);
+    this.contextFrame[i] = this.renderer.info.frame ?? this.frameFromUid(uid);
+  }
+
+  private classifyContext(context: WebGpuRenderContextLike): number {
+    // Full-screen post nodes also use an orthographic camera. The renderer's
+    // clipping context is the reliable statement that this is a shadow pass.
+    if (context.clippingContext?.shadowPass === true) return gpuPassIndex('shadow');
+    const name = context.textures?.[0]?.name ?? '';
+    if (name === 'PostHDR') return gpuPassIndex('scene');
+    if (name.startsWith('Ao')) return gpuPassIndex('ao');
+    if (name.startsWith('UnrealBloomPass') || name === 'PostBloomInput' || name === 'PostGradeInput') {
+      return gpuPassIndex('bloom');
+    }
+    if (name.toUpperCase().includes('SMAA')) return gpuPassIndex('smaa');
+    // The final default-framebuffer context evaluates the grade expression.
+    if (context.textures === null) return gpuPassIndex('grade');
+    return gpuPassIndex('scene');
+  }
+
+  private frameFromUid(uid: string): number {
+    const marker = uid.lastIndexOf(':f');
+    if (marker < 0) return -1;
+    const n = Number(uid.slice(marker + 2));
+    return Number.isFinite(n) ? n : -1;
+  }
+
+  private resolveContexts(): void {
+    const timestamps = this.renderer.backend.timestampQueryPool?.render?.timestamps;
+    if (timestamps === undefined || this.contextCount === 0) {
+      this.contextCount = 0;
+      return;
+    }
+    let latest = -1;
+    for (let i = 0; i < this.contextCount; i++) {
+      if (timestamps.has(this.contextUids[i]) && this.contextFrame[i] > latest) latest = this.contextFrame[i];
+    }
+    if (latest < 0) {
+      this.contextCount = 0;
+      return;
+    }
+    this.sums.fill(0);
+    for (let i = 0; i < this.contextCount; i++) {
+      if (this.contextFrame[i] !== latest) continue;
+      const ms = timestamps.get(this.contextUids[i]);
+      if (ms === undefined || !Number.isFinite(ms) || ms < 0) continue;
+      this.sums[this.contextPass[i]] += ms;
+    }
+    for (let i = 1; i < GPU_PASS_COUNT; i++) {
+      this.passValues[i] = null;
+      if (this.sums[i] > 0) this.passValues[i] = this.sums[i];
+    }
+    this.contextCount = 0;
+  }
+
   dispose(): void {
     this.active = false;
     this.renderer.backend.trackTimestamp = false;
+    if (this.baseBeginRender !== null) this.renderer.backend.beginRender = this.baseBeginRender;
+    this.contextCount = 0;
   }
 }
 
@@ -855,6 +1111,10 @@ export interface PerfReadout {
    * One line naming the GPU, already shortened for the row. See `shortDevice`.
    */
   device: string;
+  /** CPU-side frame-system work; GPU draw cost is reported by the timer rows. */
+  waterCpuMs: number;
+  particlesCpuMs: number;
+  uiCpuMs: number;
 }
 
 export function emptyReadout(): PerfReadout {
@@ -870,6 +1130,9 @@ export function emptyReadout(): PerfReadout {
     pixelRatio: 1,
     backend: null,
     device: '—',
+    waterCpuMs: 0,
+    particlesCpuMs: 0,
+    uiCpuMs: 0,
   };
 }
 
@@ -1084,6 +1347,7 @@ export class PerfHud {
   private readonly cpu = new FrameRing(HISTORY_FRAMES);
   private readonly readout: PerfReadout = emptyReadout();
   private readonly timer: GpuTimerLike;
+  private readonly removePassTimer: () => void;
 
   private readonly primary: Text;
   private readonly fps: Text;
@@ -1113,6 +1377,7 @@ export class PerfHud {
   private lastVerdict: LoadVerdict | null = null;
   private verdictClass = '';
   private disposed = false;
+  private profilingActive = false;
 
   /** Measured cost of one `frame()` call, in ms. Set by `calibrate()`. */
   private sampleCostMs = 0;
@@ -1124,6 +1389,11 @@ export class PerfHud {
     this.source = options.source;
     this.now = options.now ?? (() => performance.now());
     this.timer = options.timer ?? new GpuTimer(options.gl ?? null);
+    this.removePassTimer =
+      typeof this.timer.beginPass === 'function' && typeof this.timer.endPass === 'function' &&
+      this.timer.passSnapshot !== undefined
+        ? installGpuPassTimer(this.timer as GpuPassTimerSink)
+        : () => {};
 
     this.root = el('div', 'vm-perf', options.mount);
     // Inline as well as in the stylesheet: if perf.css ever fails to load, the
@@ -1156,10 +1426,14 @@ export class PerfHud {
     this.addRow(rows, 'tier');
     this.addRow(rows, 'device');
     this.addRow(rows, 'self');
+    this.addRow(rows, 'gpu scene / sh');
+    this.addRow(rows, 'gpu ao / blm / grd');
+    this.addRow(rows, 'gpu water / fx / ui');
+    this.addRow(rows, 'cpu water / fx / ui');
 
     this.visible = options.visible ?? false;
     this.root.hidden = !this.visible;
-    this.timer.setActive?.(this.visible);
+    this.setProfilingActive(this.visible);
     this.applyMountFlag();
   }
 
@@ -1200,7 +1474,7 @@ export class PerfHud {
     if (this.disposed || this.visible === value) return;
     this.visible = value;
     this.root.hidden = !value;
-    this.timer.setActive?.(value);
+    this.setProfilingActive(value);
     this.applyMountFlag();
     if (!value) return;
     // A window collected before the panel was opened would describe a different
@@ -1216,6 +1490,13 @@ export class PerfHud {
     this.setVisible(!this.visible);
   }
 
+  /** Keep queries alive for either the visible instrument or adaptive quality. */
+  setProfilingActive(value: boolean): void {
+    if (this.disposed || this.profilingActive === value) return;
+    this.profilingActive = value;
+    this.timer.setActive?.(value);
+  }
+
   /**
    * Once per rendered frame, from `ui/perf.system.ts`.
    *
@@ -1223,14 +1504,15 @@ export class PerfHud {
    * exists — the query rotation. No strings, no objects, no DOM, no layout.
    */
   frame(dt: number): void {
-    if (!this.visible || this.disposed) return;
+    if (this.disposed) return;
+    // Pass timing also feeds adaptive quality while the panel is hidden.
+    this.timer.tick();
+    if (!this.visible) return;
 
     const t = this.now();
     if (this.lastFrameAt > 0) this.frames.push(t - this.lastFrameAt);
     this.lastFrameAt = t;
     this.cpu.push(this.source.cpuMs());
-    this.timer.tick();
-
     this.sinceUpdate += dt;
     if (this.sinceUpdate < 1 / UPDATE_HZ) return;
     this.sinceUpdate = 0;
@@ -1240,6 +1522,7 @@ export class PerfHud {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.removePassTimer();
     this.timer.dispose();
     this.visible = false;
     this.applyMountFlag();
@@ -1360,6 +1643,19 @@ export class PerfHud {
     this.write(
       7,
       `${formatSmallMs(this.sampleCostMs)}/f · ${formatSmallMs(this.updateCostMs)}/upd`,
+    );
+
+    const pass = this.timer.passSnapshot?.values;
+    const passMs = (id: GpuPassId): string => {
+      const value = pass?.[gpuPassIndex(id)] ?? null;
+      return value === null ? UNAVAILABLE : value.toFixed(value < 10 ? 2 : 1);
+    };
+    this.write(8, `${passMs('scene')} / ${passMs('shadow')} ms`);
+    this.write(9, `${passMs('ao')} / ${passMs('bloom')} / ${passMs('grade')} ms`);
+    this.write(10, `${passMs('water')} / ${passMs('particles')} / ${passMs('ui')} ms`);
+    this.write(
+      11,
+      `${formatSmallMs(r.waterCpuMs)} / ${formatSmallMs(r.particlesCpuMs)} / ${formatSmallMs(r.uiCpuMs)}`,
     );
 
     const badge = formatBackend(r.backend);

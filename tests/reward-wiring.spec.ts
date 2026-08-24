@@ -190,11 +190,10 @@ function claimFor(r: Reward): Claim | null {
 
     case 'credits':
       return {
-        gap: 'NOTHING PAYS THESE. Thirteen match objectives award credits and no module '
+        gap: 'NOTHING PAYS THESE. Thirteen match objectives retain credit metadata and no module '
           + 'grants them: `Economy.grant` has no caller for a mission reward, and '
-          + '`ProgressionView.drainPending` is drained only by the end screen, which '
-          + 'prints them. src/ui/ObjectiveBanner.ts advertises "+N credits" while the '
-          + 'ledger never moves. It is NOT fixed here because paying it safely is a '
+          + 'the player-facing reward selectors deliberately filter it. It is NOT paid '
+          + 'here because doing so safely is a '
           + 'design problem, not a plumbing one: the objective board is drawn from the '
           + 'profile (`MissionTracker.drawObjectives` skips locked rows), so two lockstep '
           + 'clients with different profiles would be paid different amounts on different '

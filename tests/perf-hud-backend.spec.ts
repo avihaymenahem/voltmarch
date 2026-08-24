@@ -179,6 +179,7 @@ import {
 } from '../src/ui/PerfHud';
 
 import { colourDrawsOf } from '../src/ui/perf.system';
+import { gpuPassIndex } from '../src/render/gpu-pass-timings';
 
 /* ==========================================================================
  * HELPERS
@@ -417,6 +418,43 @@ describe('WebGpuTimer', () => {
     expect(timer.available).toBe(false);
     expect(timer.status).toBe('absent');
     expect(renderer.backend.trackTimestamp).toBe(false);
+  });
+
+  it('attributes native WebGPU render contexts to their real passes', async () => {
+    const timestamps = new Map<string, number>([
+      ['shadow:f42', 2.5], ['scene:f42', 5.25], ['ao:f42', 1.4],
+      ['bloom:f42', 1.8], ['grade:f42', 0.9], ['smaa:f42', 0.7],
+    ]);
+    const renderer = {
+      info: { frame: 42, render: { timestamp: 0 } },
+      backend: {
+        trackTimestamp: true,
+        beginRender: (_context: unknown) => {},
+        getTimestampUID: (context: { uid: string }) => context.uid,
+        timestampQueryPool: { render: { timestamps } },
+      },
+      resolveTimestampsAsync: async () => 12.55,
+    };
+    const timer = new WebGpuTimer(renderer as never);
+    timer.setActive(true);
+    const submit = renderer.backend.beginRender as (context: unknown) => void;
+    submit({ uid: 'shadow:f42', clippingContext: { shadowPass: true }, textures: [{}] });
+    submit({ uid: 'scene:f42', textures: [{ name: 'PostHDR' }] });
+    submit({ uid: 'ao:f42', textures: [{ name: 'AoDenoised' }] });
+    submit({ uid: 'bloom:f42', textures: [{ name: 'PostBloomInput' }] });
+    submit({ uid: 'grade:f42', textures: null });
+    submit({ uid: 'smaa:f42', textures: [{ name: 'SMAAEdges' }] });
+    for (let i = 0; i < 15; i++) timer.tick();
+    await Promise.resolve();
+
+    const values = timer.passSnapshot.values;
+    expect(values[gpuPassIndex('total')]).toBe(12.55);
+    expect(values[gpuPassIndex('shadow')]).toBeCloseTo(2.5);
+    expect(values[gpuPassIndex('scene')]).toBeCloseTo(5.25);
+    expect(values[gpuPassIndex('ao')]).toBeCloseTo(1.4);
+    expect(values[gpuPassIndex('bloom')]).toBeCloseTo(1.8);
+    expect(values[gpuPassIndex('grade')]).toBeCloseTo(0.9);
+    expect(values[gpuPassIndex('smaa')]).toBeCloseTo(0.7);
   });
 });
 

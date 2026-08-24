@@ -139,8 +139,9 @@ export function objectiveLine(o: ActiveObjective): string {
   return `${value} / ${o.progress.target}`;
 }
 
-/** Optional campaign payout shown in the paused objective ledger. */
+/** Optional, confirmed-paid campaign payout shown in the paused objective ledger. */
 export function objectiveCreditReward(o: ActiveObjective): string {
+  if (o.creditRewardPaid !== true) return '';
   const reward = o.reward.find((row) => row.kind === 'credits');
   if (reward === undefined || reward.amount <= 0) return '';
   return `+${Math.floor(reward.amount).toLocaleString('en-US')} cr`;

@@ -385,7 +385,8 @@ export function nextUpMissions(catalogue: readonly CatalogueEntry[], limit = 3):
 export function nextUpLine(e: CatalogueEntry): string {
   const target = e.progress.target > 1 ? e.progress.target : 1;
   const value = Math.max(0, Math.min(target, Math.floor(e.progress.value)));
-  const reward = e.reward.length > 0 ? rewardCopy(e.reward[0]).name : '';
+  const visible = presentableRewards(e.reward);
+  const reward = visible.length > 0 ? rewardCopy(visible[0]).name : '';
   const count = `${value.toLocaleString('en-US')} / ${target.toLocaleString('en-US')}`;
   return reward === '' ? count : `${count} · ${reward}`;
 }
@@ -725,11 +726,14 @@ export class EndScreen implements Screen {
       wrap.appendChild(this.progressBlock(
         'Missions Advanced',
         `${advanced.length} finished`,
-        advanced.map((e) => ({
-          title: e.title,
-          detail: e.reward.length > 0 ? rewardCopy(e.reward[0]).name : humaniseId(e.id),
-          good: true,
-        })),
+        advanced.map((e) => {
+          const visible = presentableRewards(e.reward);
+          return {
+            title: e.title,
+            detail: visible.length > 0 ? rewardCopy(visible[0]).name : humaniseId(e.id),
+            good: true,
+          };
+        }),
       ));
     }
 

@@ -20,23 +20,25 @@
  *
  * THE HEIGHT IS ARITHMETIC, NOT A GUESS
  * -------------------------------------
- * Design units, 150u wide, eight rows:
+ * Design units, 150u wide, twelve rows:
  *
  *   pad 4 + head 11 + gap 3 + primary 20 + gap 3 + verdict 11 + gap 3
- *         + 8 rows (11u) + 7 row gaps (1u) + pad 4                    = 154u
+ *         + 12 rows (11u) + 11 row gaps (1u) + pad 4                 = 202u
  *
  * `perfPanelHeightUnits()` in PerfHud.ts is the same sum in TypeScript and
  * `tests/perf-hud.spec.ts` pins the two against each other, so a row added here
  * without being added there fails a test rather than quietly overlapping the
  * toasts it was supposed to clear.
  *
- * It was seven rows and 142u. The eighth is `device`, and it earns its 12u
+ * It was seven rows and 142u. The eighth is `device`; four subsystem timing
+ * rows now make the GPU bottleneck actionable rather than a single opaque sum.
+ * The device row earns its 12u
  * from `docs/RENDER_FINDINGS.md` §7g: `powerPreference: 'high-performance'` is
  * a hint Windows ignores, so a frame-time reading can be about a GPU nobody
  * chose. Which renderer produced the numbers goes on the header line instead,
  * where `space-between` gives it a slot for free.
  *
- * At 1280x720 that is 150x154u = 2.51% of the frame. Well past what the look
+ * At 1280x720 that is 150x202u = 3.29% of the frame. Well past what the look
  * bible allows a shipping HUD element — which is why this one is a diagnostic
  * that defaults to off and never appears in a capture.
  * ========================================================================== */
@@ -253,7 +255,7 @@
  * One rule, active only while the panel is up. `hud.css` is untouched.         */
 
 .vm-hud.vm-perf-on .vm-toasts {
-  top: calc((10 + 154 + 6) * var(--vm-u, 1px));
+  top: calc((10 + 202 + 6) * var(--vm-u, 1px));
 }
 
 /* -- the other overlay in this corner -------------------------------------- *

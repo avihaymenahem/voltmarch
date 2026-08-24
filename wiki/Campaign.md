@@ -390,7 +390,7 @@ resets it.
 
 Five of these thirteen are on the board each match, drawn from the match seed.
 
-| Objective | Target | Pays |
+| Objective | Target | Deferred value (not paid) |
 | --- | --- | --- |
 | Draw Blood | destroy 10 enemy units | 400 |
 | Attrition | destroy 30 enemy units | 900 |
@@ -408,10 +408,11 @@ Five of these thirteen are on the board each match, drawn from the match seed.
 
 > ### The credits are not paid
 >
-> **All thirteen of these award credits, and nothing in the game pays them out.** The reward is
-> recorded, the completion banner fires, the end screen lists it — and no code path ever adds the
-> number to a player's bank. There is no credit reason for an objective payout and no consumer for a
-> credits-shaped reward.
+> **All thirteen retain authored credit values, and nothing in the game pays them out.** Those values
+> are now hidden from the live board, completion banner, pause ledger, Missions screen and end screen.
+> Progress is still recorded, but the UI makes no currency promise while no code path adds the number
+> to a player's bank. There is no credit reason for an objective payout and no deterministic consumer
+> for a credits-shaped reward.
 >
 > Treat the objective board as a scoreboard and a set of suggestions, not as income. Do not plan a
 > build around the 1,500 from *Lightning Campaign*; it will not arrive.

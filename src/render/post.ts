@@ -227,6 +227,7 @@ const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 export { PASS_ORDER } from './post-order';
 export type { PassId } from './post-order';
 import { PASS_ORDER, type PassId } from './post-order';
+import { beginGpuPass, endGpuPass, type GpuPassId } from './gpu-pass-timings';
 
 /*
  * THE AO NUMBERS MOVED TO `ao-params.ts`, AND THE RE-EXPORT IS THE POINT.
@@ -1189,8 +1190,38 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     lights: THREE.Light[], sc: THREE.Scene, cam: THREE.Camera,
   ): void {
     const before = renderer.info.render.calls;
-    baseShadowRender.call(shadowMap, lights, sc, cam);
-    shadowCalls += renderer.info.render.calls - before;
+    beginGpuPass('shadow');
+    try {
+      baseShadowRender.call(shadowMap, lights, sc, cam);
+    } finally {
+      endGpuPass('shadow');
+      shadowCalls += renderer.info.render.calls - before;
+    }
+  };
+
+  /*
+   * Water and particles share the colour scene submission, so a pass wrapper
+   * cannot separate them. `renderBufferDirect` is the last public WebGL seam
+   * around an individual object draw. Objects opt in through a tiny userData
+   * tag; the timer itself rotates categories, so this never nests GL queries.
+   */
+  const baseRenderBufferDirect = renderer.renderBufferDirect;
+  renderer.renderBufferDirect = function meteredObjectRender(
+    cameraArg: THREE.Camera,
+    sceneArg: THREE.Scene,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    object: THREE.Object3D,
+    group: THREE.GeometryGroup,
+  ): void {
+    const tagged = object.userData.vmGpuPass;
+    const id: GpuPassId | null = tagged === 'water' || tagged === 'particles' ? tagged : null;
+    if (id !== null) beginGpuPass(id);
+    try {
+      baseRenderBufferDirect.call(renderer, cameraArg, sceneArg, geometry, material, object, group);
+    } finally {
+      if (id !== null) endGpuPass(id);
+    }
   };
 
   /**
@@ -1215,6 +1246,27 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       const shadowBefore = shadowCalls;
       base(r, writeBuffer, readBuffer, deltaTime, maskActive);
       sceneCalls += (renderer.info.render.calls - before) - (shadowCalls - shadowBefore);
+    };
+  }
+
+  function installGpuPassMeter(pass: Pass, id: GpuPassId): void {
+    const p = pass as unknown as {
+      render(
+        r: THREE.WebGLRenderer,
+        writeBuffer: THREE.WebGLRenderTarget,
+        readBuffer: THREE.WebGLRenderTarget,
+        deltaTime: number,
+        maskActive: boolean,
+      ): void;
+    };
+    const base = p.render.bind(p);
+    p.render = function timedPassRender(r, writeBuffer, readBuffer, deltaTime, maskActive) {
+      beginGpuPass(id);
+      try {
+        base(r, writeBuffer, readBuffer, deltaTime, maskActive);
+      } finally {
+        endGpuPass(id);
+      }
     };
   }
 
@@ -1287,6 +1339,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     if (!composer) return;
     try {
       const p = factory();
+      installGpuPassMeter(p, id === 'render' ? 'scene' : id);
       passes[id] = p;
     } catch (err) {
       failures[id] = String(err);
@@ -2455,7 +2508,12 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         renderer.setRenderTarget(null);
         const before = renderer.info.render.calls;
         const shadowBefore = shadowCalls;
-        renderer.render(scene, camera);
+        beginGpuPass('scene');
+        try {
+          renderer.render(scene, camera);
+        } finally {
+          endGpuPass('scene');
+        }
         // The composer's RenderPass is not in this path, so neither is its meter.
         // Attribute the direct draw to `colour` by hand, or the whole frame lands
         // in the residual and reads as post.
@@ -2521,6 +2579,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       // Before anything else: the renderer outlives this chain, and a stacked
       // shadow meter would count the next chain's frames once per dead chain.
       shadowMap.render = baseShadowRender;
+      renderer.renderBufferDirect = baseRenderBufferDirect;
       offResize();
       offConfig();
       for (const id of PASS_ORDER) {

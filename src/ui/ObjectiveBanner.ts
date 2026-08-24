@@ -149,10 +149,18 @@ export function humaniseRewardId(id: string): string {
  * existing. Only the single-line form is restated, and only for the first
  * reward — a card that lists three payouts is a card nobody finishes reading.
  */
-export function rewardSummary(rewards: readonly Reward[] | undefined): string {
+export function rewardSummary(
+  rewards: readonly Reward[] | undefined,
+  creditRewardPaid = false,
+): string {
   if (rewards === undefined || rewards.length === 0) return '';
-  const r = rewards[0];
-  const extra = rewards.length > 1 ? ` +${rewards.length - 1} more` : '';
+  // Match-objective credit rewards are authored metadata with no economy
+  // consumer. Do not advertise them. Campaign objectives opt in because their
+  // runtime grants the bounty before the completion reaches this banner.
+  const visible = creditRewardPaid ? rewards : rewards.filter((r) => r.kind !== 'credits');
+  if (visible.length === 0) return '';
+  const r = visible[0];
+  const extra = visible.length > 1 ? ` +${visible.length - 1} more` : '';
   switch (r.kind) {
     case 'credits': return `+${Math.max(0, Math.floor(r.amount))} credits${extra}`;
     case 'unlock': return `${humaniseRewardId(r.unlockId)} unlocked${extra}`;
@@ -397,7 +405,9 @@ export class ObjectiveBanner {
     // The reward line is only honest for a single completion: two objectives
     // paying out different things cannot share one line, and picking one of
     // them to print would be worse than printing neither.
-    const sub = this.shown.length === 1 ? rewardSummary(this.shown[0].reward) : '';
+    const sub = this.shown.length === 1
+      ? rewardSummary(this.shown[0].reward, this.shown[0].creditRewardPaid === true)
+      : '';
     this.sub.textContent = sub;
     this.sub.hidden = sub === '';
   }

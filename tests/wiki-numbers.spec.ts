@@ -1003,9 +1003,10 @@ describe('Campaign.md counts the mission table correctly', () => {
       .toBe(MISSIONS.length);
   });
 
-  it('§6 lists every match objective and what each one pays', () => {
+  it('§6 lists every match objective and labels its retained value as unpaid', () => {
+    const valueHeader = 'Deferred value (not paid)';
     const t = parseTables(text).find(
-      (x) => x.headers[0] === 'Objective' && x.headers.includes('Pays'),
+      (x) => x.headers[0] === 'Objective' && x.headers.includes(valueHeader),
     );
     expect(t, 'Campaign.md §6: the match-objective table was not found').toBeDefined();
 
@@ -1013,7 +1014,9 @@ describe('Campaign.md counts the mission table correctly', () => {
     expect(t!.rows.length, `Campaign.md §6: the page tabulates ${t!.rows.length} objectives, `
       + `the table ships ${objectives.length}`).toBe(objectives.length);
 
-    const iPays = col(t!, 'Pays', 'Campaign.md §6');
+    expect(t!.headers, 'Campaign.md §6 must not describe the deferred value as a payout')
+      .not.toContain('Pays');
+    const iValue = col(t!, valueHeader, 'Campaign.md §6');
     const byTitle = new Map(objectives.map((m) => [m.title, m]));
     for (const row of t!.rows) {
       const title = row.cells[0];
@@ -1021,9 +1024,10 @@ describe('Campaign.md counts the mission table correctly', () => {
       const m = byTitle.get(title);
       expect(m, `${where}: no match objective is called that. A renamed objective must `
         + 'move the page with it — this row cannot be skipped.').toBeDefined();
-      const paid = m!.reward.flatMap((r) => (r.kind === 'credits' ? [r.amount] : []));
-      expect(paid.length, `${where}: a match objective that pays no credits`).toBe(1);
-      expect(num(row.cells[iPays], `${where} pays`), `${where}: credits`).toBe(paid[0]);
+      const deferred = m!.reward.flatMap((r) => (r.kind === 'credits' ? [r.amount] : []));
+      expect(deferred.length, `${where}: a match objective with no retained credit value`).toBe(1);
+      expect(num(row.cells[iValue], `${where} deferred value`), `${where}: credits`)
+        .toBe(deferred[0]);
     }
     expect(new Set(t!.rows.map((r) => r.cells[0])).size,
       'Campaign.md §6: the table repeats an objective').toBe(objectives.length);

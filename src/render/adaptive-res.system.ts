@@ -29,7 +29,19 @@ import { RenderPhase } from '../core/types';
 import type { RenderContext } from '../core/types';
 import { defineSystem } from '../core/loop';
 import { ctx } from '../game/context';
-import type { RendererHandle } from './renderer';
+import {
+  RENDER_CONFIG,
+  configureRender,
+  onConfigChanged,
+  touched,
+  type RendererHandle,
+} from './renderer';
+import {
+  classifyGpuBottleneck,
+  gpuPassIndex,
+  gpuPassSnapshot,
+  type GpuBottleneck,
+} from './gpu-pass-timings';
 
 import { AdaptiveResolution } from './AdaptiveResolution';
 import { calibrationRunning } from './calibration.system';
@@ -52,6 +64,11 @@ let controller: AdaptiveResolution | null = null;
 let enabled = false;
 /** Unsubscribe for the layout-box watcher below. */
 let offResize: (() => void) | null = null;
+let offConfig: (() => void) | null = null;
+let adaptiveConfigWrite = false;
+let shadowCeiling = 0;
+let aoSamplesCeiling = 0;
+let aoEnabledCeiling = false;
 /** Last CSS layout box seen, so a genuine window change can be told apart. */
 let lastCssW = 0;
 let lastCssH = 0;
@@ -69,6 +86,79 @@ let lastCommanded = -1;
 export let adaptiveChanges = 0;
 /** Median frame time the controller last steered on, in ms. */
 export let adaptiveMedianMs = 0;
+/** Last measured reason for the governor's choice. */
+export let adaptiveBottleneck: GpuBottleneck | 'cpu' = 'unknown';
+
+export type AdaptiveLever = 'cpu' | 'shadow' | 'ao' | 'resolution' | 'restore';
+
+/** Pure policy seam: measurements choose a lever; mutation remains below. */
+export function chooseAdaptiveLever(
+  bottleneck: GpuBottleneck,
+  totalGpuMs: number | null,
+  medianFrameMs: number,
+  lowering: boolean,
+): AdaptiveLever {
+  if (!lowering) return 'restore';
+  if (totalGpuMs !== null && medianFrameMs > 0 && totalGpuMs < medianFrameMs * 0.65) return 'cpu';
+  if (bottleneck === 'shadow') return 'shadow';
+  if (bottleneck === 'ao') return 'ao';
+  return 'resolution';
+}
+
+function captureQualityCeiling(): void {
+  shadowCeiling = RENDER_CONFIG.renderer.shadows.mapSize;
+  aoSamplesCeiling = RENDER_CONFIG.post.ao.samples;
+  aoEnabledCeiling = RENDER_CONFIG.post.ao.enabled;
+}
+
+function adaptiveConfigure(patch: Parameters<typeof configureRender>[0]): void {
+  adaptiveConfigWrite = true;
+  try { configureRender(patch); } finally { adaptiveConfigWrite = false; }
+}
+
+function restoreTargetedQuality(): void {
+  if (shadowCeiling <= 0) return;
+  adaptiveConfigure({
+    renderer: { shadows: { mapSize: shadowCeiling } },
+    post: { ao: { enabled: aoEnabledCeiling, samples: aoSamplesCeiling } },
+  });
+}
+
+function lowerShadowQuality(): boolean {
+  const current = RENDER_CONFIG.renderer.shadows.mapSize;
+  const next = current > 2048 ? 2048 : current > 1536 ? 1536 : current > 1024 ? 1024 : current > 512 ? 512 : current;
+  if (next === current) return false;
+  adaptiveConfigure({ renderer: { shadows: { mapSize: next } } });
+  return true;
+}
+
+function lowerAoQuality(): boolean {
+  const ao = RENDER_CONFIG.post.ao;
+  if (!ao.enabled) return false;
+  if (ao.samples > 8) adaptiveConfigure({ post: { ao: { samples: 8 } } });
+  else if (ao.samples > 6) adaptiveConfigure({ post: { ao: { samples: 6 } } });
+  else adaptiveConfigure({ post: { ao: { enabled: false } } });
+  return true;
+}
+
+function restoreOneTargetedStep(): boolean {
+  const ao = RENDER_CONFIG.post.ao;
+  if (aoEnabledCeiling && !ao.enabled) {
+    adaptiveConfigure({ post: { ao: { enabled: true } } });
+    return true;
+  }
+  if (ao.samples < aoSamplesCeiling) {
+    adaptiveConfigure({ post: { ao: { samples: Math.min(aoSamplesCeiling, ao.samples <= 6 ? 8 : aoSamplesCeiling) } } });
+    return true;
+  }
+  const shadow = RENDER_CONFIG.renderer.shadows.mapSize;
+  if (shadow < shadowCeiling) {
+    const next = shadow < 1024 ? 1024 : shadow < 1536 ? 1536 : shadow < 2048 ? 2048 : shadowCeiling;
+    adaptiveConfigure({ renderer: { shadows: { mapSize: Math.min(shadowCeiling, next) } } });
+    return true;
+  }
+  return false;
+}
 
 /**
  * Turn dynamic scaling on or off at runtime.
@@ -78,8 +168,10 @@ export let adaptiveMedianMs = 0;
  * keep having an effect.
  */
 export function setAdaptiveResolution(on: boolean): void {
+  if (on && !enabled) captureQualityCeiling();
   enabled = on;
   if (!on && handle !== null && controller !== null) {
+    restoreTargetedQuality();
     handle.setResolutionScale(controller.maxScale);
     controller.reset(controller.maxScale);
     lastCommanded = handle.resolutionScale;
@@ -119,6 +211,8 @@ export default defineSystem({
     controller = new AdaptiveResolution(handle.resolutionScale);
     adaptiveChanges = 0;
     adaptiveMedianMs = 0;
+    adaptiveBottleneck = 'unknown';
+    captureQualityCeiling();
     /*
      * SEED `lastCommanded` WITH WHAT IS ALREADY ON THE HANDLE. It was -1, which
      * disabled the outside-change check below until this controller had itself
@@ -162,6 +256,16 @@ export default defineSystem({
       lastCssW = size.cssWidth;
       lastCssH = size.cssHeight;
       controller?.reset(controller.current);
+    });
+    offConfig = onConfigChanged((changed) => {
+      if (adaptiveConfigWrite) return;
+      if (touched(changed, 'renderer.shadows')) {
+        shadowCeiling = RENDER_CONFIG.renderer.shadows.mapSize;
+      }
+      if (touched(changed, 'post.ao')) {
+        aoSamplesCeiling = RENDER_CONFIG.post.ao.samples;
+        aoEnabledCeiling = RENDER_CONFIG.post.ao.enabled;
+      }
     });
   },
 
@@ -227,6 +331,38 @@ export default defineSystem({
     adaptiveMedianMs = decision.medianMs;
     if (decision.scale === null) return;
 
+    const snapshot = gpuPassSnapshot();
+    adaptiveBottleneck = classifyGpuBottleneck(snapshot);
+    const totalGpu = snapshot?.values[gpuPassIndex('total')] ?? null;
+    const lowering = decision.scale < live;
+    const lever = chooseAdaptiveLever(adaptiveBottleneck, totalGpu, decision.medianMs, lowering);
+
+    if (lever === 'cpu') {
+      // The GPU has substantial idle time. Resolution cannot repair simulation,
+      // layout, or other CPU pressure, so leave image quality intact.
+      adaptiveBottleneck = 'cpu';
+      controller.reset(live);
+      return;
+    }
+
+    if (lowering) {
+      const targeted = lever === 'shadow'
+        ? lowerShadowQuality()
+        : lever === 'ao'
+          ? lowerAoQuality()
+          : false;
+      if (targeted) {
+        controller.reset(live);
+        adaptiveChanges++;
+        return;
+      }
+    } else if (restoreOneTargetedStep()) {
+      // Restore effects before spending the recovered budget on more pixels.
+      controller.reset(live);
+      adaptiveChanges++;
+      return;
+    }
+
     handle.setResolutionScale(decision.scale);
     lastCommanded = handle.resolutionScale;
     adaptiveChanges++;
@@ -235,12 +371,19 @@ export default defineSystem({
   dispose(): void {
     offResize?.();
     offResize = null;
+    offConfig?.();
+    offConfig = null;
+    restoreTargetedQuality();
     handle = null;
     controller = null;
     adaptiveChanges = 0;
     adaptiveMedianMs = 0;
+    adaptiveBottleneck = 'unknown';
     lastCssW = 0;
     lastCssH = 0;
     lastCommanded = -1;
+    shadowCeiling = 0;
+    aoSamplesCeiling = 0;
+    aoEnabledCeiling = false;
   },
 });

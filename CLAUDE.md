@@ -834,8 +834,9 @@ RETIRED rather than repaid, because the def catalogue has nothing left that a ne
 could legally cover: what is still ungated is either the opening path, naval, non-mirrored (`gate`,
 `flameTower`), or the deliberately-open Command Posts. The survey is written out inside `UNLOCKS` in
 `src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them credits** —
-objective credits remain a declared gap in `tests/reward-wiring.spec.ts`, and paying into one is the
-original defect with a different noun. Cosmetics are no longer an invisible sink: the Service
+objective credits remain a declared gap in `tests/reward-wiring.spec.ts`; their values are retained
+as design metadata but filtered from every player-facing reward surface until a deterministic payout
+exists. Paying into one is the original defect with a different noun. Cosmetics are no longer an invisible sink: the Service
 Record consumes the typed cosmetic reward, joins ownership through `profile.unlocked`, and renders
 all 17 honours with their source mission and progress.
 
@@ -2105,9 +2106,18 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   checked there. Do not invent a split.
 - **GPU TIME IS REAL ON BOTH BACKENDS.** WebGL uses
   `EXT_disjoint_timer_query_webgl2`; WebGPU requests Three's `timestamp-query` tracking at renderer
-  construction, disables timestamp writes while the overlay is hidden, and resolves the latest
-  completed frame asynchronously while visible. An adapter without the feature reports `n/a · no
-  timestamp-query`; frame time is never substituted for GPU time.
+  construction. Both remain asynchronous and sample while either the overlay or adaptive governor
+  is active; timestamp writes stop when both are off. `gpu-pass-timings.ts` exposes total, shadow, scene, AO,
+  bloom, grade and SMAA. WebGL additionally isolates tagged water and particle draws at
+  `renderBufferDirect`; WebGPU cannot split those two until they become separate render contexts,
+  so their GPU rows honestly remain `n/a` there. UI is DOM, not renderer GPU work, and is reported
+  only as CPU system time; browser compositor GPU time is unavailable. An adapter without the feature reports `n/a · no timestamp-query`;
+  frame time is never substituted for GPU time. Do not add a synchronous query readback.
+- **ADAPTIVE QUALITY CHOOSES A LEVER FROM THOSE TIMINGS.** A shadow-dominated window steps the
+  shadow map down; an AO-dominated one steps AO samples down; scene, water, particles and full-screen
+  post pressure use resolution. If measured GPU time is well below wall frame time, the governor
+  classifies the stall as CPU-side and preserves image quality. Recovery restores AO/shadows before
+  spending the recovered budget on pixels. External Settings changes replace the captured ceilings.
 - **`npm run shots` has two arms and they may never share a directory.** `shots/` and
   `node tools/shoot.mjs --gpu=webgpu` -> `shots-webgpu/`. The node arm launches REAL Chrome
   (`channel: 'chrome'`) because Playwright's bundled Chromium cannot get a WebGPU device here, and

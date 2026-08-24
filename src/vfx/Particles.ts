@@ -835,6 +835,7 @@ export class SpriteLayer {
 
     this.mesh = new THREE.Mesh(geo, material);
     this.mesh.name = name;
+    this.mesh.userData.vmGpuPass = 'particles';
     // Particles are everywhere and their real bounds change every frame;
     // culling a single whole-map batch would only ever cull it wrongly.
     this.mesh.frustumCulled = false;
@@ -1114,6 +1115,7 @@ export class DebrisLayer {
     geo.scale(1.0, 0.62, 1.35);
     this.mesh = new THREE.InstancedMesh(geo, material, capacity);
     this.mesh.name = 'VfxDebris';
+    this.mesh.userData.vmGpuPass = 'particles';
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;

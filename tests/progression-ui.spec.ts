@@ -344,8 +344,10 @@ describe('rewardCopy', () => {
     }
   });
 
-  it('formats a credit bounty with a separator', () => {
-    expect(rewardCopy({ kind: 'credits', amount: 12000 }).name).toBe('12,000 Credits');
+  it('never turns an unpaid credit value into a player-facing promise', () => {
+    const copy = rewardCopy({ kind: 'credits', amount: 12000 });
+    expect(copy.name).toBe('Completion recorded');
+    expect(`${copy.kind} ${copy.name} ${copy.effect}`).not.toContain('12,000');
   });
 
   it('falls back rather than throwing on a reward kind it has never seen', () => {
@@ -373,6 +375,13 @@ describe('presentableRewards', () => {
       { kind: 'cosmetic', cosmeticId: 'cosmetic.insignia.gold' },
     ] as const;
     expect(presentableRewards(rows)).toEqual(rows);
+  });
+
+  it('removes unpaid credit metadata from every generic reward surface', () => {
+    expect(presentableRewards([
+      { kind: 'credits', amount: 1500 },
+      { kind: 'unlock', unlockId: 'unit.raider' },
+    ])).toEqual([{ kind: 'unlock', unlockId: 'unit.raider' }]);
   });
 });
 

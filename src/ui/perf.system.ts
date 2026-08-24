@@ -76,6 +76,7 @@ import { RenderPhase, type RenderContext } from '../core/types';
 import { ctx } from '../game/context';
 import { liveChordFor, type ActionChord, type StoredBindings } from '../input/ActionCatalogue';
 import type { LiveBackend } from '../render/backend';
+import { adaptiveResolutionEnabled } from '../render/adaptive-res.system';
 
 import {
   DRAW_BUDGET,
@@ -227,6 +228,19 @@ class EngineSource implements PerfSource {
     out.pixelRatio = s.pixelRatio;
     out.backend = this.backend;
     out.device = this.device;
+    try {
+      const profiler = ctx().registry.profiler;
+      out.waterCpuMs = profiler.get('world.water#f')?.avg ?? 0;
+      out.particlesCpuMs = profiler.get('vfx#f')?.avg ?? 0;
+      out.uiCpuMs =
+        (profiler.get('ui.hud#f')?.avg ?? 0) +
+        (profiler.get('ui.objectives#f')?.avg ?? 0) +
+        (profiler.get('ui.perf#f')?.avg ?? 0);
+    } catch {
+      out.waterCpuMs = 0;
+      out.particlesCpuMs = 0;
+      out.uiCpuMs = 0;
+    }
   }
 
   /**
@@ -273,7 +287,13 @@ let unsubscribe: (() => void) | null = null;
 let keyListener: ((e: KeyboardEvent) => void) | null = null;
 
 function applyStoredVisibility(): void {
-  hud?.setVisible(readPerfSetting(store));
+  const visible = readPerfSetting(store);
+  hud?.setVisible(visible);
+  try {
+    ctx().registry.profiler.enabled = visible;
+  } catch {
+    /* The setting may arrive before the registry is ready. */
+  }
 }
 
 function bindSettings(): void {
@@ -303,6 +323,11 @@ function toggleOverlay(): void {
     }
   }
   panel.setVisible(next);
+  try {
+    ctx().registry.profiler.enabled = next;
+  } catch {
+    /* Standalone harness without a registry. */
+  }
 }
 
 export default defineSystem({
@@ -390,8 +415,11 @@ export default defineSystem({
       }
     }
 
-    // Only while the panel is up: an overlay that is off must cost nothing at
-    // all, including this.
+    // The visible panel and the optional governor share one instrument. When
+    // both are off, timestamp writes stop completely.
+    panel.setProfilingActive(panel.shown || adaptiveResolutionEnabled());
+
+    // Only while the panel is up: DOM diagnostics that are off cost nothing.
     if (panel.shown) {
       debugProbeIn -= r.dt;
       if (debugProbeIn <= 0) {
@@ -419,5 +447,10 @@ export default defineSystem({
     if (globalThis.__vmPerf === hud) globalThis.__vmPerf = undefined;
     hud?.dispose();
     hud = null;
+    try {
+      ctx().registry.profiler.enabled = false;
+    } catch {
+      /* Context may already be disposed. */
+    }
   },
 });

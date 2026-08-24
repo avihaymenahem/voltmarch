@@ -58,7 +58,7 @@ import { adoptPreparedOperation, detachOperation, prepareOperation } from '../sr
 import type { CampaignSession, ObjectiveRow } from '../src/campaign/session';
 import { CAMPAIGNS } from '../src/campaign/index';
 import { newOperationState } from '../src/campaign/Director';
-import { currentObjectives } from '../src/shell/PauseMenu';
+import { currentObjectives, objectiveCreditReward } from '../src/shell/PauseMenu';
 import {
   CAMPAIGN_OPERATION_IDS,
   campaignOperationIdentity,
@@ -341,6 +341,17 @@ describe('the pause menu lists the operation, not the skirmish mission chain', (
       { id: 'secret', title: 'The thing nobody told you', kind: 'secondary', status: 'hidden' },
     ]);
     expect(currentObjectives().map((o) => o.id)).toEqual(['seen']);
+  });
+
+  it('shows only a campaign bounty that the runtime actually pays', () => {
+    installSession([{
+      id: 'paid', title: 'Hold the depot', kind: 'secondary', status: 'active', credits: 700,
+    }]);
+    const paid = currentObjectives()[0];
+    expect(objectiveCreditReward(paid)).toBe('+700 cr');
+
+    const unpaidProfileObjective = { ...paid, creditRewardPaid: undefined };
+    expect(objectiveCreditReward(unpaidProfileObjective)).toBe('');
   });
 });
 

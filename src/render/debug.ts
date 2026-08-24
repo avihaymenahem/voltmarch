@@ -52,6 +52,12 @@ import type { CameraRig, CameraPose } from './camera';
 import type { PostChain, PassId, DrawCallBreakdown } from './post';
 import { PASS_ORDER } from './post-order';
 import { renderBridge, type RenderAudit } from './RenderBridge';
+import {
+  GPU_PASS_IDS,
+  gpuPassIndex,
+  gpuPassSnapshot,
+  type GpuPassId,
+} from './gpu-pass-timings';
 
 /* ========================================================================== */
 /* Types                                                                      */
@@ -136,6 +142,8 @@ export interface FrameStats {
    * frame. All zero when there is no post chain to meter.
    */
   drawCallsByPass: DrawCallBreakdown;
+  /** Last asynchronously resolved GPU milliseconds by render pass. */
+  gpuPasses: Readonly<Record<GpuPassId, number | null>>;
   triangles: number;
   points: number;
   lines: number;
@@ -859,6 +867,10 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
      * `src/render/backend.ts#normaliseInfo` is where that is written down.
      */
     const info = handle.frameInfo();
+    const gpu = gpuPassSnapshot();
+    const gpuPasses = Object.fromEntries(
+      GPU_PASS_IDS.map((id) => [id, gpu?.values[gpuPassIndex(id)] ?? null]),
+    ) as Record<GpuPassId, number | null>;
     return {
       fps,
       frameMs,
@@ -867,6 +879,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       cpuMs,
       drawCalls: info.drawCalls,
       drawCallsByPass: readDrawCallsByPass(info.drawCalls),
+      gpuPasses,
       triangles: info.triangles,
       points: info.points,
       lines: info.lines,

@@ -143,6 +143,13 @@ export interface MissionDef {
   category: MissionCategory;
   target: number;
   reward: Reward[];
+  /**
+   * Credit rewards are hidden unless their provider confirms that the payout
+   * reaches the live economy. Profile match objectives omit this because their
+   * authored credit metadata is not currently paid. Campaign objectives set it
+   * because `CampaignRuntime.grantCredits` performs the payout in simulation.
+   */
+  creditRewardPaid?: boolean;
   /** Mission ids. This is how chains form. */
   requires?: string[];
   /** `Faction` enum value, for faction-specific chains. */

@@ -97,8 +97,8 @@ interface ScenePassNode {
 
 /** The subset of `SMAANode` this module drives. */
 interface SmaaNodeLike {
-  _renderTargetEdges?: { texture: { type: number } };
-  _renderTargetWeights?: { texture: { type: number } };
+  _renderTargetEdges?: { texture: { type: number; name?: string } };
+  _renderTargetWeights?: { texture: { type: number; name?: string } };
   dispose(): void;
 }
 
@@ -198,6 +198,9 @@ export function demoteSmaaMaskTargets(node: SmaaNodeLike): boolean {
   }
   edges.texture.type = UnsignedByteType;
   weights.texture.type = UnsignedByteType;
+  // These names are also the stable timestamp labels used by WebGpuTimer.
+  edges.texture.name = 'SMAAEdges';
+  weights.texture.name = 'SMAAWeights';
   return true;
 }
 

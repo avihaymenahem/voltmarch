@@ -531,6 +531,23 @@ simMs    one tick        1.00 ms                   p95  2.10
 **The fit is the finding:** `GPU ms = 5.86 + 6.40 x Mpx`, **r² 0.995**, and a second run at 70 units
 gave r² 1.000 with 89.7% of GPU time pixel-proportional. **60 fps lands at render scale 0.694.**
 
+### The ablation table is now an always-on asynchronous instrument
+
+`src/render/gpu-pass-timings.ts` and `PerfHud` now retain real GPU milliseconds for scene,
+shadows, AO, bloom, grade and SMAA on both renderers. WebGL rotates one
+`EXT_disjoint_timer_query_webgl2` category per frame and can additionally sum tagged water and
+particle draws at `renderBufferDirect`. WebGPU reads Three's native timestamp-query render-context
+map; water and particles are still part of its scene context and therefore remain `n/a` rather than
+being fabricated. UI is outside either graphics command stream, so the panel reports its profiled
+CPU system cost separately and leaves browser-compositor GPU cost unclaimed.
+
+The adaptive governor consumes the same live snapshot. Timestamp writes stop when both it and the
+performance panel are off. Shadow pressure reduces shadow-map size,
+AO pressure reduces AO samples, and only scene/full-screen pressure falls through to resolution.
+When GPU time is materially below wall-frame time it records a CPU bottleneck and does not damage
+image quality. All query results are polled asynchronously; there is no `gl.finish`, blocking map,
+or same-frame readback in the game loop.
+
 Three consequences that change what work is worth doing:
 
 1. **Resolution scale is the frame-rate lever**, not draw calls, not triangles, not the sim. See §1's

@@ -791,9 +791,10 @@ const MASTERY: readonly MissionDef[] = [
  * 3. MATCH OBJECTIVES
  *
  * The per-match board. Five are drawn per match from the sim seed, so a replay
- * of the same seed draws the same board. They pay credits and nothing else:
- * every unlock in the game is behind a profile chain, so a player who never
- * looks at the objective panel is not locked out of any content.
+ * of the same seed draws the same board. Their credit values are retained as
+ * deferred design metadata, but are not advertised: no deterministic economy
+ * consumer pays them yet. Every unlock remains behind a profile chain, so a
+ * player who ignores the board is not locked out of content.
  * ========================================================================== */
 
 const OBJECTIVES: readonly MissionDef[] = [

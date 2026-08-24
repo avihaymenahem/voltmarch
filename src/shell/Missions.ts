@@ -89,7 +89,7 @@ export const MISSION_CATEGORIES: readonly CategoryDef[] = [
   {
     id: 'economy',
     label: 'Economy',
-    blurb: 'Ore, banking and expansion. Pays out in maps and in credits you keep.',
+    blurb: 'Ore, banking and expansion. Unlocks battlefields and records your milestones.',
     iconName: 'coins',
   },
   {
@@ -180,11 +180,6 @@ export function unlockLabel(id: string): string {
   return humaniseId(id);
 }
 
-/** Thousands-separated, for a credit reward. */
-function credits(n: number): string {
-  return Math.max(0, Math.round(n)).toLocaleString('en-US');
-}
-
 /** Everything the screen can truthfully say about one reward. */
 export function rewardCopy(r: Reward): RewardCopy {
   switch (r.kind) {
@@ -197,10 +192,10 @@ export function rewardCopy(r: Reward): RewardCopy {
       };
     case 'credits':
       return {
-        kind: 'Bounty',
-        name: `${credits(r.amount)} Credits`,
-        effect: 'Paid into the match that completes it.',
-        iconName: 'coins',
+        kind: 'Objective',
+        name: 'Completion recorded',
+        effect: 'No credit payout is currently attached to this objective.',
+        iconName: 'target',
       };
     case 'map':
       return {
@@ -230,6 +225,11 @@ export function rewardCopy(r: Reward): RewardCopy {
  * generic row feeds persistence/gating; the typed row feeds presentation.
  * Showing both produces two cards for one award and makes a decal claim it is
  * "buildable from the sidebar", so exact twins collapse to the typed row.
+ *
+ * Credit values on match objectives are deliberately filtered here. They are
+ * retained in the authored table for a future deterministic payout design,
+ * but no live economy consumes them today, so no generic reward surface may
+ * present them as money the player earned.
  */
 export function presentableRewards(rewards: readonly Reward[]): Reward[] {
   const typed = new Set<string>();
@@ -237,7 +237,8 @@ export function presentableRewards(rewards: readonly Reward[]): Reward[] {
     if (reward.kind === 'map') typed.add(reward.mapId);
     else if (reward.kind === 'cosmetic') typed.add(reward.cosmeticId);
   }
-  return rewards.filter((reward) => reward.kind !== 'unlock' || !typed.has(reward.unlockId));
+  return rewards.filter((reward) => reward.kind !== 'credits'
+    && (reward.kind !== 'unlock' || !typed.has(reward.unlockId)));
 }
 
 /* ==========================================================================
@@ -594,9 +595,10 @@ export class MissionsPanel {
     card.appendChild(track);
 
     /* -- rewards --------------------------------------------------------- */
-    if (entry.reward.length > 0) {
+    const visibleRewards = presentableRewards(entry.reward);
+    if (visibleRewards.length > 0) {
       const rewards = el('div', 'vm-mission-rewards');
-      for (const r of presentableRewards(entry.reward)) {
+      for (const r of visibleRewards) {
         rewards.appendChild(rewardCard(r, state === 'complete'));
       }
       card.appendChild(rewards);

@@ -731,7 +731,8 @@ describe('the banner card', () => {
     expect(byClass(root, 'vm-objdone-kicker')?.textContent).toBe('Objective Complete');
     const names = allByClass(root, 'vm-objdone-name').filter((n) => !n.hidden);
     expect(names.map((n) => n.textContent)).toEqual(['Title m1']);
-    expect(byClass(root, 'vm-objdone-sub')?.textContent).toBe('+500 credits');
+    expect(byClass(root, 'vm-objdone-sub')?.textContent).toBe('');
+    expect(byClass(root, 'vm-objdone-sub')?.hidden).toBe(true);
   });
 
   it('coalesces two simultaneous completions into a single plural card', () => {
@@ -1081,7 +1082,8 @@ describe('the campaign view carries the fact across the seam', () => {
     const objective = view.activeObjectives()[0];
     expect(objective.description).toBe('Bonus objective · +500 credits');
     expect(objective.reward).toEqual([{ kind: 'credits', amount: 500 }]);
-    expect(rewardSummary(objective.reward)).toBe('+500 credits');
+    expect(objective.creditRewardPaid).toBe(true);
+    expect(rewardSummary(objective.reward, objective.creditRewardPaid)).toBe('+500 credits');
   });
 
   it('keeps primary and optional campaign work distinct in the live tower', () => {
@@ -1175,8 +1177,9 @@ describe('banner copy', () => {
     expect(humaniseRewardId('')).toBe('');
   });
 
-  it('writes one line per reward kind', () => {
-    expect(rewardSummary([{ kind: 'credits', amount: 750 }])).toBe('+750 credits');
+  it('writes one line per truthful reward kind and hides unpaid objective credits', () => {
+    expect(rewardSummary([{ kind: 'credits', amount: 750 }])).toBe('');
+    expect(rewardSummary([{ kind: 'credits', amount: 750 }], true)).toBe('+750 credits');
     expect(rewardSummary([{ kind: 'unlock', unlockId: 'teslaCoil' }])).toBe('Tesla Coil unlocked');
     expect(rewardSummary([{ kind: 'map', mapId: 'frozenPass' }])).toBe('Map: Frozen Pass');
     expect(rewardSummary([{ kind: 'cosmetic', cosmeticId: 'goldSkin' }])).toBe('Gold Skin unlocked');
@@ -1184,10 +1187,10 @@ describe('banner copy', () => {
     expect(rewardSummary(undefined)).toBe('');
   });
 
-  it('counts extra rewards rather than listing them', () => {
+  it('does not count a hidden credit promise as an extra reward', () => {
     expect(rewardSummary([
       { kind: 'credits', amount: 500 },
       { kind: 'unlock', unlockId: 'apc' },
-    ])).toBe('+500 credits +1 more');
+    ])).toBe('Apc unlocked');
   });
 });
