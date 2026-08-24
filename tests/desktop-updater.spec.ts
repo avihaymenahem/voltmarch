@@ -40,11 +40,13 @@ describe('desktop updater shipping contract', () => {
 
   it('publishes exact updater metadata and URL-safe Windows asset names', () => {
     const builder = read('desktop/electron-builder.yml');
+    const packager = read('desktop/dist.mjs');
     const workflow = read('.github/workflows/desktop.yml');
     expect(builder).toContain('artifactName: ${productName}-Setup-${version}.${ext}');
     expect(builder).toContain('artifactName: ${productName}-${version}-portable.${ext}');
     expect(workflow).toContain('latest.yml');
     expect(workflow).toContain('.exe.blockmap');
     expect(workflow).toContain('VOLTMARCH-Setup-$version.exe');
+    expect(packager).toContain("'--publish', 'never'");
   });
 });

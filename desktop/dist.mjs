@@ -46,6 +46,10 @@ const res = spawnSync(
     '--config', 'electron-builder.yml',
     '-c.extraMetadata.version', version,
     '-c.win.icon', icon,
+    // Publishing belongs to .github/workflows/desktop.yml. On a tag runner,
+    // electron-builder otherwise infers an implicit GitHub publish and fails
+    // before the workflow can validate and upload the complete asset set.
+    '--publish', 'never',
   ],
   { cwd: HERE, stdio: 'inherit' },
 );
