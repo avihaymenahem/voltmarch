@@ -67,11 +67,11 @@ import {
 /* ========================================================================== */
 
 describe('HUD — resolution independence (§2.1, I9)', () => {
-  it('quantizes uiScale to quarter steps and clamps to 1..4', () => {
+  it('quantizes the denser uiScale curve to quarter steps and clamps to 1..4', () => {
     expect(computeUiScale(768)).toBe(1.0);
-    expect(computeUiScale(1080)).toBe(1.5);
-    expect(computeUiScale(1440)).toBe(2.0);
-    expect(computeUiScale(2160)).toBe(3.0);
+    expect(computeUiScale(1080)).toBe(1.25);
+    expect(computeUiScale(1440)).toBe(1.5);
+    expect(computeUiScale(2160)).toBe(2.5);
     // Clamped at both ends — a 400 px window still gets a usable sidebar and a
     // 6K one does not get a 6-inch-wide one.
     expect(computeUiScale(400)).toBe(1.0);
@@ -86,23 +86,24 @@ describe('HUD — resolution independence (§2.1, I9)', () => {
     }
   });
 
-  it('holds the sidebar at 12-14% of width at every shipping resolution', () => {
-    // Non-negotiable #1. The whole point of the vector rewrite (I9) is that the
-    // fixed 168 px asset stops being 4.4% of a 4K screen.
+  it('uses high-resolution pixels for playfield instead of scaling the HUD linearly', () => {
+    // 1440p and 4K should expose more battlefield than 720p. The old 720-based
+    // curve held this at 12-14% everywhere and made panel area grow 4x at 1440p.
     const modes: ReadonlyArray<[number, number]> = [
       [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [3840, 2160],
     ];
     for (const [w, h] of modes) {
       const share = sidebarWidthPx(computeUiScale(h)) / w;
-      expect(share).toBeGreaterThanOrEqual(0.12);
-      expect(share).toBeLessThanOrEqual(0.14);
+      expect(share).toBeGreaterThanOrEqual(0.095);
+      expect(share).toBeLessThanOrEqual(0.125);
     }
   });
 
   it('keeps the whole HUD inside the bible §9 budget of 12-16% of the frame', () => {
     // This is the assertion that forced the command bar down from D13's 28
-    // design px to 23 — see the note on HUD_COMMAND_BAR. The sidebar alone is
-    // 13.125% from 1080 up, so the bar has under 3% of the frame to spend.
+    // design px to 23 — see the note on HUD_COMMAND_BAR. The denser sidebar
+    // leaves more playfield at high resolutions without letting the complete
+    // perimeter interface disappear below the established readability floor.
     const modes: ReadonlyArray<[number, number]> = [
       [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [3840, 2160],
     ];

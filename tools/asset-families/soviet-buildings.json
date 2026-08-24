@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "family": "soviet-buildings",
+  "sourceDir": "src/assets/buildings/soviets",
+  "outputDir": "src/assets/buildings/soviets/derived",
+  "profiles": {
+    "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
+    "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.26 },
+    "shadow": { "ratio": 0.1, "error": 0.05, "maxRatio": 0.2, "maxTriangles": 3000 }
+  },
+  "assets": [
+    { "key": "soviet_conyard", "file": "construction-yard-surface-v2.glb", "class": "landmark", "lods": true },
+    { "key": "soviet_warfactory", "file": "war-factory.glb", "class": "landmark", "lods": true },
+    { "key": "soviet_refinery", "file": "ore-refinery.glb", "class": "landmark", "lods": true },
+    { "key": "soviet_barracks", "file": "barracks.glb", "class": "standard", "lods": true },
+    { "key": "soviet_radar", "file": "radar-tower.glb", "class": "standard", "lods": true },
+    { "key": "soviet_tech", "file": "proving-ground.glb", "class": "standard", "lods": true },
+    { "key": "soviet_commandpost", "file": "command-bunker.glb", "class": "standard", "lods": true },
+    { "key": "soviet_depot", "file": "repair-depot.glb", "class": "standard", "lods": true },
+    { "key": "soviet_subpen", "file": "naval-pen.glb", "class": "standard", "lods": true },
+    { "key": "soviet_nuke", "file": "nuclear-silo.glb", "class": "standard", "lods": true },
+    { "key": "soviet_curtain", "file": "ironclad-field.glb", "class": "standard", "lods": true },
+    { "key": "soviet_silo", "file": "ore-silo.glb", "class": "standard", "lods": true },
+    { "key": "soviet_power", "file": "tesla-reactor.glb", "class": "standard", "lods": true },
+    { "key": "soviet_flametower", "file": "flame-tower.glb", "class": "defence", "lods": true },
+    { "key": "soviet_sentry", "file": "sentry-gun.glb", "class": "defence", "lods": false, "movingParts": true },
+    { "key": "soviet_tesla", "file": "tesla-coil.glb", "class": "defence", "lods": true }
+  ]
+}

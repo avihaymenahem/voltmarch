@@ -182,7 +182,7 @@ export function applyTheme(root: HTMLElement, faction: Faction): HudTheme {
 }
 
 /**
- * `uiScale = clamp(floor(screenH / 720 * 4) / 4, 1, 4)`.
+ * `uiScale = clamp(floor(screenH / 840 * 4) / 4, 1, 4)`.
  *
  * Still quarter-quantized. The bevels are gone, but a hairline border is even
  * less forgiving than a bevel was: at a fractional scale a 1 px edge resolves

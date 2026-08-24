@@ -1,0 +1,705 @@
+{
+  "version": 1,
+  "family": "meridian-buildings",
+  "generatedAt": "2026-08-23T22:17:51.828Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/meridian-buildings.json",
+  "rows": [
+    {
+      "key": "meridian_conclave",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/conclave.glb",
+        "triangles": 36057,
+        "fileBytes": 5518176
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/conclave.lod1.glb",
+          "triangles": 17299,
+          "triangleRatio": 0.4798,
+          "boundsDriftMeters": 0.00066,
+          "boundsDriftRatio": 0.00033,
+          "fileBytes": 562472,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/conclave.lod2.glb",
+          "triangles": 7211,
+          "triangleRatio": 0.2,
+          "boundsDriftMeters": 0.00149,
+          "boundsDriftRatio": 0.00091,
+          "fileBytes": 271608,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/conclave.shadow.glb",
+          "triangles": 2484,
+          "triangleRatio": 0.0689,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 35612,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 207
+        }
+      ]
+    },
+    {
+      "key": "meridian_solararray",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/solar-array.glb",
+        "triangles": 25705,
+        "fileBytes": 10717904
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-array.lod1.glb",
+          "triangles": 12337,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00011,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 486652,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-array.lod2.glb",
+          "triangles": 6293,
+          "triangleRatio": 0.2448,
+          "boundsDriftMeters": 0.00075,
+          "boundsDriftRatio": 0.00038,
+          "fileBytes": 295400,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-array.shadow.glb",
+          "triangles": 2280,
+          "triangleRatio": 0.0887,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 32720,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            14
+          ],
+          "occupiedCells": 190
+        }
+      ]
+    },
+    {
+      "key": "meridian_cistern",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/ore-cistern.glb",
+        "triangles": 33921,
+        "fileBytes": 11683604
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/ore-cistern.lod1.glb",
+          "triangles": 16282,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00006,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 651132,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/ore-cistern.lod2.glb",
+          "triangles": 9070,
+          "triangleRatio": 0.2674,
+          "boundsDriftMeters": 0.00153,
+          "boundsDriftRatio": 0.00102,
+          "fileBytes": 418676,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/ore-cistern.shadow.glb",
+          "triangles": 1884,
+          "triangleRatio": 0.0555,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27212,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            12
+          ],
+          "occupiedCells": 157
+        }
+      ]
+    },
+    {
+      "key": "meridian_chapterhouse",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/chapterhouse.glb",
+        "triangles": 25354,
+        "fileBytes": 10059864
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/chapterhouse.lod1.glb",
+          "triangles": 12169,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00082,
+          "boundsDriftRatio": 0.00047,
+          "fileBytes": 529392,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 34.9% exceeds 30.0% ceiling"
+          ],
+          "file": "src/assets/buildings/meridian/derived/chapterhouse.lod2.glb",
+          "triangles": 8848,
+          "triangleRatio": 0.349,
+          "boundsDriftMeters": 0.00369,
+          "boundsDriftRatio": 0.0021,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/chapterhouse.shadow.glb",
+          "triangles": 1812,
+          "triangleRatio": 0.0715,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 26168,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            13
+          ],
+          "occupiedCells": 151
+        }
+      ]
+    },
+    {
+      "key": "meridian_forgeyard",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/forgeyard.glb",
+        "triangles": 37381,
+        "fileBytes": 11386656
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/forgeyard.lod1.glb",
+          "triangles": 17940,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00002,
+          "boundsDriftRatio": 0.00001,
+          "fileBytes": 646972,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/forgeyard.lod2.glb",
+          "triangles": 7475,
+          "triangleRatio": 0.2,
+          "boundsDriftMeters": 0.00134,
+          "boundsDriftRatio": 0.00067,
+          "fileBytes": 330592,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/forgeyard.shadow.glb",
+          "triangles": 2184,
+          "triangleRatio": 0.0584,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 31376,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            14
+          ],
+          "occupiedCells": 182
+        }
+      ]
+    },
+    {
+      "key": "meridian_oculus",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/oculus.glb",
+        "triangles": 22738,
+        "fileBytes": 5062704
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/oculus.lod1.glb",
+          "triangles": 10914,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00123,
+          "boundsDriftRatio": 0.00162,
+          "fileBytes": 395628,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/oculus.lod2.glb",
+          "triangles": 4547,
+          "triangleRatio": 0.2,
+          "boundsDriftMeters": 0.00111,
+          "boundsDriftRatio": 0.00148,
+          "fileBytes": 199420,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/oculus.shadow.glb",
+          "triangles": 2352,
+          "triangleRatio": 0.1034,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 33732,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            15
+          ],
+          "occupiedCells": 196
+        }
+      ]
+    },
+    {
+      "key": "meridian_pharos",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/pharos.glb",
+        "triangles": 18958,
+        "fileBytes": 4555776
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/pharos.lod1.glb",
+          "triangles": 9098,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00013,
+          "boundsDriftRatio": 0.00015,
+          "fileBytes": 323720,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/pharos.lod2.glb",
+          "triangles": 3790,
+          "triangleRatio": 0.1999,
+          "boundsDriftMeters": 0.00046,
+          "boundsDriftRatio": 0.00055,
+          "fileBytes": 165556,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/pharos.shadow.glb",
+          "triangles": 2364,
+          "triangleRatio": 0.1247,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 33900,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 197
+        }
+      ]
+    },
+    {
+      "key": "meridian_reliquary",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/reliquary.glb",
+        "triangles": 24748,
+        "fileBytes": 5487404
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/reliquary.lod1.glb",
+          "triangles": 11879,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00079,
+          "boundsDriftRatio": 0.00061,
+          "fileBytes": 451180,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/reliquary.lod2.glb",
+          "triangles": 6012,
+          "triangleRatio": 0.2429,
+          "boundsDriftMeters": 0.0319,
+          "boundsDriftRatio": 0.01595,
+          "fileBytes": 272996,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/reliquary.shadow.glb",
+          "triangles": 2952,
+          "triangleRatio": 0.1193,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 42128,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 246
+        }
+      ]
+    },
+    {
+      "key": "meridian_depot",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/solar-infirmary.glb",
+        "triangles": 25814,
+        "fileBytes": 4521764
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-infirmary.lod1.glb",
+          "triangles": 12389,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00075,
+          "boundsDriftRatio": 0.00049,
+          "fileBytes": 413244,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-infirmary.lod2.glb",
+          "triangles": 5162,
+          "triangleRatio": 0.2,
+          "boundsDriftMeters": 0.00075,
+          "boundsDriftRatio": 0.00049,
+          "fileBytes": 209212,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/solar-infirmary.shadow.glb",
+          "triangles": 2160,
+          "triangleRatio": 0.0837,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 31040,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            12
+          ],
+          "occupiedCells": 180
+        }
+      ]
+    },
+    {
+      "key": "meridian_slipway",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/slipway.glb",
+        "triangles": 32550,
+        "fileBytes": 5521188
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/slipway.lod1.glb",
+          "triangles": 15624,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00132,
+          "boundsDriftRatio": 0.00116,
+          "fileBytes": 603704,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/slipway.lod2.glb",
+          "triangles": 7778,
+          "triangleRatio": 0.239,
+          "boundsDriftMeters": 0.00133,
+          "boundsDriftRatio": 0.00117,
+          "fileBytes": 360520,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/slipway.shadow.glb",
+          "triangles": 1356,
+          "triangleRatio": 0.0417,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19800,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 113
+        }
+      ]
+    },
+    {
+      "key": "meridian_vault",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/sun-vault.glb",
+        "triangles": 13674,
+        "fileBytes": 1738804
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/sun-vault.shadow.glb",
+          "triangles": 2712,
+          "triangleRatio": 0.1983,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 38804,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 226
+        }
+      ]
+    },
+    {
+      "key": "meridian_glaive",
+      "class": "defence",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/meridian-glaive-v2.glb",
+        "triangles": 12786,
+        "fileBytes": 1614552
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/meridian-glaive-v2.lod1.glb",
+          "triangles": 6136,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00028,
+          "boundsDriftRatio": 0.00022,
+          "fileBytes": 235472,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/meridian-glaive-v2.lod2.glb",
+          "triangles": 2594,
+          "triangleRatio": 0.2029,
+          "boundsDriftMeters": 0.00769,
+          "boundsDriftRatio": 0.00594,
+          "fileBytes": 126796,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/meridian-glaive-v2.shadow.glb",
+          "triangles": 2676,
+          "triangleRatio": 0.2093,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 38300,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 223
+        }
+      ]
+    },
+    {
+      "key": "meridian_rampart",
+      "class": "wall",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/rampart.glb",
+        "triangles": 7899,
+        "fileBytes": 1359156
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/rampart.shadow.glb",
+          "triangles": 912,
+          "triangleRatio": 0.1155,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 13568,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 76
+        }
+      ]
+    },
+    {
+      "key": "meridian_heliograph",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/meridian/heliograph.glb",
+        "triangles": 35413,
+        "fileBytes": 6067880
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/heliograph.lod1.glb",
+          "triangles": 16997,
+          "triangleRatio": 0.48,
+          "boundsDriftMeters": 0.00137,
+          "boundsDriftRatio": 0.0007,
+          "fileBytes": 668200,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/heliograph.lod2.glb",
+          "triangles": 8562,
+          "triangleRatio": 0.2418,
+          "boundsDriftMeters": 0.00497,
+          "boundsDriftRatio": 0.00304,
+          "fileBytes": 401012,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/meridian/derived/heliograph.shadow.glb",
+          "triangles": 2640,
+          "triangleRatio": 0.0745,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 37796,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 220
+        }
+      ]
+    }
+  ]
+}

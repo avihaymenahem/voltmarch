@@ -2,17 +2,16 @@
  * ============================================================================
  * src/art/faction3.system.ts — the Meridian Pact's plugin entry point
  * ============================================================================
- * Thirty lines of glue and nothing else. All eleven hulls, all twelve
+ * Thin boot glue and nothing else. All sixteen hulls, all fifteen
  * structures, both palettes and every `registerKindMesh` call live in
  * `Faction3Units.ts` and `Faction3Buildings.ts`; this file exists only because
  * `src/game/Systems.ts` discovers modules by the `*.system.ts` glob and a
  * plain data module is never imported by anything.
  *
- * It deliberately does NOT touch `units.system.ts` or `buildings.system.ts`:
- * the Pact's libraries are private, its atlases are private, and the only
- * shared surface it writes to is the bridge's model registry — which is a
- * module-level map that is valid before or after the bridge itself inits, so
- * there is no phase ordering to get wrong.
+ * The Pact's procedural libraries and atlases stay private. Its first imported
+ * building wave deliberately reuses the shared imported-structure loader for
+ * KTX2, LOD and caster policy, then publishes the result through the same
+ * bridge registry as every procedural fallback.
  * ============================================================================
  */
 
@@ -63,6 +62,7 @@ export default defineSystem({
     console.info(
       `%c[meridian]%c ${units.models.length} hulls (${unitTris} tris) + ` +
       `${structures.models.length} structures (${structTris} tris), ` +
+      `${structures.imported} imported structure overrides, ` +
       `${units.registrations + structures.registrations} bridge registrations, ` +
       `${Date.now() - t0} ms`,
       'color:#3ec9a7', 'color:inherit',

@@ -200,6 +200,7 @@ describe('buildings.system hands the batcher what it needs', () => {
     // above the ground — and paid a second draw per pad-bearing model to say so.
     expect(BUILDINGS_CODE).toContain('aoOccluder: false');
   });
+
 });
 
 /* -------------------------------------------------------------------------- */
@@ -237,6 +238,61 @@ describe('InstanceBatch carries both flags onto the mesh', () => {
       on.dispose();
     }
   });
+
+  it('switches the whole batch between ordered camera-distance LODs', () => {
+    const lod1 = new THREE.BoxGeometry(2, 2, 2);
+    const lod2 = new THREE.TetrahedronGeometry(1);
+    const batch = new InstanceBatch([spec({
+      lods: [
+        { geometry: lod1, minDistance: 70 },
+        { geometry: lod2, minDistance: 110 },
+      ],
+    })], 'lod-test');
+    const mesh = batch.parts[0].mesh;
+
+    expect(mesh.geometry.name).toContain('.lod0#inst');
+    batch.setLodDistance(70);
+    expect(mesh.geometry.name).toContain('.lod1#inst');
+    batch.setLodDistance(110);
+    expect(mesh.geometry.name).toContain('.lod2#inst');
+    batch.setLodDistance(108);
+    expect(mesh.geometry.name).toContain('.lod2#inst');
+    batch.setLodDistance(40);
+    expect(mesh.geometry.name).toContain('.lod0#inst');
+
+    batch.dispose();
+    lod1.dispose();
+    lod2.dispose();
+  });
+
+  it('shares instance channels across LOD geometry switches', () => {
+    const lod = new THREE.TetrahedronGeometry(1);
+    const batch = new InstanceBatch([spec({ lods: [{ geometry: lod, minDistance: 70 }] })], 'lod-channels');
+    const mesh = batch.parts[0].mesh;
+    const lod0State = mesh.geometry.getAttribute('aState');
+    const lod0Team = mesh.geometry.getAttribute('aTeamColor');
+
+    batch.setLodDistance(70);
+    expect(mesh.geometry.getAttribute('aState')).toBe(lod0State);
+    expect(mesh.geometry.getAttribute('aTeamColor')).toBe(lod0Team);
+
+    batch.dispose();
+    lod.dispose();
+  });
+
+  it('rejects unordered LOD thresholds before a mesh reaches the renderer', () => {
+    const lod1 = new THREE.TetrahedronGeometry(1);
+    const lod2 = new THREE.TetrahedronGeometry(0.5);
+    expect(() => new InstanceBatch([spec({
+      lods: [
+        { geometry: lod1, minDistance: 90 },
+        { geometry: lod2, minDistance: 80 },
+      ],
+    })], 'bad-lod')).toThrow(/strictly increasing/);
+    lod1.dispose();
+    lod2.dispose();
+  });
+
 });
 
 /* -------------------------------------------------------------------------- */

@@ -360,7 +360,7 @@ describe('the mass-seam term that `cavityVertexTint` always promised', () => {
  * 4. THE BUDGET
  * ========================================================================== */
 
-describe('the shape pass costs no geometry', () => {
+describe('the structure roster stays within its measured geometry budget', () => {
   /**
    * MEASURED. The game is GPU-bound at 203 draw calls against a 130 budget, so
    * this is a ratchet: a change that improves the look and quietly adds a
@@ -453,7 +453,14 @@ describe('the shape pass costs no geometry', () => {
    * triangles (+0.87%) are the user-approved spend for stronger silhouettes,
    * while the merged-part/draw-call count remains unchanged.
    */
-  const BASELINE_TRIANGLES = 189_992;
+  /**
+   * The user-approved Soviet wall remodel is a deliberate 556 -> 816 triangle
+   * spend on the one unique module: two-sided recessed armour, a battered
+   * silhouette and one centre seam. It remains one material and one part when
+   * repeated. The exact full-roster result is pinned so later art work cannot
+   * hide unrelated growth inside this approval.
+   */
+  const BASELINE_TRIANGLES = 190_224;
   const BASELINE_PARTS = 140;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
@@ -494,7 +501,7 @@ describe('the shape pass costs no geometry', () => {
    * roof exhausts landed; neither number is an open-ended allowance.
    */
   const MAX_STRUCTURE_TRIANGLES = 6_100;
-  const MAX_MEAN_TRIANGLES = 2_715;
+  const MAX_MEAN_TRIANGLES = 2_718;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);

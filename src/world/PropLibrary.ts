@@ -29,7 +29,7 @@
  *    comes from the BAND, not from the facet.
  *
  * 2. ONE MATERIAL FOR ALL 28 TYPES. Per-vertex colour carries the paint, a
- *    per-vertex `aEmit` channel carries lamp/signal glow, and per-instance
+ *    per-vertex `aSurface.x` channel carries lamp/signal glow, and per-instance
  *    `instanceColor` carries the hue/value jitter (scorecard #39). A prop type
  *    therefore costs exactly one draw call and the roster shares one program.
  *    `createPropMaterial()` is the only place a prop material is constructed.
@@ -853,8 +853,16 @@ export class PropMesh {
     g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(this.nrmArr), 3));
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.colArr), 3));
     g.setAttribute('aSway', new THREE.BufferAttribute(new Float32Array(this.swyArr), 1));
-    g.setAttribute('aEmit', new THREE.BufferAttribute(new Float32Array(this.emtArr), 1));
-    g.setAttribute('aGloss', new THREE.BufferAttribute(new Float32Array(this.glsArr), 1));
+    // WebGPU guarantees only eight vertex-buffer slots. Instanced props use
+    // position, normal, colour, sway, matrix, instance colour and wind phase;
+    // keeping emissive and gloss as separate scalar buffers made nine. Pack
+    // the two independent surface masks into one vec2 with no precision loss.
+    const surface = new Float32Array(this.emtArr.length * 2);
+    for (let i = 0; i < this.emtArr.length; i++) {
+      surface[i * 2] = this.emtArr[i];
+      surface[i * 2 + 1] = this.glsArr[i];
+    }
+    g.setAttribute('aSurface', new THREE.BufferAttribute(surface, 2));
     const count = this.posArr.length / 3;
     g.setIndex(count > 65535
       ? new THREE.BufferAttribute(new Uint32Array(this.idxArr), 1)
@@ -2299,9 +2307,9 @@ export function propDef(key: string): PropDef | undefined { return DEF_BY_KEY.ge
  * injections:
  *
  *   aSway  -> wind displacement, per-instance phase read off instanceMatrix
- *   aEmit  -> additive emissive, so lamp heads and signal lenses glow without
+ *   aSurface.x -> additive emissive, so lamp heads and signal lenses glow without
  *             a second material and therefore without a second draw call
- *   aGloss -> per-vertex ROUGHNESS ONLY, so a parked car can be wet lacquer and
+ *   aSurface.y -> per-vertex ROUGHNESS ONLY, so a parked car can be wet lacquer and
  *             the hedge beside it can be matte leaf without a second material.
  *             This is the whole surface-variation budget for props: RA3 splits
  *             a car from a hedge with a specular highlight over flat paint, and
@@ -2370,10 +2378,10 @@ export function createPropMaterial(): PropMaterialSet {
     shader.uniforms.uGlossRough = uGlossRough;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>',
-        `#include <common>\n${WIND_PARS}\nattribute float aEmit;\nvarying float vEmit;`
-        + '\nattribute float aGloss;\nvarying float vGloss;')
+        `#include <common>\n${WIND_PARS}\nattribute vec2 aSurface;\nvarying float vEmit;`
+        + '\nvarying float vGloss;')
       .replace('#include <begin_vertex>',
-        `#include <begin_vertex>\nvEmit = aEmit;\nvGloss = aGloss;${WIND_BODY}`);
+        `#include <begin_vertex>\nvEmit = aSurface.x;\nvGloss = aSurface.y;${WIND_BODY}`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>',
         '#include <common>\nvarying float vEmit;\nuniform float uEmitGain;'

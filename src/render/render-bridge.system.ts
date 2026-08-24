@@ -23,6 +23,7 @@ import { ctx } from '../game/context';
 import { RenderBridge, clearKindMeshes, setRenderBridge } from './RenderBridge';
 
 let bridge: RenderBridge | null = null;
+let forcedLodDistance: number | undefined;
 
 export default defineSystem({
   id: 'render.bridge',
@@ -33,6 +34,11 @@ export default defineSystem({
     const { world, sceneRig } = ctx();
     bridge = new RenderBridge(world.store, sceneRig.scene);
     setRenderBridge(bridge);
+    if (typeof location !== 'undefined') {
+      const raw = new URLSearchParams(location.search).get('assetlod');
+      const value = raw === null ? Number.NaN : Number(raw);
+      forcedLodDistance = Number.isFinite(value) && value >= 0 ? value : undefined;
+    }
   },
 
   frame(r: RenderContext): void {
@@ -50,10 +56,12 @@ export default defineSystem({
     const infantryScale = infantryLegibilityScale(
       cameraRig.distance, cameraRig.camera.fov, handle.size.height, handle.size.cssHeight,
     );
-    b.update(r.alpha, infantryScale);
+    const lodDistance = forcedLodDistance ?? cameraRig.distance;
+    b.update(r.alpha, infantryScale, lodDistance);
     // Quoted x100 so the F3 overlay can show it as a whole number; 100 means
     // "not scaling", which is what a close camera must always read.
     debug.counters.infScale = Math.round(infantryScale * 100);
+    debug.counters.assetLodDistance = Math.round(lodDistance);
 
     // Counters the F3 overlay reads. Nobody else computes these — the bridge is
     // the only place that knows what actually got drawn as opposed to what
@@ -74,5 +82,6 @@ export default defineSystem({
     setRenderBridge(null);
     bridge?.dispose();
     bridge = null;
+    forcedLodDistance = undefined;
   },
 });

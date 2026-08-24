@@ -221,7 +221,7 @@ describe('desktop app url', () => {
         }
       })
       .join('\n');
-    const known = new Set(['gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'relay', 'skipmenu', 'unlockall']);
+    const known = new Set(['gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'relay', 'shot', 'skipmenu', 'unlockall']);
     for (const flag of ALLOWED_FLAGS) {
       expect(known.has(flag), `${flag} is not a recognised boot flag`).toBe(true);
     }
@@ -528,6 +528,14 @@ describe('the packaged desktop renderer carries the production relay', () => {
   it('refuses to package a bundle that does not contain the relay URL', () => {
     expect(builder).toContain(".includes(relayUrl)");
     expect(builder).toContain('desktop renderer does not contain relay URL');
+  });
+});
+
+describe('the desktop content-security policy', () => {
+  it('permits generated WebGPU worker modules to fetch their blob URL', () => {
+    const main = readFileSync(path.join(process.cwd(), 'desktop/src/main.ts'), 'utf8');
+    expect(main).toContain("connect-src 'self' blob: ws: wss:");
+    expect(main).toContain("worker-src 'self' blob:");
   });
 });
 

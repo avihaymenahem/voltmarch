@@ -117,6 +117,9 @@ export function buildSovietBase(
   const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
+  // Building art faces +Z; this layout's threat/front edge is local -Z.
+  // Rotate the facade half a turn without changing the layout or footprint.
+  const structureYawDeg = yawDeg + 180;
   const garrison = options.garrison !== false;
   const defended = options.defended !== false;
 
@@ -128,7 +131,7 @@ export function buildSovietBase(
     if (p.optional === true && !garrison) continue;
     const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
     const id = b.spawnBuilding(p.key, owner, x, z, {
-      yawDeg: yawDeg + (p.yawDeg ?? 0),
+      yawDeg: structureYawDeg + (p.yawDeg ?? 0),
       secondary: p.secondary,
     });
     if (p.key === 'conyard') conyard = id;
@@ -138,11 +141,11 @@ export function buildSovietBase(
     const defence = options.balancedDefence === true ? SOVIET_SKIRMISH_DEFENCE : SOVIET_DEFENCE;
     for (const p of defence) {
       const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
-      b.spawnBuilding(p.key, owner, x, z, { yawDeg });
+      b.spawnBuilding(p.key, owner, x, z, { yawDeg: structureYawDeg });
     }
     for (const wx of SOVIET_WALL_X) {
       const [x, z] = toWorld(cx, cz, wx, SOVIET_WALL_Z, cos, sin);
-      b.spawnBuilding('wall', owner, x, z, { yawDeg });
+      b.spawnBuilding('wall', owner, x, z, { yawDeg: structureYawDeg });
     }
   }
 
@@ -236,6 +239,7 @@ export function buildSovietOutpost(
   const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
+  const structureYawDeg = yawDeg + 180;
 
   const layout: readonly StructurePlacement[] = [
     { key: 'conyard', dx: 12, dz: 2 },
@@ -248,7 +252,9 @@ export function buildSovietOutpost(
   let conyard: EntityId = NONE;
   for (const p of layout) {
     const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
-    const id = b.spawnBuilding(p.key, owner, x, z, { yawDeg: yawDeg + (p.yawDeg ?? 0) });
+    const id = b.spawnBuilding(p.key, owner, x, z, {
+      yawDeg: structureYawDeg + (p.yawDeg ?? 0),
+    });
     if (p.key === 'conyard') conyard = id;
   }
   return conyard;

@@ -1549,25 +1549,49 @@ function sovietRadar(): StructureMassList {
   const s = sovietShell(f.w, f.h, f.height, { key: 'radar', team: 1.16, windowCount: 4, bodyFraction: 0.34 });
   const roof = s.roofY;
   const towerTop = f.height - 2.8;
+  const spin = { feature: Feature.Spinner, anim: 0.55, group: 'scan' } as const;
   s.masses.push(
-    // The Kremlin cue: a drum tower under an onion cupola, then the sweep gear.
+    // A squat armoured drum carries the scan frame. The spindle stays static:
+    // imported radar bodies terminate in the same socket, while only the
+    // purpose-built array below is extracted as the animated modular part.
     cyl('tower', MassRole.Primary, [s.w * 0.40, towerTop - roof * 1.4, s.w * 0.40], [0, (towerTop + roof * 1.4) * 0.5, 0], 'rivetPlate', {
       capSlot: 'grille',
     }),
     { name: 'cupola', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
       size: [s.w * 0.46, s.w * 0.26, s.w * 0.46], anchor: [0, towerTop + s.w * 0.13, 0],
       slot: 'paintMed', capSlot: 'grille' },
-    cyl('mast', MassRole.Greeble, [0.30, 2.4, 0.30], [0, f.height - 1.2, 0], 'bareMetal', {
-      group: 'mast', feature: Feature.Spinner, anim: 0.55, capSlot: 'grille',
+    cyl('spindle', MassRole.Greeble, [0.92, 0.72, 0.92], [0, f.height - 2.05, 0], 'bareMetal', {
+      group: 'spindle', segments: 12, capSlot: 'grille',
     }),
-    { name: 'dish', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
-      size: [4.2, 1.5, 4.2], anchor: [0.8, f.height - 1.5, 0], slot: 'rivetPlate',
-      rot: [-0.58, 0, 0.30], capSlot: 'grille', feature: Feature.Spinner, anim: 0.55 },
-    box('dish.arm', MassRole.Greeble, [1.7, 0.20, 0.20], [0.45, f.height - 2.1, 0], 'bareMetal', {
-      group: 'dish', feature: Feature.Spinner, anim: 0.55, chamfer: 0.04,
+    // The new silhouette is a chunky asymmetric scan frame rather than a
+    // generic satellite dish. Every member is thick enough to survive the RTS
+    // camera and shares one feature code, one atlas material and one draw.
+    cyl('scan.hub', MassRole.Greeble, [0.78, 0.52, 0.78], [0, f.height - 1.76, 0], 'bareMetal', {
+      ...spin, segments: 12, capSlot: 'grille',
     }),
-    box('dish.feed', MassRole.Emissive, [0.46, 0.46, 0.46], [1.4, f.height - 0.7, 0], 'emissive', {
-      group: 'dish', feature: Feature.Spinner, anim: 0.55, chamfer: 0.05,
+    box('scan.lower', MassRole.Greeble, [5.20, 0.34, 0.54], [0.10, f.height - 1.52, 0], 'grille', {
+      ...spin, chamfer: 0.07,
+    }),
+    box('scan.leftTop', MassRole.Greeble, [1.86, 0.30, 0.50], [-1.46, f.height - 0.42, 0], 'grille', {
+      ...spin, chamfer: 0.07,
+    }),
+    box('scan.leftPost', MassRole.Greeble, [0.34, 1.34, 0.52], [-0.62, f.height - 0.95, 0], 'grille', {
+      ...spin, chamfer: 0.07,
+    }),
+    box('scan.leftBraceA', MassRole.Greeble, [1.58, 0.24, 0.42], [-1.54, f.height - 0.98, 0], 'bareMetal', {
+      ...spin, rot: [0, 0, 0.48], chamfer: 0.05,
+    }),
+    box('scan.counterweight', MassRole.Primary, [0.78, 1.46, 0.70], [-2.55, f.height - 0.92, 0], 'rivetPlate', {
+      ...spin, chamfer: 0.10,
+    }),
+    box('scan.receiverFrame', MassRole.Primary, [2.86, 1.74, 0.66], [1.36, f.height - 0.90, 0], 'grille', {
+      ...spin, chamfer: 0.12,
+    }),
+    box('scan.receiver', MassRole.Primary, [2.54, 1.48, 0.74], [1.42, f.height - 0.88, 0], 'teamSlab', {
+      ...spin, chamfer: 0.10,
+    }),
+    box('scan.waveguide', MassRole.Greeble, [0.72, 0.48, 0.82], [-0.08, f.height - 0.78, 0], 'bareMetal', {
+      ...spin, chamfer: 0.08,
     }),
     ...catwalk(s.w * 0.70, s.d * 0.20, roof * 1.30, 'walk'),
     greebleRun('tower.run', s.d * 0.44, 0.26, 0.20, [-s.w * 0.36, roof * 0.60, s.d * 0.04], 0x50A2),
@@ -2087,47 +2111,129 @@ function wallSegment(faction: StructureFaction): StructureMassList {
   const soviet = faction === 'soviets';
   const masses: M[] = soviet
     ? [
-      // A battered concrete wall: the face leans back 4% over its height, which
-      // is both how a real revetment is poured and why this panel no longer
-      // measures as a flat rectangle when it is repeated eighty times.
-      pplan('wall', MassRole.Primary, [w, h * 0.86, w * 0.42], [0, h * 0.43, 0], 'rivetPlate', {
-        plan: cutBoxPlan(w, w * 0.42, 0.06),
-        topScaleX: 0.97, topScaleZ: 0.88, bottomScaleX: 1.01, bottomScaleZ: 1.08,
+      // ART BRIEF — three non-negotiable reads at the normal RTS camera:
+      // (1) one continuous battered anti-tank glacis, (2) a single heavy seam
+      // spine every four metres instead of doubled posts at every join, and
+      // (3) a stepped armoured coping that breaks the top silhouette. Soviet
+      // identity comes from riveted olive plate, a crimson vertical slab and
+      // exposed dark steel. All of it stays on the shared faction atlas.
+
+      // The only mass allowed to touch both cell edges. Neighbouring modules
+      // therefore meet as one uninterrupted wall, while every applied plate
+      // remains inboard and can never overlap the next instance.
+      pplan('revetment.core', MassRole.Primary, [w, h * 0.72, w * 0.53], [0, h * 0.36, 0], 'paintMed', {
+        plan: cutBoxPlan(w, w * 0.53, 0.06),
+        topScaleX: 0.985, topScaleZ: 0.70, bottomScaleX: 1.0, bottomScaleZ: 1.08,
+        chamferTop: 0.075, chamferBottom: 0.035,
       }, { capSlot: 'rivetPlate' }),
-      // SOVIET-2 at wall scale: the capsule rails ARE the pilasters, and every
-      // reference frame of the Kremlin wall is built out of them.
-      cyl('rail', MassRole.Primary, [w * 0.22, h, w * 0.22], [w * 0.5 - w * 0.11, h * 0.5, 0], 'rivetPlate', {
-        mirrorX: true, segments: BUILDING_GEOMETRY.railSegments, capSlot: 'paintSmall',
+      pplan('revetment.foot', MassRole.Primary, [w * 0.99, h * 0.18, w * 0.60], [0, h * 0.09, 0], 'paintSmall', {
+        plan: cutBoxPlan(w * 0.99, w * 0.60, 0.045),
+        topScaleX: 0.98, topScaleZ: 0.88, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+        chamferTop: 0.035, chamferBottom: 0.025,
+      }, { capSlot: 'bareMetal' }),
+
+      // One centre spine per module is the kit's visual rhythm. The previous
+      // mirrored end pilasters became a doubled four-post knot where two cells
+      // joined; the centre spine removes that seam and gives each module one
+      // unmistakable Soviet armoured mass.
+      tbox('seam.spine', MassRole.Primary, [w * 0.19, h * 0.88, w * 0.60], [0, h * 0.47, 0], 'rivetPlate', {
+        topScaleX: 0.72, topScaleZ: 0.80, bottomScaleX: 1.18, bottomScaleZ: 1.10,
+        cornerCut: w * 0.022,
+      }, { group: 'seam', chamfer: 0.065 }),
+      tbox('coping', MassRole.Primary, [w * 0.385, h * 0.18, w * 0.47], [w * 0.29, h * 0.815, 0], 'rivetPlate', {
+        topScaleX: 0.92, topScaleZ: 0.78, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+        cornerCut: w * 0.018,
+      }, { mirrorX: true, group: 'coping', chamfer: 0.055 }),
+      tbox('seam.crown', MassRole.Primary, [w * 0.22, h * 0.17, w * 0.55], [0, h * 0.9575, 0], 'rivetPlate', {
+        topScaleX: 0.78, topScaleZ: 0.76, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+        cornerCut: w * 0.018,
+      }, { group: 'seam', chamfer: 0.055 }),
+      box('crown.tie', MassRole.Greeble, [w * 0.13, h * 0.075, w * 0.43], [w * 0.29, h * 0.935, 0], 'bareMetal', {
+        mirrorX: true, group: 'crown.ties', chamfer: 0.025,
       }),
-      box('coping', MassRole.Primary, [w, h * 0.14, w * 0.50], [0, h * 0.93, 0], 'paintSmall', { chamfer: 0.05 }),
-      box('merlon', MassRole.Greeble, [w * 0.16, h * 0.16, w * 0.44], [w * 0.24, h * 0.98, 0], 'rivetPlate', {
-        mirrorX: true, group: 'merlons', chamfer: 0.04,
-      }),
-      teamPanel('team.band', [w * 0.30, h * 0.30, 0.12], [0, h * 0.52, w * 0.22]),
+
+      // Two recessed armour bays on BOTH faces. A wall may be placed along
+      // either cardinal axis and the fixed camera can see either side, so a
+      // one-sided facade is not a valid modular kit. Layered plates buy the
+      // depth read without multiplying material or draw count.
+      plate('bay.frame.front', MassRole.Greeble, taperOutline(w * 0.30, h * 0.39, 0.90), 0.10,
+        [w * 0.22, h * 0.45, w * 0.291], [HALF_PI, 0, 0], 'bareMetal', {
+          mirrorX: true, group: 'bays.front', chamfer: 0.035,
+        }),
+      plate('bay.inset.front', MassRole.Greeble, taperOutline(w * 0.255, h * 0.31, 0.90), 0.11,
+        [w * 0.22, h * 0.45, w * 0.305], [HALF_PI, 0, 0], 'hatch', {
+          mirrorX: true, group: 'bays.front', chamfer: 0.025, tint: 0.90,
+        }),
+      plate('bay.frame.rear', MassRole.Greeble, taperOutline(w * 0.30, h * 0.39, 0.90), 0.10,
+        [w * 0.22, h * 0.45, -w * 0.291], [-HALF_PI, 0, 0], 'bareMetal', {
+          mirrorX: true, group: 'bays.rear', chamfer: 0.035,
+        }),
+      plate('bay.inset.rear', MassRole.Greeble, taperOutline(w * 0.255, h * 0.31, 0.90), 0.11,
+        [w * 0.22, h * 0.45, -w * 0.305], [-HALF_PI, 0, 0], 'hatch', {
+          mirrorX: true, group: 'bays.rear', chamfer: 0.025, tint: 0.90,
+        }),
+
+      // Narrow vertical faction slabs sit on the proud seam spine rather than
+      // washing the roof. They touch the visible front/rear silhouette and
+      // remain a restrained repeated cadence instead of a solid red ribbon.
+      plate('team.spine.front', MassRole.TeamSlab, taperOutline(w * 0.16, h * 0.50, 0.82), 0.12,
+        [0, h * 0.58, w * 0.326], [HALF_PI, 0, 0], 'teamSlab', {
+          group: 'team.spine', chamfer: 0.035,
+        }),
+      plate('team.spine.rear', MassRole.TeamSlab, taperOutline(w * 0.16, h * 0.50, 0.82), 0.12,
+        [0, h * 0.58, -w * 0.326], [-HALF_PI, 0, 0], 'teamSlab', {
+          group: 'team.spine', chamfer: 0.035,
+        }),
     ]
     : [
-      tbox('wall', MassRole.Primary, [w, h * 0.82, w * 0.36], [0, h * 0.41, 0], 'paintMed', {
-        topScaleX: 0.86, topScaleZ: 0.80, bottomScaleX: 1.02, bottomScaleZ: 1.10, cornerCut: w * 0.05,
+      tbox('revetment', MassRole.Primary, [w, h * 0.80, w * 0.40], [0, h * 0.41, 0], 'paintMed', {
+        topScaleX: 0.90, topScaleZ: 0.80, bottomScaleX: 1.01, bottomScaleZ: 1.10, cornerCut: w * 0.045,
       }),
-      tbox('post', MassRole.Primary, [w * 0.18, h, w * 0.44], [w * 0.5 - w * 0.09, h * 0.5, 0], 'paintMed', {
-        topScaleX: 0.78, topScaleZ: 0.86, bottomScaleX: 1.08, bottomScaleZ: 1.04,
-      }, { mirrorX: true }),
-      plate('coping', MassRole.Primary, taperOutline(w, w * 0.44, 0.86), h * 0.12,
+      // One centre spine per cell prevents the doubled-pillar knot that used to
+      // appear whenever two Allied wall modules met.
+      tbox('spine', MassRole.Primary, [w * 0.18, h, w * 0.48], [0, h * 0.5, 0], 'paintMed', {
+        topScaleX: 0.74, topScaleZ: 0.82, bottomScaleX: 1.14, bottomScaleZ: 1.08,
+      }, { group: 'spine', chamfer: 0.055 }),
+      plate('coping', MassRole.Primary, taperOutline(w * 0.92, w * 0.46, 0.88), h * 0.12,
         [0, h * 0.92, 0], undefined, 'paintSmall', { chamfer: 0.045 }),
-      box('rail', MassRole.Greeble, [w, 0.10, 0.10], [0, h * 1.02, w * 0.16], 'bareMetal', {
-        mirrorX: false, group: 'rails', chamfer: 0.02,
+      box('face.frame', MassRole.Greeble, [w * 0.60, h * 0.40, 0.10], [0, h * 0.48, w * 0.207], 'bareMetal', {
+        group: 'face', chamfer: 0.03,
       }),
-      teamPanel('team.band', [w * 0.34, h * 0.24, 0.12], [0, h * 0.50, w * 0.20]),
+      box('face.inset', MassRole.Greeble, [w * 0.52, h * 0.31, 0.11], [0, h * 0.48, w * 0.222], 'paintSmall', {
+        group: 'face', chamfer: 0.025,
+      }),
+      box('face.frame.rear', MassRole.Greeble, [w * 0.60, h * 0.40, 0.10], [0, h * 0.48, -w * 0.207], 'bareMetal', {
+        group: 'face.rear', chamfer: 0.03,
+      }),
+      box('face.inset.rear', MassRole.Greeble, [w * 0.52, h * 0.31, 0.11], [0, h * 0.48, -w * 0.222], 'paintSmall', {
+        group: 'face.rear', chamfer: 0.025,
+      }),
+      box('lower.plinth', MassRole.Primary, [w * 0.94, h * 0.13, w * 0.50], [0, h * 0.065, 0], 'paintSmall', {
+        group: 'plinth', chamfer: 0.045,
+      }),
+      box('top.rail', MassRole.Greeble, [w * 0.76, 0.10, 0.10], [0, h * 1.01, w * 0.16], 'bareMetal', {
+        group: 'rails', chamfer: 0.02,
+      }),
+      teamPanel('team.band', [w * 0.38, h * 0.13, 0.12], [0, h * 0.48, w * 0.238]),
+      teamPanel('team.band.rear', [w * 0.38, h * 0.13, 0.12], [0, h * 0.48, -w * 0.238]),
     ];
-  masses.push(
-    box('kick', MassRole.Greeble, [w * 0.98, h * 0.14, w * 0.52], [0, h * 0.07, 0], 'paintSmall', { group: 'kick', chamfer: 0.05 }),
-    box('lamp', MassRole.Emissive, [0.24, 0.20, 0.10], [w * 0.30, h * 0.72, w * 0.22], 'emissive', {
+  if (soviet) {
+    masses.push(
+      box('lamp.front', MassRole.Emissive, [0.20, 0.15, 0.10], [w * 0.14, h * 0.73, w * 0.331], 'emissive', {
+        group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+      }),
+      box('lamp.rear', MassRole.Emissive, [0.20, 0.15, 0.10], [-w * 0.14, h * 0.73, -w * 0.331], 'emissive', {
+        group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+      }),
+    );
+  } else {
+    masses.push(box('lamp', MassRole.Emissive, [0.20, 0.16, 0.10], [w * 0.29, h * 0.70, w * 0.23], 'emissive', {
       group: 'lamps', feature: Feature.Window, chamfer: 0.03,
-    }),
-    box('bolt', MassRole.Greeble, [w * 0.10, h * 0.10, 0.10], [-w * 0.28, h * 0.30, w * 0.20], 'hatch', {
+    }));
+    masses.push(box('service.hatch', MassRole.Greeble, [w * 0.12, h * 0.12, 0.09], [-w * 0.29, h * 0.30, w * 0.23], 'hatch', {
       group: 'bolts', chamfer: 0.02,
-    }),
-  );
+    }));
+  }
   return list(`${faction === 'allies' ? 'allied' : 'soviet'}_wall`, 'Wall', faction, 'wall',
     masses, [], { cls: 'wall' });
 }
@@ -2138,34 +2244,96 @@ function gateSegment(faction: StructureFaction): StructureMassList {
   const w = f.w * CELL;
   const h = f.height;
   const soviet = faction === 'soviets';
-  const masses: M[] = [
-    ...foundationPad(faction, f.w, f.h, h),
-    tbox('tower', MassRole.Primary, [w * 0.24, h, w * 0.52], [w * 0.5 - w * 0.12, h * 0.5, 0],
-      soviet ? 'rivetPlate' : 'paintMed',
-      soviet
-        ? { topScaleX: 0.92, topScaleZ: 0.94, bottomScaleX: 1.06, bottomScaleZ: 1.04, cornerCut: w * 0.04 }
-        : { topScaleX: 0.82, topScaleZ: 0.88, bottomScaleX: 1.06, bottomScaleZ: 1.02, cornerCut: w * 0.05 },
-      { mirrorX: true }),
-    tbox('lintel', MassRole.Primary, [w, h * 0.20, w * 0.46], [0, h * 0.90, 0], soviet ? 'rivetPlate' : 'paintMed', {
-      topScaleX: 0.94, topScaleZ: 0.84, cornerCut: w * 0.05,
-    }, { chamfer: 0.06 }),
-    plate('hazard', MassRole.Primary, taperOutline(w * 0.76, w * 0.50, 0.90), h * 0.10,
-      [0, h * 0.78, 0], undefined, 'stripe', { chamfer: 0.04 }),
-    // Two leaves, each retracting straight down into the roadway.
-    box('leaf', MassRole.Greeble, [w * 0.38, h * 0.70, 0.24], [w * 0.19, h * 0.35, 0], 'grille', {
-      mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.74, chamfer: 0.04,
-    }),
-    cyl('hinge', MassRole.Greeble, [0.30, h * 0.80, 0.30], [w * 0.5 - w * 0.12, h * 0.40, w * 0.14], 'bareMetal', {
-      mirrorX: true, group: 'hinges', capSlot: 'grille',
-    }),
-    box('lamp', MassRole.Emissive, [0.28, 0.22, 0.12], [w * 0.30, h * 0.72, w * 0.24], 'emissive', {
-      mirrorX: true, group: 'lamps', feature: Feature.Window, chamfer: 0.03,
-    }),
-    box('bollard', MassRole.Greeble, [w * 0.10, h * 0.22, w * 0.10], [w * 0.40, h * 0.11, w * 0.34], 'stripe', {
-      mirrorX: true, group: 'bollards', chamfer: 0.03,
-    }),
-    teamPanel('team.lintel', [w * 0.60, h * 0.08, w * 0.30], [0, h * 1.01, 0]),
-  ];
+  const masses: M[] = soviet
+    ? [
+      // No square foundation pad: the gate is a module in a wall run, not a
+      // freestanding building. A narrow flush sill grounds the moving leaves
+      // without breaking the terrain-following rhythm of neighbouring walls.
+      pplan('threshold', MassRole.Primary, [w * 0.96, 0.16, w * 0.66], [0, 0.08, 0], 'paintSmall', {
+        plan: cutBoxPlan(w * 0.96, w * 0.66, 0.05),
+        topScaleX: 0.98, topScaleZ: 0.96,
+      }, { capSlot: 'grille', chamfer: 0.04 }),
+
+      // Two battered concrete pylons leave a genuinely readable central
+      // vehicle aperture. Their outside faces align to the one-cell module;
+      // their depth and coping match the wall segment beside them.
+      pplan('pylon.core', MassRole.Primary, [w * 0.19, h * 0.84, w * 0.58], [w * 0.405, h * 0.42, 0], 'paintMed', {
+        plan: cutBoxPlan(w * 0.19, w * 0.58, 0.08),
+        topScaleX: 0.88, topScaleZ: 0.80, bottomScaleX: 1.08, bottomScaleZ: 1.08,
+        chamferTop: 0.06, chamferBottom: 0.04,
+      }, { mirrorX: true, capSlot: 'rivetPlate', group: 'pylons' }),
+      tbox('pylon.armour', MassRole.Primary, [w * 0.18, h * 0.68, w * 0.64], [w * 0.405, h * 0.46, 0], 'rivetPlate', {
+        topScaleX: 0.88, topScaleZ: 0.86, bottomScaleX: 1.08, bottomScaleZ: 1.06,
+        cornerCut: w * 0.015,
+      }, { mirrorX: true, group: 'pylons' }),
+      tbox('pylon.cap', MassRole.Primary, [w * 0.22, h * 0.13, w * 0.61], [w * 0.39, h * 0.89, 0], 'rivetPlate', {
+        topScaleX: 0.90, topScaleZ: 0.86, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+        cornerCut: w * 0.018,
+      }, { mirrorX: true, group: 'pylon.caps', chamfer: 0.05 }),
+
+      // A heavy lintel makes the gate read from the strategic camera while
+      // preserving a 2.48 m clear opening below it.
+      tbox('lintel', MassRole.Primary, [w * 0.82, h * 0.18, w * 0.52], [0, h * 0.90, 0], 'rivetPlate', {
+        topScaleX: 0.94, topScaleZ: 0.84, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+        cornerCut: w * 0.025,
+      }, { chamfer: 0.06 }),
+      plate('lintel.hazard', MassRole.Greeble, taperOutline(w * 0.48, h * 0.075, 0.96), 0.12,
+        [0, h * 0.835, w * 0.277], [HALF_PI, 0, 0], 'stripe', {
+          group: 'lintel.hazard', chamfer: 0.025,
+        }),
+
+      // Armoured leaves retract straight into the sill. A grille core with
+      // separate vertical rails gives them a crisp mechanical read instead of
+      // one broad flat plate; all pieces share Feature.Door and move together.
+      box('leaf', MassRole.Greeble, [w * 0.305, h * 0.68, 0.22], [w * 0.1525, h * 0.35, 0], 'hatch', {
+        mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.72, chamfer: 0.04,
+      }),
+      box('leaf.outer.rail', MassRole.Greeble, [w * 0.050, h * 0.61, 0.27], [w * 0.277, h * 0.35, 0], 'bareMetal', {
+        mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.72, chamfer: 0.025,
+      }),
+      box('leaf.hazard', MassRole.Greeble, [w * 0.24, h * 0.075, 0.29], [w * 0.1525, h * 0.57, 0], 'stripe', {
+        mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.72, chamfer: 0.02,
+      }),
+
+      box('lamp', MassRole.Emissive, [0.24, 0.20, 0.12], [w * 0.405, h * 0.71, w * 0.335], 'emissive', {
+        mirrorX: true, group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+      }),
+      box('bollard', MassRole.Greeble, [w * 0.075, h * 0.18, w * 0.075], [w * 0.37, h * 0.09, w * 0.38], 'stripe', {
+        mirrorX: true, group: 'bollards', chamfer: 0.03,
+      }),
+      plate('team.pylon', MassRole.TeamSlab, taperOutline(w * 0.14, h * 0.28, 0.94), 0.12,
+        [w * 0.405, h * 0.48, w * 0.341], [HALF_PI, 0, 0], 'teamSlab', {
+          mirrorX: true, group: 'team.pylons', chamfer: 0.04,
+        }),
+    ]
+    : [
+      // A gate belongs to the terrain-following wall kit. A thin sill grounds
+      // the animated leaves without stamping a square building pad into a run.
+      pplan('threshold', MassRole.Primary, [w * 0.96, 0.14, w * 0.60], [0, 0.07, 0], 'paintSmall', {
+        plan: cutBoxPlan(w * 0.96, w * 0.60, 0.05), topScaleX: 0.98, topScaleZ: 0.94,
+      }, { capSlot: 'bareMetal', chamfer: 0.04 }),
+      tbox('tower', MassRole.Primary, [w * 0.24, h, w * 0.52], [w * 0.5 - w * 0.12, h * 0.5, 0], 'paintMed', {
+        topScaleX: 0.82, topScaleZ: 0.88, bottomScaleX: 1.06, bottomScaleZ: 1.02, cornerCut: w * 0.05,
+      }, { mirrorX: true }),
+      tbox('lintel', MassRole.Primary, [w, h * 0.20, w * 0.46], [0, h * 0.90, 0], 'paintMed', {
+        topScaleX: 0.94, topScaleZ: 0.84, cornerCut: w * 0.05,
+      }, { chamfer: 0.06 }),
+      plate('hazard', MassRole.Primary, taperOutline(w * 0.76, w * 0.50, 0.90), h * 0.10,
+        [0, h * 0.78, 0], undefined, 'stripe', { chamfer: 0.04 }),
+      box('leaf', MassRole.Greeble, [w * 0.38, h * 0.70, 0.24], [w * 0.19, h * 0.35, 0], 'grille', {
+        mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.74, chamfer: 0.04,
+      }),
+      cyl('hinge', MassRole.Greeble, [0.30, h * 0.80, 0.30], [w * 0.5 - w * 0.12, h * 0.40, w * 0.14], 'bareMetal', {
+        mirrorX: true, group: 'hinges', capSlot: 'grille',
+      }),
+      box('lamp', MassRole.Emissive, [0.28, 0.22, 0.12], [w * 0.30, h * 0.72, w * 0.24], 'emissive', {
+        mirrorX: true, group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+      }),
+      box('bollard', MassRole.Greeble, [w * 0.10, h * 0.22, w * 0.10], [w * 0.40, h * 0.11, w * 0.34], 'stripe', {
+        mirrorX: true, group: 'bollards', chamfer: 0.03,
+      }),
+      teamPanel('team.lintel', [w * 0.60, h * 0.08, w * 0.30], [0, h * 1.01, 0]),
+    ];
   return list(`${faction === 'allies' ? 'allied' : 'soviet'}_gate`, 'Gate', faction, 'gate',
     masses, [
       { part: PartId.Door, pos: [0, 0.2, 0] },

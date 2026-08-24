@@ -92,8 +92,9 @@ import { CIVILIAN_DIMENSIONS as CIV, CIVILIAN_KEYS } from '../data/Civilians';
 import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
 import {
-  buildAtoll, buildBattle, buildBlob, buildEconomy, buildNaval, buildPlacement,
-  buildSelection, buildTerrainShowcase, buildUnitParade,
+  buildArchitectureShowcase, buildAtoll, buildBattle, buildBlob, buildEconomy,
+  buildNaval, buildPlacement, buildSelection, buildSledgeAudit,
+  buildTerrainShowcase, buildUnitParade,
 } from './scenarios/Showcases';
 
 /* ==========================================================================
@@ -277,8 +278,14 @@ export const SCENARIO_NAMES = [
   'skirmish',
   'allied-base',
   'soviet-base',
+  'meridian-base',
+  'meridian-support',
+  'meridian-final',
+  'reclamation-base',
   'terrain-showcase',
   'unit-parade',
+  'architecture-showcase',
+  'sledge-audit',
   'battle',
   'economy',
   'naval',
@@ -4464,6 +4471,60 @@ const PLANS: Record<string, ScenarioPlan> = {
     },
   },
 
+  'meridian-base': {
+    map: 'arid', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Meridian Pact base: ceramic-brass industry, teal energy surfaces and a disciplined grid.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Meridian);
+      buildBaseFor(b, owner, cx - 1, cz - 7, {
+        facingDeg: 0, garrison: true, balancedDefence: true,
+      });
+      b.addOre(cx + 52, cz - 6, 24);
+      b.scatter({ minX: cx - 74, minZ: cz - 66, maxX: cx + 74, maxZ: cz + 30 }, 104);
+    },
+  },
+
+  'meridian-support': {
+    map: 'arid', distance: 44, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Meridian support line: radar, command, technology, repair and naval silhouettes.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Meridian);
+      b.spawnBuilding('mrdOculus', owner, cx - 12, cz - 8);
+      b.spawnBuilding('mrdPharos', owner, cx, cz - 9);
+      b.spawnBuilding('mrdReliquary', owner, cx + 12, cz - 8);
+      b.spawnBuilding('mrdDepot', owner, cx - 8, cz + 6);
+      b.spawnBuilding('mrdSlipway', owner, cx + 8, cz + 7);
+      b.scatter({ minX: cx - 35, minZ: cz - 28, maxX: cx + 35, maxZ: cz + 24 }, 36);
+    },
+  },
+
+  'meridian-final': {
+    map: 'arid', distance: 48, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Meridian final line: storage, articulated beam defence, modular wall and Heliograph.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Meridian);
+      b.spawnBuilding('mrdVault', owner, cx - 11, cz - 7);
+      b.spawnBuilding('mrdGlaive', owner, cx, cz - 9);
+      b.spawnBuilding('mrdHelios', owner, cx + 11, cz - 7);
+      for (let i = -2; i <= 2; i++) b.spawnBuilding('mrdRampart', owner, cx + i * 4, cz);
+      b.spawnBuilding('mrdHeliograph', owner, cx, cz + 9);
+      b.scatter({ minX: cx - 30, minZ: cz - 25, maxX: cx + 30, maxZ: cz + 27 }, 24);
+    },
+  },
+
+  'reclamation-base': {
+    map: 'arid', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Reclamation base: asymmetric scrap industry, violet armor slabs and amber approach marks.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Reclaim);
+      buildBaseFor(b, owner, cx - 1, cz - 7, {
+        facingDeg: 0, garrison: true, balancedDefence: true,
+      });
+      b.addOre(cx - 52, cz - 6, 24);
+      b.scatter({ minX: cx - 74, minZ: cz - 66, maxX: cx + 74, maxZ: cz + 30 }, 104);
+    },
+  },
+
   'terrain-showcase': {
     map: 'urban', distance: 30, yawDeg: 26, frozen: true, settleTicks: 0,
     summary: 'Close ground detail: road junction, kerbs, scatter, one tank for scale.',
@@ -4474,6 +4535,21 @@ const PLANS: Record<string, ScenarioPlan> = {
     map: 'arid', distance: 62, yawDeg: 12, frozen: true, settleTicks: 0,
     summary: 'Four-faction vertical slice: line infantry, main armour and vehicle factory.',
     build: buildUnitParade,
+  },
+
+  'architecture-showcase': {
+    map: 'urban', distance: 140, yawDeg: 0, frozen: true, settleTicks: 0,
+    anchor: 'centre',
+    armies: SKIRMISH_ARMIES_MAX,
+    focusDZ: -40,
+    summary: 'Complete four-faction architecture contact sheet, aligned by battlefield role.',
+    build: buildArchitectureShowcase,
+  },
+
+  'sledge-audit': {
+    map: 'arid', distance: 30, yawDeg: 18, frozen: true, settleTicks: 30,
+    summary: 'Sledge close geometry and off-axis turret articulation audit.',
+    build: buildSledgeAudit,
   },
 
   battle: {

@@ -1,9 +1,9 @@
 {
   "name": "voltmarch",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
-  "description": "VOLTMARCH - an original real-time strategy game for the browser, built on Three.js. All art is procedurally generated from code.",
+  "description": "VOLTMARCH - an original real-time strategy game for browser and desktop, built on Three.js with procedural and authored 3D art.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -18,6 +18,7 @@
     "desktop:build": "npm --prefix desktop run build",
     "desktop:dist": "npm --prefix desktop run dist",
     "desktop:smoke": "node desktop/smoke.mjs",
+    "desktop:render-smoke": "node desktop/render-diagnostic.mjs",
     "desktop:typecheck": "tsc --noEmit -p desktop/tsconfig.json",
     "shots": "node tools/shoot.mjs",
     "campaign:shots": "node tools/campaign-shoot.mjs",
@@ -26,14 +27,25 @@
     "replay-probe": "node tools/replay-probe.mjs",
     "op-harness": "node tools/op-harness.mjs",
     "desktop:dev": "node desktop/dev.mjs",
-    "desktop:preview": "node desktop/preview.mjs"
+    "desktop:preview": "node desktop/preview.mjs",
+    "asset:audit": "node tools/audit-glb.mjs",
+    "asset:components": "node tools/analyze-glb-components.mjs",
+    "asset:trim": "node tools/trim-glb-region.mjs",
+    "asset:prepare": "node tools/prepare-meshy-asset.mjs",
+    "asset:optimize-family": "node tools/optimize-asset-family.mjs",
+    "asset:compress-family": "node tools/compress-asset-textures.mjs",
+    "asset:unwrap": "py tools/unwrap-glb-uv.py"
   },
   "dependencies": {
     "three": "0.185.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
     "@types/node": "^22.20.1",
     "@types/three": "^0.185.3",
+    "basisu": "^1.16.3",
     "playwright": "^1.62.1",
     "sharp": "^0.35.3",
     "typescript": "^5.9.3",

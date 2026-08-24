@@ -124,7 +124,8 @@ export interface BaseOptions {
   /**
    * Rotation of the whole layout, degrees. At 0 the local frame is the world
    * frame, so the defended face (local -Z) points at world -Z — the top of an
-   * un-yawed shot. The threat axis therefore points at `facingDeg + 180`.
+   * un-yawed shot. The threat axis, and therefore every structure's +Z facade,
+   * points at `facingDeg + 180`.
    */
   facingDeg?: number;
   /** Place radar/proving ground and the standing garrison. */
@@ -178,6 +179,11 @@ export function buildAlliedBase(
   const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
+  // The layout rotation names its +Z/rear axis. Building art is authored with
+  // +Z as its facade/exit, while the compound's defended face is local -Z.
+  // Keeping these as separate values prevents prebuilt bases from looking
+  // inward even though their positions and occupancy are correctly rotated.
+  const structureYawDeg = yawDeg + 180;
   const garrison = options.garrison !== false;
   const defended = options.defended !== false;
 
@@ -192,7 +198,7 @@ export function buildAlliedBase(
     if (p.optional === true && !garrison) continue;
     const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
     const id = b.spawnBuilding(p.key, owner, x, z, {
-      yawDeg: yawDeg + (p.yawDeg ?? 0),
+      yawDeg: structureYawDeg + (p.yawDeg ?? 0),
       secondary: p.secondary,
     });
     if (p.key === 'conyard') conyard = id;
@@ -201,11 +207,11 @@ export function buildAlliedBase(
   if (defended) {
     for (const p of ALLIED_DEFENCE) {
       const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
-      b.spawnBuilding(p.key, owner, x, z, { yawDeg });
+      b.spawnBuilding(p.key, owner, x, z, { yawDeg: structureYawDeg });
     }
     for (const wx of ALLIED_WALL_X) {
       const [x, z] = toWorld(cx, cz, wx, ALLIED_WALL_Z, cos, sin);
-      b.spawnBuilding('wall', owner, x, z, { yawDeg });
+      b.spawnBuilding('wall', owner, x, z, { yawDeg: structureYawDeg });
     }
   }
 
@@ -305,6 +311,7 @@ export function buildAlliedOutpost(
   const facing = yawDeg * DEG2RAD;
   const cos = Math.cos(facing);
   const sin = Math.sin(facing);
+  const structureYawDeg = yawDeg + 180;
 
   // Kept inside x ∈ [-18, +18], z ∈ [-11, +15] so it still reads whole at the
   // 36 m dolly the placement shot uses.
@@ -320,7 +327,9 @@ export function buildAlliedOutpost(
   let conyard: EntityId = 0 as EntityId;
   for (const p of layout) {
     const [x, z] = toWorld(cx, cz, p.dx, p.dz, cos, sin);
-    const id = b.spawnBuilding(p.key, owner, x, z, { yawDeg: yawDeg + (p.yawDeg ?? 0) });
+    const id = b.spawnBuilding(p.key, owner, x, z, {
+      yawDeg: structureYawDeg + (p.yawDeg ?? 0),
+    });
     if (p.key === 'conyard') conyard = id;
   }
   return conyard;

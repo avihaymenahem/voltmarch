@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "family": "soviet-vehicles",
+  "sourceDir": "src/assets/units/soviets",
+  "outputDir": "src/assets/units/soviets/derived",
+  "profiles": {
+    "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
+    "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.30 },
+    "shadow": { "ratio": 0.1, "error": 0.05, "maxRatio": 0.2, "maxTriangles": 2000 }
+  },
+  "assets": [
+    {
+      "key": "soviet_rhino",
+      "file": "anvil-heavy-tank.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "soviet_apocalypse",
+      "file": "sledge-tank.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": true
+    }
+  ]
+}

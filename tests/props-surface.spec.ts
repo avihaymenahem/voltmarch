@@ -19,7 +19,7 @@
  *   2. foliage hue never enters the emerald 100-120 band
  *   3. man-made paint is genuinely saturated, RA3 toy-car style
  *   4. a grass fan is ONE tone, not a two-tone stipple
- *   5. `aGloss` exists, is bounded, and is spent on paint rather than leaves
+ *   5. `aSurface.y` gloss exists, is bounded, and is spent on paint rather than leaves
  * ============================================================================
  */
 
@@ -215,26 +215,26 @@ describe('prop surfaces — flat masses, no stipple', () => {
  * 3. THE GLOSS CHANNEL
  * ========================================================================== */
 
-describe('aGloss — roughness variation, and nothing else', () => {
+describe('aSurface.y — roughness variation, and nothing else', () => {
   const lib = new PropLibrary({ biome: 'urban', seed: 5 });
 
   it('rides on every prop geometry, bounded to 0..1, one per vertex', () => {
     for (const pg of lib.all()) {
-      const a = pg.geometry.getAttribute('aGloss');
+      const a = pg.geometry.getAttribute('aSurface');
       expect(a, pg.def.key).toBeTruthy();
       expect(a.count, pg.def.key).toBe(pg.geometry.getAttribute('position').count);
       for (let i = 0; i < a.count; i++) {
-        expect(a.getX(i), `${pg.def.key}[${i}]`).toBeGreaterThanOrEqual(0);
-        expect(a.getX(i), `${pg.def.key}[${i}]`).toBeLessThanOrEqual(1);
+        expect(a.getY(i), `${pg.def.key}[${i}]`).toBeGreaterThanOrEqual(0);
+        expect(a.getY(i), `${pg.def.key}[${i}]`).toBeLessThanOrEqual(1);
       }
     }
   });
 
   it('spends gloss on paint and leaves foliage and stone matte', () => {
     const maxGloss = (key: string): number => {
-      const a = lib.get(key)!.geometry.getAttribute('aGloss');
+      const a = lib.get(key)!.geometry.getAttribute('aSurface');
       let m = 0;
-      for (let i = 0; i < a.count; i++) m = Math.max(m, a.getX(i));
+      for (let i = 0; i < a.count; i++) m = Math.max(m, a.getY(i));
       return m;
     };
     // Painted / glazed.
@@ -249,9 +249,9 @@ describe('aGloss — roughness variation, and nothing else', () => {
   });
 
   it('gives a car a majority-glossy shell', () => {
-    const a = lib.get('carSedan')!.geometry.getAttribute('aGloss');
+    const a = lib.get('carSedan')!.geometry.getAttribute('aSurface');
     let glossy = 0;
-    for (let i = 0; i < a.count; i++) if (a.getX(i) > 0.5) glossy++;
+    for (let i = 0; i < a.count; i++) if (a.getY(i) > 0.5) glossy++;
     expect(glossy / a.count).toBeGreaterThan(0.5);
   });
 

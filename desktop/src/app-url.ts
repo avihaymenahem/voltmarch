@@ -61,6 +61,7 @@ export const ALLOWED_FLAGS: readonly string[] = [
   'biome',
   'fog',
   'relay',
+  'shot',
   'skipmenu',
   'unlockall',
 ];

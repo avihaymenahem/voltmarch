@@ -32,6 +32,7 @@ import { CREDITS } from '../src/shell/MainMenu';
 
 const ROOT = join(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
+const IMPORTED_WORLD_ASSETS = join(ROOT, 'src', 'assets');
 
 /** Every file under `public/`, recursively, relative to it. */
 function publicAssets(dir = PUBLIC, prefix = ''): string[] {
@@ -40,6 +41,17 @@ function publicAssets(dir = PUBLIC, prefix = ''): string[] {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) out.push(...publicAssets(full, `${prefix}${name}/`));
+    else out.push(`${prefix}${name}`);
+  }
+  return out;
+}
+
+function importedWorldAssets(dir = IMPORTED_WORLD_ASSETS, prefix = ''): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...importedWorldAssets(full, `${prefix}${name}/`));
     else out.push(`${prefix}${name}`);
   }
   return out;
@@ -144,6 +156,17 @@ describe('the credits describe the product that actually ships', () => {
     }
   });
 
+  it('names imported game-world models instead of claiming every mesh is procedural', () => {
+    const models = importedWorldAssets().filter((file) => /\.(glb|gltf|fbx|obj|dae)$/i.test(file));
+    if (models.length === 0) return;
+    expect(allText, `src/assets ships ${models.length} imported model(s) but the credits omit them`)
+      .toMatch(/Meshy|imported .*model|landmark structure/i);
+    expect(
+      /every mesh generated procedurally|no downloaded models/i.test(allText),
+      'the credits claim every mesh is procedural while imported world models ship',
+    ).toBe(false);
+  });
+
   it('THE GENERAL GUARD: every absolute "no X anywhere" claim is checked or absent', () => {
     // Absolute claims are the ones that rot: the product changes and the
     // sentence does not. If someone adds a new one they have to come here and
@@ -161,8 +184,10 @@ describe('the credits describe the product that actually ships', () => {
     ).toEqual([]);
   });
 
-  it('ships no downloaded MODEL or WORLD TEXTURE asset, as the credits say', () => {
-    // The qualified claim, actually enforced. `fonts/`, `brand/` and `audio/`
+  it('ships no undeclared binary asset from public/', () => {
+    // Public asset families are declared. Imported world assets are bundled from
+    // `src/assets/` and checked independently above.
+    // `fonts/`, `brand/` and `audio/`
     // are the DECLARED exceptions — named in the credits, README.md and
     // CLAUDE.md. Anything appearing elsewhere in public/ is a new undeclared
     // asset and fails here rather than silently making three documents wrong.

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "family": "reclamation-buildings",
+  "sourceDir": "src/assets/buildings/reclamation",
+  "outputDir": "src/assets/buildings/reclamation/derived",
+  "profiles": {
+    "lod1": { "ratio": 0.48, "error": 0.006, "maxRatio": 0.58 },
+    "lod2": { "ratio": 0.2, "error": 0.02, "maxRatio": 0.3 },
+    "shadow": { "ratio": 0.1, "error": 0.05, "maxRatio": 0.2, "maxTriangles": 3200 }
+  },
+  "assets": [
+    {
+      "key": "reclaim_foundry", "file": "foundry.glb", "class": "landmark", "lods": true,
+      "profiles": {
+        "lod1": { "ratio": 0.075, "error": 0.006, "maxRatio": 0.12 },
+        "lod2": { "ratio": 0.03, "error": 0.05, "maxRatio": 0.10 }
+      }
+    },
+    {
+      "key": "reclaim_furnace", "file": "scrap-furnace.glb", "class": "economy", "lods": true,
+      "profiles": {
+        "lod1": { "ratio": 0.115, "error": 0.006, "maxRatio": 0.16 },
+        "lod2": { "ratio": 0.047, "error": 0.05, "maxRatio": 0.10 }
+      }
+    },
+    {
+      "key": "reclaim_sorter", "file": "ore-sorter.glb", "class": "landmark", "lods": true,
+      "profiles": {
+        "lod1": { "ratio": 0.115, "error": 0.006, "maxRatio": 0.16 },
+        "lod2": { "ratio": 0.047, "error": 0.05, "maxRatio": 0.10 }
+      }
+    },
+    { "key": "reclaim_rookery", "file": "rookery.glb", "class": "standard", "lods": true },
+    { "key": "reclaim_breakeryard", "file": "breaker-yard.glb", "class": "landmark", "lods": true },
+    { "key": "reclaim_spotter", "file": "spotter-mast.glb", "class": "standard", "lods": true },
+    { "key": "reclaim_signalrig", "file": "signal-rig.glb", "class": "landmark", "lods": true },
+    { "key": "reclaim_crucible", "file": "crucible.glb", "class": "landmark", "lods": true },
+    { "key": "reclaim_depot", "file": "patch-yard.glb", "class": "standard", "lods": true },
+    { "key": "reclaim_drydock", "file": "breaker-dock.glb", "class": "landmark", "lods": true },
+    { "key": "reclaim_heap", "file": "slag-heap.glb", "class": "economy", "lods": true },
+    { "key": "reclaim_spitpost", "file": "spitpost.glb", "class": "standard", "lods": true },
+    { "key": "reclaim_pylon", "file": "arc-pylon.glb", "class": "standard", "lods": true },
+    { "key": "reclaim_barricade", "file": "scrap-barricade.glb", "class": "modular", "lods": false },
+    { "key": "reclaim_stormworks", "file": "stormworks.glb", "class": "landmark", "lods": true }
+  ]
+}

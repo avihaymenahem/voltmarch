@@ -20,11 +20,11 @@
  * THE FOUR INJECTIONS, AND WHERE EACH ONE LANDS HERE
  * --------------------------------------------------
  *   aSway  -> wind displacement            `setupPosition`, before `super`
- *   aGloss -> per-vertex ROUGHNESS ONLY    `roughnessNode`
- *   aEmit  -> additive emissive            `emissiveNode`
+ *   aSurface.y -> per-vertex ROUGHNESS ONLY `roughnessNode`
+ *   aSurface.x -> additive emissive         `emissiveNode`
  *   shroud -> self-tint                    `setupPosition` + `setupOutput`
  *
- * `aGloss` is the whole surface-variation budget for props and it is worth
+ * `aSurface.y` is the whole surface-variation budget for props and it is worth
  * restating why it is roughness and nothing else: RA3 splits a parked car from
  * the hedge beside it with a specular highlight over flat paint, and a roughness
  * lerp is the entire cost of reproducing that out of ONE material and therefore
@@ -84,10 +84,8 @@ export { PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 const aSwayPhase = attribute<'float'>(PROP_WIND_PHASE_ATTRIBUTE, 'float');
 /** Per-vertex wind amplitude in metres. Zero on a trunk, largest at the tip. */
 const aSway = attribute<'float'>('aSway', 'float');
-/** Per-vertex additive emissive mask: lamp heads, signal lenses. */
-const aEmit = attribute<'float'>('aEmit', 'float');
-/** Per-vertex roughness lerp: 0 is the matte default, 1 is wet lacquer. */
-const aGloss = attribute<'float'>('aGloss', 'float');
+/** Packed per-vertex masks: x emissive, y roughness/gloss. */
+const aSurface = attribute<'vec2'>('aSurface', 'vec2');
 
 const vEmit = varyingProperty('float', 'vEmit');
 const vGloss = varyingProperty('float', 'vGloss');
@@ -153,8 +151,8 @@ const windOffset = Fn(([time, freq]: [FloatN, FloatN]) => {
  */
 function applyPropVertex(uniforms: PropNodeUniforms): void {
   positionLocal.addAssign(windOffset(uniforms.uWindTime, uniforms.uWindFreq));
-  vEmit.assign(aEmit);
-  vGloss.assign(aGloss);
+  vEmit.assign(aSurface.x);
+  vGloss.assign(aSurface.y);
 }
 
 /* ==========================================================================

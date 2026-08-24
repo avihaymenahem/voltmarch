@@ -2,9 +2,10 @@
  * ============================================================================
  * src/art/Faction3Buildings.ts — THE MERIDIAN PACT, AS ARCHITECTURE
  * ============================================================================
- * Twelve structures, two palettes, and the call that publishes them to
- * `RenderBridge`. Imports `BuildingFactory.ts` and `MassList.ts`; edits
- * neither, and does not touch `BuildingDefs.ts` at all.
+ * Fifteen structures, two palettes, and the call that publishes them to
+ * `RenderBridge`. The complete imported Meridian shells use the shared imported-
+ * structure runtime for KTX2, LOD and shadow proxies; the private procedural
+ * library remains the socket authority and load-failure fallback.
  *
  *
  * THE SEVEN PACT RULES, the way bible 5.7 states them for the other two armies
@@ -61,6 +62,13 @@ import {
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
+import { mapConcurrent } from '../core/async-pool';
+import {
+  configureImportedStructureTextureLoader,
+  loadImportedStructureOverride,
+  type ImportedStructureSpec,
+  type ImportedStructureStyle,
+} from './buildings.system';
 
 type M = StructureMass;
 type V3 = readonly [number, number, number];
@@ -1241,6 +1249,199 @@ export const MERIDIAN_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   mrdHeliograph: 'meridian_heliograph',
 };
 
+const MERIDIAN_IMPORTED_STYLE: ImportedStructureStyle = {
+  color: [0.93, 0.95, 0.90],
+  metalness: 0.18,
+  roughness: 0.84,
+  normalScale: 1.25,
+  ambient: [0.42, 0.39, 0.32],
+  ambientIntensity: 0.035,
+  clearcoat: 0.08,
+  clearcoatRoughness: 0.72,
+  envMapIntensity: 0.70,
+};
+
+/**
+ * Imported Pact architecture. The procedural roster remains the
+ * socket authority and load-failure fallback; none of its visible shell is
+ * mixed into these complete replacements.
+ */
+export const MERIDIAN_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] = [
+  {
+    key: 'meridian_conclave',
+    label: 'Meridian Conclave',
+    url: new URL('../assets/buildings/meridian/compressed/conclave.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/conclave.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/conclave.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../assets/buildings/meridian/derived/conclave.lod2.glb', import.meta.url).href, minDistance: 118 },
+    ],
+    widthScale: 0.92, depthScale: 0.92, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_solararray',
+    label: 'Meridian Solar Array',
+    url: new URL('../assets/buildings/meridian/compressed/solar-array.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/solar-array.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/solar-array.lod1.glb', import.meta.url).href, minDistance: 88 },
+      { url: new URL('../assets/buildings/meridian/derived/solar-array.lod2.glb', import.meta.url).href, minDistance: 124 },
+    ],
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.96,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_cistern',
+    label: 'Meridian Ore Cistern',
+    url: new URL('../assets/buildings/meridian/compressed/ore-cistern.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/ore-cistern.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/ore-cistern.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../assets/buildings/meridian/derived/ore-cistern.lod2.glb', import.meta.url).href, minDistance: 118 },
+    ],
+    widthScale: 0.94, depthScale: 0.92, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_chapterhouse',
+    label: 'Meridian Chapterhouse',
+    url: new URL('../assets/buildings/meridian/compressed/chapterhouse.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/chapterhouse.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/chapterhouse.lod1.glb', import.meta.url).href, minDistance: 90 },
+    ],
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_forgeyard',
+    label: 'Meridian Forgeyard',
+    url: new URL('../assets/buildings/meridian/compressed/forgeyard.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/forgeyard.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/forgeyard.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../assets/buildings/meridian/derived/forgeyard.lod2.glb', import.meta.url).href, minDistance: 118 },
+    ],
+    widthScale: 0.94, depthScale: 0.92, heightScale: 0.96,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_oculus',
+    label: 'Meridian Oculus',
+    url: new URL('../assets/buildings/meridian/compressed/oculus.glb', import.meta.url).href,
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.96,
+    creaseAngle: 42,
+    proceduralParts: 'none',
+    movingTurret: {
+      bodyName: 'Body', turretName: 'Aperture', sourcePivotY: 0.19,
+      muzzle: [0, 0.86, 0],
+    },
+    style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_pharos',
+    label: 'Meridian Pharos',
+    url: new URL('../assets/buildings/meridian/compressed/pharos.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/pharos.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/pharos.lod1.glb', import.meta.url).href, minDistance: 92 },
+      { url: new URL('../assets/buildings/meridian/derived/pharos.lod2.glb', import.meta.url).href, minDistance: 128 },
+    ],
+    widthScale: 0.88, depthScale: 0.88, heightScale: 0.96,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_reliquary',
+    label: 'Meridian Reliquary',
+    url: new URL('../assets/buildings/meridian/compressed/reliquary.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/reliquary.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/reliquary.lod1.glb', import.meta.url).href, minDistance: 88 },
+      { url: new URL('../assets/buildings/meridian/derived/reliquary.lod2.glb', import.meta.url).href, minDistance: 124 },
+    ],
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_depot',
+    label: 'Meridian Solar Infirmary',
+    url: new URL('../assets/buildings/meridian/compressed/solar-infirmary.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/solar-infirmary.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/solar-infirmary.lod1.glb', import.meta.url).href, minDistance: 88 },
+      { url: new URL('../assets/buildings/meridian/derived/solar-infirmary.lod2.glb', import.meta.url).href, minDistance: 124 },
+    ],
+    widthScale: 0.94, depthScale: 0.94, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_slipway',
+    label: 'Meridian Slipway',
+    url: new URL('../assets/buildings/meridian/compressed/slipway.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/slipway.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/slipway.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../assets/buildings/meridian/derived/slipway.lod2.glb', import.meta.url).href, minDistance: 118 },
+    ],
+    widthScale: 0.94, depthScale: 0.92, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_vault',
+    label: 'Meridian Sun Vault',
+    url: new URL('../assets/buildings/meridian/compressed/sun-vault.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/sun-vault.shadow.glb', import.meta.url).href,
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.94,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_glaive',
+    label: 'Meridian Glaive Post',
+    url: new URL('../assets/buildings/meridian/compressed/meridian-glaive-v2.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/meridian-glaive-v2.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/meridian-glaive-v2.lod1.glb', import.meta.url).href, minDistance: 76 },
+      { url: new URL('../assets/buildings/meridian/derived/meridian-glaive-v2.lod2.glb', import.meta.url).href, minDistance: 108 },
+    ],
+    widthScale: 0.94, depthScale: 0.94, heightScale: 0.96,
+    creaseAngle: 44, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_helios',
+    label: 'Meridian Helios Spire',
+    url: new URL('../assets/buildings/meridian/compressed/helios-spire.glb', import.meta.url).href,
+    widthScale: 0.88, depthScale: 0.88, heightScale: 0.98,
+    creaseAngle: 42,
+    proceduralParts: 'none',
+    movingTurret: {
+      bodyName: 'Body', turretName: 'Head', sourcePivotY: 0.53,
+      muzzle: [0, 0.89, 0.16],
+    },
+    style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_rampart',
+    label: 'Meridian Rampart',
+    url: new URL('../assets/buildings/meridian/compressed/rampart.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/rampart.shadow.glb', import.meta.url).href,
+    widthScale: 0.98, depthScale: 0.96, heightScale: 0.96,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_heliograph',
+    label: 'Meridian Heliograph',
+    url: new URL('../assets/buildings/meridian/compressed/heliograph.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/meridian/derived/heliograph.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/meridian/derived/heliograph.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../assets/buildings/meridian/derived/heliograph.lod2.glb', import.meta.url).href, minDistance: 118 },
+    ],
+    widthScale: 0.94, depthScale: 0.94, heightScale: 0.98,
+    creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+];
+
 /* ==========================================================================
  * 7. BUILD AND HAND OFF
  * ========================================================================== */
@@ -1312,6 +1513,7 @@ export interface MeridianStructureReport {
   failed: string[];
   registrations: number;
   bound: number;
+  imported: number;
 }
 
 /**
@@ -1361,8 +1563,28 @@ export async function buildAndRegisterMeridianStructures(
     }
   }
 
+  configureImportedStructureTextureLoader();
+  const importedMeshes = new Map<string, KindMesh>();
+  const importedResults = await mapConcurrent(MERIDIAN_IMPORTED_STRUCTURE_SPECS, 3, async (spec) => {
+    const model = meridianBuildingLibrary.get(spec.key);
+    if (model === undefined) return null;
+    try {
+      return [spec.key, await loadImportedStructureOverride(
+        model, spec, meridianBuildingLibrary.depthMaterial(),
+      )] as const;
+    } catch (error) {
+      failed.push(`${spec.key} imported override: ${String(error)}`);
+      return null;
+    }
+  });
+  for (const result of importedResults) {
+    if (result !== null) importedMeshes.set(result[0], result[1]);
+  }
+
   const meshes = new Map<string, KindMesh>();
   const meshFor = (key: string): KindMesh | null => {
+    const imported = importedMeshes.get(key);
+    if (imported !== undefined) return imported;
     const model = meridianBuildingLibrary.get(key);
     if (model === undefined) return null;
     let mesh = meshes.get(key);
@@ -1396,7 +1618,7 @@ export async function buildAndRegisterMeridianStructures(
     registrations++;
   }
 
-  return { models, failed, registrations, bound };
+  return { models, failed, registrations, bound, imported: importedMeshes.size };
 }
 
 /** Release every Pact geometry, material and atlas. */

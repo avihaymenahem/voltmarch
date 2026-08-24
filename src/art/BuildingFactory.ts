@@ -876,14 +876,14 @@ const STRUCTURE_CLIP_FRAGMENT = `
  * its own `MeshDepthMaterial` for the shadow map and that material never ran
  * this `onBeforeCompile`.
  */
-function applyStructureShader(
-  mat: THREE.MeshPhysicalMaterial, atlas: GreebleAtlas, silhouetteRim: boolean,
+export function applyStructureRuntimeShader(
+  mat: THREE.MeshPhysicalMaterial, surfaceClassMap: THREE.Texture, silhouetteRim: boolean,
 ): void {
   const S = STRUCTURE_ANIM;
   const SLIN = STRUCTURE_ANIM_LINEAR;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = buildingTime;
-    shader.uniforms.uSurfaceClassMap = { value: atlas.ormMap };
+    shader.uniforms.uSurfaceClassMap = { value: surfaceClassMap };
 
     // THE SHROUD SELF-TINT, and specifically THE EDIT THAT PRESERVES REMEMBERED
     // BUILDINGS. This assignment overwrites the hook `createUnitMaterial`
@@ -978,7 +978,7 @@ function applyStructureShader(
 }
 
 /**
- * THE SHADOW-PASS TWIN OF `applyStructureShader`, AND THE END OF A KNOWN LIMIT.
+ * THE SHADOW-PASS TWIN OF `applyStructureRuntimeShader`, AND THE END OF A KNOWN LIMIT.
  *
  * three does not draw the shadow map with an object's own material: it
  * substitutes a shared `MeshDepthMaterial`, which never runs the colour
@@ -1138,7 +1138,7 @@ export function createStructureMaterial(
   mat.clearcoat = c.clearcoat;
   mat.clearcoatRoughness = c.clearcoatRoughness;
   mat.envMapIntensity = c.envMapIntensity;
-  applyStructureShader(mat, atlas, true);
+  applyStructureRuntimeShader(mat, atlas.ormMap, true);
   return mat;
 }
 
@@ -1153,7 +1153,7 @@ export function createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Mesh
   mat.clearcoat = 0;
   mat.clearcoatRoughness = 1;
   mat.envMapIntensity = 0.35;
-  applyStructureShader(mat, atlas, false);
+  applyStructureRuntimeShader(mat, atlas.ormMap, false);
   return mat;
 }
 

@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — src/game/scenarios/Showcases.ts
  * ============================================================================
- * THE NINE SINGLE-SUBJECT FIXTURES.
+ * THE TEN SINGLE-SUBJECT FIXTURES.
  *
  * Each of these exists to answer exactly one question a critic asks, and each
  * is composed for the exact camera distance `tools/shoot.mjs` poses it at. The
@@ -11,6 +11,7 @@
  *
  *   terrain-showcase  30 m  "is the ground more than a coloured plane?"
  *   unit-parade       38 m  "do the silhouettes read apart at playing range?"
+ *   architecture-showcase 140 m "does every faction read as its own army?"
  *   battle            48 m  "does combat look like combat?"
  *   economy           42 m  "is the harvest loop legible?"
  *   naval             55 m  "is water a hero element or a blue rectangle?"
@@ -155,6 +156,148 @@ export function buildUnitParade(b: ScenarioBuilder, cx: number, cz: number): voi
   }
 
   b.scatter({ minX: cx - 38, minZ: cz - 28, maxX: cx + 38, maxZ: cz + 23 }, 6);
+}
+
+/* ===========================================================================
+ * architecture-showcase (camera 140 m)
+ *
+ * The complete shipping structure roster, arranged as four parallel faction
+ * lanes. Equivalent roles occupy the same row in every lane, so a single frame
+ * exposes silhouette drift, material drift, missing shadows and bad LOD swaps.
+ * The big structures sit furthest from the camera where the ground trapezoid is
+ * widest; the sparse superweapon row sits nearest it.
+ * ========================================================================== */
+
+export interface ArchitectureShowcaseLane {
+  readonly faction: Faction;
+  /** Six role rows, three comparison slots per row. Null is an intentional gap. */
+  readonly buildings: readonly (string | null)[];
+}
+
+export const ARCHITECTURE_SHOWCASE_LANES: readonly ArchitectureShowcaseLane[] = [
+  {
+    faction: Faction.Allies,
+    buildings: [
+      'conyard', 'powerPlant', 'refinery',
+      'barracks', 'warFactory', 'navalYard',
+      'radar', 'battleLab', 'commandPost',
+      'oreSilo', 'repairDepot', 'wall',
+      'pillbox', 'aaTurret', 'prismTower',
+      'chronosphere', 'weatherControl', 'gate',
+    ],
+  },
+  {
+    faction: Faction.Soviets,
+    buildings: [
+      'conyard', 'powerPlant', 'refinery',
+      'barracks', 'warFactory', 'subPen',
+      'radar', 'battleLab', 'commandPost',
+      'oreSilo', 'repairDepot', 'wall',
+      'sentryGun', 'flameTower', 'teslaCoil',
+      'nuclearSilo', 'ironCurtain', 'gate',
+    ],
+  },
+  {
+    faction: Faction.Meridian,
+    buildings: [
+      'mrdConclave', 'mrdSolarArray', 'mrdCistern',
+      'mrdChapterhouse', 'mrdForgeyard', 'mrdSlipway',
+      'mrdOculus', 'mrdReliquary', 'mrdPharos',
+      'mrdVault', 'mrdDepot', 'mrdRampart',
+      'mrdGlaive', null, 'mrdHelios',
+      'mrdHeliograph', null, null,
+    ],
+  },
+  {
+    faction: Faction.Reclaim,
+    buildings: [
+      'rclFoundry', 'rclFurnace', 'rclSorter',
+      'rclRookery', 'rclBreakerYard', 'rclDrydock',
+      'rclSpotter', 'rclCrucible', 'rclSignalRig',
+      'rclHeap', 'rclDepot', 'rclBarricade',
+      'rclSpitpost', null, 'rclPylon',
+      'rclStormworks', null, null,
+    ],
+  },
+] as const;
+
+export function buildArchitectureShowcase(
+  b: ScenarioBuilder,
+  cx: number,
+  cz: number,
+): void {
+  // The four lane centres span 128 m. Three 12 m-spaced columns fit every
+  // shipping footprint without allowing the scenario's collision recovery to
+  // perturb the comparison grid.
+  const farLaneSpacing = 42.5;
+  const nearLaneSpacing = 32;
+  const farColumnSpacing = 12;
+  const nearColumnSpacing = 10;
+  const rowSpacing = 15;
+  // The camera sees considerably more ground behind its focus than in front.
+  // Shift the 90 m-deep museum behind the focus so the complete near row stays
+  // inside the 140 m overview frame.
+  const galleryZ = cz - 40;
+
+  for (let laneIndex = 0; laneIndex < ARCHITECTURE_SHOWCASE_LANES.length; laneIndex++) {
+    const lane = ARCHITECTURE_SHOWCASE_LANES[laneIndex];
+    const owner = b.ownerForFaction(lane.faction);
+
+    for (let slot = 0; slot < lane.buildings.length; slot++) {
+      const key = lane.buildings[slot];
+      if (key === null) continue;
+      const column = slot % 3;
+      const row = Math.floor(slot / 3);
+      // Follow the camera's ground trapezoid: the near rows have less screen
+      // width available, so their four lanes converge gently toward centre.
+      // Without this taper the Allied and Reclamation superweapons were cut by
+      // the side edges even though every far-row core building fit.
+      const rowT = row / 5;
+      const laneSpacing = farLaneSpacing + (nearLaneSpacing - farLaneSpacing) * rowT;
+      const columnSpacing = farColumnSpacing + (nearColumnSpacing - farColumnSpacing) * rowT;
+      const laneX = cx + (laneIndex - 1.5) * laneSpacing;
+      const x = laneX + (column - 1) * columnSpacing;
+      const z = galleryZ + (row - 2.5) * rowSpacing;
+      b.spawnBuilding(key, owner, x, z, { yawDeg: 0 });
+    }
+
+    b.setCredits(owner, 50_000);
+  }
+
+  // No centre scatter: the fixture is an architecture contact sheet, and
+  // foliage between lanes would hide precisely the silhouettes it audits.
+  b.scatter({ minX: cx - 98, minZ: cz - 105, maxX: cx + 98, maxZ: cz + 16 }, 8);
+}
+
+/* ===========================================================================
+ * Sledge articulation audit (camera 30 m)
+ *
+ * Two super-heavies acquire targets across their hull axes before the fixture
+ * freezes. The resulting off-axis turret poses expose open cuts, orbital pivots,
+ * broken normals and accidental deck ownership immediately.
+ * ========================================================================== */
+
+export function buildSledgeAudit(b: ScenarioBuilder, cx: number, cz: number): void {
+  const eastTarget = b.spawnBuilding('barracks', b.allies, cx + 23, cz - 1, {});
+  const westTarget = b.spawnBuilding('barracks', b.allies, cx - 23, cz + 4, {});
+
+  b.spawnUnit('apocalypse', b.soviets, cx - 5.5, cz + 1.5, {
+    yawDeg: 0,
+    state: UnitState.Attacking,
+    stance: Stance.Aggressive,
+    order: { kind: OrderKind.Attack, x: cx + 23, z: cz - 1, target: eastTarget },
+    veterancy: 2,
+  });
+  b.spawnUnit('apocalypse', b.soviets, cx + 6.5, cz + 5.5, {
+    yawDeg: 180,
+    state: UnitState.Attacking,
+    stance: Stance.Aggressive,
+    order: { kind: OrderKind.Attack, x: cx - 23, z: cz + 4, target: westTarget },
+    veterancy: 1,
+  });
+
+  b.block(cx, cz + 3.5, 14);
+  b.scatter({ minX: cx - 24, minZ: cz - 18, maxX: cx + 24, maxZ: cz + 17 }, 8);
 }
 
 /* ==========================================================================
@@ -495,7 +638,10 @@ export function buildSelection(b: ScenarioBuilder, cx: number, cz: number): void
 
   // Unselected friendly (no ring) and enemies (enemy outline colour) in frame.
   b.spawnUnit('prismTank', owner, cx + 16, cz + 2, { yawDeg: 340, state: UnitState.Idle });
-  b.spawnUnit('rhino', b.soviets, cx - 4, cz - 14, {
+  // The super-heavy is the articulation/material audit subject for imported
+  // Soviet armour; keeping it unselected also proves the silhouette without a
+  // friendly selection ring hiding its track contact.
+  b.spawnUnit('apocalypse', b.soviets, cx - 4, cz - 14, {
     yawDeg: 176, hpFrac: 0.74, state: UnitState.Attacking,
   });
   b.spawnUnit('conscript', b.soviets, cx + 3, cz - 13, { yawDeg: 182 });

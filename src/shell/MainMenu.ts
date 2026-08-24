@@ -381,10 +381,10 @@ export const CREDITS: readonly CreditGroup[] = [
      */
     title: 'Art',
     lines: [
-      'Every mesh generated procedurally from code',
-      'Every world texture baked at boot in a worker',
+      'Procedural unit and structure roster with runtime fallbacks',
+      'Selected Soviet landmarks generated with Meshy and optimized locally',
+      'Procedural world textures plus budgeted landmark PBR maps',
       'Ambience synthesised at boot',
-      'No downloaded models or world textures',
     ],
   },
   {
@@ -419,6 +419,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'The wordmark and app icons, from a supplied logo',
       'The loading screen key art, a supplied illustration',
       'Campaign command portraits — original AI-assisted artwork',
+      'Soviet landmark structures — original Meshy AI models for VOLTMARCH',
       'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',
       'Weapons, explosions and effects — CC0 sound libraries',
       'Warfork by Team Forbidden — CC0',

@@ -84,8 +84,7 @@ const VERTEX_ATTRIBUTES: ReadonlyArray<readonly [string, number]> = [
   ['aGait', 2],     // unit walk cycle:      (swingSign, pivotY)
   ['aFeature', 4],  // structure per-vertex: (code, riseHeight, animParam, phase)
   ['aSway', 1],     // prop wind amplitude
-  ['aEmit', 1],     // prop additive emissive
-  ['aGloss', 1],    // prop per-vertex roughness
+  ['aSurface', 2],  // prop masks: (additive emissive, roughness)
   ['color', 3],     // vertexColors: true on units and props
 ];
 
@@ -251,7 +250,7 @@ describe('the Stage D graphs compile', () => {
  * this whole file is written against.
  */
 const OUT_OF_SCOPE = [
-  'aState', 'aFeature', 'aTeamColor', 'aGait', 'aSway', 'aSwayPhase', 'aEmit', 'aGloss',
+  'aState', 'aFeature', 'aTeamColor', 'aGait', 'aSway', 'aSwayPhase', 'aSurface',
   'vRaState', 'vRaTeam', 'vRaClip', 'vShroudUv', 'vEmit', 'vGloss',
 ];
 
@@ -522,23 +521,22 @@ describe('the structure node material', () => {
 });
 
 describe('the prop node material', () => {
-  it('reads all three per-vertex prop channels', () => {
-    // aSway (wind), aEmit (additive lamp heads), aGloss (per-vertex roughness).
-    // Each one is a separate draw call saved; losing one is a silent flattening.
+  it('reads wind plus both packed per-vertex surface channels', () => {
+    // aSway is wind; aSurface packs additive lamp emission and roughness.
+    // Packing keeps instanced props within WebGPU's eight-buffer minimum.
     const mat = createPropNodeMaterial();
     const { vertex } = compile(mat, 'glsl');
     expect(vertex).toMatch(/aSway/);
-    expect(vertex).toMatch(/aEmit/);
-    expect(vertex).toMatch(/aGloss/);
+    expect(vertex).toMatch(/aSurface/);
     mat.dispose();
   });
 
   it('keeps the roughness lerp and the additive emissive on their own nodes', () => {
     /*
-     * `aGloss` is the WHOLE surface-variation budget for props: a parked car is
+     * `aSurface.y` is the WHOLE surface-variation budget for props: a parked car is
      * wet lacquer and the hedge beside it is matte leaf, out of one material and
      * therefore one draw call. It reaches the BRDF through `roughnessNode`, and
-     * `aEmit` reaches the frame through `emissiveNode`; a port that dropped
+     * `aSurface.x` reaches the frame through `emissiveNode`; a port that dropped
      * either would render one uniform matte roster with dark lamps.
      */
     const mat = createPropNodeMaterial();

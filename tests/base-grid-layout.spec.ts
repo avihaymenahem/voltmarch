@@ -34,7 +34,12 @@ function buildingSlots(world: World): number[] {
   return out;
 }
 
-function expectGridHonest(world: World, anchorX: number, anchorZ: number): void {
+function expectGridHonest(
+  world: World,
+  anchorX: number,
+  anchorZ: number,
+  expectedFacadeYaw: number,
+): void {
   const st = world.store;
   const origin = new Int32Array(2);
   const claimed = new Set<string>();
@@ -47,6 +52,10 @@ function expectGridHonest(world: World, anchorX: number, anchorZ: number): void 
     // Base builders may only emit the four facings the occupancy grid can
     // represent. This catches the former +/-3..8 degree Soviet scatter.
     expect(st.yaw[i] / (Math.PI * 0.5)).toBeCloseTo(Math.round(st.yaw[i] / (Math.PI * 0.5)), 6);
+    expect(
+      Math.atan2(Math.sin(st.yaw[i] - expectedFacadeYaw), Math.cos(st.yaw[i] - expectedFacadeYaw)),
+      'the +Z facade of every prebuilt structure must face the compound threat/front edge',
+    ).toBeCloseTo(0, 6);
 
     for (let z = origin[1]; z < origin[1] + h; z++) {
       for (let x = origin[0]; x < origin[0] + w; x++) {
@@ -67,7 +76,8 @@ describe('procedural base grid', () => {
   it('cardinalises and spaces the Allied campus inside its road-free apron', () => {
     const { world, b } = rig(Faction.Allies);
     buildAlliedBase(b, 256, 256, { owner: b.allies, facingDeg: 37, garrison: false });
-    expectGridHonest(world, 256, 256);
+    // 37 degrees cardinalises to a zero-degree layout; its local -Z front is pi.
+    expectGridHonest(world, 256, 256, Math.PI);
     expect(b.scatter({ minX: 190, minZ: 190, maxX: 322, maxZ: 322 }, 80, ['tree']))
       .toBeGreaterThan(0);
     const st = world.store;
@@ -80,7 +90,8 @@ describe('procedural base grid', () => {
   it('keeps the Soviet industrial identity without breaking the grid', () => {
     const { world, b } = rig(Faction.Soviets);
     buildSovietBase(b, 256, 256, { owner: b.allies, facingDeg: 121, garrison: false });
-    expectGridHonest(world, 256, 256);
+    // 121 degrees cardinalises to 90; its local -Z front wraps to -90 degrees.
+    expectGridHonest(world, 256, 256, -Math.PI * 0.5);
   });
 
   it('swaps rectangular scenario footprints at a quarter turn', () => {

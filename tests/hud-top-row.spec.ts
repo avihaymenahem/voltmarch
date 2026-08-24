@@ -231,16 +231,19 @@ describe('the geometry that overlapped', () => {
   const CONTENT_BOX_COLUMN = 268;
   /** `wide`, realistic late-match content. Measured the same way as the rest. */
   const OLD_STRIP = 801.7;
+  /** The scale curve in effect when this historical defect was captured. */
+  const oldUiScale = (height: number): number =>
+    Math.min(4, Math.max(1, Math.floor((height / 720) * 4) / 4));
 
   it('overlapped at every 16:9 resolution before this landed', () => {
     for (const [w, h] of SIXTEEN_NINE) {
-      const u = computeUiScale(h);
-      const du = designWidth(w, h);
+      const u = oldUiScale(h);
+      const du = w / u;
       const overlap = du / 2 + OLD_STRIP / 2 - (du - CONTENT_BOX_COLUMN);
       expect(overlap, `${w}x${h} did not overlap — re-measure before trusting this file`)
         .toBeGreaterThan(0);
       // 16:9 is 1280 design units wide at every one of those five resolutions,
-      // because `computeUiScale` quantises the height by quarters. So the
+      // because the former scale curve quantised the height by quarters. So the
       // overlap is one number in design units and five in pixels.
       expect(du).toBeCloseTo(1280, 6);
       expect(overlap * u).toBeGreaterThan(20 * u);
@@ -250,13 +253,13 @@ describe('the geometry that overlapped', () => {
   it('overlapped by the same amount on the left, which is why the panel did not move', () => {
     // The strip is centred. Mirror the panel to the left edge and the two rects
     // intersect by exactly as much — plus `.vm-toasts`, which is already there.
-    const du = designWidth(1920, 1080);
+    const du = 1920 / oldUiScale(1080);
     const right = du / 2 + OLD_STRIP / 2 - (du - CONTENT_BOX_COLUMN);
     const left = CONTENT_BOX_COLUMN - (du / 2 - OLD_STRIP / 2);
     expect(left).toBeCloseTo(right, 9);
   });
 
-  it('still overlaps today if the panel is put on the left as reported', () => {
+  it('leaves the reported left placement clear with the current density curve', () => {
     // With the fix in place the row fits — on either side. This is the check
     // that would fail first if someone shrank the corridor again while taking
     // "put objectives on the left" literally.

@@ -1302,7 +1302,7 @@ export const UNITS: readonly UnitDef[] = [
     faction: Faction.Soviets, kind: EntityKind.Vehicle,
     cost: 1750, buildTime: 24, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
-    model: 'soviet_rhino',
+    model: 'soviet_apocalypse',
     maxHp: 800, armor: ArmorClass.Heavy, maxSpeed: 3.8, turnRate: 2.6 - U.apocalypse.l * 0.14,
     locomotor: Locomotor.Track, radius: hullRadius(U.apocalypse), sight: 30,
     weapons: [w('twinCannon')], hasTurret: true, crushLevel: 6, crushableBy: 0,

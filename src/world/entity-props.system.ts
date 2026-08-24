@@ -41,7 +41,7 @@
  * five hull classes plus five factions by three ruin sizes. Registration is
  * cheap: the bridge allocates a batch only when that exact corpse appears, so
  * an untouched map pays zero wreck draw calls. The set uses the same prop
- * material program as scenery; authored `aGloss` and `aEmit` now survive the
+ * material program as scenery; authored gloss/emissive masks in `aSurface` survive the
  * integration seam, while wreck vertices keep `aSway = 0`. Entity trees share
  * the shader and therefore sway exactly like their scattered twins.
  * ============================================================================

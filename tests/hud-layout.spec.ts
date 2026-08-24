@@ -53,6 +53,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { computeUiScale } from '../src/ui/Chrome';
 
 const ROOT = join(__dirname, '..');
 const HUD_CSS = readFileSync(join(ROOT, 'src/ui/hud.css'), 'utf8');
@@ -152,14 +153,14 @@ describe('the bottom band fits the §9 budget by construction', () => {
     // top of the map dock — so the band is the dock plus the docks' own bottom
     // padding, in design units, against the frame height in design units.
     //
-    // uiScale = clamp(floor(h / 720 * 4) / 4, 1, 4), from Chrome.computeUiScale.
+    // The shipping scale curve comes from Chrome.computeUiScale.
     const band = dockH + bandPad;
     expect(band).toBe(114);
 
     // 18% is not a design target, it is a tripwire. The band is 15.83% by
     // intent; anything approaching a fifth of the frame is an accident.
     for (const h of [720, 768, 900, 1080, 1440, 2160]) {
-      const u = Math.min(4, Math.max(1, Math.floor((h / 720) * 4) / 4));
+      const u = computeUiScale(h);
       const share = (band * u) / h;
       expect(share, `${h}p`).toBeLessThan(0.18);
       // And an interface that vanishes is not a win either.
@@ -170,6 +171,15 @@ describe('the bottom band fits the §9 budget by construction', () => {
   it('measures 15.83% at the reference 1280x720', () => {
     // The figure quoted in the report and in hud.css's header. 114u at u=1.
     expect(((dockH + bandPad) * 1) / 720).toBeCloseTo(0.1583, 4);
+  });
+
+  it('never changes a production card footprint when it starts or finishes', () => {
+    for (const state of ['is-building', 'is-ready']) {
+      const block = new RegExp(`\\.vm-hud \\.vm-slot\\.${state}\\s*\\{([^}]*)\\}`).exec(HUD);
+      expect(block, `missing ${state} rule`).not.toBeNull();
+      expect((block as RegExpExecArray)[1], `${state} must not reflow the grid`)
+        .not.toMatch(/grid-column\s*:/);
+    }
   });
 
   /* ------------------------------------------------------------------------

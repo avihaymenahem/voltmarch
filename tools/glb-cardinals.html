@@ -1,0 +1,112 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VOLTMARCH GLB cardinal audit</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #17191d; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #status { position: fixed; inset: 12px auto auto 12px; color: #fff; font: 14px monospace; }
+</style>
+<canvas id="view"></canvas><div id="status">Loading…</div>
+<script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+  const params = new URLSearchParams(location.search);
+  const modelUrl = params.get('model');
+  if (!modelUrl) throw new Error('Pass ?model=/path/to/model.glb');
+
+  const canvas = document.querySelector('#view');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(1200, 1200, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.setScissorTest(true);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x24282e);
+  scene.add(new THREE.HemisphereLight(0xf4f7ff, 0x363a42, 2.3));
+  const key = new THREE.DirectionalLight(0xffffff, 3.5);
+  key.position.set(5, 9, 7);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xaac7ff, 1.8);
+  fill.position.set(-6, 4, -5);
+  scene.add(fill);
+
+  const gltf = await new GLTFLoader().loadAsync(modelUrl);
+  const model = gltf.scene;
+  if (params.get('material') !== 'original') {
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xb8bcc2,
+      roughness: 0.72,
+      metalness: 0.03,
+      side: params.get('double') === '1' ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  }
+  const articulation = params.get('mode') === 'articulation';
+  let turret = null;
+  if (articulation) {
+    turret = model.getObjectByName(params.get('turret') ?? 'Turret');
+    if (!turret?.isMesh) throw new Error('Articulation audit requires a named turret mesh');
+    const pivotValues = (params.get('pivot') ?? '').split(',').map(Number);
+    if (pivotValues.length !== 3 || pivotValues.some((entry) => !Number.isFinite(entry))) {
+      throw new Error('Articulation audit requires ?pivot=x,y,z');
+    }
+    const pivot = new THREE.Vector3(...pivotValues);
+    turret.geometry = turret.geometry.clone();
+    turret.geometry.translate(-pivot.x, -pivot.y, -pivot.z);
+    turret.position.add(pivot);
+  }
+  scene.add(model);
+  window.__auditModel = model;
+
+  const bounds = new THREE.Box3().setFromObject(model);
+  const centre = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  model.position.sub(centre);
+  const radius = Math.max(size.x, size.y, size.z) * 0.72;
+  const target = new THREE.Vector3(0, -size.y * 0.04, 0);
+  const distance = radius * 4;
+  const cardinalViews = [
+    ['FRONT', new THREE.Vector3(0, radius * 0.55, distance)],
+    ['RIGHT', new THREE.Vector3(distance, radius * 0.55, 0)],
+    ['BACK', new THREE.Vector3(0, radius * 0.55, -distance)],
+    ['LEFT', new THREE.Vector3(-distance, radius * 0.55, 0)],
+  ];
+  const auditCamera = new THREE.Vector3(distance * 0.72, radius * 0.62, distance * 0.72);
+  const views = articulation
+    ? [
+        ['YAW 0', auditCamera, 0],
+        ['YAW 45', auditCamera, 45],
+        ['YAW 90', auditCamera, 90],
+        ['YAW 180', auditCamera, 180],
+      ]
+    : cardinalViews;
+
+  const labelScene = document.querySelector('#status');
+  labelScene.remove();
+  for (let i = 0; i < views.length; i++) {
+    const x = (i % 2) * 600;
+    const y = i < 2 ? 600 : 0;
+    const camera = new THREE.OrthographicCamera(-radius, radius, radius, -radius, 0.01, distance * 3);
+    camera.position.copy(views[i][1]);
+    camera.lookAt(target);
+    if (turret !== null) turret.rotation.y = THREE.MathUtils.degToRad(views[i][2]);
+    renderer.setViewport(x, y, 600, 600);
+    renderer.setScissor(x, y, 600, 600);
+    renderer.render(scene, camera);
+  }
+  renderer.getContext().finish();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  // Freeze the completed WebGL frame into a regular image so automated
+  // screenshots can capture it even when the browser composites canvases
+  // outside the page bitmap.
+  const capture = document.createElement('img');
+  capture.alt = 'GLB cardinal audit';
+  capture.src = canvas.toDataURL('image/png');
+  capture.style.cssText = 'position:fixed;inset:0;margin:auto;width:min(100vw,100vh);height:min(100vw,100vh);object-fit:contain;background:#24282e';
+  document.body.append(capture);
+  document.title = `READY ${views.map((v) => v[0]).join(' ')}`;
+</script>

@@ -72,12 +72,12 @@ VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-9
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
 shared vocabulary of that genre.
 
-**All art in the game world is generated from code.** No downloaded models, no downloaded textures.
-Every unit, building, material, texture, cameo and in-game icon is built from Three.js geometry,
-custom shaders and procedural canvas generators, which means the entire look can be retuned by
-editing values rather than reopening an art tool.
+**Most art in the game world is generated from code.** Every unit and the full structure roster,
+including fallbacks for imported landmarks, is built from Three.js geometry, custom shaders and
+procedural canvas generators. Selected Soviet landmarks use original Meshy AI models conditioned
+and optimized by the local VOLTMARCH asset pipeline.
 
-Five shipped asset groups are not generated from runtime code, all deliberate:
+The deliberate non-runtime-generated shipped content is:
 
 - **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
   weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
@@ -95,6 +95,10 @@ Five shipped asset groups are not generated from runtime code, all deliberate:
   in-match communications surfaces.
   They are interface art, not meshes or textures used by the procedural game world; provenance and
   delivery details live in `public/campaign/README.md`.
+- **Selected Soviet landmark structures** in `src/assets/buildings/soviets/` — original Meshy AI
+  generations made for VOLTMARCH, with locally simplified geometry, conditioned faction palettes,
+  budgeted PBR maps and procedural runtime fallbacks. Exact task provenance and performance budgets
+  live beside the assets and in `docs/ASSET_CONVERSION_MAP.md`.
 - **Campaign command surfaces** — faction-authored briefing and loading transitions, portrait
   communications with a persistent transmission log, operation-aware pause dossiers, save-row
   identity and medal-bearing after-action reports across all 37 operations. Briefings disclose

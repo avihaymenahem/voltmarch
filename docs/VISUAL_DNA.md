@@ -580,7 +580,7 @@ These are RA2's technical limitations, not its identity. We fix them and say so.
 | **I6** | Terrain built from ~60 hand-authored tiles; visible repetition every ~8 cells | **Procedural 5-octave ground** — no visible repeat at any zoom, but with the **per-cell quantization preserved** so the diamond structure still reads. |
 | **I7** | Hard shroud edge, 1 cell granularity | **Dithered shroud edge** with sub-cell resolution and a 250 ms reveal fade. |
 | **I8** | Destroyed buildings pop to a static rubble sprite | **Real collapse:** 4 staged secondary puffs, physicalized debris (12 pieces, 1.8 s), a persistent rubble mesh and a 90-px scorch decal. |
-| **I9** | Fixed 168-px sidebar, unusable above 1280 wide | **Vector/SDF sidebar** authored at 168 design px, rendered at integer-snapped uiScale, holding 12–14% of width at every resolution (§2.1). |
+| **I9** | Fixed 168-px sidebar, unusable above 1280 wide | **Vector/SDF sidebar** authored at 168 design px and rendered at integer-snapped uiScale. Shipping desktop resolutions hold its core geometry at 9.5–12.5% of width so higher resolutions expose more battlefield (§2.1). |
 | **I10** | Static pre-rendered cameo bitmaps | **Live cameo renders** from the actual game mesh into a cached RT, with a hover turntable — but keeping the mini-diorama environment backdrop, which is identity (§2.8). |
 | **I11** | No hover / press / focus states anywhere in the UI | Full interaction states + keyboard focus ring (§2.13), accessibility-compliant. |
 | **I12** | No build-progress feedback beyond the cameo tint | **Radial clock wipe + bottom fill bar + queue badge** (§2.9). |
@@ -625,15 +625,15 @@ and unusable. We author it as **vector/SDF against a 168-design-px width** and r
 scale.
 
 ```
-uiScale = clamp( floor(screenH / 720 * 4) / 4, 1.0, 4.0 )
+uiScale = clamp( floor(screenH / 840 * 4) / 4, 1.0, 4.0 )
 ```
 
 | Screen | uiScale | Sidebar px | % of width | Cameo art |
 |---|---|---|---|---|
 | 1366 × 768 | **1.00** | **168** | **12.3%** | 60 × 48 |
-| 1920 × 1080 | **1.50** | **252** | **13.1%** | 90 × 72 |
-| 2560 × 1440 | **2.00** | 336 | 13.1% | 120 × 96 |
-| 3840 × 2160 | **3.00** | 504 | 13.1% | 180 × 144 |
+| 1920 × 1080 | **1.25** | **210** | **10.9%** | 75 × 60 |
+| 2560 × 1440 | **1.50** | 252 | 9.8% | 90 × 72 |
+| 3840 × 2160 | **2.50** | 420 | 10.9% | 150 × 120 |
 
 User override 0.75× – 3.0× on top. **Every bevel hairline must snap to 1 device pixel at every scale** —
 a bilinear upscale of the original art is an automatic fail. At 1366×768 the render must match the table in
@@ -896,7 +896,7 @@ No anti-aliasing beyond a single darker fringe pixel. No drop shadows anywhere e
 
 ## 2.17 HUD non-negotiables (critic fail conditions)
 
-1. Sidebar on the **right**, **12–14% of width**, fixed aspect, never left, never floating.
+1. Sidebar on the **right**, with its authored core at **9.5–12.5% of width** on shipping desktop resolutions, fixed aspect, never left, never floating.
 2. **2-column cameo grid, 5:4 art (60 × 48 design), 10 rows.** Not 3-column, not square, not a card rail.
 3. **4 tabs**, order Structures / Defence / Infantry / Vehicles.
 4. **Exactly 2 arc buttons** below the radar (wrench, `$`).
@@ -1420,7 +1420,7 @@ mass-battle shot for C21). Audio criteria are scored by reading the audio source
 | **C20** | **Grounding** | ×1 | Buildings float; no pad; rounded pad corners; pad identical in every theatre. | **Pad decal 5–13 px past the silhouette on the exact cell diamond**, 2 px `#22231D` rim, **contact AO 15% darker in the 3–5 px touching the wall**, hard cast shadow, **theatre-appropriate pad material**, painted markings present. |
 | **C21** | **Blob readability** | ×1 | A 30-unit army is a uniform coloured carpet; tanks and harvesters indistinguishable; units merge with the ground. | At 100% zoom a viewer can **count the tanks and tell tanks from harvesters without pausing**. ≥30 luma separation from the ground, 1–1.5 px contact edge, ~0.9 cell spacing, visibly varied turret angles. |
 | **C22** | **VFX language & post** | ×1 | Subtle desaturated particles; bloom on the terrain; vignette, chromatic aberration, DOF, TAA smear; grey smoke only. | Muzzle flash a **19-px OUR 4-point `#F8C020` star (~half the tank's width)**; tesla `#F0F0FF` polyline with `#8898FF` glow; damage flames 19–29 px OUR saturated orange. **Bloom on the emissive buffer only** — zero terrain bloom, zero vignette/CA/DOF/TAA. |
-| **C23** | **Sidebar geometry** | ×2 | Sidebar on the left, floating, or < 10% / > 18% of width; 3-column or square cameos; wrong tab count; 4 arc buttons; a full-bleed minimap. | Right side, **12–14% of width**, **2 × 10 grid of 5:4 cameos (90 × 72 at 1080p) at 64/50 design pitch**, **4 tabs** (Structures/Defence/Infantry/Vehicles), **exactly 2 arc buttons** (wrench, `$`), **letterboxed radar with a 1 px unfilled viewport rect**, vertical power bar in the left gutter, 10 piston domes in the right. |
+| **C23** | **Sidebar geometry** | ×2 | Sidebar on the left, floating, or < 9% / > 18% of width; 3-column or square cameos; wrong tab count; 4 arc buttons; a full-bleed minimap. | Right side, authored core **9.5–12.5% of width**, **2 × 10 grid of 5:4 cameos (75 × 60 at 1080p) at 64/50 design pitch**, **4 tabs** (Structures/Defence/Infantry/Vehicles), **exactly 2 arc buttons** (wrench, `$`), **letterboxed radar with a 1 px unfilled viewport rect**, vertical power bar in the left gutter, 10 piston domes in the right. |
 | **C24** | **Sidebar material** | ×2 | Flat mid-grey panels; neutral-white highlights; rectangular everything; a hue-rotate between factions; flat symbolic cameo icons. | **Four arcs bowing toward centre**; every edge a **1 px specular → body ramp → 1 px black** bevel; highlight **`#BBBCD0` cool violet-grey**; wells flat black, plates gradient; **full material recolour** Allied chrome+blue-lens vs Soviet brass+brushed-silver+red-glyph; **cameos are mini-dioramas with theatre backdrops**. |
 | **C25** | **In-world UI** | ×1 | Selection circles, corner brackets, floating nameplates, health bars scaling per unit, coloured "damaged" bar segments. | **No circles, no brackets.** Health bar **45 × 6 px OUR, 1-on/1-off 2 px green hatch, unlit remainder**, 10 px above the sprite; **12 × 14 maroon control-group badge** at its left end; dotted `#C060C0` target line. Any addition (vet chevron, faction ellipse) is subtle and clearly styled to the HUD language. |
 | **C26** | **Audio architecture** *(code-read)* | ×2 | Audio files shipped; a fresh node graph per gunshot; no voice cap; EVA spamming; no ducking; identical repeats. | Zero files. **`OfflineAudioContext` bake with the specified variant counts**; runtime playback ≤ 4 nodes; **64/24/34 voice caps with gain-ramped stealing and a −42 dB pre-cull**; crowd summation at ≥6 in 90 ms; EVA priority queue with per-id wall-clock cooldowns (`Unit ready` ≥ 4 s, `Unit lost` ≥ 8 s, base-attack 40 s); **music ducks −11 dB in 60 ms under EVA**; large explosion ducks SFX −9 dB; **122 BPM E-minor lookahead scheduler with bar-boundary layer changes**; master limiter to −1.0 dBFS. |
@@ -1506,7 +1506,7 @@ export const RA = {
   // hud
   HUD_DESIGN_W: 168, HUD_DESIGN_H: 768,
   CAMEO: { w: 60, h: 48, pitchX: 64, pitchY: 50, cols: 2, rows: 10 },
-  uiScale: h => Math.min(4, Math.max(1, Math.floor(h / 720 * 4) / 4)),
+  uiScale: h => Math.min(4, Math.max(1, Math.floor(h / 840 * 4) / 4)),
 
   // audio
   BPM: 122, MUSIC_KEY: 'Em', SAMPLE_RATE: 48000,

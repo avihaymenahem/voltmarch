@@ -109,7 +109,7 @@ describe('everything that draws above the ground tints itself', () => {
 
   it('entity props use the same shroud-aware material as scatter props', () => {
     // The entity integration deliberately stopped cloning a smaller material:
-    // that clone dropped aEmit/aGloss and drifted from the node path. Pin the
+    // that clone dropped the packed aSurface masks and drifted from the node path. Pin the
     // shared route and the implementation it reaches instead of demanding a
     // duplicate inline shader hook in the caller.
     const entities = code(read('src/world/entity-props.system.ts'));

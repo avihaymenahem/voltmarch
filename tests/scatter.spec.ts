@@ -86,7 +86,7 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
     for (const pg of lib.all()) {
       const g = pg.geometry;
       expect(pg.triangles, pg.def.key).toBeGreaterThan(24);
-      for (const attr of ['position', 'normal', 'color', 'aSway', 'aEmit']) {
+      for (const attr of ['position', 'normal', 'color', 'aSway', 'aSurface']) {
         expect(g.getAttribute(attr), `${pg.def.key}.${attr}`).toBeTruthy();
       }
       expect(g.getIndex(), pg.def.key).toBeTruthy();
@@ -95,7 +95,8 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
       const n = g.getAttribute('position').count;
       expect(g.getAttribute('color').count, pg.def.key).toBe(n);
       expect(g.getAttribute('aSway').count, pg.def.key).toBe(n);
-      expect(g.getAttribute('aEmit').count, pg.def.key).toBe(n);
+      expect(g.getAttribute('aSurface').count, pg.def.key).toBe(n);
+      expect(g.getAttribute('aSurface').itemSize, pg.def.key).toBe(2);
     }
   });
 
@@ -202,7 +203,7 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
     const lamp = lib.get('streetLamp')!;
     const tree = lib.get('tree')!;
     const sum = (pg: typeof lamp): number => {
-      const a = pg.geometry.getAttribute('aEmit');
+      const a = pg.geometry.getAttribute('aSurface');
       let t = 0;
       for (let i = 0; i < a.count; i++) t += a.getX(i);
       return t;

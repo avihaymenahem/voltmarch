@@ -55,6 +55,9 @@ import {
 import { PartId } from '../core/types';
 import { LAYERS, RENDER_ORDER } from './scene';
 
+/** Metres below a crossed threshold before zooming back restores the nearer LOD. */
+const LOD_RETURN_HYSTERESIS = 4;
+
 /* ==========================================================================
  * 1. SPECS
  * ========================================================================== */
@@ -62,6 +65,18 @@ import { LAYERS, RENDER_ORDER } from './scene';
 /** One drawable piece of a model: a (geometry, material) pair plus its anchor. */
 export interface BatchPartSpec {
   geometry: THREE.BufferGeometry;
+  /**
+   * Whole-batch visual LODs, ordered nearest to furthest by `minDistance`.
+   *
+   * VOLTMARCH batches one model across all of its instances, so switching the
+   * geometry once from the RTS camera's dolly distance preserves the one-draw
+   * contract. Per-entity LODs would split one model into several batches and
+   * spend the draw calls this class exists to save.
+   */
+  lods?: readonly {
+    geometry: THREE.BufferGeometry;
+    minDistance: number;
+  }[];
   /** A single material, or an array when the geometry carries draw groups. */
   material: THREE.Material | THREE.Material[];
   /** Local offset from the model origin (ground-plane centre), metres. */
@@ -197,7 +212,13 @@ export class BatchPart {
   /** Radius of the source geometry plus its anchor offset, in metres. */
   readonly localRadius: number;
 
-  private readonly geometry: THREE.BufferGeometry;
+  /** LOD0 followed by the optional far geometries. */
+  private readonly geometries: THREE.BufferGeometry[];
+  private readonly lodDistances: Float32Array;
+  private activeLod = 0;
+  /** Shared by every LOD geometry; one upload updates whichever one is active. */
+  private stateAttribute: THREE.InstancedBufferAttribute;
+  private teamAttribute: THREE.InstancedBufferAttribute;
   /**
    * Pooled update ranges — one per channel — so `endFrame` never allocates.
    * The renderer empties `updateRanges` after uploading, but it never retains
@@ -214,7 +235,23 @@ export class BatchPart {
     this.followsTurret = spec.followsTurret === true;
     this.part = spec.part ?? PartId.Root;
 
-    this.geometry = instanceGeometry(spec.geometry, name);
+    const lods = spec.lods ?? [];
+    this.geometries = new Array(lods.length + 1);
+    this.lodDistances = new Float32Array(lods.length + 1);
+    this.geometries[0] = instanceGeometry(spec.geometry, `${name}.lod0`);
+    this.lodDistances[0] = 0;
+    for (let i = 0; i < lods.length; i++) {
+      const lod = lods[i];
+      if (!(lod.minDistance > this.lodDistances[i])) {
+        throw new Error(
+          `[render.batch] "${name}" LOD${i + 1} distance ${lod.minDistance} `
+          + 'must be finite, positive and strictly increasing.',
+        );
+      }
+      this.geometries[i + 1] = instanceGeometry(lod.geometry, `${name}.lod${i + 1}`);
+      this.lodDistances[i + 1] = lod.minDistance;
+    }
+    const geometry = this.geometries[0];
 
     // A PART THAT DRAWS NOTHING IS INVISIBLE, NOT MISSING.
     //
@@ -225,9 +262,9 @@ export class BatchPart {
     // "this unit is invisible" and to every counter in the engine as "drawn",
     // which is why it is checked once, here, at construction — where it costs
     // nothing and where the batch can still be named.
-    const verts = this.geometry.index !== null
-      ? this.geometry.index.count
-      : (this.geometry.getAttribute('position')?.count ?? 0);
+    const verts = geometry.index !== null
+      ? geometry.index.count
+      : (geometry.getAttribute('position')?.count ?? 0);
     if (verts < 3) {
       console.error(
         `[render.batch] "${name}" part ${PART_NAMES[this.part] ?? this.part} has ` +
@@ -235,26 +272,32 @@ export class BatchPart {
       );
     }
 
-    const bs = this.geometry.boundingSphere!;
     const anchor = Math.sqrt(
       this.offsetX * this.offsetX + this.offsetY * this.offsetY + this.offsetZ * this.offsetZ,
     );
     // The source sphere's centre is model-local; fold it in so an off-centre
     // mass (a turret authored around its ring) is still fully enclosed.
-    this.localRadius = bs.radius + bs.center.length() + anchor;
+    let localRadius = 0;
+    for (let i = 0; i < this.geometries.length; i++) {
+      const bs = this.geometries[i].boundingSphere!;
+      localRadius = Math.max(localRadius, bs.radius + bs.center.length() + anchor);
+    }
+    this.localRadius = localRadius;
 
     this.state = new Float32Array(capacity * 4);
     this.team = new Float32Array(capacity * 3);
-    this.geometry.setAttribute(
-      'aState',
-      new THREE.InstancedBufferAttribute(this.state, 4).setUsage(THREE.DynamicDrawUsage),
+    this.stateAttribute = new THREE.InstancedBufferAttribute(this.state, 4).setUsage(
+      THREE.DynamicDrawUsage,
     );
-    this.geometry.setAttribute(
-      'aTeamColor',
-      new THREE.InstancedBufferAttribute(this.team, 3).setUsage(THREE.DynamicDrawUsage),
+    this.teamAttribute = new THREE.InstancedBufferAttribute(this.team, 3).setUsage(
+      THREE.DynamicDrawUsage,
     );
+    for (let i = 0; i < this.geometries.length; i++) {
+      this.geometries[i].setAttribute('aState', this.stateAttribute);
+      this.geometries[i].setAttribute('aTeamColor', this.teamAttribute);
+    }
 
-    this.mesh = new THREE.InstancedMesh(this.geometry, spec.material, capacity);
+    this.mesh = new THREE.InstancedMesh(geometry, spec.material, capacity);
     // `PartId` is a const enum — there is no reverse map at runtime, so the
     // readable name comes from PART_NAMES.
     this.mesh.name = `${name}:${PART_NAMES[this.part] ?? this.part}`;
@@ -306,18 +349,20 @@ export class BatchPart {
     const nextState = new Float32Array(capacity * 4);
     nextState.set(this.state);
     this.state = nextState;
-    this.geometry.setAttribute(
-      'aState',
-      new THREE.InstancedBufferAttribute(nextState, 4).setUsage(THREE.DynamicDrawUsage),
+    this.stateAttribute = new THREE.InstancedBufferAttribute(nextState, 4).setUsage(
+      THREE.DynamicDrawUsage,
     );
 
     const nextTeam = new Float32Array(capacity * 3);
     nextTeam.set(this.team);
     this.team = nextTeam;
-    this.geometry.setAttribute(
-      'aTeamColor',
-      new THREE.InstancedBufferAttribute(nextTeam, 3).setUsage(THREE.DynamicDrawUsage),
+    this.teamAttribute = new THREE.InstancedBufferAttribute(nextTeam, 3).setUsage(
+      THREE.DynamicDrawUsage,
     );
+    for (let i = 0; i < this.geometries.length; i++) {
+      this.geometries[i].setAttribute('aState', this.stateAttribute);
+      this.geometries[i].setAttribute('aTeamColor', this.teamAttribute);
+    }
   }
 
   /**
@@ -334,13 +379,30 @@ export class BatchPart {
     const count = maxSlot - minSlot + 1;
     this.uploadAttribute(this.mesh.instanceMatrix, this.rangeMatrix, minSlot * 16, count * 16);
     this.uploadAttribute(
-      this.geometry.getAttribute('aState') as THREE.BufferAttribute,
+      this.stateAttribute,
       this.rangeState, minSlot * 4, count * 4,
     );
     this.uploadAttribute(
-      this.geometry.getAttribute('aTeamColor') as THREE.BufferAttribute,
+      this.teamAttribute,
       this.rangeTeam, minSlot * 3, count * 3,
     );
+  }
+
+  /** Select one geometry for the whole batch without reallocating any channel. */
+  setLodDistance(distance: number): void {
+    let next = this.activeLod;
+    // Crossing outward uses the authored threshold exactly. Returning inward
+    // waits four metres, so mouse-wheel damping cannot chatter two geometries
+    // across the same frame boundary.
+    while (next + 1 < this.lodDistances.length && distance >= this.lodDistances[next + 1]) {
+      next++;
+    }
+    while (next > 0 && distance < this.lodDistances[next] - LOD_RETURN_HYSTERESIS) {
+      next--;
+    }
+    if (next === this.activeLod) return;
+    this.activeLod = next;
+    this.mesh.geometry = this.geometries[next];
   }
 
   private uploadAttribute(
@@ -375,7 +437,10 @@ export class BatchPart {
 
   dispose(): void {
     this.mesh.dispose();
-    disposeInstanceGeometry(this.geometry);
+    for (let i = 0; i < this.geometries.length; i++) {
+      disposeInstanceGeometry(this.geometries[i]);
+    }
+    this.geometries.length = 0;
   }
 }
 
@@ -661,6 +726,10 @@ export class InstanceBatch {
     this.live = 0;
     this.high = -1;
   }
+
+  setLodDistance(distance: number): void {
+    for (let p = 0; p < this.parts.length; p++) this.parts[p].setLodDistance(distance);
+  }
 }
 
 /* ==========================================================================
@@ -701,6 +770,11 @@ export class InstanceBatcher {
 
   endFrame(): void {
     for (let i = 0; i < this.batches.length; i++) this.batches[i].endFrame();
+  }
+
+  /** Camera dolly distance in metres; applied once per batch, not per entity. */
+  setLodDistance(distance: number): void {
+    for (let i = 0; i < this.batches.length; i++) this.batches[i].setLodDistance(distance);
   }
 
   get batchCount(): number { return this.batches.length; }

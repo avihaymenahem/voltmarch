@@ -1,0 +1,6 @@
+# Offline asset-conditioning dependencies. Install into the ignored tools/_python
+# directory with:
+#   py -m pip install --target tools/_python -r tools/asset-requirements.txt
+xatlas==0.0.11
+trimesh==4.12.2
+pillow==11.3.0

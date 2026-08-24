@@ -22,7 +22,7 @@
  * -------------------
  * Pure geometry. It owns no material, no registration and no lifetime: it hands
  * back `THREE.BufferGeometry` in the `PropMesh` vertex layout (position, normal,
- * colour, aSway, aEmit, aGloss), which is exactly what
+ * colour, aSway, aSurface), which is exactly what
  * `entity-props.system.ts`'s existing `EntityPropMaterial` already draws. See
  * §5 for the four calls that drive it.
  *

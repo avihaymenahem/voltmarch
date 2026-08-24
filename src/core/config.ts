@@ -4470,14 +4470,22 @@ export const AI_THREAT_CLASS_COUNT = 5;
 export const HUD_DESIGN_WIDTH = 168;
 
 /**
- * uiScale = clamp(floor(screenH / 720 * 4) / 4, 1, 4).
+ * uiScale = clamp(floor(screenH / 840 * 4) / 4, 1, 4).
  * Quarter steps, integer-snapped, so a 1 design px bevel hairline never lands
  * on a fractional device pixel — a bilinear-smeared bevel is an instant fail.
  */
 export const HUD_UI_SCALE_MIN = 1.0;
 export const HUD_UI_SCALE_MAX = 4.0;
-/** Screen height that maps to uiScale 1.0. */
-export const HUD_UI_SCALE_BASE_HEIGHT = 720;
+/**
+ * Screen height that maps to uiScale 1.0.
+ *
+ * 840 rather than 720 is the high-resolution density correction. Scaling the
+ * HUD linearly from 720 made a 1440p panel twice as wide and twice as tall —
+ * four times its area — even though the extra pixels should buy more view of
+ * the battlefield. The quarter-step curve now gives 1080p 1.25, 1440p 1.5 and
+ * 2160p 2.5 while retaining the 1px floor for smaller windows.
+ */
+export const HUD_UI_SCALE_BASE_HEIGHT = 840;
 /** Scale quantum. 4 = quarter steps. */
 export const HUD_UI_SCALE_STEPS = 4;
 

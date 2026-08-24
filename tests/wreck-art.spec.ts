@@ -40,8 +40,8 @@ describe('procedural wreck roster', () => {
         const ga = a.vehicles.get(wreckKey(faction, cls))!;
         const gb = b.vehicles.get(wreckKey(faction, cls))!;
         expect(ga.getAttribute('position').count).toBe(gb.getAttribute('position').count);
-        expect(ga.getAttribute('aEmit').count).toBe(ga.getAttribute('position').count);
-        expect(ga.getAttribute('aGloss').count).toBe(ga.getAttribute('position').count);
+        expect(ga.getAttribute('aSurface').count).toBe(ga.getAttribute('position').count);
+        expect(ga.getAttribute('aSurface').itemSize).toBe(2);
       }
       for (const size of RUBBLE_SIZES) {
         const ga = a.rubble.get(rubbleKey(faction, size))!;

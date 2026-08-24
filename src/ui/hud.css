@@ -2409,26 +2409,20 @@
   transition: transform 100ms linear;
 }
 
-/* THE ITEM UNDER CONSTRUCTION SPANS TWO CELLS, which is the reference's one
-   piece of grid asymmetry and the only thing in the palette that says "this is
-   happening now" without being read. */
+/* An item under construction keeps the exact footprint it had before the
+   click. Progress is already communicated by the queue badge, tint and track;
+   widening the card reflowed the whole grid and made the palette jump. */
 .vm-hud .vm-slot.is-building {
-  grid-column: span 2;
   border-color: rgba(var(--vm-accent-rgb), 0.55);
   background: rgba(var(--vm-accent-rgb), 0.10);
 }
 
-.vm-hud .vm-slot.is-building .vm-slot-icon { left: calc(13 * var(--vm-u)); }
-
 .vm-hud .vm-slot.is-ready {
-  grid-column: span 2;
   border-color: var(--vm-ok);
   background: rgba(79, 217, 127, 0.16);
   color: var(--vm-text);
   animation: vm-ready-tick 1.6s ease-in-out infinite;
 }
-
-.vm-hud .vm-slot.is-ready .vm-slot-icon { left: calc(13 * var(--vm-u)); }
 
 /* READY owns the bottom band once it appears; the cost has done its job. */
 .vm-hud .vm-slot.is-ready .vm-slot-cost { visibility: hidden; }

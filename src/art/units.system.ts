@@ -47,6 +47,9 @@ import { ARMY_ORDER, GAIA_SLOT, type PerArmy } from './faction-models';
 import { formatStats } from './MassList';
 import { UNIT_MASS_LISTS } from './UnitDefs';
 import { unitLibrary, type UnitModel } from './UnitFactory';
+import {
+  disposeImportedUnitAssets, IMPORTED_UNIT_SPECS, loadImportedUnitOverride,
+} from './ImportedUnitAssets';
 
 interface BridgeGlobal { __vmUnits?: unknown; }
 
@@ -356,6 +359,21 @@ export default defineSystem({
     // One KindMesh per model, cached: handing the SAME object to two factions
     // is how the bridge knows they can share one batch.
     const meshes = new Map<string, KindMesh>();
+    for (const spec of IMPORTED_UNIT_SPECS) {
+      const model = unitLibrary.get(spec.key);
+      if (model === undefined) {
+        console.error(`[units] imported override ${spec.key} has no procedural fallback`);
+        continue;
+      }
+      try {
+        meshes.set(spec.key, await loadImportedUnitOverride(model, spec));
+        console.info(`[units] imported ${spec.label} with articulated LOD/shadow path`);
+      } catch (error) {
+        // The generated model is cosmetic. A bad binary, unsupported texture
+        // format or pivot regression must never make the gameplay unit vanish.
+        console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
+      }
+    }
     const meshFor = (key: string): KindMesh | null => {
       const model = unitLibrary.get(key);
       if (model === undefined) return null;
@@ -457,6 +475,7 @@ export default defineSystem({
     }
     const g = globalThis as unknown as BridgeGlobal;
     delete g.__vmUnits;
+    disposeImportedUnitAssets();
     unitLibrary.dispose();
   },
 });

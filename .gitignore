@@ -92,6 +92,10 @@ yarn-error.log*
 pnpm-debug.log*
 logs/
 *.log
+meshy_output/
+**/geometry-payload.json
+meshy-*-payload.json
+meshy-*-retexture.json
 .shots-staging/
 .shots-staging-webgpu/
 

@@ -363,7 +363,7 @@ describe('tools/shoot.mjs', () => {
      * even when nothing about the art has changed. So a short sample warns
      * loudly rather than quietly reporting a better score.
      */
-    expect(declaredCameras().length).toBe(13);
+    expect(declaredCameras().length).toBe(19);
   });
 
   it('declares a pitch that matches the config curve at each shot\'s dolly', () => {

@@ -112,6 +112,7 @@ export interface SocketSpec {
 /** One extra drawable beyond the model's root body: a turret, a barrel, a dish. */
 export interface KindMeshPart {
   geometry: THREE.BufferGeometry;
+  lods?: readonly { geometry: THREE.BufferGeometry; minDistance: number }[];
   material: THREE.Material | THREE.Material[];
   /** Local offset from the model origin, metres. */
   x?: number;
@@ -139,6 +140,7 @@ export interface KindMeshPart {
 export interface KindMesh {
   /** The root body. Rotates with the hull. */
   geometry: THREE.BufferGeometry;
+  lods?: readonly { geometry: THREE.BufferGeometry; minDistance: number }[];
   material: THREE.Material | THREE.Material[];
   /** Turret / barrel / dish / stack. Empty for a one-piece model. */
   parts?: readonly KindMeshPart[];
@@ -270,6 +272,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
 
   const specs: BatchPartSpec[] = [{
     geometry: mesh.geometry,
+    lods: mesh.lods,
     material: mesh.material,
     offsetX: 0,
     offsetY: 0,
@@ -290,6 +293,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
       const p = extra[i];
       specs.push({
         geometry: p.geometry,
+        lods: p.lods,
         material: p.material,
         offsetX: p.x ?? 0,
         offsetY: p.y ?? 0,
@@ -917,9 +921,10 @@ export class RenderBridge {
    * lives. 1 is "leave every model at its authored metres", which is what the
    * screenshot harness and every test get by default.
    */
-  update(alpha: number, infantryScale = 1): void {
+  update(alpha: number, infantryScale = 1, cameraDistance = 0): void {
     const s = this.store;
     this.frameId++;
+    this.batcher.setLodDistance(cameraDistance);
     this.batcher.beginFrame();
     this.visibleUnits = 0;
     this.visibleBuildings = 0;

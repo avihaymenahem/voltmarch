@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "family": "allied-buildings",
+  "sourceDir": "src/assets/buildings/allies",
+  "outputDir": "src/assets/buildings/allies/derived",
+  "profiles": {
+    "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
+    "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.26 },
+    "shadow": { "ratio": 0.1, "error": 0.05, "maxRatio": 0.2, "maxTriangles": 3000 }
+  },
+  "assets": [
+    { "key": "allied_conyard", "file": "construction-yard.glb", "class": "landmark", "lods": true },
+    { "key": "allied_power", "file": "power-plant.glb", "class": "standard", "lods": true },
+    { "key": "allied_barracks", "file": "barracks.glb", "class": "standard", "lods": true },
+    { "key": "allied_refinery", "file": "ore-refinery.glb", "class": "landmark", "lods": true },
+    { "key": "allied_warfactory", "file": "war-factory.glb", "class": "landmark", "lods": true },
+    { "key": "allied_radar", "file": "radar-dome.glb", "class": "landmark", "lods": true },
+    { "key": "allied_tech", "file": "tech-centre.glb", "class": "standard", "lods": true },
+    { "key": "allied_commandpost", "file": "command-post.glb", "class": "standard", "lods": true },
+    { "key": "allied_depot", "file": "repair-depot.glb", "class": "standard", "lods": true },
+    { "key": "allied_navalyard", "file": "naval-yard.glb", "class": "landmark", "lods": true },
+    { "key": "allied_chrono", "file": "displacement-ring.glb", "class": "landmark", "lods": true },
+    { "key": "allied_weather", "file": "weather-device.glb", "class": "landmark", "lods": true },
+    { "key": "allied_pillbox", "file": "pillbox.glb", "class": "defence", "lods": false },
+    { "key": "allied_aa", "file": "aa-battery.glb", "class": "defence", "lods": false, "movingParts": true },
+    { "key": "allied_prismtower", "file": "refractor-tower.glb", "class": "defence", "lods": false, "movingParts": true }
+  ]
+}

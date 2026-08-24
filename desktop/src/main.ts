@@ -223,8 +223,9 @@ protocol.registerSchemesAsPrivileged([
  * bundle itself fails to parse), and `Help.ts` creates a <style> element at
  * runtime. Without it the game is a black page.
  *
- * `connect-src` allows ws:/wss: because the multiplayer relay is a WebSocket;
- * everything else is same-origin only, and there is no remote content at all.
+ * `connect-src` allows ws:/wss: because the multiplayer relay is a WebSocket.
+ * `blob:` is also required by the WebGPU texture worker's generated module;
+ * without it Chromium creates the worker but blocks its first fetch.
  */
 const CSP = [
   "default-src 'self'",
@@ -233,7 +234,7 @@ const CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "media-src 'self' blob:",
-  "connect-src 'self' ws: wss:",
+  "connect-src 'self' blob: ws: wss:",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
@@ -385,6 +386,23 @@ function createWindow(): BrowserWindow {
     event.preventDefault();
     win.setFullScreen(!win.isFullScreen());
   });
+
+  /*
+   * DEV RENDERER DIAGNOSTICS.
+   *
+   * A WebGPU frame can fail while Electron's DOM/HUD remains responsive. In
+   * that state the player sees one stale 3D frame, but the useful exception is
+   * otherwise trapped in Chromium's renderer console. Forward only warnings
+   * and errors in dev mode so the terminal that launched Electron names the
+   * failing material/pass. Packaged builds remain silent.
+   */
+  if (devOrigin !== null) {
+    win.webContents.on('console-message', (details) => {
+      if (details.level !== 'error') return;
+      const source = details.sourceId ? ` (${details.sourceId}:${details.lineNumber})` : '';
+      console.error(`[vm:renderer:error] ${details.message}${source}`);
+    });
+  }
 
   win.once('ready-to-show', () => win.show());
 

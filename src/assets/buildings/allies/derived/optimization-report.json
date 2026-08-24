@@ -1,0 +1,758 @@
+{
+  "version": 1,
+  "family": "allied-buildings",
+  "generatedAt": "2026-08-23T17:33:25.450Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/allied-buildings.json",
+  "rows": [
+    {
+      "key": "allied_conyard",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/construction-yard.glb",
+        "triangles": 39166,
+        "fileBytes": 5428188
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/construction-yard.lod1.glb",
+          "triangles": 17624,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00111,
+          "boundsDriftRatio": 0.00061,
+          "fileBytes": 770264,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 28.1% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/construction-yard.lod2.glb",
+          "triangles": 10999,
+          "triangleRatio": 0.2808,
+          "boundsDriftMeters": 0.00222,
+          "boundsDriftRatio": 0.00122,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/construction-yard.shadow.glb",
+          "triangles": 2268,
+          "triangleRatio": 0.0579,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 32588,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 189
+        }
+      ]
+    },
+    {
+      "key": "allied_power",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/power-plant.glb",
+        "triangles": 31099,
+        "fileBytes": 5898212
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/power-plant.lod1.glb",
+          "triangles": 13993,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00161,
+          "boundsDriftRatio": 0.00099,
+          "fileBytes": 690324,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 40.2% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/power-plant.lod2.glb",
+          "triangles": 12495,
+          "triangleRatio": 0.4018,
+          "boundsDriftMeters": 0.00167,
+          "boundsDriftRatio": 0.00102,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/power-plant.shadow.glb",
+          "triangles": 1968,
+          "triangleRatio": 0.0633,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 28388,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 164
+        }
+      ]
+    },
+    {
+      "key": "allied_barracks",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/barracks.glb",
+        "triangles": 26130,
+        "fileBytes": 4502536
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/barracks.lod1.glb",
+          "triangles": 11758,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.0039,
+          "boundsDriftRatio": 0.00206,
+          "fileBytes": 459520,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/barracks.lod2.glb",
+          "triangles": 4712,
+          "triangleRatio": 0.1803,
+          "boundsDriftMeters": 0.0039,
+          "boundsDriftRatio": 0.00206,
+          "fileBytes": 234288,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/barracks.shadow.glb",
+          "triangles": 1716,
+          "triangleRatio": 0.0657,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24860,
+          "geometryOnly": true,
+          "grid": [
+            11,
+            16
+          ],
+          "occupiedCells": 143
+        }
+      ]
+    },
+    {
+      "key": "allied_refinery",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/ore-refinery.glb",
+        "triangles": 37165,
+        "fileBytes": 5572308
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/ore-refinery.lod1.glb",
+          "triangles": 19928,
+          "triangleRatio": 0.5362,
+          "boundsDriftMeters": 0.00689,
+          "boundsDriftRatio": 0.00364,
+          "fileBytes": 1033428,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 50.7% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/ore-refinery.lod2.glb",
+          "triangles": 18830,
+          "triangleRatio": 0.5067,
+          "boundsDriftMeters": 0.00689,
+          "boundsDriftRatio": 0.00364,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/ore-refinery.shadow.glb",
+          "triangles": 1476,
+          "triangleRatio": 0.0397,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 21496,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 123
+        }
+      ]
+    },
+    {
+      "key": "allied_warfactory",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/war-factory.glb",
+        "triangles": 39115,
+        "fileBytes": 5659856
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/war-factory.lod1.glb",
+          "triangles": 17600,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00033,
+          "boundsDriftRatio": 0.00019,
+          "fileBytes": 818220,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 34.0% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/war-factory.lod2.glb",
+          "triangles": 13294,
+          "triangleRatio": 0.3399,
+          "boundsDriftMeters": 0.01194,
+          "boundsDriftRatio": 0.00629,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/war-factory.shadow.glb",
+          "triangles": 2376,
+          "triangleRatio": 0.0607,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 34100,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            15
+          ],
+          "occupiedCells": 198
+        }
+      ]
+    },
+    {
+      "key": "allied_radar",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/radar-dome.glb",
+        "triangles": 27572,
+        "fileBytes": 6172352
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 77.1% exceeds 55.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/radar-dome.lod1.glb",
+          "triangles": 21260,
+          "triangleRatio": 0.7711,
+          "boundsDriftMeters": 0.00212,
+          "boundsDriftRatio": 0.00112,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 73.3% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/radar-dome.lod2.glb",
+          "triangles": 20198,
+          "triangleRatio": 0.7326,
+          "boundsDriftMeters": 0.0082,
+          "boundsDriftRatio": 0.00483,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/radar-dome.shadow.glb",
+          "triangles": 2352,
+          "triangleRatio": 0.0853,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 33764,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            13
+          ],
+          "occupiedCells": 196
+        }
+      ]
+    },
+    {
+      "key": "allied_tech",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/tech-centre.glb",
+        "triangles": 26554,
+        "fileBytes": 5161140
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/tech-centre.lod1.glb",
+          "triangles": 11949,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00039,
+          "boundsDriftRatio": 0.00036,
+          "fileBytes": 518684,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 26.5% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/tech-centre.lod2.glb",
+          "triangles": 7034,
+          "triangleRatio": 0.2649,
+          "boundsDriftMeters": 0.00047,
+          "boundsDriftRatio": 0.00043,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/tech-centre.shadow.glb",
+          "triangles": 1632,
+          "triangleRatio": 0.0615,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 23680,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            10
+          ],
+          "occupiedCells": 136
+        }
+      ]
+    },
+    {
+      "key": "allied_commandpost",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/command-post.glb",
+        "triangles": 24543,
+        "fileBytes": 4922384
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 55.9% exceeds 55.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/command-post.lod1.glb",
+          "triangles": 13714,
+          "triangleRatio": 0.5588,
+          "boundsDriftMeters": 0.00133,
+          "boundsDriftRatio": 0.0007,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 53.6% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/command-post.lod2.glb",
+          "triangles": 13152,
+          "triangleRatio": 0.5359,
+          "boundsDriftMeters": 0.00133,
+          "boundsDriftRatio": 0.0007,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/command-post.shadow.glb",
+          "triangles": 2472,
+          "triangleRatio": 0.1007,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 35440,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 206
+        }
+      ]
+    },
+    {
+      "key": "allied_depot",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/repair-depot.glb",
+        "triangles": 26643,
+        "fileBytes": 5094052
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/repair-depot.lod1.glb",
+          "triangles": 11988,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00056,
+          "boundsDriftRatio": 0.00039,
+          "fileBytes": 586032,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 38.2% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/repair-depot.lod2.glb",
+          "triangles": 10185,
+          "triangleRatio": 0.3823,
+          "boundsDriftMeters": 0.00056,
+          "boundsDriftRatio": 0.00039,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/repair-depot.shadow.glb",
+          "triangles": 1992,
+          "triangleRatio": 0.0748,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 28724,
+          "geometryOnly": true,
+          "grid": [
+            12,
+            16
+          ],
+          "occupiedCells": 166
+        }
+      ]
+    },
+    {
+      "key": "allied_navalyard",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/naval-yard.glb",
+        "triangles": 39462,
+        "fileBytes": 6515468
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/naval-yard.lod1.glb",
+          "triangles": 18888,
+          "triangleRatio": 0.4786,
+          "boundsDriftMeters": 0.00085,
+          "boundsDriftRatio": 0.00053,
+          "fileBytes": 965252,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 46.1% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/naval-yard.lod2.glb",
+          "triangles": 18188,
+          "triangleRatio": 0.4609,
+          "boundsDriftMeters": 0.00085,
+          "boundsDriftRatio": 0.00053,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/naval-yard.shadow.glb",
+          "triangles": 2148,
+          "triangleRatio": 0.0544,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 30908,
+          "geometryOnly": true,
+          "grid": [
+            13,
+            16
+          ],
+          "occupiedCells": 179
+        }
+      ]
+    },
+    {
+      "key": "allied_chrono",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/displacement-ring.glb",
+        "triangles": 39469,
+        "fileBytes": 6325428
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/displacement-ring.lod1.glb",
+          "triangles": 17760,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00055,
+          "boundsDriftRatio": 0.00031,
+          "fileBytes": 818512,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 33.4% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/displacement-ring.lod2.glb",
+          "triangles": 13168,
+          "triangleRatio": 0.3336,
+          "boundsDriftMeters": 0.00103,
+          "boundsDriftRatio": 0.00054,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/displacement-ring.shadow.glb",
+          "triangles": 1848,
+          "triangleRatio": 0.0468,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 26704,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 154
+        }
+      ]
+    },
+    {
+      "key": "allied_weather",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/weather-device.glb",
+        "triangles": 39602,
+        "fileBytes": 6568152
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/weather-device.lod1.glb",
+          "triangles": 19119,
+          "triangleRatio": 0.4828,
+          "boundsDriftMeters": 0.00036,
+          "boundsDriftRatio": 0.00027,
+          "fileBytes": 973584,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 46.6% exceeds 26.0% ceiling"
+          ],
+          "file": "src/assets/buildings/allies/derived/weather-device.lod2.glb",
+          "triangles": 18457,
+          "triangleRatio": 0.4661,
+          "boundsDriftMeters": 0.00036,
+          "boundsDriftRatio": 0.00027,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/weather-device.shadow.glb",
+          "triangles": 2568,
+          "triangleRatio": 0.0648,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 36788,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            15
+          ],
+          "occupiedCells": 214
+        }
+      ]
+    },
+    {
+      "key": "allied_pillbox",
+      "class": "defence",
+      "movingParts": false,
+      "source": {
+        "file": "src/assets/buildings/allies/pillbox.glb",
+        "triangles": 12110,
+        "fileBytes": 1098732
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/pillbox.shadow.glb",
+          "triangles": 2112,
+          "triangleRatio": 0.1744,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 30404,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            12
+          ],
+          "occupiedCells": 176
+        }
+      ]
+    },
+    {
+      "key": "allied_aa",
+      "class": "defence",
+      "movingParts": true,
+      "source": {
+        "file": "src/assets/buildings/allies/aa-battery.glb",
+        "triangles": 13559,
+        "fileBytes": 1410076
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/aa-battery.shadow.glb",
+          "triangles": 2100,
+          "triangleRatio": 0.1549,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 30216,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 175
+        }
+      ]
+    },
+    {
+      "key": "allied_prismtower",
+      "class": "defence",
+      "movingParts": true,
+      "source": {
+        "file": "src/assets/buildings/allies/refractor-tower.glb",
+        "triangles": 13796,
+        "fileBytes": 1591976
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "src/assets/buildings/allies/derived/refractor-tower.shadow.glb",
+          "triangles": 2628,
+          "triangleRatio": 0.1905,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 37592,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 219
+        }
+      ]
+    }
+  ]
+}
