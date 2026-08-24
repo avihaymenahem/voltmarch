@@ -146,6 +146,7 @@ function nextPresentedFrame(): Promise<void> {
  * makes, so this file never becomes a second place where either API is defined.
  */
 import { bootstrap, type GameHandle } from './game/Bootstrap';
+import { installCloudflareAnalytics } from './platform/cloudflare-analytics';
 import { prepareRenderer } from './render/renderer';
 import type { Shell } from './shell/Shell';
 
@@ -273,6 +274,9 @@ function installLifecycleHandlers(): void {
 
 /* -------------------------------------------------------------------------- */
 
+// Production web only. The helper rejects localhost, GitHub previews and the
+// desktop app:// origin before a third-party script can be requested.
+installCloudflareAnalytics();
 main().catch((err) => fail('Boot Failure', err));
 
 if (import.meta.hot) {

@@ -60,7 +60,7 @@ jobs:
           # Pages owns the complete 6,000+ simulation gate. Repeating it on a
           # two-core Windows release runner took an unbounded amount of time;
           # this job owns the desktop boundary, update state and persistence.
-          npm exec vitest run tests/desktop-updater.spec.ts tests/desktop-shell.spec.ts tests/platform-storage.spec.ts
+          npm exec vitest run tests/desktop-updater.spec.ts tests/desktop-shell.spec.ts tests/platform-storage.spec.ts tests/cloudflare-analytics.spec.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build installer, portable executable and update manifest

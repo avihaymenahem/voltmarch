@@ -28,11 +28,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/progress/02-hud-full.png" alt="An Allied base mid-match: the sidebar build tabs, the power and credit readouts, and the detail panel describing a Power Plant" width="820" />
+  <img src="docs/progress/03-faction-architecture.png" alt="In-engine architecture showcase: Allied Forces, Soviet Union, Meridian Pact and Reclamation bases" width="820" />
 </p>
 
 <p align="center">
-  <sub>In-engine, captured by <code>npm run shots</code> from this build.</sub>
+  <sub>In-engine faction architecture — four live deterministic captures from this build.</sub>
 </p>
 
 ---
@@ -155,6 +155,13 @@ Then open <http://localhost:5173>.
 be able to stop the game from running; type errors are caught by `npm run typecheck` instead.
 
 `npm run shots` additionally needs Playwright: `npx playwright install chromium`.
+
+### Production analytics
+
+The public website uses Cloudflare Web Analytics when the Pages build receives the public
+`CF_WEB_ANALYTICS_TOKEN` repository variable. The beacon is allowed only on HTTPS pages at
+`voltmarch.com` and its subdomains; local development, GitHub previews and the Electron app never
+load it. Tracking uses Cloudflare's cookie-free analytics beacon and does not write browser storage.
 
 ## Multiplayer
 

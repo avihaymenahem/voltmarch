@@ -57,6 +57,9 @@ jobs:
           # Public configuration, not a credential. The menu still probes the
           # relay before enabling Multiplayer, so an outage fails closed.
           VITE_RELAY_URL: wss://relay.voltmarch.com/ws
+          # Public site identifier from Cloudflare Web Analytics. The runtime
+          # rejects missing tokens and all hosts outside *.voltmarch.com.
+          VITE_CF_WEB_ANALYTICS_TOKEN: ${{ vars.CF_WEB_ANALYTICS_TOKEN }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
