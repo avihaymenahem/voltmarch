@@ -38,7 +38,8 @@
 
 /**
  * 1 -> 2 when display methods landed; 2 -> 3 when `alwaysOnTop` joined;
- * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage.
+ * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage;
+ * 5 -> 6 added the release-update state machine.
  *
  * BUMP THIS whenever a method is added, removed or CHANGES SHAPE, and bump the
  * matching literal in `desktop/src/preload.ts`. They are checked against each
@@ -54,7 +55,28 @@
  * as off. Equality makes that degrade to web behaviour instead — no Display
  * section at all, which is visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 5;
+export const BRIDGE_VERSION = 6;
+
+export type DesktopUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export interface DesktopUpdateState {
+  readonly mode: 'installed' | 'portable' | 'development';
+  readonly status: DesktopUpdateStatus;
+  readonly currentVersion: string;
+  readonly availableVersion: string | null;
+  readonly progress: number | null;
+  readonly releaseNotes: string;
+  readonly releaseUrl: string;
+  readonly message: string;
+  readonly canAutoInstall: boolean;
+}
 
 export type WindowMode = 'windowed' | 'fullscreen';
 
@@ -194,6 +216,12 @@ export interface DesktopBridge {
   displayState(): Promise<DesktopDisplayState>;
   setDisplayState(patch: DesktopDisplayPatch): Promise<DesktopDisplayState>;
   relaunch(): void;
+  updateState(): Promise<DesktopUpdateState>;
+  checkForUpdates(): Promise<DesktopUpdateState>;
+  downloadUpdate(): Promise<DesktopUpdateState>;
+  openUpdatePage(): Promise<void>;
+  installUpdate(): void;
+  onUpdateState(listener: (state: DesktopUpdateState) => void): () => void;
 }
 
 /**

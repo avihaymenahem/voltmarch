@@ -1,0 +1,120 @@
+/* Desktop release prompt: title-screen only, never over tactical controls. */
+.vm-update-dock {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 120;
+  width: min(390px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.vm-update-card {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 18px 16px;
+  color: #e8edf7;
+  background:
+    linear-gradient(135deg, rgba(26, 211, 234, 0.10), transparent 54%),
+    rgba(4, 10, 20, 0.97);
+  border: 1px solid rgba(73, 205, 231, 0.44);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65), inset 3px 0 0 #35d1e7;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  pointer-events: auto;
+  animation: vm-update-in 180ms ease-out;
+}
+
+.vm-update-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 22px;
+  width: 72px;
+  height: 2px;
+  background: #35d1e7;
+  box-shadow: 0 0 18px rgba(53, 209, 231, 0.8);
+}
+
+.vm-update-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #52dff0;
+  font: 700 10px/1.1 var(--vm-font-display, sans-serif);
+  letter-spacing: 0.22em;
+}
+
+.vm-update-title {
+  margin: 0;
+  color: #f4f7ff;
+  font: 700 19px/1.15 var(--vm-font-display, sans-serif);
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.vm-update-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 11px 0 15px;
+  color: #9eacc0;
+  font: 500 13px/1.42 var(--vm-font-body, sans-serif);
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.vm-update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.vm-update-action {
+  min-height: 36px;
+  padding: 0 14px;
+  color: #aab6c8;
+  background: rgba(8, 15, 28, 0.94);
+  border: 1px solid rgba(132, 151, 180, 0.30);
+  font: 700 11px/1 var(--vm-font-display, sans-serif);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.vm-update-action:hover,
+.vm-update-action:focus-visible {
+  color: #fff;
+  border-color: #52dff0;
+  outline: none;
+}
+
+.vm-update-action.is-primary {
+  color: #041016;
+  background: #52dff0;
+  border-color: #52dff0;
+}
+
+.vm-update-progress {
+  height: 5px;
+  margin: 3px 0 16px;
+  background: rgba(77, 104, 137, 0.28);
+}
+
+.vm-update-progress > span {
+  display: block;
+  height: 100%;
+  background: #52dff0;
+  box-shadow: 0 0 10px rgba(82, 223, 240, 0.65);
+  transition: width 160ms linear;
+}
+
+@keyframes vm-update-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 620px) {
+  .vm-update-dock { right: 16px; bottom: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-update-card { animation: none; }
+}

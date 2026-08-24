@@ -60,12 +60,21 @@ win:
   # has a geographic eligibility gate that is still an open question here.
 
 nsis:
+  # `latest.yml` repeats this name exactly. Keep it URL-safe so GitHub never
+  # sanitises spaces into dots and leaves the updater requesting a file that
+  # does not exist (the v3.1.0 release did exactly that).
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: VOLTMARCH
+
+portable:
+  # Portable builds participate in version discovery but cannot self-replace;
+  # this deterministic name is what their download-page fallback points at.
+  artifactName: ${productName}-${version}-portable.${ext}
 
 # Declared from day one even though it is INERT without `--publish`. It costs
 # nothing now and means the CI job that eventually arrives is a workflow file

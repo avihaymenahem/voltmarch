@@ -1,12 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { BRIDGE_VERSION, type DesktopBridge } from '../src/platform/desktop';
+import {
+  BRIDGE_VERSION,
+  type DesktopBridge,
+  type DesktopUpdateState,
+} from '../src/platform/desktop';
 import { detectBackend, detectIndexStorage } from '../src/game/SaveStore';
 import { persistentStorage } from '../src/platform/storage';
 
 function bridge(): DesktopBridge {
   const values = new Map<string, string>();
   const saves = new Map<string, Uint8Array>();
+  const update: DesktopUpdateState = {
+    mode: 'development',
+    status: 'idle',
+    currentVersion: 'test',
+    availableVersion: null,
+    progress: null,
+    releaseNotes: '',
+    releaseUrl: 'https://example.invalid',
+    message: 'disabled in tests',
+    canAutoInstall: false,
+  };
   return {
     bridge: BRIDGE_VERSION,
     platform: 'win32',
@@ -27,6 +42,12 @@ function bridge(): DesktopBridge {
     saveWrite: async (slot, bytes) => { saves.set(slot, bytes.slice()); },
     saveRead: async (slot) => saves.get(slot)?.slice() ?? null,
     saveRemove: async (slot) => { saves.delete(slot); },
+    updateState: async () => update,
+    checkForUpdates: async () => update,
+    downloadUpdate: async () => update,
+    openUpdatePage: async () => undefined,
+    installUpdate: () => undefined,
+    onUpdateState: () => () => undefined,
   };
 }
 

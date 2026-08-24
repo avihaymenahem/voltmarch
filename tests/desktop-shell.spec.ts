@@ -639,10 +639,11 @@ describe('desktop shell import boundary', () => {
   });
 
   it('keeps the decision modules free of electron, so this file can test them', () => {
-    // main.ts may import electron; nothing else may, or it stops being
-    // testable in a gate with no binary — which is the whole design.
+    // The three process-boundary modules may import Electron. Updater decisions
+    // themselves live in update-state.ts and are unit-tested without a binary;
+    // updater.ts is deliberately the effect adapter, like main.ts.
     for (const f of files) {
-      if (f === 'main.ts' || f === 'preload.ts') continue;
+      if (f === 'main.ts' || f === 'preload.ts' || f === 'updater.ts') continue;
       const src = readFileSync(path.join(DESKTOP_SRC, f), 'utf8');
       expect(/from\s+'electron'/.test(src), `${f} imports electron`).toBe(false);
     }

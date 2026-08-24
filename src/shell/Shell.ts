@@ -163,6 +163,7 @@ import {
   type SaveSlotMeta,
 } from './LoadGame';
 import * as progression from './progression-link';
+import { DesktopUpdatePrompt } from './DesktopUpdatePrompt';
 
 /* ==========================================================================
  * 1. THE STATE MACHINE
@@ -842,6 +843,7 @@ export class Shell {
   private state: ShellState = 'boot';
   private readonly root: HTMLDivElement;
   private readonly host: HTMLDivElement;
+  private readonly updatePrompt: DesktopUpdatePrompt;
   private screen: Screen | null = null;
   private ring: FocusRing;
   private readonly pad = new GamepadNav();
@@ -1001,6 +1003,7 @@ export class Shell {
     this.host.style.cssText = 'position:absolute;inset:0;';
     this.root.appendChild(this.host);
     options.menuRoot.appendChild(this.root);
+    this.updatePrompt = new DesktopUpdatePrompt(options.menuRoot);
     this.ring = new FocusRing(this.host);
 
     window.addEventListener('keydown', this.onKeyDown, { capture: true });
@@ -2547,6 +2550,7 @@ export class Shell {
       this.toastTimer = 0;
     }
     this.toastNode = null;
+    this.updatePrompt.dispose();
     this.root.remove();
     if (this.game !== null) this.disposeGame(this.game);
     this.game = null;
@@ -2564,6 +2568,7 @@ export class Shell {
     this.host.replaceChildren();
     this.screen = next;
     this.state = state;
+    this.updatePrompt.onShellState(state);
 
     if (next !== null) {
       const layer = el('div', 'vm-screen');

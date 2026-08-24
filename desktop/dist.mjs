@@ -74,6 +74,10 @@ process.exit(res.status ?? 1);
  *      been shorter and would delete the wrong thing the first time a build
  *      re-emitted an unchanged file with an old timestamp.
  *
+ * Windows will not unlink a portable executable while somebody is playing
+ * that build. A locked OLD artifact is therefore warned about and retained;
+ * it must never turn a completely valid new installer into a failed release.
+ *
  * `win-unpacked` and `.icon-ico` go every time. They are staging, rebuilt from
  * scratch on the next run, and between them they are the largest single item
  * here — the installer and the portable exe both already contain everything in
@@ -85,8 +89,8 @@ function prune(keep) {
   if (!existsSync(release)) return;
 
   // Any dotted triple that is not the one we just built. Matching the version
-  // ANYWHERE in the name covers both `VOLTMARCH 2.17.0.exe` and
-  // `VOLTMARCH Setup 2.17.0.exe.blockmap` without a second pattern.
+  // ANYWHERE in the name covers both `VOLTMARCH-2.17.0-portable.exe` and
+  // `VOLTMARCH-Setup-2.17.0.exe.blockmap` without a second pattern.
   const STAGING = new Set(['win-unpacked', '.icon-ico']);
   let freed = 0;
 
@@ -95,9 +99,18 @@ function prune(keep) {
     if (!other && !STAGING.has(name)) continue;
 
     const full = path.join(release, name);
-    freed += sizeOf(full);
-    rmSync(full, { recursive: true, force: true });
-    console.log(`  pruned ${name}`);
+    const size = sizeOf(full);
+    try {
+      rmSync(full, { recursive: true, force: true });
+      freed += size;
+      console.log(`  pruned ${name}`);
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error
+        ? String(error.code)
+        : 'unknown';
+      if (code !== 'EPERM' && code !== 'EBUSY') throw error;
+      console.warn(`  kept locked artifact ${name} (${code}); close that build to clean it later`);
+    }
   }
 
   if (freed > 0) console.log(`release/ pruned, ${(freed / 1e6).toFixed(0)} MB freed`);

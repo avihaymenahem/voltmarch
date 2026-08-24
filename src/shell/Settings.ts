@@ -84,6 +84,7 @@ import {
   desktopBridge,
   type DesktopDisplayPatch,
   type DesktopDisplayState,
+  type DesktopUpdateState,
 } from '../platform/desktop';
 
 import {
@@ -497,6 +498,9 @@ export class SettingsScreen implements Screen {
    * GPU process is on. `app.getGPUInfo('complete')` is the process's own view.
    */
   private gpuActive: string | null = null;
+  /** Latest updater state retained by the Electron main process. */
+  private desktopUpdate: DesktopUpdateState | null = null;
+  private updateUnsubscribe: (() => void) | null = null;
   /** The options frame itself, hidden while the help overlay is up. */
   private frameRoot: HTMLElement | null = null;
   private help: HelpPanel | null = null;
@@ -588,6 +592,26 @@ export class SettingsScreen implements Screen {
     this.body = frame.body;
     this.renderTab();
     this.refreshDesktop();
+    const desktop = desktopBridge();
+    if (desktop !== null) {
+      this.updateUnsubscribe = desktop.onUpdateState((state) => {
+        const previous = this.desktopUpdate;
+        this.desktopUpdate = state;
+        // Download progress can arrive many times per second. Five-percent
+        // display buckets keep Diagnostics responsive without rebuilding the
+        // complete page for every network packet.
+        const progressBucket = Math.floor((state.progress ?? 0) / 5);
+        const previousBucket = Math.floor((previous?.progress ?? 0) / 5);
+        if (this.tab === 'diagnostics'
+          && (previous?.status !== state.status || progressBucket !== previousBucket)) {
+          this.renderTab();
+        }
+      });
+      void desktop.updateState().then((state) => {
+        this.desktopUpdate = state;
+        if (this.tab === 'diagnostics') this.renderTab();
+      }).catch(() => { /* The Check Now button is the visible retry path. */ });
+    }
 
     const reset = button('Restore Defaults', {
       iconName: 'restore',
@@ -664,6 +688,8 @@ export class SettingsScreen implements Screen {
   }
 
   unmount(): void {
+    this.updateUnsubscribe?.();
+    this.updateUnsubscribe = null;
     this.closeHelp();
     this.manual?.dispose();
     this.manual = null;
@@ -954,6 +980,91 @@ export class SettingsScreen implements Screen {
   private renderDiagnostics(body: HTMLElement): void {
     const game = this.shell.getGame();
     this.diagText = this.diagnosticsText();
+
+    /* -- desktop release updates --------------------------------------- */
+
+    const updateBridge = desktopBridge();
+    if (updateBridge !== null) {
+      const updates = this.section(body, 'Desktop Updates');
+      const state = this.desktopUpdate;
+      if (state === null) {
+        updates.appendChild(diagNote('Reading the desktop release channel…'));
+      } else {
+        const mode = state.mode === 'installed'
+          ? 'Installed (automatic install supported)'
+          : state.mode === 'portable'
+            ? 'Portable (manual replacement required)'
+            : 'Development build';
+        updates.appendChild(row('Current Version', diagValue(state.currentVersion)));
+        updates.appendChild(row('Edition', diagValue(mode)));
+        updates.appendChild(row('Status', diagValue(
+          state.status === 'downloading'
+            ? `${state.message} ${Math.round(state.progress ?? 0)}%`
+            : state.message,
+        )));
+
+        if (state.mode === 'portable') {
+          updates.appendChild(diagNote(
+            'Portable Windows executables cannot safely replace themselves while running. '
+            + 'VOLTMARCH will still detect releases and open the exact download page; use the '
+            + 'installed edition for one-click download, restart and install.',
+          ));
+        } else if (state.mode === 'installed') {
+          updates.appendChild(diagNote(
+            'Checks run shortly after launch and every four hours. Updates never interrupt a '
+            + 'battle: the prompt waits for the title screen, downloads only when requested, '
+            + 'and installs only after you choose Restart & Update.',
+          ));
+        } else {
+          updates.appendChild(diagNote(
+            'Automatic release checks are disabled in development builds. Packaged installer '
+            + 'and portable builds use the GitHub release channel.',
+          ));
+        }
+
+        const actions = el('div', 'vm-diag-actions');
+        actions.appendChild(button('Check Now', {
+          iconName: 'refresh',
+          disabled: state.mode === 'development'
+            || state.status === 'checking'
+            || state.status === 'downloading'
+            || state.status === 'downloaded',
+          onClick: () => {
+            void updateBridge.checkForUpdates().then((next) => {
+              this.desktopUpdate = next;
+              this.renderTab();
+            });
+          },
+        }));
+        if (state.status === 'available') {
+          actions.appendChild(button(
+            state.canAutoInstall ? 'Download Update' : 'Open Download Page',
+            {
+              variant: 'primary',
+              iconName: 'folder',
+              onClick: () => {
+                if (state.canAutoInstall) {
+                  void updateBridge.downloadUpdate().then((next) => {
+                    this.desktopUpdate = next;
+                    this.renderTab();
+                  });
+                } else {
+                  void updateBridge.openUpdatePage();
+                }
+              },
+            },
+          ));
+        }
+        if (state.status === 'downloaded') {
+          actions.appendChild(button('Restart & Update', {
+            variant: 'primary',
+            iconName: 'restore',
+            onClick: () => updateBridge.installUpdate(),
+          }));
+        }
+        updates.appendChild(actions);
+      }
+    }
 
     /* -- what the game currently thinks ---------------------------------- */
 

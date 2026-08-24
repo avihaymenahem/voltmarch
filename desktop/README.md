@@ -32,16 +32,16 @@ devDependencies that would land on every Pages CI run, for a workflow that never
 
 The same logic is why `desktop:typecheck` is a separate script rather than a fifth invocation inside
 `npm run typecheck`: appending it would fail Pages CI on `TS2307: Cannot find module 'electron'`
-unless `deploy.yml` also gained `npm ci --prefix desktop`. Fold it into the gate on the same commit
-that puts desktop into CI, and not before. This is the identical trap CLAUDE.md documents for
-`server/node_modules`.
+unless `deploy.yml` also gained `npm ci --prefix desktop`. The tag-only `desktop.yml` workflow
+installs that package and invokes both gates; Pages remains unaware of Electron. This is the
+identical trap CLAUDE.md documents for `server/node_modules`.
 
 ## The three things that are easy to get wrong
 
 **1. `app://`, not `file://`.** A custom scheme registered `standard + secure + supportFetchAPI +
 codeCache`. Each privilege is load-bearing and each failure is silent:
 
-- `standard` — gives the custom scheme normal origin semantics and lets bridge v5 import old
+- `standard` — gives the custom scheme normal origin semantics and lets bridge v6 import old
   renderer state once. Active desktop persistence no longer uses that origin.
 - `secure` — `navigator.gpu` is `[SecureContext]`-gated. Without it `?gpu=webgpu` is permanently
   unreachable through `raiseGpuFailure`, i.e. the 1.74–1.89× faster renderer is dead on desktop.
@@ -111,11 +111,30 @@ same escape hatch.
 Boot flags reach the renderer as an ordinary query string — `--webgpu`, or `--vm-<flag>=<value>` for
 anything on the allowlist in `src/app-url.ts`. Unknown flags are dropped.
 
+## Release updates
+
+Installed NSIS builds check the GitHub release channel 20 seconds after launch and every four
+hours. A result never covers a match: the prompt is retained by the main process and appears on
+the title screen. Downloads start only after the player chooses **Download Update**, and install
+only after **Restart & Update** (or when the player later quits after a completed download).
+Options → Diagnostics → Desktop Updates is the manual check and recovery route.
+
+Portable builds use the same release discovery but cannot safely replace their running
+self-extracting executable. They show **Open Download Page** instead. Development builds never
+contact GitHub automatically.
+
+Every version tag runs `.github/workflows/desktop.yml`, which publishes all four updater-critical
+assets with deterministic URL-safe names: installer, installer blockmap, portable executable and
+`latest.yml`. Do not upload only the two executables: the installed updater cannot discover or
+verify a release without the manifest and blockmap. The first updater-capable version still needs
+one manual install; updates after that are in-app.
+
 ## Verification
 
-`npm test` covers the decision modules and the import boundary with **no Electron binary** — that is
-deliberate, because the desktop target is outside CI and tests needing the binary are the ones that
-rot. `npm run desktop:smoke` covers what only a real Electron can: that the scheme serves the module
+`npm test` covers the decision modules and the import boundary with **no Electron binary**.
+The tag-only Windows workflow installs the desktop dependencies, repeats the full source gates,
+then builds the real release artifacts. `npm run desktop:smoke` covers what only a local real
+Electron can: that the scheme serves the module
 bundle, that native state and binary save files survive a relaunch,
 that the texture worker did not silently disable itself, that no CSP violation fired, and that the
 main process and the renderer **agree** about which GPU is active.

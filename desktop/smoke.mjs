@@ -104,6 +104,13 @@ const storage = await page.evaluate(async () => {
 check(storage.keyValue, 'native userData key/value storage reads and writes', storage.error);
 check(storage.saveFile, 'native save file write + read completes', storage.error);
 
+// 3b. Development builds must expose the updater contract without touching
+// GitHub. This catches bridge/handler startup races and proves ordinary dev
+// mode cannot accidentally download or install a public release over itself.
+const updates = await page.evaluate(() => window.voltmarch.updateState());
+check(updates.mode === 'development', 'dev updater is exposed but network-disabled',
+  `${updates.mode}/${updates.status}`);
+
 // 4. The engine actually reached a running state.
 await page.evaluate(() => window.__VM.ready());
 check(true, '__VM.ready() resolved');

@@ -1,0 +1,86 @@
+name: Publish Windows desktop release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+            server/package-lock.json
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          npm ci --prefix desktop
+          npm ci --prefix server
+
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ('${{ github.ref_name }}' -ne "v$version") {
+            throw "Tag ${{ github.ref_name }} does not match package version $version"
+          }
+
+      - name: Verify source
+        shell: pwsh
+        run: |
+          npm run typecheck
+          npm run desktop:typecheck
+          npm test
+
+      - name: Build installer, portable executable and update manifest
+        run: npm run desktop:dist
+        env:
+          VITE_RELAY_URL: wss://relay.voltmarch.com/ws
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: voltmarch-windows-${{ github.ref_name }}
+          path: |
+            desktop/release/VOLTMARCH-Setup-*.exe
+            desktop/release/VOLTMARCH-Setup-*.exe.blockmap
+            desktop/release/VOLTMARCH-*-portable.exe
+            desktop/release/latest.yml
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = '${{ github.ref_name }}'
+          $assets = @(
+            "desktop/release/VOLTMARCH-Setup-$version.exe",
+            "desktop/release/VOLTMARCH-Setup-$version.exe.blockmap",
+            "desktop/release/VOLTMARCH-$version-portable.exe",
+            "desktop/release/latest.yml"
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset)) { throw "Missing release asset: $asset" }
+          }
+          gh release create $tag @assets --verify-tag --generate-notes --title "VOLTMARCH $version"

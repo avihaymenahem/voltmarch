@@ -49,6 +49,7 @@ import {
 } from './display';
 import type { DisplayInfo, DisplayPatch, DisplayPrefs, DisplayState } from './display';
 import { NativeStorage } from './storage';
+import { installDesktopUpdater } from './updater';
 
 // Test and diagnostic launches may isolate native settings/saves without
 // touching a player's real profile. Chromium's --user-data-dir does not change
@@ -619,6 +620,11 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(null); // an RTS has no use for a File menu
     installProtocol();
     installIpc();
+    // Register after ready so electron-updater can resolve resources/app-update.yml.
+    // Register BEFORE creating the renderer: preload may ask for the retained
+    // state as soon as the first page script runs. The network request itself
+    // is delayed, so the title screen still gets first use of disk/GPU/network.
+    installDesktopUpdater();
     createWindow();
 
     /*

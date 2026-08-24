@@ -10,7 +10,7 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 5` is a VERSION, not a boolean, and the accessor in
+ * `bridge: 6` is a VERSION, not a boolean, and the accessor in
  * `src/platform/desktop.ts` tests it by equality. An older packaged preload
  * running against a newer bundle therefore degrades to WEB BEHAVIOUR rather
  * than calling a method that does not exist — the same discipline as
@@ -32,9 +32,10 @@
  * ============================================================================
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type { DisplayPatch, DisplayState } from './display';
+import type { DesktopUpdateState } from './update-state';
 
 interface SyncReply<T = undefined> { ok: boolean; value?: T; error?: string }
 
@@ -47,7 +48,7 @@ function sync<T>(channel: string, ...args: unknown[]): T {
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 5,
+    bridge: 6,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -103,5 +104,17 @@ contextBridge.exposeInMainWorld(
      * launch and a late append is a silent no-op.
      */
     relaunch: (): void => ipcRenderer.send('vm:relaunch'),
+
+    /** GitHub Release updates. No Electron object or event crosses the bridge. */
+    updateState: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('vm:update-state'),
+    checkForUpdates: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('vm:update-check'),
+    downloadUpdate: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('vm:update-download'),
+    openUpdatePage: (): Promise<void> => ipcRenderer.invoke('vm:update-open'),
+    installUpdate: (): void => ipcRenderer.send('vm:update-install'),
+    onUpdateState: (listener: (state: DesktopUpdateState) => void): (() => void) => {
+      const wrapped = (_event: IpcRendererEvent, state: DesktopUpdateState): void => listener(state);
+      ipcRenderer.on('vm:update-state', wrapped);
+      return () => { ipcRenderer.removeListener('vm:update-state', wrapped); };
+    },
   }),
 );
