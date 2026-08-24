@@ -15,8 +15,20 @@ Cloudflare Pages settings:
 - Build output: `dist`
 - Pages Function binding: D1 database `voltmarch-launch-waitlist` as `WAITLIST`
 - Production custom domain: `voltmarch.com`
+- Build variable: `CF_WEB_ANALYTICS_TOKEN` (the public Cloudflare Web Analytics site token)
 
-Apply `migrations/0001_subscribers.sql` to the bound D1 database before opening signups.
+The Pages Function creates the subscribers table and index defensively on first use. The SQL in
+`migrations/0001_subscribers.sql` is the canonical schema for inspection or manual provisioning;
+running it before launch is optional and idempotent.
+
+## Domain topology
+
+`voltmarch.com` is marketing only. The playable GitHub Pages build lives at
+`play.voltmarch.com`, and the multiplayer relay remains at `relay.voltmarch.com`. Do not point the
+apex back at the game or attach `play` to this Pages project.
+
+Every push to `main` that changes `launch-site/` triggers the Cloudflare project. The root game
+workflow deploys independently to GitHub Pages from `dist/`.
 
 ## Key art
 

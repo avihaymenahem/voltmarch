@@ -105,10 +105,11 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-6. **Imported Soviet landmark structures** in `src/assets/buildings/soviets/` — original Meshy AI
-   generations commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned,
-   audited and integrated locally. Each keeps its procedural fallback; runtime assets, task IDs,
-   credit cost, source views and shipping budgets are recorded beside the GLBs and in
+6. **Imported faction landmark structures** in
+   `src/assets/buildings/{allies,meridian,reclamation,soviets}/` — original Meshy AI generations
+   commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
+   integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
+   source views and shipping budgets are recorded beside the GLBs and in
    `docs/ASSET_CONVERSION_MAP.md`. These are the only non-procedural game-world models currently
    shipped.
 
@@ -140,16 +141,12 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6126 across 244 files (+4 opt-in probes)
-                     #   11 of those are gated on `distIsCurrent()` — freshness, not mere
-                     #   existence — across `manual`, `webgpu-bundle-isolation` and
-                     #   `campaign-bundle-isolation`, so a tree with no current `dist/`
-                     #   reports 6115 and skips 15. Re-measure BOTH numbers rather than
-                     #   adjusting them by hand — run it once, `npm run build`, run it
-                     #   again. The gated set has held at 11 across eight re-measures;
-                     #   the OPT-IN set is what keeps growing (3 -> 4 on 2026-08-20).
+npm test             # vitest, currently 6362 passing across 268 files
+                     #   (+4 opt-in probes skipped in the ordinary run). Bundle-isolation
+                     #   specs require a CURRENT dist, not merely an existing one, so run
+                     #   `npm run build` first whenever their result is part of the claim.
 npm run build        # must exit 0
-npm run server:test  # the relay's own 60, via node --test
+npm run server:test  # the relay's own 102 in 22 suites, via node --test
 ```
 
 **The fourth typecheck invocation needs `server/node_modules`, and a root `npm install`
@@ -163,6 +160,30 @@ same locally before believing a red fourth invocation:
 ```bash
 npm ci --prefix server
 ```
+
+## Production web topology
+
+The three public hosts are deliberately separate:
+
+- **`voltmarch.com`** — the Cloudflare Pages launch/marketing site rooted at `launch-site/`.
+  Its `/api/subscribe` Pages Function stores normalized, deduplicated addresses in the D1 binding
+  named `WAITLIST` (`voltmarch-launch-waitlist`). The function creates its schema defensively;
+  `launch-site/migrations/0001_subscribers.sql` is the canonical idempotent copy.
+- **`play.voltmarch.com`** — the current game bundle deployed by
+  `.github/workflows/deploy.yml` to GitHub Pages. `public/CNAME` is load-bearing. The workflow bakes
+  `wss://relay.voltmarch.com/ws` and the public Cloudflare analytics token into the build.
+- **`relay.voltmarch.com`** — the Hostinger/nginx production WebSocket relay. It is not a web page.
+
+The canonical browser Origin is exported as `PUBLIC_WEB_ORIGIN` in `server/src/config.ts` and is
+unioned in even when `VM_ORIGINS` replaces the defaults, for the same operational reason as the
+desktop origin. Moving the playable site without changing that constant, the relay smoke-test
+origin, the DNS record, `public/CNAME`, and these docs creates a game that loads but cannot enter
+Multiplayer.
+
+Cloudflare Pages project: `voltmarch-coming-soon`, root `launch-site`, command `npm run build`,
+output `dist`, D1 binding `WAITLIST`. `CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a
+secret. Pushing `main` updates both static sites independently; the relay workflow stays manual
+because activating a release disconnects live rooms.
 
 **The first line said `npx tsc --noEmit` and that is NOT the gate.** `npm run typecheck`
 is now FOUR invocations — `tsc --noEmit`, then `-p tsconfig.node.json`, then

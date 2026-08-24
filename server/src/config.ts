@@ -93,6 +93,9 @@ function list(name: string, fallback: string[]): string[] {
  */
 export const DESKTOP_ORIGIN = 'app://voltmarch';
 
+/** The canonical browser build; VM_ORIGINS must never remove it. */
+export const PUBLIC_WEB_ORIGIN = 'https://play.voltmarch.com';
+
 export const CONFIG = {
   /** Bind address. LOOPBACK BY DEFAULT — nginx is the only thing that should reach this. */
   host: process.env.VM_HOST ?? '127.0.0.1',
@@ -114,12 +117,13 @@ export const CONFIG = {
    * `DESKTOP_ORIGIN` is unioned in rather than listed as a default, because
    * `VM_ORIGINS` REPLACES the default. See its own comment.
    */
-  origins: [DESKTOP_ORIGIN, ...list('VM_ORIGINS', [
+  origins: [DESKTOP_ORIGIN, PUBLIC_WEB_ORIGIN, ...list('VM_ORIGINS', [
+    PUBLIC_WEB_ORIGIN,
     'https://avihaymenahem.github.io',
     'http://localhost:5173',
     'http://localhost:4173',
     'http://127.0.0.1:5173',
-  ]).filter((o) => o !== DESKTOP_ORIGIN)],
+  ]).filter((o) => o !== DESKTOP_ORIGIN && o !== PUBLIC_WEB_ORIGIN)],
 
   /**
    * Set to '1' to accept any `Origin`. DEVELOPMENT ONLY, and the process

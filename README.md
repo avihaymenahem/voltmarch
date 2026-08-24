@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <a href="https://avihaymenahem.github.io/voltmarch/">
-    <img src="https://img.shields.io/badge/▶_PLAY_IN_BROWSER-avihaymenahem.github.io%2Fvoltmarch-35C8F0?style=for-the-badge&labelColor=0B1017" alt="Play in browser" />
+  <a href="https://play.voltmarch.com/">
+    <img src="https://img.shields.io/badge/▶_PLAY_IN_BROWSER-play.voltmarch.com-35C8F0?style=for-the-badge&labelColor=0B1017" alt="Play in browser" />
   </a>
 </p>
 
@@ -74,8 +74,9 @@ shared vocabulary of that genre.
 
 **Most art in the game world is generated from code.** Every unit and the full structure roster,
 including fallbacks for imported landmarks, is built from Three.js geometry, custom shaders and
-procedural canvas generators. Selected Soviet landmarks use original Meshy AI models conditioned
-and optimized by the local VOLTMARCH asset pipeline.
+procedural canvas generators. Authored landmark structures across all four factions use original
+Meshy AI models conditioned and optimized by the local VOLTMARCH asset pipeline, with procedural
+fallbacks retained for every imported family.
 
 The deliberate non-runtime-generated shipped content is:
 
@@ -95,10 +96,11 @@ The deliberate non-runtime-generated shipped content is:
   in-match communications surfaces.
   They are interface art, not meshes or textures used by the procedural game world; provenance and
   delivery details live in `public/campaign/README.md`.
-- **Selected Soviet landmark structures** in `src/assets/buildings/soviets/` — original Meshy AI
-  generations made for VOLTMARCH, with locally simplified geometry, conditioned faction palettes,
-  budgeted PBR maps and procedural runtime fallbacks. Exact task provenance and performance budgets
-  live beside the assets and in `docs/ASSET_CONVERSION_MAP.md`.
+- **Authored faction landmark structures** in `src/assets/buildings/{allies,meridian,reclamation,soviets}/`
+  — original Meshy AI generations made for VOLTMARCH, with locally simplified geometry,
+  conditioned faction palettes, budgeted PBR maps, LOD/shadow meshes and procedural runtime
+  fallbacks. Exact task provenance and performance budgets live beside the assets and in
+  `docs/ASSET_CONVERSION_MAP.md`.
 - **Campaign command surfaces** — faction-authored briefing and loading transitions, portrait
   communications with a persistent transmission log, operation-aware pause dossiers, save-row
   identity and medal-bearing after-action reports across all 37 operations. Briefings disclose
@@ -158,10 +160,24 @@ be able to stop the game from running; type errors are caught by `npm run typech
 
 ### Production analytics
 
-The public website uses Cloudflare Web Analytics when the Pages build receives the public
-`CF_WEB_ANALYTICS_TOKEN` repository variable. The beacon is allowed only on HTTPS pages at
+The hosted game uses Cloudflare Web Analytics when the GitHub Pages build receives the public
+`CF_WEB_ANALYTICS_TOKEN` repository variable. The launch site injects the same token during its
+Cloudflare Pages build. The beacon is allowed only on HTTPS pages at
 `voltmarch.com` and its subdomains; local development, GitHub previews and the Electron app never
 load it. Tracking uses Cloudflare's cookie-free analytics beacon and does not write browser storage.
+
+### Production topology
+
+The public hosts have separate jobs and must not be collapsed back onto one domain:
+
+- [`voltmarch.com`](https://voltmarch.com/) is the standalone coming-soon site from `launch-site/`,
+  deployed by Cloudflare Pages with the waitlist stored in D1.
+- [`play.voltmarch.com`](https://play.voltmarch.com/) is the latest game bundle, deployed by
+  `.github/workflows/deploy.yml` to GitHub Pages. `public/CNAME` preserves that custom domain.
+- `relay.voltmarch.com` is the production lockstep WebSocket relay. It is not a website.
+
+Pushing `main` updates both static deployments from their own roots. Relay releases remain an
+explicit workflow because a relay restart ends live matches.
 
 ## Multiplayer
 

@@ -11,7 +11,7 @@ fingerprints that came with them.
 npm ci
 npm run build
 npm start          # 127.0.0.1:8787
-npm test           # 100 tests in 21 suites, no sockets, no timers
+npm test           # 102 tests in 22 suites, no sockets, no timers
 npm run audit      # NOT a CI gate. Run it by hand; see `ws` is pinned, below
 ```
 
@@ -120,6 +120,12 @@ deployed relay and the desktop build would be refused at the handshake with 401 
 which the client, unable to see an HTTP status, reports to the player as "the
 match server is not answering". It weakens nothing: no browser can mint an `app:`
 origin, and the browser-driven case is the only one this check exists to close.
+
+**`https://play.voltmarch.com` is also unconditional.** It is the canonical
+GitHub Pages browser build, and a host-level `VM_ORIGINS` value must not turn a
+domain-only routing change into a 401 at the WebSocket upgrade. The deployment
+smoke test uses that exact Origin. `voltmarch.com` is the marketing site and has
+no reason to open a match socket.
 
 ### Resource caps
 
@@ -255,7 +261,8 @@ Two things worth reading before editing them:
   `1.33.0` for three major versions, and uncommenting it as written would have
   refused every real client.
 - **`VM_ORIGINS` REPLACES the compiled list.** Whatever is on that line is the
-  entire browser allowlist. Measured: with the shipped unit's single entry,
+  operator-provided browser allowlist. The fixed desktop and canonical web origins
+  are unioned in afterward. Measured: with the shipped unit's single entry,
   `http://localhost:5173` — which IS in `config.ts`'s fallback array — is
   answered 401. The desktop origin is the exception and must not be added there.
 - **Obtain the certificate BEFORE enabling the nginx site.** `certbot --nginx`

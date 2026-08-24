@@ -19,7 +19,7 @@ unprivileged Node service.
 
    ```bash
    RELAY_HOSTNAME=relay.voltmarch.com \
-   GAME_ORIGINS=https://avihaymenahem.github.io \
+   GAME_ORIGINS=https://play.voltmarch.com \
    LETSENCRYPT_EMAIL=operator@example.com \
    DEPLOY_PUBLIC_KEY='ssh-ed25519 AAAA... voltmarch-hostinger-deploy' \
    bash bootstrap-host.sh
@@ -38,7 +38,7 @@ unprivileged Node service.
    builds, uploads, activates, probes through loopback, then probes through
    Cloudflare. Any activation failure restores the previous release.
 
-The ordinary GitHub Pages workflow bakes
+The GitHub Pages workflow serving `play.voltmarch.com` bakes
 `wss://relay.voltmarch.com/ws` into the client. The game still probes the relay
 before enabling Multiplayer, so a relay outage does not leave a dead lobby
 button.
@@ -54,7 +54,7 @@ button.
 
 ## Routine releases
 
-Run the `Deploy multiplayer relay` workflow, then deploy the matching Pages
+Run the `Deploy multiplayer relay` workflow, then deploy the matching GitHub Pages
 client. The relay updates `VM_REQUIRE_BUILD` during activation, preventing two
 different deterministic builds from entering the same match.
 

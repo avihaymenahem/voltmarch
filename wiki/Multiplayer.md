@@ -2,13 +2,12 @@
 
 > ## Read this first
 >
-> **There is no public match server.** The multiplayer relay is written, tested and shipped as source
-> in this repository, and it is **not deployed anywhere**. The published build of the game connects to
-> nothing: the Multiplayer button on the main menu is disabled, with the hint *"No match server is
-> configured for this build."*
+> **The public relay is live.** Open the current browser build at
+> [play.voltmarch.com](https://play.voltmarch.com/). It connects to
+> `wss://relay.voltmarch.com/ws`, and the title screen probes that relay before enabling Multiplayer.
 >
-> Head-to-head play works, and works well, **if you run the relay yourself on your own machine or your
-> own server**. It is not currently something you can click on and find an opponent through.
+> If the relay is unavailable, Multiplayer stays disabled rather than opening a dead lobby. The
+> source and deployment templates remain in this repository for local development and self-hosting.
 >
 > Everything below describes what happens when you do run one.
 
@@ -42,13 +41,13 @@ npm run dev        # the game, on http://localhost:5173
 npm run server     # the relay, on ws://localhost:8787/ws
 ```
 
-The client resolves its relay address in this order: `?relay=` on the URL → a saved address in
-`localStorage` → a `VITE_RELAY_URL` baked in at build time → **`ws://localhost:8787/ws` if and only
+The client resolves its relay address in this order: `?relay=` on the URL → the platform settings
+store → a `VITE_RELAY_URL` baked in at build time → **`ws://localhost:8787/ws` if and only
 if the page is served from `localhost` or `127.0.0.1`** → nothing.
 
-That last fallback is why multiplayer works out of the box in local development and nowhere else.
-The published build is served from a public host, so it falls through to nothing and the menu button
-greys out.
+That last fallback makes multiplayer work out of the box in local development. The published build
+does not rely on it: GitHub Actions bakes `wss://relay.voltmarch.com/ws` into the game served from
+`play.voltmarch.com`.
 
 Before it lets you into the lobby the client probes the relay — it opens a socket, greets it, and
 requires an answer within four seconds. A relay that is not running produces *"the match server is
@@ -173,7 +172,7 @@ There is no AI takeover, no pause-on-disconnect and no rejoin.
 
 Stated plainly, because it is quicker than finding out:
 
-- No public or hosted match server.
+- The hosted service is anonymous 1v1 only; it has no account or social layer.
 - No reconnect, and no rejoin after a drop.
 - No spectators or observers.
 - No teams, no 2v2, no free-for-all — 1v1 only.

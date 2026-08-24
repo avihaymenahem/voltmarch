@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CONFIG, DESKTOP_ORIGIN, parseCount, parseList } from '../src/config';
+import { CONFIG, DESKTOP_ORIGIN, PUBLIC_WEB_ORIGIN, parseCount, parseList } from '../src/config';
 
 describe('a malformed limit refuses to start rather than falling back', () => {
   it('accepts an unset or empty variable as "use the default"', () => {
@@ -112,5 +112,16 @@ describe('the desktop build can always reach the relay', () => {
 
   it('is still an ALLOWLIST — the point of the check survives the addition', () => {
     assert.ok(!CONFIG.origins.includes('https://evil.example'));
+  });
+});
+
+describe('the canonical web build can always reach the relay', () => {
+  it('survives a host-level VM_ORIGINS replacement', () => {
+    assert.equal(PUBLIC_WEB_ORIGIN, 'https://play.voltmarch.com');
+    assert.ok(CONFIG.origins.includes(PUBLIC_WEB_ORIGIN));
+  });
+
+  it('is listed exactly once', () => {
+    assert.equal(CONFIG.origins.filter((origin) => origin === PUBLIC_WEB_ORIGIN).length, 1);
   });
 });

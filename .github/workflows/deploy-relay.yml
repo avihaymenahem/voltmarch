@@ -19,7 +19,7 @@ jobs:
       RELAY_PORT: ${{ vars.RELAY_SSH_PORT || '22' }}
       RELAY_USER: voltmarch-deploy
       RELAY_URL: wss://relay.voltmarch.com/ws
-      GAME_ORIGIN: https://avihaymenahem.github.io
+      GAME_ORIGIN: https://play.voltmarch.com
       RELAY_PRIVATE_KEY: ${{ secrets.RELAY_SSH_PRIVATE_KEY }}
       RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
 

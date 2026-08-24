@@ -12,10 +12,11 @@ across four chapters**, and [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) l
 its par. It is deliberately walled off from skirmish progression: an operation
 advances no mission and grants no unlock, and the same page says why.
 
-There is also deterministic-lockstep 1v1, with one caveat worth stating on the front page rather
-than burying: the relay is written and tested, but it is not deployed to any public server. You can
-play head-to-head today by running the relay yourself — see [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) — and not by
-clicking a button.
+There is also hosted deterministic-lockstep 1v1. The public game at
+[play.voltmarch.com](https://play.voltmarch.com/) connects to the production relay at
+`relay.voltmarch.com`; the title screen probes it before enabling Multiplayer, so an outage fails
+closed instead of leaving a dead lobby. See [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer)
+for the lockstep model, lobby rules and self-hosting notes.
 
 It is not a port or a clone of anything. The conventions it uses — harvester economy, build queues,
 tech tiers, a sidebar with four tabs — are the shared vocabulary of the late-90s and 2000s
