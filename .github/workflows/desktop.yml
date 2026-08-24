@@ -57,7 +57,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run desktop:typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm test
+          # Pages owns the complete 6,000+ simulation gate. Repeating it on a
+          # two-core Windows release runner took an unbounded amount of time;
+          # this job owns the desktop boundary, update state and persistence.
+          npm exec vitest run tests/desktop-updater.spec.ts tests/desktop-shell.spec.ts tests/platform-storage.spec.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build installer, portable executable and update manifest
