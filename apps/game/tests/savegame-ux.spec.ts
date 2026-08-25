@@ -322,7 +322,7 @@ import {
   type SaveSlotMeta,
 } from '../src/shell/LoadGame';
 
-import { loadHint, MainMenuScreen } from '../src/shell/MainMenu';
+import { loadHint, MainMenuScreen, menuBackendLabel } from '../src/shell/MainMenu';
 import { formatSlotName } from '../src/shell/Shell';
 import type { Shell } from '../src/shell/Shell';
 import { PROFILE_STORAGE_KEY } from '../src/progression/profile-store';
@@ -781,6 +781,17 @@ describe('autosave — deferral off a frame that is already behind', () => {
  * ========================================================================== */
 
 describe('main menu — Load Game is enabled only when there is something to load', () => {
+  it('reports the requested backend before the deferred title renderer exists', () => {
+    expect(menuBackendLabel(undefined, '?gpu=webgpu')).toBe('WebGPU');
+    expect(menuBackendLabel(undefined, '')).toBe('WebGL2');
+  });
+
+  it('reports the live backend once the title renderer exists', () => {
+    expect(menuBackendLabel('webgpu', '')).toBe('WebGPU');
+    expect(menuBackendLabel('webgl2-fallback', '?gpu=webgpu')).toBe('WebGPU → WebGL2');
+    expect(menuBackendLabel('webgl', '?gpu=webgpu')).toBe('WebGL2');
+  });
+
   it('keeps the original sentence for the empty case', () => {
     expect(loadHint(0)).toBe('No saves');
     expect(loadHint(1)).toBe('1 save');

@@ -87,6 +87,12 @@ const secure = await page.evaluate(() => ({
 }));
 check(secure.isSecureContext === true, 'renderer is a secure context', secure.origin);
 check(secure.hasGpu === true, 'navigator.gpu is present');
+check(new URLSearchParams(secure.search).get('gpu') === 'webgpu',
+  'an ordinary desktop launch defaults to WebGPU', secure.search);
+await page.waitForSelector('.vm-menu-foot', { timeout: 60_000 });
+const menuFooter = await page.locator('.vm-menu-foot').textContent();
+check(menuFooter?.includes('WebGPU') === true && !menuFooter.includes('· WebGL2'),
+  'the first-paint menu footer reports WebGPU before the backdrop boots', menuFooter?.trim() ?? '');
 
 // 3. THE STORAGE GUARD. Exercise the native bridge, including opaque save bytes.
 const storage = await page.evaluate(async () => {
@@ -195,15 +201,15 @@ await second.app.close();
  * Run 3 — the WebGPU arm, and the SECOND INDEPENDENT READ of the adapter.
  *
  * `capabilities.adapter` is populated from `device.adapterInfo`, which only
- * exists on the node path — so on the default WebGL boot the renderer has
- * nothing to say about which GPU it got, and the main process's getGPUInfo is
- * the only witness. Here both can speak, and they must agree.
+ * exists after the deferred WebGPU renderer has booted. Run 1 checks the
+ * first-paint request and label; here both the live renderer and main process
+ * can speak about the selected GPU, and they must agree.
  *
  * This also proves ?gpu=webgpu is reachable at all under app://, which is what
  * `secure: true` on the scheme buys and what `raiseGpuFailure` would otherwise
  * refuse.
  * -------------------------------------------------------------------------- */
-console.log('\n=== run 3 (--webgpu) ===');
+console.log('\n=== run 3 (live WebGPU renderer) ===');
 const third = await launch(['--webgpu']);
 await third.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
 await third.page.evaluate(() => window.__VM.ready());

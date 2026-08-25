@@ -102,8 +102,10 @@ bounds opens the window somewhere the player cannot see, and in fullscreen there
 title bar to drag it back by. Both settings are applied before any UI exists, so both need the
 same escape hatch.
 
-Boot flags reach the renderer as an ordinary query string — `--webgpu`, or `--vm-<flag>=<value>` for
-anything on the allowlist in `apps/game/src/app-url.ts`. Unknown flags are dropped.
+The desktop renderer defaults to WebGPU and writes `?gpu=webgpu` on every ordinary launch. Boot
+flags still reach the renderer as an ordinary query string: `--vm-<flag>=<value>` for anything on
+the allowlist in `apps/desktop/src/app-url.ts`. `--vm-gpu=webgl` is the explicit diagnostic escape
+hatch; unknown flags are dropped.
 
 ## Release updates
 

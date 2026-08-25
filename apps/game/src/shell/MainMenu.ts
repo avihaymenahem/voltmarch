@@ -48,6 +48,7 @@ import {
 import { readProgression } from './progression-link';
 import { probeRelay, relayKnownReachable, unavailableReason } from './net-link';
 import { tutorialMenuHint, tutorialUntouched } from './Tutorial';
+import { requestedBackend, type LiveBackend } from '../render/backend';
 
 /* ==========================================================================
  * MAIN MENU
@@ -112,6 +113,18 @@ function hintFor(reason: string, known: boolean | null): string {
   if (reason !== '') return reason;
   if (known === null) return 'checking…';
   return known ? 'duel + co-op online' : 'match server is not answering';
+}
+
+/**
+ * The title menu mounts before its deferred battlefield, so there is no live
+ * renderer to inspect on first paint. In that one state the requested backend
+ * is the truthful answer; once a renderer exists its live backend wins.
+ */
+export function menuBackendLabel(live: LiveBackend | undefined, search: string): string {
+  const backend = live ?? requestedBackend(search);
+  return backend === 'webgpu'
+    ? 'WebGPU'
+    : backend === 'webgl2-fallback' ? 'WebGPU → WebGL2' : 'WebGL2';
 }
 
 export class MainMenuScreen implements Screen {
@@ -268,9 +281,8 @@ export class MainMenuScreen implements Screen {
     // game. Treat that exactly like a shell still waiting for its background
     // scene rather than making the footer a new mount requirement.
     const backend = (this.shell as Partial<Shell>).getGame?.()?.ctx.handle.backend;
-    const backendLabel = backend === 'webgpu'
-      ? 'WebGPU'
-      : backend === 'webgl2-fallback' ? 'WebGPU → WebGL2' : 'WebGL2';
+    const search = typeof location === 'undefined' ? '' : location.search;
+    const backendLabel = menuBackendLabel(backend, search);
     foot.appendChild(el('span', undefined, `Build ${build} · ${backendLabel}`));
     host.appendChild(foot);
   }

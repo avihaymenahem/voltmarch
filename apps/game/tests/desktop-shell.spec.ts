@@ -193,12 +193,16 @@ describe('desktop app url', () => {
     expect(search.get('seed')).toBe('4242');
   });
 
-  it('emits no query string at all when no flags were passed', () => {
-    expect(appUrl(flagsFromArgv(['electron', '.']))).toBe(`${ORIGIN}/index.html`);
+  it('defaults every desktop launch to WebGPU', () => {
+    expect(appUrl(flagsFromArgv(['electron', '.']))).toBe(`${ORIGIN}/index.html?gpu=webgpu`);
   });
 
   it('--webgpu is shorthand for ?gpu=webgpu', () => {
     expect(flagsFromArgv(['electron', '.', '--webgpu']).get('gpu')).toBe('webgpu');
+  });
+
+  it('keeps an explicit WebGL override for renderer diagnostics', () => {
+    expect(flagsFromArgv(['electron', '.', '--vm-gpu=webgl']).get('gpu')).toBe('webgl');
   });
 
   it('DROPS flags that are not on the allowlist', () => {

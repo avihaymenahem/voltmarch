@@ -69,13 +69,13 @@ export const ALLOWED_FLAGS: readonly string[] = [
 /**
  * Build the query string from `process.argv`.
  *
- * Accepts `--vm-<flag>=<value>` (e.g. `--vm-map=sunder-atoll`) plus the
- * shorthand `--webgpu`. Unknown flags are DROPPED rather than passed through —
- * see `ALLOWED_FLAGS`.
+ * Desktop defaults to WebGPU. Accepts `--vm-<flag>=<value>` (e.g.
+ * `--vm-map=sunder-atoll`) plus the legacy shorthand `--webgpu`; an explicit
+ * `--vm-gpu=webgl` remains available for renderer diagnostics. Unknown flags
+ * are DROPPED rather than passed through — see `ALLOWED_FLAGS`.
  */
 export function flagsFromArgv(argv: readonly string[]): URLSearchParams {
-  const q = new URLSearchParams();
-  if (argv.includes('--webgpu')) q.set('gpu', 'webgpu');
+  const q = new URLSearchParams({ gpu: 'webgpu' });
 
   for (const a of argv) {
     const m = /^--vm-([a-z]+)=(.*)$/.exec(a);
