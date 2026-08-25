@@ -36,7 +36,7 @@ narrative"** from the day it was written, and it was a scope fence around THIS d
 a claim about the engine. It stopped being readable that way the moment a second system wanted
 triggers, and it was cited as a prohibition twice before it was corrected here:
 
-- **The tutorial** (`src/shell/tutorial-steps.ts`) is scripted triggers and nothing else. Its header
+- **The tutorial** (`apps/game/src/shell/tutorial-steps.ts`) is scripted triggers and nothing else. Its header
   cited this row as reason 1 of three for not reusing the mission model. **That reason is retired.**
   Reasons 2 and 3 are the load-bearing ones and are untouched: a mission advances a COUNTER off an
   event while a tutorial step measures a DELTA against a per-step baseline, which the rule language
@@ -51,7 +51,7 @@ triggers, and it was cited as a prohibition twice before it was corrected here:
 
 **What survives unchanged is the sentence that was actually doing work:** the missions in this
 document are counters and match objectives, they are drawn rather than authored, and nothing in
-`src/data/Missions.ts` is a story beat. Widening `MissionRule` to carry a campaign trigger is still
+`apps/game/src/data/Missions.ts` is a story beat. Widening `MissionRule` to carry a campaign trigger is still
 refused, and `validateMissions` refuses a campaign rule kind outright rather than trusting the type.
 The fence moved; it did not come down.
 
@@ -73,15 +73,15 @@ is what stops the two systems feeling bolted together.
 ## Architecture
 
 ```
-src/progression/
+apps/game/src/progression/
   profile-store.ts      versioned platform profile; export/import as JSON
   MissionTracker.ts     subscribes to the event bus, advances mission counters
   UnlockGate.ts         resolves "what can this player build right now"
   progression.system.ts SystemModule; wires the tracker to channels
-src/data/Missions.ts    the declarative mission table
-src/ui/Objectives.ts    in-match objective panel
-src/shell/Missions.ts   menu screen: chains, progress, rewards
-src/shell/Profile.ts    Service Record: career stats, faction wins, medals, honours collection
+apps/game/src/data/Missions.ts    the declarative mission table
+apps/game/src/ui/Objectives.ts    in-match objective panel
+apps/game/src/shell/Missions.ts   menu screen: chains, progress, rewards
+apps/game/src/shell/Profile.ts    Service Record: career stats, faction wins, medals, honours collection
 ```
 
 ### The determinism boundary — non-negotiable
@@ -152,7 +152,7 @@ So the rule the other three do not cover:
 > **Content required to REACH THE ENEMY is never progression-gated.**
 
 It is answered from the **map**, not from the profile — `mapForcesSeaCrossing` in
-`src/sim/LandRoutes.ts` is true only where there is navigable water AND the ground is split into more
+`apps/game/src/sim/LandRoutes.ts` is true only where there is navigable water AND the ground is split into more
 than one land mass, which today is `Sunder Atoll` and nothing else. On every land map, and on both
 half-plane sea maps, a dock stays exactly as gated as it was: there the sea is a second front, not
 the only one. The exemption covers the dock and the amphibious lift and stops there
@@ -160,7 +160,7 @@ the only one. The exemption covers the dock and the amphibious lift and stops th
 a barge is how the army arrives.
 
 Deriving it from the map rather than the profile is also what keeps it PvP-safe: every client shares
-the battlefield, so every client gets the same answer. `tests/sea-crossing-gate.spec.ts` is the gate.
+the battlefield, so every client gets the same answer. `apps/game/tests/sea-crossing-gate.spec.ts` is the gate.
 
 ### What is gated
 

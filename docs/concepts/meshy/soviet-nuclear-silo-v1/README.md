@@ -57,7 +57,7 @@ Maximum spend: 30 credits.
 - PBR retexture task: `01a02d53-4dad-7fd6-8710-933f822ce8f1` (10 credits).
 - The coherent 1,903,696-triangle source was locally reduced to 26,642 triangles, then xatlas
   unwrapped at 2048 resolution and 8 px padding with zero bounds drift.
-- Shipping body: `src/assets/buildings/soviets/nuclear-silo.glb`; 15,923 triangles, one static
+- Shipping body: `apps/game/src/assets/buildings/soviets/nuclear-silo.glb`; 15,923 triangles, one static
   primitive/material, 3.94 MiB.
 - Material maps: 2K base colour, 2K normal and 1K packed metal-roughness. The deterministic Soviet
   field pass restores olive shell paint while retaining the authored continuous crimson launch-ring,

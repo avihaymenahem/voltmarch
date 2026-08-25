@@ -22,7 +22,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DIST = path.resolve(HERE, '../..', 'dist');
+const DIST = path.resolve(HERE, '../..', 'apps/game/dist');
 
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--port');

@@ -317,7 +317,7 @@ means it.
 > the guard point was written and never read. Both were true when they were
 > written and stopped being true when the leash was wired. The page did not
 > notice, which is why the numbers above are now derived from the stance table by
-> `tests/wiki-numbers.spec.ts` rather than transcribed.
+> `apps/game/tests/wiki-numbers.spec.ts` rather than transcribed.
 
 **Guard (G)** puts a unit into a holding state: it stays put, engages whatever
 comes into range, and counts as resting for regeneration. It does not return to

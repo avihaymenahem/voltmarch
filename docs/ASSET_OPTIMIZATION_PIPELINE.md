@@ -65,7 +65,7 @@ BC7 residency falls from 624 -> 104 MiB (-83.3%); ETC2/BC1-capable 4bpp targets 
 individual promoted GLB is smaller than its source, so a family total cannot hide a transfer regression.
 
 Three 0.185 resolves its own matching transcoder JS/WASM through module URLs, so Vite hashes exactly one
-copy into both web and Electron builds. Do not also stage `public/basis`: that duplicates about 585 KiB.
+copy into both web and Electron builds. Do not also stage `apps/game/public/basis`: that duplicates about 585 KiB.
 The shared runtime `KTX2Loader` detects either the initialized WebGL or WebGPU renderer, uses two workers,
 and is disposed at match teardown. If a compressed asset still fails, the validated procedural model
 remains the runtime fallback. Never publish `KHR_texture_basisu` assets without proving the transcoder is

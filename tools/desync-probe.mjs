@@ -302,7 +302,7 @@ async function traceSim(page, ticks, interval) {
 async function startPreview() {
   if (!noBuild) {
     await build(ROOT, { log: console.log });
-  } else if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
+  } else if (!existsSync(join(ROOT, 'apps/game/dist', 'index.html'))) {
     throw new Error('--no-build was given but dist/index.html does not exist.');
   }
 

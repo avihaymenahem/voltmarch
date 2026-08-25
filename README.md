@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/brand/logo-360.png" alt="VOLTMARCH" width="380" />
+  <img src="apps/game/public/brand/logo-360.png" alt="VOLTMARCH" width="380" />
 </p>
 
 <p align="center">
@@ -45,6 +45,12 @@ refineries, power grids that gate production, base placement, fog of war, superw
 capture, neutral civilian structures worth fighting over, commander powers bought in the match,
 free-for-alls of up to four armies, online duels and two-human co-op against one or two AI armies,
 and a modern bottom-anchored HUD.
+
+Cold start is split deliberately: the title menu paints over lightweight key art and accepts input
+before the match engine is fetched or initialized. Engine code is prefetched after first paint; the
+optional live title battlefield starts only after a 12-second quiet window and crossfades over the
+art when ready. Starting a match during that window cancels the decorative work, and boot logs
+report system initialization and shader compilation separately so regressions have an owner.
 
 The civilian block is the thing engineer capture and infantry garrisons point AT: two mirrored
 hamlets sit on the perpendicular bisector between the two openings — equidistant from both armies —
@@ -96,23 +102,23 @@ fallbacks retained for every imported family.
 
 The deliberate non-runtime-generated shipped content is:
 
-- **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
+- **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `apps/game/public/fonts/` — Latin subset, four
   weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
   still runs offline and from a `file://` path.
-- **The brand lockup** in `public/brand/` — the wordmark on the title screen, and the favicons and
+- **The brand lockup** in `apps/game/public/brand/` — the wordmark on the title screen, and the favicons and
   app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
-- **The loading screen key art**, also in `public/brand/` — a supplied illustration, derived to
+- **The loading screen key art**, also in `apps/game/public/brand/` — a supplied illustration, derived to
   WebP by `tools/splash.mjs` and used full-bleed behind the boot curtain. It carries its own
   painted wordmark, so the curtain hides the DOM one on any viewport whose crop keeps the painted
   one whole; that threshold is measured off the artwork rather than picked, and
-  `tests/boot-splash.spec.ts` re-derives it. A missing or corrupt file degrades to exactly the
+  `apps/game/tests/boot-splash.spec.ts` re-derives it. A missing or corrupt file degrades to exactly the
   curtain that shipped before it, wordmark included.
-- **Campaign character portraits** in `public/campaign/portraits/` — the nineteen-character authored
+- **Campaign character portraits** in `apps/game/public/campaign/portraits/` — the nineteen-character authored
   command cast, original AI-assisted artwork generated for VOLTMARCH's briefing, debrief and
   in-match communications surfaces.
   They are interface art, not meshes or textures used by the procedural game world; provenance and
-  delivery details live in `public/campaign/README.md`.
-- **Authored faction landmark structures** in `src/assets/buildings/{allies,meridian,reclamation,soviets}/`
+  delivery details live in `apps/game/public/campaign/README.md`.
+- **Authored faction landmark structures** in `apps/game/src/assets/buildings/{allies,meridian,reclamation,soviets}/`
   — original Meshy AI generations made for VOLTMARCH, with locally simplified geometry,
   conditioned faction palettes, budgeted PBR maps, LOD/shadow meshes and procedural runtime
   fallbacks. Exact task provenance and performance budgets live beside the assets and in
@@ -126,7 +132,7 @@ The deliberate non-runtime-generated shipped content is:
   wins by faction, campaign medals and mission completion, plus a durable honours gallery derived
   from all 17 earnable insignia and field decals. Every locked honour names its awarding mission and
   live progress; every earned one remains visible after its end-of-match reveal.
-- **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
+- **Recorded audio** in `apps/game/public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
   announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a
@@ -136,16 +142,16 @@ The deliberate non-runtime-generated shipped content is:
   rendered through the same offline bake as a synthesised recipe, inheriting the same saturation,
   normalisation and variant set, and every one keeps its recipe as a fallback so a missing file
   degrades to the synthesised bank rather than to silence. See
-  [`public/audio/README.md`](public/audio/README.md).
+  [`apps/game/public/audio/README.md`](apps/game/public/audio/README.md).
 
-"Shipped" means `public/` — what the browser downloads. Three PNGs in `docs/` on this page are a
+"Shipped" means `apps/game/public/` — what the browser downloads. Three PNGs in `docs/` on this page are a
 different thing, and the product loads none of them.
 
 Two are screenshots of the running game, captured by `npm run shots` and downscaled to 1640 px:
 photographs of procedurally generated art rather than art. The third is `docs/hero.png`, the
 illustration at the top, which is **key art and not a screenshot** — it was drawn, not rendered by
 this engine, which is why it is captioned as such and why the in-engine capture sits directly
-beneath it. None of them is in the credits screen, because that screen is checked against `public/`
+beneath it. None of them is in the credits screen, because that screen is checked against `apps/game/public/`
 and a line for a file the game never loads would make it less true, not more. They are still binary
 files in the repository and this list would be dishonest by omission without them.
 
@@ -156,15 +162,18 @@ npm install
 npm run dev
 ```
 
-Then open <http://localhost:5173>.
+Then open <http://localhost:5173>. The repository is an npm workspace managed by
+Turborepo; one root install supplies every app and package.
 
 | script | what it does |
 | --- | --- |
 | `npm run dev` | dev server on port 5173 |
-| `npm run build` | production bundle into `dist/` |
+| `npm run build` | production bundle into `apps/game/dist/` |
 | `npm run preview` | serve the built bundle |
-| `npm run typecheck` | `tsc --noEmit` across all four programs (game, node, tests, relay) |
-| `npm test` | vitest unit + determinism suites |
+| `npm run typecheck` | typecheck every workspace through Turborepo |
+| `npm test` | every workspace's complete test suite |
+| `npm run check:affected` | typecheck, scoped-test and build only workspaces changed from the Git base |
+| `npm run check:all` | the complete release-equivalent monorepo gate |
 | `npm run shots` | capture the visual-critique screenshot set into `shots/` |
 | `npm run soak` | the determinism suite alone, for when only that is in question |
 | `npm run server` | build and run the multiplayer relay on `127.0.0.1:8787` |
@@ -190,10 +199,10 @@ load it. Tracking uses Cloudflare's cookie-free analytics beacon and does not wr
 
 The public hosts have separate jobs and must not be collapsed back onto one domain:
 
-- [`voltmarch.com`](https://voltmarch.com/) is the standalone coming-soon site from `launch-site/`,
+- [`voltmarch.com`](https://voltmarch.com/) is the standalone coming-soon site from `apps/website/`,
   deployed by Cloudflare Pages with the waitlist stored in D1.
 - [`play.voltmarch.com`](https://play.voltmarch.com/) is the latest game bundle, deployed by
-  `.github/workflows/deploy.yml` to GitHub Pages. `public/CNAME` preserves that custom domain.
+  `.github/workflows/deploy.yml` to GitHub Pages. `apps/game/public/CNAME` preserves that custom domain.
 - `relay.voltmarch.com` is the production lockstep WebSocket relay. It is not a website.
 
 Pushing `main` updates both static deployments from their own roots. Relay releases remain an
@@ -212,8 +221,8 @@ co-op adds teammate-only right-click minimap pings. Both are presentation channe
 lockstep command stream: they cannot alter a tick, checksum or replayed order. Replay headers retain
 commander names for meaningful post-match and browser labels while older recordings remain valid.
 
-It was largely already built. [`src/game/Replay.ts`](src/game/Replay.ts) records the command stream
-by apply tick and re-issues it into a live bus; [`src/game/Checksum.ts`](src/game/Checksum.ts)
+It was largely already built. [`apps/game/src/game/Replay.ts`](apps/game/src/game/Replay.ts) records the command stream
+by apply tick and re-issues it into a live bus; [`apps/game/src/game/Checksum.ts`](apps/game/src/game/Checksum.ts)
 fingerprints the simulation per tick with per-block divergence reporting. Those are exactly a
 lockstep client and a desync detector, written for replay and pointed at a socket here — so a PvP
 match also produces a correct replay, with no extra machinery.
@@ -228,9 +237,10 @@ npm run server          # the relay, on 127.0.0.1:8787
 npm run desync-probe    # do the unspecified Math.* functions agree across engines?
 ```
 
-The relay lives in [`server/`](server/README.md) with its own `package.json` and a tsconfig whose
-include list is four files — importing `three` or `src/sim/**` is a build error rather than a
-review note. Its README carries the threat model, the limits, and the defects an audit of it
+The relay lives in [`apps/relay/`](apps/relay/README.md) and depends only on the shared
+[`packages/protocol/`](packages/protocol/) and [`packages/game-types/`](packages/game-types/)
+workspaces. Importing `three` or `apps/game/src/sim/**` is a build error rather than a review note.
+Its README carries the threat model, the limits, and the defects an audit of it
 found. Multiplayer only appears in the menu when a relay actually answers a handshake; set
 `VITE_RELAY_URL` at build time, or `?relay=` for a one-off.
 
@@ -297,28 +307,33 @@ bright, flat and grey-green while everyone looking at it insists it is fine. A m
 ## Layout
 
 ```
-src/core/      simulation spine — types, config, EntityStore/World, event buses, fixed-step loop
-src/core/config.ts   art direction + world scale; the single values file that drives the look
-src/render/    renderer, scene rig, camera rig, post chain, RenderBridge, __VM debug handle
-src/game/      Bootstrap, GameContext, glob system discovery, scenario router
-src/shell/     main menu, skirmish setup, multiplayer lobby, settings, pause, victory/defeat
-src/ui/        the in-match HUD and in-world overlay
-src/input/     action catalogue, key binding, selection, order issuing — every player command
-src/sim/       pathfinding, combat, economy, production, AI, vision, superweapons, capture
-src/progression/ missions, objectives, unlocks, campaign save state
-src/art/       procedural geometry — shape primitives, greeble, unit and building factories
-src/world/     terrain, water, roads, decals, prop scatter
-src/vfx/       particles, beams, explosions, tracers, pooled scene lights
-src/audio/     WebAudio mixer, recorded SFX/voice/announcer banks, adaptive streamed score
-src/net/       lockstep protocol, turn scheduling, relay merge rules, socket, session
-src/data/      unit/building/faction/armour tables
-server/        the multiplayer relay — no game code, four-file import closure
+apps/game/      browser game, public assets, Vite config and the complete game test corpus
+apps/desktop/   Electron shell, packaging and desktop-only boundary tests
+apps/relay/     deterministic WebSocket relay and host deployment scripts
+apps/website/   standalone Cloudflare Pages marketing site and waitlist function
+packages/game-types/ dependency-free simulation and wire-facing type vocabulary
+packages/protocol/   validated multiplayer protocol and deterministic turn merge
+apps/game/src/core/      simulation spine — config, EntityStore/World, event buses, fixed-step loop
+apps/game/src/core/config.ts   art direction + world scale; the single values file that drives the look
+apps/game/src/render/    renderer, scene rig, camera rig, post chain, RenderBridge, __VM debug handle
+apps/game/src/game/      Bootstrap, GameContext, glob system discovery, scenario router
+apps/game/src/shell/     main menu, skirmish setup, multiplayer lobby, settings, pause, victory/defeat
+apps/game/src/ui/        the in-match HUD and in-world overlay
+apps/game/src/input/     action catalogue, key binding, selection, order issuing — every player command
+apps/game/src/sim/       pathfinding, combat, economy, production, AI, vision, superweapons, capture
+apps/game/src/progression/ missions, objectives, unlocks, campaign save state
+apps/game/src/art/       procedural geometry — shape primitives, greeble, unit and building factories
+apps/game/src/world/     terrain, water, roads, decals, prop scatter
+apps/game/src/vfx/       particles, beams, explosions, tracers, pooled scene lights
+apps/game/src/audio/     WebAudio mixer, recorded SFX/voice/announcer banks, adaptive streamed score
+apps/game/src/net/       lockstep protocol, turn scheduling, relay merge rules, socket, session
+apps/game/src/data/      unit/building/faction/armour tables
 tools/         screenshot harness, grade probe, cross-engine desync probe, brand assets
 docs/          look bible, visual DNA, architecture
 ```
 
-A module joins the game by existing: drop a `*.system.ts` under `src/` that default-exports a
-`SystemModule` and [`src/game/Systems.ts`](src/game/Systems.ts) discovers it by glob. Nothing has to
+A module joins the game by existing: drop a `*.system.ts` under `apps/game/src/` that default-exports a
+`SystemModule` and [`apps/game/src/game/Systems.ts`](apps/game/src/game/Systems.ts) discovers it by glob. Nothing has to
 be registered by hand.
 
 ## Stack

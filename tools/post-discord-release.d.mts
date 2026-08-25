@@ -4,6 +4,14 @@ export interface GitHubRelease {
   readonly url: string;
   readonly body: string;
   readonly publishedAt: string;
+  readonly assets: readonly string[];
+}
+
+export type DeploymentTarget = 'desktop' | 'relay' | 'web';
+
+export interface DeploymentReceipt {
+  readonly targets: readonly DeploymentTarget[];
+  readonly sha: string;
 }
 
 export interface DiscordReleasePayload {
@@ -23,11 +31,16 @@ export interface DiscordReleasePayload {
 
 export function validateWebhookUrl(raw: unknown): string;
 export function normaliseRelease(raw: unknown): GitHubRelease;
-export function releaseLog(release: GitHubRelease): string;
-export function discordPayload(release: GitHubRelease): DiscordReleasePayload;
+export function normaliseDeployment(raw: unknown, release: GitHubRelease): DeploymentReceipt;
+export function releaseLog(release: GitHubRelease, deployment: DeploymentReceipt): string;
+export function discordPayload(
+  release: GitHubRelease,
+  deployment: DeploymentReceipt,
+): DiscordReleasePayload;
 export function releaseFromGitHub(tag: string): GitHubRelease;
 export function postRelease(
   webhook: string,
   release: GitHubRelease,
+  deployment: DeploymentReceipt,
   fetchImpl?: typeof fetch,
 ): Promise<void>;

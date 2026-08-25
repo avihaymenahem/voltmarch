@@ -1,0 +1,86 @@
+# ============================================================================
+# VOLTMARCH desktop — electron-builder
+# ============================================================================
+# Four values here are EXPENSIVE TO CHANGE after the first public build, and
+# the Electron plan §6 says to decide them up front rather than discover
+# them later:
+#
+#   appId         changing it orphans every existing install — the updater
+#                 installs alongside rather than over.
+#   artifactName  feeds the asset names in latest.yml; changing it mid-stream
+#                 breaks in-flight update checks.
+#   perMachine    false (per-user) is right for a game: no UAC prompt, no admin.
+#                 Switching later leaves users with two installs.
+#   the app:// host (in src/app-url.ts, not here) is the STORAGE ORIGIN, so
+#                 changing it deletes everyone's saves.
+# ============================================================================
+
+appId: com.three-dev.voltmarch
+productName: VOLTMARCH
+copyright: © 2026 Avihay Menahem
+
+directories:
+  output: release
+  buildResources: build
+
+# WHAT GOES IN THE ASAR.
+#
+# The default is everything under the app directory — which is `desktop/`, not
+# the repo root, so src/, tests/, tools/, docs/ and server/ were never at risk.
+# Stated explicitly anyway: this is the list of things a player receives, and it
+# should be readable rather than inferred.
+files:
+  - out/**/*
+  - package.json
+
+# The game itself, unpacked beside the asar. It is the UNMODIFIED `vite build`
+# output — the same bytes GitHub Pages serves — and main.ts resolves it through
+# `process.resourcesPath` when packaged.
+#
+# Not inside the asar: the 6.9 MB of Ogg is already compressed, and the audio
+# engine fetches it through the custom protocol, which reads from disk.
+extraResources:
+  - from: ../game/dist
+    to: dist
+    filter:
+      - '**/*'
+
+win:
+  target:
+    # NSIS is the installer; portable is a single .exe that needs no install and
+    # is the right artifact for testing an UNSIGNED build, since it sidesteps
+    # the installer's SmartScreen prompt while you are still iterating.
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  # No `certificateFile` / `sign` block: this build is deliberately unsigned for
+  # now. the Electron plan §9 — Microsoft removed EV's instant SmartScreen
+  # bypass around 2024, and the cheap option (Azure Artifact Signing, ~$10/mo)
+  # has a geographic eligibility gate that is still an open question here.
+
+nsis:
+  # `latest.yml` repeats this name exactly. Keep it URL-safe so GitHub never
+  # sanitises spaces into dots and leaves the updater requesting a file that
+  # does not exist (the v3.1.0 release did exactly that).
+  artifactName: ${productName}-Setup-${version}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: VOLTMARCH
+
+portable:
+  # Portable builds participate in version discovery but cannot self-replace;
+  # this deterministic name is what their download-page fallback points at.
+  artifactName: ${productName}-${version}-portable.${ext}
+
+# Declared from day one even though it is INERT without `--publish`. It costs
+# nothing now and means the CI job that eventually arrives is a workflow file
+# rather than a config archaeology exercise. That workflow must be a NEW
+# .github/workflows/desktop.yml — never an edit to deploy.yml.
+publish:
+  provider: github
+  owner: avihaymenahem
+  repo: voltmarch

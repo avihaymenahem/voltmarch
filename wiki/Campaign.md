@@ -547,7 +547,7 @@ them are gone; three cosmetics arrived to replace what those missions paid.
 being counted.** *Saltpan Reach*, *Foundry Line* and *Glacier Shelf* each reused
 another map's preset verbatim and were removed from the roster; four earned maps
 remain, which is the same four §8 lists. Every count in the table above is now
-re-derived from the mission table by `tests/wiki-numbers.spec.ts`, so a reward
+re-derived from the mission table by `apps/game/tests/wiki-numbers.spec.ts`, so a reward
 class that gains or loses a payer fails a test instead of quietly rotting here.
 
 ### Commander powers

@@ -23,7 +23,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = process.argv[2]
   ? resolve(process.argv[2])
   : join(ROOT, 'tools', 'brand-source', 'logo-source.png');
-const OUT = join(ROOT, 'public', 'brand');
+const OUT = join(ROOT, 'apps/game/public', 'brand');
 
 if (!existsSync(SRC)) {
   console.error(`no source image at ${SRC}`);

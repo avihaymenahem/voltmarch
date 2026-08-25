@@ -34,18 +34,18 @@
 
 import * as THREE from 'three';
 import { MeshPhysicalNodeMaterial, WebGPURenderer } from 'three/webgpu';
-import { GreebleFactory } from '../../src/art/Greeble';
-import { createStructureMaterial } from '../../src/art/BuildingFactory';
-import { buildingTime } from '../../src/art/BuildingFactory';
-import { createUnitMaterial, specForPalette } from '../../src/art/UnitFactory';
-import { RA3_ALLIED_STRUCTURE } from '../../src/core/config';
-import { createStructureNodeMaterial } from '../../src/art/StructureNodeMaterial';
-import { createUnitNodeMaterial } from '../../src/art/UnitNodeMaterial';
-import { createPropMaterial } from '../../src/world/PropLibrary';
-import { createPropNodeMaterials, PROP_WIND_PHASE_ATTRIBUTE } from '../../src/world/PropNodeMaterial';
-import { PROP_WIND } from '../../src/world/prop-wind';
-import { shroudUniforms } from '../../src/render/FogOfWar';
-import { gaitUniforms } from '../../src/render/Gait';
+import { GreebleFactory } from '../../apps/game/src/art/Greeble';
+import { createStructureMaterial } from '../../apps/game/src/art/BuildingFactory';
+import { buildingTime } from '../../apps/game/src/art/BuildingFactory';
+import { createUnitMaterial, specForPalette } from '../../apps/game/src/art/UnitFactory';
+import { RA3_ALLIED_STRUCTURE } from '../../apps/game/src/core/config';
+import { createStructureNodeMaterial } from '../../apps/game/src/art/StructureNodeMaterial';
+import { createUnitNodeMaterial } from '../../apps/game/src/art/UnitNodeMaterial';
+import { createPropMaterial } from '../../apps/game/src/world/PropLibrary';
+import { createPropNodeMaterials, PROP_WIND_PHASE_ATTRIBUTE } from '../../apps/game/src/world/PropNodeMaterial';
+import { PROP_WIND } from '../../apps/game/src/world/prop-wind';
+import { shroudUniforms } from '../../apps/game/src/render/FogOfWar';
+import { gaitUniforms } from '../../apps/game/src/render/Gait';
 
 const WIDTH = 640;
 const HEIGHT = 480;

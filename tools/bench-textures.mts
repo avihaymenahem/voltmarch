@@ -28,9 +28,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-import { TextureFactory, type AnyGenParams, type Channel, type TextureKind } from '../src/core/assets';
-import { generateTextureBytes, placeholderBytes } from '../src/core/surfaces';
-import { runTextureJob, type TextureJob } from '../src/core/workers/protocol';
+import { TextureFactory, type AnyGenParams, type Channel, type TextureKind } from '../apps/game/src/core/assets';
+import { generateTextureBytes, placeholderBytes } from '../apps/game/src/core/surfaces';
+import { runTextureJob, type TextureJob } from '../apps/game/src/core/workers/protocol';
 
 interface Case {
   name: string;
@@ -119,7 +119,7 @@ const JOBS: TextureJob[] = OFF.map((c, i) => ({
 const dir = await mkdtemp(join(tmpdir(), 'vm-bench-'));
 const entry = join(dir, 'worker.mjs');
 await build({
-  entryPoints: [fileURLToPath(new URL('../src/core/workers/protocol.ts', import.meta.url))],
+  entryPoints: [fileURLToPath(new URL('../apps/game/src/core/workers/protocol.ts', import.meta.url))],
   bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', outfile: entry,
   footer: {
     js: `

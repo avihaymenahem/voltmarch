@@ -11,7 +11,7 @@ catalogued in `THIRD_PARTY_NOTICES.md`. The Rajdhani OFL text is shipped separat
 
 Any new downloaded asset must update `THIRD_PARTY_NOTICES.md`, the in-game credits where a player
 can see it, and the relevant provenance README in the same change. Never infer licence terms from
-a source-code comment: `tests/credits-truthful.spec.ts` is the drift gate, and the bundled/source
+a source-code comment: `apps/game/tests/credits-truthful.spec.ts` is the drift gate, and the bundled/source
 licence is the authority.
 
 ## What this project is
@@ -23,20 +23,20 @@ structures now use original Meshy generations that pass through the local VOLTMA
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
 are built from Three.js geometry, custom shaders and procedural canvas generators. **Six shipped
 asset groups are not generated from runtime code**, all deliberate: the first five live in
-`public/`; the imported landmark models live in `src/assets/` and Vite emits them into the build.
+`apps/game/public/`; the imported landmark models live in `apps/game/src/assets/` and Vite emits them into the build.
 
-1. **Rajdhani** (OFL-1.1) in `public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
+1. **Rajdhani** (OFL-1.1) in `apps/game/public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
    nothing ever shipped it, so every menu and HUD rendered in the fourth fallback — Franklin Gothic
    Medium — and the face the UI was designed around was never on screen.
-2. **The brand lockup** in `public/brand/` — seven PNGs derived by `tools/brand.mjs` from a
+2. **The brand lockup** in `apps/game/public/brand/` — seven PNGs derived by `tools/brand.mjs` from a
    `logo.png` the user supplied, which is kept as `tools/brand-source/logo-source.png`.
    `logo-full.png` is the main-menu title; `logo-720.png` is the curtain's fallback wordmark;
-   `mark-*.png` are the favicons and app icons. See `public/brand/README.md`. This said "eight
+   `mark-*.png` are the favicons and app icons. See `apps/game/public/brand/README.md`. This said "eight
    PNGs derived by" while one of the eight was the underived SOURCE, sitting in the shipped
    directory and being published unused. It also credited `logo-full.png` as the loading curtain,
    which the markup has never used.
-3. **The loading screen key art** in `public/brand/` — `splash-1600.webp` and `splash-640.webp`,
+3. **The loading screen key art** in `apps/game/public/brand/` — `splash-1600.webp` and `splash-640.webp`,
    derived by `tools/splash.mjs` from a `load.png` the user supplied on 2026-08-18, kept as
    `tools/brand-source/splash-source.png`. It is the boot curtain's full-bleed backdrop.
 
@@ -46,7 +46,7 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    REASONED ("a portrait crop clips the painted one early") rather than measured. It does not. The
    painted lockup occupies x 0.310..0.687, y 0.030..0.346 of the frame, measured by cropping to
    those bounds and confirming it whole; from that, a centred `cover` crop keeps it down to
-   viewport aspect **0.676**, not the 1.33 that was assumed. `tests/boot-splash.spec.ts` holds
+   viewport aspect **0.676**, not the 1.33 that was assumed. `apps/game/tests/boot-splash.spec.ts` holds
    those four numbers and re-derives both the media-query threshold and the `object-position`
    anchor from them. **Replace the artwork and you must re-measure the box.**
 
@@ -59,25 +59,44 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    before this existed, wordmark included, rather than to a black rectangle with a progress bar.
 
    **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
-4. **Campaign character portraits** in `public/campaign/portraits/` — nineteen authored command-cast
+
+   **THE TITLE MENU DOES NOT WAIT FOR THE ENGINE.** `apps/game/src/main.ts` keeps both `Shell` and
+   `Bootstrap` behind dynamic boundaries; `Shell.openMenu(true)` mounts `MainMenuScreen`, fires
+   `onReady`, and only then schedules background work. One second after paint it prefetches the
+   engine modules without mutating game state. The decorative battlefield waits for a 12-second
+   quiet window, and a real launch cancels that timer before `bootGame`. Do not shorten it back to
+   the old 750 ms: on WebGPU a fast Skirmish click then waited behind the title decoration's own
+   10–14 seconds of shader compilation. Key art is the complete fallback until the live canvas is
+   ready; `vm-menu-preparing` owns the crossfade.
+
+   `Bootstrap.ready` first runs one zero-time presentation frame so lazy entity batches actually
+   exist, then awaits WebGPU's asynchronous `compile()` alias. It logs the measured split as
+   `[boot] battlefield ... systems ... presentation ... shaders ... pipeline cache ... slowest ...`;
+   Electron forwards only `[boot]`
+   renderer messages in dev. On the RTX 3080 desktop the interactive menu measured 0.35–0.60 s
+   after navigation while the optional scene completed later. The original Allied/Soviet imported
+   loaders filter against `art/boot-plan.ts`, Meridian/Reclamation return before touching `ctx()`,
+   and the two-army title plan retains only the one opponent it actually seats. Screenshot/harness
+   boots leave the plan null, which intentionally means every pack.
+4. **Campaign character portraits** in `apps/game/public/campaign/portraits/` — nineteen authored command-cast
    portraits, original AI-assisted artwork generated with OpenAI's built-in image generation tool
    on 2026-08-21. These are campaign/interface images, not models or textures used by the procedural
    game world. The shipped files are 640 x 640 WebP delivery derivatives; the complete cast and
-   palette contract live in `public/campaign/README.md`. The credits screen names the family, and
-   `tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family while
-   `tests/campaign-portrait-assets.spec.ts` checks every referenced portrait.
+   palette contract live in `apps/game/public/campaign/README.md`. The credits screen names the family, and
+   `apps/game/tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family while
+   `apps/game/tests/campaign-portrait-assets.spec.ts` checks every referenced portrait.
 
-5. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+5. **Recorded audio** in `apps/game/public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
    real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
    [CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), Warfork
    by Team Forbidden, and Piper for EVA. `music/` is a three-tier adaptive score by Kevin MacLeod,
-   **CC-BY 4.0** — the only attribution OBLIGATION in the product, and the reason `public/audio/`
-   is no longer CC0-only. See `public/audio/README.md`. Only ambience is still synthesised.
+   **CC-BY 4.0** — the only attribution OBLIGATION in the product, and the reason `apps/game/public/audio/`
+   is no longer CC0-only. See `apps/game/public/audio/README.md`. Only ambience is still synthesised.
 
    **EVA is re-renderable**: `py tools/render-eva.py <scratch-dir>` reads the line texts straight
-   out of `EVA_LINES` and writes `public/audio/eva/`. It refuses to run if it parses fewer lines
+   out of `EVA_LINES` and writes `apps/game/public/audio/eva/`. It refuses to run if it parses fewer lines
    than the table declares — a guard added because the first version matched only single-quoted
    strings and silently skipped `allyUnderAttack`, whose text is double-quoted for containing an
    apostrophe. The voice model is 109 MB and gitignored; only the ~405 kB of Ogg is committed.
@@ -106,7 +125,7 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    What the harness is still the right tool for is the failures nobody can hear until too late: a
    take longer than the buffer it bakes into (eight families would have shipped truncated), a
    transient that never arrives, a level that clips the bus. Those checks live in
-   `tests/audio-samples.spec.ts` and should stay.
+   `apps/game/tests/audio-samples.spec.ts` and should stay.
 
    **Two things that must not be undone.** Takes are trimmed on an Ogg PAGE boundary, which lands
    mid-waveform, so `sampleInto` fades the last 20 ms unconditionally — remove it and the whole
@@ -118,7 +137,7 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
 6. **Imported faction landmark structures** in
-   `src/assets/buildings/{allies,meridian,reclamation,soviets}/` — original Meshy AI generations
+   `apps/game/src/assets/buildings/{allies,meridian,reclamation,soviets}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
@@ -127,9 +146,9 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
 
 7. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
-   lives in `docs/`, not `public/`, so it is in no bundle, reaches no player, and is deliberately
-   NOT in the credits screen — `tests/credits-truthful.spec.ts` checks that screen against
-   `public/`, and adding a line for a file the game never loads would make the credits less true,
+   lives in `docs/`, not `apps/game/public/`, so it is in no bundle, reaches no player, and is deliberately
+   NOT in the credits screen — `apps/game/tests/credits-truthful.spec.ts` checks that screen against
+   `apps/game/public/`, and adding a line for a file the game never loads would make the credits less true,
    not more. It is listed here because the rule below is about assets nobody generated, and the
    next person to audit this list should not have to rediscover why the README opens with a
    painting. The README labels it as key art and keeps the in-engine capture directly beneath it,
@@ -139,12 +158,12 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
 This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
 false on two counts the moment the brand assets landed — the wordmark on the title screen and every
 favicon are those PNGs. It said so directly under an instruction to update it in the same commit as
-any new asset, and that did not happen. `tests/credits-truthful.spec.ts` now checks the credits
-screen against what is actually in `public/`, because the reason this rotted is that nobody was
+any new asset, and that did not happen. `apps/game/tests/credits-truthful.spec.ts` now checks the credits
+screen against what is actually in `apps/game/public/`, because the reason this rotted is that nobody was
 looking, and a reviewer noticing is not a mechanism.
 
 **If you add another non-generated asset, update this list, `README.md`, and the credits screen in
-`src/shell/MainMenu.ts` in the same commit** — a claim that quietly stops being true is the exact
+`apps/game/src/shell/MainMenu.ts` in the same commit** — a claim that quietly stops being true is the exact
 defect `docs/SPEC_DRIFT_AUDIT.md` catalogues.
 
 ## The gates
@@ -153,58 +172,49 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6427 passing across 273 files
+npm test             # complete tests for every workspace
                      #   (+4 opt-in probes skipped in the ordinary run). Bundle-isolation
                      #   specs require a CURRENT dist, not merely an existing one, so run
                      #   `npm run build` first whenever their result is part of the claim.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 110 in 24 suites, via node --test
+npm run check:affected # PR/branch gate: only affected workspace scopes
+npm run check:all    # complete release-equivalent monorepo gate
 ```
 
-**The fourth typecheck invocation needs `server/node_modules`, and a root `npm install`
-does not create it.** On a fresh clone — and in EVERY `git worktree`, since worktrees do
-not copy `node_modules` — `tsc -p server/tsconfig.json` dies on
-`TS2307: Cannot find module 'ws'`. That is a missing prerequisite, not a defect in your
-change; three parallel agents each independently reported it as a failing gate. CI does
-not hit it because `.github/workflows/deploy.yml` runs `npm ci --prefix server`. Do the
-same locally before believing a red fourth invocation:
-
-```bash
-npm ci --prefix server
-```
+**There is one lockfile and one install.** `npm ci` at the repository root installs all
+`apps/*` and `packages/*` workspaces. Do not restore nested lockfiles or `npm ci --prefix`
+commands: those bypass the task graph and were the reason unrelated Pages changes had to
+install and test the relay. Turborepo owns dependency order and `.turbo/` owns local/CI cache.
 
 ## Production web topology
 
 The three public hosts are deliberately separate:
 
-- **`voltmarch.com`** — the Cloudflare Pages launch/marketing site rooted at `launch-site/`.
+- **`voltmarch.com`** — the Cloudflare Pages launch/marketing site rooted at `apps/website/`.
   Its `/api/subscribe` Pages Function stores normalized, deduplicated addresses in the D1 binding
   named `WAITLIST` (`voltmarch-launch-waitlist`). The function creates its schema defensively;
-  `launch-site/migrations/0001_subscribers.sql` is the canonical idempotent copy.
+  `apps/website/migrations/0001_subscribers.sql` is the canonical idempotent copy.
 - **`play.voltmarch.com`** — the current game bundle deployed by
-  `.github/workflows/deploy.yml` to GitHub Pages. `public/CNAME` is load-bearing. The workflow bakes
+  `.github/workflows/deploy.yml` to GitHub Pages. `apps/game/public/CNAME` is load-bearing. The workflow bakes
   `wss://relay.voltmarch.com/ws` and the public Cloudflare analytics token into the build.
 - **`relay.voltmarch.com`** — the Hostinger/nginx production WebSocket relay. It is not a web page.
 
-The canonical browser Origin is exported as `PUBLIC_WEB_ORIGIN` in `server/src/config.ts` and is
+The canonical browser Origin is exported as `PUBLIC_WEB_ORIGIN` in `apps/relay/src/config.ts` and is
 unioned in even when `VM_ORIGINS` replaces the defaults, for the same operational reason as the
 desktop origin. Moving the playable site without changing that constant, the relay smoke-test
-origin, the DNS record, `public/CNAME`, and these docs creates a game that loads but cannot enter
+origin, the DNS record, `apps/game/public/CNAME`, and these docs creates a game that loads but cannot enter
 Multiplayer.
 
-Cloudflare Pages project: `voltmarch-coming-soon`, root `launch-site`, command `npm run build`,
+Cloudflare Pages project: `voltmarch-coming-soon`, root `apps/website`, command `npm run build`,
 output `dist`, D1 binding `WAITLIST`. `CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a
 secret. Pushing `main` updates both static sites independently; the relay workflow stays manual
 because activating a release disconnects live rooms.
 
-**The first line said `npx tsc --noEmit` and that is NOT the gate.** `npm run typecheck`
-is now FOUR invocations — `tsc --noEmit`, then `-p tsconfig.node.json`, then
-`-p tsconfig.test.json`, then `-p server/tsconfig.json` — because the root config's
-`include` is `src/**/*.ts` only. `tests/**` and `vite.config.ts` are checked by the
-next two, deliberately: test files need `process` and `node:fs`, which game code must
-never see. The fourth is the multiplayer relay, whose own `include` is the security
-boundary described in `server/README.md` — it can see four files and importing `three`
-or `src/sim/**` is a build error rather than a review note.
+**The first line once said `npx tsc --noEmit`, and that is NOT the gate.**
+`npm run typecheck` now asks Turborepo to typecheck every workspace. The game workspace
+still performs its three deliberate invocations for browser source, Vite config and tests;
+the relay, desktop and shared packages compile under their own constrained tsconfigs.
 
 So the documented command typechecks the game and silently skips every spec file, and
 CI runs `npm run typecheck`. That gap shipped a v1.31.0 deploy that failed on five
@@ -242,11 +252,11 @@ code, which is why it moved with machine load. **Do not reintroduce a tolerance*
 
 **`wiki/` IS A BUILD INPUT NOW.** The 17 player-wiki pages are the in-game manual
 (Options → Manual), reached through one lazy `import.meta.glob`, so editing a wiki page
-changes the bundle. `tests/manual.spec.ts` gates the two properties that matter: the corpus
+changes the bundle. `apps/game/tests/manual.spec.ts` gates the two properties that matter: the corpus
 is NOT in the entry chunk (it is its own ~320 kB chunk fetched on first open, and the entry
 grew by **10 bytes**), and every page still renders — word-for-word, so a table divider the
 parser stops recognising fails rather than quietly becoming a paragraph. The dist-freshness
-`runIf` includes `wiki/**` for that reason. `tests/wiki-numbers.spec.ts` is the other half:
+`runIf` includes `wiki/**` for that reason. `apps/game/tests/wiki-numbers.spec.ts` is the other half:
 every numeric claim on those pages is re-derived from `WEAPONS`/`UNITS`/`BUILDINGS`/
 `ARMOR_MATRIX`, because the moment they ship inside the game they stop being documentation
 and become claims the product makes.
@@ -257,15 +267,22 @@ the build.
 
 ## Architecture in one page
 
-- **`src/core/`** is frozen infrastructure: `types.ts` (every shared type, `SystemModule` is the
+- **The repository is an npm/Turborepo monorepo.** Deployable products live under
+  `apps/`; dependency-ordered, environment-neutral contracts live under `packages/`.
+  App code may depend on packages, never on another app's private source.
+- **`packages/game-types` and `packages/protocol` are real boundaries.** The browser and
+  relay consume the same validated wire definitions; compatibility re-exports under
+  `apps/game/src/` keep stable internal imports without duplicating ownership.
+
+- **`apps/game/src/core/`** is frozen infrastructure: `types.ts` (every shared type, `SystemModule` is the
   plugin contract), `config.ts` (all tunables and the art direction), `world.ts` (`EntityStore`, a
   fixed-capacity SoA of parallel typed arrays with generation-stamped handles), `loop.ts`
   (fixed 30 Hz sim decoupled from render, plus `SystemRegistry`), `events.ts`, `math.ts` (seeded
   RNG), `assets.ts` (procedural texture factory).
-- **A module joins the game by existing.** Drop a `*.system.ts` anywhere under `src/` that
-  default-exports a `SystemModule`; `src/game/Systems.ts` discovers it by glob and logs what
+- **A module joins the game by existing.** Drop a `*.system.ts` anywhere under `apps/game/src/` that
+  default-exports a `SystemModule`; `apps/game/src/game/Systems.ts` discovers it by glob and logs what
   registered. Never edit `Bootstrap.ts` or `Systems.ts` to register something.
-- **Reach the world through `ctx()`** from `src/game/context.ts`. It is valid from `init()` onward
+- **Reach the world through `ctx()`** from `apps/game/src/game/context.ts`. It is valid from `init()` onward
   and throws at module top level — build meshes inside `init`, not at import time.
 - **Phases** are the numeric enum in `types.ts`: Command 100, Production 200, Economy 300, AI 400,
   PathRequest 500, Steering 600, Movement 700, SpatialRebuild 800, Targeting 900, Weapons 1000,
@@ -273,8 +290,8 @@ the build.
 
 ## Multiplayer is deterministic lockstep, and the server never simulates
 
-`src/net/` is the client half, `server/` is a relay that forwards turn frames and runs no
-game code. Read `server/README.md` before touching either.
+`apps/game/src/net/` is the client half, `apps/relay/` is a relay that forwards turn frames and runs no
+game code. Read `apps/relay/README.md` before touching either.
 
 - **The relay stamps identity; the simulation enforces authority.** Every inbound command
   has `player` overwritten with the human slot of the socket it came from unless that id is in the
@@ -297,7 +314,7 @@ game code. Read `server/README.md` before touching either.
   eligibility mask as well as player count and constructs the brain on the next tick. Its commands
   are harvested, relayed, validated, and recorded exactly like the departed human's commands.
   The dropped client still ends locally because catching it up requires stream replay.
-- **`validateCommand` in `src/net/protocol.ts` is ONE pure function with TWO callers**, and
+- **`validateCommand` in `apps/game/src/net/protocol.ts` is ONE pure function with TWO callers**, and
   they do different things with a rejection. The server FILTERS (before broadcast, so it is
   consistent for everyone). A client TRIPWIRES — it ends the match rather than dropping the
   command, because dropping it on one client and not the other is a desync with no findable
@@ -305,7 +322,7 @@ game code. Read `server/README.md` before touching either.
 - **`CommandBus.harvest` is not `drain`.** Harvest skips the recording tap, because a
   multiplayer command crosses the bus twice — once when clicked, once when its turn comes
   up. Using `drain` for the harvest logs everything twice; that is trap 2 in
-  `src/game/Replay.ts`, rediscovered by a different route.
+  `apps/game/src/game/Replay.ts`, rediscovered by a different route.
 - **`net.system.ts` is `Phase.Command` order 0** and that number is the whole design: it is
   the only point at which a local command can be taken off the bus before a consumer
   applies it. It is inert until `attachSession()`, so single player is unchanged.
@@ -319,9 +336,9 @@ game code. Read `server/README.md` before touching either.
 
 ## Replays are the same mechanism, pointed backwards
 
-Every match records itself unconditionally (`src/game/replay.system.ts`), and since v1.32.0 the
-product can open one: **Replays** on the title screen, `src/shell/Replays.ts` for the screen and the
-in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
+Every match records itself unconditionally (`apps/game/src/game/replay.system.ts`), and since v1.32.0 the
+product can open one: **Replays** on the title screen, `apps/game/src/shell/Replays.ts` for the screen and the
+in-match strip, `apps/game/src/game/Playback.ts` + `playback.system.ts` for the feeding.
 
 - **A replay is a header plus a command stream, and the header is the boot.** `mapSeed` is the
   TERRAIN roll (`?mapseed=`); `simSeed` is `?seed=`, which drives the scenario layout and every draw
@@ -366,12 +383,12 @@ ITSELF whenever none is open. `outcome.system.ts` emits that event edge-triggere
 entering `'playing'`, with no replay, campaign or tutorial exclusion anywhere on the path. The shell
 skipped its call; the bus made the same call one frame later.
 
-- **`suppressProgression` in `src/progression/suppress.ts` is the fix, and WHERE it is read is the
+- **`suppressProgression` in `apps/game/src/progression/suppress.ts` is the fix, and WHERE it is read is the
   whole design.** It is read inside `MissionTracker.beginMatch` and `.endMatch` themselves, so it is
   honoured no matter who calls them. It imports nothing and is a module-level boolean — deliberately
   the twin of `UnlockGate`'s `suppressed`, which exists for the same reason on the same boot path.
 - **A GUARD THAT LIVES AT A CALL SITE CANNOT SEE A SECOND CALL SITE.** That is the general lesson
-  and it is why `tests/progression-suppress.spec.ts` emits `match:started` on a real `Channels` and
+  and it is why `apps/game/tests/progression-suppress.spec.ts` emits `match:started` on a real `Channels` and
   asks `inMatch()`, never whether the shell skipped a call. A test in the caller-checking shape
   passes against the broken build — that is precisely how this shipped. The spec fails 5 of 8
   against the old behaviour, and the 3 that pass either way are its falsifiers.
@@ -410,28 +427,28 @@ Three things worth keeping from how that was found and fixed:
 ## There is a campaign now, and it is a SECOND CONSUMER of the engine
 
 **IT IS COMPLETE AS OF 2026-08-21: 37 operations, 9 / 9 / 9 / 10, 637 minutes of authored par.**
-`tests/campaign-length.spec.ts` was built to arm itself at the 37th row and become a hard ten-hour
+`apps/game/tests/campaign-length.spec.ts` was built to arm itself at the 37th row and become a hard ten-hour
 floor with no edit required; it did, and the table clears it by 2 220 s (38 220 against 36 000). The
 margin is 37 minutes, which is longer than the longest single row — so no ONE retune or deletion
 can break it and two of the long rows can. **Every par except S1's is an author's estimate**: exactly
 one operation has ever been played end to end by a person, and that is the standing debt, not a
 defect. Do not read "the campaign is done" as "the campaign is timed".
 
-`src/campaign/` is a story mode of authored operations: a declarative trigger table per operation,
+`apps/game/src/campaign/` is a story mode of authored operations: a declarative trigger table per operation,
 evaluated by a pure director inside `simTick`. **It is not a widening of the mission system and it
 shares no rule language with `MissionRule`** — `RULE_KINDS` evaluates counters over the EVENT STREAM
 outside `simTick`, an operation needs state predicates over the WORLD inside it, and those are two
 languages on opposite sides of the determinism boundary. `tutorial-steps.ts` refused the same merge
-first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposing a third way.
+first, for weaker reasons. Read `apps/game/src/campaign/types.ts`'s header before proposing a third way.
 
 ## The tutorial is the complete command school, not only the build order
 
-`src/shell/tutorial-steps.ts` now declares **26 measured steps**. The opening drill covers camera,
+`apps/game/src/shell/tutorial-steps.ts` now declares **26 measured steps**. The opening drill covers camera,
 selection, control groups, move/attack-move, stances and explicit formations. The real-match half
 covers deployment, economy and production, then garrison, engineer capture, accepted structure
 repair, sale, transport board/unload, commander ability, army power, committed superweapon fire,
 veterancy and victory. A new lesson must still add a monotonic fact and an independent driver in
-`tests/tutorial.spec.ts`; prose or a dismissible acknowledgement is not proof that the verb was used.
+`apps/game/tests/tutorial.spec.ts`; prose or a dismissible acknowledgement is not proof that the verb was used.
 
 The training match is pinned to **Contested Strait** because its two-player composition is the one
 shipped map that supplies both neutral civilian targets and a real sea crossing. It starts with
@@ -443,7 +460,7 @@ roster into the match opened after it.
 Several advanced verbs do not share one event surface. `tutorial.system.ts` owns engine-confirmed
 capture, sale, veterancy, garrison/transport order classification and repair-state observation;
 HUD/input-only verbs reach `notifyTutorialAction` in the import-free, prose-free
-`src/core/tutorial.ts`, structurally through `__vmTutorial`. Keep that bridge semantic
+`apps/game/src/core/tutorial.ts`, structurally through `__vmTutorial`. Keep that bridge semantic
 (`stance-change`, not “clicked stance button”), so hotkeys and HUD controls satisfy the same lesson
 without importing the lazy shell or its 45 kB curriculum into another eager system edge.
 
@@ -483,7 +500,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   and the disagreement survives the "fix". `validateCampaign` refuses a key whose declared army is
   neither Neutral nor the seat's, reading the row's own faction so it covers every key.
 
-- **THE BUNDLE BOUNDARY IS THE FIRST CONSTRAINT, NOT A CLEANUP.** `src/game/Systems.ts` globs
+- **THE BUNDLE BOUNDARY IS THE FIRST CONSTRAINT, NOT A CLEANUP.** `apps/game/src/game/Systems.ts` globs
   `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK, so `campaign.system.ts` imports
   `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
   layouts and the prose arrive through ONE `await import('../campaign/campaign-install')` in
@@ -491,8 +508,8 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   chunk figure is a snapshot of ONE operation, not a budget** — it is 406 kB at thirty-seven, and it
   is meant to grow. The entry delta is the number that must not move, and
   `campaign-bundle-isolation.spec.ts` is what holds it.
-  **Never `import` anything under `src/campaign/` from a `*.system.ts` except those three.**
-- **NO NEW `CommandKind`, AND `src/net/protocol.ts` IS NOT TOUCHED.** `spawnUnits` calls
+  **Never `import` anything under `apps/game/src/campaign/` from a `*.system.ts` except those three.**
+- **NO NEW `CommandKind`, AND `apps/game/src/net/protocol.ts` IS NOT TOUCHED.** `spawnUnits` calls
   `ProductionService.spawnUnit` directly inside `simTick`. A wire-legal spawn command would travel
   to the relay, whose contract is *"stamps identity; the simulation enforces authority"* — and the
   sim has no authority test that would refuse a PvP client conjuring an army.
@@ -527,7 +544,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
 
   **THE FOUR REAL DEFECTS IT SHOOK OUT ARE THE REASON PROSE AUDITS ARE NOT TIDYING.**
 
-  - **`tests/campaign-data.spec.ts` DID NOT EXIST**, and `UnlockGate.ts` cites it as the mechanism
+  - **`apps/game/tests/campaign-data.spec.ts` DID NOT EXIST**, and `UnlockGate.ts` cites it as the mechanism
     catching the roster hazard this file calls *"not fixable by changing the default"*. It exists
     now: 33 defs across 13 tags pinned BY VALUE, failing in both directions, naming every operation
     whose roster a new tag just narrowed.
@@ -553,7 +570,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   **`reclamation.01.held-paper` IS THE CASE THAT PROVES `spread` IS NOT THE KNOB.** Its mercy column
   ringed the Foundry, which backs onto relief no wheeled hull can cross: of the four bearings a wave
   of four uses, only the westward one is open, **at every radius from 8 m to 44 m**. Move the SPAWN
-  POINT. `tests/campaign-spawn-ground.spec.ts` checks every point of every scripted wave against
+  POINT. `apps/game/tests/campaign-spawn-ground.spec.ts` checks every point of every scripted wave against
   that wave's own locomotor — resolved through the same three tables `spawnUnit` reads, honouring
   `waterOnly → Naval` and `amphibious → Hover`, because `mrdSolarch` is hover and asking `passGrid`
   the wrong bit answers a different question in both directions. **The ring formula is source-gated
@@ -597,7 +614,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   nor `footprintClear` fired. None of those fires on the shipped 37 — but that is a property of
   this ground, not a guarantee. Also: **6 of 37 operations have ONE yard for two armies**
   (`soviets.02`, `allies.07`, `pact.08`, `pact.09`, `reclamation.04`, `reclamation.07`).
-- **`tests/campaign-anchor-drift.spec.ts` PINS THE ANCHORS BECAUSE THE DERIVED FIGURES CANNOT BE
+- **`apps/game/tests/campaign-anchor-drift.spec.ts` PINS THE ANCHORS BECAUSE THE DERIVED FIGURES CANNOT BE
   PINNED.** On 2026-08-20 a base-geometry commit moved every structure in every generated base and
   introduced the faced-footprint snap above. Nothing failed. **147 measured claims across 38
   campaign headers silently became wrong**, including three distances a character speaks out loud,
@@ -608,7 +625,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   figures derives from: each seat's start spot and each seat's landed yard, by value, per
   operation. **The failure message names the layout and operation files whose headers quote
   yard-anchored distances**, so the next drift arrives as "these headers are now suspect" rather
-  than as silence. Same shape as `tests/terrain-lod.spec.ts` pinning chunk counts per map.
+  than as silence. Same shape as `apps/game/tests/terrain-lod.spec.ts` pinning chunk counts per map.
 - **`Shell.playCampaignBeat` IS THE ONLY CONSUMER OF `PresentationEvent`, AND IT HANDLED ONE OF THE
   THREE KINDS THAT ARE PRODUCED.** `EffectSink` pushes `dialogue`, `eva` and `camera`;
   `campaign.system.ts` drains all three every frame and hands every one to that method, whose body
@@ -624,7 +641,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   a value cannot see a consumer that never reads the value.
 
   It is a `switch` with a deliberately non-throwing `default` now — a future producer must not crash
-  a match mid-operation — and `tests/campaign-presentation.spec.ts` compares the kinds the real sink
+  a match mid-operation — and `apps/game/tests/campaign-presentation.spec.ts` compares the kinds the real sink
   EMITS against the kinds the switch NAMES, in both directions. **Its third section exists because
   the first draft was vacuous:** commenting out the one line that reaches the announcer left the
   suite 9/9 green, because `// sayEva(event.line);` still contains the token being matched. Every
@@ -677,7 +694,7 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   `spawnBuilding` hands `isBuildable` the RESOLVED def, and `rosterAllows` answers TRUE for an
   `undefined` one — so the roster would have been inert and the test vacuous. Bind the tables AND
   install the roster, or you are measuring a different game in a way that looks like a pass.
-  `tests/campaign-roster-ground.spec.ts` does both, builds every operation TWICE so a missing tag
+  `apps/game/tests/campaign-roster-ground.spec.ts` does both, builds every operation TWICE so a missing tag
   can be attributed to the roster rather than to placement, and pins the guard case that catches its
   own vacuity. 36 of 37 rosters measurably withhold content; the thirty-seventh (`reclamation.01.held-paper`,
   which opens `'force'` and seeds no base) is declared by name with its reason, so a new permissive
@@ -712,8 +729,8 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
 
 ## Tips are a table of PAIRS, they ride in the entry chunk on purpose, and the mute is permanent
 
-`src/sim/tips.system.ts` is the director (`Phase.Economy` order 950, `orecrisis.system.ts`'s shape);
-`src/sim/tip-rows.ts` is seven authored rows. Read both headers before adding a row.
+`apps/game/src/sim/tips.system.ts` is the director (`Phase.Economy` order 950, `orecrisis.system.ts`'s shape);
+`apps/game/src/sim/tip-rows.ts` is seven authored rows. Read both headers before adding a row.
 
 - **A ROW IS TWO PREDICATES AND THE SECOND IS THE EXPENSIVE HALF.** `situation` says the player is in
   this state; `answered` says they have not already dealt with it. The brownout tip fires on a player
@@ -723,14 +740,14 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   "a stopped harvester stays stopped" stops being true on the click, so there is nothing to detect.
   Four candidates were cut on that test and are named in `tip-rows.ts`'s header. `answered` also
   treats a MISSING SERVICE as a refusal, never a pass.
-- **THE ROWS LOAD EAGERLY AND `tests/tips-corpus-weight.spec.ts` IS THE PRICE.** `postTip` runs inside
+- **THE ROWS LOAD EAGERLY AND `apps/game/tests/tips-corpus-weight.spec.ts` IS THE PRICE.** `postTip` runs inside
   `simTick`, where a dynamic `import()` cannot be awaited, so a lazily chunked corpus arrives after
   the tip was decided and "the corpus had not arrived" is a SILENT NO-TIP. The caps are 1024 bytes of
   authored copy (ships 477) and 10 240 of comment-stripped module (ships 6 777); both bite at about
   fifteen rows, and the failure message names the lazy route. **Trip a cap and MOVE the corpus; do not
-  raise the number.** `src/shell/tutorial-steps.ts` is the declared leak not to repeat — now a
+  raise the number.** `apps/game/src/shell/tutorial-steps.ts` is the declared leak not to repeat — now a
   45 kB raw source after the complete 26-step curriculum, and still measured live as larger than
-  both caps by `tests/tips-corpus-weight.spec.ts`. Comments do not survive the bundler; the live
+  both caps by `apps/game/tests/tips-corpus-weight.spec.ts`. Comments do not survive the bundler; the live
   comparisons are authoritative, not an old copied stripped-byte count.
 - **THE CHIP HOLDS 26 CHARACTERS OF TITLE AND 44 OF DETAIL, measured in Chromium, not derived.** The
   title inherits `text-transform: uppercase`, weight 600 and 0.18em of tracking; the detail is as
@@ -752,21 +769,21 @@ without importing the lazy shell or its 45 kB curriculum into another eager syst
   SHOWING, because `.vm-toasts` is `pointer-events: none` — a chip cannot be clicked, so "dismiss" is
   not an act the player can perform and a mute waiting for one would never fire. Marked AFTER the
   chip is raised, so a row any gate refused has not been spent. The only route back is `resetProfile`.
-- **Tips stay ON in PvP** (`src/sim/tips.system.ts` suppression contract) and the module writes NOTHING to the world, which
+- **Tips stay ON in PvP** (`apps/game/src/sim/tips.system.ts` suppression contract) and the module writes NOTHING to the world, which
   is what makes that safe. Suppression is three predicates — campaign, replay, tutorial — not four.
 
 ## An economy can stop dead, and one rule exists to unstick it
 
 Reported as *"if my ore harvester being smashed and i dont have any money left.. how can i make a
 progress?"*. `Viability` asks whether a player can still PLAY and says yes for a base full of
-producers with an empty bank; nothing asked whether they could still EARN. `src/sim/OreCrisis.ts`
+producers with an empty bank; nothing asked whether they could still EARN. `apps/game/src/sim/OreCrisis.ts`
 is that second question and `orecrisis.system.ts` is its two consequences.
 
 **The dead end is real and it was measured, not argued.** Selling refunds `SELL_REFUND` = 0.5, so
 both routes out are self-blocking: buying a miner needs the refinery AND the vehicle factory
 standing (they are its prereqs, and they are the two most valuable things you own), and rebuilding
 the refinery for its free miner costs 2000 against the 1000 the old one pays. Enumerated
-exhaustively over the real bound catalog in `tests/ore-crisis.spec.ts`, **Construction Yard + power
+exhaustively over the real bound catalog in `apps/game/tests/ore-crisis.spec.ts`, **Construction Yard + power
 + refinery — the ordinary second-building state — is unrecoverable for all four armies**, as is
 refinery + factory + power with the yard bombed.
 
@@ -788,7 +805,7 @@ one.
 
 Five player-level support powers — Airstrike, Orbital Scan, Emergency Repair, Ore Boost,
 Chronoshift. Until v2.6.0 they were a MISSION reward: five missions wrote `power.airstrike` and
-friends onto the local profile, `powersOwnedBy` read localStorage, and `src/sim/CommanderPowers.ts`
+friends onto the local profile, `powersOwnedBy` read localStorage, and `apps/game/src/sim/CommanderPowers.ts`
 carried forty lines explaining why the SIMULATION was forbidden to ask whether you owned one — a
 profile-based refusal lands on one machine only, mid-match, at the exact tick a player presses a
 button, with no checksum that catches it earlier.
@@ -800,7 +817,7 @@ save, in the replay. The tightrope is gone and `use()` may finally refuse.
 - **The Command Post is the gate.** `commandPost` (Allies + Soviets), `mrdPharos`, `rclSignalRig` —
   the `battleLab`/`mrdReliquary`/`rclCrucible` shape, three defs and four mass lists. 1500 credits,
   20 s, **-80 power**, off the radar tier. It is the ONLY thing in the game that declares
-  `producesTabs: [BuildTab.Powers]`, and `tests/command-post.spec.ts` pins that.
+  `producesTabs: [BuildTab.Powers]`, and `apps/game/tests/command-post.spec.ts` pins that.
 - **`BuildTab.Powers = 4`, `BUILD_TAB_COUNT = 5`.** Appended, never inserted: the enum indexes
   `PlayerState.queues`, `HudSnapshot.cameos`, every flat `(player, tab)` array, and it travels on
   `Command.tab` across the wire and into replays. **Grep for hard-coded fours before you touch
@@ -830,13 +847,13 @@ save, in the replay. The tightrope is gone and `use()` may finally refuse.
 - **The five missions that used to pay the powers pay real content now.** `unit.commander` (the four
   heroes), `struct.support` (the three repair depots) and three new battlefields. The `power`
   `Reward` variant is deleted rather than left as a schema nothing produces — see the block in
-  `src/data/Missions.ts`.
+  `apps/game/src/data/Missions.ts`.
 
 ## Four armies, four islands, and a road made of water
 
 **Sunder Atoll** is the map the navy exists for: four islands, one army each, **53.80% water** on the
 shipped seed, and no land route between any two of them. Seven battlefields ship now
-(`MAPS` in `src/shell/settings-store.ts`); three carry a real sea.
+(`MAPS` in `apps/game/src/shell/settings-store.ts`); three carry a real sea.
 
 **It was ten, and the cut cost three missions.** `saltpan-reach`, `foundry-line` and `glacier-shelf`
 each reused an existing `MAP_PRESET` verbatim, so all seven balance numbers matched a map already in
@@ -845,8 +862,8 @@ payload of one mission — Armour Column, Continental Yield and Hostile Takeover
 RETIRED rather than repaid, because the def catalogue has nothing left that a new `UNLOCK_TAGS` group
 could legally cover: what is still ungated is either the opening path, naval, non-mirrored (`gate`,
 `flameTower`), or the deliberately-open Command Posts. The survey is written out inside `UNLOCKS` in
-`src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them credits** —
-objective credits remain a declared gap in `tests/reward-wiring.spec.ts`; their values are retained
+`apps/game/src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them credits** —
+objective credits remain a declared gap in `apps/game/tests/reward-wiring.spec.ts`; their values are retained
 as design metadata but filtered from every player-facing reward surface until a deterministic payout
 exists. Paying into one is the original defect with a different noun. Cosmetics are no longer an invisible sink: the Service
 Record consumes the typed cosmetic reward, joins ownership through `profile.unlocked`, and renders
@@ -855,7 +872,7 @@ all 17 honours with their source mission and progress.
 ## The Service Record is the public profile contract
 
 `MissionTracker` has long persisted matches, wins, losses, current/best streak and wins by faction.
-Those fields are now part of `ProfileView` and are rendered by `src/shell/Profile.ts` alongside
+Those fields are now part of `ProfileView` and are rendered by `apps/game/src/shell/Profile.ts` alongside
 campaign medals, mission completion and the honours collection. Keep the join one-way and derived:
 the profile supplies ownership and counters; `catalogue()` supplies the current build's cosmetic
 rows and their awarding missions. Do not create a second cosmetic catalogue in the shell.
@@ -863,27 +880,27 @@ rows and their awarding missions. Do not create a second cosmetic catalogue in t
 The title menu keeps its nine-row 720p height budget by replacing the old direct **Missions** row
 with **Service Record**; the record footer opens Missions and returns to the record on Back. The
 honours table is currently 17 rows — ten insignia and seven field decals — and
-`tests/profile-screen.spec.ts` derives those counts from `MISSIONS`, so adding or retiring a reward
+`apps/game/tests/profile-screen.spec.ts` derives those counts from `MISSIONS`, so adding or retiring a reward
 moves the UI and its check together.
 
 - **The 54% is a ceiling, not a taste.** A start shelf needs 96 m of dry ground in EVERY direction
   (`TERRAIN_START_FLAT_RADIUS` 58 + `TERRAIN_START_EDGE_WOBBLE` 14 + band 6 + waviness 8 +
   `TERRAIN_SEA_START_CLEARANCE` 10), so four islands cost 4·π·98² = 120 700 m² of a 262 144 m² map.
   Wetter means shrinking a global promise or seating fewer armies. See the block above
-  `ARCHIPELAGO_SEA` in `src/game/Scenarios.ts`.
+  `ARCHIPELAGO_SEA` in `apps/game/src/game/Scenarios.ts`.
 - **The islands are AXIS-ALIGNED ellipses and must stay that way.** Rotating one needs `sin`/`cos`,
   and **ECMA-262 does not pin those to bit precision** — only `+ - * /` and `Math.sqrt` are exact.
   Terrain generates independently on both machines of a lockstep match, so a rotated island is a
   tick-zero desync waiting for two engines to disagree in the last mantissa bit. `ellipseDistance`
-  in `src/world/terrain-gen.ts` uses the first-order (Sampson) distance for the same reason: the
+  in `apps/game/src/world/terrain-gen.ts` uses the first-order (Sampson) distance for the same reason: the
   exact ellipse distance has no closed form, and a Newton iteration whose count depends on a
   convergence test is a determinism liability.
 - **`mapSupportsNaval` and `mapLandLinked` are different questions and neither substitutes.**
-  `src/sim/NavalWater.ts` asks whether there is enough open water for a navy to be a thing;
-  `src/sim/LandRoutes.ts` asks whether the ground is one piece. `mapForcesSeaCrossing` is the AND —
+  `apps/game/src/sim/NavalWater.ts` asks whether there is enough open water for a navy to be a thing;
+  `apps/game/src/sim/LandRoutes.ts` asks whether the ground is one piece. `mapForcesSeaCrossing` is the AND —
   water present *and* ground split — and it is true on the atoll alone.
 - **The map-capability gate:** no navigable water means no naval content is offered at all. Verified
-  over all ten shipped maps in `tests/sea-crossing-gate.spec.ts`, which is the only test that loops
+  over all ten shipped maps in `apps/game/tests/sea-crossing-gate.spec.ts`, which is the only test that loops
   the whole roster.
 - **THE NAVY IS NOT PROGRESSION-GATED, ANYWHERE, AND THAT IS DELIBERATE.** `struct.naval`,
   `unit.naval` and `unit.naval.capital` are deleted — from `UNLOCK_TAGS` and from `UNLOCKS`, not
@@ -902,7 +919,7 @@ moves the UI and its check together.
 
   The in-match gates are untouched and they are the right ones: a dock needs a real coast, every
   hull needs a dock, and the four capital ships need the army's tech structure.
-  `tests/sea-crossing-gate.spec.ts` now pins the RULE — no sea-bound entry may name an unlock id —
+  `apps/game/tests/sea-crossing-gate.spec.ts` now pins the RULE — no sea-bound entry may name an unlock id —
   so the next hull added behind one fails there rather than in a player's match.
 - **`waterOnly` and `warship` are two fields because they are two questions.** This was one bit
   named `naval`: `spawnUnit` read it as "water-only" and `isSeaMobility` read it as "warship",
@@ -910,7 +927,7 @@ moves the UI and its check together.
   protect the unarmed Hover Transport's ability to beach — and two hulls have a hold AND a gun.
   `mrdSkiff` is intended (a Pact land raider gated on a land structure; the whole army hovers).
   `rclScow` was not: a dock-built, naval-sortOrder hull with a 68-damage HE bow gun that could drive
-  inland and shell a base. `tests/naval-shore.spec.ts` asserted that roster verbatim under the name
+  inland and shell a base. `apps/game/tests/naval-shore.spec.ts` asserted that roster verbatim under the name
   "marks exactly the gunned hulls as warships" while excluding two gunned hulls, so the test pinned
   the defect rather than catching it.
 
@@ -923,7 +940,7 @@ moves the UI and its check together.
   and coral-shore had **zero** legal dock sites before.
 - **The AI got a navy** — sea survey, a dock on a shore it walks to, warships holding a lane, and an
   amphibious Board/Cross/Land cycle. `npm test` deliberately does not run that proof:
-  `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless `VM_LANDING_PROBE` is
+  `apps/game/tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless `VM_LANDING_PROBE` is
   set, because it drives a real 24-minute four-army match and a landing count is a fact about one
   seed rather than an invariant.
 
@@ -976,7 +993,7 @@ predicate, `mapSeed 0x5e1ec7` / `simSeed 90210`, in CREDITS rather than field co
 
 ## Skirmish starts are authored per map and vary by seed
 
-The skirmish lobby owns a deterministic tactical survey in `src/shell/MapPreview.ts`. It derives
+The skirmish lobby owns a deterministic tactical survey in `apps/game/src/shell/MapPreview.ts`. It derives
 the sketch from the same `MapChoice` preset, biome, pinned `mapSeed` and seat count the boot reads;
 there is no parallel thumbnail table to drift when a battlefield changes. The preview must expose
 water topology, lanes, ore and starts before it spends pixels on decoration.
@@ -1004,7 +1021,7 @@ independently on lockstep peers.
   the data cannot seat more armies.
 - **The pair choice is salted away from ownership rotation.** `startPairFor` and `startOffset` must
   not read the same raw hash: without the salt one local-player corner was unreachable over 20,000
-  seeds even though the pair histogram looked uniform. `tests/spawn-variety.spec.ts` pins player
+  seeds even though the pair histogram looked uniform. `apps/game/tests/spawn-variety.spec.ts` pins player
   corner occupancy rather than merely checking the pair draw.
 - **Water is validated twice.** Coastal alternatives are authored inland of the full shelf budget,
   and `dryPairs` recomputes physical clearance from the actual `SeaSpec` before accepting them.
@@ -1013,7 +1030,7 @@ independently on lockstep peers.
   of truth.
 - **The sea normal is explicit and stable.** Coast and Tropical retain the previously shipped
   diagonal `CLASSIC_SEA_NORMAL`; changing another map's starts can no longer rotate their waterline.
-  `tests/naval-maps.spec.ts` pins that geometry, while `tests/map-start-tables.spec.ts` checks table
+  `apps/game/tests/naval-maps.spec.ts` pins that geometry, while `apps/game/tests/map-start-tables.spec.ts` checks table
   coverage, bounds, separation, distinctness, reservation/spawn agreement and coastal clearance.
 
 **A THREE- OR FOUR-ARMY SAVE RESTORED ONTO TWO-ARMY GROUND, AND NO GUARD COULD CATCH IT.** FIXED —
@@ -1045,7 +1062,7 @@ restore agreed by accident.
   place. No `SAVE_SCHEMA_VERSION` bump; `structuralHash()` is untouched.
 - **The replay path was always the model** — `Shell.startReplay` rebuilds `opponents` from every
   non-Neutral slot in the header before it boots, precisely so `armyCount` answers the recording's
-  number. `tests/save-army-count.spec.ts` pins that it still does, because `loadGame`'s fix is a
+  number. `apps/game/tests/save-army-count.spec.ts` pins that it still does, because `loadGame`'s fix is a
   copy of it and two paths that must agree should fail together.
 
 **Coast, Tropical and Snow remain two-player maps by authored intent.** The old global rectangle
@@ -1061,7 +1078,7 @@ Reported as *"limited to 1 type of ship only that carries 4 troops each"*. Exact
 INFANTRY ONLY, so on Sunder Atoll, where no two armies share a land route, the entire vehicle
 roster was unusable against three of your four opponents.
 
-- **Infantry cost one slot, a vehicle costs two** (`SLOT_COST_BY_KIND` in `src/sim/Transport.ts`).
+- **Infantry cost one slot, a vehicle costs two** (`SLOT_COST_BY_KIND` in `apps/game/src/sim/Transport.ts`).
   Eight slots is four tanks, or eight riflemen, or any mix. `UnitDef.passengers` is `cargoSlots`.
 - **`refusalFor` refuses a carrier as cargo**, and it is the only thing that does. `capacityAt`
   answers for any non-Building, nothing detects a cycle, and two hulls each holding the other would
@@ -1120,7 +1137,7 @@ a long game, and nothing, they just not respond"*. Eight defects, three rules.
   Fixed in TWO places and both are needed: the assigner's non-mover branch (garrison, boarding) and
   `Damage.cleanupTick`'s `onFree` hook (deaths — a kill at Phase.Damage is flushed at Phase.Cleanup
   in the same tick, *after* the assigner ran at PathRequest, so the assigner can never see one).
-  `tests/navfield-leak.spec.ts` fails on round 24 without it. `INav`'s own contract already said
+  `apps/game/tests/navfield-leak.spec.ts` fails on round 24 without it. `INav`'s own contract already said
   "You MUST call `release` when the order ends"; dying is an order ending.
 - **NO PROP CARRIES `EntityFlag.BlocksNav`, and none may.** `rock` and `boulder` were the last two.
   A `BlocksNav` prop was solid in `Movement.relax` ONLY — a physical constraint the PLANNER could not
@@ -1128,7 +1145,7 @@ a long game, and nothing, they just not respond"*. Eight defects, three rules.
   and parking a hull for 2100 ticks on a route the flow field thought was open. They are not
   `Crushable` either: entity and scatter props share geometry, `CRUSHABLE_FAMILIES` excludes the rock
   family, and the Meridian Pact carries `crushLevel: 0` on every hull by doctrine, so crushable rocks
-  would give exactly one army no way to clear one. `tests/crush.spec.ts` pins both flags off.
+  would give exactly one army no way to clear one. `apps/game/tests/crush.spec.ts` pins both flags off.
   **`PropLibrary`'s own `blocksNav` boolean is a different field** — a scatter placement heuristic,
   test-only otherwise — and stays as it is.
 - **A HARVESTER IGNORES ATTACK AND GUARD, AND `Stop` PARKS IT.** `write` in `input/Commands.ts`
@@ -1149,7 +1166,7 @@ Reported as *"We have ore scattered around the map, but i cant see it, how do i 
 my harvesters?"* — and the answer was that ore had **no world-space representation at all**.
 `OreField` published `densityAt` / `densityAtWorld` / `drainDirty` / `pendingDirty` / `getOreField()`
 with **zero production callers**, and nine prose sites across five files described a "crystal
-instancer" in the present tense that had never been written. `src/world/ore.system.ts` is that
+instancer" in the present tense that had never been written. `apps/game/src/world/ore.system.ts` is that
 module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
 
 - **One `InstancedMesh`, one draw call, `castShadow = false`.** Updated only from `drainDirty` —
@@ -1181,7 +1198,7 @@ v1.24.0 to v2.12.0, and the one render change in that window that could touch a 
 `bloom.radius` 0.70 → 0.34 — moves the failing case from 16.003% to 15.580% of frame over L=0.95,
 i.e. by nothing. Do not go looking for the commit; there isn't one.
 
-- **`VFX_GLARE.radiusM` was 7 m and the complaint is about the SCREEN.** `src/vfx/FlashBudget.ts`
+- **`VFX_GLARE.radiusM` was 7 m and the complaint is about the SCREEN.** `apps/game/src/vfx/FlashBudget.ts`
   bounds how much additive glare one PATCH OF GROUND may emit, and it does that correctly. Nothing
   bounded the frame. At `CAMERA.defaultDistance` 55 m the focus plane is 35.7 m tall, so a firefight
   spread over 30-40 m is one screenful of detonations each holding a private budget and a private
@@ -1214,8 +1231,8 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
 - **THE PREBUILT BASE IS NOT AN AI AFFORDANCE AND THERE IS NO ASYMMETRY TO DELETE.** `Scenarios.ts`
   seeds every seat in ONE loop with no `isHuman`, no difficulty and no slot test;
   `START_CONDITION_DEFAULT` is **`'mcv'`**, both lobby blurbs read "Both sides start with…", and
-  `tests/match-start.spec.ts` already asserts both slots symmetrically under both openings, and
-  `tests/opening-default.spec.ts` now asserts the DEFAULT rather than passing `{ start: 'mcv' }`
+  `apps/game/tests/match-start.spec.ts` already asserts both slots symmetrically under both openings, and
+  `apps/game/tests/opening-default.spec.ts` now asserts the DEFAULT rather than passing `{ start: 'mcv' }`
   explicitly the way every case in the older file does. Do not "fix" the scenario.
 
   **THE HEAD START IS -0.83 SECONDS, AND THIS BLOCK USED TO BLAME THE WRONG THING.** It said a
@@ -1247,7 +1264,7 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
   `AI_DIFFICULTY[].resourceBonus` (0.8 / 1.0 / 1.15 / 1.35 on harvested income) and
   `aiMirrorsUnlocks`, which is on by default and, when a player turns it off, genuinely does give a
   prebuilt AI base the gated tech the human's is missing.
-- **`CommandKind.RepairToggle` HAD NO CALLER IN `src/sim/AI.ts`**, so an AI base never healed —
+- **`CommandKind.RepairToggle` HAD NO CALLER IN `apps/game/src/sim/AI.ts`**, so an AI base never healed —
   measured at 0.35 mean HP unchanged to four decimals over ten sim-minutes while the brain spent
   34 000 credits on infantry. `AiBrain.repairBase` is the fix and it is the PLAYER'S OWN WRENCH:
   same command `input.system.ts` sends, same `REPAIR_COST_PER_HP` out of the same bank, same
@@ -1272,7 +1289,7 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
   money into riflemen 200 credits at a time and never buys anything.
 - **Kill the war factory AND the yard and the position is unrecoverable BY DESIGN** — the
   `OreCrisis` dead end in another costume. A probe that bombs a base flat measures the rules, not
-  the brain; `tests/ai-rebuild-repair.spec.ts` deliberately leaves one refinery and the factory
+  the brain; `apps/game/tests/ai-rebuild-repair.spec.ts` deliberately leaves one refinery and the factory
   standing, and says why.
 - **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
   that never heals is a broken opponent rather than a gentle one. Easy patches one building while
@@ -1299,7 +1316,7 @@ PACE and a weapon row for BALANCE** — they are different questions and this is
 the first. Structures slow by the same factor (single-attacker 20-99 s -> 25-124 s); that is the
 number to revisit first if base-cracking drags.
 
-Not HP and not the armour matrix: `tests/data.spec.ts` pins every `def.maxHp` field-for-field
+Not HP and not the armour matrix: `apps/game/tests/data.spec.ts` pins every `def.maxHp` field-for-field
 against `Scenarios.FALLBACK_UNITS`, and `armorMultiplier(SmallArms, Infantry)` is pinned to
 exactly 1 because it is the counter-triangle's reference cell.
 
@@ -1317,19 +1334,19 @@ glaiveRepeater  5 x 21 / 0.69 s = 152.2 dps  ->  5 x 12 / 0.79 s = 75.9   (338 -
 
 **The target is DERIVED.** Eight G.I.s vs a 400-credit Pillbox: the post kills sequentially so its
 dps is flat while the squad's decays, and the squad landed 282 of 500 hp before dying — 1600
-credits of infantry, box keeps 44%. Break-even is 81.5 dps. `tests/emplacement-band.spec.ts` pins
+credits of infantry, box keeps 44%. Break-even is 81.5 dps. `apps/game/tests/emplacement-band.spec.ts` pins
 a price-normalised band (210 anti-infantry dps per 1000 credits) plus a one-shot rate floor, with
 a **now-empty** `OVER_BAND` exception table that fails in BOTH directions — a new exceeder fails,
 and fixing a declared one also fails, so nobody can land half of a pair and walk away.
 
-**`pillboxMg` is `DEFAULT_WEAPONS[11]` in `src/sim/Combat.ts`, not in `Defs.ts`** — `Defs.ts`
+**`pillboxMg` is `DEFAULT_WEAPONS[11]` in `apps/game/src/sim/Combat.ts`, not in `Defs.ts`** — `Defs.ts`
 borrows that table verbatim as its prefix and does not own it. Retune in place; re-pointing the
 two defs at an appended `REBALANCE_WEAPONS` row orphans row 11 and throws at import.
 
 ### Ore already regrew. The gate was unreachable.
 
 Reported as *"Ore fields should regenerate over time"* — and they always did.
-`src/sim/Economy.ts` was correct and running the whole time. The defect was a **ratio between two
+`apps/game/src/sim/Economy.ts` was correct and running the whole time. The defect was a **ratio between two
 constants 260 lines apart in `config.ts` that had never been read together**: a harvester claims a
 cell at `ORE_MIN_CLAIM` (25) and mines it to zero, so ~25 is the ceiling a worked cell sits at,
 while at `ORE_REGROW_SPREAD = 0.3` the wave needed 138-160 ore in that cell before the one behind
@@ -1364,7 +1381,7 @@ tripwire that deliberately pointed at the defect now pins the invariant.
 Reported as *"Occupying an enemy ore building should give me his income"*. Ownership transfer
 already worked: storage cap, power, prereqs, `AiBrain.roleCount` and `OreCrisis` are all
 **rescans over `store.owner`**, not running totals. The defect was two lines in
-`src/sim/Harvesting.ts` (`§DEED`): the dock guard required hauler and refinery to be allied, and
+`apps/game/src/sim/Harvesting.ts` (`§DEED`): the dock guard required hauler and refinery to be allied, and
 the deposit was keyed on **the hauler's** owner rather than the refinery's. Measured on the old
 code, a full hopper docking at the instant of capture paid **victim +700, captor +0**.
 
@@ -1389,7 +1406,7 @@ stricter tier for electric guns during any deficit. 4/10 silent -> 7/10.
 
 **THE THREE THAT STILL FIRE DRAW ZERO POWER, AND THAT IS THE POINT.** `pillbox`, `sentryGun` and
 `rclSpitpost` are `power: 0`, so "no electricity" does not reach them — and `rclSpitpost`'s
-shipped blurb says *"Fires through a blackout"*, which `tests/content-truthful.spec.ts`
+shipped blurb says *"Fires through a blackout"*, which `apps/game/tests/content-truthful.spec.ts`
 independently enforces. The request as literally stated is therefore NOT what shipped.
 
 Production halts on the unit tabs only. `census` skips a dark structure for every tab except
@@ -1513,7 +1530,7 @@ unit ladder **was not monotonic before** — Easy fielded the most units of any 
 
 **`creditFloor` STACKS WITH ANY NEW SPENDING RESTRAINT, and Easy has the largest one**, so Easy is
 where a new constraint turns into a deadlock. It no longer can here, because `creditFloor` applies
-to the ungoverned budget the refinery uses. `tests/ai-opening-governor.spec.ts` pins that
+to the ungoverned budget the refinery uses. `apps/game/tests/ai-opening-governor.spec.ts` pins that
 relationship, so changing either number reports rather than deadlocks.
 
 **TWO HARNESS TRAPS, both of which cost a cycle.** `DeployService` will not unfold a
@@ -1608,7 +1625,7 @@ and an aircraft at 45% loses the shared slot to any tank at 25%. So `AI_RETREAT.
   property below.
 - **A MATCH WITH NO AIRCRAFT DRAWS THE SEQUENCE IT ALWAYS DREW**, verified 12 ways against the
   reverted build — 4 rungs x 3 health fractions, byte-identical command streams.
-  `tests/ai-air-withdraw.spec.ts` gates the PROPERTY rather than a golden stream, because once the
+  `apps/game/tests/ai-air-withdraw.spec.ts` gates the PROPERTY rather than a golden stream, because once the
   old build is gone the only way to fix a red literal is to copy whatever the new one produced.
 - **It fires, and it is rare.** 30 sim minutes, four armies, unlocks GRANTED — an empty
   `UnlockGate` builds no aircraft and would measure zero, which is the `sw=0/0` mistake: Normal 3,
@@ -1719,7 +1736,7 @@ contributory, not causal.
 1 on every other row in the 42-row armoury.** It multiplies the armour matrix inside
 `Damage.applyOne` — the only function in the game that writes `hp` — and ONLY when the victim's
 `locomotor` is `Air`, so ground combat and every unmodified weapon are bit-identical. The derivation
-lives above `rifle` in `src/sim/Combat.ts`; the band is `tests/air-multiplier.spec.ts`.
+lives above `rifle` in `apps/game/src/sim/Combat.ts`; the band is `apps/game/tests/air-multiplier.spec.ts`.
 
 **IT TRAVELS ON THE DAMAGE RECORD RATHER THAN BEING FOLDED INTO `amount` AT FIRE TIME**, and that is
 per-VICTIM correctness rather than tidiness. `arcProd` is a chaining tesla bolt: one trigger pull
@@ -1805,7 +1822,7 @@ faster in the other two**, to **2.3-4.3x faster in all four**:
 
 Whether that is now TOO dominant is the open question this change hands forward, and it is a
 question about the Battery's price and tier rather than about its row.
-`tests/air-multiplier.spec.ts` deliberately asserts no ceiling on it.
+`apps/game/tests/air-multiplier.spec.ts` deliberately asserts no ceiling on it.
 
 **DO NOT REVERT THIS BY DELETING `canTargetAir`.** The floor rule below is the same argument from
 the other side, and §1 of `air-multiplier.spec.ts` goes red by name if anyone tries.
@@ -1906,7 +1923,7 @@ re-derives them. Overturn one by rewriting it with an argument, not by trying it
 - **A dedicated `BuildTab.Aircraft`.** All four armies field exactly one aircraft (pinned), so the
   tab holds ONE cameo per army while Vehicles drops 12 → 11 against a 14-slot cap — a container for
   a decision between several things, with nothing to decide between. `BUILD_TAB_COUNT` is in
-  `structuralHash`, so every save on disk is refused; and `src/net/protocol.ts`'s `TABS` is an
+  `structuralHash`, so every save on disk is refused; and `apps/game/src/net/protocol.ts`'s `TABS` is an
   ALLOWLIST, so omitting one line there makes `validateCommand` reject every aircraft order, which
   the server FILTERS and the client **TRIPWIRES** — "I queued a plane" becomes "the match ended for
   both of us". A prerequisite structure buys the same permission (*only this building can produce
@@ -1936,7 +1953,7 @@ had already recorded.
 ### A tank stopped killing aircraft, and measuring it moved two other numbers
 
 Reported as *"i still think we have unbalanced fights... 3 airplanes destroyed by 1 tank in a
-second... something is weird"*. `tests/aircraft-killer-probe.spec.ts` holds every figure below;
+second... something is weird"*. `apps/game/tests/aircraft-killer-probe.spec.ts` holds every figure below;
 re-run it rather than re-quoting it. (This block used to open "**This one is SHIPPED behaviour,
 unlike the rest of this section**", which stopped being a distinction when the air multiplier and
 the two behavior follow-ups landed.)
@@ -2021,7 +2038,7 @@ argument for why draping rather than grading the heightfield.
   against fixed, 13 fixtures each — moved the weighted grade by **0.0 points, 92.0% and 13 failures
   on both sides**, while the change is unmissable on any real map at gameplay zoom. The generator's
   own suites work in the XZ plane (arc radii, off-axis degrees, kerb overlap, winding) and the whole
-  failure was in Y. `tests/roads-drape.spec.ts` is the gate that closes both gaps; do not read a
+  failure was in Y. `apps/game/tests/roads-drape.spec.ts` is the gate that closes both gaps; do not read a
   green scorecard as evidence about roads.
 - **NO SCATTER PROP MAY STAND ON THE CARRIAGEWAY**, and `Scatter.legal` is where that is enforced —
   `isCarriageway`, NEVER `isRoad`, the same distinction and the same reason as ore seeding. `isRoad`
@@ -2030,7 +2047,7 @@ argument for why draping rather than grading the heightfield.
   maps above. The file's header had claimed "street furniture spawns BESIDE roads, never on them"
   since it was written, naming a mechanism — the `def.surfaces` mask — that cannot express it, because
   roads stamp `SurfaceId.Paving` and the mask cannot tell a traffic lane from a plaza.
-- **The density gates in `tests/scatter.spec.ts` build no RoadNetwork**, so they cannot see that
+- **The density gates in `apps/game/tests/scatter.spec.ts` build no RoadNetwork**, so they cannot see that
   exclusion at all. A refused candidate is a spent attempt, not a relocated prop, so an exclusion over
   a tenth of the map thins the WHOLE map: foundry-line went 162.4 -> 122.6 props/ha against a floor of
   95. That is pinned in `roads-drape.spec.ts`, not in the file whose job it looks like.
@@ -2084,7 +2101,7 @@ argument for why draping rather than grading the heightfield.
 ## There are two renderers now, and a WebGL player downloads exactly one of them
 
 `?gpu=webgpu` used to throw. It boots the real game (shipped in v3.0.0): every shader in the project
-exists twice, once as GLSL and once as a TSL node graph, and `src/render/gpu-path.ts` is the seam
+exists twice, once as GLSL and once as a TSL node graph, and `apps/game/src/render/gpu-path.ts` is the seam
 that picks. **The default is still WebGL** and nothing in the product selects the other one.
 
 - **`gpu-path.ts` IMPORTS NO THREE AT ALL, and that is the constraint the whole design is built
@@ -2094,7 +2111,7 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   emits that as its own chunk and a WebGL boot never fetches it: `WGSLNodeBuilder`,
   `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`, `MeshStandardNodeMaterial` and
   `castShadowPositionNode` are **0 occurrences in the entry chunk**.
-  `tests/webgpu-bundle-isolation.spec.ts` pins it and fails when a static import is added on
+  `apps/game/tests/webgpu-bundle-isolation.spec.ts` pins it and fails when a static import is added on
   purpose. **Never `import ... from 'three/webgpu'` outside a `*Node*.ts` / `*-nodes.ts` file.**
 - **Every material site is one branch, taken once at construction:**
   `const np = nodePath(); np !== null ? np.createX(...) : createX(...)`. Never in the frame loop.
@@ -2110,6 +2127,30 @@ that picks. **The default is still WebGL** and nothing in the product selects th
 - **`prepareRenderer(canvas)` must be awaited BEFORE `bootstrap()`.** `WebGPURenderer.render()`
   throws until `await renderer.init()` resolves and `bootstrap()` is synchronous by design. On the
   WebGL path it is a no-op that imports nothing.
+- **THE WEBGPU RENDERER, DEVICE AND PIPELINE CACHE LIVE FOR THE ELECTRON PROCESS, NOT ONE MATCH.**
+  Clean world teardown disposes textures, geometry, materials, bind groups and scene objects, but
+  `pipeline-retention.ts` prevents Three 0.185.1 from deleting its WGSL program and render-pipeline
+  maps when the last old `RenderObject` releases them. The seam is private-by-convention, validated
+  before installation and pinned by tests; a Three upgrade that changes it warns and falls back to
+  ordinary recompilation. This is bounded by shader/render-state variants, not match count.
+  WebGPU exposes no serializable pipeline cache, so this is process-lifetime reuse, not a fake
+  promise of offline GPU binaries. On the RTX 3080, a clean native-WebGPU process measured the
+  cold title battlefield's shader phase at 15.0 s and the subsequent real gameplay battlefield at
+  7.7 s, with no validation error or backend recovery. Those are different worlds rather than an
+  artificial same-scene benchmark, so treat the 49% reduction as an observed process-level result,
+  not a universal ratio. A GPU/device loss still invalidates everything and requires the existing
+  full reload.
+- **`compile()` MUST COME AFTER ONE ZERO-TIME `registry.runFrame`.** Scenario entities are spawned
+  at the end of registry init, while `RenderBridge` creates their real batches in frame systems.
+  Compiling immediately after `registry.init()` warmed terrain and post effects but left unit and
+  building pipelines to hitch on the first presented frame. The bootstrap presentation pass has
+  `dt=0`, `time=0` and never advances simulation.
+- **WEBGPU MSAA DEPTH CANNOT BE SAMPLED OR RESOLVED.** When AO and scene MSAA are both enabled,
+  `post-nodes.ts` keeps multisampling on scene colour but gives AO a single-sample depth-only
+  prepass. Feeding AO the scene pass depth emits invalid WGSL because
+  `texture_depth_multisampled_2d` has no mip-level `textureDimensions` overload; the old path logged
+  a device validation failure and silently dropped AO. With either AO or MSAA off, the extra depth
+  submission does not exist.
 - **`ShaderMaterial` is NOT in `StandardNodeLibrary`.** It does not degrade under `WebGPURenderer` —
   it fails `Material "ShaderMaterial" is not compatible` and draws through a bare `NodeMaterial`.
   Adding one without a node twin is a black surface, not a slightly wrong one.
@@ -2158,7 +2199,7 @@ that picks. **The default is still WebGL** and nothing in the product selects th
 - **`device.lost` IS A PROMISE THAT RESOLVES, and it is watched.** `device-loss.ts#watchDeviceLoss`,
   filtering `reason === 'destroyed'` (that is our own `device.destroy()`, i.e. teardown). A loss
   sets `isContextLost()` — which `post.render()` already early-outs on — and never clears, because a
-  lost WebGPU device does not come back. `tests/gpu-device-loss.spec.ts` drives all of it from
+  lost WebGPU device does not come back. `apps/game/tests/gpu-device-loss.spec.ts` drives all of it from
   stubs; **no part of the recovery has been observed on real hardware** and `RENDER_FINDINGS.md`
   §7g says exactly which four claims that leaves unverified.
 - **`powerPreference: 'high-performance'` IS A HINT AND WINDOWS IGNORES IT.** Stage A asked for it
@@ -2188,22 +2229,16 @@ shipped; its measurements are in `RENDER_FINDINGS.md` §7 and §11, and its rule
 labels were left in place deliberately — they are accurate provenance for which pass ported which
 shader, and rewriting 35 comments to erase that would lose real information to gain tidiness.
 
-## There is a desktop build now, and the web build did not move an inch
+## The desktop shell and web game are separate workspaces
 
-`desktop/` is an Electron shell around the UNMODIFIED `dist/`. Read
-[`desktop/README.md`](desktop/README.md)
-before touching it. The constraint was *"they should be able to live side by side. github pages
-deployment continue as is, and the desktop version wont run in ci for now"*, and it is satisfied
-**structurally, not by discipline**.
+`apps/desktop/` is an Electron shell around the UNMODIFIED `apps/game/dist/`. Read
+[`apps/desktop/README.md`](apps/desktop/README.md)
+before touching it. The workspace boundary is structural, not a convention.
 
-- **`desktop/` HAS ITS OWN `package.json`, exactly like `server/`.** The `electron` package's
-  postinstall downloads a **144 MB** binary; in root devDependencies that lands on every Pages CI
-  run. Here, root `npm ci` never sees it and **`deploy.yml` needs zero edits**. The build proves it:
-  the entry chunk after all of this is `index-BoivCkEI.js`, the same hash as before.
-- **`npm run desktop:typecheck` IS A FIFTH INVOCATION AND IT IS DELIBERATELY NOT IN THE GATE.**
-  Appending it to `npm run typecheck` fails Pages CI on `TS2307: Cannot find module 'electron'`
-  unless `deploy.yml` also gains `npm ci --prefix desktop` — the file that must not change. Fold it
-  in on the same commit that puts desktop in CI. This is the `server/node_modules` trap again.
+- **ONE ROOT LOCKFILE RESOLVES EVERY WORKSPACE.** Pages filters its Turbo run to
+  `@voltmarch/game...`; the Windows workflow installs with lifecycle scripts disabled and rebuilds
+  Electron alone. `npm run typecheck` includes desktop in the complete gate, while
+  `npm run desktop:typecheck` remains the fast focused command.
 - **THE GPU SWITCH WORKS, AND IT IS MEASURED TWICE.** `RENDER_FINDINGS.md` §7j. On the RTX 3080
   laptop, both spellings work *alone*, and one switch moves **both** renderers:
 
@@ -2234,23 +2269,23 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   renderer-initiated, so they DO fire the event. And never compare `.origin` — Node's URL parser
   returns the string `'null'` for `app://voltmarch/x`, because it knows nothing about a
   privileged-scheme registration.
-- **THE DESKTOP TARGET IS OUTSIDE CI, SO EVERY DECISION LIVES OUTSIDE `main.ts`.**
-  `desktop/src/{flags,app-url,paths,display,storage}.ts` import no electron and are tested by
-  `tests/desktop-shell.spec.ts` in the ordinary gate, including the path-traversal guard and an
-  import-boundary check that fails if the shell ever reaches into `src/`. Only the wiring needs a
+- **EVERY TESTABLE DESKTOP DECISION LIVES OUTSIDE `main.ts`.**
+  `apps/desktop/src/{flags,app-url,paths,display,storage}.ts` import no electron and are tested by
+  `apps/game/tests/desktop-shell.spec.ts` in the ordinary gate, including the path-traversal guard and an
+  import-boundary check that fails if the shell ever reaches into `apps/game/src/`. Only the wiring needs a
   binary, and that is `npm run desktop:smoke`.
 
-  **`desktop/build.mjs` resolved its entry points against the CALLER'S CWD**, and the repo root has
-  a `src/main.ts` of its own — the game's. So `node desktop/build.mjs` from the root pointed esbuild
+  **`apps/desktop/build.mjs` resolved its entry points against the CALLER'S CWD**, and the repo root has
+  a `apps/game/src/main.ts` of its own — the game's. So `node apps/desktop/build.mjs` from the root pointed esbuild
   at the wrong entry and began bundling the whole game into the Electron main process, announcing
   itself only as a wall of `import.meta is not available with the "cjs" output format` warnings.
   `npm run desktop:build` set the cwd correctly, which is why it stayed invisible. Paths resolve
   from the file now, exactly as `tools/brand.mjs` documents having fixed for the same reason.
-- **THERE IS A DESKTOP-ONLY DISPLAY SECTION, and `src/platform/desktop.ts` is the seam.**
+- **THERE IS A DESKTOP-ONLY DISPLAY SECTION, and `apps/game/src/platform/desktop.ts` is the seam.**
   Window mode, window size, monitor, graphics processor, unlock frame rate, and a button to the
   save folder — top of Options → Graphics, absent in a browser because the accessor returns null
   there. **That file must import NOTHING**, which a test asserts: the game may not reach into
-  `desktop/`, so the IPC shapes are declared on both sides and `tests/desktop-shell.spec.ts`
+  `apps/desktop/`, so the IPC shapes are declared on both sides and `apps/game/tests/desktop-shell.spec.ts`
   compares the two declarations rather than letting an import paper over the boundary.
 
 - **RELEASE MANAGEMENT HAS ITS OWN SETTINGS TAB.** `Settings → Updates` is the player-facing
@@ -2261,14 +2296,15 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   diagnostic export several times per second. Browser and development builds state their limits
   instead of presenting updater actions that cannot work.
 
-- **DISCORD ANNOUNCEMENTS ARE DOWNSTREAM OF THE RELEASE, NOT ANOTHER PUBLISHER.** The `discord`
-  job in `.github/workflows/desktop.yml` needs the completed Windows job, reads the already-created
-  GitHub release through `tools/post-discord-release.mjs`, and uses only the
-  `DISCORD_RELEASE_WEBHOOK_URL` repository secret. It sends `allowed_mentions.parse = []`, caps the
-  visible embed to Discord's limit, and attaches the complete generated Markdown notes. Keep it a
-  separate job: if Discord is unavailable, rerunning failed jobs must not rebuild or recreate the
-  release. Never print the webhook, pass it on the command line, or replace the local script with a
-  third-party action that receives the secret.
+- **DISCORD ANNOUNCEMENTS ARE DOWNSTREAM OF VERIFIED DEPLOYMENTS, NOT ANOTHER PUBLISHER.** The
+  `announce` job in `.github/workflows/deploy-relay.yml` runs only after the public relay smoke
+  check, waits for the complete four-file Windows updater release, and checks whether Pages
+  deployed the exact tagged commit. `tools/post-discord-release.mjs` then names only those proven
+  surfaces, includes the commit SHA, marks omitted surfaces, and reads the already-created GitHub
+  notes. It uses only the `DISCORD_RELEASE_WEBHOOK_URL` repository secret, sends
+  `allowed_mentions.parse = []`, caps the visible embed to Discord's limit, and attaches the full
+  Markdown receipt. Never print the webhook, pass it on the command line, or replace the local
+  script with a third-party action that receives the secret.
 
 - **ONE VERSION TAG RELEASES DESKTOP AND RELAY FROM THE SAME COMMIT.** Both
   `.github/workflows/desktop.yml` and `.github/workflows/deploy-relay.yml` listen for
@@ -2294,7 +2330,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
 - **WHAT IS STILL WEB-ONLY PROSE.** `README.md`, `package.json`, `index.html` and two wiki pages
   describe this as a browser game; they are INCOMPLETE rather than false, and were deliberately left
   until the desktop build is actually distributed. Two claims will need real care at that point:
-  `server/README.md:98` and `wiki/Multiplayer.md:58` say a browser refuses a plaintext socket from a
+  `apps/relay/README.md:98` and `wiki/Multiplayer.md:58` say a browser refuses a plaintext socket from a
   secure page, and that is the stated reason the relay needs no transport check of its own —
   `pageIsPlaintext()` tests `location.protocol !== 'https:'`, which an `app:` origin passes. See
   the Electron plan §8.
@@ -2335,7 +2371,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
 
   So the target is OPT-IN: `fpsCap` drives it (`targetMsForCap`, 0 → 60), `Shell.maybeCalibrate`
   passes it, and `displayFrequency` only ANNOTATES the row — it names your panel and marks options
-  above it. `tests/frame-rate-target.spec.ts` holds every number above.
+  above it. `apps/game/tests/frame-rate-target.spec.ts` holds every number above.
 
   **THE LOAD-BEARING HALF IS THE EXEMPT LIST.** `graphics.fpsCap` was on `CALIBRATION_EXEMPT`
   under an argument that was TRUE when written — *"it has ZERO readers... it cannot affect
@@ -2346,7 +2382,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   expiry date no mechanism can notice passing.**
 
   **IT IS NOT A FRAME LIMITER AND THE ROW SAYS SO.** There is none in this project — the render
-  loop is `src/core/`, frozen infrastructure, and a capped frame time is a FLAT frame time, which
+  loop is `apps/game/src/core/`, frozen infrastructure, and a capped frame time is a FLAT frame time, which
   is exactly what `CALIBRATION.flatSlopeMs` reads as "not fill-rate bound". A limiter left on
   during a probe would poison the fit that measures it. Still open: `displayFrequency` answers for
   the PRIMARY monitor, so a window on a second screen is annotated with the first one's rate;
@@ -2370,7 +2406,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
 
   **THERE ARE TWO SCENE SUBMISSIONS NOW, NOT THREE.** `GTAOPass` used to build its normal G-buffer
   by drawing the whole scene a second time with `MeshNormalMaterial` — 39-57 draws per fixture,
-  26.8-29.4% of every frame. `installAoDepthGBuffer` in `src/render/post.ts` hands the pass the
+  26.8-29.4% of every frame. `installAoDepthGBuffer` in `apps/game/src/render/post.ts` hands the pass the
   depth the colour pass already wrote and reconstructs the normals with one full-screen quad, so
   `_renderGBuffer` is false and that submission is gone. Measured over all thirteen fixtures:
 
@@ -2396,7 +2432,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   and turning AO OFF entirely moves it barely more. `tools/metrics.mjs` is a frame-wide statistic;
   use `tools/shot-compare.mjs` and an AO-disabled control capture before believing any AO change.
 
-  **There is no CSM.** `src/render/scene.ts` builds ONE `DirectionalLight` with ONE orthographic
+  **There is no CSM.** `apps/game/src/render/scene.ts` builds ONE `DirectionalLight` with ONE orthographic
   shadow camera, and the only other shadow-capable light — the ground bounce — sets
   `castShadow = false`. `QualitySettings.shadowCascades` used to be written and read by nobody; it
   is deleted now, along with `shadowResolution`, `lodBias`, `lodDistances`, `cascadeNear`,
@@ -2413,7 +2449,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   every boundary edge of a coarse chunk spans exactly one grid step, so it draws the same polyline
   a fine neighbour draws, vertex for vertex, against ANY neighbour. `tools/metrics.mjs` could never
   have caught the alternative — a two-pixel seam moves no frame-wide statistic — which is why
-  `tests/terrain-lod.spec.ts` proves the geometry instead of scoring pixels.
+  `apps/game/tests/terrain-lod.spec.ts` proves the geometry instead of scoring pixels.
 
   **THE SAVING IS SMALL AND THE COUNTS ARE PINNED FOR A REASON.** Four to sixteen of sixty-four
   chunks qualify depending on the map; on the landlocked roll ten of the thirteen capture fixtures
@@ -2482,14 +2518,14 @@ scrollable and deliberately wide enough for its labels at 150%.
 Reported as *"i want the adaptive resolution to be off by default. instead, set the graphic options
 that match the best for user for the first time and thats it"*. `AdaptiveResolution` is not deleted
 — it is a good controller, its one-way ratchet is fixed, and it stays a toggle. What changed is the
-default and what fills the gap: `src/render/HardwareCalibration.ts` plus `calibration.system.ts`.
+default and what fills the gap: `apps/game/src/render/HardwareCalibration.ts` plus `calibration.system.ts`.
 
 - **THE FRAME IS A STRAIGHT LINE AND THE ANSWER CAN BE SOLVED.** `docs/RENDER_FINDINGS.md` §9 fitted
   `GPU ms = 5.86 + 6.40 x Mpx` at r² 0.995, with 79-90% of GPU time pixel-proportional. So the
   calibration renders two probe windows at two known pixel counts (probe A from the adapter prior,
   probe B at 70% of it — 49% of the pixels), fits that line, and solves for the scale that meets
   16.7 ms. 110 frames: ~1.8 s at 60 fps, ~4.7 s on the 23.6 fps machine §9 measured.
-  `tests/hardware-calibration.spec.ts` feeds it §9's own machine and requires it to recover 5.86 and
+  `apps/game/tests/hardware-calibration.spec.ts` feeds it §9's own machine and requires it to recover 5.86 and
   6.40 exactly, then reproduces §9's published 0.694 — which is at a 17.22 ms target, not 16.7.
 - **THE ADAPTER IS A PRIOR AND CANNOT CHANGE THE ANSWER.** `capabilities.adapter` (§7g),
   `classifyGpu` and the backend (§7f: WebGPU 1.74-1.89x faster) decide only where probing STARTS.
@@ -2498,8 +2534,8 @@ default and what fills the gap: `src/render/HardwareCalibration.ts` plus `calibr
   a vsync-capped display with headroom or a CPU-bound frame, and blurring buys nothing in either
   case. This is the property that makes it safe to ship on hardware nobody here owns.
 - **IT MUST NEVER RUN UNDER `?shot=`, AND THE STRUCTURAL GUARD IS THE ONE THAT MATTERS.**
-  `armCalibration` has exactly ONE caller, `src/shell/Shell.ts`, and `main.ts#bootHarness` never
-  imports the shell — pinned by a test that enumerates `src/**/*.ts`. Two runtime guards back it up
+  `armCalibration` has exactly ONE caller, `apps/game/src/shell/Shell.ts`, and `main.ts#bootHarness` never
+  imports the shell — pinned by a test that enumerates `apps/game/src/**/*.ts`. Two runtime guards back it up
   (`loop.captureClock`, read LIVE in both places, and `handle.isFixedSize`). **A fourth, `rc.dt > 0`,
   is deliberately NOT called a guard**: it survived mutation because `sample()`'s own `frameMs > 0`
   filter already refuses a zero interval, and a line labelled "guard" that cannot be made to fail is
@@ -2646,7 +2682,7 @@ paving as real slabs with joints. Large flat areas of a single colour are correc
 
 ## Models: boxes are a bug
 
-`src/art/Shapes.ts` provides chamfered and tapered boxes, lathes, extrusions along paths, faceted
+`apps/game/src/art/Shapes.ts` provides chamfered and tapered boxes, lathes, extrusions along paths, faceted
 cylinders, convex hulls, layered plates and track assemblies. `MassList` default-chamfers everything
 and rejects any model whose silhouette is more than ~85% axis-aligned rectangle. Author through the
 primitives; do not reach for a plain box.
@@ -2692,4 +2728,4 @@ Worth knowing, because each cost real time:
   `/wiki`. At `/wiki/Home` that resolves to `/wiki/wiki/Economy`, which does not 404 — it silently
   re-serves the front page, so every link on the front page looked inert rather than broken. The
   `.md` suffix does not fix it and breaks working links; that was tested, not assumed.
-  `tests/wiki-links.spec.ts` is the gate.
+  `apps/game/tests/wiki-links.spec.ts` is the gate.

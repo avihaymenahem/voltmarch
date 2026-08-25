@@ -24,7 +24,7 @@ the budget; quote `frame.drawCalls` only as the content fingerprint it is.
 01-establishing-base:  219 total = 78 colour + 54 shadow + 67 AO prepass + 20 post quads
 ```
 
-and the AO prepass in it is gone: `installAoDepthGBuffer` in `src/render/post.ts` hands `GTAOPass`
+and the AO prepass in it is gone: `installAoDepthGBuffer` in `apps/game/src/render/post.ts` hands `GTAOPass`
 the depth the colour pass already wrote and reconstructs normals with one full-screen quad, so
 `_renderGBuffer` is false and `ao` is **0 on all thirteen fixtures**. A non-zero `ao` now means that
 wiring failed and the prepass came back.
@@ -44,7 +44,7 @@ total 105–157.**
 `info.render.calls` is per-frame draws on WebGL but a **monotonic lifetime count of `render()`
 invocations** under WebGPU, which `reset()` never clears — per-frame lives in `render.drawCalls`.
 `info.programs` is `undefined`, so `debug.ts`'s `?? 0` reports 0 forever. Nothing throws. Read
-through `normaliseInfo()` / `handle.frameInfo()` in `src/render/backend.ts`, never `renderer.info`
+through `normaliseInfo()` / `handle.frameInfo()` in `apps/game/src/render/backend.ts`, never `renderer.info`
 directly, or every draw-call number in this project silently becomes fiction on the node path.
 
 ---
@@ -132,7 +132,7 @@ numbers." **Fix those before any re-tune or it starts from fiction.**
 
 Allocated in `core/world.ts`, written every tick by `sim/Movement.ts` and `sim/Harvesting.ts`, saved
 to disk by `SaveGame.ts`, documented at `config.ts:1211` as *"UV scrolled by treadPhase"* — and
-**read by nothing in `src/render/` or `src/art/`.** Tank tracks are frozen textures. Confirmed by
+**read by nothing in `apps/game/src/render/` or `apps/game/src/art/`.** Tank tracks are frozen textures. Confirmed by
 grep, not inferred.
 
 ### Camera: three different pitches are documented in three places, none of them the bible's 39°
@@ -149,7 +149,7 @@ surface area. **The validator is right and the camera is defeating it.**
 
 > This one is a PRODUCT DECISION, not a bug. 52° was chosen so a tall shed would not hide the
 > vehicle parked under it. Flattening trades base legibility for silhouette, and requires
-> re-deriving all 13 shot poses and `tests/shot-camera.spec.ts`. Do not "fix" it unilaterally.
+> re-deriving all 13 shot poses and `apps/game/tests/shot-camera.spec.ts`. Do not "fix" it unilaterally.
 
 ---
 
@@ -207,7 +207,7 @@ Fixed in `22b123c`. What it had been hiding:
    hash is byte-identical run to run, so the harness certified stability over an effect banned for
    being unstable.
 
-`tests/banned-effects.spec.ts` passed throughout, because it scans config source literals and those
+`apps/game/tests/banned-effects.spec.ts` passed throughout, because it scans config source literals and those
 were right.
 
 **Two lessons, both general:**
@@ -313,7 +313,7 @@ nothing on screen.
   It was integrated anyway for a reason the measurement does not cover: it was the one branch
   carrying unmerged work, and the merge cost nothing.
 
-  **THE MERGE IS THE ARGUMENT FOR `tests/terrain-lod.spec.ts` EXISTING.** Its pinned per-map chunk
+  **THE MERGE IS THE ARGUMENT FOR `apps/game/tests/terrain-lod.spec.ts` EXISTING.** Its pinned per-map chunk
   counts fired immediately, twice. Under the start-spread widening three of five moved
   (temperate-valley 7 -> 4, frozen-sector 5 -> 3, contested-strait 16 -> 14); under the seed-picked
   start pair one more moved (frozen-sector 3 -> **4**, which is the value pinned today). Both times
@@ -339,7 +339,7 @@ nothing on screen.
   terrain. And it is pointed the wrong way — triangles are not the constraint (draw calls are, and
   the colour pass has ~50 spare), while the headline visual finding is that the ground has too
   LITTLE detail (§3). Adding the ground structure §3 calls for would reduce the qualifying count
-  further. `tests/terrain-lod.spec.ts` pins the counts, so if a future generator pass makes maps
+  further. `apps/game/tests/terrain-lod.spec.ts` pins the counts, so if a future generator pass makes maps
   flatter this becomes worth having and the test will say so. Merge is one command away.
 - **The scatter shadow-radius gate saves nothing today.** All 31 shipped `PROP_DEFS` clear 0.70 m
   (smallest is `bench` at 1.182). It is an enforced invariant for the next small prop, not a win.
@@ -398,7 +398,7 @@ the visual gap plan P0 that did not land clean, and it was deferred deliberately
 bundled with the albedo and environment-response fixes, which did.
 
 Note also what this does NOT license: **there is no test pinning `shadowIntensity`.** Asserting 1.0
-would fail and asserting 0.80 would pin a defect, so `tests/lighting-law.spec.ts` carries a comment
+would fail and asserting 0.80 would pin a defect, so `apps/game/tests/lighting-law.spec.ts` carries a comment
 where the assertion should be. That is intentional — a green suite must not become evidence for the
 wrong thing.
 
@@ -533,7 +533,7 @@ gave r² 1.000 with 89.7% of GPU time pixel-proportional. **60 fps lands at rend
 
 ### The ablation table is now an always-on asynchronous instrument
 
-`src/render/gpu-pass-timings.ts` and `PerfHud` now retain real GPU milliseconds for scene,
+`apps/game/src/render/gpu-pass-timings.ts` and `PerfHud` now retain real GPU milliseconds for scene,
 shadows, AO, bloom, grade and SMAA on both renderers. WebGL rotates one
 `EXT_disjoint_timer_query_webgl2` category per frame and can additionally sum tagged water and
 particle draws at `renderBufferDirect`. WebGPU reads Three's native timestamp-query render-context
@@ -555,12 +555,12 @@ Three consequences that change what work is worth doing:
    hardware — once its one-way-ratchet bug is fixed (it required a median below 13.69 ms to restore,
    which a 60 Hz display can never produce).
 
-   **THIS FIT IS NOW SHIPPED PRODUCT, not just a finding.** `src/render/HardwareCalibration.ts`
+   **THIS FIT IS NOW SHIPPED PRODUCT, not just a finding.** `apps/game/src/render/HardwareCalibration.ts`
    re-derives the same line on the player's own machine — two probe windows at two known pixel
    counts, ordinary least squares, solve for the target — and writes the answer into
    `graphics.resolutionScale` once, on the first battle, never again. Adaptive resolution is off by
    default as of v2.14.0 and is a toggle. The numbers above are the test fixture:
-   `tests/hardware-calibration.spec.ts` feeds the solver 5.86 + 6.40/Mpx and requires it back
+   `apps/game/tests/hardware-calibration.spec.ts` feeds the solver 5.86 + 6.40/Mpx and requires it back
    exactly. **Note that this entry's 0.694 is against a ~17.22 ms target, not 16.7** — the same
    line at 16.7 gives 0.678, and the spec pins both so the two never get quoted for each other.
 
@@ -680,8 +680,8 @@ then `useProgram: program not valid`). With two backends to support, TSL node gr
 route.
 
 **`renderer.info` is NOT the same object under WebGPU, and the difference is silent.**
-`src/render/post.ts` derives `drawCallsByPass` from deltas of `renderer.info.render.calls` and
-`src/render/debug.ts` reads `info.programs?.length ?? 0`. Under `three/webgpu`:
+`apps/game/src/render/post.ts` derives `drawCallsByPass` from deltas of `renderer.info.render.calls` and
+`apps/game/src/render/debug.ts` reads `info.programs?.length ?? 0`. Under `three/webgpu`:
 
 | our code reads | WebGL means | WebGPU means |
 |---|---|---|
@@ -742,7 +742,7 @@ Two questions were open when Stage B started. Both are now answered with an inst
 ### The grade port is numerically the same shader
 
 `tools/grade-ab/run.mjs` renders one fixed scene-linear HDR chart through **`GRADE_FRAG` on
-`WebGLRenderer`** and through **`src/render/nodes/grade-node.ts` on `WebGPURenderer`**, at exactly
+`WebGLRenderer`** and through **`apps/game/src/render/nodes/grade-node.ts` on `WebGPURenderer`**, at exactly
 the texture's resolution with `NearestFilter` so no filtering difference can enter, with both arms
 taking their uniforms from the same `gradeUniformValuesFor()`. Live backend asserted
 `isWebGPUBackend === true` — the run REFUSES to report a number under the WebGL2 fallback.
@@ -772,23 +772,32 @@ happen. Measured deliberately with a Y-varying ramp so the test could actually s
 The flipped comparison being catastrophic is what makes the straight one meaningful — do not delete
 that arm to save a render.
 
-### The AO scene submission does NOT have to be rebuilt, but the shader cost does
+### The AO scene submission is shared without MSAA; WebGPU depth rules require one with MSAA
 
 the WebGPU migration §3 said the `installAoDepthGBuffer` saving "has no direct equivalent and
 would be redone from scratch". Half right, and the half that is wrong is the expensive half:
 
-- **The second scene submission is gone by construction.** `GTAONode` owns no scene and no prepass —
+- **The second scene submission is gone by construction in the normal single-sample path.** `GTAONode` owns no scene and no prepass —
   it is a full-screen quad over a depth node, and `pass(scene, camera).getTextureNode('depth')` is
   the depth the colour pass already wrote. There is nothing to delete because the node pipeline
   never had it. The seventy lines of `installAoDepthGBuffer` reaching into six private members of
   `GTAOPass` have no counterpart.
+- **That statement stops being true when the colour pass uses MSAA.** WebGPU can resolve
+  multisampled colour but has no depth/stencil resolve operation. Three exposes the attachment as
+  `texture_depth_multisampled_2d`; `getNormalFromDepth` then emits
+  `textureDimensions(depth, 0)`, which has no legal WGSL overload for that texture type. A live RTX
+  3080 boot produced the device validation error while the frame continued without AO. The fixed
+  graph retains MSAA colour and supplies AO from a single-sample **depth-only** pass. That extra
+  geometry submission exists only for AO + MSAA; either feature off returns to the shared-depth
+  path. `apps/game/tests/post-nodes.spec.ts` pins the topology, and only a real device proves the
+  generated pipeline is accepted.
 - **The naive port is nevertheless a real regression, and it is the trap §1 already names.** Both
   `GTAONode` and `DenoiseNode` accept a null `normalNode` and reconstruct the view normal from depth
   in the shader. `GTAONode` hoists that above its direction loop and pays for one.
   **`DenoiseNode` calls `sampleNormal` for the centre tap AND inside its 16-sample loop — 17
   reconstructions per denoised pixel**, each nine `textureLoad`s and three inverse-projection
   transforms. Identical arithmetic to `PoissonDenoiseShader`, identical conclusion: reconstruct ONCE
-  into a texture and hand it to both. `src/render/nodes/ao-node.ts` does that with one `RTTNode` at
+  into a texture and hand it to both. `apps/game/src/render/nodes/ao-node.ts` does that with one `RTTNode` at
   the AO resolution.
 
 ### Three defects the node port would have inherited, found by reading three's source
@@ -798,11 +807,11 @@ None of these would have failed a build, and two are invisible until a capture d
 1. **`DenoiseNode.generateDefaultNoise()` calls `new SimplexNoise()`, whose default RNG is `Math`.**
    Byte-for-byte the same defect `post.ts#seedAoDenoiseNoise` fixes on the WebGL side, arrived at
    independently in three's node port. Unseeded, two boots of one build cannot produce the same
-   image. Both chains now seed from `AO_NOISE_SEED` in `src/render/ao-params.ts`.
+   image. Both chains now seed from `AO_NOISE_SEED` in `apps/game/src/render/ao-params.ts`.
 2. **`DenoiseNode` ships `lumaPhi`/`depthPhi`/`normalPhi` at 5/5/5 and `GTAOPass`'s constructor
    overwrites them with 10/2/3.** The WebGL chain inherits the latter silently by never setting
    them, so a node port that also never sets them denoises with a *different filter* from the same
-   config. Pinned in `tests/post-nodes.spec.ts` by reading `GTAOPass.js` itself.
+   config. Pinned in `apps/game/tests/post-nodes.spec.ts` by reading `GTAOPass.js` itself.
 3. **`DenoiseNode` builds its Poisson disc with radius exponent 1; `GTAOPass.pdRadiusExponent` is
    2.** Same 16 taps over the same 2 rings, spread evenly along the radius instead of clustered.
    Same cost, different filter, nothing to catch it.
@@ -815,7 +824,7 @@ table, the pass order, and the two AO parameter helpers — after tree-shaking d
 them the WebGL chain does not use.
 
 `three/webgpu` is **absent from the bundle entirely** (`grep -c WGSLNodeBuilder dist/assets/index-*.js`
-= 0), because nothing in `src/main.ts`'s graph imports the node chain yet. That is the load-bearing
+= 0), because nothing in `apps/game/src/main.ts`'s graph imports the node chain yet. That is the load-bearing
 half: the node passes cannot affect a shipped frame until something wires them in.
 
 The first commit message for this work said the bundle was "byte-for-byte the size it was", which is
@@ -831,7 +840,7 @@ written. It is now.
   through one shared function — but no pixel of either has been diffed on a device. AO needs a real
   scene with depth to A/B at all. Both belong to the Stage F dual-backend verification.
 - **The A/B is WGSL only.** The graph is COMPILED for both backends —
-  `tests/post-nodes.spec.ts` puts it through `GLSLNodeBuilder` as well, so neither can silently stop
+  `apps/game/tests/post-nodes.spec.ts` puts it through `GLSLNodeBuilder` as well, so neither can silently stop
   building — but the 1/255 number was taken on a WebGPU device. `WebGPURenderer`'s WebGL2 backend is
   a third renderer, and what it renders from the same graph is unmeasured. Two backends means two
   grade baselines.
@@ -861,7 +870,7 @@ cut are gone.
 `instancedMesh( object )` and REPLACES `positionLocal` with it. So a node that ignores the instanced
 value, resets `positionLocal` to `positionGeometry`, runs the same model-space edit the colour pass
 runs, and re-applies three's own `instancedMesh( builder.object )` reproduces the colour pass's
-position exactly. `src/render/cast-shadow-nodes.ts`; structures and props call it with the function
+position exactly. `apps/game/src/render/cast-shadow-nodes.ts`; structures and props call it with the function
 they already had, so there is still ONE declaration of each displacement.
 
 **IT UPLOADS NOTHING.** The instance transform is reached through `builder.object` — a bare `Fn`
@@ -877,7 +886,7 @@ shadow vertex stage carries **one extra mat4**: four more `nodeAttributeN` slots
 where the matrices arrive as an interleaved attribute, and a second uniform buffer of `count * 64`
 bytes over the same array where they arrive as a uniform buffer — three picks between those on
 `count * 64 <= maxUniformBufferBindingSize`, i.e. 1024 instances. Both are a second BINDING of a
-buffer that is already resident, never a second copy. Pinned in `tests/stage-d-node-materials.spec.ts`
+buffer that is already resident, never a second copy. Pinned in `apps/game/tests/stage-d-node-materials.spec.ts`
 §3b, including the attribute-limit headroom, because blowing 16 lands in a player's browser and in
 no other gate.
 
@@ -1037,7 +1046,7 @@ something else entirely.
 2. **`DenoiseNode.noiseNode` is a NODE, not a texture.** `ao-node.ts` assigned the reseeded
    `DataTexture` directly; the body calls `this.noiseNode.sample( uv )`, which threw inside
    `THREE.TSL`'s own catch — three console errors, no boot failure, and an AO term that darkened
-   the whole frame by roughly one sRGB decode. **`tests/post-nodes.spec.ts` asserted the wrong shape
+   the whole frame by roughly one sRGB decode. **`apps/game/tests/post-nodes.spec.ts` asserted the wrong shape
    and passed**, because it read `noiseNode.image.data` and a `DataTexture` has `.image.data`. It
    reads through `.value` and asserts `isTextureNode` now.
 3. **`ShaderMaterial` IS NOT IN `StandardNodeLibrary`.** Basic/Lambert/Phong/Standard/Physical/Toon/
@@ -1071,7 +1080,7 @@ something else entirely.
   `WGSLNodeBuilder`, `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`,
   `MeshStandardNodeMaterial` and `castShadowPositionNode` are **0 occurrences in the entry chunk**
   and all present in a separate `gpu-path-install-*.js` a WebGL boot never fetches.
-  `tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails when a static import is added
+  `apps/game/tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails when a static import is added
   on purpose. `vite build` on the pre-cutover tree (`56547ff`) against this one:
 
   ```
@@ -1147,7 +1156,7 @@ node chunk          776.39 kB  ->    776.74 kB     never fetched on the WebGL pa
 
 `device-loss.ts` is in the entry chunk on purpose: the failure it reports can happen before the node
 chunk has finished loading, so a recovery path that lives inside the thing that failed to load is no
-recovery path. `tests/webgpu-bundle-isolation.spec.ts` still reports 0 node symbols in the entry.
+recovery path. `apps/game/tests/webgpu-bundle-isolation.spec.ts` still reports 0 node symbols in the entry.
 
 **The WebGL construction path takes exactly three touches and all three are inert there**, which is
 argued from the diff rather than measured — `npm run shots` was not run, because the host machine
@@ -1174,7 +1183,7 @@ costs a player nothing, because no frame has been drawn.
 
 ### What is NOT verified, and cannot be from here
 
-`tests/gpu-device-loss.spec.ts` drives a rejected `init()`, a resolved `device.lost`, and an
+`apps/game/tests/gpu-device-loss.spec.ts` drives a rejected `init()`, a resolved `device.lost`, and an
 `adapterInfo` whose fields sit on the prototype — the three signals this code reacts to, reproduced
 exactly, and every assertion in it was mutation-tested red. It does **not** establish that a real
 Chrome resolves `device.lost` on a real driver reset rather than only killing the GPU process, that
@@ -1259,7 +1268,7 @@ arm with everything on. Scorecard #34 (edgeCoverage) will move — SMAA removes 
 already fails 13/13 for being too LOW, so this pushes the wrong way. That is a real cost and it does
 not make the dead pass worth keeping.
 
-`tests/perf-budget.spec.ts` builds a real `SMAAPass`, runs the exported `demoteSmaaTargets` over it
+`apps/game/tests/perf-budget.spec.ts` builds a real `SMAAPass`, runs the exported `demoteSmaaTargets` over it
 and asserts the two reference identities. Every source-scanning assertion in that file passed
 throughout the defect's life, because the text really did say `UnsignedByteType` on two mask
 targets; what was false was a reference identity, and the only way to see one is to build the object
@@ -1283,7 +1292,7 @@ normal reconstruction, a different march radius or a different denoise would cha
 flat ratio says the occlusion TERM is scaled differently.
 
 Already ruled out, by reading: the march and denoise parameters are shared through
-`src/render/ao-params.ts` and both sides apply `pow(ao, scale)`; `GTAOPass.updateGtaoMaterial`
+`apps/game/src/render/ao-params.ts` and both sides apply `pow(ao, scale)`; `GTAOPass.updateGtaoMaterial`
 really does assign each of them (it is not silently dropping the object into a `try/catch`);
 `blendIntensity` and the node's `mix(1, ao, intensity)` both read `cfg.ao.intensity`; and neither AO
 installer has the stale-binding bug SMAA had — `installAoDepthGBuffer`'s wrapper rebinds `tDepth` on
@@ -1305,7 +1314,7 @@ signed darkening is WebGL -1.831/-1.578/-0.860 and WebGPU -1.929/-1.663/-0.859 l
 
 - **Post disable is a true bypass now.** The node-backed chain retains the current scene and camera
   and calls `nodeRenderer.render(scene, camera)` when disabled. The graph does not run, and restoring
-  renderer AgX therefore cannot double-tone-map a still-live grade. `tests/compositing.spec.ts`
+  renderer AgX therefore cannot double-tone-map a still-live grade. `apps/game/tests/compositing.spec.ts`
   pins the branch.
 - **Bloom now samples a materialised HDR input.** `PostBloomInput` is a full-resolution RGBA16F RTT,
   matching the composer's buffer before `UnrealBloomPass` performs its half-resolution high pass.
@@ -1328,7 +1337,7 @@ fix; it is the two facts a "looks about right" fix would have shipped wrong, bot
 renders a picture that is a different colour in all four corners into a render target built exactly
 as `CameoRenderer.ensureTarget` builds one — 148x116, i.e. a 74x58 build slot at
 `HUD_CAMEO.supersample` 2 — reads it back through each renderer's own readback, and runs the
-SHIPPED `src/render/backend.ts` helpers over the bytes. Real Chrome, `channel: 'chrome'`, both arms
+SHIPPED `apps/game/src/render/backend.ts` helpers over the bytes. Real Chrome, `channel: 'chrome'`, both arms
 in one page on two canvases (§7g: one context type per canvas, for life).
 
 ```
@@ -1373,7 +1382,7 @@ in one page on two canvases (§7g: one context type per canvas, for life).
   path's uniform writes and that is a separate question. Do not "fix" the cameo exposure by tuning
   this number; it does nothing.
 
-`tests/cameo-readback.spec.ts` pins the arithmetic without a GPU (31 assertions, 20 deliberate
+`apps/game/tests/cameo-readback.spec.ts` pins the arithmetic without a GPU (31 assertions, 20 deliberate
 breaks each red on exactly the tests naming them), including that the shipped blitter is
 byte-for-byte the loop it replaced when handed WebGL's layout. **It cannot establish the two facts
 in the table above** — only the probe can, and its verdict is here.
@@ -1436,10 +1445,10 @@ and `needsUpdate` initially false, Three r185.1 bound its non-comparison fallbac
 the `directionalShadowMap[]` comparison-sampler array. The array setter does not apply the fallback
 texture's compare function, so the first draw failed with `GL_INVALID_OPERATION`.
 
-`src/render/renderer.ts` now arms one shadow update immediately after disabling automatic updates.
+`apps/game/src/render/renderer.ts` now arms one shadow update immediately after disabling automatic updates.
 The warm-up therefore creates the real comparison shadow texture; `beginFrame()` continues to arm
 the normal once-per-frame update. A fresh, self-closing 13/13 capture at 2560×1440 reports zero
-texture/sampler mismatch warnings, and `tests/perf-budget.spec.ts` pins both the initial and per-frame
+texture/sampler mismatch warnings, and `apps/game/tests/perf-budget.spec.ts` pins both the initial and per-frame
 arms.
 
 
@@ -1571,10 +1580,10 @@ Chrome, and §7j moves both renderers onto it in the desktop shell, so the re-ru
 `tools/gpu-profile.mjs` command on the other adapter rather than on another machine.
 
 **THE STAGE E VFX PORT COULD NOT HAVE MOVED THESE NUMBERS, AND IT WAS MEASURED ANYWAY.**
-`src/vfx/FlashBudget.ts` is CPU arithmetic — `admitGlare` returns a multiplier, the emitters fold
+`apps/game/src/vfx/FlashBudget.ts` is CPU arithmetic — `admitGlare` returns a multiplier, the emitters fold
 it into `EmitDesc`'s intensity envelope, and it reaches both material sets as the same `aTint.x`
 instance attribute. No shader reads it and no shader can change it. Measured regardless, one
-machine and one session, `before` = the pre-Stage-E `src/vfx/` against `after` = HEAD:
+machine and one session, `before` = the pre-Stage-E `apps/game/src/vfx/` against `after` = HEAD:
 `tools/flash-stack.mjs`'s entire `cases` array is **byte-identical between the two arms**. Do not
 re-run it to clear a VFX MATERIAL change; do re-run it the moment anything touches the emitter
 gain path, which is the only thing that can move those numbers.
@@ -1624,8 +1633,8 @@ within 26 degrees of the faction's primary or secondary hue. `validateUnit` and
 separate foundation atlas through `padSurfaceSlot`. `teamFraction` deliberately remains the strict
 explicit-identity metric used by R-T1, while `factionColourFraction` reports the wider palette read.
 This counts glass, insignia and authored pad paint without pretending bare Allied blue-grey metal is
-a team slab. `tests/faction-colour-coverage.spec.ts` pins the classification and
-`tests/vertical-slice-art.spec.ts` proves all four faction leaders expose more faction colour than
+a team slab. `apps/game/tests/faction-colour-coverage.spec.ts` pins the classification and
+`apps/game/tests/vertical-slice-art.spec.ts` proves all four faction leaders expose more faction colour than
 explicit team colour.
 
 ### P1-6 — CLOSED: clearcoat is masked per procedural atlas class
@@ -1681,9 +1690,9 @@ geometry, so it adds no texture, material, batch or draw call.
 
 ### Procedural wreck decision — SHIPPED, not abandoned
 
-The formerly unreachable `src/art/Wrecks.ts` is now the runtime death-art source. The integration
+The formerly unreachable `apps/game/src/art/Wrecks.ts` is now the runtime death-art source. The integration
 registers five factions x five vehicle classes plus five factions x three building-rubble sizes:
-40 deterministic geometries, with stable Wreck-kind-only ids in `src/core/wrecks.ts`. Dead vehicles
+40 deterministic geometries, with stable Wreck-kind-only ids in `apps/game/src/core/wrecks.ts`. Dead vehicles
 select a hulk from their authored radius. Dead structures leave low, non-blocking faction rubble
 that burns briefly and then persists until salvaged or covered by a replacement foundation.
 Meridian ruins retain shattered aperture/journal forms; Reclamation ruins retain welded rails,
@@ -1698,7 +1707,7 @@ persistent-rubble requirement without adding downloaded models or a second mater
 
 **Alpha-tested leaf cards: refused on plumbing, not on look.** `PropMesh.toGeometry()`
 (`PropLibrary.ts:779`) emits `position, normal, color, aSway, aEmit, aGloss` and an index — **no
-`uv`** — and `grep -rn "alphaTest" src/` finds no alpha-tested geometry anywhere in the project.
+`uv`** — and `grep -rn "alphaTest" apps/game/src/` finds no alpha-tested geometry anywhere in the project.
 Every primitive (`box, cyl, disc, blob, cone, blade, tri, quad`) would need a UV, and
 `mergePropGeometries` requires identical attribute sets, so it is all-or-nothing across the whole
 prop library. On top of that, `alphaTest` kills early-Z on the ANGLE/D3D11 path, and the geometry
@@ -1743,7 +1752,7 @@ through… still unmeasured") with:
 
   Two independent reads agree, which is the standard: under `--webgpu` the renderer's own
   `GPUAdapter.info` reports `nvidia`/`ampere` with `backend: 'webgpu'` while the main process
-  reports the NVIDIA device id. `desktop/src/main.ts` logs the active adapter on **every** boot
+  reports the NVIDIA device id. `apps/desktop/src/main.ts` logs the active adapter on **every** boot
   for exactly that reason — the effect site can no-op with no log line of its own, so the switch
   having been appended is never the evidence.
 

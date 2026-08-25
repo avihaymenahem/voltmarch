@@ -297,10 +297,10 @@ async function main() {
       res.end('<!doctype html><meta charset="utf-8"><title>probe</title>');
       return;
     }
-    const file = join(ROOT, 'public', path.replace(/^\/+/, ''));
+    const file = join(ROOT, 'apps/game/public', path.replace(/^\/+/, ''));
     // Never serve outside `public/` — this is a local tool, but a path that
     // escapes its root is a bug wherever it appears.
-    if (!file.startsWith(join(ROOT, 'public')) || !existsSync(file)) {
+    if (!file.startsWith(join(ROOT, 'apps/game/public')) || !existsSync(file)) {
       res.writeHead(404).end();
       return;
     }

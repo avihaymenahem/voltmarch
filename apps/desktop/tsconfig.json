@@ -1,0 +1,28 @@
+{
+  "//": [
+    "Desktop shell only. Turborepo selects this workspace independently, so Pages CI",
+    "does not typecheck or build Electron while the complete root gate still does.",
+    "Run it alone with `npm run desktop:typecheck` from the repo root.",
+    "",
+    "`include` is a security boundary: the desktop shell may not import game code.",
+    "It serves apps/game/dist/ as opaque bytes."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "electron"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts", "build.mjs"]
+}

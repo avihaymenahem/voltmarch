@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "family": "soviet-vehicles",
+  "generatedAt": "2026-08-23T14:15:49.866Z",
+  "encoder": "Basis Universal 1.16.x",
+  "profiles": {
+    "color": "ETC1S q255 comp2 + sRGB mips",
+    "normal": "UASTC level2 RDO 0.50 + 1K landmark/512px small-asset ceiling + normal-renormalized linear mips",
+    "packedData": "ETC1S q255 comp2 + linear mips"
+  },
+  "rows": [
+    {
+      "key": "soviet_rhino",
+      "source": "apps/game/src/assets/units/soviets/anvil-heavy-tank.glb",
+      "output": "apps/game/src/assets/units/soviets/compressed/anvil-heavy-tank.glb",
+      "sourceFileBytes": 5870272,
+      "outputFileBytes": 5384300,
+      "transferRatio": 0.9172,
+      "sourceTextureBytes": 2355854,
+      "ktx2TextureBytes": 1869678,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1040939,
+          "ktx2Bytes": 844160,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 255950,
+          "ktx2Bytes": 178963,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1058965,
+          "ktx2Bytes": 846555,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "soviet_apocalypse",
+      "source": "apps/game/src/assets/units/soviets/sledge-tank.glb",
+      "output": "apps/game/src/assets/units/soviets/compressed/sledge-tank.glb",
+      "sourceFileBytes": 8582348,
+      "outputFileBytes": 3482736,
+      "transferRatio": 0.4058,
+      "sourceTextureBytes": 6968683,
+      "ktx2TextureBytes": 1868878,
+      "sourceGpuBytesRGBA8": 67108860,
+      "compressedGpuBytes8bpp": 12582911,
+      "compressedGpuBytes4bpp": 6291457,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2751784,
+          "ktx2Bytes": 713045,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2178514,
+          "ktx2Bytes": 497822,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 2038385,
+          "ktx2Bytes": 658011,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "sourceFileBytes": 14452620,
+    "outputFileBytes": 8867036,
+    "transferRatio": 0.6135,
+    "sourceTextureBytes": 9324537,
+    "ktx2TextureBytes": 3738556,
+    "sourceGpuBytesRGBA8": 117440504,
+    "compressedGpuBytes8bpp": 20971518,
+    "compressedGpuBytes4bpp": 10485762
+  }
+}

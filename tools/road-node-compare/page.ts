@@ -51,10 +51,10 @@ import * as THREE from 'three';
 import { MeshStandardNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import {
   ROAD_ATTRIBUTE_NAMES, ROAD_SURFACE_KINDS, type RoadSurfaceKind,
-} from '../../src/world/road-markings';
-import { createRoadNodeMaterials } from '../../src/world/RoadNodeMaterial';
-import { createRoadGlslMaterials } from '../../src/world/Roads';
-import { ROAD_KERB_HEIGHT, ROAD_KERB_TOP, ROAD_PAVEMENT_WIDTH } from '../../src/core/config';
+} from '../../apps/game/src/world/road-markings';
+import { createRoadNodeMaterials } from '../../apps/game/src/world/RoadNodeMaterial';
+import { createRoadGlslMaterials } from '../../apps/game/src/world/Roads';
+import { ROAD_KERB_HEIGHT, ROAD_KERB_TOP, ROAD_PAVEMENT_WIDTH } from '../../apps/game/src/core/config';
 
 const WIDTH = 640;
 const HEIGHT = 480;

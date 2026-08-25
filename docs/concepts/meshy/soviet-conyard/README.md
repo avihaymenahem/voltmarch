@@ -5,7 +5,7 @@
 - Footprint: 3×3 cells / 15×15 metres
 - Frozen roofline: 11 metres
 - Facade and production exit: +Z
-- Current fallback: procedural `sovietConYard()` in `src/art/BuildingDefs.ts`
+- Current fallback: procedural `sovietConYard()` in `apps/game/src/art/BuildingDefs.ts`
 
 ## Non-negotiable silhouette
 

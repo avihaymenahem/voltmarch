@@ -63,7 +63,7 @@ looks like before reading §3.
 | 1 | Bible: "median frame luminance 0.317" | The probe measured **linear** luminance against an **sRGB** target — the reference looked 3× darker than its own spec. §0.1 of the bible literally says "two measurement frames — never mix them". | Numbers disagreed by 3× |
 | 2 | `GLOW` block in `Explosions.ts` said the flash was tamed | It halved the flash **size** and left `flashIntensity` at 7.0. Two knobs for one quantity, in two files. | User reported it a second time |
 | 3 | Refinery blurbs: **"Ships with one."** on all three factions | Never implemented. Harmless while bases were pre-built by hand; the moment matches started from an MCV, three of four AI factions starved. | AI economy flatlined |
-| 4 | `deploysInto` authored on every MCV; `OrderKind.Deploy`, `UnitState.Deploying`, `EntityFlag.Deployed`, `FeedbackKind.CannotDeployHere` all defined | **Zero references** in `src/sim`, `src/input`, `src/ui`. A complete vocabulary with no implementation. | User asked why games start pre-seeded |
+| 4 | `deploysInto` authored on every MCV; `OrderKind.Deploy`, `UnitState.Deploying`, `EntityFlag.Deployed`, `FeedbackKind.CannotDeployHere` all defined | **Zero references** in `apps/game/src/sim`, `apps/game/src/input`, `apps/game/src/ui`. A complete vocabulary with no implementation. | User asked why games start pre-seeded |
 | 5 | `Shapes.ts` published eleven new primitives | Both factories ended their mass loop at `default: buildBox` — all eleven rendered as cubes. | Integrator read the loop |
 | 6 | `TEAM_RGB` sized `3 * 3` | A 4th faction indexed past the end → `undefined` → **NaN** in an instance colour → bloom spread NaN through its mip chain → every pixel dead, while stats reported 285 draws. | Black frame |
 | 7 | `billowShellFrac` — a *fraction* of `billowSize0TL` | Shrinking the billows collapsed the shell with them and re-stacked 8–14 additive sprites on one pixel: **brighter, not smaller**. Should have been an absolute length. | Flash fix made it worse |
@@ -108,7 +108,7 @@ grep to the line number.
 
 ### 1. The "WAR FACTORY ONLY" MCV fix landed in a table `resolveEntry` ignores — **LIVE, critical**
 
-**Claim.** `src/data/Defs.ts:672-677`, on the `mcv` def:
+**Claim.** `apps/game/src/data/Defs.ts:672-677`, on the `mcv` def:
 
 ```
 // WAR FACTORY ONLY. See the note above the roster: a match now OPENS from
@@ -121,7 +121,7 @@ The same comment and the same edit appear on `mrdCarryall` (`Defs.ts:846-848`,
 `prereqs: ['mrdForgeyard']`) and `rclCrawler` (`Defs.ts:1010-1012`,
 `prereqs: ['rclBreakerYard']`). Three deliberate, reasoned, identical fixes.
 
-**Reality.** `src/sim/Production.ts:867` **and** `:905` — both arms of `resolveEntry`:
+**Reality.** `apps/game/src/sim/Production.ts:867` **and** `:905` — both arms of `resolveEntry`:
 
 ```ts
 prereqs: spec.prereqs,
@@ -139,13 +139,13 @@ whose default start is a lone MCV. The fix was written, reviewed and merged into
 never consulted for this field.
 
 **Why the suite is green.** Three separate assertions each read a *different* table:
-`Defs.ts:1774` computes reachability from `d.prereqs` (the fixed one); `tests/match-start.spec.ts:441`
-also reads `def.prereqs`; `tests/match-start.spec.ts:938` builds a `BuildCatalog` from
+`Defs.ts:1774` computes reachability from `d.prereqs` (the fixed one); `apps/game/tests/match-start.spec.ts:441`
+also reads `def.prereqs`; `apps/game/tests/match-start.spec.ts:938` builds a `BuildCatalog` from
 `AIStrategy.FALLBACK_CATALOG`, a third table. Nothing asserts against `ProductionCatalog`, which is
 what the game runs on.
 
-**Check.** `grep -n "prereqs: spec.prereqs" src/sim/Production.ts` → 867, 905.
-`grep -n "key: 'mcv'" -A 3 src/sim/Production.ts` → still `['warFactory','battleLab']`.
+**Check.** `grep -n "prereqs: spec.prereqs" apps/game/src/sim/Production.ts` → 867, 905.
+`grep -n "key: 'mcv'" -A 3 apps/game/src/sim/Production.ts` → still `['warFactory','battleLab']`.
 
 ---
 
@@ -157,7 +157,7 @@ brownout."** `Defs.ts:1374`, `mrdGlaive`: **"Anti-infantry repeater. Needs the g
 `AIStrategy.ts:780-782` justifies the Pact's opening build order with *"a brownout is not an
 inconvenience for this faction, it is a disarm."*
 
-**Reality.** `src/sim/Combat.ts:489-490` requires **both** a weapon flag and an entity flag:
+**Reality.** `apps/game/src/sim/Combat.ts:489-490` requires **both** a weapon flag and an entity flag:
 
 ```ts
 if (w.needsPower && (st.flags[i] & EntityFlag.NeedsPower) !== 0
@@ -180,14 +180,14 @@ thirds of it is not charged, so the faction is straightforwardly stronger than i
 document. Two sidebar tooltips tell the player the opposite of what happens, and the AI buys an
 early second Solar Array to hedge a risk that does not exist.
 
-**Check.** `grep -n "glaiveRepeater" -A 4 src/data/Defs.ts` — no `needsPower`.
+**Check.** `grep -n "glaiveRepeater" -A 4 apps/game/src/data/Defs.ts` — no `needsPower`.
 `grep -rn "EntityFlag.NeedsPower" src` — writers are buildings only.
 
 ---
 
 ### 3. `SURVIVOR_KEY` is four long against a five-member `Faction` — **LIVE, high**
 
-`src/sim/RepairSell.ts:54-59` states the exact failure it is guarding against — *"A Pact building
+`apps/game/src/sim/RepairSell.ts:54-59` states the exact failure it is guarding against — *"A Pact building
 selling into a squad of G.I.s would hand the player free units of an army they are not playing"* —
 and then:
 
@@ -195,7 +195,7 @@ and then:
 const SURVIVOR_KEY: readonly string[] = ['gi', 'gi', 'conscript', 'mrdWayfarer'];
 ```
 
-`FACTION_COUNT = 5` (`src/core/types.ts:160`). `RepairSell.ts:376` reads
+`FACTION_COUNT = 5` (`apps/game/src/core/types.ts:160`). `RepairSell.ts:376` reads
 `SURVIVOR_KEY[p.faction] ?? 'gi'`, so **a Reclamation player selling a structure gets Allied
 Peacekeepers.** `Production.spawnUnit` (`:2096`) takes `defId` from the `gi` entry and the faction
 column from `p.faction`, producing an `(Infantry, faction=Reclaim, defId=gi)` triple whose `packKey`
@@ -205,13 +205,13 @@ This is confirmed case 6 (`TEAM_RGB` sized `3 * 3`) recurring in a different arr
 `readonly string[]` is what lets it through; `readonly [string, string, string, string, string]` or
 `Record<Faction, string>` would not compile.
 
-**Check.** `grep -n "SURVIVOR_KEY" src/sim/RepairSell.ts` — count the literals.
+**Check.** `grep -n "SURVIVOR_KEY" apps/game/src/sim/RepairSell.ts` — count the literals.
 
 ---
 
 ### 4. `FREE_UNITS` has no `reclaim` row — **LIVE, high**
 
-`src/sim/Crates.ts:97-102` has four keys: `allies`, `soviets`, `meridian`, `neutral`.
+`apps/game/src/sim/Crates.ts:97-102` has four keys: `allies`, `soviets`, `meridian`, `neutral`.
 `Crates.ts:473` resolves the faction through `FACTION_PALETTE_KEYS`, which **does** contain
 `'reclaim'` (`types.ts:714`). `Crates.ts:348`:
 
@@ -224,14 +224,14 @@ consequence as finding 3. Reclaim's own cheap roster is `rclGrinder` / `rclSpitt
 The declared type `Readonly<Record<string, readonly string[]>>` gives `tsc` nothing to check;
 `Record<FactionPaletteKey, …>` would have.
 
-**Check.** `grep -n "FREE_UNITS" -A 6 src/sim/Crates.ts`.
+**Check.** `grep -n "FREE_UNITS" -A 6 apps/game/src/sim/Crates.ts`.
 
 ---
 
 ### 5. The `IVfx` port is never bound — 18 sim call sites are no-ops, three tuning constants feed nothing — **LIVE, high**
 
-`src/core/world.ts:1162` declares `vfx: IVfx = new NullVfx();`. The sibling port *is* bound —
-`src/audio/audio.system.ts:255` does `world.audio = port;`. But:
+`apps/game/src/core/world.ts:1162` declares `vfx: IVfx = new NullVfx();`. The sibling port *is* bound —
+`apps/game/src/audio/audio.system.ts:255` does `world.audio = port;`. But:
 
 ```
 $ grep -rn "\.vfx *=" src tests tools
@@ -249,7 +249,7 @@ Three consequences, each with a claim attached:
   `stormShake = 0.22` exist only to feed this port.** Screen shake still happens by a different
   route (`Explosions.ts:383 shakeSink` ← `vfx.system.ts:498`), so a nuke produces exactly the same
   generic trauma as any large fireball. Tuning `nukeShake` does nothing.
-- **A destroyed structure never leaves rubble.** `src/art/Wrecks.ts:559-560` states it as settled
+- **A destroyed structure never leaves rubble.** `apps/game/src/art/Wrecks.ts:559-560` states it as settled
   fact: *"`Damage.ts#buildingDeath` currently stamps a `DecalKind.Rubble` decal … so the site goes
   flat."* It does make the call. Nothing receives it.
 - **A finished building has sound but no visual effect.** `building:completed` reaches audio
@@ -305,7 +305,7 @@ RA3 references max out at p1 = 0.077.
 Measured: `05-combat.png` p1 = **0.1177**, twice the bible's ceiling, reported `PASS w3 … blacks not
 lifted`.
 
-**This has already propagated into the product.** `src/core/config.ts:550-553`:
+**This has already propagated into the product.** `apps/game/src/core/config.ts:550-553`:
 
 > *"Lift raises the black point. Dropped further toward zero: RA3's own p1 luminance measures 0.023
 > and **the scorecard's black-point band tops out at 0.25**, so there is a great deal of room below
@@ -324,7 +324,7 @@ it is exactly confirmed case 1 repeating.
 `docs/RA3_LOOK_BIBLE.md:62`, `:252`, `:254`, and `:1081-1082` (`// measured exactly zero — do not
 add`) ban both outright. `CLAUDE.md` repeats both as hard bans.
 
-`src/core/config.ts:565-569`, the boot values pushed by `ArtBridge.pushArt()`:
+`apps/game/src/core/config.ts:565-569`, the boot values pushed by `ArtBridge.pushArt()`:
 
 ```js
 /** Film grain. Subtle — it hides banding in the sky gradient. */
@@ -349,19 +349,19 @@ Note this is not "someone forgot the rule". Both comments argue *for* the effect
 encounters a confident justification rather than an oversight. That is what makes it drift and not a
 bug.
 
-**Check.** `grep -n "grain:\|chromaticAberration:" src/core/config.ts`;
+**Check.** `grep -n "grain:\|chromaticAberration:" apps/game/src/core/config.ts`;
 `grep -n "chromaticAber" tools/metrics.mjs`.
 
 ---
 
 ### 9. Four different bloom thresholds; the CI regression test uses the night mood's — **LIVE, high**
 
-`src/core/config.ts:585-592` argues at length that the value was *"Eased from 1.25 to **1.05** … Do
+`apps/game/src/core/config.ts:585-592` argues at length that the value was *"Eased from 1.25 to **1.05** … Do
 not take it under 1.0."* Nine lines later, `config.ts:594`: **`threshold: 1.20,`** — within 4% of the
 value the comment declares broken.
 
 Meanwhile the entire detonation-gain rework reasons against **0.85**: `config.ts:4104, 4149, 4219,
-4454`, and `tests/vfx.spec.ts:760`:
+4454`, and `apps/game/tests/vfx.spec.ts:760`:
 
 ```js
 const BLOOM_THRESHOLD = 0.85;
@@ -377,7 +377,7 @@ bug report"* is calibrated 41% low, and its "must clip to pure white" floor of 1
 real threshold — no margin at all. This is confirmed case 2 (two knobs, one quantity, two files) at
 four knobs.
 
-**Check.** `grep -rn "threshold" src/core/config.ts src/render/renderer.ts tests/vfx.spec.ts | grep -i bloom -A1`.
+**Check.** `grep -rn "threshold" apps/game/src/core/config.ts apps/game/src/render/renderer.ts apps/game/tests/vfx.spec.ts | grep -i bloom -A1`.
 
 ---
 
@@ -388,9 +388,9 @@ allocates `crushLevel` and `crushableBy` columns; `Defs.ts` authors 14 values; `
 `rclGrinder` carry `Crusher`; `Scenarios.ts` has four `Crusher` fallback rows.
 
 ```
-$ grep -rn "crushLevel\[\|crushableBy\[\|EntityFlag.Crusher\|EntityFlag.Crushable" src/sim src/render src/input src/vfx src/ui
-src/sim/Production.ts:2112:    st.crushLevel[i]  = def?.crushLevel  ?? fb.crushLevel;
-src/sim/Production.ts:2113:    st.crushableBy[i] = def?.crushableBy ?? fb.crushableBy;
+$ grep -rn "crushLevel\[\|crushableBy\[\|EntityFlag.Crusher\|EntityFlag.Crushable" apps/game/src/sim apps/game/src/render apps/game/src/input apps/game/src/vfx apps/game/src/ui
+apps/game/src/sim/Production.ts:2112:    st.crushLevel[i]  = def?.crushLevel  ?? fb.crushLevel;
+apps/game/src/sim/Production.ts:2113:    st.crushableBy[i] = def?.crushableBy ?? fb.crushableBy;
 ```
 
 Two writes, **no reads anywhere**. `Movement.ts` and `Steering.ts` never mention crushing. This is
@@ -400,7 +400,7 @@ confirmed case 4 (`deploysInto`) exactly, in a different subsystem.
 tooltip — LIVE false. And `Defs.ts:745-748` prices the **entire Meridian amphibious advantage**
 against a ram penalty (*"`crushLevel: 0` on everything … so the Pact never wins a ram"*) that does
 not exist — so a faction's balance rationale rests on an unimplemented mechanic.
-`tests/faction3.spec.ts` guards a quantity nothing reads, which is worse than no test: it signals
+`apps/game/tests/faction3.spec.ts` guards a quantity nothing reads, which is worse than no test: it signals
 coverage.
 
 **Check.** The grep above.
@@ -448,7 +448,7 @@ symbol.
 
 ### 13. Shadow map size is set twice per `applySettings`, in opposite orders — **LIVE, high**
 
-`src/shell/Settings.ts:117-138`. `applyQualityTier(tier)` at line 120 writes
+`apps/game/src/shell/Settings.ts:117-138`. `applyQualityTier(tier)` at line 120 writes
 `renderer.shadows.mapSize` from `RENDER_QUALITY_PRESETS` (low 1024 … ultra 4096). Then line 134:
 
 ```ts
@@ -470,7 +470,7 @@ below"* — which is true for `resolutionScale` (:126) and for `ao`/`bloom`/`sma
 row that doesn't**, so it is simultaneously the wrong value at boot and the stale value after a
 change. Directly relevant to task #28: a machine classified `low` renders 2048² shadow maps.
 
-**Check.** `sed -n '115,145p' src/shell/Settings.ts` and look for `graphics.tier` in each `want(...)`.
+**Check.** `sed -n '115,145p' apps/game/src/shell/Settings.ts` and look for `graphics.tier` in each `want(...)`.
 
 ---
 
@@ -600,7 +600,7 @@ cue pointed backwards: `scatter.system.ts` clears an exclusion disc around every
 have a clear run, so with nothing drawn back into it an ore patch read as **emptier** than ordinary
 ground.
 
-**Fixed.** `src/world/ore.system.ts` — one `InstancedMesh`, one instance per seeded cell, scale
+**Fixed.** `apps/game/src/world/ore.system.ts` — one `InstancedMesh`, one instance per seeded cell, scale
 quantised into `ORE_DENSITY_STEPS`, updates driven off `drainDirty`, shroud-tinted so it is not a map
 hack. The nine prose sites were rewritten against the module that now exists; several were still
 wrong in a *new* way at that point (wrong consumer named, wrong mechanism, a guard justified by a
@@ -615,11 +615,11 @@ state and five of those nine call `addOre`. **`06-economy` is the only frame in 
 in which a crystal can appear**, so `docs/RA3_LOOK_BIBLE.md` cannot presently grade this renderer on
 anything else. That is an open item, not a fixed one.
 
-**Check.** `grep -rn "crystal instancer\|crystal shader\|crystal renderer" src/` → prose only, and
-every hit should now name `src/world/ore.system.ts`.
-`grep -rn "densityAtWorld" src/` → one declaration, no callers.
-`grep -n "settleTicks" src/game/Scenarios.ts` against the `b.addOre` sites in
-`src/game/scenarios/Showcases.ts` and `src/game/Scenarios.ts`.
+**Check.** `grep -rn "crystal instancer\|crystal shader\|crystal renderer" apps/game/src/` → prose only, and
+every hit should now name `apps/game/src/world/ore.system.ts`.
+`grep -rn "densityAtWorld" apps/game/src/` → one declaration, no callers.
+`grep -n "settleTicks" apps/game/src/game/Scenarios.ts` against the `b.addOre` sites in
+`apps/game/src/game/scenarios/Showcases.ts` and `apps/game/src/game/Scenarios.ts`.
 
 ---
 
@@ -640,7 +640,7 @@ yaw-dependent. **Check:** hold `E` for two seconds and watch the shadows sweep.
 (defaults 0 at `:523`). `Commands.ts:148` matches `TRANSPORT_KEYS` as lower-cased **substrings**,
 handing `seats = 5` to `transport` *and* `ifv` regardless of data, so `Commands.ts:497-503` resolves
 right-clicking infantry onto your own IFV or Transport to `OrderKind.Enter` + `CursorKind.Enter` +
-`valid = true`. The only consumer, `src/sim/Garrison.ts:248`, is
+`valid = true`. The only consumer, `apps/game/src/sim/Garrison.ts:248`, is
 `if (t < 0 || st.kind[t] !== EntityKind.Building) { this.clearOrder(i); continue; }` — **the order is
 silently discarded.** Separately `AI.ts:602` justifies its MCV heuristic with *"a transport has a
 non-zero `cargoMax`"*; it has zero, so `isUndeployedMcv` counts a Hover Transport as an undeployed
@@ -707,7 +707,7 @@ the shipping `0` holds only because `pushCamera()` at `Bootstrap.ts:129` — its
 before the rig is built.)*
 
 ### 24. `config.ts` says `Input.ts#edgeDirection` reads the frozen constant; `Input.ts` says it deliberately does not — **LIVE (doc)**
-`config.ts:165-167`: *"`src/input/Input.ts#edgeDirection` reads THIS constant (not the live render
+`config.ts:165-167`: *"`apps/game/src/input/Input.ts#edgeDirection` reads THIS constant (not the live render
 config) … so zero here also removes the affordance."* `Input.ts:331-336`: *"RENDER_CONFIG, not
 core/config … Reading the frozen one meant a player who turned edge scrolling back on got the
 panning but never the eight scroll-arrow cursors"* → `const band = RENDER_CONFIG.camera.edgePanPixels;`.
@@ -737,7 +737,7 @@ controls somewhere else in the product becomes a lie."* `Shell.ts:583-592` is a 
 rendered on every load: *"**Q and E** rotate the camera…"*, *"Attack-move (**A**) makes a column
 engage…"*. `cam.rotateLeft` / `rotateRight` (:320-336) and `ord.attackMove` (:628-637) are all
 `binding: 'rebindable'`. The Ctrl+digit row is genuinely `fixed` and fine.
-`tests/action-catalogue.spec.ts` knows nothing about `TIPS`.
+`apps/game/tests/action-catalogue.spec.ts` knows nothing about `TIPS`.
 
 **FIXED.** No tip spells a key any more. A tip's prose carries `{action.id}` placeholders and
 `Shell.resolveTip` resolves each one through `actionKeyRow` — the tutorial's helper, reading the
@@ -746,8 +746,8 @@ row was routed too, despite this entry correctly calling it `fixed` and fine: a 
 "the fixed ones" is a lint whose next reader has to re-derive which ones those are.
 
 The last clause is closed by a NEW file rather than by the one it names.
-`tests/action-catalogue.spec.ts` still knows nothing about `TIPS`; `tests/loading-tips.spec.ts`
-does, and it also carries the digit ban `tests/build-descriptions.spec.ts` §4 applies to the other
+`apps/game/tests/action-catalogue.spec.ts` still knows nothing about `TIPS`; `apps/game/tests/loading-tips.spec.ts`
+does, and it also carries the digit ban `apps/game/tests/build-descriptions.spec.ts` §4 applies to the other
 class of in-game player copy. Its lint was written against the four key mentions in the pre-fix
 table as its own falsifier, and that mattered: the tutorial's existing `IMPERATIVE_THEN_KEY` /
 `NAMED_KEY_NOUN` regexes are GREEN on all three offending strings — they anchor on an imperative
@@ -812,8 +812,8 @@ documented and deliberate — see §6 K1.)*
 
 ### 33. The determinism gate greps a directory, not `simTick`, and cannot detect its own vacuity — **LATENT**
 `CLAUDE.md:42-43`: *"Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
-banned — there is a test asserting this."* `tests/foundation.spec.ts:204-212` walks `src/sim` only.
-**Eighteen files outside `src/sim` define a `simTick`** (`art/Wrecks.ts`, `input/input.system.ts`,
+banned — there is a test asserting this."* `apps/game/tests/foundation.spec.ts:204-212` walks `apps/game/src/sim` only.
+**Eighteen files outside `apps/game/src/sim` define a `simTick`** (`art/Wrecks.ts`, `input/input.system.ts`,
 `progression/*`, `ui/Hud.ts`, `ui/hud.system.ts`, `ui/objectives.system.ts`, `vfx/vfx.system.ts`,
 `world/{Water,Scatter,roads.system,water.system,scatter-clear.system}.ts`, plus core/game plumbing).
 I read all eighteen: **no live violation** — every wall-clock read sits in an `init()` body or is
@@ -832,15 +832,15 @@ matches. This is the only whole-match determinism instrument in the repo — `De
 occurrence in the entire tree: that declaration.**
 
 ### 35. Two files cite a soak test that does not exist; `MISSIONS_DESIGN.md` says a shipped subsystem is unbuilt — **LIVE (doc)**
-`docs/MISSIONS_DESIGN.md:54` and `src/progression/MissionTracker.ts:14-15`: *"there is a soak test
+`docs/MISSIONS_DESIGN.md:54` and `apps/game/src/progression/MissionTracker.ts:14-15`: *"there is a soak test
 asserting an AI-vs-AI match replays identically."* Running `npm run soak` (`vitest run -t
 determinism`) gives 15 tests in 22 s — headless stream equality, an AI *command log*, byte-identical
 health, identical pathing positions, deploy tick/place, relocate, scatter-clear. **None boots an
 AI-vs-AI match and none replays one.** That claim is the stated justification for a "non-negotiable"
 determinism boundary in `MissionTracker`. Separately `docs/MISSIONS_DESIGN.md:3` reads
 `**Status:** agreed scope, not yet built.` while every file its own Architecture block proposes
-exists and is wired (`src/progression/{profile-store,MissionTracker,UnlockGate,progression.system,types}.ts`,
-`src/data/Missions.ts`, `src/ui/Objectives.ts`, `src/shell/Missions.ts`, four spec files, imported
+exists and is wired (`apps/game/src/progression/{profile-store,MissionTracker,UnlockGate,progression.system,types}.ts`,
+`apps/game/src/data/Missions.ts`, `apps/game/src/ui/Objectives.ts`, `apps/game/src/shell/Missions.ts`, four spec files, imported
 for real by `Production.ts:74` and `Scenarios.ts:80`).
 
 ### 36. Scorecard check #20 does not test monotonicity and never tests the top band — **LATENT**
@@ -925,7 +925,7 @@ repeated / under 130 draw calls" law is being met.
 
 ### 44. `INCOME_SMOOTHING` is declared twice, and the config comment claims a settle time it does not own — **LATENT**
 `config.ts:2446-2451`: *"EMA weight applied to each new income sample. 0.35 settles in about three
-seconds — fast enough that killing a harvester shows on the HUD."* `src/ui/Hud.ts:209` declares a
+seconds — fast enough that killing a harvester shows on the HUD."* `apps/game/src/ui/Hud.ts:209` declares a
 **second, unimported** `const INCOME_SMOOTHING = 0.35;` (Hud imports only `MAX_SELECTION` from
 config). The config constant governs `Economy.incomeRateArr` (`:976`), whose only consumer is a debug
 counter (`economy.system.ts:253`); the number the player actually sees comes from `Hud.ts:932`'s
@@ -936,7 +936,7 @@ the sim's `incomeRate` feeds *"the HUD"*. Retuning the documented constant moves
 `CLAUDE.md:7` *"**Three factions**, ore economy…"*; `README.md:7` and `:30` the same. There are
 **four playable** (`Defs.ts:1534-1585`, `Production.PLAYABLE_FACTIONS`, `FACTION_COUNT = 5`).
 `CLAUDE.md:16` says `npm test # vitest, currently 617 passing` — measured **1165** at audit time.
-`README.md:100-111` lists 12 `src/` directories and omits `src/input/` and `src/progression/`.
+`README.md:100-111` lists 12 `apps/game/src/` directories and omits `apps/game/src/input/` and `apps/game/src/progression/`.
 Confirmed case 6 was *exactly* a 3-versus-4 faction count producing a black frame, and findings 3, 4,
 32 and 51 below are the same miscount recurring — while `CLAUDE.md` is the first file every agent
 reads.
@@ -970,15 +970,15 @@ example) — this is drift in one block, not a sloppy file.
 | 50 | `TeslaBolt.trunk = new Float32Array(32 * 3)` with no clamp of `n = segs+1` against it — safe only because `VFX_TESLA.segMax = 14`. The sibling buffers two loops below *are* guarded. Raise `segMax` past 31 → writes past the end → `undefined` → **NaN into a position attribute** (confirmed case 6's failure mode). `VFX_TESLA` carries no comment tying `segMax` to this buffer. | LATENT | `Beams.ts:440,460-471`; `config.ts:4351` |
 | 51 | `INFANTRY_CONTENT` (`art/units.system.ts:82`) names `'mrdSunlancer'`; the def key is `'mrdLancer'` (`Defs.ts:771` — `Sunlancer` is the display *name*). Inert today only because the `bind` loop iterates `CONTENT_TO_MODEL` / `SHARED_CONTENT_TO_MODEL`, neither of which holds any `mrd*` key — so all three Meridian entries are unreachable and there are no Reclamation entries at all. | LATENT | grep: one hit |
 | 52 | `setMoveClass` (`Movement.ts:108`) is documented as *"whoever owns unit data calls `setMoveClass` at spawn … THIS is how an aircraft or a ship becomes one — nothing else can tell them apart from a hovercraft."* **Zero production callers** (tests only). `MoveClass.Air` has a full branch set in `Flowfield.ts` and at `Movement.ts:287` and is unreachable. *(Meridian doctrine at `Defs.ts:743-748` deliberately makes its flyers `Locomotor.Hover`, so this is a dead mechanism rather than a wrong result.)* | LATENT | `grep -rn setMoveClass src` |
-| 53 | `lensDirt: 0.12` authored in **two** config tables (`config.ts:601`, `renderer.ts:375`), copied through `ArtBridge.ts:207`, and read only by `post.ts:728-732` to decide whether to log *"lens dirt not supported by this UnrealBloomPass build — ignored"*. `RA3_LOOK_BIBLE.md:787` bans lens dirt outright. | **FIXED 2026-08-17** — field deleted from `types.ts`, both config tables, `ArtBridge.ts` and the `post.ts` log block. `tests/banned-effects.spec.ts` now scans for it, so it cannot return as a configured no-op. | grep: 0 hits |
+| 53 | `lensDirt: 0.12` authored in **two** config tables (`config.ts:601`, `renderer.ts:375`), copied through `ArtBridge.ts:207`, and read only by `post.ts:728-732` to decide whether to log *"lens dirt not supported by this UnrealBloomPass build — ignored"*. `RA3_LOOK_BIBLE.md:787` bans lens dirt outright. | **FIXED 2026-08-17** — field deleted from `types.ts`, both config tables, `ArtBridge.ts` and the `post.ts` log block. `apps/game/tests/banned-effects.spec.ts` now scans for it, so it cannot return as a configured no-op. | grep: 0 hits |
 | 54 | `index.html:33-37` — *"No CDN, no webfont - these are the narrow faces that **ship with Windows/macOS/Linux**"* over `font-family: 'Rajdhani', 'Oswald', …`. Both are Google Fonts; neither ships anywhere; there is no `@font-face` in the tree. The first resolvable entry is `Arial Narrow`. The "no webfonts" property holds; the sentence does not — so the HUD an author with Rajdhani installed sees is not the HUD any player sees. | LIVE | `grep -rn "@font-face" src index.html` → nothing |
 | 55 | Events emitted with no subscriber: `'production:progress'` (`Production.ts:2192,2197`, every queue tick — the HUD reads progress off `HudSnapshot`) and `'vision:changed'` (`vision.system.ts:209-214`). Dead enums: `OrderKind.Patrol = 13` (*"Cycle waypoints forever"*, zero refs — the last dead `OrderKind`) and the whole `Relation` enum (`types.ts:162-170`, *"Computed from PlayerState.allyMask"* — **zero references repo-wide**, while every ally/enemy decision is an ad-hoc `areAllied()` at each site). Also written-never-read: `SelectionState.homogeneousDef` (two writers, `Selection.ts:654` and `Scenarios.ts:1927`). | LATENT | greps above |
 | 56 | `shell.css:76-77` — *"the shell fades between them by toggling `is-out`"* + a 180 ms transition + `.vm-screen.is-out { opacity: 0 }`. `is-out` is **never added or removed** (no literal anywhere; the four `is-${…}` construction sites are all mission/sidebar states). `.vm-panel.is-flat` likewise. | LIVE | `grep -rn "is-out" src` |
 | 57 | `__VM.stats().post` returns mangled identifiers in every built bundle. `debug.ts:525-529` maps `p.constructor.name`; `vite build` minifies class names — confirmed in `dist/assets/index-*.js`: `class Pi extends tl{`, `class zi extends zT{`. The `^_` already in that regex shows someone noticed the symptom and stripped a symbol rather than the cause. "Is SMAA on in this capture?" is unanswerable in the build that produces the artefacts. | LIVE | dist inspection |
 | 58 | `shoot.mjs:324-330` claims *"A reader sees the previous complete set until this point, then the new complete set — never a partially-captured directory"* over `for (…of readdirSync(OUT)) rmSync(…)` **then** `for (…of readdirSync(STAGE)) renameSync(…)`. Delete-all-then-move-one-at-a-time leaves a real window where `shots/*.png` globs to 0–11 files — the exact condition `metrics.mjs:196-201` tells the user to suspect. Also: `shoot.mjs:284-295` asserts loudly on an unknown `__VM` pose method *"rather than a silently mis-framed shot"*, but an unknown `?shot=` is `PLANS[name] ?? PLANS[SCENARIO_DEFAULT]` (`Scenarios.ts:2318`) — a silent fall back to `skirmish`, recorded `ok: true`. All 12 current names resolve. | LATENT | reading both files |
-| 59 | `tests/_probe.spec.ts` is **tracked** (the other four `_*.spec.ts` are untracked scratch), has **zero `expect(` calls**, routes `m.stats.errors` — the mechanism `MassList` uses to reject a silhouette, i.e. confirmed case 5's failure detector — to `console.log`, and catches throws into `console.log(key + ': THREW ')`. A present, always-green test over the exact subsystem that once shipped eleven primitives as cubes. | **FIXED 2026-08-07** — file deleted. It orphaned nothing: `tests/faction4-art.spec.ts` imports and asserts on the same four symbols. | `git log -- tests/_probe.spec.ts` |
+| 59 | `apps/game/tests/_probe.spec.ts` is **tracked** (the other four `_*.spec.ts` are untracked scratch), has **zero `expect(` calls**, routes `m.stats.errors` — the mechanism `MassList` uses to reject a silhouette, i.e. confirmed case 5's failure detector — to `console.log`, and catches throws into `console.log(key + ': THREW ')`. A present, always-green test over the exact subsystem that once shipped eleven primitives as cubes. | **FIXED 2026-08-07** — file deleted. It orphaned nothing: `apps/game/tests/faction4-art.spec.ts` imports and asserts on the same four symbols. | `git log -- apps/game/tests/_probe.spec.ts` |
 | 60 | `debug.ts:682` *"Exponential moving average, ~1 s window at 60 fps."* over `frameMsAvg += (dtMs - frameMsAvg) * 0.05` — a 20-frame time constant, ≈0.33 s. `fps` is derived from it, so the displayed fps settles 3× faster than documented (and is 3× twitchier than a reader tuning against it expects). | LIVE | one line |
-| 61 | `tests/data.spec.ts:160-165` — *"this arm is kept as the escape hatch for **the NEXT faction**, and it is deliberately narrow so a typo'd key cannot use it"* over `expect(def.key.startsWith('mrd')).toBe(true)`. The next faction landed as `rcl*`. Nothing breaks (every `rcl` def happens to carry a fallback row), but the comment and the predicate describe different policies, and faction five gets a confusing `no fallback for <key>` pointing at the wrong file. | LATENT | `sed -n '154,170p' tests/data.spec.ts` |
+| 61 | `apps/game/tests/data.spec.ts:160-165` — *"this arm is kept as the escape hatch for **the NEXT faction**, and it is deliberately narrow so a typo'd key cannot use it"* over `expect(def.key.startsWith('mrd')).toBe(true)`. The next faction landed as `rcl*`. Nothing breaks (every `rcl` def happens to carry a fallback row), but the comment and the predicate describe different policies, and faction five gets a confusing `no fallback for <key>` pointing at the wrong file. | LATENT | `sed -n '154,170p' apps/game/tests/data.spec.ts` |
 
 ---
 
@@ -989,17 +989,17 @@ Do not re-open them without new evidence.
 
 | # | Killed candidate | Why it dies |
 |---|---|---|
-| K1 | `SUPERWEAPONS[].structureKeys` names four buildings that do not exist; one Proving Ground unlocks both weapons | **Deliberate and documented.** `src/sim/Superweapons.ts:27-33`: *"There are no superweapon structures in the roster yet, so each entry carries a `structureKeys` fallback chain and every one of them ends at `battleLab`. The moment `nuclearSilo` / `ironCurtain` / `chronosphere` / `weatherControl` exist as building defs, they take over with no code change."* That is exactly the observed behaviour. *(The faction-coverage half is a real finding — §4 #32.)* |
-| K2 | Income is exponentially smoothed twice in series | **Factually wrong.** `src/ui/Hud.ts:696` feeds `incomeBucket` from `credits:changed` deltas directly, not from `Economy.incomeRate`. They are two independent estimators, not a cascade. *(The duplicate-constant half survives with corrected reasoning — §4 #44.)* |
+| K1 | `SUPERWEAPONS[].structureKeys` names four buildings that do not exist; one Proving Ground unlocks both weapons | **Deliberate and documented.** `apps/game/src/sim/Superweapons.ts:27-33`: *"There are no superweapon structures in the roster yet, so each entry carries a `structureKeys` fallback chain and every one of them ends at `battleLab`. The moment `nuclearSilo` / `ironCurtain` / `chronosphere` / `weatherControl` exist as building defs, they take over with no code change."* That is exactly the observed behaviour. *(The faction-coverage half is a real finding — §4 #32.)* |
+| K2 | Income is exponentially smoothed twice in series | **Factually wrong.** `apps/game/src/ui/Hud.ts:696` feeds `incomeBucket` from `credits:changed` deltas directly, not from `Economy.incomeRate`. They are two independent estimators, not a cascade. *(The duplicate-constant half survives with corrected reasoning — §4 #44.)* |
 | K3 | `wall` blurb "Stops vehicles. Stops nothing else." | Ambiguous. The reading "it has no gun" is defensible and probably intended. Not a factual contradiction. |
 | K4 | `p99Luminance [0.90,1.00]` rewards clipping | `docs/RA3_LOOK_BIBLE.md:815` row 6 literally says `p99 ≥ 0.90`. The probe implements the spec correctly. A critique of the bible, not drift from it. |
 | K5 | `unitDeathTL` — "doc says metres, value is TL" | `config.ts:4126` reads *"Fireball diameter in metres per 'size 1.0'. **Unit death is 2.2 TL.**"* The second sentence is correct and the field name says TL. Sloppy, not false. |
-| K6 | The cloak subsystem's five stale comments naming `Vision.applyRenderMask` | The method **no longer exists in the working tree** (`git show HEAD:src/sim/Vision.ts` has it at :564; the current file does not). `Vision.ts`, `vision.system.ts`, `Selection.ts`, `Overlay.ts` and `RenderBridge.ts` are all being rewritten right now under task #26. Unverifiable against a moving target — **re-audit after #26 lands.** |
-| K7 | `RENDER_CONFIG.camera` disagrees with `CAMERA` on four values | Deliberate layering. `src/game/ArtBridge.ts:122`: *"Camera constants live in core; the rig reads RENDER_CONFIG.camera."* The `RENDER_CONFIG` values are documented defaults that `pushCamera()` overwrites at `Bootstrap.ts:129`, before the rig is constructed. *(Retained as a note under §4 #23, because the single-caller dependency is fragile even though the values are correct.)* |
+| K6 | The cloak subsystem's five stale comments naming `Vision.applyRenderMask` | The method **no longer exists in the working tree** (`git show HEAD:apps/game/src/sim/Vision.ts` has it at :564; the current file does not). `Vision.ts`, `vision.system.ts`, `Selection.ts`, `Overlay.ts` and `RenderBridge.ts` are all being rewritten right now under task #26. Unverifiable against a moving target — **re-audit after #26 lands.** |
+| K7 | `RENDER_CONFIG.camera` disagrees with `CAMERA` on four values | Deliberate layering. `apps/game/src/game/ArtBridge.ts:122`: *"Camera constants live in core; the rig reads RENDER_CONFIG.camera."* The `RENDER_CONFIG` values are documented defaults that `pushCamera()` overwrites at `Bootstrap.ts:129`, before the rig is constructed. *(Retained as a note under §4 #23, because the single-caller dependency is fragile even though the values are correct.)* |
 | K8 | `SelectionState.homogeneousDef` has two writers | True, but it is inert state with no reader to inherit anything. Style. *(Listed as dead data under §5 #55.)* |
 | K9 | `tools/brand.mjs` hard-codes a machine-local Desktop path | A one-shot asset tool. Nothing shipping depends on it. |
 | K10–K13 | `Int32Array(16)`, `buildingCount(256)`, `inFlight` literal `4`, "~22 cursors" | All bounds-checked or loop-derived; no failure mode at any plausible growth. Magic numbers, not defects. |
-| K14 | `Chrome.factionKey` / `skinFor` are binary | `src/ui/Chrome.ts:759` labels it *"Legacy two-way faction key. Prefer `paletteKeyFor`"*, inside an explicitly-dead LEGACY block. |
+| K14 | `Chrome.factionKey` / `skinFor` are binary | `apps/game/src/ui/Chrome.ts:759` labels it *"Legacy two-way faction key. Prefer `paletteKeyFor`"*, inside an explicitly-dead LEGACY block. |
 
 Two further near-misses, reported only as consequences rather than as findings in their own right:
 `TRANSCRIPTION 11` (sharpen inflating scorecard #34) is stated openly in its own config comment, so
@@ -1012,8 +1012,8 @@ only its downstream effect appears, folded into §3 #17; and the audio-measure `
 
 Re-treading these is wasted time unless the underlying code changes.
 
-- **Determinism inside `simTick`, everywhere — not just `src/sim`.** All eighteen files outside
-  `src/sim` that define a `simTick` were read by hand. **No live violation.** Every wall-clock read
+- **Determinism inside `simTick`, everywhere — not just `apps/game/src/sim`.** All eighteen files outside
+  `apps/game/src/sim` that define a `simTick` were read by hand. **No live violation.** Every wall-clock read
   is in an `init()` body or explicitly exempted (`MissionTracker.ts:20-21`). The *gate* is weak
   (§4 #33); the *property* currently holds.
 - **`Superweapons.ts`'s `structureKeys` fallback chain** — correct, documented, works as described
@@ -1040,9 +1040,9 @@ Re-treading these is wasted time unless the underlying code changes.
 Two agents were editing 27 files during this pass. The following were **excluded and remain
 unaudited**; they are the obvious place to start a follow-up once those tasks land:
 
-- `src/sim/Vision.ts`, `src/sim/vision.system.ts`, and the vision paths in `src/input/Selection.ts`,
-  `src/ui/Overlay.ts`, `src/render/RenderBridge.ts` — mid-rewrite under task #26 (see K6).
-- `src/sim/Relocate.ts` and `src/sim/Placement.ts` — new/modified this session.
+- `apps/game/src/sim/Vision.ts`, `apps/game/src/sim/vision.system.ts`, and the vision paths in `apps/game/src/input/Selection.ts`,
+  `apps/game/src/ui/Overlay.ts`, `apps/game/src/render/RenderBridge.ts` — mid-rewrite under task #26 (see K6).
+- `apps/game/src/sim/Relocate.ts` and `apps/game/src/sim/Placement.ts` — new/modified this session.
 - The audio-measure `crest` row in the metrics tooling.
 
 ---
@@ -1068,11 +1068,11 @@ Roughly a fifth of everything above collapses into two mechanical patterns:
 Both are greppable in a single spec file:
 
 ```ts
-// tests/no-dead-vocabulary.spec.ts
-// 1. For every `export const` in src/core/config.ts and every field of the *Look
+// apps/game/tests/no-dead-vocabulary.spec.ts
+// 1. For every `export const` in apps/game/src/core/config.ts and every field of the *Look
 //    interfaces, assert at least one reference outside the declaring file.
 // 2. For every key of `GameEvents`, assert both an `emit('<key>'` and an `on('<key>'`
-//    exist somewhere under src/.
+//    exist somewhere under apps/game/src/.
 // Allow an explicit `// DEAD-OK: <reason>` opt-out on the declaration line so the
 // deliberate placeholders (Superweapons' structureKeys, K1) stay green.
 ```
@@ -1131,7 +1131,7 @@ removing those fields is strictly safer than reconciling them.
 
 `ActionCatalogue.ts:9-13` states the rule in its own header: no hand-written control list may exist
 outside the catalogue. Findings 25 and 27 break it, and confirmed case 9 is the same rule broken
-before. A test that greps `src/shell/` and `src/ui/` for `\b(Ctrl\+|Shift\+|\bQ and E\b|\(A\))` and
+before. A test that greps `apps/game/src/shell/` and `apps/game/src/ui/` for `\b(Ctrl\+|Shift\+|\bQ and E\b|\(A\))` and
 requires each hit to resolve through `ActionCatalogue` would hold the line. Small, ugly, effective.
 
 ### 8.6 What no cheap check will catch
@@ -1193,7 +1193,7 @@ against the code.
 ### 63. A Repair Depot already services an aircraft loitering above it, contradicting Defs.ts's "a
 hangar would have nothing to do"
 
-`src/data/Defs.ts` states the air doctrine as *"IT NEVER LANDS. There is no airfield, no rearm and
+`apps/game/src/data/Defs.ts` states the air doctrine as *"IT NEVER LANDS. There is no airfield, no rearm and
 no fuel in this game, and adding one would be a new subsystem rather than a def row… an idle
 aircraft LOITERS at 22 m over whatever it is standing above and a hangar would have nothing to
 do."* **The last clause is false, and repair-on-station has shipped unadvertised since the Repair
@@ -1212,16 +1212,16 @@ reads as intended once a landing zone exists to justify it — decide whether it
 building on it, not during. Established by code read on 2026-08-18; not observed in a running
 match. | LIVE |
 
-### 64. server/README.md still advertises 31 relay tests; there are 60
+### 64. apps/relay/README.md still advertises 31 relay tests; there are 60
 
-`server/README.md:14` documents the relay's own suite as '`npm test` # 31 tests, no sockets, no
+`apps/relay/README.md:14` documents the relay's own suite as '`npm test` # 31 tests, no sockets, no
 timers'. There are 60, and CLAUDE.md's gate list already says 60. Flagged during the four-army
 audit in v2.5.0-era and still wrong. The count is the only claim on that line that can rot; the
 'no sockets, no timers' half is still true.
 
 ### 65. MapChoice.players' doc gives an obsolete reason for the numbers in its own table
 
-`MapChoice.players` in `src/shell/settings-store.ts` explains its 2s and 4s with 'Two armies open
+`MapChoice.players` in `apps/game/src/shell/settings-store.ts` explains its 2s and 4s with 'Two armies open
 on the authored diagonal (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on
 the same ellipse, with no reserved terrain shelf.' That stopped being true when
 `SKIRMISH_START_OFFSETS` grew to four entries: `startSpots` walks the authored table for every
@@ -1248,12 +1248,12 @@ CLAUDE.md:7             "an original browser RTS"
 README.md:6             "runs in the browser"
 README.md:12            the PLAY IN BROWSER badge
 README.md:42            "built for the browser"
-README.md:105           "'Shipped' means public/ — what the browser downloads"
+README.md:105           "'Shipped' means apps/game/public/ — what the browser downloads"
 package.json:6          "for the browser"
 index.html:8            meta description "running in the browser"
 wiki/Home.md:3          "runs in a browser tab"
 wiki/Campaign.md:34     "stored per browser profile. Deleting site data resets it"
-server/README.md:98     "a browser blocks a plaintext socket from an https page"
+apps/relay/README.md:98     "a browser blocks a plaintext socket from an https page"
 wiki/Multiplayer.md:58  "a browser refuses a plaintext socket from a secure page"
 ```
 
@@ -1263,12 +1263,12 @@ a target that is not one: `pageIsPlaintext()` tests `location.protocol !== 'http
 `app:` origin passes, so our own refusal does not fire on desktop.
 
 **The one no test can catch is a fourth non-generated-asset category.** CLAUDE.md's list is
-Rajdhani, the brand PNGs, the splash art and the audio — about 9 MB, all in `public/`. The desktop
+Rajdhani, the brand PNGs, the splash art and the audio — about 9 MB, all in `apps/game/public/`. The desktop
 build adds roughly 150 MB of Chromium, Node, V8 and ffmpeg to what reaches a player, carrying real
 attribution obligations: Electron ships `LICENSES.chromium.html` and its bundled ffmpeg is
 LGPL-2.1. The credits screen names none of it. The trap is mechanical rather than a matter of
-anyone forgetting: `tests/credits-truthful.spec.ts` walks `public/`, the Electron runtime is not
-in `public/`, so the test goes on passing at full green while the credits screen becomes
+anyone forgetting: `apps/game/tests/credits-truthful.spec.ts` walks `apps/game/public/`, the Electron runtime is not
+in `apps/game/public/`, so the test goes on passing at full green while the credits screen becomes
 materially less true — *a green build proving nothing*, already on this repo's list of things that
 have gone wrong. Extend it to require a desktop-runtime credit whenever a desktop target is
 configured.
@@ -1291,6 +1291,6 @@ owned building to enter the authoritative repair state; garrison/transport/super
 classified by their real order and target; input/HUD-only actions use the structural tutorial
 bridge. Training moved from Temperate Valley to Contested Strait so neutral structures and a sea
 crossing physically exist, receives 30,000 non-persistent training credits, and temporarily lifts
-the unlock gate only while the tutorial director is live. `tests/tutorial.spec.ts` requires one
+the unlock gate only while the tutorial director is live. `apps/game/tests/tutorial.spec.ts` requires one
 independent driver for every step and rejects completion from all foreign signals. Fixed
 2026-08-24.

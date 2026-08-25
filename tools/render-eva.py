@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = Path(sys.argv[1])
 VOICES = SCRATCH / "tts-voices"
-OUT = ROOT / "public" / "audio" / "eva"
+OUT = ROOT / "apps" / "game" / "public" / "audio" / "eva"
 VOICE = "en_GB-cori-high"
 
 # Piper voices are trained on flowing audiobook prose, so a two-word imperative
@@ -35,7 +35,7 @@ VOICE = "en_GB-cori-high"
 # scale reads as an announcement rather than a sentence from a novel.
 LENGTH_SCALE = "0.92"
 
-src = (ROOT / "src" / "audio" / "Eva.ts").read_text(encoding="utf-8")
+src = (ROOT / "apps" / "game" / "src" / "audio" / "Eva.ts").read_text(encoding="utf-8")
 block = src[src.index("export const EVA_LINES"):]
 block = block[: block.index("\n};")]
 

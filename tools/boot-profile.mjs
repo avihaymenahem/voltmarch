@@ -87,7 +87,7 @@ if (!noBuild) {
     cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32',
   });
   if (r.status !== 0) throw new Error('build failed');
-} else if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
+} else if (!existsSync(join(ROOT, 'apps/game/dist', 'index.html'))) {
   console.error('--no-build was given but dist/index.html does not exist.');
   process.exit(1);
 }

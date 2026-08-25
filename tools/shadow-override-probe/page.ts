@@ -82,17 +82,17 @@
 
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { GreebleFactory } from '../../src/art/Greeble';
+import { GreebleFactory } from '../../apps/game/src/art/Greeble';
 import {
   buildingTime, createStructureDepthMaterial, createStructureMaterial,
-} from '../../src/art/BuildingFactory';
-import { specForPalette } from '../../src/art/UnitFactory';
-import { RA3_ALLIED_STRUCTURE } from '../../src/core/config';
-import { createStructureNodeMaterial } from '../../src/art/StructureNodeMaterial';
-import { createPropMaterial } from '../../src/world/PropLibrary';
-import { createPropNodeMaterials } from '../../src/world/PropNodeMaterial';
-import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from '../../src/world/prop-wind';
-import { shroudUniforms } from '../../src/render/FogOfWar';
+} from '../../apps/game/src/art/BuildingFactory';
+import { specForPalette } from '../../apps/game/src/art/UnitFactory';
+import { RA3_ALLIED_STRUCTURE } from '../../apps/game/src/core/config';
+import { createStructureNodeMaterial } from '../../apps/game/src/art/StructureNodeMaterial';
+import { createPropMaterial } from '../../apps/game/src/world/PropLibrary';
+import { createPropNodeMaterials } from '../../apps/game/src/world/PropNodeMaterial';
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from '../../apps/game/src/world/prop-wind';
+import { shroudUniforms } from '../../apps/game/src/render/FogOfWar';
 
 const WIDTH = 640;
 const HEIGHT = 480;

@@ -63,12 +63,17 @@ docs/surface-refs/ra3-*
 # is the packaged installer, ~100 MB an artifact. `desktop/src/**` is TRACKED —
 # it is the source — and so is desktop/package.json, which is what keeps the
 # ~140 MB electron binary out of the root install and therefore out of Pages CI.
-desktop/out/
-desktop/release/
+apps/desktop/out/
+apps/desktop/release/
 # Versioned local staging directories used when Windows holds the standard
 # electron-builder output path open. They contain the same generated binaries.
-desktop/release-v*/
-desktop/*.log
+apps/desktop/release-v*/
+apps/desktop/*.log
+# Generated binaries left at the pre-monorepo location are not source.
+/desktop/
+
+# Turborepo local task cache.
+.turbo/
 
 # vite / vitest caches
 .vite/

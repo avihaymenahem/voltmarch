@@ -110,7 +110,7 @@ heavy wear, baked lighting and geometry changes are explicitly rejected.
 - Consumed credits: 10; account balance after the complete Barracks: 870.
 - Shipping body: 24,917 triangles, 25,332 vertices, one mesh/primitive/material and 3.67 MiB.
 - Shipping maps: 2048 base colour, 2048 tangent-space normal and 1024 packed metal-roughness.
-- Runtime asset: `src/assets/buildings/soviets/barracks.glb`.
+- Runtime asset: `apps/game/src/assets/buildings/soviets/barracks.glb`.
 - The imported body replaces the old procedural shell completely. Only the explicitly authored
   sliding-door geometry is extracted by `STRUCTURE_FEATURE.door`, retaining the existing GPU door
   cycle, construction rise and animated depth shadow.

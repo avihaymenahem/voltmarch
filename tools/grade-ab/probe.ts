@@ -53,15 +53,15 @@ import {
 } from 'three/webgpu';
 import { texture as gpuTexture } from 'three/tsl';
 
-import { GRADE_FRAG, GRADE_VERT, makeGradeUniforms } from '../../src/render/post';
-import { RENDER_CONFIG } from '../../src/render/renderer';
-import { gradeUniformValuesFor, makeGradeUniformValues } from '../../src/render/grade-curve';
+import { GRADE_FRAG, GRADE_VERT, makeGradeUniforms } from '../../apps/game/src/render/post';
+import { RENDER_CONFIG } from '../../apps/game/src/render/renderer';
+import { gradeUniformValuesFor, makeGradeUniformValues } from '../../apps/game/src/render/grade-curve';
 import {
   applyGradeConfig,
   createGradeUniforms,
   gradeNode,
   setGradeTexel,
-} from '../../src/render/nodes/grade-node';
+} from '../../apps/game/src/render/nodes/grade-node';
 
 const W = 256;
 const H = 64;

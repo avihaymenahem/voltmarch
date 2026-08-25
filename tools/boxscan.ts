@@ -17,10 +17,10 @@
  * Pure data + arithmetic: `boxiness()` reads mass definitions, so there is no
  * GL context and no build step involved.
  */
-import { BOXINESS, boxiness, type UnitMassList } from '../src/art/MassList';
-import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
-import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
-import { RECLAIM_UNIT_MASS_LISTS } from '../src/art/Faction4Units';
+import { BOXINESS, boxiness, type UnitMassList } from '../apps/game/src/art/MassList';
+import { UNIT_MASS_LISTS } from '../apps/game/src/art/UnitDefs';
+import { MERIDIAN_UNIT_MASS_LISTS } from '../apps/game/src/art/Faction3Units';
+import { RECLAIM_UNIT_MASS_LISTS } from '../apps/game/src/art/Faction4Units';
 
 const all: Array<[string, UnitMassList]> = [
   ...UNIT_MASS_LISTS.map((l) => ['allied/soviet', l] as [string, UnitMassList]),

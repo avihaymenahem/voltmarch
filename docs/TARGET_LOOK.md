@@ -11,7 +11,7 @@ for the files: **read the pixels.** Where this document and the images disagree,
 so if you are reading this from a clone, treat every impression below as second-hand.
 
 This file used to live beside them in `docs/refs/` and was therefore ignored too. It was moved out
-on 2026-08-07 because seven places in `src/ui/` cite it as the authority for the HUD's construction,
+on 2026-08-07 because seven places in `apps/game/src/ui/` cite it as the authority for the HUD's construction,
 and a design authority that exists on exactly one unbacked-up disk is one reformat away from
 leaving those citations pointing at nothing.
 
@@ -76,7 +76,7 @@ outline, not a silhouette. This is precisely the gap already recorded in `TODO.m
 > Yard. In RA2/RA3 the cameo *is* a picture of the thing.
 
 **This does not require generated image assets, and therefore does not break the README's
-"every asset generated from code" claim.** `src/ui/Cameos.ts` already renders cameos from the real
+"every asset generated from code" claim.** `apps/game/src/ui/Cameos.ts` already renders cameos from the real
 game mesh into a cached render target — its header says so. So the fix is to make the real path work
 for every def rather than to import bitmaps. The 29 hand-drawn vector fallbacks in that file exist
 because "a def key may not resolve to a model, and until every art module lands most of them will

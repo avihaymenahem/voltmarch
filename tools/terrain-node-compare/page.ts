@@ -38,11 +38,11 @@
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { vec3 } from 'three/tsl';
-import { TERRAIN_CHUNK_METRES, TERRAIN_LAYER_TEXTURE_SIZE } from '../../src/core/config';
-import { BIOMES, type BiomeName } from '../../src/world/Biomes';
-import { SPLAT_N, TerrainFields, buildTerrainChunks } from '../../src/world/terrain-gen';
-import { createTerrainMaterials } from '../../src/world/TerrainMaterial';
-import { createTerrainNodeMaterials } from '../../src/world/TerrainNodeMaterial';
+import { TERRAIN_CHUNK_METRES, TERRAIN_LAYER_TEXTURE_SIZE } from '../../apps/game/src/core/config';
+import { BIOMES, type BiomeName } from '../../apps/game/src/world/Biomes';
+import { SPLAT_N, TerrainFields, buildTerrainChunks } from '../../apps/game/src/world/terrain-gen';
+import { createTerrainMaterials } from '../../apps/game/src/world/TerrainMaterial';
+import { createTerrainNodeMaterials } from '../../apps/game/src/world/TerrainNodeMaterial';
 
 const WIDTH = 640;
 const HEIGHT = 480;

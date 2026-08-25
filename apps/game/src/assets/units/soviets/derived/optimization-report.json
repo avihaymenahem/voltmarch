@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "family": "soviet-vehicles",
+  "generatedAt": "2026-08-23T14:17:31.933Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/soviet-vehicles.json",
+  "rows": [
+    {
+      "key": "soviet_rhino",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "apps/game/src/assets/units/soviets/anvil-heavy-tank.glb",
+        "triangles": 23790,
+        "fileBytes": 5870272
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.8% exceeds 55.0% ceiling"
+          ],
+          "file": "apps/game/src/assets/units/soviets/derived/anvil-heavy-tank.lod1.glb",
+          "triangles": 23740,
+          "triangleRatio": 0.9979,
+          "boundsDriftMeters": 0.00016,
+          "boundsDriftRatio": 0.00014,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.6% exceeds 30.0% ceiling"
+          ],
+          "file": "apps/game/src/assets/units/soviets/derived/anvil-heavy-tank.lod2.glb",
+          "triangles": 23687,
+          "triangleRatio": 0.9957,
+          "boundsDriftMeters": 0.00016,
+          "boundsDriftRatio": 0.00014,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/anvil-heavy-tank.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0726,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24996,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "soviet_apocalypse",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "apps/game/src/assets/units/soviets/sledge-tank.glb",
+        "triangles": 26718,
+        "fileBytes": 8582348
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/sledge-tank.lod1.glb",
+          "triangles": 12896,
+          "triangleRatio": 0.4827,
+          "boundsDriftMeters": 0.00035,
+          "boundsDriftRatio": 0.00038,
+          "fileBytes": 599428,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 41.7% exceeds 30.0% ceiling"
+          ],
+          "file": "apps/game/src/assets/units/soviets/derived/sledge-tank.lod2.glb",
+          "triangles": 11151,
+          "triangleRatio": 0.4174,
+          "boundsDriftMeters": 0.008,
+          "boundsDriftRatio": 0.00711,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/sledge-tank.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0647,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 25028,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    }
+  ]
+}

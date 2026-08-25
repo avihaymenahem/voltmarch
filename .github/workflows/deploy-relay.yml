@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: relay-production
@@ -32,7 +33,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Validate deployment configuration
         shell: bash
@@ -43,11 +44,11 @@ jobs:
           [[ -n "$RELAY_PRIVATE_KEY" ]] || { echo 'RELAY_SSH_PRIVATE_KEY is missing'; exit 1; }
           [[ -n "$RELAY_KNOWN_HOSTS" ]] || { echo 'RELAY_SSH_KNOWN_HOSTS is missing'; exit 1; }
 
-      - name: Install relay dependencies
-        run: npm ci --prefix server
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
 
       - name: Audit relay dependencies
-        run: npm --prefix server run audit
+        run: npm --workspace @voltmarch/relay run audit
 
       - name: Test relay
         run: npm run server:test
@@ -58,11 +59,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           version=$(node -p "require('./package.json').version")
-          protocol=$(node -p "require('./server/dist/src/net/protocol.js').PROTOCOL_VERSION")
+          protocol=$(node -p "require('./apps/relay/dist/protocol.cjs').PROTOCOL_VERSION")
           archive="/tmp/voltmarch-relay-${GITHUB_SHA}.tgz"
-          cp server/deploy/smoke.mjs server/smoke.mjs
-          tar -C server -czf "$archive" dist package.json package-lock.json smoke.mjs
-          rm server/smoke.mjs
+          staging=$(mktemp -d)
+          cp -R apps/relay/dist "$staging/dist"
+          cp apps/relay/deploy/smoke.mjs "$staging/smoke.mjs"
+          cp apps/relay/deploy/runtime/package.json "$staging/package.json"
+          cp apps/relay/deploy/runtime/package-lock.json "$staging/package-lock.json"
+          tar -C "$staging" -czf "$archive" dist package.json package-lock.json smoke.mjs
+          rm -rf "$staging"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "protocol=$protocol" >> "$GITHUB_OUTPUT"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
@@ -92,4 +97,74 @@ jobs:
             "sudo /usr/local/sbin/voltmarch-relay-deploy '$GITHUB_SHA' '${{ steps.release.outputs.version }}' '/tmp/voltmarch-relay-${GITHUB_SHA}.tgz'"
 
       - name: Verify public Cloudflare route
-        run: node server/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.protocol }}'
+        run: node apps/relay/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.protocol }}'
+
+  announce:
+    name: Announce verified deployment on Discord
+    needs: deploy
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Wait for the complete Windows release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          version=$(node -p "require('./package.json').version")
+          expected=(
+            "VOLTMARCH-Setup-${version}.exe"
+            "VOLTMARCH-Setup-${version}.exe.blockmap"
+            "VOLTMARCH-${version}-portable.exe"
+            "latest.yml"
+          )
+          ready=0
+          for attempt in $(seq 1 80); do
+            assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null || true)
+            ready=1
+            for asset in "${expected[@]}"; do
+              if ! grep -Fxq "$asset" <<<"$assets"; then ready=0; break; fi
+            done
+            if [[ $ready == 1 ]]; then break; fi
+            sleep 15
+          done
+          [[ $ready == 1 ]] || { echo "Windows release did not become complete"; exit 1; }
+
+      - name: Resolve deployment surfaces for this commit
+        id: surfaces
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          targets='desktop,relay'
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$main_sha" == "$GITHUB_SHA" ]]; then
+            web_deployed=0
+            for attempt in $(seq 1 60); do
+              runs=$(gh run list --workflow deploy.yml --commit "$GITHUB_SHA" \
+                --json status,conclusion --limit 10)
+              if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' \
+                >/dev/null <<<"$runs"; then
+                web_deployed=1
+                break
+              fi
+              if jq -e 'any(.[]; .status == "completed" and (.conclusion != "success"))' \
+                >/dev/null <<<"$runs"; then
+                break
+              fi
+              sleep 10
+            done
+            if [[ $web_deployed == 1 ]]; then targets+=',web'; fi
+          fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+      - name: Post exact deployment receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          VM_DEPLOYED_TARGETS: ${{ steps.surfaces.outputs.targets }}
+          VM_DEPLOYED_SHA: ${{ github.sha }}
+        run: node tools/post-discord-release.mjs "${{ github.ref_name }}"

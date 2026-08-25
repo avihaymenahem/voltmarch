@@ -27,7 +27,7 @@ import {
   readbackRowOrder,
   readbackStride,
   type ReadbackRowOrder,
-} from '../../src/render/backend';
+} from '../../apps/game/src/render/backend';
 
 /**
  * The REAL cameo target size: a 74x58 build slot at `HUD_CAMEO.supersample` 2.

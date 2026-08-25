@@ -22,23 +22,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            desktop/package-lock.json
-            server/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         shell: pwsh
         run: |
           # basisu's optional cpu-features probe cannot detect MSVC in the
-          # hosted PowerShell environment. None of the release/test commands
-          # execute basisu; skip root lifecycle scripts while still installing
-          # every package. Electron keeps scripts enabled so its binary lands.
+          # hosted PowerShell environment. Install the unified workspace
+          # without lifecycle scripts, then fetch only Electron's runtime.
           npm ci --ignore-scripts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm ci --prefix desktop
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm ci --prefix server
+          npm rebuild electron
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify release version
@@ -53,14 +47,9 @@ jobs:
       - name: Verify source
         shell: pwsh
         run: |
-          npm run typecheck
+          npx turbo run typecheck --filter=@voltmarch/desktop...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run desktop:typecheck
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Pages owns the complete 6,000+ simulation gate. Repeating it on a
-          # two-core Windows release runner took an unbounded amount of time;
-          # this job owns the desktop boundary, update state and persistence.
-          npm exec vitest run tests/desktop-updater.spec.ts tests/desktop-shell.spec.ts tests/platform-storage.spec.ts tests/cloudflare-analytics.spec.ts
+          npm --workspace @voltmarch/desktop test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build installer, portable executable and update manifest
@@ -73,10 +62,10 @@ jobs:
         with:
           name: voltmarch-windows-${{ github.ref_name }}
           path: |
-            desktop/release/VOLTMARCH-Setup-*.exe
-            desktop/release/VOLTMARCH-Setup-*.exe.blockmap
-            desktop/release/VOLTMARCH-*-portable.exe
-            desktop/release/latest.yml
+            apps/desktop/release/VOLTMARCH-Setup-*.exe
+            apps/desktop/release/VOLTMARCH-Setup-*.exe.blockmap
+            apps/desktop/release/VOLTMARCH-*-portable.exe
+            apps/desktop/release/latest.yml
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -88,28 +77,12 @@ jobs:
           $version = node -p "require('./package.json').version"
           $tag = '${{ github.ref_name }}'
           $assets = @(
-            "desktop/release/VOLTMARCH-Setup-$version.exe",
-            "desktop/release/VOLTMARCH-Setup-$version.exe.blockmap",
-            "desktop/release/VOLTMARCH-$version-portable.exe",
-            "desktop/release/latest.yml"
+            "apps/desktop/release/VOLTMARCH-Setup-$version.exe",
+            "apps/desktop/release/VOLTMARCH-Setup-$version.exe.blockmap",
+            "apps/desktop/release/VOLTMARCH-$version-portable.exe",
+            "apps/desktop/release/latest.yml"
           )
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset)) { throw "Missing release asset: $asset" }
           }
           gh release create $tag @assets --verify-tag --generate-notes --title "VOLTMARCH $version"
-
-  discord:
-    name: Announce release on Discord
-    needs: windows
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Post generated release notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
-        run: node tools/post-discord-release.mjs "${{ github.ref_name }}"

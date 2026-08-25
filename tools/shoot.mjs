@@ -577,7 +577,7 @@ const releaseLock = () => { try { rmSync(LOCK, { force: true }); } catch {} };
 process.on('exit', releaseLock);
 
 if (noBuild) {
-  if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
+  if (!existsSync(join(ROOT, 'apps/game/dist', 'index.html'))) {
     console.error('--no-build was given but dist/index.html does not exist. Build once first.');
     process.exit(5);
   }

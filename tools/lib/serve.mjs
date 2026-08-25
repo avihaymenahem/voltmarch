@@ -312,6 +312,7 @@ export async function assertServesSource(origin, root) {
  */
 export async function serve({
   root,
+  appRoot = join(root ?? '', 'apps/game'),
   mode = 'preview',
   portHint,
   viteArgs = [],
@@ -321,9 +322,10 @@ export async function serve({
   log = () => {},
 } = {}) {
   if (typeof root !== 'string' || root === '') throw new Error('serve({ root }) is required');
+  if (typeof appRoot !== 'string' || appRoot === '') throw new Error('serve({ appRoot }) is required');
   if (mode !== 'preview' && mode !== 'dev') throw new Error(`serve({ mode }) must be preview or dev, not ${mode}`);
-  if (mode === 'preview' && !existsSync(join(root, 'dist', 'index.html'))) {
-    throw new Error(`${join(root, 'dist', 'index.html')} does not exist — build before serving a preview.`);
+  if (mode === 'preview' && !existsSync(join(appRoot, 'dist', 'index.html'))) {
+    throw new Error(`${join(appRoot, 'dist', 'index.html')} does not exist — build before serving a preview.`);
   }
 
   const vite = join(root, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -346,7 +348,7 @@ export async function serve({
         ...(mode === 'preview' ? ['preview'] : []),
         '--port', String(port), '--strictPort', '--host', '127.0.0.1',
         ...viteArgs],
-      { cwd: root, stdio: 'pipe', detached: process.platform !== 'win32' },
+      { cwd: appRoot, stdio: 'pipe', detached: process.platform !== 'win32' },
     );
     try {
       origin = await originFrom(candidate, announceTimeoutMs);
@@ -391,7 +393,7 @@ export async function serve({
     if (!(await waitForServer(origin))) {
       throw new Error(`the server announced ${origin} and then never answered it:\n${tail}`);
     }
-    if (identity === 'dist') await assertServesDist(origin, root);
+    if (identity === 'dist') await assertServesDist(origin, appRoot);
     else if (identity === 'source') await assertServesSource(origin, root);
     else if (typeof identity === 'function') await identity(origin, root);
   } catch (err) {

@@ -264,7 +264,7 @@ function buildFingerprint() {
   const campaign = campaignChunkPath().replace('assets/', '');
   let entry = '(no index.html)';
   try {
-    const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
+    const html = readFileSync(join(ROOT, 'apps/game/dist', 'index.html'), 'utf8');
     const m = /assets\/(index-[A-Za-z0-9_-]+\.js)/.exec(html);
     if (m !== null) entry = m[1];
   } catch { /* reported as the placeholder above */ }
@@ -272,7 +272,7 @@ function buildFingerprint() {
 }
 
 function campaignChunkPath() {
-  const dir = join(ROOT, 'dist', 'assets');
+  const dir = join(ROOT, 'apps/game/dist', 'assets');
   const hits = readdirSync(dir).filter((f) => /^campaign-install-.*\.js$/.test(f));
   if (hits.length !== 1) {
     throw new Error(

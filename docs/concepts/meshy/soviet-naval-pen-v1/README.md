@@ -58,7 +58,7 @@ Maximum spend: 30 credits.
 - PBR retexture task: `01a02d49-c6ac-7e21-a779-b050fe6de07b` (10 credits).
 - The coherent 1,970,982-triangle source was locally reduced to 24,542 triangles, then xatlas
   unwrapped at 2048 resolution and 8 px padding with zero bounds drift.
-- Shipping body: `src/assets/buildings/soviets/naval-pen.glb`; 14,606 triangles, one static
+- Shipping body: `apps/game/src/assets/buildings/soviets/naval-pen.glb`; 14,606 triangles, one static
   primitive/material, 3.91 MiB.
 - Material maps: 2K base colour, 2K normal and 1K packed metal-roughness. The deterministic Soviet
   field pass restores olive paint to neutral shell plates while preserving the authored continuous

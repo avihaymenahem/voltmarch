@@ -1,8 +1,8 @@
 {
   "version": 1,
   "family": "reclamation-buildings",
-  "sourceDir": "src/assets/buildings/reclamation",
-  "outputDir": "src/assets/buildings/reclamation/derived",
+  "sourceDir": "apps/game/src/assets/buildings/reclamation",
+  "outputDir": "apps/game/src/assets/buildings/reclamation/derived",
   "profiles": {
     "lod1": { "ratio": 0.48, "error": 0.006, "maxRatio": 0.58 },
     "lod2": { "ratio": 0.2, "error": 0.02, "maxRatio": 0.3 },

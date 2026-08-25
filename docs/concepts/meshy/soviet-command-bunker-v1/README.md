@@ -65,6 +65,6 @@ Maximum spend: 30 credits.
 - Consumed credits: 10; account balance after the complete Command Bunker: 660.
 - Shipping body: 14,883 triangles, 14,597 vertices, one static mesh/material and 3.07 MiB.
 - Shipping maps: 2048 base colour, 2048 tangent-space normal and 1024 packed metal-roughness.
-- Runtime asset: `src/assets/buildings/soviets/command-bunker.glb`.
+- Runtime asset: `apps/game/src/assets/buildings/soviets/command-bunker.glb`.
 - All procedural visual masses are replaced. Base and antenna sockets remain nonvisual and the normal
   instancing, construction rise and backend-neutral shadow path remain intact.

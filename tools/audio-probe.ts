@@ -17,14 +17,14 @@
 import {
   dbToGain, hashId, makeBakeBus, makePinkNoise, makeRng, makeWhiteNoise, normalizeBuffer, rewrap,
   type BakeKit, type SoundSpec,
-} from '../src/audio/AudioEngine';
-import { SampleBank, sampleInto, variantDetune } from '../src/audio/Samples';
-import { collectSfxBank } from '../src/audio/Weapons';
+} from '../apps/game/src/audio/AudioEngine';
+import { SampleBank, sampleInto, variantDetune } from '../apps/game/src/audio/Samples';
+import { collectSfxBank } from '../apps/game/src/audio/Weapons';
 import {
   EVA_LINES, EVA_PROFILE, renderUtterance, utteranceSeconds,
-} from '../src/audio/Eva';
-import { BARKS, barkProfileFor, type BarkClass } from '../src/audio/Barks';
-import { renderMusicOffline } from '../src/audio/Music';
+} from '../apps/game/src/audio/Eva';
+import { BARKS, barkProfileFor, type BarkClass } from '../apps/game/src/audio/Barks';
+import { renderMusicOffline } from '../apps/game/src/audio/Music';
 
 const RATE = 48_000;
 

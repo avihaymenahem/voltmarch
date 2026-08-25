@@ -79,7 +79,7 @@ mkdirSync(OUT, { recursive: true });
 
 if (!noBuild) {
   await build(ROOT, { log: console.log });
-} else if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
+} else if (!existsSync(join(ROOT, 'apps/game/dist', 'index.html'))) {
   console.error('--no-build was given but dist/index.html does not exist.');
   process.exit(5);
 }

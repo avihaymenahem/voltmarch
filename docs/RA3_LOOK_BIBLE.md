@@ -83,7 +83,7 @@ world-parallel edge families drift **13.8–23.5°** in screen angle across a si
 > `CAMERA.pitchDeg 52` / `fovDeg 36` / `defaultDistance 55` in `config.ts`. It was ruled a
 > **PRODUCT DECISION, not a bug**: 52° was chosen so a tall shed would not hide the vehicle parked
 > under it. Do not "fix" the rig to 39°, and do not re-derive the thirteen shot poses or
-> `tests/shot-camera.spec.ts` to chase it. The number above records the REFERENCE, not the product.
+> `apps/game/tests/shot-camera.spec.ts` to chase it. The number above records the REFERENCE, not the product.
 | Roll | **exactly 0** | `camera.up = (0,1,0)`; every vertical in every reference lands in the 90.00° orientation bin |
 | Yaw | free 0–2π, default **45°** | 5 of 7 fitted frames cluster at 45–53° off the build grid |
 | near / far | **1.0 / 600** | 600:1 ratio, no logarithmic depth needed |
@@ -189,7 +189,7 @@ reproduces it to ±0.03.
   line in the source art. Bake into vertex colours or the canvas AO map, multiplying **ambient
   only** down to 0.35–0.50 in creases.
 
-> **OVERTURNED — THERE IS NO CSM.** `src/render/scene.ts` builds ONE `DirectionalLight` with ONE
+> **OVERTURNED — THERE IS NO CSM.** `apps/game/src/render/scene.ts` builds ONE `DirectionalLight` with ONE
 > orthographic shadow camera, and the only other shadow-capable light — the ground bounce — sets
 > `castShadow = false`. `cascadeResolution` is **2048, not 4096**, and
 > `QualitySettings.shadowCascades` was deleted as write-only along with `cascadeNear`. CLAUDE.md
@@ -815,7 +815,7 @@ Night blue is **ambient, not fog**: far bands measure `#102B4F` at S 0.80 vs nea
 ## 12. `threeJsConfig` — PASTE-READY
 
 The full config lives at the end of this document and is mirrored verbatim in the structured result.
-It is designed to drop into `src/core/config.ts` so a visual critic can retune the entire game's look
+It is designed to drop into `apps/game/src/core/config.ts` so a visual critic can retune the entire game's look
 from one file. See §14.
 
 ---
@@ -992,7 +992,7 @@ fraction is inside R-T1's band; the base paint slot cannot accept a faction colo
 ## 15. THE CONFIG
 
 ```ts
-// src/core/config.ts
+// apps/game/src/core/config.ts
 // RA3 LOOK BIBLE — every number the visual spec defines, in one retunable block.
 // Units: metres. 1 tank length (TL) = 7 m. Angles in degrees unless suffixed Rad.
 // Pixel figures are quoted at 2560x1440 and scale by (renderHeight / 1440).

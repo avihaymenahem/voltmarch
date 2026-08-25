@@ -55,7 +55,7 @@ Maximum spend: 30 credits.
 - PBR retexture task: `01a02d3d-764e-7fdb-a7c0-7128338855aa` (10 credits).
 - The coherent 1,958,094-triangle source was locally reduced to 24,458 triangles, then xatlas
   unwrapped at 2048 resolution and 8 px padding with zero bounds drift.
-- Shipping body: `src/assets/buildings/soviets/repair-depot.glb`; 15,524 triangles, one static
+- Shipping body: `apps/game/src/assets/buildings/soviets/repair-depot.glb`; 15,524 triangles, one static
   primitive/material, 4.00 MiB.
 - Material maps: 2K base colour, 2K normal and 1K packed metal-roughness. The final deterministic
   Soviet field pass restores olive paint to Meshy's neutral plates while preserving authored crimson

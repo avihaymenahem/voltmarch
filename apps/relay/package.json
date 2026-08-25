@@ -1,0 +1,31 @@
+{
+  "name": "@voltmarch/relay",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "VOLTMARCH lockstep relay. Forwards turn frames between two clients and runs no game code.",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.json && node scripts/bundle.mjs",
+    "start": "node --disallow-code-generation-from-strings dist/index.cjs",
+    "dev": "npm run build && node --disallow-code-generation-from-strings dist/index.cjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/test/*.spec.js\"",
+    "test:contracts": "npm test",
+    "audit": "npm audit --audit-level=high"
+  },
+  "dependencies": {
+    "@voltmarch/game-types": "*",
+    "@voltmarch/protocol": "*",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
