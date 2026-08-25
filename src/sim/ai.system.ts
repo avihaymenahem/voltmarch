@@ -32,7 +32,7 @@ import { ctx } from '../game/context';
 import type { DebugCounters } from '../render/debug';
 import { AiDirector } from './AI';
 import type { AiBrain, AiIntent } from './AI';
-import { difficultyByName, personalityByName } from './AIStrategy';
+import { difficultyByName, difficultyProfile, personalityByName } from './AIStrategy';
 import type { DefLookup, ProductionFacts, ProductionOracle } from './AIStrategy';
 import { BuildKind, production } from './Production';
 import { evaluatePlacement, makePlacementReport } from './Placement';
@@ -261,14 +261,28 @@ let knownAiMask = -1;
 /** Set by `?ai=off`; a live multiplayer takeover may explicitly clear it. */
 let disabled = false;
 let announced = false;
+/** Null in single player; otherwise the AI logical seats hosted by this socket. */
+let hostedAi: Set<number> | null = null;
+/** A next-boot assignment survives disposal of the title-screen engine. */
+let pendingHostedAi: Set<number> | null | undefined;
+
+/**
+ * Restrict brain creation for a mixed network match. Called before bootstrap,
+ * so the first AI tick already has the server-authored ownership split.
+ */
+export function configureHostedAi(players: readonly number[] | null): void {
+  pendingHostedAi = players === null ? null : new Set(players);
+}
 
 /**
  * A relay-authorised disconnect handoff outranks the developer `?ai=off` flag.
  * The flag is useful for art shots, but it must not turn a live multiplayer
  * delegation into a permanently idle army.
  */
-export function enableAiTakeover(): void {
+export function enableAiTakeover(player?: number): void {
   disabled = false;
+  if (hostedAi !== null && player !== undefined) hostedAi.add(player);
+  knownAiMask = -1;
 }
 
 export default defineSystem({
@@ -281,6 +295,10 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { world, channels, debug } = ctx();
+    if (pendingHostedAi !== undefined) {
+      hostedAi = pendingHostedAi;
+      pendingHostedAi = undefined;
+    }
     // Kept so `dispose` can retire the per-seat rows. `ctx()` is valid from
     // `init` onward and a disposing module must not assume it still is.
     counters = debug.counters;
@@ -362,19 +380,30 @@ export default defineSystem({
     let aiMask = 0;
     for (let seat = 0; seat < world.players.length; seat++) {
       const p = world.players[seat];
-      if (!p.isHuman && !p.isLocal && p.faction !== Faction.Neutral) aiMask |= 1 << seat;
+      if (!p.isHuman && !p.isLocal && p.faction !== Faction.Neutral
+        && (hostedAi === null || hostedAi.has(seat))) aiMask |= 1 << seat;
     }
     if (world.players.length !== knownPlayers || aiMask !== knownAiMask) {
       knownPlayers = world.players.length;
       knownAiMask = aiMask;
-      director.rebuild(seedFlag());
+      director.rebuild(seedFlag(), hostedAi);
       // Hand the difficulty handicap to the module that owns `credits`. The AI
       // computes `resourceBonus` but may not write the column from Phase.AI, so
       // without this the whole difficulty ladder was economically flat — Easy
       // and Brutal mined at exactly the same rate. Re-applied on every rebuild
       // because a brain added mid-match needs it too.
       const econ = getEconomy();
-      if (econ !== null) for (const b of director.brains) econ.setResourceBonus(b.player, b.resourceBonus);
+      if (econ !== null) {
+        // ECONOMY IS SIMULATION STATE, so every client applies the handicap for
+        // every AI logical seat, including brains hosted by the other socket.
+        // Brain ownership is local CPU policy; mining income may never inherit
+        // that asymmetry.
+        for (let seat = 0; seat < world.players.length; seat++) {
+          const player = world.players[seat];
+          if (player.isHuman || player.isLocal || player.faction === Faction.Neutral) continue;
+          econ.setResourceBonus(player.id, difficultyProfile(player.aiDifficulty).resourceBonus);
+        }
+      }
       if (!announced && director.brains.length > 0) {
         announced = true;
         for (const b of director.brains) {
@@ -408,5 +437,6 @@ export default defineSystem({
     knownAiMask = -1;
     disabled = false;
     announced = false;
+    hostedAi = null;
   },
 });

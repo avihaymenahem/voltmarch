@@ -44,6 +44,8 @@ import type { WireCommand } from '../src/net/protocol';
 
 const P0 = 0 as PlayerId;
 const P1 = 1 as PlayerId;
+const P2 = 2 as PlayerId;
+const P3 = 3 as PlayerId;
 const CX = MAP_SIZE * 0.5;
 
 /* ==========================================================================
@@ -60,6 +62,8 @@ function makeWorld(): World {
   const w = new World();
   w.addPlayer(Faction.Allies, 'One', true, true);
   w.addPlayer(Faction.Soviets, 'Two', true, false);
+  w.addPlayer(Faction.Allies, 'Three', false, false);
+  w.addPlayer(Faction.Soviets, 'Four', false, false);
   return w;
 }
 
@@ -121,6 +125,7 @@ class Client {
   /** The units, spawned identically on every client. */
   readonly a: EntityId;
   readonly b: EntityId;
+  readonly units: readonly EntityId[];
   tick = 0;
   /** Every command this client actually executed, for order comparison. */
   readonly log: Executed[] = [];
@@ -131,6 +136,12 @@ class Client {
     });
     this.a = spawn(this.world, CX, CX, P0);
     this.b = spawn(this.world, CX + 8, CX, P1);
+    this.units = [
+      this.a,
+      this.b,
+      spawn(this.world, CX, CX + 8, P2),
+      spawn(this.world, CX + 8, CX + 8, P3),
+    ];
   }
 
   /** What a player click does: straight onto the bus, exactly as today. */
@@ -145,6 +156,16 @@ class Client {
   issueStance(st: Stance): void {
     this.ch.commands.issueSetStance(
       this.slot as PlayerId, [(this.slot === 0 ? this.a : this.b) as number], 1, st,
+    );
+  }
+
+  /** A hosted AI brain issues through the same bus as a human click. */
+  issueMoveFor(player: number, dest: number): void {
+    const unit = this.units[player];
+    if (unit === undefined) throw new Error(`no unit for logical player ${player}`);
+    this.ch.commands.issueOrder(
+      player as PlayerId, OrderKind.Move, [unit as number], 1,
+      dest, dest, 0 as EntityId, false,
     );
   }
 
@@ -249,6 +270,76 @@ describe('two clients stay one simulation', () => {
     });
     const executedAtOneTick = clients[0].log.filter((e) => e.tick === clients[0].log[0].tick);
     expect(executedAtOneTick.map((e) => e.player)).toEqual([0, 1]);
+  });
+});
+
+describe('two sockets can host four logical players', () => {
+  it('merges one delegated AI seat per client into one four-player simulation', () => {
+    const clients = [new Client(0), new Client(1)];
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD);
+    const controlled = [[0, 2], [1, 3]] as const;
+    const submittedBySocket: number[][] = [[], []];
+    let desyncs = 0;
+
+    for (let t = 1; t <= 600; t++) {
+      // Human input and hosted AI decisions all enter the same local command
+      // bus. Only the socket assigned each AI seat derives that decision.
+      if (t % 41 === 0) clients[0].issueMove(CX + (t % 80));
+      if (t % 37 === 0) clients[1].issueMove(CX - (t % 70));
+      if (t % 29 === 0) clients[0].issueMoveFor(2, CX + 45);
+      if (t % 31 === 0) clients[1].issueMoveFor(3, CX - 45);
+
+      for (const c of clients) {
+        const send = c.step();
+        if (send === null) continue;
+        submittedBySocket[c.slot].push(...send.commands.map((cmd) => cmd.player));
+        const res = relay.submit({
+          slot: c.slot,
+          turn: send.turn,
+          commands: send.commands,
+          check: send.check,
+          controlledPlayers: controlled[c.slot],
+        });
+        if (!res.ok) continue;
+        if (res.desync !== null) desyncs++;
+        if (res.frame !== null) {
+          for (const peer of clients) {
+            peer.sched.receiveFrame(res.frame.turn, res.frame.commands);
+          }
+        }
+      }
+    }
+
+    expect(desyncs).toBe(0);
+    expect(hashOnly(clients[0].world)).toBe(hashOnly(clients[1].world));
+    expect(clients[0].log).toEqual(clients[1].log);
+    expect(clients[0].log.some((entry) => entry.player === 2)).toBe(true);
+    expect(clients[0].log.some((entry) => entry.player === 3)).toBe(true);
+    expect(submittedBySocket[0]).toContain(2);
+    expect(submittedBySocket[0]).not.toContain(3);
+    expect(submittedBySocket[1]).toContain(3);
+    expect(submittedBySocket[1]).not.toContain(2);
+  });
+
+  it('stamps a non-delegated AI claim back to the submitting socket', () => {
+    const relay = new TurnRelay(2, TURN_LOOKAHEAD, 0);
+    const claim: WireCommand = {
+      kind: CommandKind.Order, player: 3, order: OrderKind.Move, target: 0,
+      x: 12, z: 12, defId: -1, tab: 0, cx: 3, cz: 3,
+      stance: Stance.Defensive, queued: false, arg: 0, entities: [],
+    };
+    relay.submit({
+      slot: 0, turn: 0, commands: [claim], check: { tick: 1, hash: 0 },
+      controlledPlayers: [0, 2],
+    });
+    const res = relay.submit({
+      slot: 1, turn: 0, commands: [], check: { tick: 1, hash: 0 },
+      controlledPlayers: [1, 3],
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok || res.frame === null) throw new Error('frame expected');
+    expect(res.frame.commands[0]?.player).toBe(0);
   });
 });
 

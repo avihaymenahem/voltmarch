@@ -15,9 +15,11 @@
 
 ## 1. What multiplayer is
 
-Deterministic lockstep over a relay. Both clients run the *same* simulation from the same seed, and
-the only thing that crosses the network is each player's commands. The server forwards turn frames
-and **runs no game code at all** — it has no idea what a tank is, and it cannot be asked to grant one.
+Deterministic lockstep over a relay. Two human clients run the *same* simulation from the same seed,
+and the only thing that crosses the network is their commands. A match may contain two human armies
+and up to two AI armies: the server owns that logical seat plan while the clients still run every
+simulation entity. The server forwards turn frames and **runs no game code at all** — it has no idea
+what a tank is, and it cannot be asked to grant one.
 
 The consequences are worth understanding, because they explain most of the rules on this page:
 
@@ -65,26 +67,40 @@ hostnames.
 
 Opening the Multiplayer screen connects immediately, before you touch anything.
 
-**Left column — your side.** Pick a faction. Then either:
+**Left column — your side.** Choose a 2–20 character commander name and a faction. Names accept
+Unicode letters and numbers plus spaces, `_`, `.`, and `-`; they are normalized and checked again by
+the relay. Then either:
 
-- **Host a match.** Choose a battlefield from the map list and a visibility: *Public* puts the room in
-  the browser, *Invite only* gives you a six-character code to send to one person. Codes are
-  single-use, expire after ten minutes, and are drawn from an alphabet with no `0/O`, `1/I/L` or
-  `U/V` in it, so they can be read aloud.
+- **Host a match.** Choose a format — head-to-head 1v1, co-op 2v1 AI, or co-op 2v2 AI — then choose
+  the human and AI factions, each AI difficulty, a compatible battlefield and a visibility.
+  *Public* puts the room in the browser; *Invite only* gives you a six-character code to send to one
+  person. Codes are single-use, expire after ten minutes, and omit easily confused characters.
 - **Join with a code.** Type the six characters and press Enter.
 
-**Right column — open matches.** A live, pushed list of public rooms with map, faction and age, plus
-two local filters and a **Quick Match** button. Quick Match is a one-slot queue: the first player
-waits, the second starts a match immediately. There is no rating and no matchmaking beyond that.
+**Right column — open matches.** A live, pushed list of public rooms with map, faction, format and
+age, plus two local filters and a **Quick Match** button. Quick Match deliberately remains a 1v1
+queue: the first player waits, the second starts a match immediately. There is no rating and no
+matchmaking beyond that.
 
 **Joining starts the match at once.** There is no waiting room, no ready check, no host kick and no
 lobby chat. The moment a second player enters, the room is deleted and the match begins.
 
-**Matches are strictly 1v1.** There are no configurable AI slots, teams, free-for-all or spectators.
-An AI can appear only as continuity for a player who disconnects after the match starts.
+Mixed matches always use two allied humans against one or two allied AIs. Each human client hosts
+one AI brain at most, and those orders travel through the relay exactly like human commands. This is
+co-op against AI, not shared control: every army still has one logical owner.
 
-**There are no player names.** Every string you see in the lobby is derived from a map id or a faction
-index — never from anything another person typed. You are *You*; the other player is *Opponent*.
+Commander names appear in the public room list, live army labels, chat, end-screen opponent data and
+new replay headers. Older replays remain readable and fall back to faction names.
+
+### In-match communication
+
+- Press **Enter** during a live match to open the compact chat field. Enter sends; Escape cancels.
+  Messages are one line, capped at 180 characters and rate-limited by the relay.
+- In a mixed co-op match, **right-click the minimap** to place an expanding ring for your human
+  teammate. The relay sends it only to sockets on the sender's team. A duel has no teammate, so the
+  ping action is disabled there.
+- Chat and map pings are presentation messages. They do **not** enter `WireCommand`, the delayed turn
+  stream, checksums or replay commands; losing one cannot desynchronise a match.
 
 ---
 
@@ -92,8 +108,8 @@ index — never from anything another person typed. You are *You*; the other pla
 
 | Setting | In a PvP match |
 | --- | --- |
-| Opponent | The other player; Normal AI takes over if their socket is permanently lost. |
-| Difficulty, personality | Not offered — there is no AI to configure |
+| Opponents | One human in a duel, or one/two AI armies in mixed co-op. AI takes over a departed human army. |
+| Difficulty, personality | Each hosted AI has a selectable difficulty; personalities are not offered. |
 | Starting credits | Forced to **10,000** on both clients |
 | Game speed | Forced to **1×** |
 | Opening | Forced to the **construction vehicle** start |
@@ -127,8 +143,10 @@ progress would build different starting armies and diverge before either of them
 | Lookahead | 4 turns |
 
 Your commands are collected, sent at the end of a turn, and executed two turns later on both
-machines simultaneously. The 200–300 ms of input delay is not lag — it is the mechanism, and it is
-constant regardless of your ping.
+machines simultaneously. In mixed co-op each socket merges its human commands with the commands of
+its assigned AI seat before submitting the frame. The relay accepts a logical player id only when
+that id is in its server-owned control list for that socket. The 200–300 ms of input delay is not
+lag — it is the mechanism, and it is constant regardless of your ping.
 
 **The step gate stalls; it never skips.** If your opponent's commands for a turn have not arrived, the
 simulation stops and waits. Tick N is tick N whenever each machine gets there; executing a turn
@@ -156,14 +174,14 @@ with no findable cause.
 
 **There is no reconnection.** Catching a dropped client up still requires replaying every missed
 turn, so that client stops locally. The surviving match no longer ends: the relay retires the dead
-command source, delegates its logical seat, and the existing Normal AI continues that army through
-the same command bus.
+command source and delegates both the departed human army and any AI seat that socket hosted. The
+remaining client runs those brains through the same command bus.
 
 | What happens | Result |
 | --- | --- |
-| Your opponent's socket drops | Their seat is delegated immediately and you see *"Opponent disconnected — AI command has taken over."* |
-| Your opponent stops sending but still answers pings | After 15 seconds of silence it receives the same AI takeover |
-| Your opponent quits cleanly | Their seat is handed to AI immediately |
+| The other socket drops | Its human seat and hosted AI seats are delegated immediately; AI command takes over. |
+| The other socket stops sending but still answers pings | After 15 seconds of silence it receives the same takeover. |
+| The other player quits cleanly | Its human army and hosted AI work are handed over immediately. |
 | **Your** socket drops | The match stops and is **scored as a loss for you** |
 
 There is AI takeover for the survivor, but still no pause-on-disconnect or rejoin.
@@ -174,13 +192,14 @@ There is AI takeover for the survivor, but still no pause-on-disconnect or rejoi
 
 Stated plainly, because it is quicker than finding out:
 
-- The hosted service is anonymous 1v1 only; it has no account or social layer.
+- The hosted service is anonymous; it has no account or social layer.
 - No reconnect or rejoin after a drop; the survivor continues against AI.
 - No spectators or observers.
-- No teams, no 2v2, no free-for-all — 1v1 only.
-- No chat, pings, emotes, taunts or player names.
+- No four-human 2v2, online free-for-all or shared army control. Mixed 2v1/2v2 is two humans versus AI.
+- No emotes, taunts, friend list or account-backed identity. Commander names are local handles.
 - No ranking, rating, ladder or leaderboard.
 - No lobby ready-check, host kick or map veto.
+- No AI personalities and no co-op Quick Match queue.
 - No pause.
 - No "waiting for opponent" indicator.
 - No persistence of anything: rooms, matches and queue positions live in the server process and are
@@ -236,7 +255,8 @@ Practical notes for a two-machine test on a LAN:
    the plaintext socket.
 3. Point the second machine at the relay with `?relay=ws://<host>:8787/ws`.
 4. Set `VM_REQUIRE_BUILD` to the version both machines are running.
-5. Expect 200–300 ms of input delay by design, and expect a freeze rather than a warning if one side
+5. Host a duel or mixed co-op room; Quick Match remains a duel queue.
+6. Expect 200–300 ms of input delay by design, and expect a freeze rather than a warning if one side
    hitches.
 
 The determinism itself is well covered — there is a cross-engine desync probe with a committed

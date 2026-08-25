@@ -12,7 +12,8 @@ across four chapters**, and [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) l
 its par. It is deliberately walled off from skirmish progression: an operation
 advances no mission and grants no unlock, and the same page says why.
 
-There is also hosted deterministic-lockstep 1v1. The public game at
+There is also hosted deterministic-lockstep multiplayer: head-to-head 1v1 and two-human co-op
+against one or two AI armies. The public game at
 [play.voltmarch.com](https://play.voltmarch.com/) connects to the production relay at
 `relay.voltmarch.com`; the title screen probes it before enabling Multiplayer, so an outage fails
 closed instead of leaving a dead lobby. See [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer)
@@ -45,7 +46,7 @@ superweapon, and they play nothing like the first two or like each other.
 | [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) | Four islands, no land route. The map the navy exists for. |
 | [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) | The story operations, the mission table, unlocks, and what a fresh profile is missing. |
 | [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) | Openings, scouting, expansions, and how to lose less often. |
-| [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |
+| [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) | Head-to-head and mixed 2v1/2v2 co-op, plus what it takes to run a match. |
 
 ## A note on unlocks
 

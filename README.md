@@ -43,7 +43,8 @@ A full RTS built for the browser: a main menu and settings shell, skirmish setup
 factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
 refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
 capture, neutral civilian structures worth fighting over, commander powers bought in the match,
-free-for-alls of up to four armies, online 1v1, and a modern bottom-anchored HUD.
+free-for-alls of up to four armies, online duels and two-human co-op against one or two AI armies,
+and a modern bottom-anchored HUD.
 
 The civilian block is the thing engineer capture and infantry garrisons point AT: two mirrored
 hamlets sit on the perpendicular bisector between the two openings — equidistant from both armies —
@@ -200,10 +201,16 @@ explicit workflow because a relay restart ends live matches.
 
 ## Multiplayer
 
-1v1 online, as **deterministic lockstep**: both clients run the identical simulation and the server
-relays turn frames without simulating anything. That is not an optimisation — it is what makes the
-whole thing affordable. A match costs a few hundred bytes a second, and the relay carries no game
-code at all.
+Online duels and mixed **2v1 / 2v2 co-op**, as deterministic lockstep: two human sockets run the
+identical simulation while the server authors up to four logical seats and relays turn frames
+without simulating anything. In co-op, the AI work is split between the two clients and every AI
+order crosses the same validated frame stream as human input. Quick Match deliberately remains a
+1v1 queue.
+
+Each player brings a validated commander handle. Enter opens a compact in-match chat, while mixed
+co-op adds teammate-only right-click minimap pings. Both are presentation channels outside the
+lockstep command stream: they cannot alter a tick, checksum or replayed order. Replay headers retain
+commander names for meaningful post-match and browser labels while older recordings remain valid.
 
 It was largely already built. [`src/game/Replay.ts`](src/game/Replay.ts) records the command stream
 by apply tick and re-issues it into a live bus; [`src/game/Checksum.ts`](src/game/Checksum.ts)
@@ -211,11 +218,10 @@ fingerprints the simulation per tick with per-block divergence reporting. Those 
 lockstep client and a desync detector, written for replay and pointed at a socket here — so a PvP
 match also produces a correct replay, with no extra machinery.
 
-If the opponent's socket disappears, the relay retires that command source and delegates its
-logical seat to the survivor. The existing Normal AI takes over on the next simulation step, its
-orders travel through the same validated lockstep frames, and the remaining player can finish the
-match instead of receiving an automatic win. There is still no reconnect or late join: the dropped
-client cannot catch up without replaying the stream it missed.
+If a socket disappears, the relay retires that command source and delegates both its human army and
+any AI army it hosted to the survivor. The existing AI takes over on the next simulation step and
+its orders continue through validated lockstep frames. There is still no reconnect or late join:
+the dropped client cannot catch up without replaying the stream it missed.
 
 ```bash
 npm run server          # the relay, on 127.0.0.1:8787

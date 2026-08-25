@@ -100,18 +100,27 @@ class FakeCtx {
 class FakeCanvas {
   width = 0;
   height = 0;
+  title = '';
+  readonly classList = { toggle: vi.fn() };
   private readonly context = new FakeCtx();
-  private readonly handlers = new Map<string, number>();
+  private readonly handlers = new Map<string, EventListener[]>();
 
   getContext(kind: string): FakeCtx | null { return kind === '2d' ? this.context : null; }
-  addEventListener(type: string): void { this.handlers.set(type, (this.handlers.get(type) ?? 0) + 1); }
-  removeEventListener(type: string): void { this.handlers.set(type, (this.handlers.get(type) ?? 0) - 1); }
+  addEventListener(type: string, fn: EventListener): void {
+    this.handlers.set(type, [...(this.handlers.get(type) ?? []), fn]);
+  }
+  removeEventListener(type: string, fn: EventListener): void {
+    this.handlers.set(type, (this.handlers.get(type) ?? []).filter((item) => item !== fn));
+  }
   getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
     return { left: 0, top: 0, width: this.width, height: this.height };
   }
   setPointerCapture(): void {}
   hasPointerCapture(): boolean { return false; }
   releasePointerCapture(): void {}
+  dispatch(type: string, event: unknown): void {
+    for (const fn of this.handlers.get(type) ?? []) fn(event as Event);
+  }
 
   get fake(): FakeCtx { return this.context; }
 }
@@ -139,6 +148,7 @@ const NO_CAMERA = { screenToGround: (): boolean => false } as unknown as CameraR
 interface Rig {
   readonly map: Minimap;
   readonly world: World;
+  readonly canvas: FakeCanvas;
   /** Redraw once and hand back the strokes that redraw produced. */
   redraw(): readonly StrokeRecord[];
 }
@@ -171,6 +181,7 @@ function rig(armies: number): Rig {
   return {
     map,
     world,
+    canvas,
     redraw(): readonly StrokeRecord[] {
       canvas.fake.strokes.length = 0;
       // One 60 Hz step. Long enough to pass the redraw gate (a live ping raises
@@ -186,6 +197,23 @@ function rig(armies: number): Rig {
 /* ========================================================================== */
 
 describe('Minimap — the alert ring is coloured by seat, like everything else', () => {
+  it('routes right-click through the presentation callback, not the camera jump', () => {
+    const r = rig(2);
+    const ping = vi.fn();
+    const jump = vi.fn();
+    const preventDefault = vi.fn();
+    r.map.onPingRequest(ping);
+    r.map.onJumpRequest(jump);
+    r.canvas.dispatch('pointerdown', {
+      button: 2, clientX: MAP_CELLS / 2, clientY: MAP_CELLS / 4,
+      pointerId: 3, preventDefault,
+    });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(ping).toHaveBeenCalledWith(256, 128);
+    expect(jump).not.toHaveBeenCalled();
+    r.map.dispose();
+  });
+
   it('is the only stroking painter, so the probe means what it says', () => {
     const r = rig(4);
     expect(r.redraw()).toHaveLength(0);

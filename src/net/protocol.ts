@@ -67,7 +67,16 @@ import { BuildTab, CommandKind, OrderKind, Stance } from '../core/types';
  * client that half-understands the protocol is a client that desyncs, and
  * "it mostly worked" is the outcome this number exists to prevent.
  *
- * ── WHY THIS IS 3 ──────────────────────────────────────────────────────────
+ * ── WHY THIS IS 5 ──────────────────────────────────────────────────────────
+ *
+ * Version 5 adds commander names to room/start data and adds presentation-only
+ * chat and allied map pings. Old clients do not know those tagged messages and
+ * would discard the identity needed to label them, so they cannot negotiate.
+ *
+ * Version 4 adds mixed human/AI seat plans. A start now carries teams, AI
+ * seats, difficulty and the logical players hosted by this connection. An old
+ * client would build only two hostile humans from that message, so negotiation
+ * is not survivable and must refuse before a match begins.
  *
  * Version 3 replaces the disconnect countdown with a logical-seat delegation:
  * `peerLost` now names the retired slot, and the survivor runs its AI. An older
@@ -96,7 +105,7 @@ import { BuildTab, CommandKind, OrderKind, Stance } from '../core/types';
  * pins the SIZE of each allowlist next to it: adding an enum member fails that
  * test, and the only way to make it pass is to state whether the wire changed.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 5;
 
 /* ==========================================================================
  * 2. TURN SCHEDULE
@@ -284,9 +293,8 @@ export type RoomVisibility = 'public' | 'private';
  *     to leak. Two tokens cost one extra field and remove a whole class of
  *     mistake.
  *   - NOT the host's address, hashed or otherwise.
- *   - NOT a name, a title or any other free text. Everything here is a number,
- *     an enum, or a map id checked against `/^[a-z0-9-]+$/`. The browser
- *     therefore renders nothing a stranger authored.
+ *   - One bounded, normalized commander handle. There is still no room title
+ *     or arbitrary description, and the UI renders the handle as textContent.
  */
 export interface RoomSummary {
   /** Opaque public handle. NOT the invite code. */
@@ -295,8 +303,105 @@ export interface RoomSummary {
   map: string;
   /** The host's chosen faction, as a Faction index. */
   faction: number;
+  /** Validated commander handle of the human who opened the room. */
+  hostName: string;
+  /** Number of server-authored AI seats: 0 is the ordinary 1v1 format. */
+  aiCount: number;
   /** Seconds since the room opened, so the UI can show staleness. */
   ageSec: number;
+}
+
+/** User-visible identity and message ceilings; enforced again by the relay. */
+export const COMMANDER_NAME_MIN = 2;
+export const COMMANDER_NAME_MAX = 20;
+export const CHAT_TEXT_MAX = 180;
+
+const BLOCKED_NAMES = [
+  'admin', 'administrator', 'moderator', 'server', 'system', 'developer', 'voltmarch',
+  'fuck', 'shit', 'bitch', 'cunt', 'nigger', 'faggot',
+] as const;
+
+/**
+ * Rebuild a player-authored commander handle, or refuse it.
+ *
+ * Unicode letters and numbers are welcome; markup, controls and impersonation
+ * handles are not. The same function runs before persistence, before send and
+ * on the relay, so no layer relies on a browser having behaved.
+ */
+export function normalizeCommanderName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+  if (name.length < COMMANDER_NAME_MIN || name.length > COMMANDER_NAME_MAX) return null;
+  if (!/^[\p{L}\p{N}](?:[\p{L}\p{N} _.-]*[\p{L}\p{N}])?$/u.test(name)) return null;
+  const folded = name.toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
+  if (BLOCKED_NAMES.some((word) => folded.includes(word))) return null;
+  return name;
+}
+
+/** One-line presentation text; never a simulation command. */
+export function normalizeChatText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.normalize('NFKC').replace(/[\r\n\t]+/gu, ' ').trim().replace(/\s+/gu, ' ');
+  if (text.length < 1 || text.length > CHAT_TEXT_MAX) return null;
+  if (/\p{Cc}/u.test(text)) return null;
+  return text;
+}
+
+/** Number of difficulty rungs shared by the lobby and AI configuration. */
+export const AI_DIFFICULTY_COUNT = 4;
+
+/**
+ * One complete logical-player layout. Every array is indexed by logical slot
+ * except `ai`, which is the explicit list of AI logical-player ids.
+ */
+export interface SeatPlan {
+  factions: number[];
+  teams: number[];
+  ai: number[];
+  difficulty: number[];
+}
+
+/**
+ * Validate and rebuild a host-authored logical seat plan.
+ *
+ * The supported formats are intentionally closed: ordinary 1v1, or two human
+ * allies against one/two AI seats. Invalid input is refused, never clamped into
+ * a different match.
+ */
+export function parseSeatPlan(v: unknown): SeatPlan | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const raw = v as Partial<Record<keyof SeatPlan, unknown>>;
+  if (!Array.isArray(raw.factions) || !Array.isArray(raw.teams)
+    || !Array.isArray(raw.ai) || !Array.isArray(raw.difficulty)) return null;
+  const n = raw.factions.length;
+  if (n < 2 || n > 4 || raw.teams.length !== n || raw.difficulty.length !== n) return null;
+
+  const factions = raw.factions.slice();
+  const teams = raw.teams.slice();
+  const ai = raw.ai.slice();
+  const difficulty = raw.difficulty.slice();
+  const integer = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value);
+  if (!factions.every((faction) => integer(faction) && faction >= 1 && faction < WIRE_LIMITS.factions)) {
+    return null;
+  }
+  if (!teams.every((team) => integer(team) && team >= 0 && team <= 1)) return null;
+  if (!difficulty.every((d) => integer(d) && d >= 0 && d < AI_DIFFICULTY_COUNT)) return null;
+  if (!ai.every((slot) => integer(slot) && slot >= 0 && slot < n)) return null;
+
+  if (ai.length === 0) {
+    if (n !== 2 || teams[0] === teams[1] || difficulty.some((d) => d !== 0)) return null;
+  } else {
+    if (ai.length < 1 || ai.length > 2 || n !== ai.length + 2) return null;
+    for (let index = 0; index < ai.length; index++) if (ai[index] !== index + 2) return null;
+    if (teams[0] !== teams[1] || teams[2] === teams[0]) return null;
+    for (let slot = 2; slot < n; slot++) if (teams[slot] !== teams[2]) return null;
+    if (difficulty[0] !== 0 || difficulty[1] !== 0) return null;
+  }
+
+  return {
+    factions: factions as number[], teams: teams as number[],
+    ai: ai as number[], difficulty: difficulty as number[],
+  };
 }
 
 /** Length of a public room id. Longer than a code: nobody types one. */
@@ -597,11 +702,15 @@ export interface WireCheck {
 
 export type ClientMessage =
   | { t: 'hello'; protocol: number; build: string }
-  | { t: 'create'; faction: number; map: string; visibility: RoomVisibility }
+  | {
+    t: 'create'; faction: number; map: string; visibility: RoomVisibility; name: string;
+    /** Omitted only by legacy in-process callers; v4 clients always send it. */
+    plan: SeatPlan;
+  }
   /** Join a PRIVATE room by the code its host was given. */
-  | { t: 'join'; code: string; faction: number }
+  | { t: 'join'; code: string; faction: number; name: string }
   /** Join a PUBLIC room picked out of the browser. */
-  | { t: 'joinRoom'; id: string; faction: number }
+  | { t: 'joinRoom'; id: string; faction: number; name: string }
   /**
    * Open or close the room browser.
    *
@@ -611,8 +720,12 @@ export type ClientMessage =
    * when one actually changes, and `cancel`/`leave` unsubscribes.
    */
   | { t: 'rooms'; subscribe: boolean }
-  | { t: 'queue'; faction: number }
+  | { t: 'queue'; faction: number; name: string }
   | { t: 'cancel' }
+  /** Presentation-only; never enters a turn frame or checksum. */
+  | { t: 'chat'; text: string }
+  /** Presentation-only world metres; the relay sends it to allied humans. */
+  | { t: 'ping'; x: number; z: number }
   | { t: 'turn'; turn: number; commands: WireCommand[]; check: WireCheck }
   | { t: 'leave' };
 
@@ -631,12 +744,22 @@ export type ServerMessage =
   | { t: 'waiting' }
   | {
     t: 'start';
-    /** Which slot THIS client drives. The only per-client field in the match setup. */
+    /** Which human logical slot THIS socket owns. */
     slot: number;
     seed: number;
     map: string;
     /** Faction per slot, index === slot. */
     factions: number[];
+    /** Validated display label per logical slot. */
+    names: string[];
+    /** Team id per logical slot. */
+    teams: number[];
+    /** Logical slots controlled by AI brains. */
+    ai: number[];
+    /** AI difficulty per logical slot; human entries are zero. */
+    difficulty: number[];
+    /** Logical players whose commands this particular socket may submit. */
+    controlled: number[];
     turnTicks: number;
     turnDelay: number;
   }
@@ -649,6 +772,8 @@ export type ServerMessage =
    * accepts that seat's commands only from the survivor it delegated to.
    */
   | { t: 'peerLost'; slot: number }
+  | { t: 'chat'; player: number; name: string; text: string }
+  | { t: 'ping'; player: number; x: number; z: number }
   | { t: 'over'; reason: OverReason; winnerSlot: number }
   | { t: 'error'; code: ErrorCode };
 

@@ -51,7 +51,9 @@ function makeMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: Re
   const a = new FakePeer();
   const b = new FakePeer();
   const match = new Match([a, b], {
-    id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
+    id: 'm1', seed: 12345, map: 'crossroads',
+    names: ['Aster', 'Rook'],
+    plan: { factions: [1, 2], teams: [0, 1], ai: [], difficulty: [0, 0] },
     silenceMs: CONFIG.silenceMs, now: c.now,
     // TURNS FROM ZERO, so every case below reads as "turn 0, turn 1, turn 2"
     // rather than starting at TURN_DELAY. The product's own baseline is covered
@@ -81,6 +83,7 @@ describe('a match starts both clients on the same world', () => {
     assert.equal(sa.seed, sb.seed);
     assert.equal(sa.map, sb.map);
     assert.deepEqual(sa.factions, sb.factions);
+    assert.deepEqual(sa.names, ['Aster', 'Rook']);
   });
 
   it('gives each client a DIFFERENT slot, and only that differs', () => {
@@ -88,6 +91,95 @@ describe('a match starts both clients on the same world', () => {
     match.start();
     assert.equal(a.of('start')[0].slot, 0);
     assert.equal(b.of('start')[0].slot, 1);
+  });
+});
+
+describe('presentation messages never enter the turn relay', () => {
+  it('labels chat from server-owned identity and broadcasts it to both peers', () => {
+    const { match, a, b } = makeMatch();
+    assert.equal(match.chat(1, 'Hold the ridge'), true);
+    assert.deepEqual(a.of('chat'), [{ t: 'chat', player: 1, name: 'Rook', text: 'Hold the ridge' }]);
+    assert.deepEqual(b.of('chat'), a.of('chat'));
+    assert.equal(a.of('frame').length, 0);
+  });
+
+  it('rate-limits chat and pings independently per socket', () => {
+    const c = clock();
+    const { match } = makeMatch(c);
+    assert.equal(match.chat(0, 'One'), true);
+    assert.equal(match.chat(0, 'Two'), false);
+    assert.equal(match.ping(0, 10, 20), true, 'chat did not spend the ping budget');
+    assert.equal(match.ping(0, 11, 21), false);
+    c.advance(800);
+    assert.equal(match.chat(0, 'Three'), true);
+    assert.equal(match.ping(0, 12, 22), true);
+  });
+
+  it('keeps a duel ping private because the other socket is hostile', () => {
+    const { match, a, b } = makeMatch();
+    assert.equal(match.ping(0, 100, 200), true);
+    assert.deepEqual(a.of('ping'), [{ t: 'ping', player: 0, x: 100, z: 200 }]);
+    assert.equal(b.of('ping').length, 0);
+  });
+
+  it('delivers a co-op ping to both human allies', () => {
+    const a = new FakePeer();
+    const b = new FakePeer();
+    const match = new Match([a, b], {
+      id: 'coop', seed: 7, map: 'crossroads', names: ['Aster', 'Rook', 'AI 1', 'AI 2'],
+      plan: {
+        factions: [1, 2, 3, 4], teams: [0, 0, 1, 1], ai: [2, 3], difficulty: [0, 0, 2, 2],
+      },
+      silenceMs: CONFIG.silenceMs, now: () => 1_000_000,
+    });
+    assert.equal(match.ping(1, 44, 55), true);
+    assert.deepEqual(a.of('ping'), [{ t: 'ping', player: 1, x: 44, z: 55 }]);
+    assert.deepEqual(b.of('ping'), a.of('ping'));
+  });
+});
+
+describe('a mixed 2v2 has two sockets and four logical players', () => {
+  const mixed = (): { match: Match; a: FakePeer; b: FakePeer } => {
+    const a = new FakePeer();
+    const b = new FakePeer();
+    const match = new Match([a, b], {
+      id: 'mixed', seed: 2468, map: 'temperate-valley', silenceMs: CONFIG.silenceMs,
+      now: () => 1_000_000, firstTurn: 0,
+      plan: {
+        factions: [2, 3, 1, 4], teams: [0, 0, 1, 1], ai: [2, 3],
+        difficulty: [0, 0, 2, 2],
+      },
+    });
+    return { match, a, b };
+  };
+
+  it('sends identical simulation fields and a symmetric AI hosting split', () => {
+    const { match, a, b } = mixed();
+    match.start();
+    const left = a.of('start')[0];
+    const right = b.of('start')[0];
+    assert.deepEqual(left.factions, [2, 3, 1, 4]);
+    assert.deepEqual(left.teams, right.teams);
+    assert.deepEqual(left.ai, [2, 3]);
+    assert.deepEqual(left.difficulty, right.difficulty);
+    assert.deepEqual(left.controlled, [0, 2]);
+    assert.deepEqual(right.controlled, [1, 3]);
+  });
+
+  it('preserves each socket delegated AI id but stamps an unauthorized one', () => {
+    const { match, a } = mixed();
+    match.submit(0, 0, [command({ player: 2 }), command({ player: 3 })], CHECK);
+    match.submit(1, 0, [command({ player: 3 })], CHECK);
+    const players = a.of('frame')[0].commands.map((item) => item.player);
+    assert.deepEqual(players, [2, 0, 3]);
+  });
+
+  it('re-delegates the departed human and every AI it hosted', () => {
+    const { match, a, b } = mixed();
+    match.start();
+    match.peerLost(1);
+    assert.deepEqual(a.of('peerLost').map((message) => message.slot), [1, 3]);
+    assert.equal(b.of('peerLost').length, 0);
   });
 });
 
@@ -406,6 +498,25 @@ describe('leaving cleans up everywhere a peer could be', () => {
 /* ========================================================================== */
 
 describe('the room browser', () => {
+  it('advertises a co-op format and seats the joiner into its human slot', () => {
+    const c = clock();
+    const lobby = new Lobby({ now: c.now, randomSeed: () => 7, randomCode: makeCode });
+    const host = new FakePeer();
+    const joiner = new FakePeer();
+    const plan = {
+      factions: [2, 2, 1, 4], teams: [0, 0, 1, 1], ai: [2, 3],
+      difficulty: [0, 0, 2, 3],
+    };
+    const room = lobby.create(host, 2, 'temperate-valley', 'public', plan)!;
+    assert.equal(lobby.listing().rooms[0].aiCount, 2);
+    assert.equal(lobby.joinRoom(joiner, room.id, 3).ok, true);
+    const start = host.of('start')[0];
+    assert.deepEqual(start.factions, [2, 3, 1, 4]);
+    assert.deepEqual(start.teams, plan.teams);
+    assert.deepEqual(start.ai, [2, 3]);
+    assert.deepEqual(start.difficulty, plan.difficulty);
+  });
+
   const lobbyWith = (c: ReturnType<typeof clock>): Lobby => new Lobby({
     now: c.now, randomSeed: () => 5, randomCode: makeCode,
   });
@@ -682,7 +793,8 @@ function realMatch(c = clock()): { match: Match; a: FakePeer; b: FakePeer; c: Re
   const a = new FakePeer();
   const b = new FakePeer();
   const match = new Match([a, b], {
-    id: 'm1', seed: 12345, map: 'crossroads', factions: [1, 2],
+    id: 'm1', seed: 12345, map: 'crossroads',
+    plan: { factions: [1, 2], teams: [0, 1], ai: [], difficulty: [0, 0] },
     silenceMs: CONFIG.silenceMs, now: c.now,
   });
   return { match, a, b, c };

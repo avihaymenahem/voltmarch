@@ -130,6 +130,8 @@ export interface ReplayCampaign {
 
 /** One slot of the starting world, index === PlayerId. */
 export interface ReplaySlot {
+  /** Commander label at match start. Optional so every older replay remains valid. */
+  name?: string;
   faction: number;
   isHuman: boolean;
   aiDifficulty: number;
@@ -356,6 +358,7 @@ export class ReplayRecorder {
     this.header.formatVersion = formatVersionFor(this.header.campaign);
     this.header.localPlayer = world.localPlayer as number;
     this.header.players = world.players.map((p) => ({
+      name: p.name,
       faction: p.faction as number,
       isHuman: p.isHuman,
       aiDifficulty: p.aiDifficulty,
@@ -497,6 +500,9 @@ function missingHeaderField(h: Partial<ReplayHeader>): string {
     const p = h.players[i] as Partial<ReplaySlot> | undefined;
     if (p === undefined || typeof p !== 'object') return `player ${i}`;
     if (typeof p.faction !== 'number') return `faction for player ${i}`;
+    if (p.name !== undefined && (typeof p.name !== 'string' || p.name.length > 64)) {
+      return `name for player ${i}`;
+    }
     if (typeof p.credits !== 'number' || !Number.isFinite(p.credits)) {
       return `opening bank for player ${i}`;
     }

@@ -184,6 +184,8 @@ describe('the header carries everything the world is built from', () => {
     const h = rec.build().header;
     expect(h.players[1]!.faction).toBe(Faction.Meridian as number);
     expect(h.players[0]!.credits).toBe(20000);
+    expect(h.players[0]!.name).toBe('Commander');
+    expect(h.players[1]!.name).toBe('Opponent');
     expect(h.localPlayer).toBe(1);
   });
 
@@ -253,6 +255,15 @@ describe('the parser refuses a file it would have to guess at', () => {
     const header: Record<string, unknown> = { ...HEADER };
     delete header.art;
     expect(parseReplay(JSON.stringify({ header, commands: [], checks: [] })).ok).toBe(true);
+  });
+
+  it('keeps pre-identity files readable but refuses an absurd stored name', () => {
+    expect(parseReplay(serialise({ players: HEADER.players.map(({ name: _name, ...p }) => p) })).ok)
+      .toBe(true);
+    const oversized = { ...HEADER.players[0]!, name: 'x'.repeat(65) };
+    const r = parseReplay(serialise({ players: [oversized, HEADER.players[1]!] }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('name for player 0');
   });
 });
 
@@ -578,9 +589,10 @@ describe('the shell builds the world the recording describes', () => {
     expect(methodBody('async startMatch(')).toMatch(/world !== undefined && this\.replay === null/);
   });
 
-  it('seats every recorded slot as human, which is the AI shutdown', () => {
+  it('seats recorded combat slots as human while preserving Gaia in the id table', () => {
     const body = methodBody('private seatReplayPlayers(');
-    expect(body).toContain('p.isHuman = true');
+    expect(body).toContain('p.isHuman = !neutral');
+    expect(body).toContain("? 'Gaia'");
     expect(body).toContain('Faction.Neutral');
   });
 

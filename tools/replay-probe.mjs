@@ -111,6 +111,7 @@ const args = process.argv.slice(2);
 const HEADED = args.includes('--headed');
 const BUILD = !args.includes('--no-build');
 const CAMPAIGN = !args.includes('--no-campaign');
+const MIXED_ONLY = args.includes('--mixed-only');
 
 /**
  * The sim ticks the two skirmish runs are compared at. 1800 is a full minute at
@@ -120,6 +121,7 @@ const CAMPAIGN = !args.includes('--no-campaign');
  */
 const MARKS = [200, 400, 600, 800, 1000, 1400, 1800];
 const SEED = 987654321;
+const MIXED_SEED = 0x22_44_66_88;
 
 /**
  * The operation the campaign arm is measured on, and the ticks that matter.
@@ -206,6 +208,29 @@ const settle = async () => {
   await page.evaluate(() => window.__VM.waitFrames(6));
 };
 
+const scenarioShape = () => page.evaluate(() => {
+  const scenario = window.__VM.hooks.scenario?.();
+  const game = window.__vmShell.getGame?.();
+  const kinds = {};
+  const owners = {};
+  if (game !== null && game !== undefined) {
+    const store = game.ctx.world.store;
+    for (let entity = 0; entity < store.capacity; entity++) {
+      if (store.alive[entity] === 0) continue;
+      kinds[store.kind[entity]] = (kinds[store.kind[entity]] ?? 0) + 1;
+      owners[store.owner[entity]] = (owners[store.owner[entity]] ?? 0) + 1;
+    }
+  }
+  return {
+    armies: scenario?.armies ?? -1,
+    entities: scenario?.entityCount ?? -1,
+    alive: game?.ctx.world.store.aliveCount ?? -1,
+    tick: window.__vmReplay.stats().tick,
+    kinds,
+    owners,
+  };
+});
+
 const show = (rows) => {
   for (const m of rows) {
     console.log(`    tick ${String(m.tick).padStart(5)}  ${hex(m.hash)}  alive ${m.alive}`);
@@ -281,9 +306,14 @@ const startStoredReplay = (key, cut) => page.evaluate(async ([k, c]) => {
     removed = { tick: gone.tick, player: gone.player, kind: gone.kind, order: gone.order };
   }
   await window.__vmShell.startReplay(file);
+  const game = window.__vmShell.getGame?.();
   return {
     removed,
     operation: window.__vmShell.activeOperationId?.() ?? null,
+    armies: window.__vmShell.getSetup?.().opponents?.length + 1,
+    players: game?.ctx.world.players.map((player) => ({
+      id: player.id, faction: player.faction, human: player.isHuman,
+    })) ?? [],
   };
 }, [key, cut ?? null]);
 
@@ -291,6 +321,9 @@ const startStoredReplay = (key, cut) => page.evaluate(async ([k, c]) => {
  * PHASES A–C: A SKIRMISH
  * ========================================================================== */
 
+let okB = true;
+let okC = true;
+if (!MIXED_ONLY) {
 console.log(`\n=== A: RECORD  ?skipmenu=1&seed=${SEED} ===`);
 server.assertAlive('the skirmish recording phase');
 await page.goto(`${BASE}?skipmenu=1&seed=${SEED}`, { waitUntil: 'domcontentloaded' });
@@ -323,7 +356,7 @@ show(playMarks);
 const barB = await readBar('Complete');
 console.log(`  bar: "${barB.sync}"  ${barB.clock}`);
 
-const okB = compare(recMarks, playMarks) && skirmishClean;
+okB = compare(recMarks, playMarks) && skirmishClean;
 console.log(okB ? '  B: PASS — every sampled tick agrees.' : '  B: FAIL — the replay diverged.');
 
 console.log('\n=== C: NEGATIVE CONTROL: one command deleted ===');
@@ -339,10 +372,86 @@ console.log(`  removed the command at tick ${cutC.removed?.tick ?? '(none)'}`
 console.log(`  tick ${lastCut.tick}: ${hex(lastCut.hash)} vs recorded ${hex(lastRec.hash)}`);
 console.log(`  bar: "${barC.sync}"`);
 if (barC.note !== '') console.log(`  note: ${barC.note}`);
-const okC = lastCut.hash !== lastRec.hash && barC.sync.startsWith('Diverged');
+okC = lastCut.hash !== lastRec.hash && barC.sync.startsWith('Diverged');
 console.log(okC
   ? '  C: PASS — the recording is what drives the match, and a broken one says so.'
   : '  C: FAIL — a corrupted recording played back clean. Phase B proves nothing.');
+}
+
+/* ==========================================================================
+ * PHASES M1–M3: FOUR LOGICAL PLAYERS, TWO TEAMS
+ * ========================================================================== */
+
+console.log('\n=== M1: RECORD MIXED 2v2 WORLD ===');
+server.assertAlive('the mixed 2v2 recording phase');
+await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
+await page.evaluate(() => window.__VM.ready());
+// A bare URL boots the animated title theatre first. Wait for the shell's own
+// completion state, not only the render harness: disposing an async registry
+// while its final scenario init is still resolving lets that stale continuation
+// write into the next game's global context and duplicates the entire opening.
+await page.waitForFunction(() => window.__vmShell?.getState?.() === 'menu', null, { timeout: 120_000 });
+await page.evaluate(() => window.__VM.waitFrames(6));
+await page.evaluate(async (seed) => {
+  const current = window.__vmShell.getSetup();
+  await window.__vmShell.startMatch({
+    ...current,
+    map: 'temperate-valley', seed,
+    playerFaction: 'allies', aiFaction: 'allies', difficulty: 1, personality: -1,
+    opponents: [
+      { faction: 'allies', difficulty: 1, personality: -1, team: 1 },
+      { faction: 'soviets', difficulty: 1, personality: -1, team: 2 },
+      { faction: 'reclaim', difficulty: 1, personality: -1, team: 2 },
+    ],
+  }, { persist: false });
+}, MIXED_SEED);
+await settle();
+const mixedScenario = await scenarioShape();
+console.log(`  scenario laid out ${mixedScenario.armies} armies / ${mixedScenario.entities} entities; alive ${mixedScenario.alive} at tick ${mixedScenario.tick}`);
+console.log(`  live kinds ${JSON.stringify(mixedScenario.kinds)} owners ${JSON.stringify(mixedScenario.owners)}`);
+
+const mixedRecMarks = await walk(MARKS);
+const mixedRec = await takeRecording('vmMixed2v2Probe');
+const mixedPlayers = mixedRec.header.players ?? [];
+const mixedCombatSlots = mixedPlayers
+  .map((player, slot) => ({ player, slot }))
+  .filter(({ player }) => player.faction !== 0);
+const [mixedA, mixedB, mixedC, mixedD] = mixedCombatSlots;
+const mixedShape = mixedCombatSlots.length === 4
+  && (mixedA.player.allyMask & (1 << mixedB.slot)) !== 0
+  && (mixedC.player.allyMask & (1 << mixedD.slot)) !== 0
+  && (mixedA.player.allyMask & (1 << mixedC.slot)) === 0;
+console.log(`  ${mixedCombatSlots.length} logical players + Gaia, ${mixedRec.commands} commands`);
+console.log(`  player table ${mixedPlayers.map((player, slot) => `p${slot}:f${player.faction}`).join(' ')}`);
+show(mixedRecMarks);
+
+console.log('\n=== M2: REPLAY MIXED 2v2 WORLD ===');
+const mixedBoot = await startStoredReplay('vmMixed2v2Probe', null);
+console.log(`  playback boot requested ${mixedBoot.armies} armies; table ${mixedBoot.players.map((player) => `p${player.id}:f${player.faction}`).join(' ')}`);
+await settle();
+const mixedReplayScenario = await scenarioShape();
+console.log(`  playback scenario laid out ${mixedReplayScenario.armies} armies / ${mixedReplayScenario.entities} entities; alive ${mixedReplayScenario.alive} at tick ${mixedReplayScenario.tick}`);
+console.log(`  replay kinds ${JSON.stringify(mixedReplayScenario.kinds)} owners ${JSON.stringify(mixedReplayScenario.owners)}`);
+const mixedPlayMarks = await walk(MARKS);
+show(mixedPlayMarks);
+const okM2 = mixedShape && compare(mixedRecMarks, mixedPlayMarks);
+console.log(okM2
+  ? '  M2: PASS — four seats and both team masks reproduce.'
+  : '  M2: FAIL — the mixed-team recording diverged or lost its diplomacy.');
+
+console.log('\n=== M3: MIXED 2v2 NEGATIVE CONTROL ===');
+const mixedCut = await startStoredReplay('vmMixed2v2Probe', { tick: 400, pick: 'before' });
+await settle();
+const mixedCutMarks = await walk(MARKS);
+const lastMixedRec = mixedRecMarks[mixedRecMarks.length - 1];
+const lastMixedCut = mixedCutMarks[mixedCutMarks.length - 1];
+const okM3 = mixedCut.removed !== null && lastMixedCut.hash !== lastMixedRec.hash;
+console.log(`  removed tick ${mixedCut.removed?.tick ?? '(none)'}; `
+  + `${hex(lastMixedCut.hash)} vs ${hex(lastMixedRec.hash)}`);
+console.log(okM3
+  ? '  M3: PASS — the four-seat replay is command-driven.'
+  : '  M3: FAIL — the mixed negative control did not diverge.');
 
 /* ==========================================================================
  * PHASES D–F: A CAMPAIGN OPERATION
@@ -450,6 +559,6 @@ if (!CAMPAIGN) {
 await browser.close();
 cleanup();
 
-const passed = okB && okC && okD && okE && okF;
+const passed = okB && okC && okM2 && okM3 && okD && okE && okF;
 console.log(`\n${passed ? 'REPLAY PROBE PASSED' : 'REPLAY PROBE FAILED'}\n`);
 process.exit(passed ? 0 : 1);

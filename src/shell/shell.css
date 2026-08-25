@@ -2554,6 +2554,72 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   border: 1px solid var(--vm-line);
 }
 
+/* The relay seats logical players, not sockets. This compact grid makes that
+   contract visible without turning the lobby into four full faction cards. */
+.vm-shell .vm-mp-seats {
+  display: grid;
+  gap: 4px;
+  margin: 8px 18px 14px;
+}
+
+.vm-shell .vm-mp-seat {
+  display: grid;
+  grid-template-columns: 58px minmax(110px, 1fr) 58px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 8px;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(3, 8, 17, 0.46);
+}
+
+.vm-shell .vm-mp-seat-role,
+.vm-shell .vm-mp-seat-team {
+  color: var(--vm-text-faint);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-mp-seat-name {
+  min-width: 0;
+  color: var(--vm-text);
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  letter-spacing: 0.04em;
+}
+
+.vm-shell .vm-mp-seat-controls {
+  display: flex;
+  gap: 5px;
+}
+
+.vm-shell .vm-mp-seat-select {
+  min-width: 90px;
+  max-width: 126px;
+  padding: 5px 7px;
+  font-size: calc(11px * var(--vm-text-scale, 1));
+}
+
+@media (max-width: 760px) {
+  .vm-shell .vm-mp-seat {
+    grid-template-columns: 48px minmax(80px, 1fr) 48px;
+  }
+  .vm-shell .vm-mp-seat-controls { grid-column: 1 / -1; }
+}
+
+/* The command interface must expose the complete four-seat plan at the 720px
+   desktop minimum. At this height faction prose is the least valuable repeat:
+   the same descriptions remain on the full-height layout and in the manual. */
+@media (max-height: 780px) and (min-width: 900px) {
+  .vm-shell .vm-mp-legend { margin-block: 10px 6px; }
+  .vm-shell .vm-mp-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .vm-shell .vm-mp-card { min-height: 54px; padding: 9px 8px 9px 12px; }
+  .vm-shell .vm-mp-card-name { font-size: calc(12px * var(--vm-text-scale, 1)); }
+  .vm-shell .vm-mp-card-blurb { display: none; }
+  .vm-shell .vm-mp-seats { margin-block: 6px 8px; }
+  .vm-shell .vm-mp-seat { min-height: 32px; padding-block: 3px; }
+}
+
 .vm-shell .vm-mp-block {
   margin: 0 18px 4px;
   display: flex;
@@ -6086,4 +6152,80 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   .vm-shell .vm-tabs {
     padding-inline: 8px;
   }
+}
+
+/* Multiplayer presentation channel. It sits above the minimap/objectives gap,
+ * stays pointer-transparent until Enter opens the field, and never expands the
+ * command deck or steals world input. */
+.vm-shell .vm-net-comms {
+  --comms-accent: #36d7ee;
+  position: fixed;
+  left: clamp(16px, 1.5vw, 28px);
+  bottom: clamp(172px, 19vh, 250px);
+  z-index: 45;
+  width: min(360px, calc(100vw - 32px));
+  color: #eef8ff;
+  font-family: var(--vm-font-ui);
+  pointer-events: none;
+  filter: drop-shadow(0 9px 18px rgba(0, 0, 0, 0.5));
+}
+
+.vm-shell .vm-net-comms-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 9px;
+  border-left: 2px solid var(--comms-accent);
+  background: rgba(3, 9, 18, 0.82);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  letter-spacing: 0.16em;
+}
+
+.vm-shell .vm-net-comms-title { color: var(--comms-accent); font-weight: 800; }
+.vm-shell .vm-net-comms-hint { color: rgba(218, 231, 242, 0.55); }
+
+.vm-shell .vm-net-chat-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+}
+
+.vm-shell .vm-net-chat-line {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  gap: 9px;
+  padding: 6px 9px;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(3, 8, 16, 0.88);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  line-height: 1.35;
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.vm-shell .vm-net-chat-line.is-local { border-left-color: var(--comms-accent); }
+.vm-shell .vm-net-chat-line.is-expiring { opacity: 0; transform: translateX(-8px); }
+.vm-shell .vm-net-chat-name { color: var(--comms-accent); font-weight: 800; white-space: nowrap; }
+.vm-shell .vm-net-chat-text { min-width: 0; overflow-wrap: anywhere; color: rgba(239, 246, 252, 0.9); }
+
+.vm-shell .vm-net-chat-form { display: none; margin-top: 3px; pointer-events: auto; }
+.vm-shell .vm-net-comms.is-writing .vm-net-chat-form { display: block; }
+.vm-shell .vm-net-chat-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(54, 215, 238, 0.7);
+  border-left-width: 2px;
+  outline: 0;
+  background: rgba(2, 7, 14, 0.95);
+  color: #f5fbff;
+  font: 600 calc(11px * var(--vm-text-scale, 1)) var(--vm-font-ui);
+  letter-spacing: 0.03em;
+}
+
+.vm-shell .vm-net-chat-input::placeholder { color: rgba(218, 231, 242, 0.42); }
+
+@media (max-height: 760px) {
+  .vm-shell .vm-net-comms { bottom: 146px; width: min(330px, calc(100vw - 28px)); }
 }

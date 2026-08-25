@@ -54,9 +54,12 @@ button.
 
 ## Routine releases
 
-Run the `Deploy multiplayer relay` workflow, then deploy the matching GitHub Pages
-client. The relay updates `VM_REQUIRE_BUILD` during activation, preventing two
-different deterministic builds from entering the same match.
+Push the coordinated `v*.*.*` release tag. The tag publishes the Windows desktop
+release and deploys the relay from the exact same commit; the `main` push deploys
+the matching GitHub Pages client. `workflow_dispatch` remains available for an
+operator to redeploy or recover an exact ref manually. The relay updates
+`VM_REQUIRE_BUILD` during activation, preventing two different deterministic
+builds from entering the same match.
 
 Every relay restart ends active matches: rooms are in memory and this version
 does not support reconnection. Deploy during a quiet window.

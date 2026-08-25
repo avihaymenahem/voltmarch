@@ -1,7 +1,8 @@
 # VOLTMARCH relay
 
-A deterministic-lockstep relay for 1v1. It holds each turn's frames until every
-slot has reported, broadcasts the merged frame, and compares the simulation
+A deterministic-lockstep relay for two connected humans. It supports a duel or
+a mixed 2v1/2v2 co-op seat plan, holds each socket's turn frame, broadcasts the
+merged commands for every logical player, and compares the simulation
 fingerprints that came with them.
 
 **It runs no game code.** That is a compiler guarantee, not a convention — see
@@ -11,7 +12,7 @@ fingerprints that came with them.
 npm ci
 npm run build
 npm start          # 127.0.0.1:8787
-npm test           # 102 tests in 22 suites, no sockets, no timers
+npm test           # 110 tests in 24 suites, no sockets, no timers
 npm run audit      # NOT a CI gate. Run it by hand; see `ws` is pinned, below
 ```
 
@@ -57,12 +58,12 @@ The governing sentence:
 
 ### Identity and authority
 
-Every inbound command has its `player` field **overwritten** with the slot of
-the socket it arrived on. The one exception is server-owned: after a socket is
-retired, `Match` delegates its logical player to one survivor and passes that
-closed list directly into `TurnRelay`. A command may preserve a claimed player
-only when it appears in that list; the list never crosses the wire, so a client
-cannot grant itself authority. Before delegation, the claim is still discarded.
+Every inbound command has its `player` field **overwritten** with the socket's
+human slot unless that logical player is in the server-owned delegation list.
+In mixed co-op the list initially contains that human and its assigned AI seat;
+after a disconnect it also receives the departed human and every AI that socket
+hosted. A command may preserve a claimed player only when it appears in that
+closed list, so a client cannot grant itself authority.
 
 The simulation then refuses anything a slot does not own; every applier already
 checks (`Commands.ts:868`, `Production.ts:1897`, `Relocate.ts:283`,
@@ -293,14 +294,17 @@ protocol is a peer that desyncs, and "it mostly worked" is what the number
 exists to prevent. Same discipline as `parseReplay`, which refuses a file rather
 than half-reading it.
 
-Version 3 names the logical slot in `peerLost` and authorises the survivor to
+Version 5 adds bounded commander identity plus presentation-only chat and ally
+pings. These messages bypass `TurnRelay` entirely, are rate-limited separately,
+and cannot change a checksum or replay command stream. Version 3 names the
+logical slot in `peerLost` and authorises the survivor to
 run that seat's AI. It deliberately does **not** reconnect the dropped client:
 that still requires replaying missed turns into a late joiner. The surviving
 match continues, and delegated AI orders are ordinary validated commands that
 are included in the recording.
 
-The server never sends a free-text string for a client to display. `ErrorCode`
-and `OverReason` are closed unions the client maps to its own local strings —
-otherwise the relay would be an injection vector into the opponent's UI, and
-`tests/foundation.spec.ts` now has a markup gate to keep the client honest about
-the other half of that.
+Error and outcome prose remains a pair of closed codes mapped locally. The two
+deliberate free-text surfaces are commander handles and chat: both are rebuilt
+through the shared normalizers, chat identity is stamped from the server-owned
+seat rather than accepted from the message, and the client uses `textContent`.
+`tests/foundation.spec.ts` keeps the markup gate on the rendering half.

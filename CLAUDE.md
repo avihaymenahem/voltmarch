@@ -153,12 +153,12 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 6362 passing across 268 files
+npm test             # vitest, currently 6427 passing across 273 files
                      #   (+4 opt-in probes skipped in the ordinary run). Bundle-isolation
                      #   specs require a CURRENT dist, not merely an existing one, so run
                      #   `npm run build` first whenever their result is part of the claim.
 npm run build        # must exit 0
-npm run server:test  # the relay's own 102 in 22 suites, via node --test
+npm run server:test  # the relay's own 110 in 24 suites, via node --test
 ```
 
 **The fourth typecheck invocation needs `server/node_modules`, and a root `npm install`
@@ -277,10 +277,20 @@ the build.
 game code. Read `server/README.md` before touching either.
 
 - **The relay stamps identity; the simulation enforces authority.** Every inbound command
-  has `player` overwritten with the slot of the socket it came from. The sole widening is a
-  server-owned disconnect delegation: after a seat is retired, one surviving socket may preserve
-  that logical player id for the AI it was told to activate. The client cannot widen that list.
-  The sim still refuses anything the stamped player does not own.
+  has `player` overwritten with the human slot of the socket it came from unless that id is in the
+  server-owned `controlled` list. Mixed 2v1/2v2 assigns AI seats across the two sockets before tick
+  zero; disconnect delegation widens the survivor's list with the departed human and every AI it
+  hosted. The client cannot widen that list. The sim still refuses anything the stamped player
+  does not own.
+- **Two sockets can represent four logical players.** The `SeatPlan` is one validated object:
+  factions, teams, AI seats and difficulty share the same slot indices. Both clients build every
+  seat identically, while `configureHostedAi` creates brains only for the AI ids assigned to that
+  socket. Quick Match stays a duel; hosted rooms may choose 2v1 or 2v2 co-op.
+- **Identity, chat and ally pings are protocol v5 PRESENTATION messages, never commands.** Commander
+  names are normalized by the shared protocol on both client and relay, server-stamped on chat, and
+  rendered only through `textContent`. Chat and `{ t: 'ping' }` bypass `WireCommand`, `TurnRelay`,
+  checksums and replay command logs. Team pings are routed only to human sockets with the sender's
+  team id, and the client independently refuses to render a hostile marker.
 - **Disconnect continuity is AI takeover, not reconnect.** `Match.peerLost` retires the missing
   contribution, delegates its logical seat, and sends `peerLost { slot }` only to the chosen
   controller. `Shell.activateAiTakeover` flips that seat to non-human; `ai.system.ts` watches the
@@ -328,8 +338,10 @@ in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
   on a fresh account starts with a different army. Playback calls `suppressUnlockGate(true)`, exactly
   as PvP does, and `Shell.startMatch` now clears it for any ordinary launch — which also closes the
   leak where one PvP match left every later skirmish ungated.
-- **Every seated slot is `isHuman`**, which is the whole AI shutdown. The recording ALREADY holds
-  the AI's commands, because the brain issues them through the same bus a player does.
+- **Every recorded combat slot is `isHuman` during playback**, which is the whole AI shutdown. Gaia
+  remains non-human and keeps its recorded player id even when it appears before later combat seats.
+  The recording ALREADY holds the AI's commands, because the brain issues them through the same bus
+  a player does.
 - **`playback.system.ts` is `Phase.Command` order 1** — before the drain at 9000, or every command
   applies one tick late forever. It harvests the bus first, which is the input lock: a viewer's slot
   IS the recorded player's slot, so their right-click would otherwise be accepted.
@@ -2257,6 +2269,13 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   separate job: if Discord is unavailable, rerunning failed jobs must not rebuild or recreate the
   release. Never print the webhook, pass it on the command line, or replace the local script with a
   third-party action that receives the secret.
+
+- **ONE VERSION TAG RELEASES DESKTOP AND RELAY FROM THE SAME COMMIT.** Both
+  `.github/workflows/desktop.yml` and `.github/workflows/deploy-relay.yml` listen for
+  `v*.*.*`; the `main` push publishes the web client. Do not return the relay to a
+  manual-only release path: its build and protocol equality checks deliberately reject
+  a newer client, so forgetting a separate dispatch disables Multiplayer everywhere.
+  `workflow_dispatch` remains a recovery mechanism for redeploying an explicit ref.
 
   **`bridge` is a VERSION and the check is EQUALITY** — v5 added native key/value and binary-save
   capabilities. A bump on

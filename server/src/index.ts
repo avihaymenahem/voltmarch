@@ -59,7 +59,10 @@ import { CONFIG } from './config';
 import { clientAddress, limitKey } from './address';
 import { Lobby, makeCode, makeSeed } from './Lobby';
 import type { Peer } from './Match';
-import { PROTOCOL_VERSION, WIRE_LIMITS, parseMessage } from '../../src/net/protocol';
+import {
+  PROTOCOL_VERSION, WIRE_LIMITS, normalizeChatText, normalizeCommanderName,
+  parseMessage, parseSeatPlan,
+} from '../../src/net/protocol';
 import type { ClientMessage, ErrorCode, ServerMessage } from '../../src/net/protocol';
 
 /* ==========================================================================
@@ -315,11 +318,14 @@ function handle(conn: Conn, text: string): void {
       return;
 
     case 'create': {
-      if (!isFaction(msg.faction) || !isMapId(msg.map) || !isVisibility(msg.visibility)) {
+      const plan = parseSeatPlan(msg.plan);
+      const name = normalizeCommanderName(msg.name);
+      if (!isFaction(msg.faction) || !isMapId(msg.map) || !isVisibility(msg.visibility)
+        || plan === null || plan.factions[0] !== msg.faction || name === null) {
         conn.fail('bad-message');
         return;
       }
-      const room = lobby.create(conn, msg.faction, msg.map, msg.visibility);
+      const room = lobby.create(conn, msg.faction, msg.map, msg.visibility, plan, name);
       if (room === null) { conn.fail('too-many-connections'); return; }
       // The code is sent ONLY for a private room. A public one has no code at
       // all — see the `Room` type — so there is nothing here to accidentally
@@ -342,19 +348,24 @@ function handle(conn: Conn, text: string): void {
     }
 
     case 'joinRoom': {
-      if (!isFaction(msg.faction) || !isRoomId(msg.id)) { conn.fail('bad-message'); return; }
+      const name = normalizeCommanderName(msg.name);
+      if (!isFaction(msg.faction) || !isRoomId(msg.id) || name === null) {
+        conn.fail('bad-message'); return;
+      }
       // RATE LIMITED LIKE `join`, and deliberately from the same bucket. A
       // public id is not a secret, but an unlimited join path is still a way to
       // hammer the server, and sharing the bucket means an attacker cannot use
       // one path to refill the other.
       if (!takeJoinToken(conn)) { conn.fail('rate-limited'); return; }
-      const res = lobby.joinRoom(conn, msg.id, msg.faction);
+      const res = lobby.joinRoom(conn, msg.id, msg.faction, name);
       if (!res.ok) { conn.send({ t: 'error', code: 'no-such-room' }); return; }
       return;
     }
 
     case 'join': {
-      if (!isFaction(msg.faction) || typeof msg.code !== 'string' || msg.code.length > 16) {
+      const name = normalizeCommanderName(msg.name);
+      if (!isFaction(msg.faction) || typeof msg.code !== 'string' || msg.code.length > 16
+        || name === null) {
         conn.fail('bad-message');
         return;
       }
@@ -363,14 +374,15 @@ function handle(conn: Conn, text: string): void {
       // death of the invite.
       if (!takeJoinToken(conn)) { conn.fail('rate-limited'); return; }
 
-      const res = lobby.join(conn, msg.code.toUpperCase(), msg.faction);
+      const res = lobby.join(conn, msg.code.toUpperCase(), msg.faction, name);
       if (!res.ok) { conn.send({ t: 'error', code: 'no-such-room' }); return; }
       return;
     }
 
     case 'queue': {
-      if (!isFaction(msg.faction)) { conn.fail('bad-message'); return; }
-      const match = lobby.enqueue(conn, msg.faction);
+      const name = normalizeCommanderName(msg.name);
+      if (!isFaction(msg.faction) || name === null) { conn.fail('bad-message'); return; }
+      const match = lobby.enqueue(conn, msg.faction, name);
       if (match === null) conn.send({ t: 'waiting' });
       return;
     }
@@ -378,6 +390,30 @@ function handle(conn: Conn, text: string): void {
     case 'cancel':
       lobby.cancel(conn);
       return;
+
+    case 'chat': {
+      const match = lobby.matchOf(conn);
+      const text = normalizeChatText(msg.text);
+      if (match === undefined) { conn.send({ t: 'error', code: 'not-in-match' }); return; }
+      if (text === null) { conn.fail('bad-message'); return; }
+      const slot = match.slotOf(conn);
+      if (slot < 0) { conn.send({ t: 'error', code: 'not-in-match' }); return; }
+      if (!match.chat(slot, text)) conn.send({ t: 'error', code: 'rate-limited' });
+      return;
+    }
+
+    case 'ping': {
+      const match = lobby.matchOf(conn);
+      if (match === undefined) { conn.send({ t: 'error', code: 'not-in-match' }); return; }
+      if (!Number.isFinite(msg.x) || msg.x < 0 || msg.x > WIRE_LIMITS.mapSize
+        || !Number.isFinite(msg.z) || msg.z < 0 || msg.z > WIRE_LIMITS.mapSize) {
+        conn.fail('bad-message'); return;
+      }
+      const slot = match.slotOf(conn);
+      if (slot < 0) { conn.send({ t: 'error', code: 'not-in-match' }); return; }
+      if (!match.ping(slot, msg.x, msg.z)) conn.send({ t: 'error', code: 'rate-limited' });
+      return;
+    }
 
     case 'turn': {
       const match = lobby.matchOf(conn);

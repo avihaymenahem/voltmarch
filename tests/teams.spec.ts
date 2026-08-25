@@ -51,6 +51,9 @@ import {
 
 import { applyTeams, isHostileSeat } from '../src/game/Teams';
 import {
+  MAP_START_TABLES, orderTeamStartSpots, rotateTeamStarts,
+} from '../src/game/Scenarios';
+import {
   MAPS,
   TEAM_PLAYER,
   defaultSetup,
@@ -527,6 +530,15 @@ describe('the outcome module owns no private copy of the diplomacy rule', () => 
     // …and not for the title-screen backdrop, which is always a duel.
     expect(body).toContain('if (!backdrop) applyTeams');
   });
+
+  it('the PvP path writes the relay team mask before tick zero', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync('src/shell/Shell.ts', 'utf8');
+    const start = src.indexOf('private seatPvpPlayers');
+    const body = src.slice(start, src.indexOf('private seatReplayPlayers', start));
+    expect(body).toContain('applyTeams(world, pvp.info.teams)');
+    expect(body).toContain('while (world.players.length < pvp.info.factions.length)');
+  });
 });
 
 /* ==========================================================================
@@ -539,6 +551,31 @@ describe('the outcome module owns no private copy of the diplomacy rule', () => 
  * ========================================================================== */
 
 describe('the setup and the world agree about which seat is which', () => {
+  it('rotates alliances as intact start blocks for 2v1 and 2v2', () => {
+    for (const teams of [[0, 0, 1], [0, 0, 1, 1]]) {
+      const rig = makeRig();
+      applyTeams(rig.world, teams);
+      const owners = [P0, P1, P2, P3].slice(0, teams.length);
+      for (let seed = 0; seed < 32; seed++) {
+        const rotated = rotateTeamStarts(owners, seed, rig.world);
+        const index0 = rotated.indexOf(P0);
+        const index1 = rotated.indexOf(P1);
+        expect(Math.abs(index0 - index1), `${teams.length} seats, seed ${seed}`).toBe(1);
+
+        const table = MAP_START_TABLES.temperate!;
+        const raw = table.slots.slice(0, teams.length).map((slot) => ({
+          x: slot.dx, z: slot.dz, facingDeg: 0,
+        }));
+        const placed = orderTeamStartSpots(raw, rotated, rig.world, 'temperate');
+        const a = placed[index0]!;
+        const b = placed[index1]!;
+        const foe = placed[rotated.findIndex((owner) => !rig.world.areAllied(P0, owner))]!;
+        expect(Math.hypot(a.x - b.x, a.z - b.z), `${teams.length} allied distance`)
+          .toBeLessThan(Math.hypot(a.x - foe.x, a.z - foe.z));
+      }
+    }
+  });
+
   it('seats a lobby 1v3 as one human against three allied armies', () => {
     const setup = withArmyCount({ ...defaultSetup(), map: FOUR }, 4, ROSTER);
     for (const o of setup.opponents) o.team = defaultTeamFor(0);

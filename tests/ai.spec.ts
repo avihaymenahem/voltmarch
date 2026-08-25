@@ -847,6 +847,22 @@ describe('AiBrain — determinism', () => {
 });
 
 describe('AiDirector', () => {
+  it('builds only the AI seats this socket was assigned', () => {
+    const world = new World();
+    const channels = new Channels();
+    world.addPlayer(Faction.Allies, 'Human A', true, true);
+    world.addPlayer(Faction.Allies, 'Human B', true, false);
+    world.addPlayer(Faction.Soviets, 'AI A', false, false);
+    world.addPlayer(Faction.Soviets, 'AI B', false, false);
+    const d = new AiDirector(world, channels);
+
+    d.rebuild(11, new Set([2]));
+    expect(d.brains.map((brain) => brain.player as number)).toEqual([2]);
+    d.rebuild(11, new Set([3]));
+    expect(d.brains.map((brain) => brain.player as number)).toEqual([3]);
+    d.dispose();
+  });
+
   it('creates exactly one brain per non-human player and is idempotent', () => {
     const world = new World();
     const channels = new Channels();

@@ -6136,11 +6136,16 @@ export class AiDirector {
    * again after a scenario adds players — an existing brain is kept so its
    * memory survives.
    */
-  rebuild(seed: number): void {
+  rebuild(seed: number, hostedPlayers: ReadonlySet<number> | null = null): void {
     const wanted: number[] = [];
     for (let i = 0; i < this.world.players.length; i++) {
       const p = this.world.players[i];
       if (p.isHuman || p.isLocal) continue;
+      // In mixed network matches every client builds the same non-human seat
+      // table, but exactly one socket hosts each brain. The allowlist is local
+      // controller state, never simulation state, and prevents duplicate AI
+      // commands while leaving all deterministic player fields identical.
+      if (hostedPlayers !== null && !hostedPlayers.has(i)) continue;
       // Gaia — the slot that owns rocks, trees and wrecks — is created by
       // `ScenarioBuilder.gaia` as a non-human, non-local player, so "not human"
       // is NOT sufficient. A Neutral player has no faction tech tree, no

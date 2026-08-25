@@ -8,12 +8,9 @@
  *
  * ── ERROR CODES BECOME STRINGS HERE, AND ONLY HERE ─────────────────────────
  *
- * The relay never sends prose. It sends a closed `ErrorCode` union, and this
- * file maps each one to a local string. That is a security boundary, not a
- * style choice: a server that could send arbitrary display text would be an
- * injection vector into the opponent's UI, and the whole reason
- * `tests/foundation.spec.ts` grew a markup gate is that this UI is about to
- * start rendering strings that another player influenced.
+ * Error and outcome prose remain closed codes mapped here. Commander names and
+ * chat are the deliberate exceptions: both are normalized again on receipt,
+ * server-labelled, bounded, and rendered by the shell with `textContent`.
  *
  * ── CORRUPTION ENDS; A MISSING OPPONENT IS DELEGATED ───────────────────────
  *
@@ -27,9 +24,12 @@
 import { TurnScheduler } from './TurnScheduler';
 import { Transport, type ConnectionState } from './Transport';
 import { detachSession, prepareSession } from './net.system';
-import { PROTOCOL_VERSION, WIRE_LIMITS } from './protocol';
+import {
+  AI_DIFFICULTY_COUNT, PROTOCOL_VERSION, WIRE_LIMITS,
+  normalizeChatText, normalizeCommanderName,
+} from './protocol';
 import type {
-  ErrorCode, OverReason, RoomSummary, RoomVisibility, ServerMessage,
+  ErrorCode, OverReason, RoomSummary, RoomVisibility, SeatPlan, ServerMessage,
 } from './protocol';
 
 declare const __APP_VERSION__: string;
@@ -40,6 +40,11 @@ export interface MatchStart {
   seed: number;
   map: string;
   factions: number[];
+  names: string[];
+  teams: number[];
+  ai: number[];
+  difficulty: number[];
+  controlled: number[];
   turnTicks: number;
   turnDelay: number;
 }
@@ -67,6 +72,10 @@ export interface SessionEvents {
   onStart(info: MatchStart): void;
   /** The opponent's socket went; activate AI control for this logical seat. */
   onPeerLost(slot: number): void;
+  /** Presentation-only message, already revalidated by the client. */
+  onChat(player: number, name: string, text: string): void;
+  /** Presentation-only allied marker in world metres. */
+  onPing(player: number, x: number, z: number): void;
   /** The match is over, for any reason. `message` is already display-ready. */
   onOver(reason: OverReason, winnerSlot: number, message: string): void;
   /** Something went wrong that is worth telling the player about. */
@@ -96,8 +105,8 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
 };
 
 const OVER_TEXT: Record<OverReason, string> = {
-  'opponent-left': 'Your opponent disconnected. The match is yours.',
-  'opponent-quit': 'Your opponent resigned.',
+  'opponent-left': 'A commander disconnected before the battle was decided.',
+  'opponent-quit': 'A commander resigned.',
   desync: 'The two games fell out of step and the match was stopped.',
   'server-shutdown': 'The server is restarting. The match was stopped.',
   timeout: 'The match ran past its time limit.',
@@ -108,6 +117,7 @@ export class Session {
   private scheduler: TurnScheduler | null = null;
   private phase: LobbyPhase = 'idle';
   private slot = -1;
+  private matchSeats = 0;
 
   constructor(url: string, private readonly events: SessionEvents) {
     this.transport = new Transport(
@@ -133,9 +143,11 @@ export class Session {
    * handlers that matter once a match is running. `onPhase`, `onCode` and
    * `onStart` keep the lobby's — they cannot fire again.
    */
-  attach(handlers: Pick<SessionEvents, 'onOver' | 'onPeerLost' | 'onNotice'>): void {
+  attach(handlers: Pick<SessionEvents, 'onOver' | 'onPeerLost' | 'onChat' | 'onPing' | 'onNotice'>): void {
     this.events.onOver = handlers.onOver;
     this.events.onPeerLost = handlers.onPeerLost;
+    this.events.onChat = handlers.onChat;
+    this.events.onPing = handlers.onPing;
     this.events.onNotice = handlers.onNotice;
   }
 
@@ -146,8 +158,8 @@ export class Session {
 
   /* -- lobby actions ------------------------------------------------------ */
 
-  host(faction: number, map: string, visibility: RoomVisibility): void {
-    this.transport.send({ t: 'create', faction, map, visibility });
+  host(faction: number, map: string, visibility: RoomVisibility, plan: SeatPlan, name: string): void {
+    this.transport.send({ t: 'create', faction, map, visibility, plan, name });
   }
 
   /**
@@ -162,19 +174,27 @@ export class Session {
   }
 
   /** Join a public room picked out of the browser. */
-  joinRoom(id: string, faction: number): void {
-    this.transport.send({ t: 'joinRoom', id, faction });
+  joinRoom(id: string, faction: number, name: string): void {
+    this.transport.send({ t: 'joinRoom', id, faction, name });
   }
 
-  join(code: string, faction: number): void {
+  join(code: string, faction: number, name: string): void {
     // Upper-cased and stripped here as well as on the relay: the code alphabet
     // has no lower case and no ambiguous glyphs, so anything else is a typo and
     // normalising it locally saves a round trip to be told so.
-    this.transport.send({ t: 'join', code: code.trim().toUpperCase(), faction });
+    this.transport.send({ t: 'join', code: code.trim().toUpperCase(), faction, name });
   }
 
-  queue(faction: number): void {
-    this.transport.send({ t: 'queue', faction });
+  queue(faction: number, name: string): void {
+    this.transport.send({ t: 'queue', faction, name });
+  }
+
+  sendChat(text: string): void {
+    if (this.phase === 'playing') this.transport.send({ t: 'chat', text });
+  }
+
+  sendPing(x: number, z: number): void {
+    if (this.phase === 'playing') this.transport.send({ t: 'ping', x, z });
   }
 
   cancel(): void {
@@ -245,6 +265,30 @@ export class Session {
         this.events.onPeerLost(msg.slot);
         return;
 
+      case 'chat': {
+        const name = normalizeCommanderName(msg.name);
+        const text = normalizeChatText(msg.text);
+        if (this.phase !== 'playing' || !Number.isInteger(msg.player)
+          || msg.player < 0 || msg.player >= this.matchSeats
+          || name === null || name !== msg.name || text === null || text !== msg.text) {
+          this.fatalCode('bad-message', 'the relay sent an unusable chat message');
+          return;
+        }
+        this.events.onChat(msg.player, name, text);
+        return;
+      }
+
+      case 'ping':
+        if (this.phase !== 'playing' || !Number.isInteger(msg.player)
+          || msg.player < 0 || msg.player >= this.matchSeats
+          || !Number.isFinite(msg.x) || msg.x < 0 || msg.x > WIRE_LIMITS.mapSize
+          || !Number.isFinite(msg.z) || msg.z < 0 || msg.z > WIRE_LIMITS.mapSize) {
+          this.fatalCode('bad-message', 'the relay sent an unusable map ping');
+          return;
+        }
+        this.events.onPing(msg.player, msg.x, msg.z);
+        return;
+
       case 'over':
         this.stopLockstep();
         this.setPhase('ended');
@@ -284,12 +328,18 @@ export class Session {
       return;
     }
     this.slot = msg.slot;
+    this.matchSeats = msg.factions.length;
     this.setPhase('playing');
     this.events.onStart({
       slot: msg.slot,
       seed: msg.seed,
       map: msg.map,
       factions: msg.factions.slice(),
+      names: msg.names.slice(),
+      teams: msg.teams.slice(),
+      ai: msg.ai.slice(),
+      difficulty: msg.difficulty.slice(),
+      controlled: msg.controlled.slice(),
       turnTicks: msg.turnTicks,
       turnDelay: msg.turnDelay,
     });
@@ -393,9 +443,54 @@ function describeBadStart(m: Extract<ServerMessage, { t: 'start' }>): string {
   // WIRE_LIMITS.factions; applying the SAME bound here is the point of the
   // constant being shared rather than duplicated.
   for (const f of m.factions) {
-    if (!int(f) || f < 0 || f >= WIRE_LIMITS.factions) return 'factions';
+    if (!int(f) || f < 1 || f >= WIRE_LIMITS.factions) return 'factions';
   }
   if (m.slot >= m.factions.length) return 'slot';
+
+  const seats = m.factions.length;
+  if (!Array.isArray(m.names) || m.names.length !== seats) return 'names';
+  for (const raw of m.names) {
+    const name = normalizeCommanderName(raw);
+    if (name === null || name !== raw) return 'names';
+  }
+  if (!Array.isArray(m.teams) || m.teams.length !== seats) return 'teams';
+  for (const team of m.teams) if (!int(team) || team < 0 || team > 1) return 'teams';
+  if (!Array.isArray(m.difficulty) || m.difficulty.length !== seats) return 'difficulty';
+  for (const d of m.difficulty) {
+    if (!int(d) || d < 0 || d >= AI_DIFFICULTY_COUNT) return 'difficulty';
+  }
+  if (!Array.isArray(m.ai) || m.ai.length > 2) return 'ai';
+  const ai = new Set<number>();
+  for (const slot of m.ai) {
+    if (!int(slot) || slot < 0 || slot >= seats || slot < 2 || ai.has(slot)) return 'ai';
+    ai.add(slot);
+  }
+  if (!Array.isArray(m.controlled) || m.controlled.length < 1) return 'controlled';
+  const controlled = new Set<number>();
+  for (const slot of m.controlled) {
+    if (!int(slot) || slot < 0 || slot >= seats || controlled.has(slot)) return 'controlled';
+    controlled.add(slot);
+  }
+  if (!controlled.has(m.slot)) return 'controlled';
+
+  if (ai.size === 0) {
+    if (seats !== 2 || m.teams[0] === m.teams[1]) return 'teams';
+    if (m.difficulty.some((d) => d !== 0)) return 'difficulty';
+  } else {
+    if (seats !== ai.size + 2) return 'ai';
+    for (let slot = 2; slot < seats; slot++) if (!ai.has(slot)) return 'ai';
+    if (m.teams[0] !== m.teams[1]) return 'teams';
+    for (let slot = 2; slot < seats; slot++) {
+      if (m.teams[slot] === m.teams[0] || m.teams[slot] !== m.teams[2]) return 'teams';
+    }
+    if (m.difficulty[0] !== 0 || m.difficulty[1] !== 0) return 'difficulty';
+  }
+  const expectedControlled = [m.slot];
+  for (let slot = 2; slot < seats; slot++) {
+    if ((slot - 2) % 2 === m.slot) expectedControlled.push(slot);
+  }
+  if (expectedControlled.length !== controlled.size
+    || expectedControlled.some((slot) => !controlled.has(slot))) return 'controlled';
 
   // A divisor and a modulus in `TurnScheduler`. Zero destroys the arithmetic
   // silently; a huge value makes every order feel seconds late.

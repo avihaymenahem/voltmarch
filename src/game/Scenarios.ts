@@ -172,6 +172,8 @@ export interface ScenarioSpec {
   readonly seed: number;
   /** Resolved MAP_PRESETS key. */
   readonly map: string;
+  /** Logical combat armies the scenario actually laid out. */
+  readonly armies: number;
   /** The preset's advisory `?art=` mood. Never auto-applied. */
   readonly mood: string;
   /** True when the shot wants a frozen frame (no sim, no animation drift). */
@@ -442,6 +444,10 @@ export interface StartTable {
   readonly slots: readonly StartOffset[];
   /** Authored two-player pairings. Wider alternatives may be sampled by the sim seed. */
   readonly pairs: readonly (readonly [number, number])[];
+  /** Three-player order: the two-seat team occupies a consecutive short edge. */
+  readonly trio?: readonly number[];
+  /** Four-player perimeter order: consecutive logical seats are team-mates. */
+  readonly quad?: readonly number[];
   /** Unit normal used by a half-plane sea, before the profile chooses its sign. */
   readonly seaNormal?: { readonly x: number; readonly z: number };
 }
@@ -510,13 +516,17 @@ const CLASSIC_SEA_NORMAL = { x: 0.6422198626104074, z: 0.7665204811801637 } as c
  * two coastal strips that keep every candidate opening on land.
  */
 export const MAP_START_TABLES: Readonly<Record<string, StartTable>> = {
-  temperate: { slots: SKIRMISH_START_OFFSETS, pairs: CLASSIC_PAIRS },
+  temperate: {
+    slots: SKIRMISH_START_OFFSETS, pairs: CLASSIC_PAIRS,
+    trio: [0, 2, 1], quad: [0, 2, 1, 3],
+  },
   arid: {
     slots: [
       { dx: -124, dz: -148 }, { dx: 124, dz: 148 },
       { dx: -124, dz: 148 }, { dx: 124, dz: -148 },
     ],
     pairs: CLASSIC_PAIRS,
+    trio: [0, 2, 1], quad: [0, 2, 1, 3],
   },
   snow: {
     slots: [
@@ -531,6 +541,7 @@ export const MAP_START_TABLES: Readonly<Record<string, StartTable>> = {
       { dx: 140, dz: 140 }, { dx: -140, dz: -140 },
     ],
     pairs: CLASSIC_PAIRS,
+    trio: [0, 2, 1], quad: [0, 2, 1, 3],
   },
   coast: {
     slots: [
@@ -554,6 +565,7 @@ export const MAP_START_TABLES: Readonly<Record<string, StartTable>> = {
       { dx: 138, dz: 134 }, { dx: -138, dz: -134 },
     ],
     pairs: CLASSIC_PAIRS,
+    trio: [0, 2, 1], quad: [0, 2, 1, 3],
   },
 };
 
@@ -598,7 +610,10 @@ export function startPointsFor(
   const n = clampArmies(armies);
   const islands = sea?.islands;
   if (islands !== undefined && islands.length > 0) {
-    return islands.slice(0, n).map((i) => ({ x: i.x, z: i.z }));
+    return Array.from({ length: n }, (_, slot) => {
+      const island = islands[slot]!;
+      return { x: island.x, z: island.z };
+    });
   }
   // ONE SHELF PER SEATED ARMY, AT THE SLOTS THAT ARMY WILL ACTUALLY USE — never
   // one per table entry. The preset is part of this derivation because coastal
@@ -876,6 +891,80 @@ export function rotateStarts<T>(owners: readonly T[], seed: number): T[] {
   return out;
 }
 
+/**
+ * Rotate whole alliances rather than splitting a team across the perimeter.
+ * Free-for-all is byte-for-byte the ordinary `rotateStarts` path because every
+ * group contains one player.
+ */
+export function rotateTeamStarts(
+  owners: readonly PlayerId[], seed: number, world: World,
+): PlayerId[] {
+  const groups: PlayerId[][] = [];
+  const used = new Set<number>();
+  for (const owner of owners) {
+    const id = owner as number;
+    if (used.has(id)) continue;
+    const player = world.player(owner);
+    const group: PlayerId[] = [];
+    for (const candidate of owners) {
+      const other = candidate as number;
+      if (used.has(other)) continue;
+      const allied = (player.allyMask & (1 << other)) !== 0
+        && (world.player(candidate).allyMask & (1 << id)) !== 0;
+      if (!allied) continue;
+      used.add(other);
+      group.push(candidate);
+    }
+    groups.push(group);
+  }
+  if (groups.every((group) => group.length === 1)) return rotateStarts(owners, seed);
+  return rotateStarts(groups, seed).flat();
+}
+
+/**
+ * Reorder the already-reserved physical starts only for an allied match.
+ * Generic skirmishes, campaign layouts and the public start-table helpers keep
+ * their historical slot order; the team permutation belongs to the match that
+ * actually has teams, not to terrain generation.
+ */
+export function orderTeamStartSpots(
+  spots: readonly StartSpot[], owners: readonly PlayerId[], world: World,
+  preset?: string | null,
+): StartSpot[] {
+  const allied = owners.some((owner, index) => owners.some((other, otherIndex) => (
+    index !== otherIndex && world.areAllied(owner, other)
+  )));
+  if (!allied) return spots.slice();
+  const table = startTableFor(preset);
+  const order = spots.length === 4 ? table.quad : (spots.length === 3 ? table.trio : undefined);
+  if (order === undefined || order.length !== spots.length) return spots.slice();
+  return order.map((slot) => spots[slot]!);
+}
+
+/** Point team openings at the nearest hostile seat, never at their ally. */
+function faceHostileStarts(
+  spots: readonly StartSpot[], owners: readonly PlayerId[], world: World,
+): StartSpot[] {
+  return spots.map((spot, index) => {
+    const owner = world.player(owners[index]!);
+    let foe = -1;
+    let best = Number.POSITIVE_INFINITY;
+    for (let other = 0; other < spots.length; other++) {
+      if (other === index) continue;
+      const player = owners[other] as number;
+      if ((owner.allyMask & (1 << player)) !== 0) continue;
+      const dx = spots[other]!.x - spot.x;
+      const dz = spots[other]!.z - spot.z;
+      const dist = dx * dx + dz * dz;
+      if (dist < best) { best = dist; foe = other; }
+    }
+    if (foe < 0) return spot;
+    const dx = spots[foe]!.x - spot.x;
+    const dz = spots[foe]!.z - spot.z;
+    return { ...spot, facingDeg: Math.atan2(dx, dz) / DEG2RAD };
+  });
+}
+
 /* --------------------------------------------------------------------------
  * THE START-SPOT VALIDATOR
  *
@@ -1098,7 +1187,8 @@ export function startSpots(
    */
   if (islands !== undefined && islands.length > 0) {
     for (let i = 0; i < n; i++) {
-      pts.push({ x: clampWorld(islands[i].x, 4), z: clampWorld(islands[i].z, 4) });
+      const island = islands[i]!;
+      pts.push({ x: clampWorld(island.x, 4), z: clampWorld(island.z, 4) });
     }
   }
 
@@ -4396,14 +4486,18 @@ const PLANS: Record<string, ScenarioPlan> = {
       // archipelago, and the ORE below keeps reading `spots`: both fields are
       // defined as radii from the island centre and moving them with the seat
       // is what would unbalance them.
-      const seats = islandSeats(spots, b.sea);
-      const owners: PlayerId[] = rotateStarts(
+      const rawSeats = islandSeats(spots, b.sea);
+      const owners: PlayerId[] = rotateTeamStarts(
         // `armySlot` creates a player when the world is short, so a four-army
         // map seats four whatever the boot handed us. It alternates the two
         // original factions past slot 1, which is the right default for a mode
         // with no faction picker yet.
         spots.map((_, i) => b.armySlot(i)),
         b.seed,
+        b.world,
+      );
+      const seats = faceHostileStarts(
+        orderTeamStartSpots(rawSeats, owners, b.world, b.preset), owners, b.world,
       );
 
       if (start === 'base') {
@@ -5288,6 +5382,7 @@ export function buildScenario(
     name: resolved,
     seed,
     map,
+    armies: builder.armies,
     mood: preset.mood,
     frozen: plan.frozen,
     start,

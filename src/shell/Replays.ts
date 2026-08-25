@@ -100,13 +100,15 @@ export function replayMap(header: ReplayHeader): MapChoice {
   return mapById('');
 }
 
-/** `Allies vs Soviets`, or as much of it as the header supports. */
+/** `Aster (Allies) vs Rook (Soviets)`, with a faction-only fallback for old files. */
 export function replayMatchup(header: ReplayHeader): string {
   const names = playableFactions();
   const sides: string[] = [];
   for (const p of header.players) {
     if (p.faction === (Faction.Neutral as number)) continue;
-    sides.push(names.find((f) => (f.id as number) === p.faction)?.name ?? `Faction ${p.faction}`);
+    const faction = names.find((f) => (f.id as number) === p.faction)?.name ?? `Faction ${p.faction}`;
+    const commander = p.name?.trim();
+    sides.push(commander === undefined || commander === '' ? faction : `${commander} (${faction})`);
   }
   return sides.length === 0 ? 'Unknown sides' : sides.join(' vs ');
 }

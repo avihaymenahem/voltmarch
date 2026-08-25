@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * server/src/Match.ts — two sockets, one TurnRelay, and AI seat delegation
+ * server/src/Match.ts — two sockets, logical players, and AI seat delegation
  * ============================================================================
  * Everything about a live match that is not the merge rule. The merge rule
  * itself is `src/net/TurnRelay.ts`, shared with the client tests, so what is
@@ -16,7 +16,9 @@
 
 import { TurnRelay } from '../../src/net/TurnRelay';
 import { TURN_DELAY, TURN_LOOKAHEAD, TURN_TICKS } from '../../src/net/protocol';
-import type { ErrorCode, OverReason, ServerMessage, WireCheck } from '../../src/net/protocol';
+import type {
+  ErrorCode, OverReason, SeatPlan, ServerMessage, WireCheck,
+} from '../../src/net/protocol';
 
 /** One connected player, as far as a match is concerned. */
 export interface Peer {
@@ -30,8 +32,10 @@ export interface MatchOptions {
   id: string;
   seed: number;
   map: string;
-  /** Faction per slot, index === slot. */
-  factions: number[];
+  /** Complete logical-player layout. Two sockets may host up to four seats. */
+  plan: SeatPlan;
+  /** Validated display label per logical seat. */
+  names?: string[];
   /**
    * How long a slot may go without submitting a turn before it is treated as
    * gone. See the check in `tick`.
@@ -58,9 +62,12 @@ export class Match {
 
   /** Logical player -> live socket slot authorised to command it. */
   private readonly controller: number[];
+  private readonly names: string[];
   private finished = false;
   /** Last time each slot submitted a turn. Index === slot. */
   private readonly lastSubmit: number[];
+  private readonly lastChat: number[];
+  private readonly lastPing: number[];
 
   constructor(peers: Peer[], opts: MatchOptions) {
     this.peers = peers.slice();
@@ -69,8 +76,18 @@ export class Match {
     this.startedAt = opts.now();
     this.relay = new TurnRelay(peers.length, TURN_LOOKAHEAD, opts.firstTurn ?? TURN_DELAY);
     this.lastSubmit = new Array<number>(peers.length).fill(this.startedAt);
-    this.controller = new Array<number>(peers.length);
-    for (let slot = 0; slot < peers.length; slot++) this.controller[slot] = slot;
+    this.lastChat = new Array<number>(peers.length).fill(Number.NEGATIVE_INFINITY);
+    this.lastPing = new Array<number>(peers.length).fill(Number.NEGATIVE_INFINITY);
+    this.names = opts.plan.factions.map((_faction, player) => (
+      opts.names?.[player] ?? (player < peers.length ? `Commander ${player + 1}` : `Enemy AI ${player - 1}`)
+    ));
+    this.controller = new Array<number>(opts.plan.factions.length);
+    // Human logical seats 0 and 1 belong to their matching sockets. AI seats
+    // are split round-robin, one per client in 2v2, so neither machine pays the
+    // whole brain cost and only one machine derives each AI command stream.
+    for (let player = 0; player < this.controller.length; player++) {
+      this.controller[player] = player < peers.length ? player : (player - peers.length) % peers.length;
+    }
   }
 
   get over(): boolean { return this.finished; }
@@ -79,9 +96,9 @@ export class Match {
   /**
    * Tell every client which slot it drives and what world to build.
    *
-   * `slot` is the only per-client field. Everything else — seed, map, the
-   * faction of BOTH players — is identical on the wire, because two clients
-   * that build different worlds have already desynced before tick one.
+   * `slot` and `controlled` are per-client. Everything that builds simulation
+   * state is identical on the wire, because two clients that build different
+   * worlds have already desynced before tick one.
    */
   start(): void {
     for (let slot = 0; slot < this.peers.length; slot++) {
@@ -90,11 +107,40 @@ export class Match {
         slot,
         seed: this.opts.seed,
         map: this.opts.map,
-        factions: this.opts.factions,
+        factions: this.opts.plan.factions,
+        names: this.names,
+        teams: this.opts.plan.teams,
+        ai: this.opts.plan.ai,
+        difficulty: this.opts.plan.difficulty,
+        controlled: this.controlledPlayers(slot),
         turnTicks: TURN_TICKS,
         turnDelay: TURN_DELAY,
       });
     }
+  }
+
+  /** Relay presentation text outside the deterministic turn stream. */
+  chat(slot: number, text: string): boolean {
+    if (this.finished || this.peers[slot] === null || this.peers[slot] === undefined) return false;
+    const now = this.opts.now();
+    if (now - this.lastChat[slot]! < 650) return false;
+    this.lastChat[slot] = now;
+    this.broadcast({ t: 'chat', player: slot, name: this.names[slot]!, text });
+    return true;
+  }
+
+  /** Relay one cosmetic marker to human sockets on the sender's team. */
+  ping(slot: number, x: number, z: number): boolean {
+    if (this.finished || this.peers[slot] === null || this.peers[slot] === undefined) return false;
+    const now = this.opts.now();
+    if (now - this.lastPing[slot]! < 800) return false;
+    this.lastPing[slot] = now;
+    const team = this.opts.plan.teams[slot];
+    for (let peer = 0; peer < this.peers.length; peer++) {
+      if (this.opts.plan.teams[peer] !== team) continue;
+      this.peers[peer]?.send({ t: 'ping', player: slot, x, z });
+    }
+    return true;
   }
 
   /**

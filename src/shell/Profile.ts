@@ -32,6 +32,7 @@ import {
 } from './Shell';
 import { humaniseId } from './Missions';
 import { cosmeticKind, cosmeticMark, type CosmeticKind } from './CosmeticMarks';
+import { normalizeCommanderName } from '../net/protocol';
 
 export type { CosmeticKind } from './CosmeticMarks';
 
@@ -299,13 +300,15 @@ export class ProfileScreen implements Screen {
     const featured = earned.at(-1) ?? collection[0];
 
     const dossier = el('section', 'vm-profile-dossier');
+    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
+      ?? 'Commander';
     const identity = el('div', 'vm-profile-identity');
     const crest = el('div', `vm-profile-crest${earned.length === 0 ? ' is-empty' : ''}`);
     if (featured !== undefined) crest.appendChild(cosmeticMark(featured.id, featured.kind, 104));
     identity.appendChild(crest);
     const copy = el('div', 'vm-profile-identity-copy');
     copy.appendChild(el('span', 'vm-profile-kicker', 'VOLTMARCH COMMAND AUTHORITY'));
-    copy.appendChild(el('h3', 'vm-profile-callsign', 'COMMANDER'));
+    copy.appendChild(el('h3', 'vm-profile-callsign', commanderName.toLocaleUpperCase()));
     copy.appendChild(el('p', 'vm-profile-service', `Service record opened ${dateLabel(profile.createdAt)}`));
     const chips = el('div', 'vm-profile-chips');
     chips.appendChild(el('span', 'vm-chip', `${career.honoursEarned} honours`));

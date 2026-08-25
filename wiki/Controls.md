@@ -236,13 +236,17 @@ manual download. The tab also links to the latest release and the full GitHub re
 
 ---
 
+## Multiplayer communication
+
+- **Enter** opens in-match text chat. Enter sends the one-line message and Escape cancels it.
+- **Right-click the tactical map** in mixed co-op to ping a position for the human ally. A duel has
+  no ally receiver, so right-click ping is not armed there. Automatic under-attack rings remain too.
+
 ## What has no control at all
 
 Stated plainly so you do not go hunting:
 
-- **There is no player-placed map ping or marker.** The rings you see on the tactical map are
-  automatic "under attack" pings.
-- **There is no in-game chat.**
+- There is no world-space ping wheel, emote wheel or taunt menu; the multiplayer marker is minimap-only.
 
 Two entries that used to be on this list are **no longer true**, and they are corrected on their
 own pages rather than left here:

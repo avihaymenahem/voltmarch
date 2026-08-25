@@ -32,7 +32,8 @@ import { BUILD_TAB_COUNT, CommandKind, FACTION_COUNT } from '../src/core/types';
 import { Channels } from '../src/core/events';
 import {
   PROTOCOL_VERSION, TURN_DELAY, TURN_LOOKAHEAD, TURN_TICKS, VOCABULARY_SIZES, WIRE_LIMITS,
-  isKnownCommandKind, parseMessage, validateCommand,
+  isKnownCommandKind, normalizeChatText, normalizeCommanderName, parseMessage, parseSeatPlan,
+  validateCommand,
 } from '../src/net/protocol';
 import { ProductionCatalog, UNIT_PUBLIC_ID_BASE } from '../src/sim/Production';
 import { resolveDefBinding } from '../src/game/Scenarios';
@@ -160,14 +161,56 @@ describe('the wire limits mirror the engine, and are checked for it', () => {
  */
 describe('the protocol version is pinned to the vocabulary it describes', () => {
   it('names the vocabulary it was last bumped for', () => {
-    // v3 changes peerLost from a countdown into a server-authorised logical
-    // seat delegation. An older client would end the match instead of starting
-    // the AI, so this cannot be negotiated down safely.
-    expect(PROTOCOL_VERSION).toBe(3);
+    // v5 adds bounded commander identity plus presentation-only chat and pings.
+    // None may be confused with a deterministic command or turn frame.
+    expect(PROTOCOL_VERSION).toBe(5);
     expect(VOCABULARY_SIZES.kinds, 'a CommandKind was added or removed').toBe(13);
     expect(VOCABULARY_SIZES.orders, 'an OrderKind was added or removed').toBe(17);
     expect(VOCABULARY_SIZES.tabs, 'a BuildTab was added or removed').toBe(BUILD_TAB_COUNT);
     expect(VOCABULARY_SIZES.stances, 'a Stance was added or removed').toBe(4);
+  });
+});
+
+describe('player-controlled presentation text is normalized at both ends', () => {
+  it('accepts readable commander handles and canonicalises spacing', () => {
+    expect(normalizeCommanderName('  Major   Vega  ')).toBe('Major Vega');
+    expect(normalizeCommanderName('Командир-7')).toBe('Командир-7');
+  });
+
+  it.each(['A', 'a/b', '<script>', 'admin', 'fuck'])('refuses unsafe name %s', (name) => {
+    expect(normalizeCommanderName(name)).toBeNull();
+  });
+
+  it('flattens chat, caps it, and rejects control characters', () => {
+    expect(normalizeChatText('  hold\n  the ridge  ')).toBe('hold the ridge');
+    expect(normalizeChatText('x'.repeat(181))).toBeNull();
+    expect(normalizeChatText(`bad${String.fromCharCode(1)}text`)).toBeNull();
+  });
+});
+
+describe('mixed-match seat plans are closed and rebuilt', () => {
+  const mixed = {
+    factions: [2, 3, 1, 4], teams: [0, 0, 1, 1], ai: [2, 3],
+    difficulty: [0, 0, 2, 2],
+  };
+
+  it('accepts 2v2 and does not retain caller-owned arrays', () => {
+    const plan = parseSeatPlan(mixed);
+    expect(plan).toEqual(mixed);
+    expect(plan?.factions).not.toBe(mixed.factions);
+    expect(plan?.teams).not.toBe(mixed.teams);
+  });
+
+  it.each([
+    ['four humans', { ...mixed, ai: [] }],
+    ['AI in a human seat', { ...mixed, ai: [1, 3] }],
+    ['humans on opposite teams', { ...mixed, teams: [0, 1, 1, 1] }],
+    ['AI allied to the humans', { ...mixed, teams: [0, 0, 0, 1] }],
+    ['out-of-range difficulty', { ...mixed, difficulty: [0, 0, 4, 2] }],
+    ['neutral faction', { ...mixed, factions: [0, 3, 1, 4] }],
+    ['parallel arrays out of step', { ...mixed, teams: [0, 0, 1] }],
+  ])('refuses %s rather than clamping it', (_name, plan) => {
+    expect(parseSeatPlan(plan)).toBeNull();
   });
 });
 

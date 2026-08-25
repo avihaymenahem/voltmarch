@@ -139,7 +139,7 @@ describe('invite codes are checkable before they are sent', () => {
   });
 });
 
-describe('the relay can never put a string on a player screen', () => {
+describe('every relay-controlled display string has an explicit safety contract', () => {
   /**
    * Read from the source, because `ErrorCode` and `OverReason` are types and
    * have no runtime form. The `Record<ErrorCode, string>` in Session.ts already
@@ -178,11 +178,12 @@ describe('the relay can never put a string on a player screen', () => {
 
   it('carries only the strings it is supposed to', () => {
     /*
-     * THE CHEAPEST GUARANTEE AVAILABLE: a string one player controls cannot
-     * reach the other player's DOM if the protocol has nowhere to put one.
+     * THE CHEAPEST GUARANTEE AVAILABLE: every string that can cross the wire
+     * is named here. Identity and chat deliberately widened this boundary, so
+     * their shared normalization and textContent-only rendering are tested.
      *
      * So this enumerates every `field: string` DECLARATION in the wire types
-     * and demands the set be exactly the three that are meant to be there.
+     * and demands the set be exactly the fields that are meant to be there.
      * Adding a fourth is not forbidden — it is forbidden to add one WITHOUT
      * coming here, deciding how it is bounded, and writing it down.
      *
@@ -208,18 +209,20 @@ describe('the relay can never put a string on a player screen', () => {
     const declared = new Set(
       Array.from(wire.matchAll(/(\w+)\??:\s*string\s*[;}]/g)).map((m) => m[1]!),
     );
-    expect([...declared].sort()).toEqual(['build', 'code', 'id', 'map']);
+    // v5's deliberate authored strings: `name` is normalized at create/join
+    // and echoed from a server-owned seat; `text` is normalized, capped and
+    // rendered through textContent. Neither enters a turn frame.
+    expect([...declared].sort()).toEqual(['build', 'code', 'id', 'map', 'name', 'text']);
     // `t` is a literal type, not a free string — that is the whole point.
     expect(wire).toMatch(/t:\s*'hello'/);
   });
 
-  it('has exactly one text input, and it is the code', () => {
-    // A second text field in this lobby would be a name field, which is the one
-    // thing the header of MultiplayerSetup.ts says it deliberately does not
-    // have. Counting is a cruder check than reading, and it does not rot.
+  it('has exactly the bounded commander and invite-code text inputs', () => {
     const lobby = read('src/shell/MultiplayerSetup.ts');
     const inputs = lobby.match(/\.type\s*=\s*'text'/g) ?? [];
-    expect(inputs).toHaveLength(1);
+    expect(inputs).toHaveLength(2);
+    expect(lobby).toMatch(/maxLength\s*=\s*COMMANDER_NAME_MAX/);
+    expect(lobby).toMatch(/normalizeCommanderName/);
     expect(lobby).toMatch(/maxLength\s*=\s*CODE_LENGTH_HINT/);
   });
 });

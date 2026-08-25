@@ -142,7 +142,11 @@ function hashEntities(world: World): number {
     let h = FNV_OFFSET;
     // Identity first, so two entities cannot swap slots unnoticed.
     h = mix(h, s.handleOf(i) as number);
-    h = mix(h, s.flags[i]);
+    // Selection and hover are LOCAL presentation state. In multiplayer each
+    // client selects its own opening MCV, so hashing either bit makes two
+    // otherwise identical worlds disagree on tick one. Every remaining flag
+    // is simulation-owned and stays covered.
+    h = mix(h, s.flags[i] & ~(EntityFlag.Selected | EntityFlag.Hovered));
     h = mix(h, s.kind[i] | (s.owner[i] << 8) | (s.faction[i] << 16));
     h = mix(h, s.defId[i]);
     h = mix(h, q(s.posX[i]));

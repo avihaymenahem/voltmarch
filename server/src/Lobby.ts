@@ -30,7 +30,7 @@ import { randomInt } from 'node:crypto';
 import { CODE_ALPHABET, CODE_LENGTH, CONFIG } from './config';
 import { Match, type Peer } from './Match';
 import { ROOM_ID_LENGTH, ROOM_LIST_LIMIT } from '../../src/net/protocol';
-import type { RoomSummary, RoomVisibility } from '../../src/net/protocol';
+import type { RoomSummary, RoomVisibility, SeatPlan } from '../../src/net/protocol';
 
 /** A created-but-unjoined room. */
 interface Room {
@@ -48,7 +48,9 @@ interface Room {
   visibility: RoomVisibility;
   host: Peer;
   hostFaction: number;
+  hostName: string;
   map: string;
+  plan: SeatPlan;
   createdAt: number;
 }
 
@@ -56,6 +58,7 @@ interface Room {
 interface Waiting {
   peer: Peer;
   faction: number;
+  name: string;
   since: number;
 }
 
@@ -109,6 +112,7 @@ export class Lobby {
    */
   create(
     host: Peer, faction: number, map: string, visibility: RoomVisibility,
+    plan: SeatPlan = duelPlan(faction), name = 'Commander',
   ): Room | null {
     if (this.matches.size >= CONFIG.maxMatches) return null;
     if (this.rooms.size >= CONFIG.maxMatches) return null;
@@ -131,7 +135,8 @@ export class Lobby {
     }
 
     const room: Room = {
-      id, code, visibility, host, hostFaction: faction, map, createdAt: this.opts.now(),
+      id, code, visibility, host, hostFaction: faction, hostName: name, map,
+      plan: clonePlan(plan), createdAt: this.opts.now(),
     };
     this.rooms.set(id, room);
     if (code !== '') this.byCode.set(code, room);
@@ -166,6 +171,8 @@ export class Lobby {
         id: room.id,
         map: room.map,
         faction: room.hostFaction,
+        hostName: room.hostName,
+        aiCount: room.plan.ai.length,
         ageSec: Math.max(0, Math.floor((now - room.createdAt) / 1000)),
       });
     }
@@ -230,8 +237,8 @@ export class Lobby {
    * race where two joiners arriving in the same tick both find the room and the
    * host ends up in two matches.
    */
-  join(peer: Peer, code: string, faction: number): JoinResult {
-    return this.enter(peer, this.byCode.get(code), faction);
+  join(peer: Peer, code: string, faction: number, name = 'Commander'): JoinResult {
+    return this.enter(peer, this.byCode.get(code), faction, name);
   }
 
   /**
@@ -241,16 +248,16 @@ export class Lobby {
    * secret and was never meant to be one — this check is what makes the
    * two-token design mean something rather than merely look tidy.
    */
-  joinRoom(peer: Peer, id: string, faction: number): JoinResult {
+  joinRoom(peer: Peer, id: string, faction: number, name = 'Commander'): JoinResult {
     const room = this.rooms.get(id);
     if (room !== undefined && room.visibility !== 'public') {
       return { ok: false, reason: 'no-such-room' };
     }
-    return this.enter(peer, room, faction);
+    return this.enter(peer, room, faction, name);
   }
 
   /** The shared half of both join paths. */
-  private enter(peer: Peer, room: Room | undefined, faction: number): JoinResult {
+  private enter(peer: Peer, room: Room | undefined, faction: number, name: string): JoinResult {
     if (room === undefined) return { ok: false, reason: 'no-such-room' };
     if (room.host === peer) return { ok: false, reason: 'no-such-room' };
     // The other two callers of `begin` check this; this one did not, so the
@@ -266,7 +273,13 @@ export class Lobby {
     // it and the host ends up in two matches.
     this.dropRoom(room);
     this.leave(peer);
-    return { ok: true, match: this.begin([room.host, peer], [room.hostFaction, faction], room.map) };
+    const plan = clonePlan(room.plan);
+    plan.factions[0] = room.hostFaction;
+    plan.factions[1] = faction;
+    return {
+      ok: true,
+      match: this.begin([room.host, peer], { map: room.map, plan, names: [room.hostName, name] }),
+    };
   }
 
   private dropRoom(room: Room): void {
@@ -282,11 +295,11 @@ export class Lobby {
    * second starts a match. Nothing here needs to be fairer than that until
    * there is a rating to be fair about.
    */
-  enqueue(peer: Peer, faction: number): Match | null {
+  enqueue(peer: Peer, faction: number, name = 'Commander'): Match | null {
     this.leave(peer);
     const waiting = this.queue;
     if (waiting === null || waiting.peer === peer) {
-      this.queue = { peer, faction, since: this.opts.now() };
+      this.queue = { peer, faction, name, since: this.opts.now() };
       return null;
     }
     this.queue = null;
@@ -295,7 +308,11 @@ export class Lobby {
       this.queue = waiting;
       return null;
     }
-    return this.begin([waiting.peer, peer], [waiting.faction, faction], QUEUE_MAP);
+    return this.begin([waiting.peer, peer], {
+      map: QUEUE_MAP,
+      plan: duelPlan(waiting.faction, faction),
+      names: [waiting.name, name],
+    });
   }
 
   /** Remove a peer from the queue and from any room it is hosting. */
@@ -369,15 +386,19 @@ export class Lobby {
 
   /* ====================================================================== */
 
-  private begin(peers: Peer[], factions: number[], map: string): Match {
+  private begin(peers: Peer[], seats: { map: string; plan: SeatPlan; names: [string, string] }): Match {
     const id = `m${++this.matchSeq}`;
     const match = new Match(peers, {
       id,
       // THE SERVER PICKS THE SEED. Neither client may, or one of them chooses
       // the map generation and the other finds out.
       seed: this.opts.randomSeed(),
-      map,
-      factions,
+      map: seats.map,
+      plan: clonePlan(seats.plan),
+      names: [
+        seats.names[0], seats.names[1],
+        ...seats.plan.ai.map((_slot, index) => `Enemy AI ${index + 1}`),
+      ],
       silenceMs: CONFIG.silenceMs,
       now: this.opts.now,
     });
@@ -393,6 +414,26 @@ export class Lobby {
     for (const [peer, m] of this.byPeer) if (m === match) this.byPeer.delete(peer);
     match.dispose();
   }
+}
+
+/** Ordinary quick-match/private-room duel plan. */
+function duelPlan(hostFaction: number, joinerFaction = hostFaction): SeatPlan {
+  return {
+    factions: [hostFaction, joinerFaction],
+    teams: [0, 1],
+    ai: [],
+    difficulty: [0, 0],
+  };
+}
+
+/** Never retain caller-owned arrays inside a room or a live match. */
+function clonePlan(plan: SeatPlan): SeatPlan {
+  return {
+    factions: plan.factions.slice(),
+    teams: plan.teams.slice(),
+    ai: plan.ai.slice(),
+    difficulty: plan.difficulty.slice(),
+  };
 }
 
 /* ==========================================================================

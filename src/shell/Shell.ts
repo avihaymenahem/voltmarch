@@ -119,7 +119,7 @@ import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
 import { suppressProgression } from '../progression/suppress';
 import { outcomePolicy, seatIgnored } from '../campaign/policy';
-import { enableAiTakeover } from '../sim/ai.system';
+import { configureHostedAi, enableAiTakeover } from '../sim/ai.system';
 
 /**
  * The subset of `OperationDef.map` this file needs.
@@ -148,6 +148,8 @@ interface OperationBoot {
   readonly credits: number;
 }
 import type { MatchStart, Session } from '../net/Session';
+import { normalizeChatText } from '../net/protocol';
+import type { Minimap } from '../ui/Minimap';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
 import { MissionsScreen } from './Missions';
@@ -284,6 +286,11 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   if (className !== undefined) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+/** The HUD is system-owned and appears only after an asynchronous game boot. */
+function liveMinimap(): Minimap | undefined {
+  return (globalThis as typeof globalThis & { __vmHud?: { minimap: Minimap } }).__vmHud?.minimap;
 }
 
 /** Mark an element as reachable by the focus ring. */
@@ -888,6 +895,9 @@ export class Shell {
   private static readonly PVP_CREDITS = 10000;
   private netNotice: HTMLElement | null = null;
   private netNoticeTimer = 0;
+  private netComms: HTMLElement | null = null;
+  private netChatFeed: HTMLElement | null = null;
+  private netChatInput: HTMLInputElement | null = null;
 
   /* -- replays ------------------------------------------------------------
    * `replay` is to playback what `pvp` is to multiplayer: ONE field whose
@@ -1157,6 +1167,7 @@ export class Shell {
    */
   async startMultiplayerMatch(session: Session, info: MatchStart): Promise<void> {
     if (this.busy || this.disposed) return;
+    this.clearNetComms();
     const map = mapById(info.map);
 
     // Kept even before the world exists: a peer can disappear while this
@@ -1167,12 +1178,26 @@ export class Shell {
     session.attach({
       onOver: (_reason, winnerSlot, message) => { this.endMultiplayer(winnerSlot, message); },
       onPeerLost: (slot) => { this.activateAiTakeover(slot); },
+      onChat: (player, name, text) => { this.receiveNetChat(player, name, text); },
+      onPing: (player, x, z) => { this.receiveNetPing(player, x, z); },
       onNotice: (message) => { this.setNetNotice(message); },
     });
 
     // A skirmish setup is still what boots the world; it is the CHANNEL, not
     // the authority. Every field the two clients must agree on is overwritten
     // from `info` here or in `seatPvpPlayers`.
+    const factionOptions = playableFactions();
+    const factionKey = (id: number): string => (
+      factionOptions.find((option) => (option.id as number) === id)?.key ?? this.setup.aiFaction
+    );
+    const opponents: OpponentSetup[] = info.factions.slice(1).map((faction, index) => ({
+      faction: factionKey(faction),
+      difficulty: info.difficulty[index + 1] ?? 0,
+      personality: -1,
+      // Only used to make the terrain/scenario plan seat the right army count;
+      // the authoritative masks are written from `info.teams` below.
+      team: info.teams[index + 1] ?? defaultTeamFor(index),
+    }));
     const setup: MatchSetup = {
       ...this.setup,
       map: map.id,
@@ -1180,14 +1205,15 @@ export class Shell {
       speed: 1,
       difficulty: 0,
       personality: -1,
-      // ONE ENTRY, AND IT IS NOT AN OPPONENT — the relay pairs two HUMANS and
-      // `seatPvpPlayers` overwrites both slots from `info`. It is stated here so
-      // a four-way skirmish left in the lobby cannot leak an army count into a
-      // PvP boot, where the two clients would then disagree about the table.
-      // `defaultTeamFor(0)`: the two humans are enemies, and `seatPvpPlayers`
-      // never reaches the team writer in any case.
-      opponents: [{ faction: this.setup.aiFaction, difficulty: 0, personality: -1, team: defaultTeamFor(0) }],
+      aiFaction: opponents[0]?.faction ?? this.setup.aiFaction,
+      opponents,
     };
+
+    // Every client seats the same AI players, but only the server-assigned
+    // subset runs brains on this machine. Their commands still cross the relay
+    // and are replayed by both simulations like human input.
+    const ai = new Set(info.ai);
+    configureHostedAi(info.controlled.filter((slot) => ai.has(slot)));
 
     // SUPPRESSED, NOT CLEARED. `setUnlockGate(null)` here does nothing: the
     // boot that follows runs `progression.system`'s init, which installs a gate
@@ -1217,9 +1243,19 @@ export class Shell {
     const livePvp = this.pvp;
     if (this.game === null || livePvp === null) {
       this.pvp = null;
+      this.clearNetComms();
+      configureHostedAi(null);
       suppressUnlockGate(false);
       return;
     }
+    this.mountNetComms(session, info);
+    const localTeam = info.teams[info.slot];
+    const hasHumanAlly = info.teams.some((team, slot) => (
+      slot !== info.slot && team === localTeam && !info.ai.includes(slot)
+    ));
+    liveMinimap()?.onPingRequest(hasHumanAlly
+      ? (x: number, z: number) => { session.sendPing(x, z); }
+      : null);
     // Catch a handoff that arrived after `seatPvpPlayers` ran but before the
     // asynchronous boot completed.
     for (const slot of livePvp.takeoverSlots) this.activateAiTakeover(slot);
@@ -1237,6 +1273,7 @@ export class Shell {
   private endMultiplayer(winnerSlot: number, message: string): void {
     const pvp = this.pvp;
     this.pvp = null;
+    this.clearNetComms();
     this.setNetNotice(message);
     if (pvp === null || this.result !== null) return;
     this.endMatch({ won: winnerSlot === pvp.info.slot });
@@ -1258,7 +1295,7 @@ export class Shell {
     if (!Number.isInteger(slot) || slot < 0 || slot >= pvp.info.factions.length) return;
     if (slot === pvp.info.slot) return;
     pvp.takeoverSlots.add(slot);
-    enableAiTakeover();
+    enableAiTakeover(slot);
     const world = this.game?.ctx.world;
     if (world === undefined || slot >= world.players.length) return;
 
@@ -1268,8 +1305,8 @@ export class Shell {
     // PvP seats are initialised at difficulty 0 only because no brain exists.
     // A takeover should be a credible Normal opponent, not a passive Easy one.
     player.aiDifficulty = Math.max(1, player.aiDifficulty);
-    player.name = 'Opponent AI';
-    this.setNetNotice('Opponent disconnected — AI command has taken over.');
+    player.name = `${player.name} · AI`;
+    this.setNetNotice('A commander disconnected — AI command has taken over their forces.');
   }
 
   /**
@@ -1292,6 +1329,96 @@ export class Shell {
     this.netNoticeTimer = setTimeout(() => {
       this.netNotice?.classList.remove('is-on');
     }, 6000) as unknown as number;
+  }
+
+  /** Mount the compact non-simulation communication strip over the live HUD. */
+  private mountNetComms(session: Session, info: MatchStart): void {
+    this.clearNetComms();
+    const root = el('section', 'vm-net-comms');
+    root.setAttribute('aria-label', 'Multiplayer communications');
+    const head = el('div', 'vm-net-comms-head');
+    head.append(el('span', 'vm-net-comms-title', 'COMMS'), el('span', 'vm-net-comms-hint', 'ENTER TO CHAT'));
+    const feed = el('div', 'vm-net-chat-feed');
+    feed.setAttribute('aria-live', 'polite');
+    const form = el('form', 'vm-net-chat-form');
+    const input = el('input', 'vm-net-chat-input') as HTMLInputElement;
+    input.type = 'text';
+    input.maxLength = 180;
+    input.autocomplete = 'off';
+    input.placeholder = 'Message commanders…';
+    input.setAttribute('aria-label', 'Multiplayer chat message');
+    form.appendChild(input);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = normalizeChatText(input.value);
+      if (text === null) return;
+      session.sendChat(text);
+      input.value = '';
+      input.blur();
+      root.classList.remove('is-writing');
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.code !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = '';
+      input.blur();
+      root.classList.remove('is-writing');
+    });
+    root.append(head, feed, form);
+    // Shell-owned presentation belongs under `.vm-shell`; mounting in hudRoot
+    // would bypass the stylesheet's scope gate and risk styling HUD classes.
+    this.root.appendChild(root);
+    this.netComms = root;
+    this.netChatFeed = feed;
+    this.netChatInput = input;
+
+    const allies = info.names.filter((_name, slot) => (
+      slot !== info.slot && info.teams[slot] === info.teams[info.slot] && !info.ai.includes(slot)
+    ));
+    if (allies.length > 0) {
+      head.querySelector('.vm-net-comms-hint')!.textContent = 'ENTER CHAT · RMB MAP PING';
+    }
+  }
+
+  private receiveNetChat(player: number, name: string, text: string): void {
+    if (this.pvp === null || this.netChatFeed === null) return;
+    const row = el('div', 'vm-net-chat-line');
+    row.classList.toggle('is-local', player === this.pvp.info.slot);
+    row.append(el('span', 'vm-net-chat-name', name), el('span', 'vm-net-chat-text', text));
+    this.netChatFeed.appendChild(row);
+    while (this.netChatFeed.children.length > 6) this.netChatFeed.firstElementChild?.remove();
+    this.netComms?.classList.add('has-messages');
+    window.setTimeout(() => {
+      row.classList.add('is-expiring');
+      window.setTimeout(() => {
+        row.remove();
+        if (this.netChatFeed?.childElementCount === 0) this.netComms?.classList.remove('has-messages');
+      }, 450);
+    }, 12000);
+  }
+
+  private receiveNetPing(player: number, x: number, z: number): void {
+    const pvp = this.pvp;
+    const world = this.game?.ctx.world;
+    if (pvp === null || world === undefined || player >= world.players.length) return;
+    // Defence in depth: an enemy marker is ignored even if a bad relay sends it.
+    if (player !== pvp.info.slot && !world.areAllied(world.localPlayer, player as PlayerId)) return;
+    liveMinimap()?.ping(x, z, player as PlayerId);
+  }
+
+  private openNetChat(): void {
+    if (this.pvp === null || this.netChatInput === null || this.netComms === null) return;
+    this.netComms.classList.add('is-writing');
+    this.netChatInput.focus();
+  }
+
+  private clearNetComms(): void {
+    liveMinimap()?.onPingRequest(null);
+    this.netComms?.remove();
+    this.netComms = null;
+    this.netChatFeed = null;
+    this.netChatInput = null;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -2269,6 +2396,7 @@ export class Shell {
       this.pvp.session.leave();
       this.pvp = null;
     }
+    this.clearNetComms();
     // Before the teardown, and in this order: keep the recording of the match
     // being abandoned, then drop any recording that was driving it. The first
     // is a no-op during playback and the second is a no-op outside it.
@@ -2603,6 +2731,7 @@ export class Shell {
     this.tutorial?.dispose();
     this.tutorial = null;
     this.clearReplay();
+    this.clearNetComms();
     if (this.toastTimer !== 0) {
       window.clearTimeout(this.toastTimer);
       this.toastTimer = 0;
@@ -3017,10 +3146,10 @@ export class Shell {
    *    what THIS player asked for, and the other client asked for something
    *    else.
    *
-   * 2. BOTH SLOTS ARE `isHuman`. That is the entire AI shutdown:
-   *    `ai.system.ts:165` skips any player where `isHuman || isLocal`, so no
-   *    brain is ever built. An AI running on both clients would issue commands
-   *    locally on each and desync on the first decision it made.
+   * 2. BOTH HUMAN SLOTS ARE `isHuman`; the server-authored AI slots are not.
+   *    `configureHostedAi` restricts brain creation to the logical seats this
+   *    socket owns. Running the same AI on both clients would issue duplicate
+   *    commands and desync on the first decision it made.
    *
    * 3. `localPlayer` MOVES, and it is the only asymmetry in the whole world.
    *    Bootstrap pins it to slot 0; client B has to look through slot 1's eyes.
@@ -3041,26 +3170,30 @@ export class Shell {
     // `src/net/**` is touched by four-army support: the wire already permits 8
     // (`WIRE_LIMITS.maxPlayers`), `validateCommand` is unchanged, and the client
     // still TRIPWIRES rather than filters.
+    while (world.players.length < pvp.info.factions.length) {
+      const slot = world.players.length;
+      world.addPlayer(pvp.info.factions[slot] as Faction, 'Network seat', false, false);
+    }
+    const ai = new Set(pvp.info.ai);
     const seats = Math.min(world.players.length, pvp.info.factions.length);
     for (let slot = 0; slot < seats; slot++) {
       const p = world.players[slot];
       const faction = pvp.info.factions[slot];
       if (faction !== undefined) p.faction = faction as Faction;
-      p.isHuman = true;
+      p.isHuman = !ai.has(slot);
       p.isLocal = slot === pvp.info.slot;
-      // NO PLAYER-SUPPLIED NAMES ANYWHERE IN PVP — see the header of
-      // MultiplayerSetup.ts. A name is a string one player controls and the
-      // other player's browser renders.
-      p.name = slot === pvp.info.slot ? 'You' : 'Opponent';
-      p.aiDifficulty = 0;
+      p.name = pvp.info.names[slot]
+        ?? (ai.has(slot) ? `Enemy AI ${slot + 1}` : `Commander ${slot + 1}`);
+      p.aiDifficulty = pvp.info.difficulty[slot] ?? 0;
       p.aiPersonality = 0;
       if (pvp.takeoverSlots.has(slot)) {
         p.isHuman = false;
         p.isLocal = false;
-        p.aiDifficulty = 1;
-        p.name = 'Opponent AI';
+        p.aiDifficulty = Math.max(1, p.aiDifficulty);
+        p.name = `${p.name} · AI`;
       }
     }
+    applyTeams(world, pvp.info.teams);
     world.localPlayer = pvp.info.slot as PlayerId;
   }
 
@@ -3080,21 +3213,18 @@ export class Shell {
    *    running here as well would issue a second, near-identical copy of every
    *    decision, and the two streams would fight over the same units.
    *
-   * 3. THE NEUTRAL SLOT IS SKIPPED. Gaia owns the rocks, the trees and the
-   *    wrecks, is created by `ScenarioBuilder.gaia` during the boot, and is
-   *    already excluded from the brain list by faction. Seating it as a human
-   *    would be a lie about the world with no effect except to make this
-   *    function's contract untrue.
+   * 3. THE NEUTRAL SLOT KEEPS ITS RECORDED ID. Gaia owns the rocks, the trees
+   *    and the wrecks and is excluded from the brain list by faction. It is not
+   *    made human, but it MUST be present in the player table: four-army boots
+   *    may ask for Gaia before the shell appends seats 3 and 4, so Gaia is not
+   *    guaranteed to be the last row in a recording.
    *
    * 4. THE WORLD IS GROWN TO FIT THE RECORDING. `Bootstrap` seats two, and a
    *    four-way recording has four armies plus Gaia — so without this the third
    *    and fourth armies would not exist, the playback would feed their commands
    *    to nobody, and the checkpoint compare would diverge on the first tick
-   *    either of them did anything. Only the LEADING non-Neutral run is seated,
-   *    for the reason in (3): Gaia is the last entry in every recorded table
-   *    because the scenario creates it during the boot, and it is that getter's
-   *    creation path that wires the mutual ally masks. Seating a Neutral slot
-   *    here would make it find one already there and wire nothing.
+   *    either of them did anything. Every recorded row is appended in order;
+   *    the recorded ally masks restore Gaia's mutual diplomacy before tick one.
    *
    * `localPlayer` is presentation only — the camera and which side of the fog
    * the viewer is on. `Checksum.hashPlayers` does not hash it, which is exactly
@@ -3107,22 +3237,29 @@ export class Shell {
     const world = game.ctx.world;
     const names = playableFactions();
 
-    // Point 4 in the header: grow to the recording, stopping at Gaia.
+    // Point 4 in the header: grow to the complete recorded id table. Gaia may
+    // sit between combat seats in a four-army recording, so stopping at the
+    // first Neutral row silently discards every army after it.
     while (world.players.length < header.players.length) {
       const rec = header.players[world.players.length];
-      if (rec === undefined || rec.faction === (Faction.Neutral as number)) break;
-      world.addPlayer(rec.faction as Faction, 'Opponent', false, false);
+      if (rec === undefined) break;
+      world.addPlayer(
+        rec.faction as Faction,
+        rec.faction === (Faction.Neutral as number) ? 'Gaia' : 'Opponent',
+        false,
+        false,
+      );
     }
 
     const n = Math.min(world.players.length, header.players.length);
     for (let slot = 0; slot < n; slot++) {
       const rec = header.players[slot];
       if (rec === undefined) continue;
-      if (rec.faction === (Faction.Neutral as number)) continue;
       const p = world.players[slot];
       p.faction = rec.faction as Faction;
-      p.isHuman = true;
-      p.isLocal = slot === header.localPlayer;
+      const neutral = rec.faction === (Faction.Neutral as number);
+      p.isHuman = !neutral;
+      p.isLocal = !neutral && slot === header.localPlayer;
       p.aiDifficulty = rec.aiDifficulty;
       p.aiPersonality = rec.aiPersonality;
       /*
@@ -3139,8 +3276,13 @@ export class Shell {
        * does not move; see `ReplaySlot.allyMask` for what that costs.
        */
       if (rec.allyMask !== undefined) p.allyMask |= rec.allyMask;
-      // NAMED BY THEIR ARMY, not "You" and "Opponent". A replay has no you.
-      p.name = names.find((f) => (f.id as number) === rec.faction)?.name ?? `Slot ${slot + 1}`;
+      // New recordings preserve commander identity; old recordings degrade to
+      // the same faction label they used before identity existed.
+      p.name = neutral
+        ? 'Gaia'
+        : (rec.name?.trim()
+          || names.find((f) => (f.id as number) === rec.faction)?.name
+          || `Slot ${slot + 1}`);
     }
 
     const local = Math.max(0, Math.min(world.players.length - 1, header.localPlayer));
@@ -3159,7 +3301,7 @@ export class Shell {
   private applySimPostBoot(game: GameHandle, backdrop: boolean): void {
     const { world, loop } = game.ctx;
 
-    // PVP IS PINNED TO 1x. Game speed scales the ACCUMULATOR, so it cannot
+    // NETWORK PLAY IS PINNED TO 1x. Game speed scales the ACCUMULATOR, so it cannot
     // desync — a tick is a tick whenever it runs — but a player at 2x simply
     // arrives at the next turn boundary sooner and waits there for the other
     // one. It is not an advantage, it is not a bug, and it is not worth the
@@ -3557,6 +3699,14 @@ export class Shell {
       (target.tagName === 'TEXTAREA' ||
         target.isContentEditable ||
         (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'text'));
+
+    if (!typing && this.state === 'playing' && this.pvp !== null
+      && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openNetChat();
+      return;
+    }
 
     if (this.screen?.onKeyDown?.(e) === true) {
       e.preventDefault();

@@ -170,6 +170,18 @@ describe('the checksum ignores what does not matter', () => {
     expect(hashOnly(w)).toBe(before);
   });
 
+  it('ignores local selection and hover flags', () => {
+    // Two network peers look through different players' eyes. Their local
+    // selection and cursor hover must therefore be allowed to differ without
+    // declaring the shared simulation desynchronised.
+    const w = makeWorld();
+    const h = spawn(w, CX, CX);
+    const before = hashOnly(w);
+    const i = w.store.index(h);
+    w.store.flags[i] |= EntityFlag.Selected | EntityFlag.Hovered;
+    expect(hashOnly(w)).toBe(before);
+  });
+
   it('ignores float noise below the quantum', () => {
     // 59 transcendental call sites remain in src/sim, and Math.sin is not
     // specified to bit precision. A raw bit hash would scream desync on frame

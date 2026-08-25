@@ -72,6 +72,27 @@ describe('per-map skirmish start tables', () => {
     }
   });
 
+  it('authors adjacent team pairings for every four-player battlefield', () => {
+    for (const preset of ['temperate', 'arid', 'urban', 'atoll']) {
+      const table = MAP_START_TABLES[preset]!;
+      expect(table.quad, `${preset} four-player order`).toHaveLength(4);
+      expect(new Set(table.quad).size, `${preset} duplicate four-player slot`).toBe(4);
+      const [a, b, c, d] = table.quad!;
+      const point = (slot: number): { dx: number; dz: number } => table.slots[slot]!;
+      const distance = (x: number, y: number): number => Math.hypot(
+        point(x).dx - point(y).dx, point(x).dz - point(y).dz,
+      );
+      expect(distance(a, b), `${preset} allied opening A`).toBeLessThan(distance(a, c));
+      expect(distance(c, d), `${preset} allied opening B`).toBeLessThan(distance(b, d));
+
+      const sea = MAP_SEAS[preset] ?? null;
+      const planned = startPointsFor(4, sea, 7, preset);
+      const reserved = sea?.islands !== undefined ? planned : planned.slice(1);
+      const spawned = startSpots(C, C, 4, sea, 7, preset);
+      expect(spawned.map(({ x, z }) => ({ x, z })), preset).toEqual(reserved);
+    }
+  });
+
   it('keeps every authored coastal pairing inland of its complete shelf budget', () => {
     for (const preset of ['coast', 'tropical'] as const) {
       const sea = MAP_SEAS[preset]!;

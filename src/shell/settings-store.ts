@@ -202,6 +202,8 @@ export type PointerDeviceChoice = 'auto' | 'mouse' | 'trackpad';
 export type TrackpadScrollChoice = 'zoom' | 'pan';
 
 export interface GameplaySettings {
+  /** Persisted online handle; validated again before it ever crosses the wire. */
+  commanderName: string;
   /** Multiplier applied to menu, HUD, tutorial and auxiliary UI type. */
   textScale: number;
   /** Raises text and control-edge contrast without changing faction colours. */
@@ -568,6 +570,7 @@ export function defaultSettings(): Settings {
       muted: false,
     },
     gameplay: {
+      commanderName: 'Commander',
       // Comfortable on modern high-DPI displays while remaining dense enough
       // for the tactical HUD. Players can return to 100% in Accessibility.
       textScale: 1.15,
@@ -750,6 +753,9 @@ export function normalizeSettings(raw: unknown): Settings {
       muted: bool(a.muted, d.audio.muted),
     },
     gameplay: {
+      commanderName: typeof p.commanderName === 'string'
+        ? p.commanderName.slice(0, 64)
+        : d.gameplay.commanderName,
       textScale: num(p.textScale, 0.9, 1.5, d.gameplay.textScale),
       highContrast: bool(p.highContrast, d.gameplay.highContrast),
       reducedMotion: bool(p.reducedMotion, d.gameplay.reducedMotion),

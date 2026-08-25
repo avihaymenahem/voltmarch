@@ -111,7 +111,7 @@ export function loadHint(count: number): string {
 function hintFor(reason: string, known: boolean | null): string {
   if (reason !== '') return reason;
   if (known === null) return 'checking…';
-  return known ? '1v1 online' : 'match server is not answering';
+  return known ? 'duel + co-op online' : 'match server is not answering';
 }
 
 export class MainMenuScreen implements Screen {
@@ -145,7 +145,7 @@ export class MainMenuScreen implements Screen {
     brand.appendChild(title);
     const rule = el('hr', 'vm-rule is-accent');
     brand.appendChild(rule);
-    brand.appendChild(el('p', 'vm-subtitle', 'Tactical Combat Simulation'));
+    brand.appendChild(el('p', 'vm-subtitle', 'Forge Armies. Command the Front.'));
     inner.appendChild(brand);
 
     /* -- nav -------------------------------------------------------------- */

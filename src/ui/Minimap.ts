@@ -199,6 +199,8 @@ export class Minimap {
   private dragging = false;
   private dragPointer = -1;
   private onJump: ((x: number, z: number) => void) | null = null;
+  /** Presentation-only team marker. Never enters the command bus or replay. */
+  private pingRequestHandler: ((x: number, z: number) => void) | null = null;
   private readonly listeners: Array<[string, EventListener]> = [];
 
   private disposed = false;
@@ -314,6 +316,15 @@ export class Minimap {
 
   onJumpRequest(fn: (x: number, z: number) => void): void {
     this.onJump = fn;
+  }
+
+  /** Right-click callback installed only for a live multiplayer team match. */
+  onPingRequest(fn: ((x: number, z: number) => void) | null): void {
+    this.pingRequestHandler = fn;
+    this.canvas.classList.toggle('can-ally-ping', fn !== null);
+    this.canvas.title = fn === null
+      ? 'Left-click to move camera'
+      : 'Left-click to move camera · Right-click to ping allies';
   }
 
   /** Resize the backing store to device pixels. Cheap; call on every resize. */
@@ -902,6 +913,12 @@ export class Minimap {
   private attachInput(): void {
     const down = (ev: Event): void => {
       const e = ev as PointerEvent;
+      if (e.button === 2) {
+        e.preventDefault();
+        const point = this.worldAt(e.clientX, e.clientY);
+        if (point !== null) this.pingRequestHandler?.(point.x, point.z);
+        return;
+      }
       if (e.button !== 0) return;
       e.preventDefault();
       this.dragging = true;
@@ -949,8 +966,16 @@ export class Minimap {
 
   /** Client px -> world metres, clamped to the map. */
   private jumpTo(clientX: number, clientY: number): void {
+    const point = this.worldAt(clientX, clientY);
+    if (point === null) return;
+    if (this.onJump !== null) this.onJump(point.x, point.z);
+    else this.cameraRig.setFocus(point.x, point.z, false);
+  }
+
+  /** Client px -> world metres, shared by camera jumps and ally pings. */
+  private worldAt(clientX: number, clientY: number): { x: number; z: number } | null {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0) return null;
     // The canvas backing store is device px; the map rect was computed there.
     const sx = this.canvas.width / rect.width;
     const sy = this.canvas.height / rect.height;
@@ -964,8 +989,7 @@ export class Minimap {
     const x = Math.min(MAP_SIZE, Math.max(0, u * MAP_SIZE));
     const z = Math.min(MAP_SIZE, Math.max(0, v * MAP_SIZE));
 
-    if (this.onJump !== null) this.onJump(x, z);
-    else this.cameraRig.setFocus(x, z, false);
+    return { x, z };
   }
 
   dispose(): void {
@@ -974,5 +998,7 @@ export class Minimap {
     for (const [type, fn] of this.listeners) this.canvas.removeEventListener(type, fn);
     this.listeners.length = 0;
     this.pings.length = 0;
+    this.onJump = null;
+    this.pingRequestHandler = null;
   }
 }

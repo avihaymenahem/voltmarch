@@ -28,16 +28,13 @@
  *
  * ── WHAT THIS SCREEN DELIBERATELY DOES NOT OFFER ───────────────────────────
  *
- * NO PLAYER NAMES, and no room titles. Every string in the browser is derived
- * from a map id or a faction index — never from anything a stranger typed. That
- * is a security decision: a name is a string one player controls and another
- * player's browser renders, and the cheapest way to be sure it can never become
- * markup is for it not to exist. When names arrive they need the full
- * treatment, with the markup gate in `tests/foundation.spec.ts` behind them.
+ * COMMANDER NAMES ARE THE ONLY FREE TEXT. They are normalised and bounded on
+ * the client and relay, then rendered through `textContent`; room titles remain
+ * deliberately absent. Chat follows the same DOM rule once a match begins.
  *
- * NO DIFFICULTY, NO PERSONALITY, NO STARTING BANK — there is no AI in a PvP
- * match. NO SEED FIELD — the relay picks it, or one player would know the map
- * before the other.
+ * AI DIFFICULTY EXISTS ONLY ON AI ROWS. There is no personality or starting
+ * bank control, and quick match remains a human duel. NO SEED FIELD — the
+ * relay picks it, or one player would know the map before the other.
  *
  * ── WHY MIRRORS ARE LEGAL HERE AND NOT IN SKIRMISH ─────────────────────────
  *
@@ -52,10 +49,11 @@ import {
   button, el, focusable, pageFrame, playableFactions, row,
   type FactionOption, type Screen, type Shell,
 } from './Shell';
-import { MAPS, mapById } from './settings-store';
+import { DIFFICULTIES, MAPS, mapById } from './settings-store';
 import { CODE_LENGTH_HINT, relayUrl } from './net-link';
 import { Session, type LobbyPhase, type MatchStart } from '../net/Session';
-import type { RoomSummary, RoomVisibility } from '../net/protocol';
+import type { RoomSummary, RoomVisibility, SeatPlan } from '../net/protocol';
+import { COMMANDER_NAME_MAX, normalizeCommanderName } from '../net/protocol';
 
 /** Where the status line's text comes from, per phase. */
 const PHASE_TEXT: Record<LobbyPhase, string> = {
@@ -78,6 +76,11 @@ export class MultiplayerSetup implements Screen {
   private faction: FactionOption;
   private map: string;
   private visibility: RoomVisibility = 'public';
+  /** 0 is the unchanged duel; 1/2 are two humans against that many AI. */
+  private aiCount = 0;
+  private commanderName: string;
+  private readonly aiFactions: number[] = [1, 4];
+  private readonly aiDifficulty: number[] = [1, 1];
 
   private session: Session | null = null;
   private phase: LobbyPhase = 'idle';
@@ -99,11 +102,18 @@ export class MultiplayerSetup implements Screen {
   private visButtons: HTMLButtonElement[] = [];
   private roomList: HTMLElement | null = null;
   private roomCount: HTMLElement | null = null;
+  private seatGrid: HTMLElement | null = null;
+  private mapSelect: HTMLSelectElement | null = null;
+  private formatSelect: HTMLSelectElement | null = null;
+  private nameInput: HTMLInputElement | null = null;
+  private readonly formatControls: HTMLSelectElement[] = [];
 
   constructor(private readonly shell: Shell) {
     const setup = this.shell.getSetup();
     this.faction = this.factions.find((f) => f.key === setup.playerFaction) ?? this.factions[0];
     this.map = setup.map;
+    this.commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
+      ?? 'Commander';
   }
 
   /* ====================================================================== */
@@ -159,6 +169,29 @@ export class MultiplayerSetup implements Screen {
   private buildYourSide(col: HTMLElement): void {
     col.appendChild(el('div', 'vm-mp-legend', 'Your side'));
 
+    const commander = el('input') as HTMLInputElement;
+    commander.type = 'text';
+    commander.className = 'vm-mp-input';
+    commander.maxLength = COMMANDER_NAME_MAX;
+    commander.autocomplete = 'off';
+    commander.spellcheck = false;
+    commander.value = this.commanderName;
+    commander.setAttribute('aria-label', 'Commander name');
+    commander.addEventListener('input', () => {
+      this.commanderName = commander.value;
+      commander.classList.toggle('is-invalid', normalizeCommanderName(commander.value) === null);
+      this.renderSeatGrid();
+    });
+    commander.addEventListener('change', () => {
+      const name = normalizeCommanderName(commander.value);
+      if (name === null) return;
+      commander.value = name;
+      this.commanderName = name;
+      this.shell.settings.patch({ gameplay: { commanderName: name } });
+    });
+    this.nameInput = commander;
+    col.appendChild(row('Commander', commander, '2–20 letters or numbers'));
+
     const cards = el('div', 'vm-mp-cards');
     for (const f of this.factions) {
       const card = el('button', 'vm-mp-card');
@@ -171,6 +204,7 @@ export class MultiplayerSetup implements Screen {
         this.faction = f;
         for (const other of cards.children) other.classList.remove('is-on');
         card.classList.add('is-on');
+        this.renderSeatGrid();
       });
       focusable(card);
       cards.appendChild(card);
@@ -182,8 +216,38 @@ export class MultiplayerSetup implements Screen {
 
     const mapSelect = this.select(MAPS.map((m) => ({ value: m.id, label: m.name })), this.map, (v) => {
       this.map = v;
+      const capacity = mapById(v).players;
+      if (capacity < this.aiCount + 2) this.aiCount = 0;
+      if (this.formatSelect !== null) this.formatSelect.value = String(this.aiCount);
+      this.renderSeatGrid();
     });
+    this.mapSelect = mapSelect;
     col.appendChild(row('Battlefield', mapSelect));
+
+    const format = this.select([
+      { value: '0', label: 'Head-to-head · 1v1' },
+      { value: '1', label: 'Co-op · 2v1 AI' },
+      { value: '2', label: 'Co-op · 2v2 AI' },
+    ], String(this.aiCount), (v) => {
+      const count = Number(v);
+      if (!Number.isInteger(count) || count < 0 || count > 2) return;
+      this.aiCount = count;
+      if (mapById(this.map).players < count + 2) {
+        const compatible = MAPS.find((candidate) => candidate.players >= count + 2);
+        if (compatible !== undefined) {
+          this.map = compatible.id;
+          if (this.mapSelect !== null) this.mapSelect.value = compatible.id;
+        }
+      }
+      this.renderSeatGrid();
+    });
+    this.formatControls.push(format);
+    this.formatSelect = format;
+    col.appendChild(row('Format', format, 'quick match remains 1v1'));
+
+    this.seatGrid = el('div', 'vm-mp-seats');
+    col.appendChild(this.seatGrid);
+    this.renderSeatGrid();
 
     // Public / Invite only. A segmented pair rather than a checkbox: "public"
     // and "invite only" are two named things, and a checkbox would make one of
@@ -210,7 +274,13 @@ export class MultiplayerSetup implements Screen {
       // SHORT. `.vm-btn-hint` is `flex: 0 0 auto` and the LABEL is what shrinks,
       // so a long hint wraps the label underneath it.
       hint: 'wait for a rival',
-      onClick: () => { this.session?.host(this.faction.id as number, this.map, this.visibility); },
+      onClick: () => {
+        const name = this.identity();
+        if (name === null) return;
+        this.session?.host(
+          this.faction.id as number, this.map, this.visibility, this.makeSeatPlan(), name,
+        );
+      },
     });
     this.codeOut = el('div', 'vm-mp-code', '');
     const hostBlock = el('div', 'vm-mp-block');
@@ -287,7 +357,10 @@ export class MultiplayerSetup implements Screen {
     /* -- quick match, under the list --------------------------------------- */
     this.queueBtn = button('Quick Match', {
       hint: 'any opponent',
-      onClick: () => { this.session?.queue(this.faction.id as number); },
+      onClick: () => {
+        const name = this.identity();
+        if (name !== null) this.session?.queue(this.faction.id as number, name);
+      },
     });
     const queueBlock = el('div', 'vm-mp-block');
     queueBlock.appendChild(this.queueBtn);
@@ -326,14 +399,17 @@ export class MultiplayerSetup implements Screen {
       rowEl.type = 'button';
       rowEl.appendChild(el('span', 'vm-mp-room-dot')).style.background = side?.color ?? '#888';
       const text = el('span', 'vm-mp-room-text');
-      // Every string here comes from a map id or a faction index — never from
-      // anything a stranger typed. See the header.
       text.appendChild(el('span', 'vm-mp-room-map', mapById(r.map).name));
-      text.appendChild(el('span', 'vm-mp-room-side', side?.name ?? 'Unknown side'));
+      const format = r.aiCount === 0 ? '1v1' : (r.aiCount === 1 ? '2v1 co-op' : '2v2 co-op');
+      text.appendChild(el(
+        'span', 'vm-mp-room-side',
+        `${r.hostName} · ${side?.name ?? 'Unknown side'} · ${format}`,
+      ));
       rowEl.appendChild(text);
       rowEl.appendChild(el('span', 'vm-mp-room-age', ago(r.ageSec)));
       rowEl.addEventListener('click', () => {
-        this.session?.joinRoom(r.id, this.faction.id as number);
+        const name = this.identity();
+        if (name !== null) this.session?.joinRoom(r.id, this.faction.id as number, name);
       });
       focusable(rowEl);
       list.appendChild(rowEl);
@@ -378,6 +454,8 @@ export class MultiplayerSetup implements Screen {
       },
       onStart: (info) => { this.launch(info); },
       onPeerLost: () => { /* only meaningful once playing; the HUD shows it */ },
+      onChat: () => { /* the shell takes over these handlers once playing */ },
+      onPing: () => { /* the shell takes over these handlers once playing */ },
       onOver: (_reason, _winner, message) => { this.note(message); },
       onNotice: (message) => { this.note(message); },
     });
@@ -392,7 +470,23 @@ export class MultiplayerSetup implements Screen {
   private tryJoin(): void {
     const code = this.codeIn?.value.trim() ?? '';
     if (code.length === 0) return;
-    this.session?.join(code, this.faction.id as number);
+    const name = this.identity();
+    if (name !== null) this.session?.join(code, this.faction.id as number, name);
+  }
+
+  /** Validate and persist the identity every network action is labelled with. */
+  private identity(): string | null {
+    const name = normalizeCommanderName(this.commanderName);
+    if (name === null) {
+      this.nameInput?.classList.add('is-invalid');
+      this.note('Choose a 2–20 character commander name without reserved words.');
+      this.nameInput?.focus();
+      return null;
+    }
+    this.commanderName = name;
+    if (this.nameInput !== null) this.nameInput.value = name;
+    this.shell.settings.patch({ gameplay: { commanderName: name } });
+    return name;
   }
 
   /** A one-line message that replaces the phase text until the phase changes. */
@@ -419,8 +513,10 @@ export class MultiplayerSetup implements Screen {
       this.joinBtn.disabled = !idle || (this.codeIn?.value.length ?? 0) === 0;
     }
     if (this.codeIn !== null) this.codeIn.disabled = !idle;
+    if (this.nameInput !== null) this.nameInput.disabled = !idle;
     if (this.cancelBtn !== null) this.cancelBtn.disabled = !busy;
     for (const b of this.visButtons) b.disabled = !idle;
+    for (const control of this.formatControls) control.disabled = !idle;
     if (this.roomList !== null) this.roomList.classList.toggle('is-locked', !idle);
   }
 
@@ -450,6 +546,66 @@ export class MultiplayerSetup implements Screen {
     sel.addEventListener('change', () => { onChange(sel.value); });
     focusable(sel);
     return sel;
+  }
+
+  /** Rebuild the fixed, non-free-text logical seat plan shown to the host. */
+  private renderSeatGrid(): void {
+    const grid = this.seatGrid;
+    if (grid === null) return;
+    grid.replaceChildren();
+    this.formatControls.splice(1);
+
+    const seat = (label: string, role: string, team: string, controls?: HTMLElement): void => {
+      const node = el('div', 'vm-mp-seat');
+      node.appendChild(el('span', 'vm-mp-seat-role', role));
+      node.appendChild(el('span', 'vm-mp-seat-name', label));
+      node.appendChild(el('span', 'vm-mp-seat-team', team));
+      if (controls !== undefined) node.appendChild(controls);
+      grid.appendChild(node);
+    };
+
+    seat(
+      `${normalizeCommanderName(this.commanderName) ?? 'Invalid name'} · ${this.faction.name}`,
+      'You', 'Team A',
+    );
+    seat(this.aiCount === 0 ? 'Joining commander' : 'Open allied seat',
+      this.aiCount === 0 ? 'Rival' : 'Ally', this.aiCount === 0 ? 'Team B' : 'Team A');
+
+    for (let index = 0; index < this.aiCount; index++) {
+      const controls = el('span', 'vm-mp-seat-controls');
+      const faction = this.select(this.factions.map((option) => ({
+        value: String(option.id as number), label: option.name,
+      })), String(this.aiFactions[index]), (value) => { this.aiFactions[index] = Number(value); });
+      const difficulty = this.select(DIFFICULTIES.map((name, value) => ({
+        value: String(value), label: name,
+      })), String(this.aiDifficulty[index]), (value) => { this.aiDifficulty[index] = Number(value); });
+      faction.classList.add('vm-mp-seat-select');
+      difficulty.classList.add('vm-mp-seat-select');
+      this.formatControls.push(faction, difficulty);
+      controls.append(faction, difficulty);
+      seat(`Enemy AI ${index + 1}`, 'AI', 'Team B', controls);
+    }
+  }
+
+  /** Host-authored shape; the relay validates it without clamping. */
+  private makeSeatPlan(): SeatPlan {
+    if (this.aiCount === 0) {
+      return {
+        factions: [this.faction.id as number, this.faction.id as number],
+        teams: [0, 1], ai: [], difficulty: [0, 0],
+      };
+    }
+    const ai = Array.from({ length: this.aiCount }, (_, index) => index + 2);
+    return {
+      factions: [
+        this.faction.id as number,
+        this.faction.id as number,
+        ...this.aiFactions.slice(0, this.aiCount),
+      ],
+      teams: [0, 0, ...new Array<number>(this.aiCount).fill(1)],
+      ai,
+      difficulty: [0, 0, ...this.aiDifficulty.slice(0, this.aiCount)],
+    };
   }
 }
 
