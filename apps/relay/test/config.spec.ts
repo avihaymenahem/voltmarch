@@ -17,9 +17,25 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { CONFIG, DESKTOP_ORIGIN, PUBLIC_WEB_ORIGIN, parseCount, parseList } from '../src/config';
+
+describe('the deploy archive carries every dependency used by its smoke probe', () => {
+  it('installs the same WebSocket client version as the relay workspace', () => {
+    const workspace = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    const runtime = JSON.parse(readFileSync(join(process.cwd(), 'deploy/runtime/package.json'), 'utf8'));
+    const runtimeLock = JSON.parse(readFileSync(join(process.cwd(), 'deploy/runtime/package-lock.json'), 'utf8'));
+    const smoke = readFileSync(join(process.cwd(), 'deploy/smoke.mjs'), 'utf8');
+
+    assert.match(smoke, /from ['"]ws['"]/);
+    assert.equal(runtime.dependencies?.ws, workspace.dependencies?.ws);
+    assert.equal(runtimeLock.packages?.['']?.dependencies?.ws, workspace.dependencies?.ws);
+    assert.equal(runtimeLock.packages?.['node_modules/ws']?.version, workspace.dependencies?.ws);
+  });
+});
 
 describe('a malformed limit refuses to start rather than falling back', () => {
   it('accepts an unset or empty variable as "use the default"', () => {
