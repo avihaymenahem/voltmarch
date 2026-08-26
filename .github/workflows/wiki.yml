@@ -20,6 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The repository carries hundreds of megabytes of game assets. The
+          # publisher owns one directory and should not spend minutes checking
+          # out models, audio and desktop packages it will never read.
+          sparse-checkout: wiki
+          sparse-checkout-cone-mode: true
 
       - name: Synchronise canonical wiki pages
         env:
