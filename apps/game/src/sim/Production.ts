@@ -3112,7 +3112,12 @@ export class ProductionService implements QueueHooks {
     // above: no entity, no def id, so `maxAlive` cannot express it and a
     // shift-click would otherwise buy one Chronoshift five times over.
     if (entry.kind === BuildKind.Upgrade || entry.kind === BuildKind.Power) {
-      if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return;
+      // Commander requisitions share one command channel: only one power may
+      // be bought at a time, even when the second click names a different
+      // power. They are unlocks, not a factory production line.
+      if (entry.kind === BuildKind.Power) {
+        if (p.queues[BuildTab.Powers as number].items.length > 0) return;
+      } else if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return;
       n = 1;
     }
     if (entry.maxAlive > 0) {

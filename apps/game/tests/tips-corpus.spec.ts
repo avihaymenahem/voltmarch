@@ -45,7 +45,7 @@ import {
 } from '../src/sim/Production';
 import { PowerGrid } from '../src/sim/Power';
 import { Economy, setActiveEconomy } from '../src/sim/Economy';
-import { RepairSellService, setRepairSellService } from '../src/sim/RepairSell';
+import { REPAIR, RepairSellService, setRepairSellService } from '../src/sim/RepairSell';
 import { factorySpeed } from '../src/sim/BuildQueue';
 import { bindDeployTables } from '../src/sim/Deploy';
 import { setGameContext } from '../src/game/context';
@@ -304,6 +304,30 @@ describe('§1 the corpus is true', () => {
     expect(st.hp[i], 'it mends').toBeGreaterThan(hpBefore);
     expect(p.credits, 'and it is not free').toBeLessThan(5000);
     expect(REPAIR_COST_PER_HP).toBeGreaterThan(0);
+  });
+
+  it('pauses paid repair while a building is under fire and resumes after the lockout', () => {
+    const repair = new RepairSellService(rig.world, rig.channels);
+    setRepairSellService(repair);
+    base(rig);
+    const id = building(rig, 'barracks', 40, 25);
+    const st = rig.world.store;
+    const i = st.index(id);
+    st.hp[i] = st.maxHp[i] * 0.5;
+    st.lastHitTime[i] = 10;
+    rig.world.player(P0).credits = 5000;
+    expect(repair.setRepairing(P0, id, true)).toBe(true);
+
+    const hp = st.hp[i];
+    const credits = rig.world.player(P0).credits;
+    const rng = new Rng(11);
+    repair.simTick({ dt: SIM_DT, tick: 300, time: 10 + REPAIR.combatLockSeconds - SIM_DT, rng });
+    expect(st.hp[i]).toBe(hp);
+    expect(rig.world.player(P0).credits).toBe(credits);
+
+    repair.simTick({ dt: SIM_DT, tick: 400, time: 10 + REPAIR.combatLockSeconds + SIM_DT, rng });
+    expect(st.hp[i]).toBeGreaterThan(hp);
+    expect(rig.world.player(P0).credits).toBeLessThan(credits);
   });
 
   /**

@@ -22,7 +22,7 @@
 import { Channels } from '../core/events';
 import { GameLoop, Profiler, SystemRegistry, devAsserts, now } from '../core/loop';
 import { World } from '../core/world';
-import { DEFAULT_QUALITY_TIER, MAP_SIZE, SIM_HZ } from '../core/config';
+import { DEFAULT_QUALITY_TIER, GAME_SPEEDS, MAP_SIZE, SIM_HZ } from '../core/config';
 import { Faction, type QualityTier as CoreQualityTier, type RenderContext } from '../core/types';
 
 import {
@@ -227,8 +227,8 @@ export function bootstrap(options: BootOptions): GameHandle {
       // duplicate, and a duplicate nobody checks is a duplicate that drifts.
       simHz: () => SIM_HZ,
       setTimeScale: (scale: number) => {
-        // GAME_SPEEDS is [0.5, 1, 1.5, 2]; pick the closest index.
-        const speeds = [0.5, 1.0, 1.5, 2.0];
+        // Keep the harness on the same choices as the live loop.
+        const speeds = GAME_SPEEDS;
         let best = 1;
         for (let i = 0; i < speeds.length; i++) {
           if (Math.abs(speeds[i] - scale) < Math.abs(speeds[best] - scale)) best = i;

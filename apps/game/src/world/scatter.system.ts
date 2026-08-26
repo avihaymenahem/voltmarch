@@ -185,22 +185,23 @@ export default defineSystem({
      */
     scatter.paintGroundComposition();
 
-    /* -- selective base wear -------------------------------------------- *
-     * A pad that ends exactly at the wall reads like a model placed on top of
-     * the world. Give a minority of structures one broad, asymmetric dust
-     * stain outside their footprint: enough to imply service traffic and
-     * disturbed soil, sparse enough that it never becomes a repeated halo.
-     * This uses the existing pooled decal field, so the whole layer is still
-     * one draw call and permanent marks remain oldest-evicted.               */
+    /* -- base weathering ------------------------------------------------- *
+     * A pristine pad ending exactly at a pristine wall reads like a low-poly
+     * model placed on top of the world. Dress the OUTSIDE of footprints with
+     * broad disturbed dust, service grime, occasional rust runoff and rarer
+     * oil. These are authored shapes rather than texture noise and all share
+     * the existing pooled decal mesh: one draw, no extra material per asset,
+     * no new geometry and a hard cap that leaves most slots for combat FX.   */
     const decals = groundDecals();
     const wearRng = new Rng((plan.seed ^ 0x6b512d09) >>> 0);
     let baseWear = 0;
+    const maxBaseWear = 112;
     if (decals !== null) {
       for (let n = 0; n < store.count; n++) {
         const i = store.alive[n];
         if ((store.flags[i] & EntityFlag.Alive) === 0
           || store.kind[i] !== EntityKind.Building
-          || wearRng.next() > 0.43) continue;
+          || baseWear >= maxBaseWear) continue;
 
         const angle = wearRng.next() * TAU;
         const distance = Math.max(store.radius[i], 5) + wearRng.range(2.5, 6.0);
@@ -209,16 +210,50 @@ export default defineSystem({
         const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
         if (terrain.isWater(cx, cz) || terrain.isCliff(cx, cz)) continue;
 
-        decals.spawn(
-          DecalKind.Dust,
-          x, z,
-          wearRng.range(2.8, 5.2),
-          wearRng.range(5.5, 10.0),
-          angle + wearRng.range(-0.45, 0.45),
-          0,
-          wearRng.range(0.22, 0.34),
-        );
-        baseWear++;
+        if (wearRng.next() < 0.76) {
+          decals.spawn(
+            DecalKind.Dust,
+            x, z,
+            wearRng.range(3.0, 5.8),
+            wearRng.range(5.8, 10.5),
+            angle + wearRng.range(-0.45, 0.45),
+            0,
+            wearRng.range(0.18, 0.30),
+          );
+          baseWear++;
+        }
+
+        if (baseWear < maxBaseWear && wearRng.next() < 0.48) {
+          decals.spawn(
+            DecalKind.Grime,
+            x + Math.cos(angle) * wearRng.range(-1.0, 1.4),
+            z + Math.sin(angle) * wearRng.range(-1.0, 1.4),
+            wearRng.range(2.2, 4.5),
+            wearRng.range(3.8, 7.2),
+            angle + wearRng.range(-0.7, 0.7),
+            0,
+            wearRng.range(0.20, 0.36),
+          );
+          baseWear++;
+        }
+
+        if (baseWear < maxBaseWear && wearRng.next() < 0.24) {
+          decals.spawn(
+            DecalKind.Rust,
+            x, z,
+            wearRng.range(1.3, 2.6),
+            wearRng.range(2.4, 4.8),
+            angle + wearRng.range(-0.25, 0.25),
+            0,
+            wearRng.range(0.24, 0.42),
+          );
+          baseWear++;
+        }
+
+        if (baseWear < maxBaseWear && wearRng.next() < 0.12) {
+          decals.oil(x, z, wearRng.range(1.0, 2.0), angle, wearRng.range(0.20, 0.34));
+          baseWear++;
+        }
       }
     }
 

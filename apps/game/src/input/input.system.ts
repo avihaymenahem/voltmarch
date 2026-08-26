@@ -91,7 +91,7 @@ import {
   type DragInfo, type KeyInfo, type PointerInfo,
 } from './Input';
 import {
-  Selection, SelectMode, pickEntity, type ScreenProjector,
+  Selection, SelectMode, canInteractWith, pickEntity, type ScreenProjector,
 } from './Selection';
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
@@ -1459,6 +1459,7 @@ function cycleIdleHarvester(): void {
  * ========================================================================== */
 
 interface HudBridge {
+  minimap?: { onOrderRequest?(fn: ((x: number, z: number) => boolean) | null): void };
   overlay: {
     setMarquee(x0: number, y0: number, x1: number, y1: number): void;
     clearMarquee(): void;
@@ -1521,6 +1522,38 @@ interface PlacementBridge {
 
 let hudLinked = false;
 
+/** Resolve a minimap point through the ordinary battlefield context rules. */
+function issueMinimapOrder(x: number, z: number): boolean {
+  if (selection === null) return false;
+  const { world } = ctx();
+  readCapabilities(world, world.selection.ids, world.selection.count, caps);
+  if (caps.ownCount === 0) return false;
+
+  // The tactical map has no screen-space picker. Resolve the nearest visible
+  // blip under its click footprint, then let `resolveContextOrder` decide
+  // attack / move / capture / repair exactly as it does over the world.
+  const count = world.spatial.queryCircleFat(x, z, 4, ORDER_IDS, ORDER_IDS.length);
+  const st = world.store;
+  let hover = NONE;
+  let best = Number.POSITIVE_INFINITY;
+  for (let k = 0; k < count; k++) {
+    const i = ORDER_IDS[k];
+    if (!canInteractWith(world, world.localPlayer, i)) continue;
+    const dx = st.posX[i] - x;
+    const dz = st.posZ[i] - z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < best) { best = d2; hover = st.handleOf(i); }
+  }
+
+  MODS.shift = input?.shift ?? false;
+  MODS.ctrl = input?.ctrl ?? false;
+  MODS.alt = input?.alt ?? false;
+  resolveContextOrder(world, hover, x, z, true, MODS, mode, caps, resolution);
+  if (!resolution.valid) return false;
+  executeResolved(resolution, MODS.shift || waypointLatched());
+  return true;
+}
+
 function hud(): HudBridge | null {
   const g = globalThis as unknown as { __vmHud?: HudBridge };
   return g.__vmHud ?? null;
@@ -1540,6 +1573,7 @@ function linkHud(): void {
     (x0, y0, x1, y1) => h.overlay.setMarquee(x0, y0, x1, y1),
     () => h.overlay.clearMarquee(),
   );
+  h.minimap?.onOrderRequest?.(issueMinimapOrder);
 }
 
 /** True when the player has latched waypoint mode in the command bar. */

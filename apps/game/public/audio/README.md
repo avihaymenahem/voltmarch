@@ -5,7 +5,7 @@ Everything here is a **downloaded, recorded** asset — the third declared excep
 the credits screen in `src/shell/MainMenu.ts` all name it, and `tests/credits-truthful.spec.ts`
 checks those three against what is actually in this directory.
 
-**368 Ogg files, 10.82 MB.** Every one of the 39 sound-effect families is a recording, unit barks
+**697 Ogg files, 17.33 MiB.** Every one of the 39 sound-effect families is a recording, unit barks
 combine two CC0 performers with original faction armour and infantry packs, and the EVA announcer is rendered
 speech. Nothing a player hears from the SFX or voice buses comes from an oscillator.
 
@@ -127,8 +127,8 @@ vehicle is on screen.
 
 ## The score
 
-`music/` is the original VOLTMARCH score: **Silent Horizon**, **Disciplined Ostinato**, and
-**Echoes of the Siege**. The project owner supplied the 48 kHz stereo PCM masters after generating
+`music/` is the original VOLTMARCH score: **Silent Horizon**, **Disciplined Ostinato**,
+**Echoes of the Siege**, and **Endless Warfront**. The project owner supplied the 48 kHz stereo PCM masters after generating
 them under a paid Suno Pro account and asserts the commercial rights to use them in VOLTMARCH.
 They are original project material, not third-party CC-BY content and require no external credit.
 

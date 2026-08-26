@@ -47,7 +47,7 @@ import {
 } from './Shell';
 import { readProgression } from './progression-link';
 import { probeRelay, relayKnownReachable, unavailableReason } from './net-link';
-import { tutorialMenuHint, tutorialUntouched } from './Tutorial';
+import { tutorialCompleted, tutorialMenuHint, tutorialUntouched } from './Tutorial';
 import { requestedBackend, type LiveBackend } from '../render/backend';
 import { audio } from '../audio/AudioEngine';
 import { MusicControl } from './MusicControl';
@@ -178,12 +178,14 @@ export class MainMenuScreen implements Screen {
     // they have been through it the accent moves back to Skirmish, so a
     // returning player is not shouted at by a screen they have finished with.
     const fresh = tutorialUntouched();
-    nav.appendChild(button('Tutorial', {
-      iconName: 'info',
-      hint: tutorialMenuHint(),
-      variant: fresh ? 'primary' : 'default',
-      onClick: () => { void this.shell.startTutorial(); },
-    }));
+    if (!tutorialCompleted()) {
+      nav.appendChild(button('Tutorial', {
+        iconName: 'info',
+        hint: tutorialMenuHint(),
+        variant: fresh ? 'primary' : 'default',
+        onClick: () => { void this.shell.startTutorial(); },
+      }));
+    }
 
     // ABOVE SKIRMISH, DELIBERATELY. The campaign is the authored content and
     // the skirmish is the sandbox; a title screen whose first playable row is
@@ -426,17 +428,16 @@ export const CREDITS: readonly CreditGroup[] = [
      * `public/audio/README.md`; `tests/credits-truthful.spec.ts` checks it
      * against what is actually in `public/`.
      *
-     * 184 Ogg files ship: 114 takes across ALL 39 sound-effect families, 34
-     * unit barks over 14 families in two voices, 33 EVA lines, and 3 original music
-     * tracks. Counted off the disk, not remembered — this comment said "61
+     * 697 Ogg files ship: effects, faction/unit barks, EVA lines, and four
+     * original music tracks. Counted off the disk, not remembered — this comment said "61
      * takes across 20 families" for three releases after the bank tripled.
      * The synthesised bank measured in band and still read as a synth patch;
      * recordings carry micro-detail no oscillator recipe reproduces.
      *
      * The Art group above no longer says "weapons synthesised", because they
      * are not — and as of this commit it no longer says the MUSIC is either.
-     * `TrackMusic` is the default score and `audio.system.ts` constructs it
-     * unconditionally: one streamed original cue, randomly selected per match
+     * `TrackMusic` is the default score and `ApplicationAudio.ts` constructs it
+     * before the battlefield: one streamed original cue, randomly selected per match
      * and looped, with the procedural `MusicDirector` kept only as its fallback.
      * Ambience is the only thing in the default soundscape still synthesised. See
      * `public/audio/README.md`.
@@ -460,7 +461,7 @@ export const CREDITS: readonly CreditGroup[] = [
   {
     title: 'Original Soundtrack',
     lines: [
-      '"Silent Horizon" · "Disciplined Ostinato" · "Echoes of the Siege"',
+      '"Silent Horizon" · "Disciplined Ostinato" · "Echoes of the Siege" · "Endless Warfront"',
       'Created for VOLTMARCH from user-supplied Suno Pro masters',
       '© 2026 Avihay Menahem · All rights reserved',
       'Prepared as level-matched seamless loops for streamed playback',

@@ -70,8 +70,8 @@ licences:
   OpenAI image generation, then composed and exported locally into responsive
   WebP derivatives. Its delivery manifest is in
   [`launch-site/README.md`](launch-site/README.md).
-- **Original soundtrack:** "Silent Horizon", "Disciplined Ostinato", and
-  "Echoes of the Siege" were supplied by the project owner after generation
+- **Original soundtrack:** "Silent Horizon", "Disciplined Ostinato",
+  "Echoes of the Siege", and "Endless Warfront" were supplied by the project owner after generation
   under a paid Suno Pro account. The owner asserts the commercial-use rights;
   the exact master hashes and delivery process are in
   [`docs/MUSIC_PROVENANCE.md`](docs/MUSIC_PROVENANCE.md). These cues replace the

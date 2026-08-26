@@ -233,8 +233,8 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
-| N1 | `civ_derrick` | Oil Derrick | BLD | procedural | Neutral industrial kit; readable capturable landmark |
-| N1 | `civ_hospital` | Civilian Hospital | BLD | procedural | Civil architecture kit; portico/helipad identity |
+| N1 | `civ_derrick` | Oil Derrick | BLD | validated | Geometry `01a03e6b-f287-70ec-84a0-a2b567e4943b`, 20k retopo `01a03e71-cda0-72f7-aa35-f42cf6e74c9a`, texture `01a03e7b-b3f1-76b9-b7cb-72ec959f2af5`; 19,673-triangle pumpjack landmark, 2,880-triangle caster and KTX2 PBR. Auto colour LOD was visually rejected and quarantined; procedural fallback retained. |
+| N1 | `civ_hospital` | Civilian Hospital | BLD | validated | Geometry `01a03e6d-be61-7b25-a21d-b96285c5dca5`, texture `01a03e7d-7160-771f-86f2-3a91c63a2b98`; conservative local hard-surface reduction to 39,291 triangles, 2,112-triangle caster and KTX2 PBR. The 17k Meshy retopo and generated colour LOD were rejected for window holes/faceting; procedural fallback retained. |
 | N1 | `civ_apartments` | Apartment Block | BLD | procedural | Civil modular facade/balcony kit; repeated-instance efficiency |
 | N1 | `civ_mine` | Ore Mine | BLD | procedural | Neutral industrial kit; headframe/sheave/spoil silhouette |
 

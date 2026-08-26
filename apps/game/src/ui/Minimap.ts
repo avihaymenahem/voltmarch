@@ -201,6 +201,7 @@ export class Minimap {
   private onJump: ((x: number, z: number) => void) | null = null;
   /** Presentation-only team marker. Never enters the command bus or replay. */
   private pingRequestHandler: ((x: number, z: number) => void) | null = null;
+  private orderRequestHandler: ((x: number, z: number) => boolean) | null = null;
   private readonly listeners: Array<[string, EventListener]> = [];
 
   private disposed = false;
@@ -325,6 +326,11 @@ export class Minimap {
     this.canvas.title = fn === null
       ? 'Left-click to move camera'
       : 'Left-click to move camera · Right-click to ping allies';
+  }
+
+  /** Route a right-click through the battlefield contextual-order rules. */
+  onOrderRequest(fn: ((x: number, z: number) => boolean) | null): void {
+    this.orderRequestHandler = fn;
   }
 
   /** Resize the backing store to device pixels. Cheap; call on every resize. */
@@ -916,7 +922,10 @@ export class Minimap {
       if (e.button === 2) {
         e.preventDefault();
         const point = this.worldAt(e.clientX, e.clientY);
-        if (point !== null) this.pingRequestHandler?.(point.x, point.z);
+        if (point !== null) {
+          const ordered = this.orderRequestHandler?.(point.x, point.z) ?? false;
+          if (!ordered) this.pingRequestHandler?.(point.x, point.z);
+        }
         return;
       }
       if (e.button !== 0) return;

@@ -959,15 +959,19 @@ describe('tutorial — the shell launches and tears it down correctly', () => {
     expect(body).toMatch(/if \(this\.tutorial !== null\) \{\s*await this\.startTutorial\(\);/);
   });
 
-  /** The whole point of the item is the player who has never played an RTS. */
-  it('puts the tutorial first on the title screen, accented until it is opened', () => {
+  /** Completed training yields its title-screen space; Settings restores it. */
+  it('puts unfinished training first and hides it once completed', () => {
     const tutorial = menu.indexOf("button('Tutorial'");
     const skirmish = menu.indexOf("button('Skirmish'");
     expect(tutorial).toBeGreaterThan(0);
     expect(tutorial).toBeLessThan(skirmish);
     expect(menu).toMatch(/const fresh = tutorialUntouched\(\)/);
+    expect(menu).toMatch(/if \(!tutorialCompleted\(\)\)/);
     expect(menu).toMatch(/variant: fresh \? 'primary' : 'default'/);
     expect(menu).toMatch(/hint: tutorialMenuHint\(\)/);
     expect(menu).toMatch(/void this\.shell\.startTutorial\(\)/);
+    const settings = readFileSync(join(ROOT, 'apps/game/src/shell/Settings.ts'), 'utf8');
+    expect(settings).toContain("button(tutorialCompleted() ? 'Restore Tutorial'");
+    expect(settings).toContain('restoreTutorialMenuItem();');
   });
 });

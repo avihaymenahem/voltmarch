@@ -19,7 +19,8 @@ licence is the authority.
 
 VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
 building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
-structures and resource vehicles now use original Meshy generations that pass through the local VOLTMARCH asset pipeline.
+structures, capturable civic landmarks and resource vehicles now use original Meshy generations
+that pass through the local VOLTMARCH asset pipeline.
 
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
 are built from Three.js geometry, custom shaders and procedural canvas generators. **Six shipped
@@ -37,22 +38,14 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    PNGs derived by" while one of the eight was the underived SOURCE, sitting in the shipped
    directory and being published unused. It also credited `logo-full.png` as the loading curtain,
    which the markup has never used.
-3. **The loading screen key art** in `apps/game/public/brand/` — `splash-1600.webp` and `splash-640.webp`,
-   derived by `tools/splash.mjs` from a `load.png` the user supplied on 2026-08-18, kept as
-   `tools/brand-source/splash-source.png`. It is the boot curtain's full-bleed backdrop.
-
-   **THE ARTWORK CARRIES ITS OWN WORDMARK, AND THAT IS THE WHOLE DESIGN PROBLEM.** Drawing the
-   DOM lockup on top of it gives two VOLTMARCHes stacked down the page — which is exactly what a
-   screenshot at 569x595 showed on the first attempt, because the threshold for hiding it had been
-   REASONED ("a portrait crop clips the painted one early") rather than measured. It does not. The
-   painted lockup occupies x 0.310..0.687, y 0.030..0.346 of the frame, measured by cropping to
-   those bounds and confirming it whole; from that, a centred `cover` crop keeps it down to
-   viewport aspect **0.676**, not the 1.33 that was assumed. `apps/game/tests/boot-splash.spec.ts` holds
-   those four numbers and re-derives both the media-query threshold and the `object-position`
-   anchor from them. **Replace the artwork and you must re-measure the box.**
+3. **The loading/title key art** in `apps/game/public/brand/` — `splash-1600.webp` and `splash-640.webp`,
+   derived by `tools/splash.mjs` from `hero-1920.webp`, supplied by the project owner on 2026-08-26
+   and kept as `tools/brand-source/splash-source.webp`. It is the boot curtain's and image-first
+   title shell's full-bleed backdrop. It contains no baked lettering; the accessible DOM lockup
+   remains visible at every aspect ratio.
 
    Two other things not to undo. The file is **WebP, alone in a directory of PNGs**, because it is
-   a photographic illustration rather than a logo — 2.83 MB of source becomes 265 kB — and it is
+   a photographic illustration rather than a logo, and it is
    the one asset that blocks a first paint, so the spec holds a ceiling over it. And every art
    rule keys off a `.has-art` class the boot script sets only after a real decode
    (`naturalWidth > 0`, with `complete` tested FIRST because the script runs after the `<img>` and
@@ -61,9 +54,10 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
 
    **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
 
-   **THE TITLE MENU DOES NOT WAIT FOR THE ENGINE.** `apps/game/src/main.ts` keeps both `Shell` and
-   `Bootstrap` behind dynamic boundaries; `Shell.openMenu(true)` mounts `MainMenuScreen`, fires
-   `onReady`, and only then schedules background work. One second after paint it prefetches the
+   **THE TITLE MENU DOES NOT WAIT FOR THE ENGINE, EVEN AFTER A MATCH.** `apps/game/src/main.ts` keeps
+   both `Shell` and `Bootstrap` behind dynamic boundaries; `Shell.openMenu` mounts
+   `MainMenuScreen`, fires `onReady`, paints the key art, and only then disposes the previous world
+   and schedules background work. One second after paint it prefetches the
    engine modules without mutating game state. The decorative battlefield waits for a 12-second
    quiet window, and a real launch cancels that timer before `bootGame`. Do not shorten it back to
    the old 750 ms: on WebGPU a fast Skirmish click then waited behind the title decoration's own
@@ -87,14 +81,14 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    `apps/game/tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family while
    `apps/game/tests/campaign-portrait-assets.spec.ts` checks every referenced portrait.
 
-5. **Recorded audio** in `apps/game/public/audio/` — 368 Ogg files, 10.82 MB, added 2026-08-09 at the user's
+5. **Recorded audio** in `apps/game/public/audio/` — 697 Ogg files, 17.33 MiB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` combines two Kenney CC0
    performers with four original armour packs plus two 17-take infantry performers for every faction, and `eva/` is the announcer,
    **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
    [CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), Warfork
    by Team Forbidden, and Piper for EVA. `music/` is now the original VOLTMARCH soundtrack:
-   **Silent Horizon**, **Disciplined Ostinato**, and **Echoes of the Siege**, supplied by the project
+   **Silent Horizon**, **Disciplined Ostinato**, **Echoes of the Siege**, and **Endless Warfront**, supplied by the project
    owner from a paid Suno Pro account. One delivery cue streams and loops at a time; a match selects
    one locally at random and title/pause controls can cycle it. See `apps/game/public/audio/README.md`
    and `docs/MUSIC_PROVENANCE.md`. Only ambience is still synthesised by default.
@@ -146,14 +140,16 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-6. **Imported faction structures and selected units** in
+6. **Imported faction/civilian structures and selected units** in
    `apps/game/src/assets/{buildings,units}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
    `docs/ASSET_CONVERSION_MAP.md`. The selected unit slice currently comprises the Soviet Ore Collector,
-   Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw; these and the imported structures
-   are the only non-procedural game-world models currently shipped.
+   Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw. The neutral slice currently
+   replaces the Oil Derrick and Civilian Hospital while retaining their faction-agnostic capture
+   registration and procedural fallbacks. These and the imported structures are the only
+   non-procedural game-world models currently shipped.
 
 7. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it

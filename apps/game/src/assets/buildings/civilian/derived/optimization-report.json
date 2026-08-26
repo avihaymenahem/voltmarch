@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "family": "civilian-buildings",
+  "generatedAt": "2026-08-26T14:44:39.710Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/civilian-buildings.json",
+  "rows": [
+    {
+      "key": "civ_derrick",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/buildings/civilian/oil-derrick.glb",
+        "triangles": 19673,
+        "fileBytes": 4481592
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/buildings/civilian/derived/oil-derrick.shadow.glb",
+          "triangles": 2880,
+          "triangleRatio": 0.1464,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 41120,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            15
+          ],
+          "occupiedCells": 240
+        }
+      ]
+    },
+    {
+      "key": "civ_hospital",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/buildings/civilian/hospital.glb",
+        "triangles": 39291,
+        "fileBytes": 5583188
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/buildings/civilian/derived/hospital.shadow.glb",
+          "triangles": 2112,
+          "triangleRatio": 0.0538,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 30404,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 176
+        }
+      ]
+    }
+  ]
+}

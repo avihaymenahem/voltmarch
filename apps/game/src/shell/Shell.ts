@@ -93,6 +93,7 @@ import { actionKeyRow } from './tutorial-steps';
 import { isApplePlatform, type StoredBindings } from '../input/ActionCatalogue';
 
 import { eva as sayEva } from '../audio/AudioEngine';
+import { desktopBridge } from '../platform/desktop';
 import {
   campaignBriefing,
   campaignSpeaker,
@@ -252,7 +253,10 @@ export interface FactionOption {
  *   - a browser that refuses because the transient user activation from the
  *     click has already been spent — which is why the caller invokes this
  *     BEFORE its first await;
- *   - the user is already fullscreen, or pressed Escape and does not want to be.
+ *   - the browser user is already in HTML fullscreen.
+ *
+ * Desktop is deliberately different: Electron owns native fullscreen, so
+ * Escape remains the pause/menu command instead of resizing the game window.
  *
  * The rejected promise MUST be swallowed. An unhandled rejection here would
  * surface as a console error on a perfectly normal "player declined" path.
@@ -260,6 +264,16 @@ export interface FactionOption {
 export function goFullscreen(): void {
   if (typeof document === 'undefined') return;
   if (new URLSearchParams(location.search).has('shot')) return;
+  // Electron must use its native borderless fullscreen state. HTML fullscreen
+  // is browser page chrome: Escape owns it and exits it before the RTS can open
+  // Pause, which makes the packaged game unexpectedly resize like a website.
+  // The native window keeps Escape available to the shell and Alt+Enter remains
+  // the explicit mode toggle in the main process.
+  const desktop = desktopBridge();
+  if (desktop !== null) {
+    void desktop.setFullscreen(true);
+    return;
+  }
   if (document.fullscreenElement !== null) return;
   const root = document.documentElement;
   if (typeof root.requestFullscreen !== 'function') return;
@@ -2812,28 +2826,41 @@ export class Shell {
      * already-preloaded key art immediately; the live theatre is optional
      * background work and crossfades in when it is genuinely ready.
      */
-    if (firstBoot && this.game === null) {
+    if (!keepBackdrop || this.game === null) {
       document.documentElement.classList.add('vm-menu-preparing');
       this.show(new MainMenuScreen(this), 'menu');
       this.options.onReady?.();
+      this.startMenuSoundtrack();
+
+      // Returning from a match used to show a loading panel and synchronously
+      // build a SECOND battlefield before the title was usable. Give the key
+      // art two frames to paint, then tear the old world down behind it. The
+      // retained WebGPU device/pipeline cache survives this disposal.
+      if (this.game !== null) {
+        if (!firstBoot) await nextFrames(2);
+        this.disposeGame(this.game);
+        this.game = null;
+        this.backdrop = false;
+      }
       this.scheduleInitialBackdrop();
       return;
     }
 
-    if (!keepBackdrop || this.game === null) {
-      this.show(new LoadingScreen('Voltmarch', '', this.settings.get().controls.bindings), 'loading');
-      if (!firstBoot) await nextFrames(2);
-      try {
-        await this.bootGame(rollSeed(), true);
-      } catch (err) {
-        // A backdrop that fails to boot must not block the menu — the player
-        // can still reach settings and start a match over a black screen.
-        console.error('[shell] title backdrop failed to boot', err);
-      }
-    }
-
     this.show(new MainMenuScreen(this), 'menu');
     this.options.onReady?.();
+    this.startMenuSoundtrack();
+  }
+
+  /** Load only the mixer + streamed title cue; the battlefield remains lazy. */
+  private startMenuSoundtrack(): void {
+    void import('../audio/ApplicationAudio')
+      .then(({ startApplicationAudio }) => {
+        if (!this.disposed) startApplicationAudio(false);
+      })
+      .catch((err: unknown) => {
+        // Music is enhancement, never a reason to make the title unusable.
+        console.warn('[music] title soundtrack failed to initialise', err);
+      });
   }
 
   /**
@@ -3847,6 +3874,24 @@ export class Shell {
       return;
     }
 
+    if (!typing && this.state === 'playing'
+      && matchesChord(e, this.settings.get().controls.bindings['sys.speed'])) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Multiplayer runs one shared 1x clock. Local speed changes would only
+      // make one client race into the lockstep gate and wait there.
+      if (this.pvp !== null) {
+        this.toast('Game speed is fixed at 1.0× in multiplayer', true);
+        return;
+      }
+      const loop = this.game?.ctx.loop;
+      if (loop === undefined) return;
+      loop.cycleSpeed();
+      this.setup.speed = loop.speedIndex;
+      this.toast(`Game speed · ${loop.speed.toFixed(1)}×`, false);
+      return;
+    }
+
     if (this.screen === null) return;
 
     switch (e.code) {
@@ -3888,16 +3933,10 @@ export class Shell {
   };
 
   private readonly onVisibility = (): void => {
-    // A hidden tab must not burn a frame budget on a menu backdrop either.
-    // EXCEPT IN PVP: the opponent keeps playing whether this tab is visible or
-    // not, so pausing here would stall the pair and eventually forfeit the
-    // match for tabbing away. The browser throttles background rAF anyway,
-    // which lockstep survives — it stalls and catches up, it never skips.
-    if (this.state === 'playing' && this.pvp === null) {
-      // `|| replayPaused` so returning to the tab does not restart a replay the
-      // viewer had deliberately stopped.
-      this.game?.setPaused(document.hidden || (this.replay !== null && this.replayPaused));
-    }
+    // Losing focus is not a pause command. Desktop explicitly disables
+    // Chromium background throttling, so loading, single-player simulation and
+    // lockstep continue behind Alt+Tab. Web browsers may still impose their
+    // own background budget, but the game never adds a second halt on top.
     // Hidden is the last event a mobile browser reliably fires before it kills
     // the page, and the profile store batches its writes. Flush here or a
     // mission completed in the final minute of a match is simply gone.

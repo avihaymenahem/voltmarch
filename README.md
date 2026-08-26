@@ -58,9 +58,10 @@ immediately readable to genre veterans while pushing each army toward a distinct
 | Multiplayer | Online duels and co-op with commander identities, chat, ally pings and AI takeover on disconnect |
 | Replays | Every match records automatically and can be watched from the result screen or replay browser |
 
-The battlefield is more than open ground. Capture civilian structures, fortify key lanes, cross
-water with landing ships, repair damaged armour, sell exposed positions and use the terrain to hide
-the shape of your next attack.
+The battlefield is more than open ground. Seeded civilian settlement pockets place apartments,
+hospitals, mines and oil sites around capturable forward-build space instead of repeating one fixed
+layout. Capture them, fortify key lanes, cross water with landing ships, repair damaged armour,
+sell exposed positions and use the terrain to hide the shape of your next attack.
 
 <p align="center">
   <img src="docs/progress/13-atoll-crossing.png" alt="Current in-engine capture of an Allied amphibious force approaching an island base" width="900" />
@@ -115,9 +116,9 @@ tools/              Capture, profiling, deployment and asset pipeline tools
 ```
 
 The simulation runs on a fixed deterministic step. Rendering, audio, interface presentation, chat
-and map pings remain outside the lockstep command stream. Imported faction landmarks pass through a
-local game-asset pipeline for topology, PBR materials, LODs, shadow meshes and WebGL/WebGPU budgets,
-with procedural fallbacks retained where required.
+and map pings remain outside the lockstep command stream. Imported faction and civilian landmarks
+pass through a local game-asset pipeline for topology, PBR materials, reviewed LODs, shadow meshes
+and WebGL/WebGPU budgets, with procedural fallbacks retained where required.
 
 Useful project documents:
 

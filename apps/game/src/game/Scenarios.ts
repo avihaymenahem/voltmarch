@@ -3962,6 +3962,24 @@ export function islandSeats(
  * -------------------------------------------------------------------------- */
 export const CIVILIAN_HAMLET_OFFSET = 62;
 
+/** Prop-free pocket kept beside each capture cluster for a forward outpost. */
+export const CIVILIAN_CAPTURE_BUILD_CLEARANCE = 16;
+/** Lane distance from a capture cluster to its reserved forward-build pad. */
+export const CIVILIAN_CAPTURE_BUILD_PAD_OFFSET = 48;
+
+/** Seed-derived settlement proportions without advancing the layout RNG. */
+export function civilianSettlementShape(seed: number): {
+  offset: number; laneShift: number; spread: number;
+} {
+  const h = hashU32((seed ^ 0x63a9f13d) >>> 0);
+  return {
+    // Always clears the contested midpoint ore (r22) and both start shelves.
+    offset: 54 + (h & 15),
+    laneShift: ((h >>> 8) % 17) - 8,
+    spread: 14 + ((h >>> 16) % 7),
+  };
+}
+
 /* --------------------------------------------------------------------------
  * THE ORE MINES — SAME LINE, FURTHER OUT
  *
@@ -4064,11 +4082,15 @@ export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): v
   // `v` runs down the lane between the two openings; `u` is its left normal.
   const vx = dx / len, vz = dz / len;
   const ux = -vz, uz = vx;
+  const shape = civilianSettlementShape(b.seed);
 
   const owner = b.gaia;
   for (const side of [1, -1]) {
-    const hx = mx + ux * side * CIVILIAN_HAMLET_OFFSET;
-    const hz = mz + uz * side * CIVILIAN_HAMLET_OFFSET;
+    // Variable by map seed, mirrored exactly between the two players. The
+    // shared hash does not consume `b.rng`, so adding the settlements cannot
+    // shift ore/scatter results elsewhere in the scenario.
+    const hx = mx + ux * side * shape.offset;
+    const hz = mz + uz * side * shape.offset;
     // Every building in a hamlet faces the lane, so the settlement reads as
     // one place rather than three objects that happen to be near each other.
     const face = Math.atan2(-ux * side, -uz * side) / DEG2RAD;
@@ -4085,8 +4107,19 @@ export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): v
     // cannot contest each other's cells, close enough that one squad holding
     // the derrick is inside the other two's field of fire.
     put(CIVILIAN_KEYS[0]!, 0, 0, 0);
-    put(CIVILIAN_KEYS[1]!, -17, 15, 90);
-    put(CIVILIAN_KEYS[2]!, 17, -15, -90);
+    put(CIVILIAN_KEYS[1]!, -shape.spread, shape.spread - 2 + shape.laneShift, 90);
+    put(CIVILIAN_KEYS[2]!, shape.spread, -shape.spread + 2 + shape.laneShift, -90);
+
+    // Keep one genuinely usable pad beside the prize free of decorative
+    // scatter. It is mirrored with the settlement and remains ordinary terrain
+    // that a player can build on after capturing the pocket.
+    // Far enough beyond the furthest variable structure offset (26 m) that the
+    // full 16 m reservation never overlaps a capture footprint.
+    const buildX = hx + vx * CIVILIAN_CAPTURE_BUILD_PAD_OFFSET;
+    const buildZ = hz + vz * CIVILIAN_CAPTURE_BUILD_PAD_OFFSET;
+    if (b.footprintBuildable(buildX, buildZ, 4, 4)) {
+      b.block(buildX, buildZ, CIVILIAN_CAPTURE_BUILD_CLEARANCE);
+    }
 
     // THE MINE, at the far end of the same arm. See `MINE_BISECTOR_OFFSETS`
     // for the geometry and `src/data/Civilians.ts` for what it pays.
@@ -4097,7 +4130,7 @@ export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): v
     // this building, and the one nothing checks.
     const mineDim = CIV[CIVILIAN_KEYS[3]!]!;
     for (const reach of MINE_BISECTOR_OFFSETS) {
-      const du = reach - CIVILIAN_HAMLET_OFFSET;
+      const du = reach - shape.offset;
       const mxp = hx + ux * side * du;
       const mzp = hz + uz * side * du;
       if (!b.footprintBuildable(mxp, mzp, mineDim.w, mineDim.h)) continue;

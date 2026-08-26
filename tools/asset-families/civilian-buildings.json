@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "family": "civilian-buildings",
+  "sourceDir": "apps/game/src/assets/buildings/civilian",
+  "outputDir": "apps/game/src/assets/buildings/civilian/derived",
+  "profiles": {
+    "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
+    "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.26 },
+    "shadow": { "ratio": 0.1, "error": 0.05, "maxRatio": 0.2, "maxTriangles": 3000 }
+  },
+  "assets": [
+    { "key": "civ_derrick", "file": "oil-derrick.glb", "class": "landmark", "lods": false },
+    { "key": "civ_hospital", "file": "hospital.glb", "class": "landmark", "lods": false }
+  ]
+}

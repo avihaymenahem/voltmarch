@@ -421,7 +421,7 @@ export const KEYBINDS: readonly KeybindDef[] = [
 
   /* -- system ------------------------------------------------------------- */
   { id: 'sys.menu', label: 'Pause Menu', category: 'System', scope: 'global', def: chord('Escape') },
-  { id: 'sys.speed', label: 'Cycle Game Speed', category: 'System', scope: 'global', def: chord('Backslash'), advisory: true },
+  { id: 'sys.speed', label: 'Cycle Game Speed', category: 'System', scope: 'global', def: chord('Backslash') },
   { id: 'sys.perf', label: 'Performance Overlay', category: 'System', scope: 'global', def: chord('F3') },
   { id: 'sys.screenshot', label: 'Save Screenshot', category: 'System', scope: 'global', def: chord('F12'), advisory: true },
 ];
@@ -942,7 +942,7 @@ export const DIFFICULTIES: readonly string[] = ['Easy', 'Normal', 'Hard', 'Bruta
 /** AI personality names, mirroring core/config AI_PERSONALITY order. */
 export const PERSONALITIES: readonly string[] = ['Turtle', 'Rusher', 'Boomer'];
 /** Game speed multipliers, mirroring core/config GAME_SPEEDS. */
-export const SPEEDS: readonly number[] = [0.5, 1.0, 1.5, 2.0];
+export const SPEEDS: readonly number[] = [0.5, 1.0, 1.5, 2.0, 2.5];
 /** Starting bank options. */
 export const CREDIT_OPTIONS: readonly number[] = [2000, 5000, 10000, 20000, 50000];
 

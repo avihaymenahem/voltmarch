@@ -463,7 +463,7 @@ export class CommanderPowerService {
   }
 
   /**
-   * ORBITAL SCAN — exposes every hostile unit and structure for a few seconds.
+   * ORBITAL SCAN — exposes the clicked circle for a few seconds.
    *
    * IT USED TO CHART A CIRCLE, AND THAT IS WHY IT FELT DEAD. `exploreCircle`
    * sets VIS_EXPLORED — permanent terrain memory, and nothing about units. So
@@ -477,11 +477,10 @@ export class CommanderPowerService {
    * concern is real and it is now a deliberate trade rather than an accident:
    * the sweep DOES hand live positions to the caster, which is the whole point
    * of a five-second window, and the window is what keeps it from being a
-   * permanent targeting aid. `Vision.sweepEnemies` carries the rest.
+   * permanent targeting aid. `Vision.sweepArea` carries the rest.
    *
-   * `x`/`z` no longer bound the effect — the sweep is global over hostile
-   * assets. The point is kept because it is where the beam plays, so the cast
-   * still has a place on the field rather than being a HUD-only event.
+   * `x`/`z` bind the effect. A previous global sweep stamped every hostile
+   * asset and made every click appear to redirect itself to the enemy base.
    *
    * Reached through a structural probe rather than `IVision`, which does not
    * carry the manual reveals. The same duck-typed seam idiom as `abilitySeam()`
@@ -496,8 +495,8 @@ export class CommanderPowerService {
 
     this.channels.fx.push(FxKind.PrismBeam, x, y + 40, z, 0, -1, 0, 4.0, NONE, Faction.Meridian);
 
-    if (typeof v.sweepEnemies !== 'function') return false;
-    v.sweepEnemies(owner, ORBITAL_SCAN_SECONDS, radius);
+    if (typeof v.sweepArea !== 'function') return false;
+    v.sweepArea(owner, x, z, ORBITAL_SCAN_SECONDS, radius);
 
     // Counted here rather than read back out of the grid, for the reason the
     // old cell count gave: the grid belongs to the vision module and nothing
@@ -513,7 +512,9 @@ export class CommanderPowerService {
         if ((st.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
         if (w.areAllied(owner, st.owner[i] as PlayerId)) continue;
         if (w.players[st.owner[i]]?.faction === Faction.Neutral) continue;
-        assets++;
+        const dx = st.posX[i] - x;
+        const dz = st.posZ[i] - z;
+        if (dx * dx + dz * dz <= radius * radius) assets++;
       }
     }
     this.stats.assetsExposed += assets;
@@ -783,8 +784,8 @@ export class CommanderPowerService {
 /** What `applyOrbitalScan` needs of the vision service, and nothing more. */
 interface ExploreCapable {
   exploreCircle(player: PlayerId, x: number, z: number, r: number): void;
-  /** See `Vision.sweepEnemies`. Optional so a stub vision still boots. */
-  sweepEnemies(player: PlayerId, seconds: number, radius: number): void;
+  /** See `Vision.sweepArea`. Optional so a stub vision still boots. */
+  sweepArea(player: PlayerId, x: number, z: number, seconds: number, radius: number): void;
 }
 
 /**

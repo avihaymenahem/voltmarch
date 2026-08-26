@@ -1,8 +1,8 @@
 /**
  * tools/splash.mjs — derive the shipped boot splash from one supplied illustration.
  *
- *   node tools/splash.mjs                        # tools/brand-source/splash-source.png
- *   node tools/splash.mjs path/to/other.png      # re-derive from a replacement
+ *   node tools/splash.mjs                        # tools/brand-source/splash-source.webp
+ *   node tools/splash.mjs path/to/other.webp     # re-derive from a replacement
  *
  * A SIBLING OF `brand.mjs`, NOT A BRANCH OF IT. Both write into `public/brand/`, and
  * `public/brand/README.md` says nothing may be put there by hand — but they read
@@ -11,17 +11,15 @@
  * second source into the first script would mean one `process.argv[2]` selecting between
  * two unrelated pipelines, which is how a tool grows a mode nobody remembers.
  *
- * WHY WEBP AND NOT PNG. Everything else in `public/brand/` is a logo — flat colour, hard
- * edges, alpha — which is what PNG is for. This is a photographic illustration, and PNG
- * is the wrong codec for one: the supplied file is 2.83 MB. It is the FIRST thing the
- * page paints and it sits in front of the player while the 2.7 MB bundle parses, so its
- * weight is not amortised by anything. WebP q78 lands it around a tenth of that with no
- * artefact visible at the sizes it is displayed. There is no PNG fallback and none is
- * needed — WebP has been in every shipping browser since Safari 14 (2020), and the game
- * requires WebGL2, which is a strictly narrower gate.
+ * WHY WEBP. Everything else in `public/brand/` is a logo — flat colour, hard edges,
+ * alpha — which is what PNG is for. This is a photographic illustration supplied as
+ * WebP, and keeping that codec makes the first-paint asset 64 kB instead of publishing a
+ * multi-megabyte lossless source. There is no PNG fallback and none is needed — WebP has
+ * been in every shipping browser since Safari 14 (2020), and the game requires WebGL2,
+ * which is a strictly narrower gate.
  *
- * WHY NO UPSCALE. The source is 1672x941. `withoutEnlargement` keeps 1600 as a real
- * downsample; asking for 1920 would invent pixels and cost bytes to store the invention.
+ * WHY NO UPSCALE. `withoutEnlargement` keeps 1600 as a real downsample; asking for
+ * 1920 would invent pixels and cost bytes to store the invention.
  * CSS `object-fit: cover` handles a larger viewport, and a slight upscale of a soft
  * illustration behind a vignette is invisible — a resampled JPEG-artefact field is not.
  */
@@ -33,12 +31,12 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = process.argv[2]
   ? resolve(process.argv[2])
-  : join(ROOT, 'tools', 'brand-source', 'splash-source.png');
+  : join(ROOT, 'tools', 'brand-source', 'splash-source.webp');
 const OUT = join(ROOT, 'apps/game/public', 'brand');
 
 if (!existsSync(SRC)) {
   console.error(`no source image at ${SRC}`);
-  console.error('pass one as the first argument, or restore tools/brand-source/splash-source.png');
+  console.error('pass one as the first argument, or restore tools/brand-source/splash-source.webp');
   process.exit(1);
 }
 mkdirSync(OUT, { recursive: true });

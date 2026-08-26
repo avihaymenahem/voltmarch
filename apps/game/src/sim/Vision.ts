@@ -151,12 +151,13 @@ export class Vision implements IVision {
   /** Sim time until which a cloaked entity is exposed (it fired, or was hit). */
   private readonly revealUntil: PerEntityF32;
   /**
-   * Per-player Orbital Scan deadline, in `world.time` seconds, and the radius
-   * lit around each hostile asset while it runs. See `sweepEnemies`. Float64
+   * Per-player Orbital Scan deadline, centre and radius. See `sweepArea`. Float64
    * for the deadline because it is compared against `world.time`, which is
    * `tick * SIM_DT` and drifts off a float32 well inside one match.
    */
   private readonly sweepUntil = new Float64Array(MAX_PLAYERS);
+  private readonly sweepX = new Float64Array(MAX_PLAYERS);
+  private readonly sweepZ = new Float64Array(MAX_PLAYERS);
   private readonly sweepRadius = new Float64Array(MAX_PLAYERS);
   /** Explicit detector radius in metres, 0 = not a detector. */
   private readonly detectRadius: PerEntityF32;
@@ -465,40 +466,17 @@ export class Vision implements IVision {
     //
     // Runs AFTER the ordinary stamp and BEFORE the compose, so a swept cell is
     // indistinguishable from one a scout is standing in — same `timers` write,
-    // same decay when the window shuts. See `sweepEnemies` for why this is a
+    // same decay when the window shuts. See `sweepArea` for why this is a
     // per-tick re-stamp rather than a one-shot grid write.
     //
-    // Cost: one extra pass over the alive list per SWEEPING player, and there
-    // is normally none. `update` itself is already O(alive) with a stampCircle
-    // per sighted entity, so a sweep at most doubles a tick that only happens
-    // every `VISION_TICK_INTERVAL` ticks, for five seconds.
+    // The scan reveals the circle the player actually clicked. It does not
+    // follow hostile assets or silently redirect itself to an enemy base.
     for (let p = 0; p < np; p++) {
       if (this.sweepUntil[p] <= world.time) continue;
       const seer = world.players[p];
       if (seer === undefined) continue;
       const ally = seer.allyMask ?? (1 << p);
-      const r = this.sweepRadius[p];
-      for (let a = 0; a < n; a++) {
-        const i = s.alive[a];
-        const f = s.flags[i];
-        if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
-        const owner = s.owner[i];
-        // Allies are already lighting their own ground; Gaia is not "the enemy
-        // side" and revealing neutral scenery would light half the map for
-        // nothing. Hostile ARMY AND BASE only — the same three kinds
-        // `Shell.pollOutcome` counts as a living asset, so what the sweep shows
-        // you is exactly what you still have to kill.
-        if ((ally & (1 << owner)) !== 0) continue;
-        const op = world.players[owner];
-        if (op === undefined || op.faction === Faction.Neutral) continue;
-        const kind = s.kind[i];
-        if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle
-          && kind !== EntityKind.Building) continue;
-        // Stamped for the SEER'S ally mask, not the target's: a scan is
-        // intelligence shared with your team, and must never light a cell for
-        // the player being scanned.
-        this.stampCircle(ally, s.posX[i], s.posZ[i], r, np);
-      }
+      this.stampCircle(ally, this.sweepX[p], this.sweepZ[p], this.sweepRadius[p], np);
     }
 
     /* -- 3. compose ------------------------------------------------------- */
@@ -619,11 +597,13 @@ export class Vision implements IVision {
    * same tick. Not persisted across a save — a five-second effect that survived
    * a reload would be stranger than one that did not.
    */
-  sweepEnemies(player: PlayerId, seconds: number, radius: number): void {
+  sweepArea(player: PlayerId, x: number, z: number, seconds: number, radius: number): void {
     const p = player as number;
     if (!Number.isInteger(p) || p < 0 || p >= MAX_PLAYERS) return;
     if (!(seconds > 0) || !(radius > 0)) return;
     this.sweepUntil[p] = this.world.time + seconds;
+    this.sweepX[p] = x;
+    this.sweepZ[p] = z;
     this.sweepRadius[p] = radius;
   }
 

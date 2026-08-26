@@ -96,7 +96,7 @@ describe('the credits describe the product that actually ships', () => {
     expect(musicSource).not.toMatch(/Kevin MacLeod|CC BY 4\.0/i);
     expect(notices).not.toMatch(/Kevin MacLeod|Colossus|Industrial Revolution|Clash Defiant/i);
 
-    for (const title of ['Silent Horizon', 'Disciplined Ostinato', 'Echoes of the Siege']) {
+    for (const title of ['Silent Horizon', 'Disciplined Ostinato', 'Echoes of the Siege', 'Endless Warfront']) {
       expect(provenance, `soundtrack provenance omits ${title}`).toContain(title);
       expect(allText, `in-game credits omit the original score cue ${title}`).toContain(title);
     }

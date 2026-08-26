@@ -129,6 +129,10 @@ export function survivorKeyFor(faction: Faction): string {
 export const DEPOT_KEYS: readonly string[] = ['repairDepot', 'mrdDepot', 'rclDepot'];
 
 export const REPAIR = {
+  /** Damage must have been quiet this long before a structure can heal. */
+  combatLockSeconds: 3,
+  /** Repairs land in visible, paid pulses rather than every simulation tick. */
+  pulseSeconds: 0.5,
   /** Seconds between repair sparks on a structure being mended. */
   sparkSeconds: 0.55,
   /** Survivors from a sold structure, by footprint area in cells. */
@@ -193,6 +197,8 @@ export class RepairSellService {
 
   /** 1 while a structure is drip-repairing. Generation-stamped. */
   private readonly repairing: PerEntityF32;
+  /** Seconds until the next paid structure-repair pulse. */
+  private readonly repairTimer: PerEntityF32;
   /** Seconds until the next repair spark on a structure. */
   private readonly sparkTimer: PerEntityF32;
 
@@ -223,6 +229,7 @@ export class RepairSellService {
     private readonly channels: Channels,
   ) {
     this.repairing = new PerEntityF32(world.store, 0);
+    this.repairTimer = new PerEntityF32(world.store, 0);
     this.sparkTimer = new PerEntityF32(world.store, 0);
     for (let i = 0; i < CREW_CAPACITY; i++) this.crew.push({ player: 0, x: 0, z: 0, count: 0 });
   }
@@ -286,6 +293,7 @@ export class RepairSellService {
     if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) return false;
     if (st.hp[i] >= st.maxHp[i]) return false;
     this.repairing.setAt(i, 1);
+    this.repairTimer.setAt(i, 0);
     this.sparkTimer.setAt(i, 0);
     this.world.audio.eva(player, EvaLine.Repairing);
     return true;
@@ -497,8 +505,26 @@ export class RepairSellService {
         continue;
       }
 
+      // Incoming damage owns the moment. Keep the wrench armed, but do not
+      // heal or charge while the structure is under active fire; the repair
+      // resumes only after a real out-of-combat window.
+      if (s.time - st.lastHitTime[i] < REPAIR.combatLockSeconds) {
+        st.flags[i] &= ~EntityFlag.BeingRepaired;
+        this.repairTimer.setAt(i, 0);
+        continue;
+      }
+
+      const untilPulse = this.repairTimer.getAt(i) - s.dt;
+      if (untilPulse > 0) {
+        this.repairTimer.setAt(i, untilPulse);
+        st.flags[i] |= EntityFlag.BeingRepaired;
+        active++;
+        continue;
+      }
+      this.repairTimer.setAt(i, REPAIR.pulseSeconds);
+
       const owner = st.owner[i] as PlayerId;
-      const wanted = Math.min(REPAIR_RATE * s.dt, st.maxHp[i] - st.hp[i]);
+      const wanted = Math.min(REPAIR_RATE * REPAIR.pulseSeconds, st.maxHp[i] - st.hp[i]);
       const cost = wanted * REPAIR_COST_PER_HP;
       let healed = wanted;
 

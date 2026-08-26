@@ -382,9 +382,9 @@ function createWindow(): BrowserWindow {
        * minimising freezes the match for BOTH, indefinitely. There is no
        * web-side fix for this.
        *
-       * Caveat worth knowing: with this off, the Page Visibility API keeps
-       * reporting `visible`, so any future `visibilitychange` pause logic
-       * silently stops firing. There is none in the product path today.
+       * Caveat worth knowing: with this off, the Page Visibility API can keep
+       * reporting `visible`. The product deliberately does not pause on focus
+       * loss; its only visibility listener flushes pending profile writes.
        */
       backgroundThrottling: false,
     },

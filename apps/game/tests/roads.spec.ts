@@ -436,11 +436,11 @@ describe('DecalField — the pool', () => {
     f.dispose();
   });
 
-  it('never expires a permanent decal', () => {
+  it('lets combat soot fade instead of blackening the map forever', () => {
     const f = flat();
     f.scorch(40, 40, 6);
     for (let i = 0; i < 40; i++) f.frame(10);
-    expect(f.liveCount).toBe(1);
+    expect(f.liveCount).toBe(0);
     f.dispose();
   });
 
@@ -550,6 +550,7 @@ describe('the procedural decal atlas has a drawn tile for every kind', () => {
     ['Crater', DecalKind.Crater], ['Oil', DecalKind.Oil], ['Dust', DecalKind.Dust],
     ['Manhole', DecalKind.Manhole], ['LightPool', DecalKind.LightPool],
     ['Crack', DecalKind.Crack], ['Patch', DecalKind.Patch], ['Squish', DecalKind.Squish],
+    ['Rust', DecalKind.Rust], ['Grime', DecalKind.Grime],
   ];
 
   for (const [name, kind] of KINDS) {

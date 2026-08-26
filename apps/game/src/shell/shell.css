@@ -830,6 +830,21 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* Native popup menus inherit the operating-system palette unless the control
+   declares one. That produced a white list with near-white text on Windows. */
+.vm-shell select {
+  color-scheme: dark;
+  color: var(--vm-text);
+  background-color: #07101b;
+  border: 1px solid var(--vm-line);
+}
+
+.vm-shell select option,
+.vm-shell select optgroup {
+  color: var(--vm-text);
+  background: #07101b;
+}
+
 .vm-shell .vm-page-foot {
   display: flex;
   align-items: center;
@@ -1395,7 +1410,7 @@
 }
 
 .vm-shell .vm-end-panel {
-  width: min(760px, 94vw);
+  width: min(1040px, 96vw);
 
   /* This rule was ONLY the width above, and that was the bug. `.vm-end` sits in
      a `.vm-screen`, which is `position: absolute; inset: 0` and does not
@@ -1416,7 +1431,22 @@
 }
 
 .vm-shell .vm-end-panel.has-campaign {
-  width: min(960px, 94vw);
+  width: min(1120px, 96vw);
+}
+
+.vm-shell .vm-end-panel > .vm-page-foot {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: stretch;
+}
+
+.vm-shell .vm-end-panel > .vm-page-foot .vm-spacer {
+  display: none;
+}
+
+.vm-shell .vm-end-panel > .vm-page-foot .vm-btn {
+  min-width: 0;
+  width: 100%;
 }
 
 /* Results carried the same fixed-pixel problem as the campaign selector: at
@@ -2494,10 +2524,34 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   color: var(--vm-text-faint);
 }
 
+.vm-shell .vm-mp-panel {
+  width: min(1240px, calc(100vw - 32px));
+}
+
+.vm-shell .vm-mp-identity {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vm-line);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.07), transparent 56%);
+}
+
+.vm-shell .vm-mp-identity .vm-row {
+  grid-template-columns: minmax(180px, 0.45fr) minmax(260px, 1fr);
+  padding-block: 6px;
+}
+
+.vm-shell .vm-mp-identity .vm-row-control {
+  justify-content: flex-start;
+}
+
+.vm-shell .vm-mp-layout {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+}
+
 .vm-shell .vm-mp-cards {
   margin: 0 18px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -2505,7 +2559,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 12px 12px 16px;
+  padding: 10px 10px 10px 14px;
   position: relative;
   text-align: left;
   font-family: inherit;
@@ -2542,6 +2596,14 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: calc(12px * var(--vm-text-scale, 1));
   line-height: 1.35;
   color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-mp-input.is-name {
+  width: min(28em, 100%);
+  font-family: inherit;
+  font-size: calc(14px * var(--vm-text-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: none;
 }
 
 .vm-shell .vm-mp-select {
@@ -2708,11 +2770,26 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   margin: 0 18px;
   /* Bounded so the browser cannot push the rest of the column off the panel.
      The page body scrolls; this scrolls inside it. */
-  max-height: 40vh;
+  min-height: 120px;
+  max-height: 30vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+@media (max-width: 900px) {
+  .vm-shell .vm-mp-identity .vm-row {
+    grid-template-columns: 1fr;
+  }
+
+  .vm-shell .vm-mp-identity .vm-row-control {
+    justify-content: stretch;
+  }
+
+  .vm-shell .vm-mp-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .vm-shell .vm-mp-rooms.is-locked {
@@ -5165,6 +5242,14 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   min-height: 38px;
   padding: 8px 13px;
   gap: 10px;
+}
+
+/* Primary buttons centre modal CTAs. A title-deck row is navigation, so its
+   label, number and icon must keep the same left edge as every sibling. */
+.vm-shell .vm-menu-nav > .vm-btn.is-primary {
+  justify-content: flex-start;
+  text-align: left;
+  letter-spacing: 0.18em;
 }
 
 .vm-shell .vm-menu-nav > .vm-btn::before {

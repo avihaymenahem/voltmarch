@@ -437,6 +437,21 @@ describe('buying a power', () => {
     expect(p.credits).toBeCloseTo(30_000 - entry.cost, 0);
   });
 
+  it('allows only one commander-power purchase on the line at a time', () => {
+    const rig = boughtRig();
+    const p = rig.world.player(0 as PlayerId);
+    p.credits = 30_000;
+    const scan = rig.catalog.byKey('power.orbitalScan')!;
+    const strike = rig.catalog.byKey('power.airstrike')!;
+
+    rig.channels.commands.issueProductionStart(p.id, BuildTab.Powers, scan.publicId, 1);
+    rig.channels.commands.issueProductionStart(p.id, BuildTab.Powers, strike.publicId, 1);
+    step(rig.service, rig.world, 2);
+
+    expect(p.queues[BuildTab.Powers as number].items.map((item) => item.defId))
+      .toEqual([scan.publicId]);
+  });
+
   it('is in the checksum, so two clients cannot disagree about who owns what', () => {
     // The line that makes reading the mask inside `simTick` SAFE. Without it a
     // divergence in ownership stays silent until somebody presses the button

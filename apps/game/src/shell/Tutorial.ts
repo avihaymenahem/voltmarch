@@ -64,6 +64,7 @@ import {
   CameraProbe,
   TUTORIAL_STEPS,
   copyFacts,
+  emptyProgress,
   emptyFacts,
   noteAcknowledge,
   noteHarvestDeposit,
@@ -697,6 +698,16 @@ export function tutorialSetup(base: Readonly<MatchSetup>): MatchSetup {
 export function tutorialUntouched(): boolean {
   const p = readTutorialProgress();
   return !p.done && p.furthest <= 0 && p.completed.length === 0;
+}
+
+/** Completed training leaves the title deck; Settings can reset this record. */
+export function tutorialCompleted(): boolean {
+  return readTutorialProgress().done;
+}
+
+/** Make training discoverable on the title deck again. */
+export function restoreTutorialMenuItem(): void {
+  writeTutorialProgress(emptyProgress());
 }
 
 /** The hint under the menu button, from the stored record. */

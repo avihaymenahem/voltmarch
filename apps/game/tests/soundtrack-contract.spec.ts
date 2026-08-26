@@ -18,6 +18,7 @@ describe('original soundtrack delivery contract', () => {
       'Silent Horizon',
       'Disciplined Ostinato',
       'Echoes of the Siege',
+      'Endless Warfront',
     ]);
 
     for (const cue of SOUNDTRACK) {
@@ -50,21 +51,26 @@ describe('original soundtrack delivery contract', () => {
 
   it('keeps the mixer and title score alive when the WebGPU backdrop is replaced', () => {
     const source = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'audio.system.ts'), 'utf8');
+    const application = readFileSync(
+      join(import.meta.dirname, '..', 'src', 'audio', 'ApplicationAudio.ts'),
+      'utf8',
+    );
     const worldDispose = source.slice(
       source.indexOf('  dispose(): void {'),
       source.indexOf('/* Event subscriptions', source.indexOf('  dispose(): void {')),
     );
-    const applicationDispose = source.slice(
-      source.indexOf('function disposeApplicationAudio'),
-      source.indexOf('function installApplicationTeardown'),
+    const applicationDispose = application.slice(
+      application.indexOf('export function disposeApplicationAudio'),
+      application.indexOf('if (import.meta.hot)'),
     );
 
-    expect(source).toContain('const firstAudioBoot = engine === null');
+    expect(source).toContain('const firstAudioBoot = !battlefieldAudioPrepared');
+    expect(source).toContain('ensureApplicationAudio(muted)');
     expect(worldDispose).not.toContain('music?.dispose()');
     expect(worldDispose).not.toContain('engine?.dispose()');
-    expect(applicationDispose).toContain('music?.dispose()');
-    expect(applicationDispose).toContain('engine?.dispose()');
-    expect(source).toContain("window.addEventListener('pagehide', onPageHide");
+    expect(applicationDispose).toContain('app?.music.dispose()');
+    expect(applicationDispose).toContain('app?.engine.dispose()');
+    expect(application).toContain("window.addEventListener('pagehide', onPageHide");
   });
 
   it('stages the saved mix before the title soundtrack starts', () => {
@@ -76,5 +82,38 @@ describe('original soundtrack delivery contract', () => {
     expect(engine).toContain('applyDesiredMix(f);');
     expect(settings).toContain('configureAudioMixer(settings.audio);');
     expect(shell).toMatch(/applySettings\(this\.settings\.get\(\), null, \[\s*'audio'/);
+  });
+
+  it('cannot let a stale match-end timer silence a rematch, and trims music only in battle', () => {
+    const source = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'audio.system.ts'), 'utf8');
+    const matchStart = source.slice(
+      source.indexOf("bus.on('match:started'"),
+      source.indexOf("bus.on('match:ended'"),
+    );
+    const matchEnd = source.slice(
+      source.indexOf("bus.on('match:ended'"),
+      source.indexOf('Selection barks go through'),
+    );
+
+    expect(source).toContain('export const MATCH_MUSIC_TRIM_DB = -2.5');
+    expect(Math.pow(10, -2.5 / 20)).toBeLessThanOrEqual(0.75);
+    expect(matchStart).toContain('cancelMatchEndQuiet();');
+    expect(matchStart).toContain('setMatchMusicTrim(true);');
+    expect(matchEnd).toContain('setMatchMusicTrim(false);');
+    expect(matchEnd).toContain('matchEndQuietTimer = setTimeout');
+  });
+
+  it('does not suspend WebAudio or pause simulation merely because focus was lost', () => {
+    const engine = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'AudioEngine.ts'), 'utf8');
+    const shell = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'Shell.ts'), 'utf8');
+    const visibility = shell.slice(
+      shell.indexOf('private readonly onVisibility'),
+      shell.indexOf('private readonly onSettingsChanged'),
+    );
+
+    expect(engine).not.toContain("window.addEventListener('blur'");
+    expect(engine).not.toContain('this.ctx.suspend()');
+    expect(visibility).not.toContain('setPaused(document.hidden');
+    expect(visibility).toContain('progression.flushProfile()');
   });
 });

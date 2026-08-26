@@ -471,13 +471,13 @@ describe('AIRSTRIKE', () => {
 describe('ORBITAL SCAN', () => {
   it('arms a live sweep over the enemy rather than charting a circle', () => {
     const rig = makeRig();
-    const calls: Array<{ player: number; seconds: number; radius: number }> = [];
+    const calls: Array<{ player: number; x: number; z: number; seconds: number; radius: number }> = [];
     // The structural probe the effect uses. `IVision` does not carry the manual
     // reveals, so a boot whose vision service has none must sweep nothing
     // rather than throw — which is the last test in this block.
     const vision = rig.world.vision as unknown as Record<string, unknown>;
-    vision.sweepEnemies = (player: number, seconds: number, radius: number): void => {
-      calls.push({ player, seconds, radius });
+    vision.sweepArea = (player: number, x: number, z: number, seconds: number, radius: number): void => {
+      calls.push({ player, x, z, seconds, radius });
     };
     spawn(rig, P1, 250, 180, { kind: EntityKind.Building });
     charge(rig);
@@ -485,6 +485,8 @@ describe('ORBITAL SCAN', () => {
     expect(rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).toBe('fired');
     expect(calls).toEqual([{
       player: P0 as number,
+      x: 250,
+      z: 180,
       seconds: 5,
       radius: COMMANDER_POWERS[CommanderPowerId.OrbitalScan].radius,
     }]);
@@ -496,7 +498,7 @@ describe('ORBITAL SCAN', () => {
   it('counts hostile assets only — not allies, not Gaia, not wrecks', () => {
     const rig = makeRig();
     const vision = rig.world.vision as unknown as Record<string, unknown>;
-    vision.sweepEnemies = (): void => {};
+    vision.sweepArea = (): void => {};
     spawn(rig, P0, 100, 100);                                   // own unit
     spawn(rig, P1, 250, 180);                                   // enemy unit
     spawn(rig, P1, 260, 180, { kind: EntityKind.Building });    // enemy base
@@ -510,7 +512,7 @@ describe('ORBITAL SCAN', () => {
   it('reports noTargets when the enemy owns nothing left to expose', () => {
     const rig = makeRig();
     const vision = rig.world.vision as unknown as Record<string, unknown>;
-    vision.sweepEnemies = (): void => {};
+    vision.sweepArea = (): void => {};
     spawn(rig, P0, 100, 100);
     charge(rig);
     expect(rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).toBe('noTargets');

@@ -679,6 +679,19 @@ describe('desktop shell import boundary', () => {
   });
 });
 
+describe('desktop fullscreen is native game state', () => {
+  it('routes match fullscreen through Electron before the browser API', () => {
+    const shell = readFileSync(path.join(REPO, 'apps/game/src/shell/Shell.ts'), 'utf8');
+    const start = shell.indexOf('export function goFullscreen');
+    const end = shell.indexOf('const ADJUSTERS', start);
+    const goFullscreen = shell.slice(start, end);
+    expect(goFullscreen).toContain('desktopBridge()');
+    expect(goFullscreen).toContain('desktop.setFullscreen(true)');
+    expect(goFullscreen.indexOf('desktop.setFullscreen(true)'))
+      .toBeLessThan(goFullscreen.indexOf('root.requestFullscreen'));
+  });
+});
+
 /* ==========================================================================
  * THE ADAPTER THE SWITCH ACTUALLY GOT
  * ==========================================================================

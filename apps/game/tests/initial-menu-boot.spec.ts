@@ -22,16 +22,28 @@ describe('initial title-menu boot', () => {
   const html = read('apps/game/index.html');
 
   it('publishes the interactive menu before scheduling its decorative battlefield', () => {
-    const firstBoot = /if \(firstBoot && this\.game === null\) \{([\s\S]*?)\n\s*\}/.exec(shell)?.[1] ?? '';
-    expect(firstBoot.length).toBeGreaterThan(0);
+    const branchStart = shell.indexOf('if (!keepBackdrop || this.game === null) {');
+    const branchEnd = shell.indexOf('this.scheduleInitialBackdrop();', branchStart);
+    const imageFirst = branchStart >= 0 && branchEnd > branchStart
+      ? shell.slice(branchStart, branchEnd + 'this.scheduleInitialBackdrop();'.length)
+      : '';
+    expect(imageFirst.length).toBeGreaterThan(0);
 
-    const show = firstBoot.indexOf("this.show(new MainMenuScreen(this), 'menu')");
-    const ready = firstBoot.indexOf('this.options.onReady?.()');
-    const schedule = firstBoot.indexOf('this.scheduleInitialBackdrop()');
+    const show = imageFirst.indexOf("this.show(new MainMenuScreen(this), 'menu')");
+    const ready = imageFirst.indexOf('this.options.onReady?.()');
+    const schedule = imageFirst.indexOf('this.scheduleInitialBackdrop()');
     expect(show).toBeGreaterThanOrEqual(0);
     expect(ready).toBeGreaterThan(show);
     expect(schedule).toBeGreaterThan(ready);
-    expect(firstBoot).not.toContain('await this.bootGame');
+    expect(imageFirst).not.toContain('await this.bootGame');
+    expect(imageFirst).not.toContain('new LoadingScreen');
+  });
+
+  it('starts the streamed menu cue without importing the battlefield', () => {
+    expect(shell).toContain("import('../audio/ApplicationAudio')");
+    expect(shell).toContain('startApplicationAudio(false)');
+    expect(html).toContain('href="/audio/music/echoes-of-the-siege.ogg"');
+    expect(html).toContain('rel="preload" as="audio"');
   });
 
   it('cancels a not-yet-started backdrop before launching a real match', () => {

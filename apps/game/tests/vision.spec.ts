@@ -593,7 +593,7 @@ describe('Vision — cadence', () => {
  *
  * The power used to call `exploreCircle`, which sets VIS_EXPLORED: permanent
  * terrain memory, no units, and therefore a literal no-op on the second cast
- * over the same ground. `sweepEnemies` arms a deadline instead and `update`
+ * over the same ground. `sweepArea` arms a deadline instead and `update`
  * re-stamps every hostile asset until it passes, so the light TRACKS them.
  */
 describe('Vision — Orbital Scan sweep', () => {
@@ -605,7 +605,7 @@ describe('Vision — Orbital Scan sweep', () => {
     v.update();
     expect(v.gridFor(P0)[cellOf(400, 400)], 'lit before the sweep').toBe(0);
 
-    v.sweepEnemies(P0, 5, 30);
+    v.sweepArea(P0, 400, 400, 5, 30);
     v.update();
 
     expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
@@ -613,13 +613,13 @@ describe('Vision — Orbital Scan sweep', () => {
     expect(v.gridFor(P1)[cellOf(100, 100)]).toBe(0);
   });
 
-  it('follows a moving enemy rather than photographing where it was', () => {
+  it('stays on the clicked area when an enemy moves away', () => {
     const world = makeWorld();
     const v = new Vision(world);
     const tank = spawnScout(world, P1, 400, 400, 12);
     const i = world.store.index(tank);
 
-    v.sweepEnemies(P0, 5, 30);
+    v.sweepArea(P0, 400, 400, 5, 30);
     v.update();
     expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
 
@@ -630,7 +630,7 @@ describe('Vision — Orbital Scan sweep', () => {
     world.spatial.rebuild();
     v.update();
 
-    expect(v.gridFor(P0)[cellOf(400, 300)], 'the light did not follow').toBe(VIS_FULL);
+    expect(v.gridFor(P0)[cellOf(400, 300)], 'the scan followed the enemy base').toBe(0);
   });
 
   it('expires, and the cells then decay through the ordinary regrow path', () => {
@@ -638,7 +638,7 @@ describe('Vision — Orbital Scan sweep', () => {
     const v = new Vision(world);
     spawnScout(world, P1, 400, 400, 12);
 
-    v.sweepEnemies(P0, 5, 30);
+    v.sweepArea(P0, 400, 400, 5, 30);
     expect(v.isSweeping(P0)).toBe(true);
     v.update();
     expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
@@ -655,15 +655,15 @@ describe('Vision — Orbital Scan sweep', () => {
     expect(g[cellOf(400, 400)] & VIS_EXPLORED).toBe(VIS_EXPLORED);
   });
 
-  it('does not light empty ground — scouting keeps its job', () => {
+  it('lights empty ground inside the player-selected radius only', () => {
     const world = makeWorld();
     const v = new Vision(world);
     spawnScout(world, P1, 400, 400, 12);
 
-    v.sweepEnemies(P0, 5, 30);
+    v.sweepArea(P0, 200, 200, 5, 30);
     v.update();
 
-    // 200 m from the only enemy asset: nothing owns it, so nothing reveals it.
-    expect(v.gridFor(P0)[cellOf(200, 200)]).toBe(0);
+    expect(v.gridFor(P0)[cellOf(200, 200)]).toBe(VIS_FULL);
+    expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(0);
   });
 });

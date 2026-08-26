@@ -30,6 +30,9 @@
       href="/brand/splash-1600.webp"
       imagesrcset="/brand/splash-640.webp 640w, /brand/splash-1600.webp 1600w"
       imagesizes="100vw" />
+<!-- Fetch the one title cue beside the key art. HTMLAudio streams it; this is
+     a network head start, not decoded PCM and not a preload of all three cues. -->
+<link rel="preload" as="audio" type="audio/ogg" href="/audio/music/echoes-of-the-siege.ogg" />
 
 <style>
   /* ------------------------------------------------------------------ *
@@ -150,7 +153,7 @@
        this free after the first battlefield frame. */
     background:
       linear-gradient(180deg, rgba(0,5,10,.18), rgba(0,2,6,.62)),
-      url('/brand/splash-1600.webp') 50% 10% / cover no-repeat,
+      url('/brand/splash-1600.webp') 50% 50% / cover no-repeat,
       #000;
   }
   #gl {
@@ -213,26 +216,11 @@
     z-index: 0;
     width: 100%;
     height: 100%;
-    /*
-     * `cover` crops, and the crop is chosen to protect the lockup.
-     *
-     * MEASURED off splash-1600.webp, not estimated: the artwork's own
-     * VOLTMARCH occupies x 0.310..0.687, y 0.030..0.346 of the frame.
-     * Those four numbers drive this line and the media query further down,
-     * and `tests/boot-splash.spec.ts` re-derives both from them.
-     *
-     * Vertical position only bites when the viewport is WIDER than the
-     * source's 16:9 — at or below it, cover scales by height and crops
-     * width instead, so this value does nothing at 16:9, 16:10 or any
-     * portrait window. Above it the visible band is `S/A` of the source
-     * height with its top edge at `pos x (1 - S/A)`, which must stay above
-     * 0.030. That bounds `pos <= 0.126` at 21:9. 10% clears it with margin
-     * and holds the lockup out to A = 2.54; beyond that — 32:9 — the wing
-     * tips do clip, and chasing it would mean anchoring at 6% and throwing
-     * away the foreground on every ordinary monitor to serve a rare one.
-     */
+    /* The replacement art contains no baked wordmark. A centred cover crop
+       keeps the command tower and vehicle silhouettes stable while the DOM
+       lockup remains the one canonical title. */
     object-fit: cover;
-    object-position: 50% 10%;
+    object-position: 50% 50%;
     opacity: 0;
     transition: opacity 760ms cubic-bezier(.4,0,.2,1);
     pointer-events: none;
@@ -334,76 +322,15 @@
     padding-bottom: clamp(26px, 6vh, 74px);
   }
 
-  /*
-   * THE ARTWORK CONTAINS THE WORDMARK, so the DOM one is a duplicate — but
-   * only where the crop keeps it, and THE THRESHOLD IS DERIVED, NOT PICKED.
-   *
-   * This said 4:3 on the first pass, from an assumption that a portrait
-   * viewport clips the lockup early. It does not, and a screenshot at
-   * 569x595 showed two VOLTMARCHes stacked down the page. The real bound:
-   * for a viewport aspect A below the source's 16:9, `cover` scales to fill
-   * the height and shows the middle `A/S` of the source width, centred. The
-   * lockup spans x 0.310..0.687 — 0.190 either side of the midline at its
-   * widest — so it survives while A/(2S) >= 0.190, that is A >= 0.676, not
-   * 1.33. 17/25 is 0.68: the derived bound, rounded up by 0.65%.
-   *
-   * THE MARGIN GOES IN THE BOX, NOT IN THIS NUMBER, and the second attempt
-   * got that backwards too. Padding the threshold UPWARD to 4/5 opened a
-   * band from 0.676 to 0.8 where the artwork's lockup is whole and the <h1>
-   * is drawn anyway — the duplicate, back again, just narrower; a screenshot
-   * at 600x800 showed it. Slack belongs in LOCKUP, which was measured by
-   * cropping to those bounds and confirming a visible margin on all four
-   * sides, so 0.676 is already conservative and this number should sit on it.
-   *
-   * Below it — a phone held upright — the crop really does cut both ends of
-   * the lockup, so the <h1> IS the title and the art is scenery behind it.
-   *
-   * `:not([data-state])` scopes this to an ordinary boot. `__vmFail` sets
-   * that attribute, and the failure states want the wordmark back: they dim
-   * the art to let the panel read, and the alarm blink is attached to
-   * `.title img`, so hiding it would silently delete the alarm.
-   */
-  @media (aspect-ratio >= 17/25) {
-    #loading.has-art:not([data-state]) .title { display: none; }
-  }
-
-  /*
-   * PORTRAIT: THE ARTWORK STOPS TRYING TO BE THE TITLE.
-   *
-   * Below the threshold the crop cuts both ends of the painted lockup, so the
-   * <h1> comes back — and on its own that leaves a clipped VOLTMARCH sitting
-   * directly above a clean one, which is the duplicate again wearing a worse
-   * hat. It cannot be solved by moving the crop: at aspects under 16:9 cover
-   * fills by HEIGHT, nothing vertical is cut, and `object-position` has no
-   * axis left to work on.
-   *
-   * So the top scrim goes almost opaque instead. The clipped lockup sinks
-   * into the dark band the <h1> then sits on, the battle scene stays visible
-   * through the middle, and the frame reads as a designed portrait splash
-   * rather than a landscape one that has been squeezed.
-   *
-   * Range syntax rather than `max-aspect-ratio: 17/25`, because min- and max-
-   * are both inclusive and would BOTH match at exactly 0.68 — hiding the
-   * title and burying the artwork's, for a curtain with no title at all.
-   */
-  @media (aspect-ratio < 17/25) {
+  /* The art has no baked lettering, so the accessible DOM lockup stays at
+     every aspect. Portrait merely deepens the top scrim around it. */
+  @media (aspect-ratio < 3/4) {
     #loading.has-art {
-      /*
-       * THE KNEE HAS TO CLEAR THE LOCKUP, and the first attempt left it at
-       * the landscape 22% while the painted lockup runs to y 0.346. Its
-       * lower half — chevron and stars — sat under barely half the scrim and
-       * still read as a cut wordmark under the real one. In portrait there
-       * is no vertical crop, so those source fractions ARE viewport
-       * fractions: the knee moves to 40% so the whole band is covered at
-       * >= .90, then clears fast enough to leave the battle scene visible.
-       */
-      --splash-scrim-top: .97;
-      --splash-scrim-upper: .90;
-      --splash-scrim-knee: 40%;
-      --splash-scrim-clear: 62%;
+      --splash-scrim-top: .82;
+      --splash-scrim-upper: .48;
+      --splash-scrim-knee: 32%;
+      --splash-scrim-clear: 58%;
     }
-    /* The furniture STAYS at the bottom, where the bottom scrim is. Centring
-       it put the status line and the progress bar over open surf. */
   }
 
   /* --- Title treatment: industrial stencil, steel + volt-cyan --------- *

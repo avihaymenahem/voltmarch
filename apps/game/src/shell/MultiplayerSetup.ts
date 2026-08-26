@@ -126,18 +126,24 @@ export class MultiplayerSetup implements Screen {
     host.classList.add('vm-page');
 
     const frame = pageFrame('Multiplayer', () => { this.back(); });
+    frame.root.classList.add('vm-mp-panel');
+
+    // Identity is shared by hosting, quick match and room joins. Keeping it in
+    // one calm top band avoids asking the player for the same decision in
+    // three visually unrelated workflows.
+    this.buildIdentity(frame.body);
 
     // The same two-column grid `SkirmishSetup` uses, so the two lobbies read as
     // one product — and it already collapses to a single column under 900px.
-    const grid = el('div', 'vm-setup');
+    const grid = el('div', 'vm-setup vm-mp-layout');
     const left = el('div', 'vm-setup-col');
     const right = el('div', 'vm-setup-col');
     grid.appendChild(left);
     grid.appendChild(right);
     frame.body.appendChild(grid);
 
-    this.buildYourSide(left);
-    this.buildBrowser(right);
+    this.buildHost(left);
+    this.buildFind(right);
 
     /* -- status ------------------------------------------------------------ */
     this.status = el('div', 'vm-mp-status', PHASE_TEXT.idle);
@@ -166,12 +172,12 @@ export class MultiplayerSetup implements Screen {
    * LEFT — what you bring
    * ==================================================================== */
 
-  private buildYourSide(col: HTMLElement): void {
-    col.appendChild(el('div', 'vm-mp-legend', 'Your side'));
-
+  private buildIdentity(parent: HTMLElement): void {
+    const band = el('section', 'vm-mp-identity');
+    band.appendChild(el('div', 'vm-mp-legend', 'Commander identity'));
     const commander = el('input') as HTMLInputElement;
     commander.type = 'text';
-    commander.className = 'vm-mp-input';
+    commander.className = 'vm-mp-input is-name';
     commander.maxLength = COMMANDER_NAME_MAX;
     commander.autocomplete = 'off';
     commander.spellcheck = false;
@@ -190,7 +196,7 @@ export class MultiplayerSetup implements Screen {
       this.shell.settings.patch({ gameplay: { commanderName: name } });
     });
     this.nameInput = commander;
-    col.appendChild(row('Commander', commander, '2–20 letters or numbers'));
+    band.appendChild(row('Commander', commander, 'Used for rooms, chat and match records'));
 
     const cards = el('div', 'vm-mp-cards');
     for (const f of this.factions) {
@@ -209,10 +215,14 @@ export class MultiplayerSetup implements Screen {
       focusable(card);
       cards.appendChild(card);
     }
-    col.appendChild(cards);
+    band.appendChild(cards);
+    parent.appendChild(band);
+  }
+
+  private buildHost(col: HTMLElement): void {
 
     /* -- host -------------------------------------------------------------- */
-    col.appendChild(el('div', 'vm-mp-legend', 'Host a match'));
+    col.appendChild(el('div', 'vm-mp-legend', 'Create a match'));
 
     const mapSelect = this.select(MAPS.map((m) => ({ value: m.id, label: m.name })), this.map, (v) => {
       this.map = v;
@@ -288,8 +298,10 @@ export class MultiplayerSetup implements Screen {
     col.appendChild(hostBlock);
     col.appendChild(this.codeOut);
 
-    /* -- join by code ------------------------------------------------------ */
-    col.appendChild(el('div', 'vm-mp-legend', 'Have a code?'));
+  }
+
+  private buildJoinByCode(col: HTMLElement): void {
+    col.appendChild(el('div', 'vm-mp-legend', 'Join with invite code'));
 
     const input = el('input') as HTMLInputElement;
     input.type = 'text';
@@ -325,7 +337,22 @@ export class MultiplayerSetup implements Screen {
    * RIGHT — who is playing
    * ==================================================================== */
 
-  private buildBrowser(col: HTMLElement): void {
+  private buildFind(col: HTMLElement): void {
+    col.appendChild(el('div', 'vm-mp-legend', 'Find a match'));
+
+    this.queueBtn = button('Quick Match', {
+      hint: 'fastest route · 1v1',
+      variant: 'primary',
+      onClick: () => {
+        const name = this.identity();
+        if (name !== null) this.session?.queue(this.faction.id as number, name);
+      },
+    });
+    const queueBlock = el('div', 'vm-mp-block');
+    queueBlock.appendChild(this.queueBtn);
+    col.appendChild(queueBlock);
+
+    this.buildJoinByCode(col);
     col.appendChild(el('div', 'vm-mp-legend', 'Open matches'));
 
     /* -- filters ----------------------------------------------------------- */
@@ -353,18 +380,6 @@ export class MultiplayerSetup implements Screen {
     col.appendChild(this.roomList);
     this.roomCount = el('div', 'vm-mp-count', '');
     col.appendChild(this.roomCount);
-
-    /* -- quick match, under the list --------------------------------------- */
-    this.queueBtn = button('Quick Match', {
-      hint: 'any opponent',
-      onClick: () => {
-        const name = this.identity();
-        if (name !== null) this.session?.queue(this.faction.id as number, name);
-      },
-    });
-    const queueBlock = el('div', 'vm-mp-block');
-    queueBlock.appendChild(this.queueBtn);
-    col.appendChild(queueBlock);
 
     this.renderRooms();
   }

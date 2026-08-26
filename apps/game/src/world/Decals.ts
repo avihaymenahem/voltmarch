@@ -42,8 +42,8 @@
  * ----
  * Age is evaluated in the fragment shader from a per-vertex spawn stamp and a
  * per-vertex lifetime, so a decal ages with zero CPU cost. A `life` of 0 means
- * permanent (scorch, manholes) — bible §8.10 says scorch never fades and is
- * capped by oldest-eviction, which is exactly what the ring buffer does.
+ * permanent (manholes and authored road wear). Combat soot fades instead of
+ * turning a fought-over base into a permanently black patch.
  * ============================================================================
  */
 
@@ -74,7 +74,7 @@ export const enum DecalKind {
   Tread = 0,
   /** Wheeled-vehicle tyre mark. Fainter and narrower than a tread. */
   Tyre = 1,
-  /** Explosion soot. Permanent, evicted oldest-first. */
+  /** Explosion soot. Long-lived, then fades. */
   Scorch = 2,
   /** Impact crater: dark bowl with a brighter ejecta ring. */
   Crater = 3,
@@ -100,9 +100,13 @@ export const enum DecalKind {
    * so `vfx.system.ts` dropped every one of them on the floor.
    */
   Squish = 10,
+  /** Oxide runoff and tracked-in iron around industrial structures. */
+  Rust = 11,
+  /** Broad service grime: old soil, soot and traffic gathered at a footprint. */
+  Grime = 12,
 }
 
-/** Atlas tiles per row/column. 4x4 = 16 slots, 11 used. */
+/** Atlas tiles per row/column. 4x4 = 16 slots, 13 used. */
 const ATLAS_COLS = 4;
 const ATLAS_TILE = DECAL_ATLAS_SIZE / ATLAS_COLS;
 
@@ -137,12 +141,14 @@ const KIND_TINT: readonly (readonly [number, number, number])[] = [
   // ground are the ones already in the dirt, and `tools/metrics.mjs` scores hue
   // leakage. A crush mark is a dark stain, not a puddle.
   [SQUISH_DARKEN, SQUISH_DARKEN * 0.90, SQUISH_DARKEN * 0.86], // Squish
+  [0.82, 0.61, 0.43],                                          // Rust — oxidised iron
+  [0.67, 0.65, 0.58],                                          // Grime — old earth/soot
 ];
 
 /** Default lifetime in seconds. 0 = permanent. */
 const KIND_LIFE: readonly number[] = [
-  TREAD_LIFE_SECONDS, TREAD_LIFE_SECONDS * 0.8, 0, 0, 0, 14, 0, 0, 0, 0,
-  SQUISH_LIFE_SECONDS,
+  TREAD_LIFE_SECONDS, TREAD_LIFE_SECONDS * 0.8, 150, 240, 180, 14, 0, 0, 0, 0,
+  SQUISH_LIFE_SECONDS, 0, 0,
 ];
 
 /* ==========================================================================
@@ -395,6 +401,39 @@ function buildDecalAtlas(): THREE.DataTexture {
         const f = 0.5 - core * 0.12 + fringe * 0.18;
         put(DecalKind.Squish, lx, ly, f, f * 0.99, f * 0.97, a);
       }
+
+      /* -- 11: RUST RUNOFF ---------------------------------------------- */
+      {
+        // One pooled ground mark can imply years of weathering without adding
+        // a second material to every building. The upper lobe collects beside
+        // the wall and three tapered runs pull away from it. Every feature is
+        // deliberately broad: at RTS distance this reads as oxidised runoff,
+        // not orange pixel noise.
+        const warp = fbm2(u * 2.0 + 7, v * 2.0, 2, 2, 0.5, 2111) * 0.20;
+        const poolR = Math.hypot(sx / 0.82, (sy - 0.34) / 0.58) + warp;
+        const pool = 1 - smoothstep(0.48, 1.0, poolR);
+        const tailWindow = smoothstep(0.48, 0.12, sy) * smoothstep(-1.0, -0.28, sy);
+        const runA = 1 - smoothstep(0.055, 0.18, Math.abs(sx + 0.34 + sy * 0.08));
+        const runB = 1 - smoothstep(0.045, 0.15, Math.abs(sx - 0.02 - sy * 0.05));
+        const runC = 1 - smoothstep(0.050, 0.17, Math.abs(sx - 0.39 + sy * 0.10));
+        const runs = Math.max(runA * 0.72, runB, runC * 0.62) * tailWindow;
+        const a = clamp01(pool * 0.88 + runs * 0.58) * margin;
+        put(DecalKind.Rust, lx, ly, 0.5, 0.5, 0.5, a);
+      }
+
+      /* -- 12: SERVICE GRIME -------------------------------------------- */
+      {
+        // A low, asymmetric smear for loading aprons and the dead ground near
+        // machinery. Two-octave outline warp only; the interior stays smooth
+        // so the mark adds history and material variation rather than static.
+        const warp = fbm2(u * 1.9, v * 1.9 + 4, 2, 2, 0.5, 2477) * 0.27;
+        const rr = Math.hypot((sx + sy * 0.14) / 0.96, sy / 0.64) + warp;
+        const body = 1 - smoothstep(0.34, 1.0, rr);
+        const dragged = (1 - smoothstep(0.10, 0.46, Math.abs(sx + 0.42)))
+          * (1 - smoothstep(0.15, 0.96, Math.abs(sy))) * 0.34;
+        const a = clamp01(body * 0.78 + dragged) * margin;
+        put(DecalKind.Grime, lx, ly, 0.5, 0.5, 0.5, a);
+      }
     }
   }
 
@@ -450,7 +489,7 @@ varying vec3 vTint;
 void main() {
   float life = vParams.z;
   float age  = max(uTime - vParams.y, 0.0);
-  // life <= 0 means permanent (bible §8.10: scorch never fades, it is evicted).
+  // life <= 0 means permanent (reserved for authored ambient marks).
   // Otherwise hold full strength to 55% of life, then ramp out. A linear fade
   // from t=0 makes fresh tracks look weak, which is the wrong read entirely.
   float fade = life <= 0.0 ? 1.0 : 1.0 - smoothstep(life * 0.55, life, age);
@@ -767,10 +806,10 @@ export class DecalField {
     this.spawn(kind, x - ox, z - oz, halfW, TREAD_HALF_LENGTH, yaw, -1, strength);
   }
 
-  /** Explosion soot. Permanent, capped by oldest-eviction (bible §8.10). */
+  /** Explosion soot. Long-lived, then shader-faded and reclaimed. */
   scorch(x: number, z: number, radius = SCORCH_HALF_SIZE, yaw = 0, strength = 1): number {
     // Bible §8.10: aspect 1.7:1, so the minor axis is 1/1.7 of the major.
-    return this.spawn(DecalKind.Scorch, x, z, radius / 1.7, radius, yaw, 0, strength);
+    return this.spawn(DecalKind.Scorch, x, z, radius / 1.7, radius, yaw, -1, strength);
   }
 
   /** Impact crater: dark bowl plus a brighter ejecta ring. */

@@ -39,7 +39,7 @@ import { describe, expect, it } from 'vitest';
 
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
-import { Rng } from '../src/core/math';
+import { Rng, footprintOriginCell, isInMap } from '../src/core/math';
 import { CELL, DEFAULT_SEED, MAP_SIZE } from '../src/core/config';
 import {
   EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind, UnitState,
@@ -51,7 +51,9 @@ import {
 } from '../src/data/Civilians';
 import { BUILDINGS, DEF_TABLES } from '../src/data/Defs';
 import {
+  CIVILIAN_CAPTURE_BUILD_CLEARANCE, CIVILIAN_CAPTURE_BUILD_PAD_OFFSET,
   CIVILIAN_HAMLET_OFFSET, FALLBACK_BUILDINGS, START_CLEAR_RADIUS, buildScenario,
+  civilianSettlementShape,
   clearScenario, entityKeyOf, resolveDefBinding, startSpots,
 } from '../src/game/Scenarios';
 import { STRUCTURE_BY_KEY } from '../src/art/BuildingDefs';
@@ -557,20 +559,29 @@ describe('the cursor can express both verbs against a neutral structure', () => 
  * ========================================================================== */
 
 describe('the hamlets are a symmetric, seeded proposition', () => {
-  function civiliansIn(seed: number): { key: string; x: number; z: number }[] {
+  function civiliansIn(seed: number): { key: string; x: number; z: number; valid: boolean }[] {
     const world = new World();
     world.addPlayer(Faction.Allies, 'A', true, true);
     world.addPlayer(Faction.Soviets, 'B', false, false);
     buildScenario(world, 'skirmish', seed, { start: 'mcv' });
 
-    const out: { key: string; x: number; z: number }[] = [];
+    const out: { key: string; x: number; z: number; valid: boolean }[] = [];
+    const origin = new Int32Array(2);
     const s = world.store;
     for (let a = 0; a < s.aliveCount; a++) {
       const i = s.alive[a];
       if (s.kind[i] !== EntityKind.Building) continue;
       const key = entityKeyOf(s.handleOf(i));
       if (!CIVILIAN_KEYS.includes(key)) continue;
-      out.push({ key, x: s.posX[i], z: s.posZ[i] });
+      const dim = CIVILIAN_DIMENSIONS[key]!;
+      footprintOriginCell(s.posX[i], s.posZ[i], dim.w, dim.h, origin);
+      let valid = true;
+      for (let dz = 0; dz < dim.h; dz++) for (let dx = 0; dx < dim.w; dx++) {
+        const cx = origin[0] + dx;
+        const cz = origin[1] + dz;
+        if (!isInMap(cx, cz)) valid = false;
+      }
+      out.push({ key, x: s.posX[i], z: s.posZ[i], valid });
     }
     clearScenario();
     return out;
@@ -592,6 +603,9 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
     // spots, so a different seed has to move it.
     const c = civiliansIn(90210);
     expect(c.length).toBe(a.length);
+    expect(c).not.toEqual(a);
+    expect(civilianSettlementShape(4242)).toEqual(civilianSettlementShape(4242));
+    expect(civilianSettlementShape(90210)).not.toEqual(civilianSettlementShape(4242));
   });
 
   it('puts nothing inside either opening', () => {
@@ -608,6 +622,39 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
           Math.hypot(p.x - s.x, p.z - s.z),
           `${p.key} is inside an opening`,
         ).toBeGreaterThan(START_CLEAR_RADIUS * 2);
+      }
+    }
+  });
+
+  it('keeps every capture footprint inside the playable grid across seeds', () => {
+    for (const seed of [7, 4242, 90210, 3910129]) {
+      const placed = civiliansIn(seed);
+      expect(placed.filter((p) => !p.valid), `invalid capture footprint at seed ${seed}`).toEqual([]);
+    }
+  });
+
+  it('reserves a usable build pocket clear of every capture structure', () => {
+    const seed = 4242;
+    const spots = startSpots(MAP_SIZE * 0.5, MAP_SIZE * 0.5, 2, null, seed);
+    const ax = spots[0].x, az = spots[0].z;
+    const bx = spots[1].x, bz = spots[1].z;
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    const vx = dx / len, vz = dz / len;
+    const ux = -vz, uz = vx;
+    const mx = (ax + bx) * 0.5, mz = (az + bz) * 0.5;
+    const shape = civilianSettlementShape(seed);
+    const captures = civiliansIn(seed).filter((p) => p.key !== CIVILIAN_KEYS[3]);
+
+    for (const side of [1, -1]) {
+      const hx = mx + ux * side * shape.offset;
+      const hz = mz + uz * side * shape.offset;
+      const px = hx + vx * CIVILIAN_CAPTURE_BUILD_PAD_OFFSET;
+      const pz = hz + vz * CIVILIAN_CAPTURE_BUILD_PAD_OFFSET;
+      expect(isInMap(Math.floor(px / CELL), Math.floor(pz / CELL))).toBe(true);
+      for (const c of captures) {
+        expect(Math.hypot(c.x - px, c.z - pz), `${c.key} overlaps reserved pad`)
+          .toBeGreaterThan(CIVILIAN_CAPTURE_BUILD_CLEARANCE);
       }
     }
   });

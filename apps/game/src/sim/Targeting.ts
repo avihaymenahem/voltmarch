@@ -368,7 +368,12 @@ export class TargetingSystem {
     // instead of waiting for its slot to come round, because standing idle
     // for a quarter second after a kill is the most visible AI failure an RTS
     // has. That burst is bounded by the number of targets lost this tick.
-    const sliceTick = sliceForEntity(s.tick, i, TARGETING_SLICE);
+    // Aircraft cross their whole weapon envelope in less than one ordinary
+    // targeting slice. Let an idle flyer with no valid lock scan immediately;
+    // otherwise it can pass a target between slices and appear never to
+    // auto-attack despite being on Aggressive stance.
+    const sliceTick = sliceForEntity(s.tick, i, TARGETING_SLICE)
+      || (isAirborne(st, i) && !stillGood);
     if (stillGood && !sliceTick) { this.stats.engaged++; return; }
     if (!stillGood && !sliceTick && !hadTarget) return;
     if (!stanceAllowsAcquire(st.stance[i] as Stance) && !stillGood) return;
@@ -474,7 +479,11 @@ export class TargetingSystem {
     const chase = STANCE_CHASE_METRES[st.stance[i]] ?? 0;
     if (chase <= 0) return 0;
     if (!this.canDrive(i)) return 0;
-    return w.range * APPROACH_STOP_FRAC + chase;
+    const stanceReach = w.range * APPROACH_STOP_FRAC + chase;
+    // An aircraft's authored sight is its patrol-awareness envelope. Ground
+    // units keep the deliberately tight stance leash; fast flyers need enough
+    // warning distance to turn and make a pass before crossing the target.
+    return isAirborne(st, i) ? Math.max(stanceReach, st.sight[i]) : stanceReach;
   }
 
   /**

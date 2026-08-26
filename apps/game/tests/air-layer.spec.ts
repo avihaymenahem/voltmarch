@@ -367,6 +367,22 @@ function spawnGunship(rig: CombatRig, player: PlayerId, x: number, z: number): E
 const W_RIFLE = weaponIndexOf('rifle');
 const W_HEAVY_CANNON = weaponIndexOf('heavyCannon');
 const W_AA = weaponIndexOf('aaCannon');
+const W_VINDICATOR = weaponIndexOf('vindicatorMissile');
+
+describe('aircraft auto-acquisition', () => {
+  it('acquires a visible ground target on its first idle targeting pass', () => {
+    const rig = makeCombatRig();
+    const plane = spawnGunship(rig, P0, 120, 120);
+    const target = spawnShooter(rig, P1, 120, 150, W_HEAVY_CANNON);
+    const st = rig.world.store;
+    const pi = st.index(plane);
+    st.weaponIndex[pi] = W_VINDICATOR;
+    st.flags[pi] |= EntityFlag.CanAttack;
+
+    rig.step(1);
+    expect(st.targetId[pi]).toBe(target as number);
+  });
+});
 
 describe('canTargetAir — the gate, and its default', () => {
   it('defaults to false, which is the opposite of its sibling', () => {

@@ -1107,12 +1107,11 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'sys.speed',
     label: 'Cycle Game Speed',
-    description: 'Reserved. The binding is stored, but nothing in the engine reads it yet.',
+    description: 'Cycles the live skirmish through every available simulation speed.',
     category: 'interface',
     surface: 'global',
     binding: 'rebindable',
     defaultChord: chord('Backslash'),
-    live: false,
   },
   {
     id: 'sys.screenshot',

@@ -1114,9 +1114,65 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   },
 ];
 
+/**
+ * Capturable civic infrastructure keeps one neutral visual identity after its
+ * owner changes. These assets intentionally live in the shared building system
+ * and register through FACTION_ANY; putting them in an army module would make a
+ * hospital repaint itself when an engineer takes it.
+ */
+const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
+  {
+    key: 'civ_derrick',
+    label: 'Civilian Oil Derrick',
+    url: new URL('../assets/buildings/civilian/compressed/oil-derrick.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/civilian/derived/oil-derrick.shadow.glb', import.meta.url).href,
+    widthScale: 0.94,
+    depthScale: 0.94,
+    heightScale: 0.98,
+    creaseAngle: 40,
+    shadowInset: 0.92,
+    proceduralParts: 'none',
+    style: {
+      color: [0.88, 0.82, 0.72],
+      metalness: 0.18,
+      roughness: 0.76,
+      normalScale: 1.24,
+      ambient: [0.16, 0.13, 0.08],
+      ambientIntensity: 0.07,
+      clearcoat: 0.02,
+      clearcoatRoughness: 0.88,
+      envMapIntensity: 0.72,
+    },
+  },
+  {
+    key: 'civ_hospital',
+    label: 'Civilian Hospital',
+    url: new URL('../assets/buildings/civilian/compressed/hospital.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/civilian/derived/hospital.shadow.glb', import.meta.url).href,
+    widthScale: 0.95,
+    depthScale: 0.93,
+    heightScale: 0.96,
+    creaseAngle: 38,
+    shadowInset: 0.94,
+    proceduralParts: 'none',
+    style: {
+      color: [0.92, 0.84, 0.76],
+      metalness: 0.03,
+      roughness: 0.84,
+      normalScale: 1.16,
+      ambient: [0.10, 0.14, 0.15],
+      ambientIntensity: 0.06,
+      clearcoat: 0.01,
+      clearcoatRoughness: 0.92,
+      envMapIntensity: 0.62,
+    },
+  },
+];
+
 const IMPORTED_STRUCTURES: readonly ImportedStructureSpec[] = [
   ...IMPORTED_SOVIET_STRUCTURES,
   ...IMPORTED_ALLIED_STRUCTURES,
+  ...IMPORTED_CIVILIAN_STRUCTURES,
 ];
 
 let importedSurfaceMask: THREE.DataTexture | null = null;

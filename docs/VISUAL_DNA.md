@@ -1333,7 +1333,7 @@ Ambience) map to the *first* gain of each bus with `gain = (v/100)^2.2`.
 | Large explosion | sfx / music | −9 / −3 dB | 12 / 20 ms | 400 / 300 ms | 700 / 600 ms |
 | Nuke | music, sfx, ui, amb | **−14 dB** | 30 ms | 2200 ms | 1200 ms |
 | Paused | all except ui | −inf | 200 ms | — | 300 ms |
-| Window blur | master | −inf | 400 ms | — | 400 ms (then `ctx.suspend()` after 2 s) |
+| Window focus loss | — | **no duck / no suspend** | — | — | simulation and loading keep running |
 
 **Ducks are multiplicative and stacked** — compute `duckGain = Π(active factors)` in a single reducer and
 apply with `setTargetAtTime(v, now, 0.02)`. **Never let two systems write competing ramps to one AudioParam.**

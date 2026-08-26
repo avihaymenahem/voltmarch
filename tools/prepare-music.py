@@ -17,7 +17,8 @@ Usage:
     py tools/prepare-music.py \
       "C:/path/Silent Horizon.wav" \
       "C:/path/Disciplined Ostinato.wav" \
-      "C:/path/Echoes of the Siege.wav"
+      "C:/path/Echoes of the Siege.wav" \
+      "C:/path/Endless Warfront.wav"
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ CUES = (
     Cue("Silent Horizon", "silent-horizon"),
     Cue("Disciplined Ostinato", "disciplined-ostinato"),
     Cue("Echoes of the Siege", "echoes-of-the-siege"),
+    Cue("Endless Warfront", "endless-warfront"),
 )
 
 
@@ -127,13 +129,26 @@ def prepare(source: Path, cue: Cue, output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("masters", nargs=3, type=Path, help="WAV masters in the documented cue order")
+    parser.add_argument(
+        "masters",
+        nargs="+",
+        type=Path,
+        help="One or more named WAV masters (the filename stem must match a documented cue title)",
+    )
     parser.add_argument("--output", type=Path, default=OUTPUT_DIR)
     args = parser.parse_args()
 
-    for source, cue in zip(args.masters, CUES, strict=True):
+    by_title = {cue.title.casefold(): cue for cue in CUES}
+    seen: set[str] = set()
+    for source in args.masters:
         if not source.is_file():
             raise FileNotFoundError(source)
+        cue = by_title.get(source.stem.casefold())
+        if cue is None:
+            raise ValueError(f"{source.name}: filename does not match a documented soundtrack cue")
+        if cue.slug in seen:
+            raise ValueError(f"{source.name}: cue supplied more than once")
+        seen.add(cue.slug)
         prepare(source, cue, args.output)
 
 

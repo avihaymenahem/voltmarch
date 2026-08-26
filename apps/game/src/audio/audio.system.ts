@@ -40,12 +40,13 @@ import { ctx } from '../game/context';
 import { contentKeyOf } from '../sim/Deploy';
 
 import {
-  AudioEngine, setAudioFacade, type AudioFacade, type BusName, type PanResolver,
+  setAudioFacade, type AudioEngine, type AudioFacade, type BusName, type DuckHandle, type PanResolver,
 } from './AudioEngine';
+import { ensureApplicationAudio } from './ApplicationAudio';
 import { AmbienceRig, FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
 import { EVA_LINE_ID, EvaAnnouncer, type EvaMode } from './Eva';
 import { BarkDirector, barkClassFor, type BarkCategory, type BarkClass } from './Barks';
-import { TrackMusic } from './TrackMusic';
+import type { TrackMusic } from './TrackMusic';
 
 /* -------------------------------------------------------------------------- */
 /* Boot flags                                                                 */
@@ -76,8 +77,8 @@ function shotMode(): boolean {
  *
  * Keep the engine and score across registry lifetimes. EVA, barks and ambience
  * remain world-scoped because they subscribe to and describe a particular
- * battlefield. `disposeApplicationAudio` is the one true final teardown, used
- * only when the page itself goes away (or this module is hot-replaced in dev).
+ * battlefield. ApplicationAudio owns the one true final teardown, used only
+ * when the page itself goes away (or that module is hot-replaced in dev).
  */
 let engine: AudioEngine | null = null;
 let eva: EvaAnnouncer | null = null;
@@ -92,30 +93,8 @@ let music: TrackMusic | null = null;
 let ambience: AmbienceRig | null = null;
 let unsubscribe: Array<() => void> = [];
 let configuredEvaMode: EvaMode = 'synth';
-let applicationTeardown: (() => void) | null = null;
-
-function disposeApplicationAudio(): void {
-  for (const d of menuDucks) d.release();
-  menuDucks.length = 0;
-  music?.dispose();
-  engine?.dispose();
-  music = null;
-  engine = null;
-  setAudioFacade(null);
-  applicationTeardown?.();
-  applicationTeardown = null;
-}
-
-function installApplicationTeardown(): void {
-  if (applicationTeardown !== null || typeof window === 'undefined') return;
-  const onPageHide = (): void => { disposeApplicationAudio(); };
-  window.addEventListener('pagehide', onPageHide, { once: true });
-  applicationTeardown = () => { window.removeEventListener('pagehide', onPageHide); };
-}
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => { disposeApplicationAudio(); });
-}
+/** SFX baking remains battlefield work, but it also happens only once. */
+let battlefieldAudioPrepared = false;
 
 /** Scratch for the pan resolver. Allocated once; the frame loop allocates none. */
 const _v3 = new THREE.Vector3();
@@ -196,6 +175,29 @@ const MENU_SILENCE_DB = -120;
  * and the verdict is cut off by its own silence.
  */
 const MATCH_END_QUIET_MS = 6000;
+
+/** A full-scale soundtrack masks authored weapons; 0.75 gain is -2.5 dB. */
+export const MATCH_MUSIC_TRIM_DB = -2.5;
+
+let matchEndQuietTimer: ReturnType<typeof setTimeout> | null = null;
+let matchMusicDuck: DuckHandle | null = null;
+
+function cancelMatchEndQuiet(): void {
+  if (matchEndQuietTimer === null) return;
+  clearTimeout(matchEndQuietTimer);
+  matchEndQuietTimer = null;
+}
+
+function setMatchMusicTrim(on: boolean): void {
+  if (on) {
+    if (matchMusicDuck === null) {
+      matchMusicDuck = engine?.duck('match-score', 'music', MATCH_MUSIC_TRIM_DB, 500, 500) ?? null;
+    }
+    return;
+  }
+  matchMusicDuck?.release();
+  matchMusicDuck = null;
+}
 
 function applyMenuSilence(on: boolean): void {
   const e = engine;
@@ -360,16 +362,16 @@ export default defineSystem({
     const { world, debug } = ctx();
 
     const muted = (shotMode() && AUDIO_MUTE_IN_SHOT_MODE) || flag('audio') === 'off';
-    const firstAudioBoot = engine === null;
+    const firstAudioBoot = !battlefieldAudioPrepared;
+    const applicationAudio = ensureApplicationAudio(muted);
+    engine = applicationAudio?.engine ?? null;
+    music = applicationAudio?.music ?? null;
+    if (engine === null) {
+      console.info('[audio] WebAudio unavailable — running silent');
+      return;
+    }
     if (firstAudioBoot) {
-      engine = AudioEngine.create({ muted });
-      if (engine === null) {
-        console.info('[audio] WebAudio unavailable — running silent');
-        return;
-      }
       registerSfxBank(engine);
-      music = new TrackMusic(engine);
-      installApplicationTeardown();
     }
     const liveEngine = engine;
     // `engine` is module state, so TypeScript cannot preserve the narrowing
@@ -456,6 +458,7 @@ export default defineSystem({
       if (firstAudioBoot) {
         await liveEngine.bakeAll();
         await liveEngine.initReverb('temperate');
+        battlefieldAudioPrepared = true;
       }
       const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
       if (firstAudioBoot) {
@@ -518,6 +521,9 @@ export default defineSystem({
   },
 
   dispose(): void {
+    cancelMatchEndQuiet();
+    setMatchMusicTrim(false);
+    applyMenuSilence(true);
     for (const off of unsubscribe) off();
     unsubscribe = [];
     ambience?.dispose();
@@ -706,6 +712,11 @@ function subscribe(): void {
 
   /* -- match lifecycle ----------------------------------------------------- */
   unsubscribe.push(bus.on('match:started', () => {
+    // A previous match may have scheduled its delayed menu duck. Rematch and
+    // retry can start inside that six-second verdict window; if the old timer
+    // survives it silences every game bus mid-match while streamed music keeps
+    // playing. Cancel it before making this world audible.
+    cancelMatchEndQuiet();
     matchStartAt = engine?.now() ?? 0;
     bootLineFired = false;
     eva?.resetMatch();
@@ -716,10 +727,13 @@ function subscribe(): void {
     // keys on the match rather than on a screen name the audio layer would
     // otherwise have to learn.
     applyMenuSilence(false);
+    setMatchMusicTrim(true);
     music?.startMatch();
   }));
 
   unsubscribe.push(bus.on('match:ended', (p) => {
+    cancelMatchEndQuiet();
+    setMatchMusicTrim(false);
     if (p.localWon) { eva?.say('missionAccomplished'); music?.win(); }
     else { eva?.say('missionFailed'); music?.loss(); }
     eva?.say('battleControlTerminated');
@@ -727,7 +741,10 @@ function subscribe(): void {
     // takes hold on the next tick and EVA is already queued above. Without this
     // the end screen and the menu behind it inherit a live soundscape from a
     // match that is over.
-    setTimeout(() => applyMenuSilence(true), MATCH_END_QUIET_MS);
+    matchEndQuietTimer = setTimeout(() => {
+      matchEndQuietTimer = null;
+      applyMenuSilence(true);
+    }, MATCH_END_QUIET_MS);
   }));
 
 }

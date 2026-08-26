@@ -107,6 +107,7 @@ import {
   unlockAllFromBootFlag,
 } from './unlockall.system';
 import { readProgression } from '../ui/Objectives';
+import { restoreTutorialMenuItem, tutorialCompleted, tutorialMenuHint } from './Tutorial';
 
 import {
   button,
@@ -1877,6 +1878,23 @@ export class SettingsScreen implements Screen {
     const set = (patch: Partial<typeof p>): void => {
       this.shell.settings.patch({ gameplay: patch });
     };
+
+    const training = this.section(body, 'Training');
+    const trainingStatus = tutorialCompleted() ? 'Complete' : tutorialMenuHint();
+    training.appendChild(row(
+      'Field School',
+      button(tutorialCompleted() ? 'Restore Tutorial' : 'Tutorial Available', {
+        iconName: 'restore',
+        disabled: !tutorialCompleted(),
+        onClick: () => {
+          restoreTutorialMenuItem();
+          this.renderTab();
+        },
+      }),
+      tutorialCompleted()
+        ? 'Completed training is hidden from the title screen. Restore it here whenever you want a replay.'
+        : `Title-screen training status: ${trainingStatus}.`,
+    ));
 
     const accessibility = this.section(body, 'Accessibility');
     accessibility.appendChild(row('Text Size', slider({

@@ -40,7 +40,7 @@ export const MAX_SUBSTEPS = 5;
 /** Largest real dt we will ever accumulate, in seconds (tab-switch guard). */
 export const MAX_FRAME_DT = 0.25;
 /** Selectable game speeds. Applied to the accumulator only, never to SIM_DT. */
-export const GAME_SPEEDS = [0.5, 1.0, 1.5, 2.0] as const;
+export const GAME_SPEEDS = [0.5, 1.0, 1.5, 2.0, 2.5] as const;
 export const DEFAULT_SPEED_INDEX = 1;
 
 /* ==========================================================================
@@ -4980,9 +4980,7 @@ export const AUDIO_DUCK = {
   boomSfxDb: -9, boomMusicDb: -3,
   boomAttackMs: 12, boomHoldMs: 400, boomReleaseMs: 700,
   nukeDb: -14, nukeAttackMs: 30, nukeHoldMs: 2200, nukeReleaseMs: 1200,
-  pauseMs: 200, blurMs: 400,
-  /** Seconds of window-blur before the context is suspended outright. */
-  blurSuspendSec: 2,
+  pauseMs: 200,
 } as const;
 
 /** §3.2 EVA. Tier B (procedural formant synth) is the default and the aesthetic. */
