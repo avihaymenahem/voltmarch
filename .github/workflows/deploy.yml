@@ -3,6 +3,14 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/game/**'
+      - 'packages/game-types/**'
+      - 'packages/protocol/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'turbo.json'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 # Allow the deploy job to publish to Pages via OIDC.
@@ -21,6 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Turborepo's affected graph and future scope checks need the base
+          # commit. A shallow checkout silently turns "affected" into "all".
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:

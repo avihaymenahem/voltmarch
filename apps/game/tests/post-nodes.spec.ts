@@ -83,6 +83,10 @@ import {
 } from '../src/render/nodes/grade-node';
 import { aoResolutionScale, createAoNodes } from '../src/render/nodes/ao-node';
 import { createBloomNodes } from '../src/render/nodes/bloom-node';
+import {
+  capabilityGatedSsgiPreset,
+  requestedSsgiPreset,
+} from '../src/render/nodes/ssgi-node';
 import { buildPostGraph, demoteSmaaMaskTargets, enabledPasses } from '../src/render/post-nodes';
 import { RENDER_CONFIG, type GradeConfig, type PostConfig } from '../src/render/renderer';
 
@@ -638,6 +642,33 @@ describe('the assembled node chain', () => {
     expect(PASS_ORDER).toEqual(['render', 'ao', 'bloom', 'grade', 'smaa']);
     for (const id of PASS_ORDER) expect(g.built[id], id).toBe(true);
     g.dispose();
+  });
+
+  it('keeps SSGI opt-in and replaces GTAO when explicitly requested', () => {
+    expect(requestedSsgiPreset('')).toBeNull();
+    expect(requestedSsgiPreset('?gi=off')).toBeNull();
+    expect(requestedSsgiPreset('?gi=ssgi')?.quality).toBe('low');
+    expect(requestedSsgiPreset('?gi=medium')?.sliceCount).toBe(3);
+    expect(requestedSsgiPreset('?gi=high')?.resolutionScale).toBe(0.75);
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', false, true)).toBeNull();
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', true, false)).toBeNull();
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', true, true)?.quality).toBe('low');
+
+    const preset = requestedSsgiPreset('?gi=ssgi');
+    const graph = buildPostGraph({
+      scene: new Scene(),
+      camera: new PerspectiveCamera(),
+      cfg: postConfigCopy(),
+      width: 2560,
+      height: 1440,
+      ssgiPreset: preset,
+    });
+    expect(graph.indirectLighting).toBe('ssgi');
+    expect(graph.ssgi).not.toBeNull();
+    expect(graph.ao).toBeNull();
+    expect(graph.ssgi?.march.useTemporalFiltering).toBe(false);
+    expect(graph.ssgi?.denoisedGi.renderTarget.texture.name).toBe('SsgiDenoisedGI');
+    graph.dispose();
   });
 
   it('SMAA is the TAIL, which is what makes the 8-bit mask targets correct', () => {

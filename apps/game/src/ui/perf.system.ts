@@ -356,7 +356,12 @@ export default defineSystem({
       timer = undefined;
     }
 
-    hud = new PerfHud({ mount, source: new EngineSource(), gl, timer, visible: false });
+    // The screenshot/performance harness has no settings store to turn this
+    // panel on. `?gpupasses` is a read-only developer boot flag that makes the
+    // real per-pass timestamp rows observable during renderer experiments.
+    const queryWantsPasses = typeof location !== 'undefined'
+      && new URLSearchParams(location.search).has('gpupasses');
+    hud = new PerfHud({ mount, source: new EngineSource(), gl, timer, visible: queryWantsPasses });
     // For the console and for `tools/playtest.mjs`, exactly as `ui.objectives`
     // publishes its panel. Nothing in the game reads it.
     globalThis.__vmPerf = hud;

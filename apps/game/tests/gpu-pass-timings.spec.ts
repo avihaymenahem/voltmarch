@@ -35,6 +35,11 @@ describe('GPU pass bottleneck classification', () => {
     expect(classifyGpuBottleneck(snapshot(10, { scene: 4.6 }))).toBe('scene');
   });
 
+  it('accounts for experimental GI separately and scales resolution when it dominates', () => {
+    expect(gpuPassIndex('gi')).toBeGreaterThan(gpuPassIndex('ao'));
+    expect(classifyGpuBottleneck(snapshot(10, { gi: 2.4, scene: 4 }))).toBe('fill-rate');
+  });
+
   it('maps measured pressure to a targeted lever and leaves CPU stalls alone', () => {
     expect(chooseAdaptiveLever('shadow', 18, 22, true)).toBe('shadow');
     expect(chooseAdaptiveLever('ao', 18, 22, true)).toBe('ao');

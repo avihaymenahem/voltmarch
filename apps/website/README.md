@@ -10,9 +10,9 @@ npm run build
 
 Cloudflare Pages settings:
 
-- Root directory: repository root
-- Build command: `npm run website:build`
-- Build output: `apps/website/dist`
+- Root directory: `apps/website`
+- Build command: `npm run build`
+- Build output: `dist`
 - Pages Function binding: D1 database `voltmarch-launch-waitlist` as `WAITLIST`
 - Production custom domain: `voltmarch.com`
 - Build variable: `CF_WEB_ANALYTICS_TOKEN` (the public Cloudflare Web Analytics site token)

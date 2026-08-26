@@ -204,8 +204,8 @@ const VERDICT_UNITS = 11;
 const ROW_UNITS = 11;
 const ROW_GAP_UNITS = 1;
 const BLOCK_GAP_UNITS = 3;
-/** Core diagnostics plus four GPU/CPU subsystem rows. */
-export const PERF_ROW_COUNT = 12;
+/** Core diagnostics plus five GPU/CPU subsystem rows. */
+export const PERF_ROW_COUNT = 13;
 
 /**
  * Panel height in design units.
@@ -987,6 +987,7 @@ export class WebGpuTimer implements GpuTimerLike, GpuPassTimerSink {
     if (context.clippingContext?.shadowPass === true) return gpuPassIndex('shadow');
     const name = context.textures?.[0]?.name ?? '';
     if (name === 'PostHDR') return gpuPassIndex('scene');
+    if (name.startsWith('Ssgi') || name.startsWith('SSGI')) return gpuPassIndex('gi');
     if (name.startsWith('Ao')) return gpuPassIndex('ao');
     if (name.startsWith('UnrealBloomPass') || name === 'PostBloomInput' || name === 'PostGradeInput') {
       return gpuPassIndex('bloom');
@@ -1427,8 +1428,9 @@ export class PerfHud {
     this.addRow(rows, 'device');
     this.addRow(rows, 'self');
     this.addRow(rows, 'gpu scene / sh');
-    this.addRow(rows, 'gpu ao / blm / grd');
-    this.addRow(rows, 'gpu water / fx / ui');
+    this.addRow(rows, 'gpu ao / gi / blm');
+    this.addRow(rows, 'gpu grade / smaa / ui');
+    this.addRow(rows, 'gpu water / fx');
     this.addRow(rows, 'cpu water / fx / ui');
 
     this.visible = options.visible ?? false;
@@ -1651,10 +1653,11 @@ export class PerfHud {
       return value === null ? UNAVAILABLE : value.toFixed(value < 10 ? 2 : 1);
     };
     this.write(8, `${passMs('scene')} / ${passMs('shadow')} ms`);
-    this.write(9, `${passMs('ao')} / ${passMs('bloom')} / ${passMs('grade')} ms`);
-    this.write(10, `${passMs('water')} / ${passMs('particles')} / ${passMs('ui')} ms`);
+    this.write(9, `${passMs('ao')} / ${passMs('gi')} / ${passMs('bloom')} ms`);
+    this.write(10, `${passMs('grade')} / ${passMs('smaa')} / ${passMs('ui')} ms`);
+    this.write(11, `${passMs('water')} / ${passMs('particles')} ms`);
     this.write(
-      11,
+      12,
       `${formatSmallMs(r.waterCpuMs)} / ${formatSmallMs(r.particlesCpuMs)} / ${formatSmallMs(r.uiCpuMs)}`,
     );
 

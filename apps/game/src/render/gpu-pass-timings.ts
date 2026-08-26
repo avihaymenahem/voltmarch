@@ -14,6 +14,7 @@ export const GPU_PASS_IDS = [
   'water',
   'particles',
   'ao',
+  'gi',
   'bloom',
   'grade',
   'smaa',
@@ -33,10 +34,11 @@ export function gpuPassIndex(id: GpuPassId): number {
     case 'water': return 3;
     case 'particles': return 4;
     case 'ao': return 5;
-    case 'bloom': return 6;
-    case 'grade': return 7;
-    case 'smaa': return 8;
-    case 'ui': return 9;
+    case 'gi': return 6;
+    case 'bloom': return 7;
+    case 'grade': return 8;
+    case 'smaa': return 9;
+    case 'ui': return 10;
   }
 }
 
@@ -89,18 +91,22 @@ export function classifyGpuBottleneck(snapshot: GpuPassSnapshot | null): GpuBott
 
   const shadow = snapshot.values[gpuPassIndex('shadow')] ?? 0;
   const ao = snapshot.values[gpuPassIndex('ao')] ?? 0;
+  const gi = snapshot.values[gpuPassIndex('gi')] ?? 0;
   const bloom = snapshot.values[gpuPassIndex('bloom')] ?? 0;
   const grade = snapshot.values[gpuPassIndex('grade')] ?? 0;
   const smaa = snapshot.values[gpuPassIndex('smaa')] ?? 0;
   const scene = snapshot.values[gpuPassIndex('scene')] ?? 0;
   const water = snapshot.values[gpuPassIndex('water')] ?? 0;
   const particles = snapshot.values[gpuPassIndex('particles')] ?? 0;
-  if (shadow === 0 && ao === 0 && bloom === 0 && grade === 0 && smaa === 0 && scene === 0 && water === 0 && particles === 0) {
+  if (shadow === 0 && ao === 0 && gi === 0 && bloom === 0 && grade === 0 && smaa === 0 && scene === 0 && water === 0 && particles === 0) {
     return 'unknown';
   }
 
   if (shadow / total >= 0.30) return 'shadow';
   if (ao / total >= 0.22) return 'ao';
+  // SSGI is an opt-in full-screen experiment with fixed ray counts. Resolution
+  // is its safe adaptive lever; GTAO's sample-count lever does not control it.
+  if (gi / total >= 0.22) return 'fill-rate';
   if (water / total >= 0.22) return 'water';
   if (particles / total >= 0.22) return 'particles';
   if ((bloom + grade + smaa) / total >= 0.30) return 'fill-rate';

@@ -1731,6 +1731,35 @@ visual change has scored 0.000000 on the weighted grade, alongside the AO prepas
 weighted grade is not the instrument for judging an art change**; `tools/shot-compare.mjs` and the
 individual metric rows are.
 
+### Experimental WebGPU SSGI — viable at half resolution, not a Lumen replacement
+
+**Measured 2026-08-26; opt-in only.** The WebGPU post chain now has a guarded experiment based on
+Three's official `SSGINode`. Enable it with `?gpu=webgpu&gi=ssgi`; `medium` and `high` are explicit
+comparison presets. The default remains the shipped GTAO path. The experiment requires a perspective
+camera and the adapter's `rg11b10ufloat-renderable` feature, and falls back to GTAO when either is
+missing or graph construction fails.
+
+The important cost rule is structural: SSGI's own AO replaces GTAO rather than stacking on top of it.
+The conservative preset traces 2 slices x 6 steps at 50% drawing-buffer resolution, denoises only
+the bounced RGB, disables temporal accumulation, and composites that bounce before bloom and grading.
+The performance HUD records the work as a separate `gi` pass on adapters that expose
+`timestamp-query`; `?gpupasses` forces those diagnostic rows on in development. An adapter without
+timestamp queries reports the pass as unavailable rather than inventing a number.
+
+On the same Allied-base fixture at the same 1152x648 output and identical 145-draw / 2,029,817-triangle
+scene fingerprint, the warmed frame moved from roughly 18.1 ms with GTAO to roughly 19.7 ms with the
+low SSGI preset: about +1.6 ms on the tested AMD WebGPU adapter. At a 2304x1296 drawing buffer the
+experiment was roughly 8 ms slower in fresh samples, but the renderer-info fingerprints differed, so
+that figure is a warning about fill-rate pressure rather than a clean A/B benchmark. The reviewed
+captures showed useful contact bounce without obvious leaks after reducing horizon darkening, but the
+effect is deliberately subtle and screen-space: it cannot recover off-screen light, maintain a world
+radiance cache, or behave like Lumen through occlusion.
+
+**Decision:** keep `low` as an engineering/art-development switch; do not make it a quality-tier
+default yet. The next honest step toward Lumen-like lighting is a sparse probe or radiance-cache layer
+for stable off-screen low-frequency bounce, with this SSGI pass reserved for local contact detail.
+That work should be accepted only against the existing 1440p scorecard and a timestamp-capable GPU.
+
 
 ---
 

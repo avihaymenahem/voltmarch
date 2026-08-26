@@ -216,10 +216,12 @@ desktop origin. Moving the playable site without changing that constant, the rel
 origin, the DNS record, `apps/game/public/CNAME`, and these docs creates a game that loads but cannot enter
 Multiplayer.
 
-Cloudflare Pages project: `voltmarch-coming-soon`, root `apps/website`, command `npm run build`,
-output `dist`, D1 binding `WAITLIST`. `CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a
-secret. Pushing `main` updates both static sites independently; the relay workflow stays manual
-because activating a release disconnects live rooms.
+Cloudflare Pages project: `voltmarch-coming-soon`, root `apps/website`, command
+`npm run build`, output `dist`, D1 binding `WAITLIST`.
+`CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a secret. Its build-watch include paths are
+`apps/website/*`, `package.json`, `package-lock.json`, and `turbo.json`; a game-only push must not
+start a marketing build. The GitHub Pages game workflow has the complementary game/shared-package
+path filter. The relay workflow stays manual because activating a release disconnects live rooms.
 
 **The first line once said `npx tsc --noEmit`, and that is NOT the gate.**
 `npm run typecheck` now asks Turborepo to typecheck every workspace. The game workspace

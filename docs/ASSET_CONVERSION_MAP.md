@@ -238,6 +238,12 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | N1 | `civ_apartments` | Apartment Block | BLD | procedural | Civil modular facade/balcony kit; repeated-instance efficiency |
 | N1 | `civ_mine` | Ore Mine | BLD | procedural | Neutral industrial kit; headframe/sheave/spoil silhouette |
 
+## Neutral environment props
+
+| Wave | Key | Asset | Route | Current state | Family plan |
+| --- | --- | --- | --- | --- | --- |
+| P1 | `carSedan` | Civilian Sedan | PROP | integration candidate | Meshy multi-view source `01a03d71-9a34-7f70-a29d-07e289471f78`; separate-body/four-wheel retopo; locally conditioned 2,963-triangle LOD0; 1K/512px PBR maps promoted to a 0.62 MiB KTX2 GLB; procedural fallback retained until instancing, LOD1, shadow, renderer and scene-budget gates pass |
+
 ## Throughput and memory strategy
 
 The map is intentionally family-first, not 135 isolated purchases:

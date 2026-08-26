@@ -59,13 +59,20 @@
  */
 
 import { HalfFloatType, RGBAFormat, RenderPipeline, UnsignedByteType, Vector2 } from 'three/webgpu';
-import type { Camera, DepthTexture, Node, Renderer, Scene, TextureNode } from 'three/webgpu';
-import { depthPass, pass, rtt } from 'three/tsl';
+import type { Camera, DepthTexture, Node, PerspectiveCamera, Renderer, Scene, TextureNode } from 'three/webgpu';
+import { depthPass, pass, rtt, vec4 } from 'three/tsl';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 
 import { PASS_ORDER, type PassId } from './post-order';
 import { RENDER_CONFIG, type PostConfig } from './renderer';
 import { createAoNodes, type AoNodes } from './nodes/ao-node';
+import {
+  createSsgiNodes,
+  capabilityGatedSsgiPreset,
+  requestedSsgiPreset,
+  type SsgiNodes,
+  type SsgiPreset,
+} from './nodes/ssgi-node';
 import { createBloomNodes, type BloomNodes } from './nodes/bloom-node';
 import {
   applyGradeConfig,
@@ -130,6 +137,11 @@ export interface PostGraph {
    */
   readonly aoDepthPass: ScenePassNode | null;
   readonly ao: AoNodes | null;
+  /** Experimental indirect diffuse. Non-null only for a capable `?gi=` WebGPU boot. */
+  readonly ssgi: SsgiNodes | null;
+  readonly indirectLighting: 'gtao' | 'ssgi' | 'off';
+  /** Why an explicitly requested SSGI path fell back to GTAO, if it did. */
+  readonly ssgiFailure: string | null;
   readonly bloom: BloomNodes | null;
   /** Full-resolution HDR materialisation sampled by BloomNode's half-res high pass. */
   readonly bloomInput: RttNode | null;
@@ -159,6 +171,8 @@ export interface BuildPostGraphOptions {
   /** Initial drawing-buffer size, for the grade's texel uniform. */
   width: number;
   height: number;
+  /** Already capability-gated by `createNodePostChain`; null keeps shipped GTAO. */
+  ssgiPreset?: SsgiPreset | null;
 }
 
 /**
@@ -278,18 +292,42 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
 
   /* ---- AO ---------------------------------------------------------------- */
   let ao: AoNodes | null = null;
+  let ssgiNodes: SsgiNodes | null = null;
+  let ssgiFailure: string | null = null;
   let lit: Node<'vec4'> = colour;
   if (want.ao) {
-    ao = createAoNodes({
-      depthNode,
-      depthTexture: depthSource.renderTarget.depthTexture,
-      camera,
-      cfg: cfg.ao,
-    });
-    // `vec4 * float` — the alpha rides along, exactly as `GTAOBlendShader`'s
-    // `vec4(mix(vec3(1.), texel.rgb, intensity), texel.a)` under a DstColor
-    // multiply leaves it. See `AoNodes.occlusion`.
-    lit = (colour as unknown as { mul(f: Node<'float'>): Node<'vec4'> }).mul(ao.occlusion());
+    if (options.ssgiPreset !== null && options.ssgiPreset !== undefined) {
+      try {
+        ssgiNodes = createSsgiNodes({
+          beautyNode: colour,
+          depthNode,
+          depthTexture: depthSource.renderTarget.depthTexture,
+          camera: camera as PerspectiveCamera,
+          ao: cfg.ao,
+          preset: options.ssgiPreset,
+        });
+        const occluded = (colour as unknown as { mul(f: Node<'float'>): Node<'vec4'> })
+          .mul(ssgiNodes.occlusion());
+        const bounce = vec4(ssgiNodes.indirect(), 0) as unknown as Node<'vec4'>;
+        lit = (occluded as unknown as { add(n: Node<'vec4'>): Node<'vec4'> }).add(bounce);
+      } catch (err) {
+        ssgiFailure = String(err);
+        console.warn('[post-nodes] SSGI failed to construct; falling back to GTAO', err);
+      }
+    }
+
+    if (ssgiNodes === null) {
+      ao = createAoNodes({
+        depthNode,
+        depthTexture: depthSource.renderTarget.depthTexture,
+        camera,
+        cfg: cfg.ao,
+      });
+      // `vec4 * float` — the alpha rides along, exactly as `GTAOBlendShader`'s
+      // `vec4(mix(vec3(1.), texel.rgb, intensity), texel.a)` under a DstColor
+      // multiply leaves it. See `AoNodes.occlusion`.
+      lit = (colour as unknown as { mul(f: Node<'float'>): Node<'vec4'> }).mul(ao.occlusion());
+    }
     built.ao = true;
   }
 
@@ -384,6 +422,9 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     scenePass,
     aoDepthPass,
     ao,
+    ssgi: ssgiNodes,
+    indirectLighting: !want.ao ? 'off' : ssgiNodes === null ? 'gtao' : 'ssgi',
+    ssgiFailure,
     bloom,
     bloomInput,
     gradeUniforms,
@@ -391,6 +432,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
 
     syncConfig(next: PostConfig): void {
       ao?.applyConfig(next.ao);
+      ssgiNodes?.applyAoConfig(next.ao);
       bloom?.applyConfig(next.bloom);
       if (gradeUniforms !== null) applyGradeConfig(gradeUniforms, next.grade);
     },
@@ -406,6 +448,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
 
     dispose(): void {
       ao?.dispose();
+      ssgiNodes?.dispose();
       bloom?.dispose();
       bloomInput?.renderTarget.dispose();
       smaaNode?.dispose();
@@ -420,6 +463,9 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     const failed = Object.keys(failures);
     console.info(
       `[post-nodes] graph: ${list.join(' -> ')}` +
+      (ssgiNodes !== null
+        ? `  [SSGI ${ssgiNodes.preset.quality} @ ${Math.round(ssgiNodes.preset.resolutionScale * 100)}%]`
+        : '') +
       (failed.length > 0 ? `  (failed: ${failed.join(', ')})` : ''),
     );
   }
@@ -466,6 +512,31 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const cfg = options.cfg ?? RENDER_CONFIG.post;
 
   /*
+   * SSGI is a development switch until it has survived the visual scorecard
+   * and the 1440p GPU budget. Its R11G11B10 GI attachment requires an optional
+   * WebGPU feature; refusing the experiment here means the graph below never
+   * constructs a node the active device cannot compile. The normal GTAO graph
+   * is therefore both the unsupported-device and the no-query fallback.
+   */
+  const requestedSsgi = requestedSsgiPreset(
+    typeof location === 'undefined' ? '' : location.search,
+  );
+  const rendererFeatures = renderer as unknown as {
+    hasFeature?(feature: string): boolean;
+  };
+  const perspective = (camera as unknown as { isPerspectiveCamera?: boolean }).isPerspectiveCamera === true;
+  const ssgiPreset = capabilityGatedSsgiPreset(
+    typeof location === 'undefined' ? '' : location.search,
+    perspective,
+    rendererFeatures.hasFeature?.('rg11b10ufloat-renderable') === true,
+  );
+  if (requestedSsgi !== null && ssgiPreset === null) {
+    console.warn(
+      '[post-nodes] SSGI requested but unavailable on this camera/device; using GTAO',
+    );
+  }
+
+  /*
    * `getDrawingBufferSize` TAKES A `Vector2`, NOT A DUCK. It calls `target.set(
    * w, h )` and returns it, so a plain `{ width, height }` literal throws
    * `TypeError: e.set is not a function` — which is what the first boot of the
@@ -481,7 +552,14 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const sizeScratch = new Vector2();
   const size = r.getDrawingBufferSize(sizeScratch);
 
-  let graph = buildPostGraph({ scene, camera, cfg, width: size.width, height: size.height });
+  let graph = buildPostGraph({
+    scene,
+    camera,
+    cfg,
+    width: size.width,
+    height: size.height,
+    ssgiPreset,
+  });
 
   const pipeline = new RenderPipeline(renderer, graph.output);
 
@@ -503,7 +581,14 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
         passSignature = signature;
         const s = r.getDrawingBufferSize(sizeScratch);
         graph.dispose();
-        graph = buildPostGraph({ scene, camera, cfg, width: s.width, height: s.height });
+        graph = buildPostGraph({
+          scene,
+          camera,
+          cfg,
+          width: s.width,
+          height: s.height,
+          ssgiPreset,
+        });
         pipeline.outputNode = graph.output;
         pipeline.outputColorTransform = graph.needsOutputColorTransform;
         pipeline.needsUpdate = true;
