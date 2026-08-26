@@ -1,0 +1,41 @@
+name: Publish GitHub Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Synchronise canonical wiki pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          wiki_checkout="$(mktemp -d)"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" "$wiki_checkout"
+          find "$wiki_checkout" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          cp -R wiki/. "$wiki_checkout/"
+          git -C "$wiki_checkout" config user.name github-actions[bot]
+          git -C "$wiki_checkout" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C "$wiki_checkout" add -A
+          if git -C "$wiki_checkout" diff --cached --quiet; then
+            echo 'GitHub Wiki is already current.'
+            exit 0
+          fi
+          git -C "$wiki_checkout" commit -m "sync wiki from ${GITHUB_SHA::7}"
+          git -C "$wiki_checkout" push origin HEAD:master

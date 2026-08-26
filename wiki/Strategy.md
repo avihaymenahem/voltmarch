@@ -188,7 +188,8 @@ What to look for, in order:
 1. Which corner the enemy took — start slots rotate with the seed, so do not assume.
 2. Whether the **midpoint ore field** is contested yet. It is roughly a third of the map's income and
    neither player can defend it from home.
-3. **Which hamlet they went for.** There are two, 62 m either side of that midpoint. If their
+3. **Which hamlet they went for.** There are two mirrored settlements roughly 54–69 m either side
+   of that midpoint, with a small seed-driven lane shift. If their
    engineer is walking to one, the other is free — and if both derricks are theirs, you are losing
    30 credits a second you are not paying for.
 4. The count of enemy refineries. Two means they are teching; one means they are massing.
@@ -470,7 +471,8 @@ answered from.
 **The corollary is unkind.** After defences, the AI goes for **refineries and harvesters**. Your
 economy is the second thing it wants, not the last.
 
-**Repair.** The repair wrench mends structures at 30 HP/s for 0.25 credits per HP. The **Repair
+**Repair.** The repair wrench mends structures at 30 HP/s for 0.25 credits per HP, in paid
+half-second pulses, but only after the target has gone **3 seconds without taking a hit**. The **Repair
 Depot** (800 cr, prereq: vehicle factory) mends *vehicles* with no order at all — park inside 10 m and
 it services you at 10 % of max HP per second, up to eight at once, at the same 0.25 per HP. A Warden
 at 1 HP costs about 85 credits to repair against 700 to replace, and takes ten seconds. It is the
@@ -569,9 +571,9 @@ before this you could not: the squad walked to the sand and stood there.
   wheeled hull, which means armies funnel down them without being told to. On Industrial Grid that is
   most of the map, and it is the single best place to be waiting.
 - **The two civilian hamlets are the only neutral ground worth fighting for.** They sit on the
-  perpendicular bisector of the lane between the two openings, 62 m either side of the midpoint —
-  about 115 m from each start, equidistant by construction. Each is an Oil Derrick flanked by two
-  garrisonable blocks.
+  perpendicular bisector of the lane between the two openings, mirrored **54–69 m** either side of
+  the midpoint with a small seed-driven lane shift and spread. Each is an Oil Derrick flanked by two
+  garrisonable blocks and a prop-free forward build pad.
 - **A derrick is 15 credits a second, forever, for as long as you hold it.** Over ten minutes that is
   9,000 credits — roughly a free harvester with no War Factory, no 1,400-credit hull and no escort.
   One 500-credit engineer takes one outright at any health.
@@ -739,7 +741,9 @@ Be aware of these before you build a plan around one:
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
 - **Objective credits are never paid.** See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
-- **Cosmetic rewards render nothing.** Seventeen insignia and decals exist as text on a screen.
+- **Cosmetic rewards are profile honours, not unit paint.** All seventeen insignia and decals render
+  in the [Service Record](/avihaymenahem/voltmarch/wiki/Service-Record), with their paying mission
+  and live progress. They are not projected onto vehicles or buildings.
 - **Passengers do not shoot.** A loaded carrier fires with its own gun and nothing else. A
   *garrison* volleys with everyone inside; a carrier is a delivery.
 

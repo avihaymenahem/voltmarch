@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'apps/game/**'
+      - 'wiki/**'
       - 'packages/game-types/**'
       - 'packages/protocol/**'
       - 'package.json'

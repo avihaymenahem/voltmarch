@@ -1,13 +1,13 @@
 /**
  * ============================================================================
- * src/shell/manual-corpus.ts — 306 kB of wiki, and nobody pays for it at boot
+ * src/shell/manual-corpus.ts — 345 KiB of wiki, and nobody pays for it at boot
  * ============================================================================
  * THIS MODULE MUST NEVER BE IMPORTED STATICALLY. It exists to be the target of
  * exactly one `await import('./manual-corpus')`, in `Manual.ts`, taken the
  * first time somebody opens the Manual tab.
  *
  * The reasoning is `src/render/gpu-path.ts`'s, applied to text instead of
- * shaders. `wiki/` is 17 files and 306 kB of markdown; the entry chunk is
+ * shaders. `wiki/` is 19 files and 345 KiB of markdown; the entry chunk is
  * 2.71 MB and every player downloads it whether or not they ever read a word of
  * documentation. Statically importing this file would put the whole manual in
  * that chunk — an 11% regression on the thing that gates first paint, paid by

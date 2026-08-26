@@ -2,13 +2,13 @@
  * ============================================================================
  * tests/manual.spec.ts — the in-game manual: not in the entry chunk, and whole
  * ============================================================================
- * Options -> Manual renders `wiki/*.md` — 17 pages, 306 kB — through
+ * Options -> Manual renders `wiki/*.md` — 19 pages, 345 KiB — through
  * `src/shell/markdown.ts` and `src/shell/Manual.ts`. Two properties have to
  * hold, and neither is visible in a code review:
  *
  *   1. A PLAYER WHO NEVER OPENS IT NEVER DOWNLOADS IT. The corpus reaches the
  *      bundle through exactly one `await import('./manual-corpus')`. Statically
- *      importing that module would put 306 kB of prose into the 2.71 MB entry
+ *      importing that module would put 345 KiB of prose into the entry
  *      chunk that gates first paint for everyone. Nothing would fail; the game
  *      would simply get 11% heavier and no test would notice. This is the same
  *      discipline, and the same test shape, as
@@ -77,7 +77,7 @@ describe('the manual corpus is behind one dynamic import', () => {
     /*
      * The whole property in one assertion. A static import here does not fail
      * the build, does not warn, and does not change a single pixel — it just
-     * moves 306 kB into the chunk every player downloads. Nothing else can
+     * moves 345 KiB into the chunk every player downloads. Nothing else can
      * catch it.
      */
     const bad: string[] = [];
@@ -91,7 +91,7 @@ describe('the manual corpus is behind one dynamic import', () => {
   it('is reached by Manual.ts, by dynamic import, and memoised', () => {
     const src = readFileSync(join(SRC, 'shell/Manual.ts'), 'utf8');
     expect(src).toMatch(/import\(['"]\.\/manual-corpus['"]\)/);
-    // Memoised, or every re-entry to the tab re-parses 306 kB.
+    // Memoised, or every re-entry to the tab re-parses 345 KiB.
     expect(src).toMatch(/pending/);
   });
 
@@ -285,7 +285,7 @@ describe('every wiki page parses into something a reader can use', () => {
   it('finds the tables, lists, quotes and code the corpus is known to contain', () => {
     /*
      * Non-vacuity for the whole of §3. Every assertion above would also pass on
-     * a parser that turned all 17 files into one paragraph each — the words
+     * a parser that turned all 19 files into one paragraph each — the words
      * would all be there. These counts were measured over the corpus on
      * 2026-08-18 and are floors, not equalities, so the third agent editing
      * `wiki/` cannot make this fail by writing more documentation.

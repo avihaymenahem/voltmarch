@@ -393,10 +393,11 @@ Arm the **repair tool** in the sidebar, then click one of your structures to sta
 it. Right-click or Escape disarms the tool. You can arm it once and toggle several buildings.
 
 - **30 hit points per second**, flat
-- **0.25 credits per hit point**, charged continuously — so **7.5 credits per second**
+- **0.25 credits per hit point**, paid in half-second pulses — normally **15 HP for 3.75 credits**
 - Running out of money **stops the repair** rather than healing free. A partial payment heals a
   proportional amount
-- You can repair a building while it is being shot at. Nothing checks for combat
+- A hit locks repair for **3 seconds**. The wrench stays armed, but it neither heals nor charges
+  until the structure has been out of combat for that full window
 - The selection panel tags a mending structure **Repairing** and the health bar gets a green sweep
 
 The tool silently does nothing on a building that is not yours, not finished, or already at full

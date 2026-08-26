@@ -323,7 +323,9 @@ leave them alone; see [Economy](/avihaymenahem/voltmarch/wiki/Economy) for the f
 Arm the repair tool in the sidebar, then click one of your own damaged
 structures. Click it again to stop; right-click disarms the tool.
 
-- **30 HP a second**, charged at **0.25 credits per HP**.
+- **30 HP a second**, charged at **0.25 credits per HP** in half-second paid pulses.
+- Taking damage pauses both healing and spending for **3 seconds**. The wrench remains armed and
+  resumes automatically once the structure stays out of combat for that full window.
 - Running out of money stops the repair and clears the flag. It never heals for
   free.
 - The drip stops on its own at full health.
@@ -397,9 +399,9 @@ Blowing up your own unit deals **max(2x current HP, 80% of max HP)** as a High
 Explosive blast with a **5 m** splash radius, killing the volunteer and hurting
 whatever is standing next to it.
 
-**There is no button and no hotkey for this.** The command exists, the
-simulation implements it, the multiplayer relay accepts it — nothing in the
-interface issues it. Consider it unavailable until a build wires it up.
+Select one or more owned infantry or vehicles and use **Destruct** in the selection panel. The first
+click arms the action for 3 seconds; the second confirms it. Changing selection or letting the timer
+expire cancels the arm. Structures are deliberately excluded, and there is no hotkey.
 
 ---
 
@@ -628,12 +630,14 @@ Powers work with every hero dead. Each one is a ONE-OFF PURCHASE from your
 army's Command Post (Command Bunker / Pharos / Signal Rig), which publishes a
 fifth sidebar tab, **PWR**. Bought once, it is yours for the rest of that match
 and recharges on its own clock. The structure is 1,500 credits and −80 power off
-the radar tier; the five powers are 800 / 1,200 / 1,500 / 2,000 / 2,500. See
+the radar tier; the five powers are 800 / 1,200 / 1,500 / 2,000 / 2,500. The
+Powers queue accepts **one purchase at a time**; it will not stack a second
+requisition behind the first. See
 [Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers).
 
 | Power | Charge | Radius | Effect |
 |---|---|---|---|
-| **Orbital Scan** | 2:00 | 90 m | Permanently charts a wide circle. Terrain and structures are remembered; live units are not handed over. |
+| **Orbital Scan** | 2:00 | 90 m | Permanently charts the clicked circle and grants live vision of units and structures there for 5 seconds. |
 | **Airstrike** | 2:30 | 20 m | **260 High Explosive damage** on the marker. It friendly-fires your own units in the blast. |
 | **Emergency Repair** | 2:30 | 24 m | Restores **45% of max HP** to up to 24 friendly units **and structures**. The only mend in the game that reaches a building with no wrench and no engineer. |
 | **Ore Boost** | 3:00 | – | **2500 credits**, immediately. The only power with no position. |

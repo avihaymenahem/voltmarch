@@ -173,12 +173,16 @@ and it is why A, F and Y are safe to press speculatively.
 | --- | --- | --- |
 | `Esc` | Pause menu | Rebindable |
 | `F3` | Performance overlay | Fixed |
-| `\` | Cycle game speed | Rebindable, **reserved** |
+| `\` | Cycle game speed | Rebindable |
 | `F12` | Save screenshot | Rebindable, **reserved** |
 | Pause → Controls | The full command reference | Gesture |
 
-The two rows marked *reserved* are honest about themselves: the binding is stored and you can
-change it, but nothing in the engine reads it yet. They do nothing.
+Game-speed cycling is live in skirmish and campaign: each press walks **0.5× → 1× → 1.5× → 2× →
+2.5× → 0.5×** and reports the new speed. Multiplayer is fixed at 1× and refuses the command rather
+than letting two simulations choose different clocks.
+
+The screenshot row remains *reserved*: the binding is stored and can be changed, but the engine
+does not read it yet.
 
 `F3` is read straight off the key code by the debug layer, so it cannot be rebound.
 
@@ -234,14 +238,19 @@ pan instead of zoom".
 The **Updates** tab reports the running version, edition and release status. Installed desktop
 builds can check, download, and restart into an update there; portable builds open the matching
 manual download. The tab also links to the latest release and the full GitHub release archive.
+The complete map of every tab is in
+[Settings and Accessibility](/avihaymenahem/voltmarch/wiki/Settings-and-Accessibility).
 
 ---
 
 ## Multiplayer communication
 
 - **Enter** opens in-match text chat. Enter sends the one-line message and Escape cancels it.
-- **Right-click the tactical map** in mixed co-op to ping a position for the human ally. A duel has
-  no ally receiver, so right-click ping is not armed there. Automatic under-attack rings remain too.
+- **Right-click the tactical map** with units selected to issue the same contextual ground or
+  target order as a right-click on the battlefield. Shift queues it; Ctrl force-fires and Alt
+  force-moves when those modifiers make sense.
+- In mixed co-op, a tactical-map right-click that produces no valid unit order becomes a position
+  ping for the human ally. A duel has no ally receiver. Automatic under-attack rings remain too.
 
 ## What has no control at all
 

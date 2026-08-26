@@ -259,16 +259,19 @@ the test under `--max-semi-space-size=4`. The count tracked V8's new-space size 
 code, which is why it moved with machine load. **Do not reintroduce a tolerance** — a non-zero
 `sampled` now means the sample path really did allocate.
 
-**`wiki/` IS A BUILD INPUT NOW.** The 17 player-wiki pages are the in-game manual
+**`wiki/` IS A BUILD INPUT NOW.** The 19 player-wiki pages are the in-game manual
 (Options → Manual), reached through one lazy `import.meta.glob`, so editing a wiki page
 changes the bundle. `apps/game/tests/manual.spec.ts` gates the two properties that matter: the corpus
-is NOT in the entry chunk (it is its own ~320 kB chunk fetched on first open, and the entry
+is NOT in the entry chunk (it is its own ~355 kB chunk fetched on first open, and the entry
 grew by **10 bytes**), and every page still renders — word-for-word, so a table divider the
 parser stops recognising fails rather than quietly becoming a paragraph. The dist-freshness
 `runIf` includes `wiki/**` for that reason. `apps/game/tests/wiki-numbers.spec.ts` is the other half:
 every numeric claim on those pages is re-derived from `WEAPONS`/`UNITS`/`BUILDINGS`/
 `ARMOR_MATRIX`, because the moment they ship inside the game they stop being documentation
-and become claims the product makes.
+and become claims the product makes. `.github/workflows/wiki.yml` mirrors this canonical directory
+to the repository's GitHub Wiki after every main-branch wiki change; do not edit the detached wiki
+repository as a second source of truth. The Pages workflow also watches `wiki/**`, because the same
+change must reach the in-game Manual.
 
 `npm run build` deliberately does **not** typecheck. esbuild strips types, so a type error must never
 stop the game from running. That is what `npm run typecheck` is for. Do not "helpfully" wire tsc into

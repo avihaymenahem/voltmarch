@@ -11,7 +11,9 @@ If you have played Command & Conquer, most of this will be familiar and you can 
 ## Starting a match
 
 The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, **Service Record**,
-**Load Game**, **Replays** and **Settings**. Service Record holds lifetime stats, faction wins,
+**Load Game**, **Replays** and **Settings**. After the Tutorial is completed its menu item is hidden;
+**Settings → Gameplay → Training → Restore Tutorial** brings it back without erasing the rest of
+the profile. Service Record holds lifetime stats, faction wins,
 campaign medals and the honours collection; its **Missions** action opens the complete progression
 catalogue. The credits are a tab inside Settings.
 
@@ -54,6 +56,9 @@ From a construction vehicle the 2,000 option is withheld: with no income until a
 
 **Map Seed** is worth knowing about. The same seed produces the same battle — same terrain, same
 ore, same everything. Set it deliberately if you want to replay a start.
+
+Skirmish game speed can be set as high as **2.5×**. The in-match speed binding cycles 0.5×, 1×,
+1.5×, 2× and 2.5×; multiplayer remains fixed at 1×.
 
 ---
 
@@ -128,6 +133,11 @@ Titled **MAP**. It draws terrain, water, ore in gold, your structures as territo
 as small blips, attack pings as expanding rings, and your camera's viewport as an outlined
 rectangle. Click it to jump the camera there; drag to scrub the camera across the field.
 
+Right-click it with units selected to issue the same contextual order as a battlefield
+right-click: move on ground, attack a visible hostile, capture with an engineer, repair a friendly
+target, and so on. Shift queues, Ctrl force-fires and Alt force-moves. In mixed co-op, a right-click
+that produces no unit order falls back to a teammate ping.
+
 Without a working Radar Dome it goes grey, the title is replaced by a red **NO RADAR**, and the
 field carries **RADAR OFFLINE / Build a Radar Dome**. It is not blank — you still see your own
 units and buildings. What you lose is the enemy.
@@ -147,7 +157,8 @@ With nothing selected it shrinks to a single line. That line is a live advisory,
 
 With something selected it shows the name (or **MIXED FORCE**), a count, a scrolling row of unit
 cards, four armour/damage/range/speed chips, and a health bar with the absolute total written
-over it. On the right of the head row you get, depending on what is selected:
+over it. A compact tactics strip beside the selection keeps stance and formation actions available
+without doubling the panel's height. Depending on what is selected you also get:
 
 - **Stance** — four buttons, covered below
 - **Relocate** — for exactly one owned structure; see [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building)
@@ -157,7 +168,7 @@ over it. On the right of the head row you get, depending on what is selected:
   [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)
 - **Evacuate** — for any selected structures with somebody garrisoned inside
 
-The command deck adds four formation diagrams whenever at least two mobile units are selected:
+The tactics strip adds four formation diagrams whenever at least two mobile units are selected:
 **Line**, **Rectangle**, **V**, and **Triangle**. Clicking one immediately arranges the group around
 its current centre. Later group moves preserve the resulting shape; **Scatter** deliberately breaks it.
 

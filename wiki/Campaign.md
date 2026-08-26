@@ -522,9 +522,9 @@ fully wired and works.
 
 ## 9. What the rewards actually do — the honest table
 
-Most of the reward table is connected to something real. Three classes have a gap between what the
-reward says and what happens, and one mission cannot be finished at all. Here is the state of each,
-honestly.
+Most of the reward table is connected to something real. Two authored reward classes still carry a
+gap: superweapon ids do not own the actual tech gate, and match-objective credit values remain
+unpaid and hidden. Here is the state of each, honestly.
 
 | Reward class | Count | Works? |
 | --- | --- | --- |
@@ -534,7 +534,7 @@ honestly.
 | Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
 | Objective credits | 13 | **No.** Nothing pays them (§6). |
-| Cosmetics | 17 | **Display only.** |
+| Cosmetics | 17 | **Yes.** They render in Service Record with source mission and progress. |
 
 Those first two counts read 5 and 3 for a long time and were already too low
 before the navy left — the commander hero and the support pad had landed and
@@ -561,6 +561,9 @@ Signal Rig — and it publishes a fifth sidebar tab, **PWR**, listing the five p
 purchases. Buy one and it is yours for the rest of that match: it charges on its own clock and is
 callable from the powers bar as often as the clock allows.
 
+The Powers queue accepts **one requisition at a time**. A second power cannot be stacked behind the
+first; wait for the current purchase to finish, then choose the next one.
+
 | | |
 | --- | --- |
 | Structure | 1,500 credits, 20 s, **−80 power**, 750–800 HP, off the radar tier |
@@ -569,7 +572,7 @@ callable from the powers bar as often as the clock allows.
 
 | Power | Charge | Radius | Effect |
 | --- | --- | --- | --- |
-| **Orbital Scan** | 2:00 | 90 m | Permanently charts a wide circle of the map |
+| **Orbital Scan** | 2:00 | 90 m | Charts the clicked circle permanently and grants live vision there for 5 seconds |
 | **Airstrike** | 2:30 | 20 m | 260 High Explosive on the marker. Friendly-fires. |
 | **Emergency Repair** | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
 | **Ore Boost** | 3:00 | — | 2,500 credits, immediately |

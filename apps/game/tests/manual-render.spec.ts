@@ -1,9 +1,9 @@
 /**
  * ============================================================================
- * tests/manual-render.spec.ts — the Manual tab actually builds DOM, for all 17
+ * tests/manual-render.spec.ts — the Manual tab actually builds DOM, for all 19
  * ============================================================================
  * `tests/manual.spec.ts` is the half that needs no document: the parser, the
- * link classification, and the promise that 306 kB of wiki stays out of the
+ * link classification, and the promise that 345 KiB of wiki stays out of the
  * entry chunk. This is the other half, and it exists because the usual answer
  * — "the screenshot harness covers the DOM" — is FALSE HERE. `?shot=` never
  * loads the shell chunk (`shell-scope.spec.ts` says so in its header, and it
@@ -259,7 +259,7 @@ describe('the manual mounts', () => {
 
   it('renders every page in the corpus without throwing or drawing a blank', async () => {
     /*
-     * THE ONE THAT MATTERS. Seventeen pages, every block kind in the corpus,
+     * THE ONE THAT MATTERS. Nineteen pages, every block kind in the corpus,
      * driven through the real renderer. Before this, nothing anywhere executed
      * `renderBlocks` — `npm run shots` does not load the shell chunk at all.
      */

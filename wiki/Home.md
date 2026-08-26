@@ -1,6 +1,6 @@
 # VOLTMARCH
 
-VOLTMARCH is an original real-time strategy game that runs in a browser tab. You drive a
+VOLTMARCH is an original real-time strategy game for desktop and the browser. You drive a
 construction vehicle somewhere worth building, unfold it into a base, mine ore, spend it on an army,
 and take the other side's base apart before they take yours. Four playable factions, an ore economy,
 a power grid that gates production, fog of war, engineer capture, neutral civilian structures worth
@@ -33,6 +33,8 @@ superweapon, and they play nothing like the first two or like each other.
 | --- | --- |
 | [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) | The interface, your first ten minutes, the shape of a match. |
 | [Controls](/avihaymenahem/voltmarch/wiki/Controls) | Every key and mouse gesture, and which of them you can rebind. |
+| [Settings and Accessibility](/avihaymenahem/voltmarch/wiki/Settings-and-Accessibility) | Graphics, audio, accessibility, profiles, diagnostics and updates. |
+| [Service Record](/avihaymenahem/voltmarch/wiki/Service-Record) | Career statistics, campaign medals and the honours collection. |
 | [Economy](/avihaymenahem/voltmarch/wiki/Economy) | Ore, harvesters, refineries, power, and what a brownout costs you. |
 | [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) | Placement rules, the build radius, tech tiers, selling and repairing. |
 | [Combat](/avihaymenahem/voltmarch/wiki/Combat) | Warheads, armour classes, range, cover, crushing, and what beats what. |

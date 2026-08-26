@@ -96,9 +96,12 @@ new replay headers. Older replays remain readable and fall back to faction names
 
 - Press **Enter** during a live match to open the compact chat field. Enter sends; Escape cancels.
   Messages are one line, capped at 180 characters and rate-limited by the relay.
-- In a mixed co-op match, **right-click the minimap** to place an expanding ring for your human
-  teammate. The relay sends it only to sockets on the sender's team. A duel has no teammate, so the
-  ping action is disabled there.
+- With units selected, **right-click the minimap** to issue the same contextual order as a
+  battlefield right-click. Visible targets resolve to attack, capture, repair or the other valid
+  verb; ground resolves to movement, and Shift/Ctrl/Alt retain their queue and force modifiers.
+- In mixed co-op, a minimap right-click that produces no valid unit order becomes an expanding ring
+  for the human teammate. The relay sends it only to the sender's team. A duel has no teammate, so
+  that fallback ping is disabled there.
 - Chat and map pings are presentation messages. They do **not** enter `WireCommand`, the delayed turn
   stream, checksums or replay commands; losing one cannot desynchronise a match.
 

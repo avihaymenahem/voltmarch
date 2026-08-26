@@ -2,7 +2,7 @@
  * ============================================================================
  * src/shell/markdown.ts — the markdown subset the in-game Manual reads
  * ============================================================================
- * `wiki/` is 17 pages and 306 kB of hand-written markdown, published to the
+ * `wiki/` is 19 pages and 345 KiB of hand-written markdown, published to the
  * GitHub wiki. The Manual tab in Options renders the SAME files, unmodified, so
  * there is exactly one copy of the player documentation and no second thing to
  * keep in step.
@@ -17,12 +17,12 @@
  *
  * THE SUBSET IS MEASURED, NOT GUESSED
  * -----------------------------------
- * Everything below was derived by scanning all 17 files rather than by
+ * Everything below was derived by scanning all 19 files rather than by
  * imagining what a wiki might use. Counts are from that scan (2026-08-18):
  *
  *   SUPPORTED, because the corpus uses it
  *     ATX headings `#`..`######`   255   (h1 17, h2 156, h3 82; no h4+ yet)
- *     tables                      1180 rows across 17 pages
+ *     tables                      across all 19 pages
  *     bullet lists                 286
  *     numbered lists                44
  *     bold `**x**`                 989
@@ -50,7 +50,7 @@
  *
  * Table alignment markers (`:---`, `---:`, `:-:`) are ACCEPTED so a table
  * written with them still parses, and then ignored — the corpus uses plain
- * `---` in all 17 files, and a column that silently right-aligns is a smaller
+ * `---` in all 19 files, and a column that silently right-aligns is a smaller
  * surprise than a table that fails to be a table.
  *
  * IT EMITS AN AST, NOT HTML, AND THAT IS THE ESCAPING STORY

@@ -366,16 +366,18 @@ unoccupied ground, and after ten minutes a single credit crate is worth more tha
 
 Two mirrored settlements of three neutral buildings sit on the **perpendicular bisector of the lane
 between the two openings** — the only line on the map where a point is equally far from both armies,
-whatever the generator did to the start shelves. Each hamlet is 62 m off the midpoint, which puts it
-about 115 m from each start: outside anybody's build radius, outside the sight of anything standing
-in a base, and clear of the contested ore patch on the midpoint itself.
+whatever the generator did to the start shelves. Their exact layout now varies with the map seed:
+the pair sits **54–69 m** either side of the midpoint, slides up to 8 m along the lane, and uses
+**14–20 m** of internal spread. The two sides remain mirrored, so the variation changes the fight
+without giving one opening a shorter capture route. Both stay outside the home build radius and
+clear of the contested midpoint ore.
 
 **Two of them, and you cannot hold both.** One hamlet would be a race the army whose ore field
 happens to lie that way simply wins. Two is a decision.
 
-Each hamlet is a derrick on the crossroads with the two garrisonable blocks flanking it about 23 m
-out — close enough that a squad holding the derrick sits inside the other two buildings' field of
-fire.
+Each hamlet is a derrick with two garrisonable blocks flanking it. A nearby forward build pad is
+kept clear of decorative props, giving the winner room to turn a captured settlement into an
+outpost instead of capturing three buildings they cannot sensibly build around.
 
 | Structure | Footprint | HP | What it is for |
 | --- | --- | --- | --- |

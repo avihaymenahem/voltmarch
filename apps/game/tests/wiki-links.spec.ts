@@ -10,7 +10,7 @@
  * not 404 that: it silently serves the front page again. So the links did not
  * look broken, they looked inert, which is why they shipped.
  *
- * Measured before the fix, resolving all 142 body links across all 17 live
+ * Measured before the fix, resolving every body link across all 19 live
  * pages: 15 distinct broken targets, every one of them on Home. Measured after:
  * 448 links resolved from every URL GitHub serves each page at, 0 broken.
  *

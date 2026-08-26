@@ -352,7 +352,7 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
  * untouched by this. It is a KEYBIND REFERENCE: it resolves every action in
  * `ActionCatalogue.ts` against the live store and marks the rows a player has
  * rebound. That is a live view of this machine's configuration, and folding
- * 306 kB of prose into it would bury the one screen that answers "which key did
+ * 345 KiB of prose into it would bury the one screen that answers "which key did
  * I put Attack Move on".
  *
  * The manual is the other thing: seventeen static pages about the GAME rather
@@ -851,7 +851,7 @@ export class SettingsScreen implements Screen {
   /* -- manual -------------------------------------------------------------- *
    * The whole wiki, from `wiki/*.md`, behind one dynamic import. `Manual.ts`
    * and `manual-corpus.ts` carry the argument for the split; the short version
-   * is that 306 kB of prose must not sit in the chunk every player downloads.
+   * is that 345 KiB of prose must not sit in the chunk every player downloads.
    * ------------------------------------------------------------------------ */
 
   /**

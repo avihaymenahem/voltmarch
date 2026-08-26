@@ -189,7 +189,7 @@ Other ways credits move:
 | --- | --- |
 | Selling a structure | **half** the build cost. A half-built structure refunds against the fraction actually built, so place-sell-repeat cannot print money |
 | Relocating a structure | costs **35%** of its build cost, minimum 50 credits, refunded in full if the move fails |
-| Repairing a structure | **0.25 credits per hit point**, charged continuously while the wrench is on |
+| Repairing a structure | **0.25 credits per hit point**, paid in half-second pulses after 3 seconds out of combat |
 | Repairing a vehicle at a depot | the same 0.25 per hit point |
 
 ---

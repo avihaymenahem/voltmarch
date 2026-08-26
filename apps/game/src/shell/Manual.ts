@@ -2,12 +2,12 @@
  * ============================================================================
  * src/shell/Manual.ts — the player wiki, in the game, from the same files
  * ============================================================================
- * Options -> Manual. Seventeen pages, a rail on the left, the rendered page on
+ * Options -> Manual. Nineteen pages, a rail on the left, the rendered page on
  * the right, and internal links that navigate instead of pointing at github.com.
  *
  * WHAT MAKES IT WORTH HAVING
  * --------------------------
- * The documentation existed and was good; it was 306 kB of markdown that a
+ * The documentation existed and was good; it was 345 KiB of markdown that a
  * player could only read by leaving the game, in a browser tab, on a site that
  * needs a network. It is now reachable from the title screen AND from the pause
  * menu's Options, over a frozen frame, mid-match — which is when somebody
@@ -468,7 +468,7 @@ export class ManualView {
       b.addEventListener('click', () => this.show(page, { push: true }));
       this.rail.appendChild(b);
 
-      // The section jumps hang under the OPEN page only. Seventeen pages'
+      // The section jumps hang under the OPEN page only. Nineteen pages'
       // worth of `##` headings at once is 156 buttons and no longer a rail.
       if (page !== this.current || page.sections.length === 0) continue;
       const subs = el('div', 'vm-manual-subs');
