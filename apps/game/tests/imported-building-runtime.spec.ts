@@ -8,10 +8,10 @@ const shellSource = readFileSync(resolve('apps/game/src/shell/Shell.ts'), 'utf8'
 
 describe('imported building runtime contract', () => {
   it('uses derived caster proxies for static imports without putting them in colour or AO', () => {
-    // Thirty static buildings have geometry-only caster proxies. Moving
+    // Thirty-one static buildings have geometry-only caster proxies. Moving
     // defences are deliberately excluded: a fused proxy would leave their
     // shadows pointing in the authored direction after the head slews.
-    expect(source.split('.shadow.glb').length - 1).toBe(30);
+    expect(source.split('.shadow.glb').length - 1).toBe(31);
     const sentry = source.match(/key: 'soviet_sentry',[\s\S]*?\n  \},\n  \{\n    key: 'soviet_tesla'/)?.[0];
     expect(sentry).toBeDefined();
     expect(sentry).not.toContain('shadowUrl:');
@@ -44,7 +44,8 @@ describe('imported building runtime contract', () => {
     expect(source).toContain("tesla-reactor.lod1.glb");
     expect(source).toContain("tesla-reactor.lod2.glb");
     expect(source).toContain("flame-tower.lod1.glb");
-    expect(source.split('.lod1.glb').length - 1).toBe(20);
+    expect(source).toContain("civilian/derived/apartment-block.lod1.glb");
+    expect(source.split('.lod1.glb').length - 1).toBe(21);
     expect(source.split('.lod2.glb').length - 1).toBe(4);
     expect(source).toContain('minDistance: 78');
     expect(source).toContain('minDistance: 82');

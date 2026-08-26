@@ -10,6 +10,7 @@
   },
   "assets": [
     { "key": "civ_derrick", "file": "oil-derrick.glb", "class": "landmark", "lods": false },
-    { "key": "civ_hospital", "file": "hospital.glb", "class": "landmark", "lods": false }
+    { "key": "civ_hospital", "file": "hospital.glb", "class": "landmark", "lods": false },
+    { "key": "civ_apartments", "file": "apartment-block.glb", "class": "landmark", "lods": true }
   ]
 }

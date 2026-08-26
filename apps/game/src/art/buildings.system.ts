@@ -1167,6 +1167,33 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
       envMapIntensity: 0.62,
     },
   },
+  {
+    key: 'civ_apartments',
+    label: 'Civilian Apartment Block',
+    url: new URL('../assets/buildings/civilian/compressed/apartment-block.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/civilian/derived/apartment-block.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/civilian/derived/apartment-block.lod1.glb', import.meta.url).href, minDistance: 94 },
+    ],
+    widthScale: 0.94,
+    depthScale: 0.94,
+    heightScale: 0.96,
+    creaseAngle: 40,
+    lodCreaseAngle: 42,
+    shadowInset: 0.94,
+    proceduralParts: 'none',
+    style: {
+      color: [0.95, 0.91, 0.84],
+      metalness: 0.03,
+      roughness: 0.82,
+      normalScale: 1.20,
+      ambient: [0.14, 0.12, 0.10],
+      ambientIntensity: 0.06,
+      clearcoat: 0.01,
+      clearcoatRoughness: 0.92,
+      envMapIntensity: 0.62,
+    },
+  },
 ];
 
 const IMPORTED_STRUCTURES: readonly ImportedStructureSpec[] = [
