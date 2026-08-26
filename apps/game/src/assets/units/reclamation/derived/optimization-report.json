@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "family": "reclamation-vehicles",
+  "generatedAt": "2026-08-26T12:13:57.644Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
+  "rows": [
+    {
+      "key": "reclaim_scrapper",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/reclamation/scrapjaw.glb",
+        "triangles": 44402,
+        "fileBytes": 4874188
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/reclamation/derived/scrapjaw.lod1.glb",
+          "triangles": 19913,
+          "triangleRatio": 0.4485,
+          "boundsDriftMeters": 0.00027,
+          "boundsDriftRatio": 0.00036,
+          "fileBytes": 778728,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/reclamation/derived/scrapjaw.lod2.glb",
+          "triangles": 12267,
+          "triangleRatio": 0.2763,
+          "boundsDriftMeters": 0.00945,
+          "boundsDriftRatio": 0.00841,
+          "fileBytes": 554044,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/reclamation/derived/scrapjaw.shadow.glb",
+          "triangles": 1104,
+          "triangleRatio": 0.0249,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16256,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 92
+        }
+      ]
+    }
+  ]
+}

@@ -18,13 +18,13 @@ licence is the authority.
 ## What this project is
 
 VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
-building, AI opponent, fog of war. Most game-world art is generated from code; selected landmark
-structures now use original Meshy generations that pass through the local VOLTMARCH asset pipeline.
+building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
+structures and resource vehicles now use original Meshy generations that pass through the local VOLTMARCH asset pipeline.
 
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
 are built from Three.js geometry, custom shaders and procedural canvas generators. **Six shipped
 asset groups are not generated from runtime code**, all deliberate: the first five live in
-`apps/game/public/`; the imported landmark models live in `apps/game/src/assets/` and Vite emits them into the build.
+`apps/game/public/`; imported game-world models live in `apps/game/src/assets/` and Vite emits them into the build.
 
 1. **Rajdhani** (OFL-1.1) in `apps/game/public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -146,13 +146,14 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-6. **Imported faction landmark structures** in
-   `apps/game/src/assets/buildings/{allies,meridian,reclamation,soviets}/` — original Meshy AI generations
+6. **Imported faction structures and selected units** in
+   `apps/game/src/assets/{buildings,units}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
-   `docs/ASSET_CONVERSION_MAP.md`. These are the only non-procedural game-world models currently
-   shipped.
+   `docs/ASSET_CONVERSION_MAP.md`. The selected unit slice currently comprises the Soviet Ore Collector,
+   Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw; these and the imported structures
+   are the only non-procedural game-world models currently shipped.
 
 7. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it

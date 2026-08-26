@@ -35,6 +35,8 @@ export interface ImportedUnitSpec {
   label: string;
   url: string;
   lods?: readonly ImportedUnitLodSpec[];
+  /** Geometry-only proxy used by the shadow pass instead of visible LOD0. */
+  shadowUrl?: string;
   hullName: string;
   turretName?: string;
   /** Source-space centre of the authored yaw ring. */
@@ -54,6 +56,86 @@ export interface ImportedUnitSpec {
 }
 
 export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
+  {
+    key: 'allied_harvester',
+    label: 'Allied Chrono Miner',
+    url: new URL('../assets/units/allies/compressed/chrono-miner.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/allies/derived/chrono-miner.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/allies/derived/chrono-miner.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/allies/derived/chrono-miner.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.0, 3.3, 8.6],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+    emissiveIntensity: 0.008,
+  },
+  {
+    key: 'meridian_collector',
+    label: 'Meridian Sun Collector',
+    url: new URL('../assets/units/meridian/compressed/sun-collector.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/meridian/derived/sun-collector.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/meridian/derived/sun-collector.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/meridian/derived/sun-collector.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [3.9, 3.25, 8.4],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.16,
+    envMapIntensity: 0.56,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'reclaim_scrapper',
+    label: 'Reclamation Scrapjaw',
+    url: new URL('../assets/units/reclamation/compressed/scrapjaw.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/reclamation/derived/scrapjaw.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/reclamation/derived/scrapjaw.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/reclamation/derived/scrapjaw.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.0, 3.35, 8.6],
+    yawDeg: 90,
+    // Keep the graphite chassis readable without bleaching its violet,
+    // mismatched-steel and raw-jaw material blocks beneath battlefield light.
+    baseColorGain: 1.24,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.52,
+    emissiveIntensity: 0.015,
+  },
   {
     key: 'soviet_rhino',
     label: 'Soviet Anvil Heavy Tank',
@@ -95,12 +177,43 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     // Match the faction baseline locally instead of lifting the whole scene.
     baseColorGain: 1.14,
   },
+  {
+    key: 'soviet_harvester',
+    label: 'Soviet Ore Collector',
+    url: new URL('../assets/units/soviets/compressed/ore-collector.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/soviets/derived/ore-collector.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/soviets/derived/ore-collector.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/soviets/derived/ore-collector.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.0, 3.3, 8.6],
+    // The approved collector faces source -X; rotate that intake toward the
+    // engine's +Z model-forward convention.
+    yawDeg: 90,
+    // Preserve its dark Dominion iron while keeping the olive/red material
+    // blocks legible beneath the battlefield key light.
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.18,
+    envMapIntensity: 0.56,
+    emissiveIntensity: 0.014,
+  },
 ];
 
 const loader = new GLTFLoader();
 let ktx2Loader: KTX2Loader | null = null;
 const runtimeMaterials = new Set<THREE.Material>();
 const runtimeTextures = new Set<THREE.Texture>();
+let importedShadowOnlyMaterial: THREE.MeshBasicMaterial | null = null;
 
 function configureTextureLoader(): void {
   if (ktx2Loader !== null) return;
@@ -174,6 +287,21 @@ function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): T
     applyShroudTint(shader);
   };
   material.customProgramCacheKey = () => 'vm.imported-unit.rim.shroud.v1';
+  runtimeMaterials.add(material);
+  return material;
+}
+
+/** Keep a proxy traversable for shadows while making its colour pass inert. */
+function shadowOnlyMaterial(): THREE.MeshBasicMaterial {
+  if (importedShadowOnlyMaterial !== null) return importedShadowOnlyMaterial;
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  material.name = 'imported_unit.shadow_only';
+  material.colorWrite = false;
+  material.depthWrite = false;
+  material.depthTest = false;
+  material.toneMapped = false;
+  material.fog = false;
+  importedShadowOnlyMaterial = material;
   runtimeMaterials.add(material);
   return material;
 }
@@ -289,9 +417,11 @@ export async function loadImportedUnitOverride(
 ): Promise<KindMesh> {
   configureTextureLoader();
   const lodSpecs = optimizationEnabled() ? spec.lods ?? [] : [];
+  const shadowUrl = optimizationEnabled() ? spec.shadowUrl : undefined;
   const loaded = await Promise.all([
     loader.loadAsync(spec.url),
     ...lodSpecs.map((lod) => loader.loadAsync(lod.url)),
+    ...(shadowUrl === undefined ? [] : [loader.loadAsync(shadowUrl)]),
   ]);
 
   const primary = meshesByName(loaded[0].scene, spec.label);
@@ -374,10 +504,23 @@ export async function loadImportedUnitOverride(
     }
   });
 
+  let shadowGeometry: THREE.BufferGeometry | undefined;
+  if (shadowUrl !== undefined) {
+    const shadowMeshes = meshesByName(
+      loaded[1 + lodSpecs.length].scene, `${spec.label} shadow proxy`,
+    );
+    const shadowSource = [...shadowMeshes.values()][0];
+    if (shadowSource === undefined || shadowMeshes.size !== 1) {
+      throw new Error(`${spec.label}: shadow proxy must contain exactly one mesh`);
+    }
+    shadowGeometry = fitGeometry(sourceGeometry(shadowSource), fit, false);
+    shadowGeometry.name = `${spec.key}.imported.shadow`;
+  }
+
   const material = importedUnitMaterial(hullSource.material, spec);
-  const parts: KindMeshPart[] | undefined = turretGeometry === undefined
-    ? undefined
-    : [{
+  const parts: KindMeshPart[] = [];
+  if (turretGeometry !== undefined) {
+    parts.push({
       geometry: turretGeometry,
       lods: turretLods,
       material,
@@ -388,7 +531,17 @@ export async function loadImportedUnitOverride(
       part: PartId.Turret,
       castShadow: true,
       receiveShadow: true,
-    }];
+    });
+  }
+  if (shadowGeometry !== undefined) {
+    parts.push({
+      geometry: shadowGeometry,
+      material: shadowOnlyMaterial(),
+      castShadow: true,
+      receiveShadow: false,
+      aoOccluder: false,
+    });
+  }
 
   // Sockets stay procedural: the imported shell is fitted to that exact
   // gameplay envelope and therefore inherits proven muzzle/exhaust positions.
@@ -418,10 +571,10 @@ export async function loadImportedUnitOverride(
     geometry,
     lods: hullLods,
     material,
-    parts,
+    parts: parts.length > 0 ? parts : undefined,
     sockets,
     turretPivotY: targetPivot.y,
-    castShadow: true,
+    castShadow: shadowGeometry === undefined,
     receiveShadow: true,
   };
 }
@@ -433,4 +586,5 @@ export function disposeImportedUnitAssets(): void {
   runtimeTextures.clear();
   if (ktx2Loader !== null) releaseRuntimeKTX2Loader();
   ktx2Loader = null;
+  importedShadowOnlyMaterial = null;
 }

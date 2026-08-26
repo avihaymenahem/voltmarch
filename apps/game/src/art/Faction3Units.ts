@@ -105,6 +105,7 @@ import { EntityKind, Faction, PartId } from '../core/types';
 import { GreebleFactory } from './Greeble';
 import { MassRole, type MassDef, type SocketSpec, type UnitMassList } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
+import { IMPORTED_UNIT_SPECS, loadImportedUnitOverride } from './ImportedUnitAssets';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
@@ -1587,6 +1588,16 @@ export async function buildAndRegisterMeridianUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
+  const collectorSpec = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'meridian_collector');
+  const collectorModel = meridianUnitLibrary.get('meridian_collector');
+  if (collectorSpec !== undefined && collectorModel !== undefined) {
+    try {
+      meshes.set('meridian_collector', await loadImportedUnitOverride(collectorModel, collectorSpec));
+      console.info('[units] imported Meridian Sun Collector with LOD and shadow proxy');
+    } catch (error) {
+      console.error('[units] imported Meridian Sun Collector rejected; using procedural fallback', error);
+    }
+  }
   const meshFor = (key: string): KindMesh | null => {
     const model = meridianUnitLibrary.get(key);
     if (model === undefined) return null;

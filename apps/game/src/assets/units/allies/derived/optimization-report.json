@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "family": "allied-vehicles",
+  "generatedAt": "2026-08-26T11:51:06.678Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/allied-vehicles.json",
+  "rows": [
+    {
+      "key": "allied_harvester",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/allies/chrono-miner.glb",
+        "triangles": 49825,
+        "fileBytes": 5323820
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/allies/derived/chrono-miner.lod1.glb",
+          "triangles": 22416,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00164,
+          "boundsDriftRatio": 0.00148,
+          "fileBytes": 706412,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/allies/derived/chrono-miner.lod2.glb",
+          "triangles": 8968,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00167,
+          "boundsDriftRatio": 0.00151,
+          "fileBytes": 357928,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/allies/derived/chrono-miner.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0347,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24996,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    }
+  ]
+}

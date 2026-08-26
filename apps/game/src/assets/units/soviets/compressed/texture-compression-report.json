@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-23T14:15:49.866Z",
+  "generatedAt": "2026-08-26T11:25:15.521Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -140,16 +140,82 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "soviet_harvester",
+      "source": "apps/game/src/assets/units/soviets/ore-collector.glb",
+      "output": "apps/game/src/assets/units/soviets/compressed/ore-collector.glb",
+      "sourceFileBytes": 5369188,
+      "outputFileBytes": 4538968,
+      "transferRatio": 0.8454,
+      "sourceTextureBytes": 2708757,
+      "ktx2TextureBytes": 1878337,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1333332,
+          "ktx2Bytes": 833522,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 287744,
+          "ktx2Bytes": 190668,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1087681,
+          "ktx2Bytes": 854147,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 14452620,
-    "outputFileBytes": 8867036,
-    "transferRatio": 0.6135,
-    "sourceTextureBytes": 9324537,
-    "ktx2TextureBytes": 3738556,
-    "sourceGpuBytesRGBA8": 117440504,
-    "compressedGpuBytes8bpp": 20971518,
-    "compressedGpuBytes4bpp": 10485762
+    "sourceFileBytes": 19821808,
+    "outputFileBytes": 13406004,
+    "transferRatio": 0.6763,
+    "sourceTextureBytes": 12033294,
+    "ktx2TextureBytes": 5616893,
+    "sourceGpuBytesRGBA8": 167772148,
+    "compressedGpuBytes8bpp": 29360125,
+    "compressedGpuBytes4bpp": 14680067
   }
 }

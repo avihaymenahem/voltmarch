@@ -89,7 +89,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | S3 | `soviet_apocalypse` | Sledge Tank | VEH | integrated | Geometry tasks `01a02e6b-00fd-70f7-a591-2639f77f06de` and `01a02e77-7248-7419-95d4-9394f4e435ab` rejected for four guns. V3 geometry task `01a02e7c-6a75-7c15-8d82-53a7ecc68e89` and retexture task `01a02e8f-eb6e-7c8a-b012-969ab9343c6f` ship as a 26,718-triangle articulated Hull/Turret GLB with exactly two guns, one faction-matched PBR atlas, sealed off-axis rotation, 12,896-triangle LOD1, 1,728-triangle shadow proxy and KTX2 reduction from 8.18 to 3.32 MiB. WebGL/WebGPU noon validation passes; wreck and final performance baseline remain. |
 | S3 | `soviet_sickle` | Sickle | VEH | procedural | Distinct walker/mechanism branch; leg animation contract |
 | S3 | `soviet_v4` | V4 Rocket Launcher | VEH | procedural | Shared tracked chassis; elevating launcher pack |
-| S3 | `soviet_harvester` | Ore Collector | VEH | procedural | Industrial chassis; ore load/readability and unload socket |
+| S3 | `soviet_harvester` | Ore Collector | VEH | integrated | 49,715-triangle forged hopper/scoop hero, 22,371/12,085 LODs, 1,344-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
 | S3 | `soviet_dozer` | Sputnik Dozer | VEH | procedural | Utility chassis; construction/deploy cues |
 | S3 | `soviet_mig` | Interceptor | AIR | procedural | Soviet air material family; preserve sharp delta silhouette |
 | S3 | `soviet_dreadnought` | Dreadnought | NAV | procedural | Capital vessel; mandatory LODs and multiple weapon pivots |
@@ -134,7 +134,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_guardian` | Guardian Tank | VEH | procedural | Establish Allied ceramic tracked chassis and turret family |
 | A3 | `allied_ifv` | Sabre IFV | VEH | procedural | Shared chassis/material; modular weapon station |
 | A3 | `allied_prism` | Refractor Tank | VEH | procedural | Energy-weapon derivative; emitter pivot and VFX socket |
-| A3 | `allied_harvester` | Chrono Miner | VEH | procedural | Industrial collector variant with unload/chrono cues |
+| A3 | `allied_harvester` | Chrono Miner | VEH | integrated | 49,825-triangle precision-shell miner, 22,416/8,968 LODs, 1,728-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
 | A3 | `allied_dozer` | Construction Dozer | VEH | procedural | Utility chassis and construction equipment |
 | A3 | `allied_vindicator` | Petrel Bomber | AIR | procedural | Establish Allied aerospace material and silhouette family |
 | A3 | `allied_destroyer` | Aircraft Cruiser | NAV | procedural | Capital vessel; mandatory LODs and air-support silhouette |
@@ -175,7 +175,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_solarch` | Solarch | VEH | procedural | Establish elegant solar ground-hull material family |
 | M3 | `meridian_skiff` | Sandskiff | VEH | procedural | Fast skimmer derivative and hover silhouette |
 | M3 | `meridian_zenith` | Zenith Emitter | VEH | procedural | Energy weapon platform with emitter pivot |
-| M3 | `meridian_collector` | Sun Collector | VEH | procedural | Resource collector variant and unload socket |
+| M3 | `meridian_collector` | Sun Collector | VEH | integrated | 49,837-triangle true-hover collector, 22,425/8,968 LODs, 1,656-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
 | M3 | `meridian_carryall` | Pactworks Carryall | VEH | procedural | Heavy utility/transport derivative |
 | M3 | `meridian_kestrel` | Kestrel Gunship | AIR | procedural | Establish Pact aerospace family and weapon sockets |
 | M3 | `meridian_corvette` | Kite Corvette | NAV | procedural | Light naval hull family and battery pivots |
@@ -216,7 +216,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R3 | `reclaim_grinder` | Grinder | VEH | procedural | Establish asymmetrical scrap chassis/material family |
 | R3 | `reclaim_spitter` | Arcspitter | VEH | procedural | Shared chassis; energy weapon pivot/socket |
 | R3 | `reclaim_slaghurler` | Slaghurler | VEH | procedural | Shared chassis; artillery mechanism |
-| R3 | `reclaim_scrapper` | Scrapjaw | VEH | procedural | Aggressive close-combat chassis derivative |
+| R3 | `reclaim_scrapper` | Scrapjaw | VEH | integrated | 44,402-triangle open-frame crusher, 19,913/12,267 LODs, 1,104-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
 | R3 | `reclaim_crawler` | Yardcrawler | VEH | procedural | Heavy utility/deploying chassis; mandatory moving hierarchy |
 | R3 | `reclaim_hornet` | Swarmhornet | AIR | procedural | Establish salvaged aircraft family and weapon sockets |
 | R3 | `reclaim_scow` | Slag Scow | NAV | procedural | Light scrap vessel and bow weapon pivot |

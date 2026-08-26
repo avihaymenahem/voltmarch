@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "family": "meridian-vehicles",
+  "generatedAt": "2026-08-26T12:02:44.153Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/meridian-vehicles.json",
+  "rows": [
+    {
+      "key": "meridian_collector",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/meridian/sun-collector.glb",
+        "triangles": 49837,
+        "fileBytes": 5357424
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/sun-collector.lod1.glb",
+          "triangles": 22425,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00034,
+          "boundsDriftRatio": 0.00021,
+          "fileBytes": 692448,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/sun-collector.lod2.glb",
+          "triangles": 8968,
+          "triangleRatio": 0.1799,
+          "boundsDriftMeters": 0.00063,
+          "boundsDriftRatio": 0.00031,
+          "fileBytes": 345052,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/sun-collector.shadow.glb",
+          "triangles": 1656,
+          "triangleRatio": 0.0332,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 23984,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            11
+          ],
+          "occupiedCells": 138
+        }
+      ]
+    }
+  ]
+}

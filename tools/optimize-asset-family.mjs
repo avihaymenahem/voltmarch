@@ -109,7 +109,11 @@ async function deriveShadowProxy(input, output, profile) {
   const sourceTriangles = triangles(source);
   const spanX = sourceBounds.max[0] - sourceBounds.min[0];
   const spanZ = sourceBounds.max[2] - sourceBounds.min[2];
-  const longest = 16;
+  // Wide hovercraft can fill more cells than a conventional hull at the same
+  // 16-cell span. Allow a family profile to lower grid density so the proxy
+  // still honors its absolute triangle ceiling instead of passing only by the
+  // relative-ratio escape hatch.
+  const longest = profile.gridLongest ?? 16;
   const nx = spanX >= spanZ ? longest : Math.max(6, Math.round(longest * spanX / Math.max(1e-6, spanZ)));
   const nz = spanZ >= spanX ? longest : Math.max(6, Math.round(longest * spanZ / Math.max(1e-6, spanX)));
   const dx = spanX / nx;

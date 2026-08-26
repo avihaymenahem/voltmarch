@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-23T14:17:31.933Z",
+  "generatedAt": "2026-08-26T11:24:51.822Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -114,6 +114,59 @@
             9
           ],
           "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "soviet_harvester",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/soviets/ore-collector.glb",
+        "triangles": 49715,
+        "fileBytes": 5369188
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/ore-collector.lod1.glb",
+          "triangles": 22371,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00063,
+          "boundsDriftRatio": 0.0009,
+          "fileBytes": 895340,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/ore-collector.lod2.glb",
+          "triangles": 12085,
+          "triangleRatio": 0.2431,
+          "boundsDriftMeters": 0.00122,
+          "boundsDriftRatio": 0.00176,
+          "fileBytes": 564236,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/ore-collector.shadow.glb",
+          "triangles": 1344,
+          "triangleRatio": 0.027,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19616,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            7
+          ],
+          "occupiedCells": 112
         }
       ]
     }

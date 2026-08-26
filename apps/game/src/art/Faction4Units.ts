@@ -87,6 +87,7 @@ import {
   type MassDef, type SocketSpec, type UnitMassList,
 } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
+import { IMPORTED_UNIT_SPECS, loadImportedUnitOverride } from './ImportedUnitAssets';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
@@ -1649,6 +1650,16 @@ export async function buildAndRegisterReclaimUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
+  const scrapperSpec = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'reclaim_scrapper');
+  const scrapperModel = reclaimUnitLibrary.get('reclaim_scrapper');
+  if (scrapperSpec !== undefined && scrapperModel !== undefined) {
+    try {
+      meshes.set('reclaim_scrapper', await loadImportedUnitOverride(scrapperModel, scrapperSpec));
+      console.info('[units] imported Reclamation Scrapjaw with LOD and shadow proxy');
+    } catch (error) {
+      console.error('[units] imported Reclamation Scrapjaw rejected; using procedural fallback', error);
+    }
+  }
   const meshFor = (key: string): KindMesh | null => {
     const model = reclaimUnitLibrary.get(key);
     if (model === undefined) return null;

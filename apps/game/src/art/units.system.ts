@@ -365,7 +365,7 @@ export default defineSystem({
         ? isArtFactionPlanned(Faction.Allies)
         : spec.key.startsWith('soviet_')
           ? isArtFactionPlanned(Faction.Soviets)
-          : true,
+          : false,
     );
     for (const spec of importedSpecs) {
       const model = unitLibrary.get(spec.key);
