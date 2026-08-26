@@ -4861,10 +4861,9 @@ export const AUDIO_BUS_DB = {
    * Raised from -9. With the default music volume of 65 and the 2.2 perceptual
    * curve, -9 put the score at 0.377 * 0.355 = 0.134 of full scale — about
    * -17.5 dB before a note was played, against an SFX bus sitting at 0. The
-   * report was "idle music is too low", and half of that was the BAND (see
-   * `AUDIO_MUSIC.trackTrimDb`) while this is the other half: the whole bus was
-   * mixed for a score that no longer needed the headroom, because the tracks it
-   * was set for were the synthesised ones.
+   * report was "idle music is too low". The original soundtrack delivery cues
+   * are level-matched by `tools/prepare-music.py`; this remains the intentional
+   * headroom between that programme and full-scale SFX.
    */
   music: -6,
   sfx: 0,
@@ -5050,34 +5049,6 @@ export const AUDIO_MUSIC = {
   /** Hysteresis so a layer cannot chatter at a boundary. */
   layerHysteresis: 0.04,
   layerDb: [-16, -12, -10, -8, -7] as readonly number[],
-  /**
-   * Per-BAND trim for the recorded score, in dB. Index matches the track band
-   * (0 idle, 1 mid, 2 combat).
-   *
-   * `TrackMusic.applyBand` used to ramp the active stream to a hardcoded gain
-   * of 1, which assumes the three files are level-matched. They are not — they
-   * are three separate Kevin MacLeod pieces, mastered independently, and
-   * measured through the game's own decoder they are nowhere near each other:
-   *
-   *     track     RMS        peak
-   *     idle    -22.54 dB   -2.42 dB
-   *     mid     -20.20 dB   -1.18 dB
-   *     combat  -11.80 dB   +0.78 dB
-   *
-   * Idle sits 10.7 dB under combat — roughly a THIRD of the perceived loudness,
-   * which is the reported "idle music is too low". And combat peaks ABOVE zero,
-   * so it was arriving pre-clipped and leaning on the master limiter to hide it.
-   *
-   * These trims land the three at about -20.5 / -19.2 / -15.8 RMS: a deliberate
-   * ~4.7 dB climb from idle to combat, which is what an adaptive score is FOR,
-   * instead of the accidental 10.7 dB cliff. Every peak ends up under 0 dBFS,
-   * so the limiter goes back to being a safety net rather than a mix stage.
-   *
-   * The trim is a mix decision and belongs here rather than in the files: the
-   * audio is CC-BY and re-encoding it to bake in a gain change would fork it
-   * from the credited source for no benefit.
-   */
-  trackTrimDb: [2.0, 1.0, -4.0] as readonly number[],
   /** Equal-power crossfade length, in bars. */
   fadeBars: 1,
   /** Combat heat smoothing per 250 ms tick — fast up, slow down. */

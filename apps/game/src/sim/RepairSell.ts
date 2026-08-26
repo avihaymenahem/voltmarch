@@ -38,7 +38,7 @@ import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import { PerEntityF32 } from '../core/world';
 import {
-  CommandKind, CreditReason, EntityFlag, EntityKind, Faction, FACTION_COUNT, FxKind,
+  CommandKind, CreditReason, EntityFlag, EntityKind, EvaLine, Faction, FACTION_COUNT, FxKind,
   NONE, OrderKind, Stance, UnitState, WarheadClass,
 } from '../core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../core/types';
@@ -287,6 +287,7 @@ export class RepairSellService {
     if (st.hp[i] >= st.maxHp[i]) return false;
     this.repairing.setAt(i, 1);
     this.sparkTimer.setAt(i, 0);
+    this.world.audio.eva(player, EvaLine.Repairing);
     return true;
   }
 

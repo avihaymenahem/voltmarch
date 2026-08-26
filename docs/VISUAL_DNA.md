@@ -930,10 +930,11 @@ sample-rate independent, so a device at another rate needs no adaptation.
   effective repeat period exceeds **200 firings**.
 - Bake budget **≤ 380 ms**, split across 4 rAF frames behind an "INITIALIZING AUDIO SUBSYSTEM" loading line.
   ~9.5 MB stereo float32; convert anything that gets panned to mono → ~5 MB.
-- **Loops** (wind, base hum, engines, Kirov prop, music stems) stay as live graphs — they need continuous
+- **Loops** (wind, base hum, engines, Kirov prop) stay as live graphs — they need continuous
   modulation.
 
-**Voice budget.** Hard cap **64 one-shot sources + 24 loops + 34 music nodes = 122**.
+**Voice budget.** Hard cap **64 one-shot sources + 24 loops + 2 streamed-score nodes = 90** in the
+default path. The 34-node procedural sequencer is retained only as a missing-file fallback.
 Per-category: gunfire 16 · explosions 8 · tesla 6 · rockets 10 · engines 8 · footsteps 6 · UI 4 ·
 voice 2 (1 EVA + 1 bark).
 **Stealing:** when a category is full, kill the oldest instance with the lowest current gain, ramping to 0
@@ -1303,7 +1304,7 @@ gain/filter pairs rather than churning per 16th — GC pauses click.
 
 ```
                                      ┌── musicDuck ──┐
-[music stems] ── musicBus (-9 dB) ───┤               ├──┐
+[streamed score] ─ musicBus (-6 dB) ─┤               ├──┐
                                      └───────────────┘  │
 [weapons/expl] ─ sfxBus   ( 0 dB) ─── sfxDuck ──────────┤
 [EVA + barks] ── voiceBus (+2 dB) ─── (no duck) ────────┼── masterGain (-1 dB)
@@ -1368,11 +1369,12 @@ early taps stamped at 0.6 / 0.4 / 0.3 / 0.22. **Stereo with independent noise se
 (4096 pt `tanh(1.6x)/tanh(1.6)`, `oversample: '4x'`) → `masterGain = 0.891` (**−1.0 dBFS ceiling**).
 **Target integrated loudness ≈ −16 LUFS** at the L2 combat state; peaks at −1 dBFS on nukes only.
 
-**Accessibility.** Options → Audio: 5 sliders; **EVA voice: Synthesized / System / Off**; **Unit responses:
-On / Reduced (selection only) / Off**; **Reduce loud transients** (caps explosions at −9 dB, disables the nuke
-master-lowpass); **Mono output** (`ChannelMergerNode` sum before the limiter).
-**Subtitles:** every EVA line and bark emits its text. EVA renders bottom-centre of the playfield in the
-superweapon red (`#D01818`), 16 px, 3.5 s dwell; barks in white at 13 px, 1.8 s dwell.
+**Accessibility.** Options → Audio has the six bus sliders plus Mute All, an independent Strategic
+Announcer toggle, and **Unit Responses: Full / Selection Only / Off**. The stored choices are pushed
+into the live directors immediately and are filled safely into profiles written by older builds.
+**Subtitles:** every EVA line and bark emits its exact audible text through one dedicated,
+bottom-centre playfield surface. EVA uses its utterance dwell; barks dwell for 1.8 s. Options →
+Gameplay → Voice Subtitles controls both, and the surface never consumes a toast slot.
 
 ## 3.8 Build order
 

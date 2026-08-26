@@ -70,6 +70,7 @@ import {
   type Screen,
   type Shell,
 } from './Shell';
+import { MusicControl } from './MusicControl';
 
 /** `m:ss` for anything under an hour, `h:mm:ss` past it. */
 export function formatClock(seconds: number): string {
@@ -156,6 +157,7 @@ export class PauseMenuScreen implements Screen {
   /** The pause panel itself, hidden while an overlay is up. */
   private card: HTMLElement | null = null;
   private overlay: Overlay | null = null;
+  private musicControl: MusicControl | null = null;
 
   constructor(private readonly shell: Shell) {}
 
@@ -227,6 +229,9 @@ export class PauseMenuScreen implements Screen {
 
     const objectives = this.buildObjectives();
     if (objectives !== null) p.appendChild(objectives);
+
+    this.musicControl = new MusicControl('pause');
+    p.appendChild(this.musicControl.root);
 
     const nav = el('nav', 'vm-pause-nav');
     nav.setAttribute('aria-label', 'Pause menu');
@@ -318,6 +323,8 @@ export class PauseMenuScreen implements Screen {
     window.clearInterval(this.timer);
     this.timer = 0;
     this.clock = null;
+    this.musicControl?.dispose();
+    this.musicControl = null;
     this.closeOverlay();
     this.card = null;
     this.host?.classList.remove('vm-pause', 'is-modal');

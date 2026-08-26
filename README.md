@@ -132,13 +132,15 @@ The deliberate non-runtime-generated shipped content is:
   wins by faction, campaign medals and mission completion, plus a durable honours gallery derived
   from all 17 earnable insignia and field decals. Every locked honour names its awarding mission and
   live progress; every earned one remains visible after its end-of-match reveal.
-- **Recorded audio** in `apps/game/public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
-  families** and `voice/` gives the unit barks two real voices, all CC0 from
+- **Recorded audio** in `apps/game/public/audio/` — 368 Ogg files, 10.82 MB. `sfx/` covers **all 39 sound-effect
+  families** and `voice/` combines two CC0 performers with original four-faction armour plus complete two-performer infantry packs for all four factions from
+  ElevenLabs. The CC0 recordings come from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
   announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a
-  public-domain LibriVox voice, because no CC0 pack contains "Insufficient funds." `music/` is a
-  three-tier adaptive score by Kevin MacLeod, **CC-BY 4.0** — the one attribution obligation in the
-  product. Only ambience is still synthesised. A recorded take is decoded once and
+  public-domain LibriVox voice, because no CC0 pack contains "Insufficient funds." `music/` is the
+  original VOLTMARCH score — **Silent Horizon**, **Disciplined Ostinato**, and **Echoes of the
+  Siege** — streamed one cue at a time and randomly selected per match. Only ambience is still
+  synthesised. A recorded take is decoded once and
   rendered through the same offline bake as a synthesised recipe, inheriting the same saturation,
   normalisation and variant set, and every one keeps its recipe as a fallback so a missing file
   degrades to the synthesised bank rather than to silence. See
@@ -346,8 +348,8 @@ VOLTMARCH's original source code and assets are proprietary and all rights are r
 source access and the deployed browser build do not grant permission to copy, redistribute, or
 create derivative works. See [`LICENSE`](LICENSE) for the project terms.
 
-Bundled third-party material keeps its own licence. The required Kevin MacLeod music attribution,
-Rajdhani's SIL Open Font License, the CC0 sound-bank provenance, EVA voice provenance, and the
-OpenAI/Meshy asset disclosures are collected in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The music credit is a **CC BY 4.0 licence
-condition** and must remain in every web, desktop, and store distribution.
+Bundled third-party material keeps its own licence. Rajdhani's SIL Open Font License, the CC0
+sound-bank provenance, EVA voice provenance, and the OpenAI/Meshy asset disclosures are collected
+in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The original soundtrack's source hashes and
+non-destructive delivery process are recorded separately in
+[`docs/MUSIC_PROVENANCE.md`](docs/MUSIC_PROVENANCE.md).

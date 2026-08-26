@@ -1038,6 +1038,7 @@ export class Shell {
     // this a player who turns the blur off sees it come back on every cold boot,
     // right up until they launch a match.
     applySettings(this.settings.get(), null, [
+      'audio',
       'graphics.panelBlur',
       'gameplay.textScale',
       'gameplay.highContrast',
@@ -3905,7 +3906,8 @@ export class Shell {
 
   private readonly onSettingsChanged = (settings: Settings, changed: readonly string[]): void => {
     if (this.game === null) {
-      if (touched(changed, 'gameplay.textScale')
+      if (touched(changed, 'audio')
+        || touched(changed, 'gameplay.textScale')
         || touched(changed, 'gameplay.highContrast')
         || touched(changed, 'gameplay.reducedMotion')) {
         applySettings(settings, null, changed);

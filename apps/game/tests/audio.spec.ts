@@ -18,7 +18,7 @@ import { EvaLine, FX_KIND_COUNT, EntityKind, Faction } from '../src/core/types';
 import { AudioEngine, dbToGain, gainToDb, makeRng } from '../src/audio/AudioEngine';
 import { FX_SOUND, SFX } from '../src/audio/Weapons';
 import { EVA_LINES, EVA_LINE_ID, PHONES, parsePhonemes, utteranceSeconds, EVA_PROFILE } from '../src/audio/Eva';
-import { BARKS, barkClassFor, type BarkClass } from '../src/audio/Barks';
+import { BARKS, barkClassFor, recordedVoiceKeyFor, type BarkClass } from '../src/audio/Barks';
 
 /* -------------------------------------------------------------------------- */
 
@@ -88,6 +88,10 @@ describe('EVA lines', () => {
       EvaLine.UnitLost, EvaLine.BuildingLost, EvaLine.SiloNeeded, EvaLine.RadarOnline,
       EvaLine.RadarOffline, EvaLine.CannotDeployHere, EvaLine.MissionAccomplished,
       EvaLine.MissionFailed, EvaLine.BuildingCaptured, EvaLine.OreMinerUnderAttack,
+      EvaLine.NoOreMiner, EvaLine.Reinforcements, EvaLine.HarvesterIdle,
+      EvaLine.Building, EvaLine.Repairing, EvaLine.PrimaryBuildingSelected,
+      EvaLine.NewRallyPoint, EvaLine.SuperweaponReady, EvaLine.NuclearMissileLaunched,
+      EvaLine.BattleControlTerminated, EvaLine.AllyUnderAttack,
     ];
     for (const v of values) {
       const id = EVA_LINE_ID[v];
@@ -177,13 +181,93 @@ describe('unit barks', () => {
     expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets)).toBe('soviet_vehicle');
     expect(barkClassFor(EntityKind.Vehicle, Faction.Allies)).toBe('allied_vehicle');
     expect(barkClassFor(EntityKind.Infantry, Faction.Soviets)).toBe('soviet_infantry');
-    expect(barkClassFor(EntityKind.Vehicle, Faction.Allies, 'harvester')).toBe('harvester');
-    expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets, 'mcv')).toBe('mcv');
-    expect(barkClassFor(EntityKind.Infantry, Faction.Allies, 'engineer')).toBe('engineer');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Soviets, 'flakTrooper')).toBe('soviet_infantry_f');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Soviets, 'navalInfantry')).toBe('soviet_infantry_f');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Allies, 'harvester')).toBe('allied_harvester');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets, 'harvester')).toBe('soviet_harvester');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Meridian, 'sunCollector')).toBe('meridian_harvester');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets, 'mcv')).toBe('soviet_builder');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Allies, 'mcv')).toBe('allied_builder');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Meridian, 'dozer')).toBe('meridian_builder');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Reclaim, 'constructionCrawler')).toBe('reclaim_builder');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Allies, 'engineer')).toBe('allied_specialist');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Soviets, 'engineer')).toBe('soviet_specialist');
     expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets, 'kirov')).toBe('soviet_air');
     expect(barkClassFor(EntityKind.Vehicle, Faction.Allies, 'destroyer')).toBe('naval');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Meridian, 'mrdVotary')).toBe('meridian_infantry');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Meridian, 'mrdSunlancer')).toBe('meridian_infantry_f');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Meridian, 'mrdTidewalker')).toBe('meridian_infantry_f');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Meridian, 'mrdKestrel')).toBe('meridian_air');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Meridian, 'mrdArtificer')).toBe('meridian_specialist');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Reclaim, 'rclTinker')).toBe('reclaim_specialist');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Reclaim, 'rclPicker')).toBe('reclaim_infantry');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Reclaim, 'rclSlagger')).toBe('reclaim_infantry_f');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Reclaim, 'rclDredger')).toBe('reclaim_infantry_f');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Reclaim, 'rclScrapper')).toBe('reclaim_harvester');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Reclaim, 'rclHornet')).toBe('reclaim_air');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Allies, 'landingCraft')).toBe('allied_transport');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Soviets, 'assaultBarge')).toBe('soviet_transport');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Meridian, 'mrdArgosy')).toBe('meridian_transport');
+    expect(barkClassFor(EntityKind.Vehicle, Faction.Reclaim, 'rclSlagHauler')).toBe('reclaim_transport');
+    expect(barkClassFor(EntityKind.Infantry, Faction.Soviets, 'commissar')).toBe('commander');
     // A building has no voice at all.
     expect(barkClassFor(EntityKind.Building, Faction.Allies)).toBe('allied_vehicle');
+  });
+
+  it('routes Allied armour to its exact faction pack without stealing logistics voices', () => {
+    expect(recordedVoiceKeyFor('allied_infantry', 'select')).toBe('al-inf-a.select');
+    expect(recordedVoiceKeyFor('allied_infantry', 'deploy')).toBe('al-inf-a.deploy');
+    expect(recordedVoiceKeyFor('allied_infantry', 'capture')).toBe('m.capture');
+    expect(recordedVoiceKeyFor('allied_infantry_f', 'select')).toBe('al-inf-b.select');
+    expect(recordedVoiceKeyFor('allied_infantry_f', 'deploy')).toBe('al-inf-b.deploy');
+    expect(recordedVoiceKeyFor('allied_vehicle', 'select')).toBe('al-arm.select');
+    expect(recordedVoiceKeyFor('allied_vehicle', 'underFire')).toBe('al-arm.underFire');
+    expect(recordedVoiceKeyFor('allied_vehicle', 'deploy')).toBe('m.deploy');
+    expect(recordedVoiceKeyFor('harvester', 'select')).toBe('f.select');
+    expect(recordedVoiceKeyFor('allied_harvester', 'select')).toBe('al-harv.select');
+    expect(recordedVoiceKeyFor('soviet_harvester', 'select')).toBe('sv-harv.select');
+    expect(recordedVoiceKeyFor('soviet_harvester', 'harvest')).toBe('sv-harv.harvest');
+    expect(recordedVoiceKeyFor('meridian_harvester', 'select')).toBe('mr-harv.select');
+    expect(recordedVoiceKeyFor('meridian_harvester', 'harvest')).toBe('mr-harv.harvest');
+    expect(recordedVoiceKeyFor('reclaim_harvester', 'select')).toBe('rc-harv.select');
+    expect(recordedVoiceKeyFor('reclaim_harvester', 'harvest')).toBe('rc-harv.harvest');
+    expect(recordedVoiceKeyFor('allied_builder', 'select')).toBe('al-build.select');
+    expect(recordedVoiceKeyFor('allied_builder', 'deploy')).toBe('al-build.deploy');
+    expect(recordedVoiceKeyFor('soviet_builder', 'select')).toBe('sv-build.select');
+    expect(recordedVoiceKeyFor('soviet_builder', 'deploy')).toBe('sv-build.deploy');
+    expect(recordedVoiceKeyFor('meridian_builder', 'select')).toBe('mr-build.select');
+    expect(recordedVoiceKeyFor('meridian_builder', 'deploy')).toBe('mr-build.deploy');
+    expect(recordedVoiceKeyFor('reclaim_builder', 'select')).toBe('rc-build.select');
+    expect(recordedVoiceKeyFor('reclaim_builder', 'deploy')).toBe('rc-build.deploy');
+    expect(recordedVoiceKeyFor('allied_specialist', 'capture')).toBe('al-spec.capture');
+    expect(recordedVoiceKeyFor('soviet_specialist', 'repair')).toBe('sv-spec.repair');
+    expect(recordedVoiceKeyFor('meridian_specialist', 'select')).toBe('mr-spec.select');
+    expect(recordedVoiceKeyFor('reclaim_specialist', 'stop')).toBe('rc-spec.stop');
+    expect(recordedVoiceKeyFor('allied_transport', 'unload')).toBe('al-trans.unload');
+    expect(recordedVoiceKeyFor('soviet_transport', 'guard')).toBe('sv-trans.guard');
+    expect(recordedVoiceKeyFor('meridian_transport', 'patrol')).toBe('mr-trans.patrol');
+    expect(recordedVoiceKeyFor('reclaim_transport', 'attack')).toBe('rc-trans.attack');
+    expect(BARKS.allied_vehicle.select?.map((line) => line.text)).toEqual([
+      'Armour crew online.', 'Armour ready.', 'Systems green.',
+    ]);
+    expect(recordedVoiceKeyFor('soviet_vehicle', 'select')).toBe('sv-arm.select');
+    expect(recordedVoiceKeyFor('soviet_vehicle', 'underFire')).toBe('sv-arm.underFire');
+    expect(recordedVoiceKeyFor('soviet_vehicle', 'deploy')).toBe('m.deploy');
+    expect(BARKS.soviet_vehicle.select?.map((line) => line.text)).toEqual([
+      'Heavy armour ready.', 'Steel standing by.', 'Engines awake.',
+    ]);
+    expect(recordedVoiceKeyFor('meridian_vehicle', 'select')).toBe('mr-arm.select');
+    expect(recordedVoiceKeyFor('meridian_vehicle', 'underFire')).toBe('mr-arm.underFire');
+    expect(recordedVoiceKeyFor('meridian_vehicle', 'deploy')).toBe('f.deploy');
+    expect(BARKS.meridian_vehicle.select?.map((line) => line.text)).toEqual([
+      'Pact hull aligned.', 'Hull in balance.', 'Weapon array ready.',
+    ]);
+    expect(recordedVoiceKeyFor('reclaim_vehicle', 'select')).toBe('rc-arm.select');
+    expect(recordedVoiceKeyFor('reclaim_vehicle', 'underFire')).toBe('rc-arm.underFire');
+    expect(recordedVoiceKeyFor('reclaim_vehicle', 'deploy')).toBe('m.deploy');
+    expect(BARKS.reclaim_vehicle.select?.map((line) => line.text)).toEqual([
+      'Line rig fired up.', 'Crew and weapon ready.', 'Point us at the work.',
+    ]);
   });
 
   it('barks are short — they have to fit between two bursts of gunfire', () => {

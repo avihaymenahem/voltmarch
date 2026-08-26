@@ -18,7 +18,7 @@
  * plus rate jitter pushes the audible repeat period past 200 firings, which is
  * the entire difference between "convincing" and "cheap".
  *
- * Only LOOPS stay as live graphs (wind, base hum, engines, music stems),
+ * Only LOOPS stay as live graphs (wind, base hum, engines),
  * because they need continuous modulation that a buffer cannot express.
  *
  * WHAT THIS FILE DOES NOT DO
@@ -1805,20 +1805,66 @@ function nextFrame(): Promise<void> {
  * the audio module has booted.
  * ========================================================================== */
 
+export interface MusicTrackSnapshot {
+  readonly id: string;
+  readonly title: string;
+  readonly index: number;
+  readonly total: number;
+}
+
 export interface AudioFacade {
   play(id: string, x?: number, y?: number, z?: number, gain?: number): void;
   ui(id: string): void;
   eva(line: string): void;
   bark(unitClass: string, category: string, x?: number, y?: number, z?: number): void;
   setCombatIntensity(v: number): void;
+  setAnnouncerEnabled(enabled: boolean): void;
+  setBarkMode(mode: 'on' | 'reduced' | 'off'): void;
+  playMenuMusic(): void;
+  previousMusicTrack(): void;
+  nextMusicTrack(): void;
+  readonly musicTrack: MusicTrackSnapshot | null;
   readonly engine: AudioEngine | null;
 }
 
 let facade: AudioFacade | null = null;
 
+/** The user's desired mix, retained even before the first battlefield exists. */
+export interface AudioMixerSettings {
+  readonly master: number;
+  readonly music: number;
+  readonly sfx: number;
+  readonly voice: number;
+  readonly ui: number;
+  readonly ambience: number;
+  readonly muted: boolean;
+}
+
+const MIX_BUSES: readonly BusName[] = ['music', 'sfx', 'voice', 'ui', 'ambience'];
+let desiredMix: AudioMixerSettings | null = null;
+
+function applyDesiredMix(f: AudioFacade | null): void {
+  const engine = f?.engine ?? null;
+  const mix = desiredMix;
+  if (engine === null || mix === null) return;
+  engine.setMasterVolume(mix.muted ? 0 : mix.master);
+  for (const bus of MIX_BUSES) engine.setBusVolume(bus, mix[bus]);
+}
+
+/**
+ * Stage mixer settings even when WebGPU is still preparing the first world.
+ * `setAudioFacade` applies them before TrackMusic starts, avoiding the audible
+ * full-volume-to-saved-volume cliff at the end of background compilation.
+ */
+export function configureAudioMixer(settings: AudioMixerSettings): void {
+  desiredMix = { ...settings };
+  applyDesiredMix(facade);
+}
+
 /** Installed once by audio.system.ts. Pass null on teardown. */
 export function setAudioFacade(f: AudioFacade | null): void {
   facade = f;
+  applyDesiredMix(f);
 }
 
 /** The live facade, or null before the audio module has initialised. */
@@ -1841,7 +1887,7 @@ export function eva(line: string): void {
   facade?.eva(line);
 }
 
-/** 0..1 combat intensity driving the music layer crossfade. */
+/** 0..1 combat intensity for the procedural music fallback and diagnostics. */
 export function setCombatIntensity(v: number): void {
   facade?.setCombatIntensity(v);
 }

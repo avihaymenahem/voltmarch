@@ -3133,6 +3133,7 @@ export class ProductionService implements QueueHooks {
     snapRallyClear(this.world, x, z, rallySnap);
     p.rallyX.set(factory as number, rallySnap[0]);
     p.rallyZ.set(factory as number, rallySnap[1]);
+    this.world.audio.eva(p.id, EvaLine.NewRallyPoint);
   }
 
   private applyPrimary(p: PlayerState, factory: EntityId): void {
@@ -3161,6 +3162,7 @@ export class ProductionService implements QueueHooks {
       if (shares) st.flags[j] &= ~EntityFlag.PrimaryFactory;
     }
     st.flags[i] |= EntityFlag.PrimaryFactory;
+    this.world.audio.eva(p.id, EvaLine.PrimaryBuildingSelected);
   }
 
   private applySell(p: PlayerState, building: EntityId): void {

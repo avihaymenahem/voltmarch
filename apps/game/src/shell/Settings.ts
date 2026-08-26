@@ -21,14 +21,15 @@
  *
  * WHAT IS NOT WIRED, AND WHY IT IS STILL HERE
  * -------------------------------------------
- * `tooltips`, `damageNumbers`, `subtitles` and `screenShake` have no consumer
+ * `tooltips`, `damageNumbers` and `screenShake` have no consumer
  * in the engine yet — the HUD and VFX modules that will read them are being
  * written in parallel. They are persisted and published on
  * `window.__vmSettings` (see Shell) precisely so those modules can subscribe
  * without this file having to import them. They are NOT fake: the value is
  * real, stored and observable; only the reader is missing.
  *
- * `tips` is deliberately NOT on that list. It arrived WITH its consumer —
+ * `subtitles` and `tips` are deliberately NOT on that list. Voice captions are
+ * consumed by `Hud.voiceSubtitle`; tips arrived WITH their consumer —
  * `src/sim/tips.system.ts`, in the same commit — because four dead rows is a
  * pattern and five is a habit. If a later row joins this section without a
  * reader, add it above, not below.
@@ -49,7 +50,7 @@ import {
 import { adaptiveLiveScale, setAdaptiveResolution } from '../render/adaptive-res.system';
 import { CREDITS } from './MainMenu';
 import { targetMsForCap } from '../render/HardwareCalibration';
-import { audio } from '../audio/AudioEngine';
+import { audio, configureAudioMixer } from '../audio/AudioEngine';
 import { CAMERA_NAV } from '../core/config';
 import type { GameHandle } from '../game/Bootstrap';
 import type { QualityTier } from '../core/types';
@@ -72,6 +73,7 @@ import {
   type PanelBlurChoice,
   type PointerDeviceChoice,
   type TrackpadScrollChoice,
+  type UnitResponseChoice,
   type Settings,
   type ShadowChoice,
 } from './settings-store';
@@ -132,9 +134,6 @@ const SHADOW_MAP_SIZE: Record<ShadowChoice, number> = {
   high: 2048,
   ultra: 4096,
 };
-
-/** Audio bus name -> the settings field that drives it. */
-const AUDIO_BUSES = ['music', 'sfx', 'voice', 'ui', 'ambience'] as const;
 
 /** Apply interface-only accessibility preferences to every current UI root. */
 export function applyAccessibilitySettings(settings: Settings): void {
@@ -257,11 +256,14 @@ export function applySettings(
   /* -- audio -------------------------------------------------------------- */
 
   if (want('audio')) {
-    const engine = audio()?.engine ?? null;
-    if (engine !== null) {
-      engine.setMasterVolume(settings.audio.muted ? 0 : settings.audio.master);
-      for (const bus of AUDIO_BUSES) engine.setBusVolume(bus, settings.audio[bus]);
-    }
+    // This also stages the mix before the first AudioEngine exists. The audio
+    // system applies it as it publishes its facade, before menu music begins.
+    configureAudioMixer(settings.audio);
+    const liveAudio = audio();
+    liveAudio?.setAnnouncerEnabled(settings.audio.announcer);
+    liveAudio?.setBarkMode(
+      settings.audio.unitResponses === 'selection' ? 'reduced' : settings.audio.unitResponses,
+    );
   }
 
   /* -- gameplay ----------------------------------------------------------- */
@@ -1844,10 +1846,27 @@ export class SettingsScreen implements Screen {
       onChange: (v) => set({ ambience: v }),
     })));
 
+    const voices = this.section(body, 'Voices');
+    voices.appendChild(row(
+      'Strategic Announcer',
+      toggle(a.announcer, (v) => set({ announcer: v })),
+      'Controls EVA alerts without muting unit responses.',
+    ));
+    const responseOptions: readonly { value: UnitResponseChoice; label: string }[] = [
+      { value: 'on', label: 'Full' },
+      { value: 'selection', label: 'Selection Only' },
+      { value: 'off', label: 'Off' },
+    ];
+    voices.appendChild(row(
+      'Unit Responses',
+      chooser(responseOptions, a.unitResponses, (v) => set({ unitResponses: v })),
+      'Selection Only keeps confirmation on selection and silences order chatter.',
+    ));
+
     const note = el('p', 'vm-body vm-settings-note');
     note.textContent = audio()?.engine == null
       ? 'No audio device is attached to this session. Levels are saved and will apply on the next match.'
-      : 'Levels apply immediately. Every sound in the game is synthesised at boot — nothing is streamed.';
+      : 'Levels and voice preferences apply immediately. Music streams; effects and voices decode on demand.';
     body.appendChild(note);
   }
 
@@ -1885,7 +1904,11 @@ export class SettingsScreen implements Screen {
       'Floating Damage Numbers',
       toggle(p.damageNumbers, (v) => set({ damageNumbers: v })),
     ));
-    hud.appendChild(row('EVA Subtitles', toggle(p.subtitles, (v) => set({ subtitles: v }))));
+    hud.appendChild(row(
+      'Voice Subtitles',
+      toggle(p.subtitles, (v) => set({ subtitles: v })),
+      'Captions both strategic announcements and unit responses.',
+    ));
     // UNLIKE THE THREE ROWS ABOVE, THIS ONE IS READ. `src/sim/tips.system.ts`
     // pulls it off `window.__vmSettings` and shows nothing when it is off; see
     // the header note, which lists the rows that are still waiting for a

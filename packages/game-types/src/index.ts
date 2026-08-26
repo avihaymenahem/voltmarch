@@ -697,6 +697,22 @@ export const enum EvaLine {
    * two parallel appends as to an insert.
    */
   HarvesterIdle = 18,
+  /** A local structure-production queue has begun work. */
+  Building = 19,
+  /** A local damaged structure has entered paid repair. */
+  Repairing = 20,
+  /** A production structure became the primary factory for its tabs. */
+  PrimaryBuildingSelected = 21,
+  /** A factory rally flag moved successfully. */
+  NewRallyPoint = 22,
+  /** One of the local player's superweapons reached full charge. */
+  SuperweaponReady = 23,
+  /** A nuclear strike was committed. */
+  NuclearMissileLaunched = 24,
+  /** The match verdict has been delivered and the control session is ending. */
+  BattleControlTerminated = 25,
+  /** A different player on the local player's team is under attack. */
+  AllyUnderAttack = 26,
 }
 
 /* ==========================================================================
@@ -1351,6 +1367,10 @@ export interface EvArtChanged {
 export interface EvVeterancy {
   id: EntityId; player: PlayerId; rank: number;
 }
+export type HarvesterVoiceState = 'harvest' | 'cargoFull' | 'returnToRefinery';
+export interface EvHarvesterState {
+  id: EntityId; player: PlayerId; state: HarvesterVoiceState;
+}
 
 /**
  * THE COMPLETE EVENT MAP. `EventBus` is typed over this: `bus.on('entity:killed', fn)`
@@ -1361,6 +1381,7 @@ export interface GameEvents {
   'entity:killed': EvEntityKilled;
   'entity:damaged': EvEntityDamaged;
   'entity:veterancy': EvVeterancy;
+  'harvester:state': EvHarvesterState;
   'building:placed': EvBuildingPlaced;
   'building:completed': EvBuildingCompleted;
   'building:captured': EvBuildingCaptured;

@@ -7,7 +7,8 @@ Working notes for Claude Code in this repository. Read this before changing anyt
 The original VOLTMARCH source and assets are proprietary; root `LICENSE` is the controlling
 project notice and every package declares `"license": "UNLICENSED"`. Third-party material is
 catalogued in `THIRD_PARTY_NOTICES.md`. The Rajdhani OFL text is shipped separately under
-`licenses/`, and Kevin MacLeod's three CC BY 4.0 score credits are mandatory licence terms.
+`licenses/`. The original soundtrack is project material; its supplied-master hashes and delivery
+pipeline are recorded in `docs/MUSIC_PROVENANCE.md`.
 
 Any new downloaded asset must update `THIRD_PARTY_NOTICES.md`, the in-game credits where a player
 can see it, and the relevant provenance README in the same change. Never infer licence terms from
@@ -86,14 +87,23 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    `apps/game/tests/credits-truthful.spec.ts` treats `campaign/` as a declared binary-asset family while
    `apps/game/tests/campaign-portrait-assets.spec.ts` checks every referenced portrait.
 
-5. **Recorded audio** in `apps/game/public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
-   request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
-   real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
+5. **Recorded audio** in `apps/game/public/audio/` — 368 Ogg files, 10.82 MB, added 2026-08-09 at the user's
+   request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` combines two Kenney CC0
+   performers with four original armour packs plus two 17-take infantry performers for every faction, and `eva/` is the announcer,
+   **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
    [CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), Warfork
-   by Team Forbidden, and Piper for EVA. `music/` is a three-tier adaptive score by Kevin MacLeod,
-   **CC-BY 4.0** — the only attribution OBLIGATION in the product, and the reason `apps/game/public/audio/`
-   is no longer CC0-only. See `apps/game/public/audio/README.md`. Only ambience is still synthesised.
+   by Team Forbidden, and Piper for EVA. `music/` is now the original VOLTMARCH soundtrack:
+   **Silent Horizon**, **Disciplined Ostinato**, and **Echoes of the Siege**, supplied by the project
+   owner from a paid Suno Pro account. One delivery cue streams and loops at a time; a match selects
+   one locally at random and title/pause controls can cycle it. See `apps/game/public/audio/README.md`
+   and `docs/MUSIC_PROVENANCE.md`. Only ambience is still synthesised by default.
+
+   **The first faction voice slice is live.** Allied combat vehicles resolve to the stable `AL-ARM`
+   pack for select, move, attack and under-fire responses. Logistics and missing categories retain
+   their generic recorded fallback. `py tools/prepare-voice-pack.py <download-dir>` detects the
+   ElevenLabs API playground exports (including legacy MP3-in-`.wav` sources), trims and resamples them to mono 48 kHz
+   Ogg, and writes hash-complete provenance to `docs/voice/generated/AL-ARM_v1.json`.
 
    **EVA is re-renderable**: `py tools/render-eva.py <scratch-dir>` reads the line texts straight
    out of `EVA_LINES` and writes `apps/game/public/audio/eva/`. It refuses to run if it parses fewer lines

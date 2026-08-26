@@ -238,6 +238,18 @@ export const BARK_PROFILES: Readonly<Record<string, VoiceProfile>> = {
     f0: 104, rate: 0.94, highpassHz: 420, lowpassHz: 2500, drive: 11, preRollMs: 60,
     peak: [300, 2, 1.4],
   },
+  soviet_infantry_f: {
+    f0: 178, rate: 0.96, highpassHz: 420, lowpassHz: 2500, drive: 11, preRollMs: 60,
+    peak: [340, 2, 1.35],
+  },
+  meridian_infantry_f: {
+    f0: 184, rate: 0.98, highpassHz: 420, lowpassHz: 2800, drive: 11, preRollMs: 60,
+    peak: [1700, 7, 1.15],
+  },
+  reclaim_infantry_f: {
+    f0: 172, rate: 1.04, highpassHz: 420, lowpassHz: 2700, drive: 11, preRollMs: 60,
+    peak: [1450, 6, 1.2],
+  },
   engineer: { f0: 132, rate: 1.10, highpassHz: 420, lowpassHz: 3100, drive: 11, preRollMs: 60 },
   allied_vehicle: {
     f0: 126, rate: 1.06, highpassHz: 420, lowpassHz: 2500, drive: 11, preRollMs: 60,
@@ -935,6 +947,14 @@ export const EVA_LINE_ID: Readonly<Record<number, string>> = {
   // could reach. The ore-crisis rescue is the first caller.
   [EvaLine.Reinforcements]: 'reinforcements',
   [EvaLine.HarvesterIdle]: 'harvesterIdle',
+  [EvaLine.Building]: 'building',
+  [EvaLine.Repairing]: 'repairing',
+  [EvaLine.PrimaryBuildingSelected]: 'primaryBuildingSelected',
+  [EvaLine.NewRallyPoint]: 'newRallyPoint',
+  [EvaLine.SuperweaponReady]: 'superweaponReady',
+  [EvaLine.NuclearMissileLaunched]: 'nuclearMissileLaunched',
+  [EvaLine.BattleControlTerminated]: 'battleControlTerminated',
+  [EvaLine.AllyUnderAttack]: 'allyUnderAttack',
 };
 
 /* ==========================================================================

@@ -43,7 +43,7 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
-  CommandKind, EntityFlag, EntityKind, Faction, NONE, OrderKind,
+  CommandKind, EntityFlag, EntityKind, EvaLine, Faction, NONE, OrderKind,
 } from '../src/core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../src/core/types';
 import { HUD_SUPERWEAPON, SIM_DT } from '../src/core/config';
@@ -276,6 +276,27 @@ describe('the countdown', () => {
     expect(t0).toBeGreaterThan(0);
     rig.step(30);
     expect(rig.supers.remainingFor(ME, 'nuke')).toBeLessThan(t0);
+  });
+
+  it('announces the ready edge once and a committed nuclear launch', async () => {
+    const rig = await makeRig(Faction.Soviets);
+    const spoken: number[] = [];
+    rig.world.audio.eva = (_player, line): void => { spoken.push(line); };
+    powerUp(rig, ME);
+    rig.building('nuclearSilo', ME, 30, 30);
+    rig.step(SETTLE);
+    // Ignore construction-complete announcements emitted while arranging the
+    // fixture; this assertion starts at the superweapon-ready edge.
+    spoken.length = 0;
+
+    expect(rig.supers.grantReady(ME, 'nuke')).toBe(true);
+    expect(spoken).toEqual([EvaLine.SuperweaponReady]);
+    expect(rig.supers.grantReady(ME, 'nuke')).toBe(true);
+    expect(spoken).toEqual([EvaLine.SuperweaponReady]);
+
+    expect(rig.supers.issueFire(ME, 'nuke', 200, 200)).toBe(true);
+    rig.step(1);
+    expect(spoken).toContain(EvaLine.NuclearMissileLaunched);
   });
 
   it('stops dead in a blackout and does not reset', async () => {

@@ -30,6 +30,7 @@
  *   hud.overlay.orderMarker(x,y,z,kind)                    anyone
  *   hud.toast(kind,key,title,detail)                       anyone
  *   hud.campaignDialogue(message)                          campaign shell
+ *   hud.voiceSubtitle(speaker,text,dwellSec)               audio captions
  *   hud.onPlaceRequest = (defId, key) => {}                 placement
  *   hud.setSoundHook(fn)                                    audio
  * Also published as `globalThis.__vmHud` for the console and the harness.
@@ -150,7 +151,10 @@ import './hud-redesign.css';
  * ========================================================================== */
 
 interface SettingsBridge {
-  get(): { controls?: { bindings?: StoredBindings } };
+  get(): {
+    controls?: { bindings?: StoredBindings };
+    gameplay?: { subtitles?: boolean };
+  };
 }
 
 /** Optional input-owned command surface. The HUD never issues sim orders. */
@@ -273,13 +277,13 @@ const ATTACK_ADVICE_SECONDS = 10;
 /**
  * EVA line -> a toast. Anything not listed here stays audio-only.
  *
- * `ConstructionComplete` is deliberately ABSENT. It is the one line that has a
- * specific, actionable chip of its own — see the `production:ready` handler,
- * which names the structure and says what to do with it. Keeping the generic
- * row as well would post two chips for one event, and the vaguer one first.
+ * `ConstructionComplete` and `UnitReady` are deliberately ABSENT. A completed
+ * structure has its specific actionable chip; a completed unit has the tab
+ * alert and READY state. Both already have an accessibility subtitle matching
+ * the spoken EVA line. Adding a generic top toast duplicates the same message
+ * at opposite edges of the screen.
  */
 const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
-  [EvaLine.UnitReady]: ['info', 'Unit ready'],
   [EvaLine.NewConstructionOptions]: ['info', 'New construction options'],
   [EvaLine.InsufficientFunds]: ['warn', 'Insufficient funds'],
   [EvaLine.LowPower]: ['warn', 'Low power'],
@@ -866,6 +870,10 @@ export class Hud {
   readonly overlay: Overlay;
   readonly toasts: ToastStack;
   readonly campaignComms: CampaignComms;
+  private readonly voiceSubtitleRoot: HTMLElement;
+  private readonly voiceSubtitleSpeaker: HTMLElement;
+  private readonly voiceSubtitleText: HTMLElement;
+  private voiceSubtitleRemaining = 0;
 
   /** Input reads these; the HUD owns the toggle, never the gesture. */
   get armedMode(): ArmedMode { return this.sidebar.armedMode; }
@@ -1081,6 +1089,12 @@ export class Hud {
     // are filtered inside CampaignComms, and the abstract cue keeps mute and
     // mixer ownership in hud.system.ts with every other HUD sound.
     this.campaignComms = new CampaignComms(this.root, () => this.soundHook?.('signal'));
+    this.voiceSubtitleRoot = el('section', 'vm-voice-subtitle vm-panel', this.root);
+    this.voiceSubtitleRoot.hidden = true;
+    this.voiceSubtitleRoot.setAttribute('aria-live', 'polite');
+    this.voiceSubtitleRoot.setAttribute('aria-atomic', 'true');
+    this.voiceSubtitleSpeaker = el('span', 'vm-voice-subtitle-speaker', this.voiceSubtitleRoot);
+    this.voiceSubtitleText = el('span', 'vm-voice-subtitle-text', this.voiceSubtitleRoot);
 
     /* -- pooled state ---------------------------------------------------- */
     this.localSnapshot = {
@@ -1483,6 +1497,20 @@ export class Hud {
     this.campaignComms.push(message);
   }
 
+  /** Show the exact transcript of the audible EVA line or unit response. */
+  voiceSubtitle(speaker: string, text: string, dwellSec: number): void {
+    const settings = (globalThis as unknown as { __vmSettings?: SettingsBridge }).__vmSettings;
+    if (settings?.get().gameplay?.subtitles === false) {
+      this.voiceSubtitleRemaining = 0;
+      this.voiceSubtitleRoot.hidden = true;
+      return;
+    }
+    this.voiceSubtitleSpeaker.textContent = speaker;
+    this.voiceSubtitleText.textContent = text;
+    this.voiceSubtitleRemaining = Math.max(1.2, dwellSec);
+    this.voiceSubtitleRoot.hidden = false;
+  }
+
   /**
    * Live `alert` chips, and whether the stack is full.
    *
@@ -1657,6 +1685,12 @@ export class Hud {
     this.overlay.frame(dt);
     this.toasts.frame(dt);
     this.campaignComms.frame(dt);
+    if (!this.voiceSubtitleRoot.hidden) {
+      const settings = (globalThis as unknown as { __vmSettings?: SettingsBridge }).__vmSettings;
+      if (settings?.get().gameplay?.subtitles === false) this.voiceSubtitleRemaining = 0;
+      else this.voiceSubtitleRemaining -= dt;
+      if (this.voiceSubtitleRemaining <= 0) this.voiceSubtitleRoot.hidden = true;
+    }
   }
 
   /**

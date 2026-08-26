@@ -87,19 +87,22 @@ describe('the credits describe the product that actually ships', () => {
     expect(rootText('README.md')).toContain('[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)');
   });
 
-  it('keeps every mandatory music attribution in source and distribution notices', () => {
+  it('records the original soundtrack without retaining the superseded CC-BY claim', () => {
     const musicSource = rootText('apps/game/src/audio/TrackMusic.ts');
     const notices = rootText('THIRD_PARTY_NOTICES.md');
+    const provenance = rootText('docs/MUSIC_PROVENANCE.md');
 
-    expect(musicSource, 'the playback owner must not call CC BY music CC0').not.toMatch(/three CC0 tracks/i);
-    expect(musicSource).toMatch(/Kevin MacLeod tracks licensed under CC BY 4\.0/i);
+    expect(musicSource).toMatch(/ORIGINAL RECORDED SCORE/i);
+    expect(musicSource).not.toMatch(/Kevin MacLeod|CC BY 4\.0/i);
+    expect(notices).not.toMatch(/Kevin MacLeod|Colossus|Industrial Revolution|Clash Defiant/i);
 
-    for (const title of ['Colossus', 'Industrial Revolution', 'Clash Defiant']) {
-      expect(notices, `third-party notices omit the shipped score cue ${title}`).toContain(title);
-      expect(allText, `in-game credits omit the shipped score cue ${title}`).toContain(title);
+    for (const title of ['Silent Horizon', 'Disciplined Ostinato', 'Echoes of the Siege']) {
+      expect(provenance, `soundtrack provenance omits ${title}`).toContain(title);
+      expect(allText, `in-game credits omit the original score cue ${title}`).toContain(title);
     }
-    expect(notices).toMatch(/creativecommons\.org\/licenses\/by\/4\.0/);
-    expect(notices).toMatch(/trimmed to a 72-second Ogg\s+loop/i);
+    expect(provenance).toMatch(/paid Suno Pro account/i);
+    expect(provenance).toMatch(/master SHA-256/i);
+    expect(notices).toContain('docs/MUSIC_PROVENANCE.md');
   });
 
   it('catalogues the font, CC0 banks, voice provenance, and generated assets', () => {
@@ -110,6 +113,8 @@ describe('the credits describe the product that actually ships', () => {
     expect(existsSync(join(ROOT, 'licenses', 'Rajdhani-OFL-1.1.txt'))).toBe(true);
     expect(notices).toMatch(/Recorded sound effects and unit voices — CC0 1\.0/i);
     expect(notices).toMatch(/Kenney/i);
+    expect(allText).toMatch(/ElevenLabs/i);
+    expect(notices).toMatch(/ElevenLabs/i);
     expect(notices).toMatch(/Warfork[\s\S]*Team Forbidden/i);
     expect(notices).toMatch(/LibriVox public-domain material/i);
     expect(notices).toMatch(/OpenAI image generation/i);

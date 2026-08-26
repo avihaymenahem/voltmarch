@@ -175,7 +175,13 @@ export interface AudioSettings {
   ui: number;
   ambience: number;
   muted: boolean;
+  /** Strategic announcer/EVA messages, independently of the voice bus level. */
+  announcer: boolean;
+  /** How often selected units answer. */
+  unitResponses: UnitResponseChoice;
 }
+
+export type UnitResponseChoice = 'on' | 'selection' | 'off';
 
 /**
  * Which pointing device the camera should assume.
@@ -568,6 +574,8 @@ export function defaultSettings(): Settings {
       ui: 70,
       ambience: 60,
       muted: false,
+      announcer: true,
+      unitResponses: 'on',
     },
     gameplay: {
       commanderName: 'Commander',
@@ -751,6 +759,12 @@ export function normalizeSettings(raw: unknown): Settings {
       ui: num(a.ui, 0, 100, d.audio.ui),
       ambience: num(a.ambience, 0, 100, d.audio.ambience),
       muted: bool(a.muted, d.audio.muted),
+      announcer: bool(a.announcer, d.audio.announcer),
+      unitResponses: oneOf(
+        a.unitResponses,
+        ['on', 'selection', 'off'] as const,
+        d.audio.unitResponses,
+      ),
     },
     gameplay: {
       commanderName: typeof p.commanderName === 'string'

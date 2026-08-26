@@ -226,7 +226,8 @@ Above the key list on the same tab:
 
 The **Gameplay** tab begins with Accessibility: text scaling from 90–150% (115% by default), a
 high-contrast presentation and reduced interface motion. The same tab carries Tooltips, Floating
-Damage Numbers, EVA Subtitles and a Screen Shake slider. Camera and navigation are deliberately
+Damage Numbers, Voice Subtitles and a Screen Shake slider. Voice Subtitles covers both EVA and
+unit responses. Camera and navigation are deliberately
 *not* there — they are on Controls, which is where you would go looking for "why does my trackpad
 pan instead of zoom".
 

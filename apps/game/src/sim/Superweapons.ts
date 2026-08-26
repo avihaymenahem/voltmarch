@@ -89,7 +89,7 @@
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import {
-  DecalKind, EntityFlag, EntityKind, Faction, FxKind, NONE, OrderKind,
+  DecalKind, EntityFlag, EntityKind, EvaLine, Faction, FxKind, NONE, OrderKind,
   UnitState, WarheadClass,
 } from '../core/types';
 import type { EntityId, PlayerId, SimContext } from '../core/types';
@@ -346,6 +346,8 @@ export class SuperweaponService {
   private readonly remaining = new Float64Array(MAX_PLAYERS * SUPERWEAPON_COUNT);
   /** 1 when the gating structure is up. */
   private readonly available = new Uint8Array(MAX_PLAYERS * SUPERWEAPON_COUNT);
+  /** Edge latch: one ready announcement per completed charge. */
+  private readonly readyAnnounced = new Uint8Array(MAX_PLAYERS * SUPERWEAPON_COUNT);
   /**
    * The entity that gates each (player, superweapon), or `NONE`.
    *
@@ -422,6 +424,7 @@ export class SuperweaponService {
       }
     }
     this.available.fill(0);
+    this.readyAnnounced.fill(0);
     this.structureId.fill(NONE as number);
   }
 
@@ -436,6 +439,11 @@ export class SuperweaponService {
     const pi = player as number;
     if (pi < 0 || pi >= MAX_PLAYERS) return false;
     this.remaining[pi * SUPERWEAPON_COUNT + s] = 0;
+    const b = pi * SUPERWEAPON_COUNT + s;
+    if (this.available[b] !== 0 && this.readyAnnounced[b] === 0) {
+      this.readyAnnounced[b] = 1;
+      this.world.audio.eva(player, EvaLine.SuperweaponReady);
+    }
     return true;
   }
 
@@ -617,6 +625,10 @@ export class SuperweaponService {
     // immediately arms an Ironclad Field would have had the second arming torn
     // down by the first one's command arriving.
     this.remaining[b] = def.chargeSeconds;
+    this.readyAnnounced[b] = 0;
+    if (def.effect === SuperweaponId.Nuke) {
+      this.world.audio.eva(player, EvaLine.NuclearMissileLaunched);
+    }
     return 'fired';
   }
 
@@ -642,7 +654,12 @@ export class SuperweaponService {
         const b = p * SUPERWEAPON_COUNT + w;
         if (this.available[b] === 0) continue;
         if (this.remaining[b] <= 0) continue;
-        this.remaining[b] = Math.max(0, this.remaining[b] - s.dt);
+        const before = this.remaining[b];
+        this.remaining[b] = Math.max(0, before - s.dt);
+        if (before > 0 && this.remaining[b] <= 0 && this.readyAnnounced[b] === 0) {
+          this.readyAnnounced[b] = 1;
+          this.world.audio.eva(p as PlayerId, EvaLine.SuperweaponReady);
+        }
       }
     }
   }

@@ -590,6 +590,42 @@
 
 .vm-hud[data-layout='perimeter'] .vm-campaign-comms[hidden] { display: none; }
 
+/* Voice captions are a dedicated surface: they never consume an alert toast
+   slot and never cover the command bar. */
+.vm-hud[data-layout='perimeter'] .vm-voice-subtitle {
+  position: absolute;
+  left: 50%;
+  bottom: calc(112 * var(--vm-u));
+  z-index: 26;
+  width: max-content;
+  max-width: min(620px, 62vw);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: calc(8 * var(--vm-u));
+  padding: calc(7 * var(--vm-u)) calc(13 * var(--vm-u));
+  color: var(--vm-ink);
+  background: rgba(5, 8, 16, 0.9);
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.52);
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-voice-subtitle[hidden] { display: none; }
+
+.vm-hud[data-layout='perimeter'] .vm-voice-subtitle-speaker {
+  flex: 0 0 auto;
+  color: var(--vm-accent);
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-voice-subtitle-text {
+  font-size: calc(12 * var(--vm-u) * var(--vm-text-scale, 1));
+  font-weight: 650;
+  line-height: 1.3;
+}
+
 .vm-hud[data-layout='perimeter'] .vm-comms-visual {
   position: relative;
   min-height: calc(104 * var(--vm-u));

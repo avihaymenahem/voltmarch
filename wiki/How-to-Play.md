@@ -166,10 +166,9 @@ its current centre. Later group moves preserve the resulting shape; **Scatter** 
 The objectives panel lists optional side goals — *Ore Quota*, *Draw Blood*, *Field Promotion* and
 so on — with progress bars. They are not win conditions. They feed progression.
 
-Toasts are the entire message surface. There is no separate EVA subtitle strip: every announcement
-— *Unit ready*, *Insufficient funds*, *Low power*, *Base under attack*, *Silos needed*,
-*Radar offline*, *Cannot deploy here* — arrives as a chip in the top-left corner, colour-coded,
-and repeats within six seconds merge into one chip with a counter rather than stacking up.
+Toasts carry battlefield alerts and repeat events merge into one colour-coded chip rather than
+stacking up. Spoken EVA and unit responses also have a dedicated bottom-centre subtitle strip when
+**Voice Subtitles** is enabled, so captions never displace an attack warning or objective update.
 
 ---
 

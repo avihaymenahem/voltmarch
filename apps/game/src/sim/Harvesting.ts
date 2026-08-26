@@ -215,7 +215,9 @@ import {
   CreditReason, EntityFlag, EntityKind, EvaLine, FxKind, NONE, OrderKind, UnitState,
   UpgradeLever,
 } from '../core/types';
-import type { EntityId, Faction, Locomotor, PlayerId, SimContext } from '../core/types';
+import type {
+  EntityId, Faction, HarvesterVoiceState, Locomotor, PlayerId, SimContext,
+} from '../core/types';
 import { PerEntityF32, PerEntityI16, PerEntityU32, type World } from '../core/world';
 import type { Channels } from '../core/events';
 import {
@@ -754,6 +756,7 @@ export class HarvesterController {
     const d = dist2(store.posX[i], store.posZ[i], tx, tz);
     if (d <= this.arriveAt(i, HARVEST_ARRIVE_RADIUS)) {
       store.state[i] = UnitState.Harvesting;
+      this.emitVoiceState(i, id, 'harvest');
       this.resetProgress(i);
       return;
     }
@@ -1503,6 +1506,7 @@ export class HarvesterController {
 
     if (store.cargo[i] >= store.cargoMax[i] - 0.001) {
       store.cargo[i] = store.cargoMax[i];
+      this.emitVoiceState(i, id, 'cargoFull');
       this.beginReturn(i, id, time);
     }
   }
@@ -1520,6 +1524,7 @@ export class HarvesterController {
    */
   private beginReturn(i: number, id: EntityId, time: number, preferRi = -1): void {
     const store = this.world.store;
+    const enteringReturn = store.state[i] !== UnitState.ReturnToRefinery;
     this.dropClaim(i, id);
     const ri = preferRi >= 0 && this.isUsableRefinery(preferRi, store.owner[i])
       ? preferRi
@@ -1531,6 +1536,7 @@ export class HarvesterController {
     }
     store.dockTarget[i] = store.handleOf(ri) as number;
     store.state[i] = UnitState.ReturnToRefinery;
+    if (enteringReturn) this.emitVoiceState(i, id, 'returnToRefinery');
     this.nextScore.setAt(i, time + SCORE_PERIOD);
     // A fresh haul is a fresh approach: neither the stand-down nor the failed
     // -approach count from the PREVIOUS trip should decide this one.
@@ -1543,6 +1549,19 @@ export class HarvesterController {
     // both freshly reset. Every later tick reads it; only a counted escalation
     // replaces it.
     this.commitDockPoint(i, ri, this.tryHoldDock(store.handleOf(ri), id));
+  }
+
+  /**
+   * Presentation-only logistics edge. Emitted only where the FSM changes
+   * state, never from a steady-state tick, so audio cannot become a 60 Hz
+   * stream and the event remains outside replay/lockstep commands.
+   */
+  private emitVoiceState(i: number, id: EntityId, state: HarvesterVoiceState): void {
+    const p = this.channels.events.payload('harvester:state');
+    p.id = id;
+    p.player = this.world.store.owner[i] as PlayerId;
+    p.state = state;
+    this.channels.events.emitPooled('harvester:state');
   }
 
   /**

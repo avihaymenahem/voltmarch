@@ -5191,6 +5191,90 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-size: calc(9px * var(--vm-text-scale, 1));
 }
 
+/* One compact score strip shared by the title and pause menus. It exposes the
+   cue without turning either screen into a media player. */
+.vm-shell .vm-music-control {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.16);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.08), transparent 48%),
+    rgba(3, 8, 16, 0.76);
+}
+
+.vm-shell .vm-music-control.is-menu {
+  margin-top: -10px;
+}
+
+.vm-shell .vm-music-control.is-pause {
+  margin: 10px 12px 0;
+}
+
+.vm-shell .vm-music-mark {
+  display: grid;
+  place-items: center;
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-music-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vm-shell .vm-music-label {
+  color: var(--vm-text-faint);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-music-title {
+  overflow: hidden;
+  color: var(--vm-text);
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-music-position {
+  padding-inline: 8px;
+  color: var(--vm-text-faint);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-music-buttons {
+  display: flex;
+  align-self: stretch;
+  border-left: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-music-step {
+  width: 31px;
+  border: 0;
+  border-left: 1px solid var(--vm-line-soft);
+  background: transparent;
+  color: var(--vm-text-faint);
+  cursor: pointer;
+  transition: color 120ms linear, background-color 120ms linear;
+}
+
+.vm-shell .vm-music-step:hover,
+.vm-shell .vm-music-step:focus-visible,
+.vm-shell .vm-music-step.is-focus {
+  background: rgba(var(--vm-accent-rgb), 0.12);
+  color: var(--vm-accent);
+}
+
 .vm-shell .vm-menu-foot {
   padding-block: 10px;
   border-top: 1px solid rgba(126, 184, 220, 0.08);

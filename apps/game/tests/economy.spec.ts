@@ -765,6 +765,31 @@ describe('PowerGrid', () => {
 describe('Harvesting — the full round trip', () => {
   beforeEach(() => { setHarvesterDrive(true); });
 
+  it('emits logistics voice cues once per FSM edge, never once per tick', () => {
+    const rig = makeRig();
+    spawnRefinery(rig, P0, CX, CZ);
+    rig.ore.seedField(CX + 20, CZ, 16);
+    const h = spawnHarvester(rig, P0, CX, CZ + 8);
+    const i = rig.world.store.index(h);
+    const counts = { harvest: 0, cargoFull: 0, returnToRefinery: 0 };
+    rig.channels.events.on('harvester:state', (ev) => {
+      if (ev.id === h) counts[ev.state]++;
+    });
+
+    for (let k = 0; k < 1200; k++) {
+      rig.step();
+      if (rig.world.store.state[i] === UnitState.ReturnToRefinery) break;
+    }
+
+    expect(counts.harvest).toBeGreaterThan(0);
+    expect(counts.cargoFull).toBe(1);
+    expect(counts.returnToRefinery).toBe(1);
+
+    rig.step(30);
+    expect(counts.cargoFull).toBe(1);
+    expect(counts.returnToRefinery).toBe(1);
+  });
+
   it('drives to ore, fills up, hauls home and banks credits', () => {
     const rig = makeRig();
     spawnStructure(rig, P0, CX, CZ - 30, 300);

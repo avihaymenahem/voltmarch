@@ -37,6 +37,7 @@ import {
 } from '../core/config';
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
+import { contentKeyOf } from '../sim/Deploy';
 
 import {
   AudioEngine, setAudioFacade, type AudioFacade, type BusName, type PanResolver,
@@ -64,17 +65,57 @@ function shotMode(): boolean {
 /* Module state                                                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * APPLICATION-LIFETIME AUDIO.
+ *
+ * The title battlefield is disposable: the shell builds it in the background,
+ * then replaces it when a match starts. The mixer and recorded soundtrack are
+ * not. Tying those two objects to a world meant that finishing/replacing the
+ * WebGPU backdrop closed the AudioContext and paused the menu's HTMLAudioElement
+ * even though the title screen was still mounted.
+ *
+ * Keep the engine and score across registry lifetimes. EVA, barks and ambience
+ * remain world-scoped because they subscribe to and describe a particular
+ * battlefield. `disposeApplicationAudio` is the one true final teardown, used
+ * only when the page itself goes away (or this module is hot-replaced in dev).
+ */
 let engine: AudioEngine | null = null;
 let eva: EvaAnnouncer | null = null;
 let barks: BarkDirector | null = null;
 /**
  * The recorded score. `TrackMusic` owns a `MusicDirector` internally and falls
- * back to it if a track will not load, so this stays one variable and every
- * call site below is unchanged.
+ * back to it if a track will not load, so this stays one variable. Combat heat
+ * remains wired for that fallback and for diagnostics; the original cues are
+ * complete compositions and do not change with heat.
  */
 let music: TrackMusic | null = null;
 let ambience: AmbienceRig | null = null;
 let unsubscribe: Array<() => void> = [];
+let configuredEvaMode: EvaMode = 'synth';
+let applicationTeardown: (() => void) | null = null;
+
+function disposeApplicationAudio(): void {
+  for (const d of menuDucks) d.release();
+  menuDucks.length = 0;
+  music?.dispose();
+  engine?.dispose();
+  music = null;
+  engine = null;
+  setAudioFacade(null);
+  applicationTeardown?.();
+  applicationTeardown = null;
+}
+
+function installApplicationTeardown(): void {
+  if (applicationTeardown !== null || typeof window === 'undefined') return;
+  const onPageHide = (): void => { disposeApplicationAudio(); };
+  window.addEventListener('pagehide', onPageHide, { once: true });
+  applicationTeardown = () => { window.removeEventListener('pagehide', onPageHide); };
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => { disposeApplicationAudio(); });
+}
 
 /** Scratch for the pan resolver. Allocated once; the frame loop allocates none. */
 const _v3 = new THREE.Vector3();
@@ -224,10 +265,9 @@ const COMMANDBAR_FRACTION = 0.034;
 
 /**
  * Everything the store actually knows about a unit, turned into a voice.
- * The def key would be better (`'harvester'` beats "it has the IsHarvester
- * flag"), but flags are always present and never depend on a sibling module
- * having landed, so this is correct on day one and improves for free once a
- * content key is available.
+ * The real content key is authoritative: faction alone cannot distinguish an
+ * engineer, aircraft, transport or commander. Flags remain the fallback for
+ * deliberately sparse/headless worlds with no bound content table.
  */
 function classOf(id: EntityId): BarkClass | null {
   const { world } = ctx();
@@ -238,9 +278,9 @@ function classOf(id: EntityId): BarkClass | null {
   if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) return null;
   const faction = s.faction[i] as Faction;
   const flags = s.flags[i];
-  let hint = '';
-  if (flags & EntityFlag.IsHarvester) hint = 'harvester';
-  else if (flags & EntityFlag.IsBuilder) hint = 'mcv';
+  let hint = contentKeyOf(world, i);
+  if (hint === '' && (flags & EntityFlag.IsHarvester)) hint = 'harvester';
+  else if (hint === '' && (flags & EntityFlag.IsBuilder)) hint = 'mcv';
   return barkClassFor(kind, faction, hint);
 }
 
@@ -274,13 +314,22 @@ let lastPrimary = -1;
  * unit shouting about it every few seconds is the fastest way to make a player
  * turn the voices off.
  */
-const BARK_FOR_ORDER: Readonly<Partial<Record<OrderKind, BarkCategory>>> = {
+export const BARK_FOR_ORDER: Readonly<Partial<Record<OrderKind, BarkCategory>>> = {
   [OrderKind.Move]: 'move',
-  [OrderKind.AttackMove]: 'attack',
+  [OrderKind.AttackMove]: 'attackMove',
   [OrderKind.Attack]: 'attack',
   [OrderKind.ForceAttack]: 'attack',
-  [OrderKind.Stop]: 'deploy',
-  [OrderKind.Guard]: 'deploy',
+  [OrderKind.Stop]: 'stop',
+  [OrderKind.Guard]: 'guard',
+  [OrderKind.Harvest]: 'harvest',
+  [OrderKind.Deploy]: 'deploy',
+  [OrderKind.Capture]: 'capture',
+  [OrderKind.Repair]: 'repair',
+  [OrderKind.Enter]: 'enterTransport',
+  [OrderKind.Scatter]: 'scatter',
+  [OrderKind.Patrol]: 'patrol',
+  [OrderKind.UseAbility]: 'ability',
+  [OrderKind.Unload]: 'unload',
 };
 
 function barkFor(id: EntityId, category: BarkCategory, signature?: string): void {
@@ -311,22 +360,41 @@ export default defineSystem({
     const { world, debug } = ctx();
 
     const muted = (shotMode() && AUDIO_MUTE_IN_SHOT_MODE) || flag('audio') === 'off';
-    engine = AudioEngine.create({ muted });
-    if (engine === null) {
-      console.info('[audio] WebAudio unavailable — running silent');
-      return;
+    const firstAudioBoot = engine === null;
+    if (firstAudioBoot) {
+      engine = AudioEngine.create({ muted });
+      if (engine === null) {
+        console.info('[audio] WebAudio unavailable — running silent');
+        return;
+      }
+      registerSfxBank(engine);
+      music = new TrackMusic(engine);
+      installApplicationTeardown();
     }
+    const liveEngine = engine;
+    // `engine` is module state, so TypeScript cannot preserve the narrowing
+    // across the first-boot branch even though its null arm returned above.
+    if (liveEngine === null) return;
 
-    engine.setPanResolver(makeResolver());
-    registerSfxBank(engine);
+    liveEngine.setPanResolver(makeResolver());
 
     const evaMode = (flag('eva') as EvaMode | null) ?? 'synth';
-    eva = new EvaAnnouncer(engine, { mode: muted ? 'off' : evaMode });
-    barks = new BarkDirector(engine, {
-      mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
+    configuredEvaMode = evaMode;
+    const subtitle = (speaker: 'EVA' | 'UNIT') => (text: string, dwellSec: number): void => {
+      const h = (globalThis as unknown as {
+        __vmHud?: { voiceSubtitle?: (speaker: string, text: string, dwellSec: number) => void };
+      }).__vmHud;
+      h?.voiceSubtitle?.(speaker, text, dwellSec);
+    };
+    eva = new EvaAnnouncer(liveEngine, {
+      mode: muted ? 'off' : evaMode,
+      onSubtitle: subtitle('EVA'),
     });
-    music = new TrackMusic(engine);
-    ambience = new AmbienceRig(engine);
+    barks = new BarkDirector(liveEngine, {
+      mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
+      onSubtitle: subtitle('UNIT'),
+    });
+    ambience = new AmbienceRig(liveEngine);
 
     /* -- the IAudio port --------------------------------------------------- */
     const port: IAudio = {
@@ -360,6 +428,14 @@ export default defineSystem({
         barks?.bark(cls as BarkClass, category as BarkCategory, -1, x, y, z);
       },
       setCombatIntensity: (v) => { pushExternalHeat(v); },
+      setAnnouncerEnabled: (enabled) => {
+        if (eva !== null) eva.mode = enabled ? configuredEvaMode : 'off';
+      },
+      setBarkMode: (mode) => { if (barks !== null) barks.mode = mode; },
+      playMenuMusic: () => { music?.playMenu(); },
+      previousMusicTrack: () => { music?.previous(); },
+      nextMusicTrack: () => { music?.next(); },
+      get musicTrack() { return music?.snapshot ?? null; },
       get engine(): AudioEngine | null { return engine; },
     };
     setAudioFacade(facade);
@@ -369,7 +445,7 @@ export default defineSystem({
     /* -- bake -------------------------------------------------------------- */
     // Under ?shot= nothing will ever be heard, so skip ~400 ms of offline
     // rendering entirely and let the harness get to its frame sooner.
-    if (!muted) {
+    if (!liveEngine.muted) {
       // ONLY the one-shot bank and the reverb block boot. Voices do not:
       // measured, the 31 EVA lines take longer to render than the entire SFX
       // bank, and `registry.init()` is awaited by Bootstrap — so awaiting them
@@ -377,15 +453,19 @@ export default defineSystem({
       // nobody hears until 1.2 s into the match. Both `EvaAnnouncer.say` and
       // `BarkDirector.bark` already bake on demand and play when ready.
       const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-      await engine.bakeAll();
-      await engine.initReverb('temperate');
+      if (firstAudioBoot) {
+        await liveEngine.bakeAll();
+        await liveEngine.initReverb('temperate');
+      }
       const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
-      console.info(
-        `%c[audio]%c ${engine.stats.baked} buffers, ${(engine.stats.bytes / 1048576).toFixed(1)} MB, ` +
-          `${Math.round(t1 - t0)} ms — EVA ${evaMode}, ctx ${engine.ctx.sampleRate} Hz ` +
-          `(${engine.ctx.state})`,
-        'color:#7fd', 'color:inherit',
-      );
+      if (firstAudioBoot) {
+        console.info(
+          `%c[audio]%c ${liveEngine.stats.baked} buffers, ${(liveEngine.stats.bytes / 1048576).toFixed(1)} MB, ` +
+            `${Math.round(t1 - t0)} ms — EVA ${evaMode}, ctx ${liveEngine.ctx.sampleRate} Hz ` +
+            `(${liveEngine.ctx.state})`,
+          'color:#7fd', 'color:inherit',
+        );
+      }
 
       const evaRef = eva;
       const barkRef = barks;
@@ -401,7 +481,7 @@ export default defineSystem({
       // because a match may begin at any moment and a loop that has to spin up
       // arrives late; `menuSilence` is what keeps them inaudible until then.
       applyMenuSilence(true);
-      music.start();
+      music?.start();
     }
 
     debug.api.registerHook('audio', () => ({
@@ -440,13 +520,14 @@ export default defineSystem({
   dispose(): void {
     for (const off of unsubscribe) off();
     unsubscribe = [];
-    setAudioFacade(null);
-    music?.dispose();
     ambience?.dispose();
     barks?.dispose();
     eva?.dispose();
-    engine?.dispose();
-    engine = null; eva = null; barks = null; music = null; ambience = null;
+    // The world is gone; the title score is not. The application-lifetime
+    // engine/music pair is deliberately retained until `pagehide` so replacing
+    // the WebGPU backdrop cannot interrupt the menu soundtrack.
+    eva = null; barks = null; ambience = null;
+    configuredEvaMode = 'synth';
     brownoutSince = -1;
     fundsStalledSince = -1;
     matchStartAt = -1;
@@ -489,7 +570,9 @@ function subscribe(): void {
   }));
 
   unsubscribe.push(bus.on('production:started', (p) => {
-    if (p.player === local()) engine?.ui(SFX.uiClick);
+    if (p.player !== local()) return;
+    engine?.ui(SFX.uiClick);
+    if (p.isBuilding) eva?.say('building');
   }));
 
   unsubscribe.push(bus.on('production:cancelled', (p) => {
@@ -545,8 +628,11 @@ function subscribe(): void {
 
   /* -- combat -------------------------------------------------------------- */
   unsubscribe.push(bus.on('combat:underAttack', (p) => {
-    if (p.player !== local()) return;
-    eva?.say(p.isBuilding ? 'baseUnderAttack' : 'forcesUnderAttack');
+    if (p.player === local()) {
+      eva?.say(p.isBuilding ? 'baseUnderAttack' : 'forcesUnderAttack');
+      return;
+    }
+    if (world.areAllied(local(), p.player)) eva?.say('allyUnderAttack');
   }));
 
   unsubscribe.push(bus.on('entity:damaged', (p) => {
@@ -557,13 +643,9 @@ function subscribe(): void {
       if (i >= 0 && (ctx().world.store.flags[i] & EntityFlag.IsHarvester) !== 0) {
         eva?.say('oreMinerUnderAttack');
       }
-      // Units call for help. Gated on real damage rather than any hit, because
-      // `entity:damaged` fires per shot and a firefight is hundreds of them —
-      // `BarkDirector` has its own global and per-unit cooldowns on top, which
-      // is what stops this becoming a wall of shouting.
-      // `barkFor` resolves the class and returns silently for anything that
-      // has no voice, so structures filter themselves out here.
-      if (i >= 0 && p.hpFrac < 0.7) barkFor(p.id, 'underFire');
+      // Unit responses are PLAYER INTENT ONLY. Damage is already represented
+      // by EVA, VFX and the HUD; turning every firefight into unsolicited unit
+      // chatter made the response system feel random even with cooldowns.
     }
   }));
 
@@ -575,7 +657,11 @@ function subscribe(): void {
   }));
 
   unsubscribe.push(bus.on('building:captured', (p) => {
-    if (p.toPlayer === local() || p.fromPlayer === local()) eva?.say('buildingCaptured');
+    if (p.toPlayer === local()) {
+      eva?.say('buildingCaptured');
+      return;
+    }
+    if (p.fromPlayer === local()) eva?.say('buildingCaptured');
   }));
 
   unsubscribe.push(bus.on('building:sold', (p) => {
@@ -593,7 +679,7 @@ function subscribe(): void {
     eva?.say(p.online ? 'radarOnline' : 'radarOffline');
   }));
 
-  /* -- player intent: clicks and barks ------------------------------------ */
+  /* -- player intent: the ONLY source of unit speech ---------------------- */
   unsubscribe.push(bus.on('selection:changed', (p) => {
     if (p.count === 0) return;
     engine?.ui(SFX.uiClick);
@@ -630,11 +716,13 @@ function subscribe(): void {
     // keys on the match rather than on a screen name the audio layer would
     // otherwise have to learn.
     applyMenuSilence(false);
+    music?.startMatch();
   }));
 
   unsubscribe.push(bus.on('match:ended', (p) => {
     if (p.localWon) { eva?.say('missionAccomplished'); music?.win(); }
     else { eva?.say('missionFailed'); music?.loss(); }
+    eva?.say('battleControlTerminated');
     // BACK TO SILENCE, but not until the verdict line has been heard: the duck
     // takes hold on the next tick and EVA is already queued above. Without this
     // the end screen and the menu behind it inherit a live soundscape from a
@@ -707,7 +795,9 @@ function pushDamage(amount: number): void {
  *
  * The unit scan is sliced across frames: it is a linear walk of the alive list,
  * cheap at 200 entities, but there is no reason to pay for it 60 times a second
- * when the music only re-evaluates every 250 ms.
+ * when the procedural music fallback only re-evaluates every 250 ms. The
+ * streamed score ignores heat, but retaining the input makes a missing-file
+ * fallback immediate rather than restarting at idle intensity.
  */
 function updateHeat(r: RenderContext): void {
   const e = engine;

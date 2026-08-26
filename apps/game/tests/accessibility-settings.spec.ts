@@ -39,3 +39,19 @@ describe('interface accessibility settings', () => {
     expect(hud).toContain('.vm-hud.vm-high-contrast');
   });
 });
+
+describe('voice accessibility settings', () => {
+  it('fills safe defaults into profiles written before voice controls existed', () => {
+    const loaded = normalizeSettings({ audio: { music: 25 } });
+    expect(loaded.audio.announcer).toBe(true);
+    expect(loaded.audio.unitResponses).toBe('on');
+  });
+
+  it('accepts only supported unit-response modes', () => {
+    expect(normalizeSettings({ audio: { unitResponses: 'selection' } }).audio.unitResponses)
+      .toBe('selection');
+    expect(normalizeSettings({ audio: { unitResponses: 'constant' } }).audio.unitResponses)
+      .toBe('on');
+    expect(normalizeSettings({ audio: { announcer: false } }).audio.announcer).toBe(false);
+  });
+});
