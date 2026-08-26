@@ -479,7 +479,7 @@ const op: OperationDef = {
    * required, so it has to be decided rather than deferred, and it is decided
    * from the chapter grid rather than from a line of text that does not exist.
    *
-   * Soviets, for two reasons out of `CAMPAIGN_BUILD_SPEC.md`:
+   * Soviets, for two reasons out of `docs/campaign/CAMPAIGN_BUILD_SPEC.md`:
    *
    *   - §2.1 divides the Works at the Split — "The Allies took the survey
    *     office and the instruments… the Soviets took the yards and the plate

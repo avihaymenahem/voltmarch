@@ -219,7 +219,7 @@ const op: OperationDef = {
    * `mrdSolarch`, which `validateCampaign` refuses on any seat that is not
    * Meridian.
    *
-   * It is also the beat grid. `CAMPAIGN_BUILD_SPEC.md` §2.3 has Bramm refusing
+   * It is also the beat grid. `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.3 has Bramm refusing
    * all four and §3.3 puts "Bramm confirms it" in the Pact's own chapter at
    * week 9 — so the army with the strongest reason to reach her first, and the
    * only one whose reading of the March already agrees with her appendix, is

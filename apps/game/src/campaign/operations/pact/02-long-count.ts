@@ -532,7 +532,7 @@ const op: OperationDef = {
    *
    * Sinking taps is the Soviet habit this campaign opens on —
    * `soviets.01.first-tap` is literally "The March surfaces in a new place.
-   * Sink the first tap", and `CAMPAIGN_BUILD_SPEC.md` §2.1 divides the
+   * Sink the first tap", and `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.1 divides the
    * Continental Works at the Split with "the Soviets took the yards and the
    * plate mills". A working extraction rig with a barracks staging post behind
    * it is the Soviet half on the nose, and it is the opposite number to P1's

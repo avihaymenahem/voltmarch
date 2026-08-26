@@ -634,7 +634,7 @@ const op: OperationDef = {
    * *"whatever is on that wall is worth more than the wall."*
    *
    * P1 fought the Allies, who read this ground, and P2 the Soviets, who work
-   * it. The third party in `CAMPAIGN_BUILD_SPEC.md` §2.1's division is the one
+     * it. The third party in `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.1's division is the one
    * that BUYS it, and the Reclamation chapter's own blurb — "nine breaking
    * yards, every faction as a customer, and the only complete account" — is the
    * argument this operation hands the Pact and cannot answer. An enemy who

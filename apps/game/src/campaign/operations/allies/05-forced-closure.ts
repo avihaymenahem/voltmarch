@@ -404,7 +404,7 @@ const op: OperationDef = {
    * off it — `allies.04.misclosure` says so in its own `foe` block, and
    * `soviets.05.short-allocation` and `soviets.06.demolition-order` are the same
    * argument seen from their side. The model went to them with the plate mills
-   * at the Split, which is `CAMPAIGN_BUILD_SPEC.md` §2.1's division quoted the
+   * at the Split, which is `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.1's division quoted the
    * other way round from A2's. All four waves are literal `conscript` and
    * `rhino`, which `validateCampaign` refuses on any seat that is not Soviet,
    * and the layout puts a Soviet `civHospital`, `civApartments` and three

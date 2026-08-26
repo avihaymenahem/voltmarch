@@ -337,7 +337,7 @@ const op: OperationDef = {
    * Aubray's opening line says "the Soviets took the district in week one" and
    * Wend's names their checkpoint; both waves are literal `conscript` and
    * `rhino`, which `validateCampaign` refuses on any seat that is not Soviet.
-   * It is also the beat grid: `CAMPAIGN_BUILD_SPEC.md` §2.1 divides the Works
+   * It is also the beat grid: `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.1 divides the Works
    * at the Split — "The Allies took the survey office and the instruments; the
    * Soviets took the yards and the plate mills" — and this operation is the
    * one office that sentence did not cover.

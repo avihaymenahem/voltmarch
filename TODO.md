@@ -49,7 +49,7 @@ Three's real `timestamp-query` path; the intentionally unavailable colour-pass s
 
 ## Not on this list, deliberately
 
-`CAMPAIGN_BUILD_SPEC.md` §9's undecided items are author decisions rather than work. The largest,
+`docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9's undecided items are author decisions rather than work. The largest,
 **UNDECIDED-1**, is **CLOSED**: on 2026-08-19 the author took option B and twelve `name:` rows were
 renamed — tier 1 (MiG, a live mark of a real aircraft manufacturer) and tier 2 (the eleven Westwood/EA
 coinages). Tiers 3 and 4 stand: Tesla Coil, Conscript, G.I., War Factory, Barracks and the rest are

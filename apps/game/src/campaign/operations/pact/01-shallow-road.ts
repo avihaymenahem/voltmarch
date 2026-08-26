@@ -417,7 +417,7 @@ const op: OperationDef = {
    * *"The Allies sank a bore through our crust nine weeks ago and have been
    * reading it ever since."*
    *
-   * It is a reading bore, not a working one, and `CAMPAIGN_BUILD_SPEC.md` §2.1
+   * It is a reading bore, not a working one, and `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §2.1
    * divides the Continental Works at the Split exactly there — "The Allies took
    * the survey office and the instruments; the Soviets took the yards and the
    * plate mills." An instrument mast on a beach is the Allied half on the nose.

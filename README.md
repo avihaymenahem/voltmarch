@@ -123,6 +123,7 @@ and WebGL/WebGPU budgets, with procedural fallbacks retained where required.
 Useful project documents:
 
 - [Project guide](CLAUDE.md)
+- [Campaign build specification](docs/campaign/CAMPAIGN_BUILD_SPEC.md)
 - [Visual direction](docs/RA3_LOOK_BIBLE.md)
 - [Asset optimization pipeline](docs/ASSET_OPTIMIZATION_PIPELINE.md)
 - [Multiplayer relay](apps/relay/README.md)

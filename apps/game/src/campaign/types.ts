@@ -589,7 +589,7 @@ export type Effect =
    * "split into four lazily-imported chapter corpora". NO SUCH CORPUS
    * EXISTS.** `src/campaign/index.ts` globs exactly two things, operations and
    * layouts; there is no `Briefing.ts` and no `campaign-corpus-*.ts`. That is
-   * a PLANNED structure (`CAMPAIGN_BUILD_SPEC.md` §275 and §458) written up
+   * a PLANNED structure (`docs/campaign/CAMPAIGN_BUILD_SPEC.md` §275 and §458) written up
    * here in the present tense, which is the drift `docs/SPEC_DRIFT_AUDIT.md`
    * catalogues — and it was load-bearing, because it was the premise of the
    * comparison the decision rested on.
@@ -886,7 +886,7 @@ export type Medal = 0 | 1 | 2 | 3;
  * found by a probe two phases late.
  *
  * **THIS READ `(state, WorldQuery, tick, rng) -> Effect[]`, WHICH IS THE PLAN'S
- * SIGNATURE AND NOT THE SHIPPED ONE** (`CAMPAIGN_BUILD_SPEC.md` §4.2's module
+ * SIGNATURE AND NOT THE SHIPPED ONE** (`docs/campaign/CAMPAIGN_BUILD_SPEC.md` §4.2's module
  * table, quoted forward into a file authors reason from). Three differences,
  * and the last two are the ones that would bite: it takes `op` first, because a
  * state object does not carry its own trigger table; **there is no `rng`, and
