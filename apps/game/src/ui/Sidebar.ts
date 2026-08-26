@@ -1326,7 +1326,7 @@ class SelectionPanel {
      * The classes are `vm-stances` / `vm-stance-label` / `vm-stance` on
      * purpose: the relocate row IS the stance row's layout and needs no
      * stylesheet of its own. */
-    this.stanceRow = el('div', 'vm-stances', head);
+    this.stanceRow = el('div', 'vm-stances vm-stance-actions', head);
     this.stanceRow.setAttribute('role', 'radiogroup');
     this.stanceRow.setAttribute('aria-label', 'Stance');
     this.stanceLabelNode = label(this.stanceRow, 'vm-stance-label', 'Stance');
@@ -3307,6 +3307,8 @@ class CommandDeck {
     this.root.setAttribute('aria-label', 'Unit commands');
 
     const formationRow = el('div', 'vm-formation-row', this.root);
+    formationRow.setAttribute('role', 'group');
+    formationRow.setAttribute('aria-label', 'Formation orders');
     label(formationRow, 'vm-formation-label', 'Formation');
     for (const [shape, name, points] of FORMATIONS) {
       const control = button(formationRow, 'vm-formation', name);

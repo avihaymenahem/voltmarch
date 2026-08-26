@@ -42,6 +42,14 @@ describe('perimeter HUD composition', () => {
     expect(CSS).toContain('.vm-formation-row');
     expect(INPUT).toContain('invokeHudFormation');
   });
+
+  it('keeps stance and formation orders as compact action strips', () => {
+    expect(SIDEBAR).toContain("'vm-stances vm-stance-actions'");
+    expect(SIDEBAR).toContain("formationRow.setAttribute('aria-label', 'Formation orders')");
+    expect(CSS).toMatch(/--vm-command-h:\s*calc\(70 \* var\(--vm-u\)\)/);
+    expect(CSS).toMatch(/\.vm-stance-actions \.vm-stance\s*\{[\s\S]*?width:\s*calc\(16 \* var\(--vm-u\)\)/);
+    expect(CSS).toMatch(/\.vm-formation\s*\{[\s\S]*?width:\s*calc\(25 \* var\(--vm-u\)\);[\s\S]*?height:\s*calc\(15 \* var\(--vm-u\)\)/);
+  });
 });
 
 describe('command deck behavior', () => {
