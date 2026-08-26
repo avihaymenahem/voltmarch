@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the launch site keeps its analytics injection point and community link', () => {
+test('the launch site keeps its analytics injection point and community links', () => {
   const html = readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
   assert.match(html, /<!-- CF_WEB_ANALYTICS -->/);
   assert.match(html, /https:\/\/discord\.gg\/pvJGJyafU3/);
+  assert.match(html, /https:\/\/github\.com\/avihaymenahem\/voltmarch/);
 });
 
 test('the privacy page keeps its analytics injection point', () => {

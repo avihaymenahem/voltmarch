@@ -30,8 +30,9 @@ apex back at the game or attach `play` to this Pages project.
 Every push to `main` that changes `apps/website/` triggers the Cloudflare project. The root game
 workflow deploys independently to GitHub Pages from `apps/game/dist/`.
 
-The public community invite is `https://discord.gg/pvJGJyafU3`; keep the header, hero community CTA,
-and footer link in `public/index.html` aligned if the invite changes.
+The public community invite is `https://discord.gg/pvJGJyafU3`, and the public source and release
+page is `https://github.com/avihaymenahem/voltmarch`; keep the header, hero community CTAs, and
+footer links in `public/index.html` aligned if either destination changes.
 
 ## Key art
 
