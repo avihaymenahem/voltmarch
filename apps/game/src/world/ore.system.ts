@@ -45,11 +45,11 @@
  *
  * HOW IT DRAWS
  * ------------
- * ONE `InstancedMesh`, one instance per SEEDED cell, `castShadow = false` — so
- * it is exactly one draw call against a measured 145-218. The geometry is a
- * small faceted crystal cluster built from `PropMesh` primitives, never a box
- * (`MassList` rejects a silhouette more than ~85% axis-aligned, and it would be
- * right to).
+ * ONE `InstancedMesh`, one instance per SEEDED cell. It is one colour draw and
+ * one instanced shadow draw against a measured 145-218 scene draws. The
+ * geometry is a small hard-faceted crystal cluster built from `PropMesh`
+ * primitives, never a box (`MassList` rejects a silhouette more than ~85%
+ * axis-aligned, and it would be right to).
  *
  * SCALE IS QUANTISED TO `ORE_DENSITY_STEPS`, and that is the point rather than
  * an optimisation. A cell fading continuously to nothing reads as a fog bug; a
@@ -170,48 +170,113 @@ export function drawsCluster(cx: number, cz: number, isSource: boolean): boolean
  * flat, so an un-sunk cluster hangs in the air on its downhill side — which is
  * exactly the "seems just floating there" report.
  */
-const SINK_FRACTION = 0.16;
+const SINK_FRACTION = 0.22;
 
-/** Radians of lean off vertical. Small: ore grows out of the ground, it has not fallen over. */
-const MAX_TILT = 0.19;
+/** Metres sampled around a cluster to align its buried foot to the terrain. */
+const GROUND_SAMPLE_RADIUS = 0.46;
 
 /* ==========================================================================
  * GEOMETRY
  * ========================================================================== */
 
 /**
- * A cluster of canted crystal shards.
+ * Add one hard-surface crystal: a prismatic shaft with a separate pointed cap.
  *
- * FOUR SHARDS, NOT ONE, and not eight. One reads as a traffic cone. Eight is a
- * rock. Four at different heights and yaws gives an irregular silhouette that
- * survives being scaled to a third and still says "mineral" — which is the only
- * job this shape has at a 32-72 m camera height.
- *
- * Built with `cone`, so every face is flat-shaded and catches the sun at a
- * different angle. That facet contrast is where the readability comes from; the
- * colour is nearly uniform on purpose, because the bible's rule is that detail
- * comes from geometry and drawn shape, never from per-pixel noise.
+ * A cone tapers from the ground on every face and reads as a traffic marker.
+ * Keeping most of the shard width through the shoulder creates the vertical
+ * planes and sharp silhouette breaks a crystal needs. `leanX/Z` moves the
+ * shoulder and tip while the foot stays buried, so no individual shard can
+ * lift the whole cluster off the ground.
  */
-function buildCrystalCluster(): THREE.BufferGeometry {
+function addCrystalShard(
+  m: PropMesh,
+  x: number,
+  z: number,
+  radius: number,
+  height: number,
+  sides: number,
+  leanX: number,
+  leanZ: number,
+  yaw: number,
+): void {
+  const baseY = -0.06;
+  const shoulderY = height * 0.72;
+  const tipY = height;
+  const shoulderX = x + leanX * 0.72;
+  const shoulderZ = z + leanZ * 0.72;
+  const tipX = x + leanX;
+  const tipZ = z + leanZ;
+  const shoulderRadius = radius * 0.78;
+  const count = Math.max(4, Math.round(sides));
+
+  for (let i = 0; i < count; i++) {
+    const a0 = yaw + (i / count) * Math.PI * 2;
+    const a1 = yaw + ((i + 1) / count) * Math.PI * 2;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0);
+    const c1 = Math.cos(a1), s1 = Math.sin(a1);
+    const ox = (c0 + c1) * 0.5 + leanX * 0.2;
+    const oz = (s0 + s1) * 0.5 + leanZ * 0.2;
+
+    m.quad(
+      x + c0 * radius, baseY, z + s0 * radius,
+      x + c1 * radius, baseY, z + s1 * radius,
+      shoulderX + c1 * shoulderRadius, shoulderY, shoulderZ + s1 * shoulderRadius,
+      shoulderX + c0 * shoulderRadius, shoulderY, shoulderZ + s0 * shoulderRadius,
+      ox, 0.12, oz,
+    );
+    m.tri(
+      shoulderX + c0 * shoulderRadius, shoulderY, shoulderZ + s0 * shoulderRadius,
+      shoulderX + c1 * shoulderRadius, shoulderY, shoulderZ + s1 * shoulderRadius,
+      tipX, tipY, tipZ,
+      ox, 0.35, oz,
+      true,
+    );
+  }
+}
+
+/**
+ * A cluster of canted crystal shards with a buried mineral-bearing foot.
+ *
+ * FIVE SHARDS, NOT ONE, and not a spray of identical cones. The authored broad
+ * planes catch the key light as distinct pieces, while the dark irregular foot
+ * supplies contact and survives on snow, dirt and grass. The whole asset stays
+ * one small shared geometry and is instanced for every visible ore cell.
+ *
+ * Exported for the geometry-budget test; production still builds it exactly
+ * once during system init.
+ */
+export function buildCrystalCluster(): THREE.BufferGeometry {
   const m = new PropMesh();
-  const lit = ORE_CRYSTAL_COLOR;
-  const deep = '#B07A1E';
+  const gold = ORE_CRYSTAL_COLOR;
+  const pale = '#FFD77A';
+  const amber = '#D88A22';
+  const deep = '#7D4B17';
+  const earth = '#46351F';
 
-  // Base rubble, so the shards do not appear to float on the terrain when the
-  // ground under them is not perfectly flat.
-  m.color(deep).bevel(lit).ao(0.62, 0, CRYSTAL_HEIGHT);
-  m.cone(0, 0.06, 0, 0.62, 0.22, 7);
+  // Two overlapping, low-poly mineral-bearing rocks. Their lower halves are
+  // below the local origin, so the cluster has a broad dark contact region but
+  // never a visible circular "shadow decal" under it.
+  m.color(earth).bevel(deep).ao(0.44, -0.18, 0.28);
+  m.blob(-0.12, -0.04, 0.02, 0.68, 0.25, 0.64, 7, 3, 0.48, 0.18);
+  m.color(deep).bevel(amber);
+  m.blob(0.22, -0.02, -0.10, 0.48, 0.20, 0.45, 6, 3, 0.55, 0.62);
 
-  // The tall one, slightly off-centre — a centred spike reads as symmetrical
-  // and symmetry is what makes a procedural prop look procedural.
-  m.color(lit).bevel('#FFE7A8').ao(0.55, 0, CRYSTAL_HEIGHT);
-  m.cone(0.06, 0, -0.04, 0.30, CRYSTAL_HEIGHT, 6);
-  // Two mid shards at opposing yaws.
-  m.cone(-0.34, 0, 0.20, 0.22, CRYSTAL_HEIGHT * 0.62, 5);
-  m.cone(0.30, 0, 0.28, 0.19, CRYSTAL_HEIGHT * 0.48, 5);
-  // One stub, deep-toned, to break the "three spikes" rhythm.
-  m.color(deep).bevel(lit);
-  m.cone(-0.18, 0, -0.34, 0.17, CRYSTAL_HEIGHT * 0.30, 5);
+  // Tall anchor, offset from centre so the cluster does not read as a trophy.
+  m.color(gold).bevel(pale).ao(0.50, -0.06, CRYSTAL_HEIGHT);
+  addCrystalShard(m, 0.04, -0.05, 0.27, CRYSTAL_HEIGHT, 6, 0.10, -0.06, 0.12);
+
+  // Broad mid shards define the cluster at normal gameplay zoom.
+  m.color(amber).bevel(gold);
+  addCrystalShard(m, -0.35, 0.18, 0.22, CRYSTAL_HEIGHT * 0.70, 5, -0.12, 0.06, 0.44);
+  m.color(pale).bevel('#FFE6A6');
+  addCrystalShard(m, 0.31, 0.24, 0.19, CRYSTAL_HEIGHT * 0.56, 5, 0.10, 0.08, 0.15);
+
+  // Rear shard and dark stub break the three-spike rhythm and keep a depleted
+  // (one-third scale) cluster legible as mineral rather than yellow grass.
+  m.color(gold).bevel(pale);
+  addCrystalShard(m, 0.24, -0.32, 0.16, CRYSTAL_HEIGHT * 0.43, 5, 0.07, -0.11, 0.70);
+  m.color(deep).bevel(amber);
+  addCrystalShard(m, -0.25, -0.29, 0.17, CRYSTAL_HEIGHT * 0.31, 5, -0.08, -0.05, 0.28);
 
   return m.toGeometry('ore.crystal');
 }
@@ -262,8 +327,9 @@ const POS = new THREE.Vector3();
 const QUAT = new THREE.Quaternion();
 const SCL = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
-const TILT = new THREE.Quaternion();
-const TILT_AXIS = new THREE.Vector3();
+const GROUND_NORMAL = new THREE.Vector3();
+const SURFACE_QUAT = new THREE.Quaternion();
+const YAW_QUAT = new THREE.Quaternion();
 
 /**
  * Write one cell's transform into its instance slot.
@@ -324,14 +390,22 @@ function stamp(slot: number, cx: number, cz: number, density: number): void {
   const sink = CRYSTAL_HEIGHT * SINK_FRACTION * scale;
   POS.set(x, y - sink, z);
 
-  // Yaw, plus a slight lean off vertical. Two axes, composed — a pure yaw
-  // leaves every shard plumb and reads as stamped rather than grown.
-  QUAT.setFromAxisAngle(UP, h * Math.PI * 2);
-  TILT.setFromAxisAngle(
-    TILT_AXIS.set(h2 - 0.5, 0, h3 - 0.5).normalize(),
-    (h2 - 0.5) * MAX_TILT,
-  );
-  QUAT.multiply(TILT);
+  // Follow the actual ground plane instead of applying a random whole-cluster
+  // lean. Random lean was what lifted one side of the old flat pedestal. The
+  // shards already have authored cant, so the buried foot should obey terrain.
+  if (terrain === null) {
+    SURFACE_QUAT.identity();
+  } else {
+    const r = GROUND_SAMPLE_RADIUS * scale;
+    const left = terrain.heightAt(x - r, z);
+    const right = terrain.heightAt(x + r, z);
+    const near = terrain.heightAt(x, z - r);
+    const far = terrain.heightAt(x, z + r);
+    GROUND_NORMAL.set(left - right, r * 2, near - far).normalize();
+    SURFACE_QUAT.setFromUnitVectors(UP, GROUND_NORMAL);
+  }
+  YAW_QUAT.setFromAxisAngle(UP, h * Math.PI * 2);
+  QUAT.copy(SURFACE_QUAT).multiply(YAW_QUAT);
 
   SCL.set(scale * (0.70 + h2 * 0.62), scale * (0.66 + h * 0.72), scale * (0.70 + h3 * 0.62));
   MAT.compose(POS, QUAT, SCL);
@@ -443,18 +517,16 @@ export default defineSystem({
     const oreParams: THREE.MeshStandardMaterialParameters = {
       color: 0xffffff,
       vertexColors: true,
-      // 0.22, matching the authored `SURFACES.oreCrystal` archetype in
-      // config.ts. Copied as a literal rather than imported because `SURFACES`
-      // is module-private there, and widening its visibility for one number is
-      // a bigger change than restating it next to the reason.
-      roughness: 0.22,
+      // Mineral facets need a controlled glint, not the wet-plastic sheet the
+      // old 0.22 surface produced under the noon key.
+      roughness: 0.36,
       metalness: 0.0,
       // Ore glints. The emissive is deliberately weak — `post.ts` thresholds
       // bloom just above sunlit white paint, and ore that blooms would pull the
       // eye off units, which is the one thing the bible's readability section
       // will not trade for anything.
       emissive: new THREE.Color(ORE_CRYSTAL_COLOR),
-      emissiveIntensity: 0.18,
+      emissiveIntensity: 0.06,
     };
     const np = nodePath();
     if (np !== null) {
@@ -489,10 +561,10 @@ export default defineSystem({
     mesh = new THREE.InstancedMesh(geometry, material, MAX_ORE_INSTANCES);
     mesh.name = 'OreCrystals';
     mesh.count = 0;
-    // One draw call. Crystals are knee-high and sit in the open; the shadow
-    // they would cast is smaller than the shadow-map texel that would carry it,
-    // and the shadow pass re-draws every caster it is given.
-    mesh.castShadow = false;
+    // Still one instanced submission in the shadow pass. The nearest visible
+    // clusters now ground correctly; far clusters remain below a shadow texel
+    // and therefore cost no additional visible fill.
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

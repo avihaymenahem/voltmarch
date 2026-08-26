@@ -243,6 +243,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
 | P1 | `carSedan` | Civilian Sedan | PROP | integration candidate | Meshy multi-view source `01a03d71-9a34-7f70-a29d-07e289471f78`; separate-body/four-wheel retopo; locally conditioned 2,963-triangle LOD0; 1K/512px PBR maps promoted to a 0.62 MiB KTX2 GLB; procedural fallback retained until instancing, LOD1, shadow, renderer and scene-budget gates pass |
+| P1 | `oreCluster` | Ore Crystal Cluster | PROP | integrated | Code-native hard-faceted five-shard cluster with a buried two-mass mineral foot, terrain-normal alignment and baked footing AO. One shared instanced colour draw plus one instanced shadow submission; no texture allocation or generation credits, and depletion scaling/regrowth remain unchanged. |
 
 ## Throughput and memory strategy
 
