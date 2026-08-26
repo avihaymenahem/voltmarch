@@ -2,6 +2,12 @@
 
 Working notes for Claude Code in this repository. Read this before changing anything.
 
+**NEW CODEX CHAT:** after this file, read `docs/CODEX_HANDOFF.md`. It is the compact discovery map
+for current release state, host-level skills/plugins, user collaboration preferences, approved paid
+asset workflow and the documents that own each active workstream. Durable details still belong in
+their owning documents; the handoff exists so a new chat can find them without reconstructing this
+project from conversation history.
+
 ## Licensing is a release gate
 
 The original VOLTMARCH source and assets are proprietary; root `LICENSE` is the controlling

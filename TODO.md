@@ -11,20 +11,12 @@ with no number is untracked, and that is itself the bug.
 
 ## Multiplayer
 
-- **Teams shipped; three follow-ups it deliberately did not do.** *(untracked — the task tool was
+- **Teams shipped; two follow-ups it deliberately did not do.** *(untracked — the task tool was
   disconnected when these were found)*
-  1. ~~**The minimap paints an ally in your own accent**~~ — **CLOSED 2026-08-19.**
-     `SEMANTIC.ally` is the third blip class, `Minimap.alliedArmies()` publishes the legend rows,
-     and `Sidebar.setArmies` takes two lists. The hue is DERIVED rather than picked: swept 0..359
-     against the four faction accents, the four `HOSTILE_COLORS` and `SEMANTIC.ore`, the freest hue
-     is 93 degrees at 47 degrees of clearance, and the shipped colour sits at 96.
-     `tests/hud-palette.spec.ts` pins that floor at 40 and drives the real class; both mutations —
-     dropping the "yours" branch and putting the ally back on the accent — were run and fail it.
-     **A duel cannot reach the new branch**, so no `?shot=` fixture and no 1v1 pixel moved.
-  2. Start placement does not seat team-mates near each other. **It must not be fixed by rotating
+  1. Start placement does not seat team-mates near each other. **It must not be fixed by rotating
      the start table** — ECMA-262 does not pin `sin`/`cos` to bit precision and terrain generates
      independently on both machines of a lockstep match, so that is a tick-zero desync.
-  3. A campaign operation with 3+ seats still makes its extra foes mutually hostile. Nothing is
+  2. A campaign operation with 3+ seats still makes its extra foes mutually hostile. Nothing is
      wrong today — no shipped operation has more than two armies — but an operation that grows one
      should declare alliances next to `foe`.
 - **#51 — 3-4 player PvP.** The merge layer is free; the drop rules and the removal signal are not.
