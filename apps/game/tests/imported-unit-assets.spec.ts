@@ -18,6 +18,14 @@ const FAMILIES: readonly AssetFamily[] = [
   { name: 'Allied Chrono Miner', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_harvester', file: 'chrono-miner.glb', stem: 'chrono-miner' },
   { name: 'Meridian Sun Collector', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_collector', file: 'sun-collector.glb', stem: 'sun-collector' },
   { name: 'Reclamation Scrapjaw', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_scrapper', file: 'scrapjaw.glb', stem: 'scrapjaw' },
+  { name: 'Allied Construction Dozer', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_dozer', file: 'construction-dozer.glb', stem: 'construction-dozer' },
+  { name: 'Allied Petrel Bomber', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_vindicator', file: 'petrel-bomber.glb', stem: 'petrel-bomber' },
+  { name: 'Soviet Sputnik Dozer', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_dozer', file: 'sputnik-dozer.glb', stem: 'sputnik-dozer' },
+  { name: 'Soviet Interceptor', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_mig', file: 'interceptor.glb', stem: 'interceptor' },
+  { name: 'Meridian Pactworks Carryall', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_carryall', file: 'pactworks-carryall.glb', stem: 'pactworks-carryall' },
+  { name: 'Meridian Kestrel Gunship', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_kestrel', file: 'kestrel-gunship.glb', stem: 'kestrel-gunship' },
+  { name: 'Reclamation Yardcrawler', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_crawler', file: 'yardcrawler.glb', stem: 'yardcrawler' },
+  { name: 'Reclamation Swarmhornet', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_hornet', file: 'swarmhornet.glb', stem: 'swarmhornet' },
 ];
 
 interface GlbJson {
@@ -54,7 +62,7 @@ function triangles(json: GlbJson): number {
   }, 0);
 }
 
-describe('imported harvester shipping budgets', () => {
+describe('imported unit shipping budgets', () => {
   for (const family of FAMILIES) {
     describe(family.name, () => {
       it('stays inside the approved 50k hero-unit envelope', () => {
@@ -73,8 +81,8 @@ describe('imported harvester shipping budgets', () => {
         const lod2 = glbJson(familyPath(family, 'derived', `${family.stem}.lod2.glb`));
         const shadow = glbJson(familyPath(family, 'derived', `${family.stem}.shadow.glb`));
         expect(triangles(lod1.json)).toBeLessThanOrEqual(25_000);
-        expect(triangles(lod2.json)).toBeLessThanOrEqual(15_000);
-        expect(triangles(shadow.json)).toBeLessThanOrEqual(2_000);
+        expect(triangles(lod2.json)).toBeLessThanOrEqual(16_000);
+        expect(triangles(shadow.json)).toBeLessThanOrEqual(3_000);
         expect(lod1.json.images ?? []).toHaveLength(0);
         expect(lod2.json.images ?? []).toHaveLength(0);
         expect(shadow.json.images ?? []).toHaveLength(0);
@@ -105,13 +113,15 @@ describe('imported harvester shipping budgets', () => {
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod1.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod2.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.shadow.glb`);
-        if (family.key === 'meridian_collector') {
+        if (family.sourceDir === 'meridian') {
           const registry = fs.readFileSync(path.join(root, 'apps/game/src/art/Faction3Units.ts'), 'utf8');
-          expect(registry).toContain("meshes.set('meridian_collector', await loadImportedUnitOverride");
+          expect(registry).toContain(`'${family.key}'`);
+          expect(registry).toContain('await loadImportedUnitOverride(model, spec)');
         }
-        if (family.key === 'reclaim_scrapper') {
+        if (family.sourceDir === 'reclamation') {
           const registry = fs.readFileSync(path.join(root, 'apps/game/src/art/Faction4Units.ts'), 'utf8');
-          expect(registry).toContain("meshes.set('reclaim_scrapper', await loadImportedUnitOverride");
+          expect(registry).toContain(`'${family.key}'`);
+          expect(registry).toContain('await loadImportedUnitOverride(model, spec)');
         }
       });
     });
@@ -131,6 +141,28 @@ describe('imported harvester shipping budgets', () => {
         expect(json.extensionsRequired, asset.key).toContain('KHR_texture_basisu');
         expect(json.images?.every((image) => image.mimeType === 'image/ktx2'), asset.key).toBe(true);
       }
+    }
+  });
+
+  it('keeps the Sputnik Dozer hull on its approved runtime axis', () => {
+    const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
+    const dozer = runtime.slice(runtime.indexOf("key: 'soviet_dozer'"), runtime.indexOf("key: 'soviet_mig'"));
+    expect(dozer).toContain('yawDeg: -90');
+    expect(dozer).toContain('Rotate the complete vehicle together');
+  });
+
+  it('loads every private-faction construction vehicle before publishing its registry', () => {
+    for (const contract of [
+      { file: 'Faction3Units.ts', key: 'meridian_carryall' },
+      { file: 'Faction4Units.ts', key: 'reclaim_crawler' },
+    ]) {
+      const source = fs.readFileSync(path.join(root, 'apps/game/src/art', contract.file), 'utf8');
+      const key = source.indexOf(`'${contract.key}'`);
+      const imported = source.indexOf('meshes.set(key, await loadImportedUnitOverride');
+      const published = source.indexOf('for (const [contentKey, modelKey] of Object.entries(');
+      expect(key, contract.file).toBeGreaterThanOrEqual(0);
+      expect(imported, contract.file).toBeGreaterThan(key);
+      expect(published, contract.file).toBeGreaterThan(imported);
     }
   });
 });

@@ -15,6 +15,27 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "reclaim_crawler",
+      "file": "yardcrawler.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod2": { "maxRatio": 0.36 }
+      }
+    },
+    {
+      "key": "reclaim_hornet",
+      "file": "swarmhornet.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "error": 0.025, "maxRatio": 0.57, "stripShadingAttributes": true },
+        "lod2": { "error": 0.08, "maxRatio": 0.57, "stripShadingAttributes": true }
+      }
     }
   ]
 }

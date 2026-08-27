@@ -21,6 +21,20 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "meridian_carryall",
+      "file": "pactworks-carryall.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "meridian_kestrel",
+      "file": "kestrel-gunship.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

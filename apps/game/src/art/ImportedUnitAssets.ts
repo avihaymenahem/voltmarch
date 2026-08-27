@@ -207,6 +207,218 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     envMapIntensity: 0.56,
     emissiveIntensity: 0.014,
   },
+  {
+    key: 'allied_dozer',
+    label: 'Allied Construction Dozer',
+    url: new URL('../assets/units/allies/compressed/construction-dozer.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/allies/derived/construction-dozer.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/allies/derived/construction-dozer.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/allies/derived/construction-dozer.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.4, 3.8, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.20,
+    normalScale: 1.14,
+    envMapIntensity: 0.56,
+    emissiveIntensity: 0.010,
+  },
+  {
+    key: 'allied_vindicator',
+    label: 'Allied Petrel Bomber',
+    url: new URL('../assets/units/allies/compressed/petrel-bomber.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/allies/derived/petrel-bomber.lod1.glb', import.meta.url).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL('../assets/units/allies/derived/petrel-bomber.lod2.glb', import.meta.url).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/allies/derived/petrel-bomber.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [12.0, 3.0, 11.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.16,
+    normalScale: 1.12,
+    envMapIntensity: 0.60,
+    emissiveIntensity: 0.010,
+  },
+  {
+    key: 'soviet_dozer',
+    label: 'Soviet Sputnik Dozer',
+    url: new URL('../assets/units/soviets/compressed/sputnik-dozer.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/soviets/derived/sputnik-dozer.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/soviets/derived/sputnik-dozer.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/soviets/derived/sputnik-dozer.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.4, 3.8, 9.0],
+    // The claw keeps its corrected source-local orientation and connected
+    // mount. Rotate the complete vehicle together onto its gameplay forward.
+    yawDeg: -90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.54,
+    emissiveIntensity: 0.010,
+  },
+  {
+    key: 'soviet_mig',
+    label: 'Soviet Interceptor',
+    url: new URL('../assets/units/soviets/compressed/interceptor.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/soviets/derived/interceptor.lod1.glb', import.meta.url).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL('../assets/units/soviets/derived/interceptor.lod2.glb', import.meta.url).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/soviets/derived/interceptor.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [10.5, 2.9, 10.0],
+    yawDeg: 90,
+    baseColorGain: 1.08,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+    emissiveIntensity: 0.010,
+  },
+  {
+    key: 'meridian_carryall',
+    label: 'Meridian Pactworks Carryall',
+    url: new URL('../assets/units/meridian/compressed/pactworks-carryall.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/meridian/derived/pactworks-carryall.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/meridian/derived/pactworks-carryall.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/meridian/derived/pactworks-carryall.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.4, 3.8, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.16,
+    envMapIntensity: 0.56,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'meridian_kestrel',
+    label: 'Meridian Kestrel Gunship',
+    url: new URL('../assets/units/meridian/compressed/kestrel-gunship.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/meridian/derived/kestrel-gunship.lod1.glb', import.meta.url).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL('../assets/units/meridian/derived/kestrel-gunship.lod2.glb', import.meta.url).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/meridian/derived/kestrel-gunship.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [11.0, 2.9, 10.5],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.16,
+    normalScale: 1.14,
+    envMapIntensity: 0.60,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'reclaim_crawler',
+    label: 'Reclamation Yardcrawler',
+    url: new URL('../assets/units/reclamation/compressed/yardcrawler.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/reclamation/derived/yardcrawler.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../assets/units/reclamation/derived/yardcrawler.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/reclamation/derived/yardcrawler.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [4.4, 3.85, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.20,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.52,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'reclaim_hornet',
+    label: 'Reclamation Swarmhornet',
+    url: new URL('../assets/units/reclamation/compressed/swarmhornet.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../assets/units/reclamation/derived/swarmhornet.lod1.glb', import.meta.url).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL('../assets/units/reclamation/derived/swarmhornet.lod2.glb', import.meta.url).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../assets/units/reclamation/derived/swarmhornet.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [10.6, 2.9, 10.0],
+    // The approved V2 reconstruction faces source -X; rotate its nose to the
+    // engine's +Z model-forward convention.
+    yawDeg: 90,
+    baseColorGain: 1.12,
+    roughnessGain: 1.24,
+    normalScale: 1.14,
+    envMapIntensity: 0.50,
+    emissiveIntensity: 0.008,
+  },
 ];
 
 const loader = new GLTFLoader();

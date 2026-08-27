@@ -126,7 +126,11 @@ describe('initial title-menu boot', () => {
       expect(source).toContain('12_000');
     }
     expect(buildings).toContain("spec.key.endsWith('_conyard')");
-    expect(units).toContain('const immediateSpecs = fastMcvBoot ? [] : importedSpecs;');
+    expect(units).toContain("'allied_dozer'");
+    expect(units).toContain("'soviet_dozer'");
+    expect(units).toContain('importedSpecs.filter((spec) => MCV_IMPORT_KEYS.has(spec.key))');
+    expect(units).toContain('importedSpecs.filter((spec) => !MCV_IMPORT_KEYS.has(spec.key))');
+    expect(units).not.toContain('const immediateSpecs = fastMcvBoot ? [] : importedSpecs;');
   });
 
   it('prepares the first battlefield audio bank after gameplay becomes ready', () => {

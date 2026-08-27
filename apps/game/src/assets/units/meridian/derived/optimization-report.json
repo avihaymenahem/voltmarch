@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-26T12:02:44.153Z",
+  "generatedAt": "2026-08-27T18:12:25.592Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -55,6 +55,112 @@
             11
           ],
           "occupiedCells": 138
+        }
+      ]
+    },
+    {
+      "key": "meridian_carryall",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/meridian/pactworks-carryall.glb",
+        "triangles": 19594,
+        "fileBytes": 4805904
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/pactworks-carryall.lod1.glb",
+          "triangles": 8817,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00134,
+          "boundsDriftRatio": 0.00139,
+          "fileBytes": 352988,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/pactworks-carryall.lod2.glb",
+          "triangles": 4943,
+          "triangleRatio": 0.2523,
+          "boundsDriftMeters": 0.00776,
+          "boundsDriftRatio": 0.0046,
+          "fileBytes": 236096,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/pactworks-carryall.shadow.glb",
+          "triangles": 1680,
+          "triangleRatio": 0.0857,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24320,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            12
+          ],
+          "occupiedCells": 140
+        }
+      ]
+    },
+    {
+      "key": "meridian_kestrel",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/meridian/kestrel-gunship.glb",
+        "triangles": 19360,
+        "fileBytes": 4583272
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/kestrel-gunship.lod1.glb",
+          "triangles": 8710,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00115,
+          "boundsDriftRatio": 0.00242,
+          "fileBytes": 295324,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/kestrel-gunship.lod2.glb",
+          "triangles": 3484,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00298,
+          "boundsDriftRatio": 0.00296,
+          "fileBytes": 150760,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/meridian/derived/kestrel-gunship.shadow.glb",
+          "triangles": 1080,
+          "triangleRatio": 0.0558,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 15920,
+          "geometryOnly": true,
+          "grid": [
+            12,
+            14
+          ],
+          "occupiedCells": 90
         }
       ]
     }

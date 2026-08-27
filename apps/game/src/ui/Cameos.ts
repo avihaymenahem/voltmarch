@@ -81,8 +81,10 @@
  * That is the repo's signature failure — a capability that exists and is not
  * used — so the fix is structural, not another call site to forget. §3B is a
  * complete content-key -> model-key table for all four armies, and
- * `createCameoModelProvider()` reads the art libraries directly. The renderer
- * DEFAULTS to it. `setModelProvider` survives only as a test/harness override.
+ * `createCameoModelProvider()` reads the live RenderBridge registration that
+ * the battlefield uses. The art libraries are only its boot/load-failure
+ * fallback. The renderer DEFAULTS to it. `setModelProvider` survives only as a
+ * test/harness override.
  * `tests/cameos-coverage.spec.ts` fails the day a faction is added without its
  * mappings, which is exactly how this broke.
  *
@@ -94,7 +96,8 @@
  * the `*.system.ts` glob already pulls into every build, so importing them here
  * adds no bundle weight and cannot fail independently — and the resolver treats
  * an empty library as a miss, so a library that never gets built degrades to
- * the 2D fallback exactly as before instead of throwing.
+ * the 2D fallback exactly as before instead of throwing. They now remain the
+ * fallback path; successful imported registrations come from RenderBridge.
  *
  * FALLBACK
  * --------
@@ -112,7 +115,8 @@ import * as THREE from 'three';
 
 import { FACTION_PALETTE, HUD_CAMEO } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
-import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
+import { BuildTab, EntityKind, Faction, FACTION_PALETTE_KEYS } from '../core/types';
+import { DEF_TABLES } from '../data/Defs';
 import { buildingLibrary } from '../art/BuildingFactory';
 import { builtBy, forArmy, type PerArmy } from '../art/faction-models';
 import { unitLibrary } from '../art/UnitFactory';
@@ -125,6 +129,10 @@ import {
 } from '../render/backend';
 import type { NodeRendererLike } from '../render/gpu-path';
 import { shroudUniforms } from '../render/FogOfWar';
+import {
+  kindMeshRegistryVersion,
+  resolveRegisteredKindPreviewParts,
+} from '../render/RenderBridge';
 import { meridianUnitLibrary } from '../art/Faction3Units';
 import { meridianBuildingLibrary } from '../art/Faction3Buildings';
 import { reclaimUnitLibrary } from '../art/Faction4Units';
@@ -642,8 +650,9 @@ function teamColorOf(faction: Faction, out: THREE.Color): THREE.Color {
 }
 
 /**
- * The real provider. Resolves a def key to a primed prototype through the art
- * libraries, caching one prototype per (model, army).
+ * The real provider. Resolves a def key to the battlefield's registered model,
+ * falling back to the art libraries before registration/load success, and
+ * caches one prototype per (model, army, registry generation).
  *
  * CACHING IS NOT AN OPTIMISATION HERE, IT IS THE CONTRACT. `prototype()` mints
  * fresh `THREE.Mesh` objects and `primeCameoPrototype` allocates a per-vertex
@@ -652,13 +661,14 @@ function teamColorOf(faction: Faction, out: THREE.Color): THREE.Color {
  * thirty times a second at the exact moment the player is looking at it.
  *
  * A miss is a legitimate answer at two moments and only two: before the art
- * systems have run `init()` (the libraries are empty, and every cameo bound in
- * that window repaints when `invalidateAll()` fires), and for a def whose model
- * genuinely does not exist. Both fall through to the 2D silhouette.
+ * systems have run `init()` (every cameo bound in that window repaints when the
+ * registry generation advances), and for a def whose model genuinely does not
+ * exist. Both fall through to the 2D silhouette.
  */
 export function createCameoModelProvider(): ModelProvider {
   const cache = new Map<string, THREE.Object3D>();
   const colour = new THREE.Color();
+  let cacheVersion = -1;
 
   return (key: string, faction: Faction): THREE.Object3D | null => {
     // The subject's class is not on the provider's signature, so try the
@@ -669,10 +679,41 @@ export function createCameoModelProvider(): ModelProvider {
     const modelKey = cameoModelKey(key, faction, isBuilding);
     if (modelKey === null) return null;
 
+    // Imported assets replace procedural bridge registrations after the HUD
+    // can already exist. Never freeze that first procedural model in cache.
+    const version = kindMeshRegistryVersion();
+    if (version !== cacheVersion) {
+      cache.clear();
+      cacheVersion = version;
+    }
+
     const cacheKey = `${modelKey}|${faction}`;
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return hit;
 
+    const defId = isBuilding
+      ? DEF_TABLES.buildingByKey.get(key)
+      : DEF_TABLES.unitByKey.get(key);
+    const unitDef = isBuilding || defId === undefined ? undefined : DEF_TABLES.units[defId];
+    const kind = isBuilding ? EntityKind.Building : unitDef?.kind;
+    if (defId !== undefined && kind !== undefined) {
+      const parts = resolveRegisteredKindPreviewParts(kind, faction, defId);
+      if (parts !== null) {
+        const root = new THREE.Group();
+        root.name = `cameo:${modelKey}:registered`;
+        for (const part of parts) {
+          const mesh = new THREE.Mesh(part.geometry, part.material);
+          mesh.position.set(part.offsetX ?? 0, part.offsetY ?? 0, part.offsetZ ?? 0);
+          root.add(mesh);
+        }
+        const built = primeCameoPrototype(root, teamColorOf(faction, colour));
+        cache.set(cacheKey, built);
+        return built;
+      }
+    }
+
+    // Headless harnesses and the first pre-registration boot frames retain the
+    // established procedural fallback instead of drawing an empty card.
     const library = libraryFor(modelKey, isBuilding);
     if (library === null) return null;
     const model = library.get(modelKey);
@@ -813,6 +854,8 @@ export class CameoRenderer {
   // caller anywhere, which is how a live-model cameo grid shipped as 100 %
   // hand-drawn 2D for the whole life of the module.
   private provider: ModelProvider = createCameoModelProvider();
+  /** Registry generation represented by the pixels currently cached in cells. */
+  private registryVersion = kindMeshRegistryVersion();
   private current: THREE.Object3D | null = null;
 
   /** Keyed by canvas, so a cell that scrolls to a new def just re-registers. */
@@ -1022,6 +1065,11 @@ export class CameoRenderer {
 
   frame(time: number, dt: number): void {
     if (this.disposed) return;
+    const registryVersion = kindMeshRegistryVersion();
+    if (registryVersion !== this.registryVersion) {
+      this.registryVersion = registryVersion;
+      this.invalidateAll();
+    }
     this.rendersThisFrame = 0;
 
     /*

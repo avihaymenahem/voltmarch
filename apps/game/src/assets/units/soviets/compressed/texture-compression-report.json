@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-26T11:25:15.521Z",
+  "generatedAt": "2026-08-27T19:37:00.788Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -206,16 +206,182 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "soviet_dozer",
+      "source": "apps/game/src/assets/units/soviets/sputnik-dozer.glb",
+      "output": "apps/game/src/assets/units/soviets/compressed/sputnik-dozer.glb",
+      "sourceFileBytes": 4818796,
+      "outputFileBytes": 3625760,
+      "transferRatio": 0.7524,
+      "sourceTextureBytes": 2915363,
+      "ktx2TextureBytes": 1722087,
+      "sourceGpuBytesRGBA8": 55924048,
+      "compressedGpuBytes8bpp": 9786708,
+      "compressedGpuBytes4bpp": 4893356,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1791849,
+          "ktx2Bytes": 878814,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 266583,
+          "ktx2Bytes": 185664,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 844294,
+          "ktx2Bytes": 656165,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 3,
+          "roles": [
+            "emissive"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 12637,
+          "ktx2Bytes": 1444,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "soviet_mig",
+      "source": "apps/game/src/assets/units/soviets/interceptor.glb",
+      "output": "apps/game/src/assets/units/soviets/compressed/interceptor.glb",
+      "sourceFileBytes": 3220892,
+      "outputFileBytes": 2424616,
+      "transferRatio": 0.7528,
+      "sourceTextureBytes": 2328852,
+      "ktx2TextureBytes": 1532335,
+      "sourceGpuBytesRGBA8": 55924048,
+      "compressedGpuBytes8bpp": 9786708,
+      "compressedGpuBytes4bpp": 4893356,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1388913,
+          "ktx2Bytes": 813025,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 211349,
+          "ktx2Bytes": 153393,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 715459,
+          "ktx2Bytes": 563708,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 3,
+          "roles": [
+            "emissive"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 13131,
+          "ktx2Bytes": 2209,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 19821808,
-    "outputFileBytes": 13406004,
-    "transferRatio": 0.6763,
-    "sourceTextureBytes": 12033294,
-    "ktx2TextureBytes": 5616893,
-    "sourceGpuBytesRGBA8": 167772148,
-    "compressedGpuBytes8bpp": 29360125,
-    "compressedGpuBytes4bpp": 14680067
+    "sourceFileBytes": 27861496,
+    "outputFileBytes": 19456380,
+    "transferRatio": 0.6983,
+    "sourceTextureBytes": 17277509,
+    "ktx2TextureBytes": 8871315,
+    "sourceGpuBytesRGBA8": 279620244,
+    "compressedGpuBytes8bpp": 48933541,
+    "compressedGpuBytes4bpp": 24466779
   }
 }

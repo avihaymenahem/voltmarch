@@ -1650,14 +1650,18 @@ export async function buildAndRegisterReclaimUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
-  const scrapperSpec = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'reclaim_scrapper');
-  const scrapperModel = reclaimUnitLibrary.get('reclaim_scrapper');
-  if (scrapperSpec !== undefined && scrapperModel !== undefined) {
+  const importedKeys = [
+    'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
+  ] as const;
+  for (const key of importedKeys) {
+    const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
+    const model = reclaimUnitLibrary.get(key);
+    if (spec === undefined || model === undefined) continue;
     try {
-      meshes.set('reclaim_scrapper', await loadImportedUnitOverride(scrapperModel, scrapperSpec));
-      console.info('[units] imported Reclamation Scrapjaw with LOD and shadow proxy');
+      meshes.set(key, await loadImportedUnitOverride(model, spec));
+      console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
     } catch (error) {
-      console.error('[units] imported Reclamation Scrapjaw rejected; using procedural fallback', error);
+      console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
     }
   }
   const meshFor = (key: string): KindMesh | null => {

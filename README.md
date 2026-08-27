@@ -80,15 +80,15 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.11.1
+## What's new in 3.11.2
 
-- **Road networks that fail safely:** independent parallel routes are rerouted or removed as whole
-  chains, shared junction approaches split only at their real divergence, tight ribbons cannot fold
-  over themselves, and roads now stop with the normal authored fade before unsafe cliff, ravine or
-  water crossings.
-- **More legible terrain and paving:** a conditioned project-owner-supplied tileable mask adds
-  world-space colour and roughness detail to natural terrain, with a separate roughness-forward pass
-  for asphalt and sidewalks that leaves lane paint and raised kerbs crisp.
+- **Faction-authored construction and air fleets:** all four construction vehicles and aircraft now
+  use optimized Meshy assets with generated LOD and shadow variants, including corrected Soviet
+  dozer assembly and a rebuilt Reclamation aircraft.
+- **Consistent build previews:** the right-side build HUD now renders the same registered imported
+  models used in the world instead of retaining obsolete procedural silhouettes.
+- **Clean starting deployment:** construction vehicles are imported before their first visible
+  frame, removing the procedural-model flash when a match begins with an MCV.
 
 ## Play VOLTMARCH
 
@@ -97,7 +97,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.11.1**. The
+The browser build and Windows release share the same game. The current release is **3.11.2**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

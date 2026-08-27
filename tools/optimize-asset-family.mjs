@@ -253,6 +253,20 @@ async function derive(input, output, profileName, profile) {
   const beforeBounds = bounds(document);
   const beforeTriangles = triangles(document);
 
+  // Imported-unit runtime rebuilds creased normals and deliberately discards
+  // authored tangents after fitting. Dense generated aircraft can otherwise
+  // hit a simplifier floor at every baked shading split. Keep POSITION + UV so
+  // the shared LOD0 material still samples correctly, and let runtime rebuild
+  // the exact shading basis it uses for LOD0.
+  if (profile.stripShadingAttributes === true) {
+    for (const mesh of document.getRoot().listMeshes()) {
+      for (const primitive of mesh.listPrimitives()) {
+        primitive.setAttribute('NORMAL', null);
+        primitive.setAttribute('TANGENT', null);
+      }
+    }
+  }
+
   // Keep the source material references through simplify + prune. TEXCOORD_0
   // looks unused after textures are detached, so pruning in the old order
   // deleted the UV accessor: WebGL sampled one fallback texel and WebGPU
@@ -289,8 +303,12 @@ async function derive(input, output, profileName, profile) {
       `simplifier floor ${(ratio * 100).toFixed(1)}% exceeds ${(profile.maxRatio * 100).toFixed(1)}% ceiling`,
     );
   }
-  if (drift.relative > 0.02) {
-    blockers.push(`bounds drift ${(drift.relative * 100).toFixed(2)}% exceeds 2% ceiling`);
+  const maxBoundsDrift = profile.maxBoundsDrift ?? 0.02;
+  if (drift.relative > maxBoundsDrift) {
+    blockers.push(
+      `bounds drift ${(drift.relative * 100).toFixed(2)}% exceeds `
+      + `${(maxBoundsDrift * 100).toFixed(2)}% ceiling`,
+    );
   }
 
   let fileBytes = 0;

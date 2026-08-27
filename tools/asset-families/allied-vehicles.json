@@ -15,6 +15,24 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "allied_dozer",
+      "file": "construction-dozer.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "maxRatio": 0.58 },
+        "lod2": { "maxRatio": 0.36 }
+      }
+    },
+    {
+      "key": "allied_vindicator",
+      "file": "petrel-bomber.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

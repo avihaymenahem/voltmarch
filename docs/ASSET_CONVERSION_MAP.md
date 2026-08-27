@@ -4,6 +4,11 @@ This is the production map for replacing or selectively upgrading the procedural
 
 The procedural roster remains the live fallback until each imported asset reaches `validated`.
 
+The right build HUD, selection cards and any later codex render must derive their model from the
+same live `RenderBridge` registration used by the battlefield. They must not call a procedural art
+library as a parallel source of truth. Deferred imported replacements invalidate the cameo cache;
+the procedural library is retained only for pre-registration and load-failure fallback frames.
+
 ## Pipeline routes and statuses
 
 | Route | Meaning |
@@ -27,6 +32,12 @@ Statuses: `procedural`, `briefed`, `concept`, `meshy-raw`, `production`, `integr
 5. `M1–M3`: Meridian architecture, machines, vessels, and character family.
 6. `R1–R3`: Reclamation architecture, scrapyard machines, vessels, and character family.
 7. `N1`: neutral capturable landmarks.
+
+Current Meshy backlog: **51 gameplay units remain procedural** — 11 ground vehicles, 19 naval
+units and 21 characters/creatures. There are no remaining building conversions in the production
+backlog; modular walls/gates intentionally remain code-native where the `MOD` route calls for
+seamless instancing rather than a unique generated mesh. The faction split is Soviet 13, Allied 13,
+Meridian 13 and Reclamation 12. The detailed rows below are the authoritative names.
 
 The Tesla Reactor and Soviet Construction Yard are the two paid pilots. Construction Yard v1 was
 rejected for fused, swollen hard-surface geometry. V2 was also rejected after runtime review exposed
@@ -100,8 +111,8 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | S3 | `soviet_sickle` | Sickle | VEH | procedural | Distinct walker/mechanism branch; leg animation contract |
 | S3 | `soviet_v4` | V4 Rocket Launcher | VEH | procedural | Shared tracked chassis; elevating launcher pack |
 | S3 | `soviet_harvester` | Ore Collector | VEH | integrated | 49,715-triangle forged hopper/scoop hero, 22,371/12,085 LODs, 1,344-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
-| S3 | `soviet_dozer` | Sputnik Dozer | VEH | procedural | Utility chassis; construction/deploy cues |
-| S3 | `soviet_mig` | Interceptor | AIR | procedural | Soviet air material family; preserve sharp delta silhouette |
+| S3 | `soviet_dozer` | Sputnik Dozer | VEH | integrated | Geometry `01a04447-864a-78a1-876f-006ad7daf2b5`, texture `01a04456-a9e1-787e-94a6-5ba7c16af56d`; 35,150-triangle tracked utility hero with 20,803/14,513 LODs, a 2,688-triangle shadow proxy and 3.46 MiB KTX2 PBR. The detached 3,592-triangle front-claw shell keeps its approved local orientation and moves -0.18 along source X, replacing a 0.152 air gap with a deliberate 0.028 mechanical overlap. Runtime yaw rotates the complete connected vehicle 180 degrees as one unit; it must never be emulated by turning the claw again. The claw-preserving LOD1 uses a narrow 60% per-asset ceiling while remaining below the 25k hero-unit budget. Paid remesh `01a04453-1c83-71d5-87cc-61881a6f3d7b` was rejected for smoothing away the approved machinery; the reviewed local reduction ships instead. Deployment behavior and sockets remain procedural authority. |
+| S3 | `soviet_mig` | Interceptor | AIR | integrated | Geometry `01a04447-a8d3-748e-82d8-49b6839a1d2f`, texture `01a04456-cde2-7fce-9079-1ee4d8c5c3d1`; 19,281-triangle delta-wing interceptor with 8,676/3,522 LODs, 1,932-triangle shadow proxy and 2.31 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
 | S3 | `soviet_dreadnought` | Dreadnought | NAV | procedural | Capital vessel; mandatory LODs and multiple weapon pivots |
 | S3 | `soviet_sub` | Submarine | NAV | procedural | Submerged/readability contract and weapon socket |
 | S3 | `soviet_transport` | Hover Transport | NAV | procedural | Amphibious transport; ramp/cargo clearance |
@@ -145,8 +156,8 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_ifv` | Sabre IFV | VEH | procedural | Shared chassis/material; modular weapon station |
 | A3 | `allied_prism` | Refractor Tank | VEH | procedural | Energy-weapon derivative; emitter pivot and VFX socket |
 | A3 | `allied_harvester` | Chrono Miner | VEH | integrated | 49,825-triangle precision-shell miner, 22,416/8,968 LODs, 1,728-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
-| A3 | `allied_dozer` | Construction Dozer | VEH | procedural | Utility chassis and construction equipment |
-| A3 | `allied_vindicator` | Petrel Bomber | AIR | procedural | Establish Allied aerospace material and silhouette family |
+| A3 | `allied_dozer` | Construction Dozer | VEH | integrated | Geometry `01a04447-7acc-7897-98f1-c91c8e32646f`, texture `01a04456-9e61-736f-a71c-50fe79999c08`; 19,305-triangle ceramic tracked construction chassis with 10,862/6,711 LODs, 2,112-triangle shadow proxy and 2.85 MiB KTX2 PBR. Deployment behavior and sockets remain procedural authority. |
+| A3 | `allied_vindicator` | Petrel Bomber | AIR | integrated | Geometry `01a04441-a0bb-7eff-9e1d-baecf3410869`, texture `01a04456-934c-7875-9573-ca754895ce72`; 18,056-triangle Allied strike aircraft with 8,119/3,250 LODs, 1,416-triangle shadow proxy and 2.24 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
 | A3 | `allied_destroyer` | Aircraft Cruiser | NAV | procedural | Capital vessel; mandatory LODs and air-support silhouette |
 | A3 | `allied_gunboat` | Assault Destroyer | NAV | procedural | Combat hull family and weapon pivots |
 | A3 | `allied_transport` | Hover Transport | NAV | procedural | Amphibious transport and ramp/cargo clearance |
@@ -186,8 +197,8 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_skiff` | Sandskiff | VEH | procedural | Fast skimmer derivative and hover silhouette |
 | M3 | `meridian_zenith` | Zenith Emitter | VEH | procedural | Energy weapon platform with emitter pivot |
 | M3 | `meridian_collector` | Sun Collector | VEH | integrated | 49,837-triangle true-hover collector, 22,425/8,968 LODs, 1,656-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
-| M3 | `meridian_carryall` | Pactworks Carryall | VEH | procedural | Heavy utility/transport derivative |
-| M3 | `meridian_kestrel` | Kestrel Gunship | AIR | procedural | Establish Pact aerospace family and weapon sockets |
+| M3 | `meridian_carryall` | Pactworks Carryall | VEH | integrated | Geometry `01a04447-9298-7ca7-8f6a-2d247de21a7f`, texture `01a04456-b6c4-7380-ac1f-24aa47718037`; 19,594-triangle ivory/teal construction carrier with 8,817/4,943 LODs, 1,680-triangle shadow proxy and 3.03 MiB KTX2 PBR. Private-registry loading keeps its procedural deploy cues and fallback. |
+| M3 | `meridian_kestrel` | Kestrel Gunship | AIR | integrated | Geometry `01a04447-b377-7cb9-9b99-61f115d2f35f`, texture `01a04456-d97f-79eb-9780-48006a92104e`; 19,360-triangle solar gunship with 8,710/3,484 LODs, 1,080-triangle shadow proxy and 2.92 MiB KTX2 PBR. Private-registry loading retains procedural sockets and fallback. |
 | M3 | `meridian_corvette` | Kite Corvette | NAV | procedural | Light naval hull family and battery pivots |
 | M3 | `meridian_monitor` | Sunmonitor | NAV | procedural | Heavy naval hero derivative; mandatory LODs |
 | M3 | `meridian_cutter` | Sun Cutter | NAV | procedural | Compact fast naval derivative |
@@ -227,8 +238,8 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R3 | `reclaim_spitter` | Arcspitter | VEH | procedural | Shared chassis; energy weapon pivot/socket |
 | R3 | `reclaim_slaghurler` | Slaghurler | VEH | procedural | Shared chassis; artillery mechanism |
 | R3 | `reclaim_scrapper` | Scrapjaw | VEH | integrated | 44,402-triangle open-frame crusher, 19,913/12,267 LODs, 1,104-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
-| R3 | `reclaim_crawler` | Yardcrawler | VEH | procedural | Heavy utility/deploying chassis; mandatory moving hierarchy |
-| R3 | `reclaim_hornet` | Swarmhornet | AIR | procedural | Establish salvaged aircraft family and weapon sockets |
+| R3 | `reclaim_crawler` | Yardcrawler | VEH | integrated | Geometry `01a04447-9d30-71b1-81c1-565a961eb744`, texture `01a04456-c1bd-7382-80a2-3c043e87ef33`; 43,232-triangle open-frame construction hero with 23,700/15,116 LODs, 2,472-triangle shadow proxy and 4.01 MiB KTX2 PBR. Paid remesh `01a04453-209c-78b5-ac46-b8086b0ad1ca` was rejected for changing and over-smoothing the salvage machinery; the reviewed local reduction ships. Private-registry fallback retains deployment behavior. |
+| R3 | `reclaim_hornet` | Swarmhornet | AIR | integrated | V1 geometry `01a04447-be66-78b8-a1ed-76ffe03c655a` / texture `01a04456-e53f-7fe2-8a32-420e0eb5c8fa` was rejected after the live art gate exposed folded surfaces, self-intersections and malformed fan ducts; every V1 runtime binary was removed. V2 geometry `01a0448a-33fb-7d12-a912-52e9c04799f5` and texture `01a04490-df81-76d3-b463-f7382d144820` use coherent top/front/side/rear references and ship as one clean 19,775-triangle hull with exactly two enclosed fans, 8,895/3,558 LODs, a 1,728-triangle shadow proxy and 2.83 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
 | R3 | `reclaim_scow` | Slag Scow | NAV | procedural | Light scrap vessel and bow weapon pivot |
 | R3 | `reclaim_hulk` | Reclaimed Hulk | NAV | procedural | Heavy capital salvage vessel; mandatory LODs |
 | R3 | `reclaim_skimmer` | Scrap Skimmer | NAV | procedural | Compact fast naval derivative |

@@ -19,6 +19,7 @@ import {
   RenderBridge,
   clearKindMeshes,
   registerKindMesh,
+  resolveRegisteredKindPreviewParts,
   resolveKindPreviewParts,
   setRenderBridge,
   type KindMesh,
@@ -129,9 +130,17 @@ describe('RenderBridge — unowned model previews', () => {
     const preview = resolveKindPreviewParts(EntityKind.Building, Faction.Allies, 17);
     expect(preview).toHaveLength(2);
     expect(preview[0].geometry).toBe(root);
+    expect(preview[0].material).toBeDefined();
     expect(preview[1].geometry).toBe(stack);
     expect([preview[1].offsetX, preview[1].offsetY, preview[1].offsetZ])
       .toEqual([1.25, 2, -0.5]);
+    clearKindMeshes();
+  });
+
+  it('does not expose a bridge placeholder as authored HUD art', () => {
+    clearKindMeshes();
+    expect(resolveRegisteredKindPreviewParts(EntityKind.Vehicle, Faction.Allies, 404))
+      .toBeNull();
     clearKindMeshes();
   });
 });

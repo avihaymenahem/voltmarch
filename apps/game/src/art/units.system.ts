@@ -13,7 +13,8 @@
  *      is 27 now — a count in prose is a claim that rots on the next unit, and
  *      the boot line already prints the real figure.)
  *   4. Publishes them on `unitLibrary` and hands them to RenderBridge. Imported
- *      non-MCV overrides stream after an MCV opening becomes interactive.
+ *      construction vehicles block an MCV opening's first reveal; other
+ *      overrides may stream after it becomes interactive.
  *   5. Prints the scorecard line for every unit, so the critic loop has numbers
  *      instead of opinions.
  *
@@ -54,6 +55,18 @@ import {
 import { isArtFactionPlanned } from './boot-plan';
 
 interface BridgeGlobal { __vmUnits?: unknown; }
+
+/**
+ * Imported units that can exist in the very first visible MCV-opening frame.
+ *
+ * The shared art system owns only the Allied and Soviet rows. Meridian and
+ * Reclamation await their private imported-unit loaders before registering any
+ * of their models, so their Carryall/Yardcrawler already obey this contract.
+ */
+const MCV_IMPORT_KEYS: ReadonlySet<string> = new Set([
+  'allied_dozer',
+  'soviet_dozer',
+]);
 
 /**
  * Content key -> model key, for defs ONE ARMY OWNS.
@@ -393,14 +406,22 @@ export default defineSystem({
       return loaded;
     };
     const fastMcvBoot = plannedScenario().start === 'mcv' && !paradeRequested();
-    const immediateSpecs = fastMcvBoot ? [] : importedSpecs;
-    const deferredSpecs = fastMcvBoot ? importedSpecs : [];
+    // Never publish a procedural construction vehicle that will be replaced on
+    // screen moments later. The MCV GLBs are awaited before the registry sees
+    // the opening entities; only units that cannot exist at match start retain
+    // the post-curtain streaming optimisation.
+    const immediateSpecs = fastMcvBoot
+      ? importedSpecs.filter((spec) => MCV_IMPORT_KEYS.has(spec.key))
+      : importedSpecs;
+    const deferredSpecs = fastMcvBoot
+      ? importedSpecs.filter((spec) => !MCV_IMPORT_KEYS.has(spec.key))
+      : [];
     for (const result of await loadSpecs(immediateSpecs)) meshes.set(result.key, result.mesh);
     /*
-     * None of the authored unit overrides is an MCV. Waiting for harvesters and
-     * tanks before showing an MCV-only opening added about one second to every
-     * cold boot, so those overrides stream after the match becomes interactive.
-     * RenderBridge's registry version rebinds any procedural stand-in live.
+     * Authored harvesters, tanks and aircraft may stream after the curtain;
+     * RenderBridge's registry version then rebinds matching procedural
+     * stand-ins. Construction vehicles are deliberately excluded because they
+     * are already visible in an MCV-only opening.
      */
     const meshFor = (key: string): KindMesh | null => {
       const model = unitLibrary.get(key);

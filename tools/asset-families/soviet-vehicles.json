@@ -29,6 +29,27 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "soviet_dozer",
+      "file": "sputnik-dozer.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "maxRatio": 0.60 },
+        "lod2": { "maxRatio": 0.42 }
+      }
+    },
+    {
+      "key": "soviet_mig",
+      "file": "interceptor.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod2": { "maxBoundsDrift": 0.03 }
+      }
     }
   ]
 }

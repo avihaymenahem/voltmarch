@@ -15,14 +15,18 @@ change makes an old candidate fail, its disposable derived file is removed so st
 mistaken for an approved output.
 
 The family manifest owns class, LOD eligibility, simplification ratios and output ceilings. Generated
-LOD files retain UVs and normals but contain no embedded textures; runtime integration must reuse the
-already resident LOD0 material. Shadow files retain positions and indices only. This prevents one
-approved PBR set from being decoded once per derivative.
+LOD files retain UVs and normally retain normals, but contain no embedded textures; runtime integration
+must reuse the already resident LOD0 material. A reviewed imported-unit profile may set
+`stripShadingAttributes` when that runtime already rebuilds creased normals and discards tangents after
+fitting. That exception preserves UVs/material coherence while removing baked shading seams from the
+simplifier contract. Shadow files retain positions and indices only. This prevents one approved PBR set
+from being decoded once per derivative.
 
 The operation order is a correctness contract: simplify and prune while the source texture references
 still make `TEXCOORD_0` reachable, then detach and dispose texture payloads without a second prune. Stripping
 first lets the optimizer delete UVs; WebGL hides that defect behind a constant fallback sample while WebGPU
-rejects the colour draw. Automated tests inspect every candidate primitive for both UV and normal channels.
+rejects the colour draw. Automated tests inspect every ordinary candidate for UV and normal channels;
+the imported-unit exception proves its reconstructed runtime shading path separately.
 Candidates then quantize positions to 14 bits, normals to 10 bits and UVs to 12 bits with
 `KHR_mesh_quantization`. This reduces packaged bytes and vertex bandwidth without adding a decoder; Three's
 GLTF loader supports the core Khronos extension in both renderer paths.
@@ -35,7 +39,8 @@ duplication.
 
 Every output records triangle ratio, bounds drift and bytes in `optimization-report.json`. A candidate
 is recorded as `blocked` and is not written when simplification stops above its ratio ceiling or moves
-the fitted bounds by more than two percent. Shadow proxies may also pass an explicit absolute triangle
+the fitted bounds by more than two percent. A reviewed asset may declare a narrow per-profile
+`maxBoundsDrift` override rather than weakening the family gate. Shadow proxies may also pass an explicit absolute triangle
 ceiling, which keeps small defence models useful when a ratio alone would be misleading. The rest of the family continues, so a UV-bound colour LOD
 cannot prevent safe depth-only shadow proxies from being produced. Blocked colour LODs need real
 retopology and texture reprojection.

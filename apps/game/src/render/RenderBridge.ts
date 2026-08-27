@@ -211,6 +211,8 @@ interface ModelEntry {
  */
 export interface KindPreviewPart {
   readonly geometry: THREE.BufferGeometry;
+  /** Exact world material for this drawable. Shared and bridge-owned. */
+  readonly material: THREE.Material | THREE.Material[];
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly offsetZ?: number;
@@ -594,6 +596,15 @@ function placeholderEntry(kind: EntityKind): ModelEntry {
 
 /** Most-specific-first model lookup, shared by entities and placement ghosts. */
 function resolveModelEntry(kind: EntityKind, faction: number, defId: number): ModelEntry {
+  return resolveRegisteredModelEntry(kind, faction, defId) ?? placeholderEntry(kind);
+}
+
+/** Most-specific-first lookup without manufacturing placeholder art. */
+function resolveRegisteredModelEntry(
+  kind: EntityKind,
+  faction: number,
+  defId: number,
+): ModelEntry | null {
   let e = byKey.get(packKey(kind, faction, defId));
   if (e !== undefined) return e;
   e = byKey.get(packKey(kind, FACTION_ANY, defId));
@@ -602,7 +613,7 @@ function resolveModelEntry(kind: EntityKind, faction: number, defId: number): Mo
   if (e !== undefined) return e;
   e = byKey.get(packKey(kind, FACTION_ANY, -1));
   if (e !== undefined) return e;
-  return placeholderEntry(kind);
+  return null;
 }
 
 /**
@@ -615,6 +626,24 @@ export function resolveKindPreviewParts(
   defId: number,
 ): readonly KindPreviewPart[] {
   return resolveModelEntry(kind, faction, defId).specs;
+}
+
+/**
+ * Real registered art for HUD/codex previews, or null while art has not landed.
+ * Unlike placement previews, a HUD miss keeps its intentional 2D fallback and
+ * must never advertise the bridge's hazard placeholder as the purchasable art.
+ */
+export function resolveRegisteredKindPreviewParts(
+  kind: EntityKind,
+  faction: number,
+  defId: number,
+): readonly KindPreviewPart[] | null {
+  return resolveRegisteredModelEntry(kind, faction, defId)?.specs ?? null;
+}
+
+/** Deferred Meshy replacements increment this so preview caches can refresh. */
+export function kindMeshRegistryVersion(): number {
+  return registryVersion;
 }
 
 /**

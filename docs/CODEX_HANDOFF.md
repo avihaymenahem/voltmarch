@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.11.1**.
-- The `v3.11.1` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.11.2**.
+- The `v3.11.2` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -94,6 +94,21 @@ pipeline, but credits are expensive and must not be spent speculatively. Current
 The normal successful route has been 20 Meshy credits for multi-image geometry plus 10 for PBR
 texture. Paid remesh is exceptional. The current account balance is intentionally not copied here;
 read it from Meshy immediately before spending.
+
+The current imported-unit checkpoint adds all four construction vehicles and all four aircraft as
+faction-distinct Meshy shells. Each ships through `ImportedUnitAssets.ts` with two reviewed colour
+LODs, a geometry-only shadow proxy, required KTX2 textures and its original procedural model as the
+load/deploy/socket fallback. The two paid construction-vehicle remesh attempts are recorded as
+rejected in `docs/ASSET_CONVERSION_MAP.md`; do not revive those smoothed outputs. The first
+Swarmhornet import also failed the live art gate and was archived outside the runtime. Its V2 replacement
+uses geometry task `01a0448a-33fb-7d12-a912-52e9c04799f5` and texture task
+`01a04490-df81-76d3-b463-f7382d144820`; do not restore the folded V1 fan/body geometry.
+The Sputnik Dozer's front claw keeps its approved source-local rotation and receives only a -0.18
+source-X mount translation, leaving a small mechanical overlap instead of a visible air gap. The
+runtime yaw rotates the complete connected vehicle 180 degrees together. Do not rotate the claw again.
+On MCV-only openings, every faction's imported construction vehicle must be loaded before its first
+registry publication. Allied/Soviet non-MCV imports may still stream after the curtain, but restoring
+the former all-deferred fast path visibly morphs the starting procedural dozer into its imported shell.
 
 ## Non-negotiable art decisions
 

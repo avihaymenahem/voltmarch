@@ -1588,14 +1588,18 @@ export async function buildAndRegisterMeridianUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
-  const collectorSpec = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'meridian_collector');
-  const collectorModel = meridianUnitLibrary.get('meridian_collector');
-  if (collectorSpec !== undefined && collectorModel !== undefined) {
+  const importedKeys = [
+    'meridian_collector', 'meridian_carryall', 'meridian_kestrel',
+  ] as const;
+  for (const key of importedKeys) {
+    const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
+    const model = meridianUnitLibrary.get(key);
+    if (spec === undefined || model === undefined) continue;
     try {
-      meshes.set('meridian_collector', await loadImportedUnitOverride(collectorModel, collectorSpec));
-      console.info('[units] imported Meridian Sun Collector with LOD and shadow proxy');
+      meshes.set(key, await loadImportedUnitOverride(model, spec));
+      console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
     } catch (error) {
-      console.error('[units] imported Meridian Sun Collector rejected; using procedural fallback', error);
+      console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
     }
   }
   const meshFor = (key: string): KindMesh | null => {

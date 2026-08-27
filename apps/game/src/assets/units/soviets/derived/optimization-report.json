@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-26T11:24:51.822Z",
+  "generatedAt": "2026-08-27T19:36:39.686Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -167,6 +167,112 @@
             7
           ],
           "occupiedCells": 112
+        }
+      ]
+    },
+    {
+      "key": "soviet_dozer",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/soviets/sputnik-dozer.glb",
+        "triangles": 35150,
+        "fileBytes": 4818796
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/sputnik-dozer.lod1.glb",
+          "triangles": 20803,
+          "triangleRatio": 0.5918,
+          "boundsDriftMeters": 0.02437,
+          "boundsDriftRatio": 0.01321,
+          "fileBytes": 846108,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/sputnik-dozer.lod2.glb",
+          "triangles": 14513,
+          "triangleRatio": 0.4129,
+          "boundsDriftMeters": 0.02437,
+          "boundsDriftRatio": 0.01321,
+          "fileBytes": 653804,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/sputnik-dozer.shadow.glb",
+          "triangles": 2688,
+          "triangleRatio": 0.0765,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 38448,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 224
+        }
+      ]
+    },
+    {
+      "key": "soviet_mig",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/units/soviets/interceptor.glb",
+        "triangles": 19281,
+        "fileBytes": 3220892
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/interceptor.lod1.glb",
+          "triangles": 8676,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00155,
+          "boundsDriftRatio": 0.00208,
+          "fileBytes": 328832,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/interceptor.lod2.glb",
+          "triangles": 3522,
+          "triangleRatio": 0.1827,
+          "boundsDriftMeters": 0.01911,
+          "boundsDriftRatio": 0.0257,
+          "fileBytes": 174736,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/units/soviets/derived/interceptor.shadow.glb",
+          "triangles": 1932,
+          "triangleRatio": 0.1002,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27848,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 161
         }
       ]
     }
