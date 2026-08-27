@@ -31,7 +31,7 @@ export class MusicControl {
     copy.appendChild(this.title);
     root.appendChild(copy);
 
-    this.position = el('span', 'vm-music-position vm-num', '— / 03');
+    this.position = el('span', 'vm-music-position vm-num', '— / 04');
     root.appendChild(this.position);
 
     const controls = el('div', 'vm-music-buttons');
@@ -74,7 +74,7 @@ export class MusicControl {
   private render(track: MusicTrackSnapshot | null): void {
     if (track === null) {
       this.title.textContent = 'Soundtrack loading';
-      this.position.textContent = '— / 03';
+      this.position.textContent = '— / 04';
       return;
     }
     this.title.textContent = track.title;

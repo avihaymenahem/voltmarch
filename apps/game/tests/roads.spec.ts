@@ -214,7 +214,7 @@ describe('RoadNetwork — end to end', () => {
     }
   });
 
-  it('carries the marking attribute on every carriageway vertex', () => {
+  it('carries marking and road-end fade attributes on every carriageway vertex', () => {
     let road: THREE.Mesh | null = null;
     scene.traverse((o) => { if (o.name === 'road.carriageway') road = o as THREE.Mesh; });
     expect(road).not.toBeNull();
@@ -222,6 +222,10 @@ describe('RoadNetwork — end to end', () => {
     expect(attr).toBeDefined();
     expect(attr.itemSize).toBe(4);
     expect(attr.count).toBeGreaterThan(100);
+    const fade = (road! as THREE.Mesh).geometry.getAttribute('aRoadFade');
+    expect(fade).toBeDefined();
+    expect(fade.itemSize).toBe(1);
+    expect(fade.count).toBe(attr.count);
   });
 
   it('rasterises a mask that agrees with the centreline', () => {
@@ -321,7 +325,7 @@ describe('RoadNetwork — end to end', () => {
     other.dispose();
   });
 
-  it('does not fake road shoulders with oval physical-debris decals', () => {
+  it('ages road shoulders as continuous material runs, never oval debris decals', () => {
     const scene2 = new THREE.Scene();
     const decals = new DecalField({
       scene: scene2, capacity: 384, heightAt: (x, z) => terrain.heightAt(x, z),
@@ -331,7 +335,7 @@ describe('RoadNetwork — end to end', () => {
     });
     dressed.generate();
     const s = dressed.stats();
-    expect(s.shoulderMarks).toBe(0);
+    expect(s.shoulderMarks).toBeGreaterThan(0);
     const params = decals.mesh.geometry.getAttribute('aParams');
     for (let slot = 0; slot < decals.liveCount; slot++) {
       const vertex = slot * DECAL_LAYOUT.vertsPerDecal;
@@ -409,7 +413,7 @@ describe('DecalField — the pool', () => {
     expect(DECAL_LIFT - ROAD_SURFACE_LIFT).toBeGreaterThanOrEqual(0.019);
   });
 
-  it('sizes a slot at (DECAL_GRID+1)^2 vertices and 18 triangles', () => {
+  it('sizes a slot from the configured terrain-conformance grid', () => {
     expect(DECAL_LAYOUT.vertsPerDecal).toBe((DECAL_GRID + 1) * (DECAL_GRID + 1));
     expect(DECAL_LAYOUT.indicesPerDecal / 3).toBe(DECAL_GRID * DECAL_GRID * 2);
   });

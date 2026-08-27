@@ -79,8 +79,11 @@ export interface EventSource {
   on<K extends EventName>(name: K, fn: EventHandler<K>): () => void;
 }
 
-/** Most objectives on screen at once. Beyond this the panel is noise. */
-export const MATCH_OBJECTIVE_LIMIT = 5;
+/** Match-local objectives drawn at boot: four main and four side when available. */
+export const MATCH_OBJECTIVE_LIMIT = 8;
+
+/** Persistent profile missions pinned beside the per-match board. */
+export const GLOBAL_OBJECTIVE_LIMIT = 2;
 
 /** Entity kinds a bare `kill`/`lose` rule counts. Props and wrecks are not kills. */
 const COMBAT_KINDS: readonly EntityKind[] = [
@@ -108,6 +111,8 @@ interface MatchState {
   difficulty: number;
   /** Ids of the objectives drawn for this match, in display order. */
   objectives: string[];
+  /** Profile missions pinned for this match, so completion remains visible. */
+  globalObjectives: string[];
   /** Own entities destroyed this match, indexed by `EntityKind`. */
   lossesByKind: Int32Array;
 }
@@ -118,7 +123,7 @@ export interface MissionTrackerOptions {
   notifyDelayMs?: number;
   schedule?: (fn: () => void, ms: number) => number;
   cancel?: (handle: number) => void;
-  /** Objectives drawn per match. Lowered by a test; never raised in the game. */
+  /** Match-objective draw size override, used by focused tests. */
   objectiveLimit?: number;
 }
 
@@ -410,11 +415,13 @@ export class MissionTracker {
       faction: info.faction,
       difficulty: info.difficulty ?? 0,
       objectives: [],
+      globalObjectives: [],
       lossesByKind: new Int32Array(16),
     };
     this.match = state;
     this.lastFaction = state.faction;
     state.objectives = this.drawObjectives(state.seed);
+    state.globalObjectives = this.drawGlobalObjectives(state.seed);
     this.touch(true);
   }
 
@@ -534,6 +541,11 @@ export class MissionTracker {
   /** The objective ids drawn for the current match, in display order. */
   activeObjectiveIds(): readonly string[] {
     return this.match?.objectives ?? EMPTY_IDS;
+  }
+
+  /** Profile missions pinned to the current HUD for the duration of the match. */
+  activeGlobalObjectiveIds(): readonly string[] {
+    return this.match?.globalObjectives ?? EMPTY_IDS;
   }
 
   isUnlocked(unlockId: string): boolean {
@@ -699,6 +711,10 @@ export class MissionTracker {
     const metric = metricOf(rule);
     if (def.scope === 'match') {
       if (this.match === null) return;
+      // Only the seeded board is live. Historically every authored match row
+      // advanced in the background, so hidden objectives could complete and
+      // queue rewards despite never appearing in the HUD.
+      if (!this.match.objectives.includes(def.id)) return;
       const row = this.matchRows.get(def.id);
       if (row === undefined || row.complete) return;
       const next = metric === 'counter' ? row.value + amount
@@ -792,17 +808,83 @@ export class MissionTracker {
       s ^= s << 5; s >>>= 0;
       return s;
     };
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = next() % (i + 1);
-      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    const main = pool.filter((d) => d.objectiveTier !== 'side');
+    const side = pool.filter((d) => d.objectiveTier === 'side');
+    const shuffle = (rows: MissionDef[]): void => {
+      for (let i = rows.length - 1; i > 0; i--) {
+        const j = next() % (i + 1);
+        const t = rows[i]; rows[i] = rows[j]; rows[j] = t;
+      }
+    };
+    // At least one sustained/difficulty-3 main row is deliberately seeded.
+    // Without this, a legal shuffle can still draw four opening counters and
+    // recreate the empty-midgame board this larger pool exists to prevent.
+    const sustainedMain = main.filter((d) => d.difficulty === 3);
+    const standardMain = main.filter((d) => d.difficulty !== 3);
+    shuffle(sustainedMain);
+    shuffle(standardMain);
+    main.length = 0;
+    if (sustainedMain.length > 0) main.push(sustainedMain[0]);
+    main.push(...standardMain, ...sustainedMain.slice(1));
+    shuffle(side);
+
+    // Split the board evenly. If one tier is undersupplied, the other fills
+    // the vacant slots rather than shrinking the board.
+    const sideTarget = this.objectiveLimit > 1
+      ? Math.min(side.length, Math.floor(this.objectiveLimit / 2))
+      : 0;
+    const mainTarget = Math.min(main.length, this.objectiveLimit - sideTarget);
+    const picked = [...main.slice(0, mainTarget), ...side.slice(0, sideTarget)];
+    if (picked.length < this.objectiveLimit) {
+      const remaining = [...main.slice(mainTarget), ...side.slice(sideTarget)];
+      picked.push(...remaining.slice(0, this.objectiveLimit - picked.length));
     }
-    const picked = pool.slice(0, this.objectiveLimit);
     // Display order follows the authored table, not the shuffle, so the panel
     // does not reorder itself between two matches that drew the same set.
     const order = new Map<string, number>();
     for (let i = 0; i < this.defs.length; i++) order.set(this.defs[i].id, i);
     picked.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     return picked.map((d) => d.id);
+  }
+
+  /**
+   * Pick two unlocked, unfinished profile missions for the HUD. Prefer work the
+   * player has already started, avoid showing the same category twice, and pin
+   * the ids until match end so a completed global objective gets its full beat.
+   */
+  private drawGlobalObjectives(seed: number): string[] {
+    const candidates = this.defs
+      .map((def, order) => ({ def, order, progress: this.progressOf(def.id) }))
+      .filter((row) => row.def.scope === 'profile' && !row.progress.complete && !this.isLocked(row.def));
+
+    const seedOffset = candidates.length > 0 ? seed % candidates.length : 0;
+    candidates.sort((a, b) => {
+      const aStarted = a.progress.value > 0 ? 1 : 0;
+      const bStarted = b.progress.value > 0 ? 1 : 0;
+      if (aStarted !== bStarted) return bStarted - aStarted;
+      const aFraction = a.progress.target > 0 ? a.progress.value / a.progress.target : 0;
+      const bFraction = b.progress.target > 0 ? b.progress.value / b.progress.target : 0;
+      if (aFraction !== bFraction) return bFraction - aFraction;
+      // Rotate untouched ties by seed so a fresh profile does not see the same
+      // two career rows forever while still reproducing from a bug-report seed.
+      const ar = (a.order - seedOffset + this.defs.length) % this.defs.length;
+      const br = (b.order - seedOffset + this.defs.length) % this.defs.length;
+      return ar - br;
+    });
+
+    const picked: string[] = [];
+    const categories = new Set<string>();
+    for (const row of candidates) {
+      if (picked.length >= GLOBAL_OBJECTIVE_LIMIT) break;
+      if (categories.has(row.def.category)) continue;
+      picked.push(row.def.id);
+      categories.add(row.def.category);
+    }
+    for (const row of candidates) {
+      if (picked.length >= GLOBAL_OBJECTIVE_LIMIT) break;
+      if (!picked.includes(row.def.id)) picked.push(row.def.id);
+    }
+    return picked;
   }
 }
 

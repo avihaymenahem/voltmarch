@@ -598,10 +598,13 @@ describe('PerfHud', () => {
     expect(mount.classList.contains('vm-perf-on')).toBe(false);
   });
 
-  it('cannot capture a pointer', () => {
+  it('keeps the body click-through and permits only its drag header to capture a pointer', () => {
     const { hud } = makeHud({ visible: true });
     expect(perfLayerFaults(hud.root as unknown as Element)).toEqual([]);
     expect(hud.root.style.pointerEvents).toBe('none');
+    const head = (hud.root as unknown as StubElement).querySelectorAll('.vm-perf-head')[0];
+    expect(head?.getAttribute('data-perf-drag-handle')).toBe('true');
+    expect(head?.style.pointerEvents).toBe('auto');
   });
 
   it('builds exactly PERF_ROW_COUNT rows', () => {

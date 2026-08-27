@@ -29,12 +29,14 @@ import { Faction, Phase } from '../core/types';
 import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../core/types';
 import { DEFAULT_SEED } from '../core/config';
 import { ctx } from '../game/context';
+import { activeScenario } from '../game/Scenarios';
 import type { DebugCounters } from '../render/debug';
 import { AiDirector } from './AI';
 import type { AiBrain, AiIntent } from './AI';
 import { difficultyByName, difficultyProfile, personalityByName } from './AIStrategy';
 import type { DefLookup, ProductionFacts, ProductionOracle } from './AIStrategy';
 import { BuildKind, production } from './Production';
+import { makeOreCrisisSurvey, oreCrisisSaleCandidate } from './OreCrisis';
 import { evaluatePlacement, makePlacementReport } from './Placement';
 import { getEconomy } from './Economy';
 
@@ -78,6 +80,7 @@ function buildOracle(): ProductionOracle | null {
   const avail: AvailabilityResult = { ok: false, reason: '', capped: false };
   const report = makePlacementReport();
   const facts: Record<string, ProductionFacts | null> = {};
+  const crisis = makeOreCrisisSurvey();
 
   return {
     factsFor(key: string): ProductionFacts | null {
@@ -111,6 +114,16 @@ function buildOracle(): ProductionOracle | null {
     // why the brain cannot derive this from `store.defId` itself.
     entityKey(id: number): string {
       return svc.entryOf(id as EntityId)?.key ?? '';
+    },
+
+    recoverySale(player: number): number {
+      // Campaign layouts are authored around fixed AI-owned objective guards.
+      // Several operations deliberately use buildings because the brain cannot
+      // re-task them; letting a generic economy recovery sell those pieces
+      // would rewrite the mission. Skirmish and multiplayer AI get the full
+      // recovery tool, while campaign economy remains under its director.
+      if (activeScenario()?.name === 'campaign') return 0;
+      return oreCrisisSaleCandidate(svc.world, svc, player as PlayerId, crisis) as number;
     },
 
     reason(player: number, publicId: number): string {

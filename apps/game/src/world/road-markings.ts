@@ -366,6 +366,18 @@ export const ROAD_MARKS = {
   soldierLo: 0.80,
   soldierHi: 0.94,
   soldierDarken: 0.12,
+
+  /* --- terrain contact -------------------------------------------------
+   * The sidewalk must not end as a pristine hard strip against natural
+   * ground. These values drive a CONTINUOUS road-local contamination band on
+   * the outer edge and the already-authored terrain skirt. It is deliberately
+   * not a decal, so there is no circle, pool pressure, z-fight or extra draw.
+   */
+  shoulderBase: 0.72,
+  shoulderWidth: 0.18,
+  shoulderWobble: 0.075,
+  shoulderDarken: 0.48,
+  shoulderRoughness: 0.96,
 } as const;
 
 /* ==========================================================================

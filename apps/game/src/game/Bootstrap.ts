@@ -62,8 +62,17 @@ export interface BootOptions {
   art?: string | null;
   tier?: string | null;
   seed?: number | null;
+  /** Player-facing identity for the persistent command node in the match HUD. */
+  matchPresentation?: MatchPresentation;
   /** Human-readable boot phase. Presentation only; never read by simulation. */
   onStage?: (stage: BootStage) => void;
+}
+
+/** Stable match identity shown in the top-centre command node. */
+export interface MatchPresentation {
+  readonly mode: string;
+  readonly difficulty: string;
+  readonly mapName: string;
 }
 
 export type BootStage =
@@ -93,6 +102,8 @@ export interface GameContext {
   readonly cameraRig: CameraRig;
   readonly post: PostChain;
   readonly debug: DebugHandle;
+  /** Presentation-only match identity; simulation never reads it. */
+  readonly matchPresentation: MatchPresentation;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -135,6 +146,11 @@ function devBuild(): boolean {
 export function bootstrap(options: BootOptions): GameHandle {
   const shotMode = options.shot != null && options.shot !== '';
   const seed = options.seed ?? 1;
+  const matchPresentation: MatchPresentation = options.matchPresentation ?? {
+    mode: options.shot ? 'Showcase' : 'Skirmish',
+    difficulty: 'Normal',
+    mapName: options.map?.trim() || 'Battlefield',
+  };
 
   /* -- 1. config ---------------------------------------------------------- */
   const art = resolveArt(options.art);
@@ -341,6 +357,7 @@ export function bootstrap(options: BootOptions): GameHandle {
     cameraRig,
     post,
     debug,
+    matchPresentation,
   };
 
   // Modules reach the world through ctx(); it must exist before any init runs.

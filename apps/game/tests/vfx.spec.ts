@@ -22,7 +22,7 @@ import { Faction, FxKind, NONE, RenderPhase } from '../src/core/types';
 import type { SystemModule } from '../src/core/types';
 import {
   VFX_ATLAS_COLS, VFX_ATLAS_SIZE, VFX_EXPLOSION, VFX_GLARE, VFX_GUNS,
-  VFX_LIGHT_MERGE_CEIL, VFX_LIGHTS, VFX_RAMPS,
+  VFX_LIGHT_MERGE_CEIL, VFX_LIGHTS, VFX_RAMPS, VFX_SMOKE,
   VFX_RAMP_WIDTH, VFX_TESLA, VFX_TILE, VFX_TRAIL,
 } from '../src/core/config';
 
@@ -38,7 +38,7 @@ import { BeamSystem, TeslaBolt, setBeamSystem } from '../src/vfx/Beams';
 import { TracerSystem, setTracerSystem, spawnTrail } from '../src/vfx/Tracers';
 import {
   setGroundHeightFn, setScorchSink, spawnCollectorMote, spawnExplosion,
-  spawnMachineSparks, spawnSteamPuff,
+  spawnDamageFire, spawnMachineSparks, spawnSteamPuff,
 } from '../src/vfx/Explosions';
 
 /* ========================================================================== */
@@ -935,6 +935,7 @@ describe('particle layers', () => {
     let quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
     let longestAspect = 0;
     for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      if (Math.round(quad[i * 4 + 3]) % 16 !== VFX_TILE.spark) continue;
       const width = quad[i * 4];
       if (width <= 0) continue;
       longestAspect = Math.max(longestAspect, quad[i * 4 + 1] / width);
@@ -947,14 +948,60 @@ describe('particle layers', () => {
     quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
     longestAspect = 0;
     for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      if (Math.round(quad[i * 4 + 3]) % 16 !== VFX_TILE.spark) continue;
       const width = quad[i * 4];
       if (width <= 0) continue;
       longestAspect = Math.max(longestAspect, quad[i * 4 + 1] / width);
     }
-    expect(longestAspect).toBeLessThanOrEqual(1.01);
+    // Small cook-offs may contain ordinary spark-shaped motes, but never the
+    // 20:1+ outward destruction rays reserved for full deaths.
+    expect(longestAspect).toBeLessThan(2);
 
     setLightPool(null);
     pool.dispose();
+    P.dispose();
+  });
+
+  it('uses solid cooling blast lobes instead of concentric orange bubbles', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    spawnExplosion(256, 1, 256, VFX_EXPLOSION.unitDeathTL, 'unit');
+    P.step(VFX_EXPLOSION.billowStaggerMs + 8, makeCamera(), 154);
+    const quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
+    const ramp = P.additive.geometry.getAttribute('aRamp').array as Float32Array;
+    let lobes = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      const tile = Math.round(quad[i * 4 + 3]) % 16;
+      if (tile !== VFX_TILE.billow && tile !== VFX_TILE.lobe && tile !== VFX_TILE.puffAlt) continue;
+      lobes++;
+      expect(ramp[i * 4 + 3], 'fireball lobe radial mix').toBe(0);
+    }
+    expect(lobes).toBeGreaterThanOrEqual(3);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+
+  it('builds persistent fire from tapered tongues under translucent smoke', () => {
+    const P = makeParticles();
+    spawnDamageFire(0, 2, 0, 1);
+    P.step(120, makeCamera(), 154);
+
+    const litTint = P.lit.geometry.getAttribute('aTint').array as Float32Array;
+    expect(P.lit.geometry.instanceCount).toBe(1);
+    expect(litTint[1]).toBeLessThanOrEqual(0.52);
+
+    const quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
+    let tongues = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      if (Math.round(quad[i * 4 + 3]) % 16 === VFX_TILE.kite) tongues++;
+    }
+    expect(tongues).toBeGreaterThanOrEqual(VFX_SMOKE.tongueMin);
     P.dispose();
   });
 });

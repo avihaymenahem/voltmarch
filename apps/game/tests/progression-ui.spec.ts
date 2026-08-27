@@ -28,6 +28,7 @@ import {
   COMPLETE_HOLD_SECONDS,
   MAX_VISIBLE_OBJECTIVES,
   objectiveFraction,
+  objectiveDisplayTier,
   objectiveReadout,
   objectiveSignature,
   readProgression,
@@ -234,6 +235,17 @@ describe('selectVisibleObjectives', () => {
     const active = ['a', 'b', 'c'].map((id) => objective(id));
     const { rows } = selectVisibleObjectives(active, new Map(), 0);
     expect(rows.map((r) => r.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps main, side, and global work represented in the three-row summary', () => {
+    const active: ActiveObjective[] = [
+      { ...objective('main-a'), scope: 'match', objectiveTier: 'main' },
+      { ...objective('main-b'), scope: 'match', objectiveTier: 'main' },
+      { ...objective('side'), scope: 'match', objectiveTier: 'side' },
+      { ...objective('global'), scope: 'profile' },
+    ];
+    const { rows } = selectVisibleObjectives(active, new Map(), 0);
+    expect(rows.map(objectiveDisplayTier)).toEqual(['main', 'side', 'global']);
   });
 
   it('promotes a freshly completed objective above live ones', () => {

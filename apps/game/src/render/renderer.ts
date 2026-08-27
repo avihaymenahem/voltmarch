@@ -179,7 +179,10 @@ export interface CameraConfig {
   near: number;
   far: number;
   distance: number;
+  /** Absolute floor retained for authored shots and camera tooling. */
   minDistance: number;
+  /** Player input cannot dolly closer than this distance. */
+  gameplayMinDistance: number;
   maxDistance: number;
   /** Pitch is allowed to breathe slightly with zoom (deg at min/max dist). */
   pitchAtMinDistance: number;
@@ -443,6 +446,7 @@ export const RENDER_CONFIG: RenderConfig = {
     far: 900,
     distance: 55,
     minDistance: 30,
+    gameplayMinDistance: 36,
     maxDistance: 140,
     pitchAtMinDistance: 46,
     pitchAtMaxDistance: 58,

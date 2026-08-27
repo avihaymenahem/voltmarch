@@ -392,6 +392,9 @@ export default defineSystem({
     eva = new EvaAnnouncer(liveEngine, {
       mode: muted ? 'off' : evaMode,
       onSubtitle: subtitle('EVA'),
+      // The title battlefield is presentation only. Its voice bus is muted by
+      // `applyMenuSilence`, and an inaudible line must not lower the soundtrack.
+      canDuck: () => matchStartAt >= 0,
     });
     barks = new BarkDirector(liveEngine, {
       mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
@@ -785,7 +788,7 @@ function drainFx(): void {
 
     // The mix clearing for a big boom is the single most impactful trick in the
     // whole spec, and it is three lines.
-    if (kind === FxKind.ExplosionLarge || kind === FxKind.ExplosionBuilding) {
+    if (matchStartAt >= 0 && (kind === FxKind.ExplosionLarge || kind === FxKind.ExplosionBuilding)) {
       const D = AUDIO_DUCK;
       e.duckFor('boom', 'sfx', D.boomSfxDb, D.boomAttackMs, D.boomHoldMs, D.boomReleaseMs);
       e.duckFor('boom', 'music', D.boomMusicDb, 20, 300, 600);

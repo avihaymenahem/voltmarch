@@ -159,3 +159,27 @@ describe('the tint is computed in the same space the carpet blends in', () => {
     expect(FOG_CODE).toMatch(/vmWp = instanceMatrix \* vmWp/);
   });
 });
+
+describe('multiply ground overlays disappear to their neutral factor', () => {
+  it('uses white—not the fog colour—as the multiply no-op', () => {
+    expect(FOG_CODE).toContain('applyShroudFactor');
+    expect(FOG_CODE).toMatch(/mix\(gl_FragColor\.rgb, vec3\(1\.0\), vmA\)/);
+  });
+
+  for (const [file, what] of [
+    ['apps/game/src/world/Decals.ts', 'decals'],
+    ['apps/game/src/render/ContactShadows.ts', 'contact shadows'],
+  ] as const) {
+    it(`${what} use the multiply-factor shroud path`, () => {
+      const src = code(read(file));
+      expect(src).toContain('applyShroudFactor(shader)');
+      expect(src).toContain('#include <tonemapping_fragment>');
+    });
+  }
+
+  it('the WebGPU twins use the same factor path', () => {
+    const nodes = code(read('apps/game/src/render/ground-overlay-nodes.ts'));
+    expect(nodes.match(/shroudFactor\(out as Vec4N\)/g)?.length).toBe(2);
+    expect(nodes).not.toContain('shroudTint(out as Vec4N)');
+  });
+});

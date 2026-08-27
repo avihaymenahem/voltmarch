@@ -149,6 +149,7 @@ beforeEach(() => {
       zoomToCursor: CAMERA_DEFAULTS.zoomToCursor,
       edgePanPixels: CAMERA_DEFAULTS.edgePanPixels,
       minDistance: CAMERA_DEFAULTS.minDistance,
+      gameplayMinDistance: CAMERA_DEFAULTS.gameplayMinDistance,
       maxDistance: CAMERA_DEFAULTS.maxDistance,
       distance: CAMERA_DEFAULTS.distance,
     },
@@ -650,7 +651,7 @@ describe('camera — a two-finger scroll dollies a sane amount', () => {
     expect(
       notches,
       'the tail arrives AFTER the fingers lift; more than ~2 notches of it reads as a lurch. '
-      + 'Reusing CAMERA_NAV.pinchZoomSensitivity here spends 4.5 — the whole 55 -> 30 m span.',
+      + 'Reusing CAMERA_NAV.pinchZoomSensitivity here spends 4.5 — more than the whole 55 -> 36 m span.',
     ).toBeLessThan(2);
     // ...and it is a coast, not a no-op.
     expect(notches).toBeGreaterThan(0.5);
@@ -658,7 +659,7 @@ describe('camera — a two-finger scroll dollies a sane amount', () => {
 
   it('crosses a useful part of the range on one comfortable swipe', () => {
     // 320 px is a comfortable macOS swipe. The dolly is
-    // ln(140/30)/ln(1.14) = 11.757 notches end to end, so this should be worth
+    // ln(140/36)/ln(1.14) = 10.365 notches end to end, so this should be worth
     // roughly a quarter of it — enough to feel, far from a slam.
     const { rig, d0 } = feed(new Array<number>(40).fill(8));
     const notches = notchesOf(rig, d0);
@@ -947,7 +948,7 @@ describe('camera — the held-key zoom', () => {
     // additive-scaled-by-dt — both compose — and an earlier draft of this
     // comment claimed it did. The argument for multiplicative is
     // `CameraRig.zoomBy`'s: a dolly is a ratio, so a notch must mean the same
-    // 13% at 30 m as at 140.
+    // 13% at 36 m as at 140.
     //
     // WHAT IT CANNOT CATCH IS THE MISSING `dt`, and a previous draft of this
     // comment claimed exactly that. `holdZoomIn` below RE-IMPLEMENTS the poll
@@ -966,9 +967,9 @@ describe('camera — the held-key zoom', () => {
   });
 
   it('crosses the whole dolly range in a few seconds, not in a flick', () => {
-    const range = Math.log(RENDER_CONFIG.camera.maxDistance / RENDER_CONFIG.camera.minDistance)
+    const range = Math.log(RENDER_CONFIG.camera.maxDistance / RENDER_CONFIG.camera.gameplayMinDistance)
       / Math.log(RENDER_CONFIG.camera.zoomStep);
-    expect(range).toBeCloseTo(11.757, 3);
+    expect(range).toBeCloseTo(10.365, 3);
 
     const seconds = range / CAMERA_NAV.keyZoomNotchesPerSecond;
     expect(seconds, 'a held key that crosses the range in under a second is a slam')
@@ -976,16 +977,25 @@ describe('camera — the held-key zoom', () => {
     expect(seconds, 'a held key that takes ten seconds reads as broken').toBeLessThan(6);
   });
 
-  it('bottoms out at minDistance and tops out at maxDistance', () => {
+  it('player zoom bottoms out at gameplayMinDistance and tops out at maxDistance', () => {
     const inward = makeRig();
     holdZoomIn(inward, 20, 1 / 60);
-    expect(inward.targetDistance).toBeCloseTo(RENDER_CONFIG.camera.minDistance, 6);
+    expect(inward.targetDistance).toBeCloseTo(RENDER_CONFIG.camera.gameplayMinDistance, 6);
 
     const outward = makeRig();
     for (let t = 0; t < 20; t += 1 / 60) {
       outward.zoomBy(CAMERA_NAV.keyZoomNotchesPerSecond / 60);
     }
     expect(outward.targetDistance).toBeCloseTo(RENDER_CONFIG.camera.maxDistance, 6);
+  });
+
+  it('retains the lower absolute floor for authored camera poses', () => {
+    const rig = makeRig();
+    rig.setDistance(RENDER_CONFIG.camera.minDistance, true);
+    expect(rig.targetDistance).toBeCloseTo(RENDER_CONFIG.camera.minDistance, 6);
+
+    rig.zoomBy(-1);
+    expect(rig.targetDistance).toBeCloseTo(RENDER_CONFIG.camera.gameplayMinDistance, 6);
   });
 
   /**

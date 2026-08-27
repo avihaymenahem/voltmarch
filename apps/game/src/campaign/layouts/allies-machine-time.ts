@@ -778,8 +778,8 @@ export default layout({
      * into `armyIds` and `regroupSquads` drives it to the rally point on the
      * next brain pass — measured on `soviets.02.common-standard` at 116.6 m and
      * 129.2 m off the post inside twenty seconds. An Arcspitter Post cannot be
-     * re-tasked, and `AiBrain` has no `issueSell` either, so the only thing that
-     * takes one off the line is the player shooting it.
+     * re-tasked, and `ai.system.ts` suppresses generic recovery sales in
+     * authored campaigns, so only the player can take one off the line.
      */
     for (const g of PLANT_GUNS) {
       raise(them, 'pillbox', place(them, 'pillbox', g), null, 0, GUN_CLEAR);

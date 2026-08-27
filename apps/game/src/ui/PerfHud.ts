@@ -124,6 +124,10 @@ import {
 } from '../render/gpu-pass-timings';
 
 import './perf.css';
+import {
+  DraggablePanel,
+  PERFORMANCE_PANEL_POSITION_KEY,
+} from './DraggablePanel';
 
 /* ==========================================================================
  * SECTION 1 — BUDGETS AND THRESHOLDS
@@ -1171,12 +1175,13 @@ export function perfLayerFaults(root: Element): string[] {
   }
   const walk = (node: Element): void => {
     const tag = node.tagName.toUpperCase();
-    if (INTERACTIVE_TAGS.has(tag)) faults.push(`interactive element <${tag.toLowerCase()}>`);
-    if (node.hasAttribute('tabindex')) faults.push(`tabindex on <${tag.toLowerCase()}>`);
+    const dragHandle = node.getAttribute('data-perf-drag-handle') === 'true';
+    if (INTERACTIVE_TAGS.has(tag) && !dragHandle) faults.push(`interactive element <${tag.toLowerCase()}>`);
+    if (node.hasAttribute('tabindex') && !dragHandle) faults.push(`tabindex on <${tag.toLowerCase()}>`);
     if (node.hasAttribute('onclick')) faults.push(`onclick on <${tag.toLowerCase()}>`);
     const style = (node as HTMLElement).style as CSSStyleDeclaration | undefined;
     const pe = style?.pointerEvents;
-    if (pe !== undefined && pe !== '' && pe !== 'none') {
+    if (pe !== undefined && pe !== '' && pe !== 'none' && !dragHandle) {
       faults.push(`inline pointer-events:${pe} on <${tag.toLowerCase()}>`);
     }
     const kids = node.children;
@@ -1357,6 +1362,7 @@ export class PerfHud {
   private readonly verdictText: Text;
   private readonly reasonText: Text;
   private readonly verdictNode: HTMLElement;
+  private readonly drag: DraggablePanel;
   private readonly rows: Row[] = [];
 
   /** Reused every update. `classifyLoad` takes it; nothing keeps a reference. */
@@ -1408,6 +1414,12 @@ export class PerfHud {
     // the panel no height. Which renderer produced the numbers below is a
     // property of the whole panel rather than of any one row.
     this.backendText = label(head, 'vm-perf-backend', '—');
+    this.drag = new DraggablePanel(
+      this.root,
+      head,
+      PERFORMANCE_PANEL_POSITION_KEY,
+      'Move performance panel',
+    );
 
     const primaryRow = el('div', 'vm-perf-primary', this.root);
     this.primary = label(primaryRow, 'vm-perf-big vm-num', '—');
@@ -1437,6 +1449,7 @@ export class PerfHud {
     this.root.hidden = !this.visible;
     this.setProfilingActive(this.visible);
     this.applyMountFlag();
+    if (this.visible) this.drag.restore();
   }
 
   /* -------------------------------------------------------------------- */
@@ -1479,6 +1492,7 @@ export class PerfHud {
     this.setProfilingActive(value);
     this.applyMountFlag();
     if (!value) return;
+    this.drag.restore();
     // A window collected before the panel was opened would describe a different
     // machine state; start clean and say "sampling" until it refills.
     this.frames.reset();
@@ -1526,6 +1540,7 @@ export class PerfHud {
     this.disposed = true;
     this.removePassTimer();
     this.timer.dispose();
+    this.drag.dispose();
     this.visible = false;
     this.applyMountFlag();
     this.root.remove();

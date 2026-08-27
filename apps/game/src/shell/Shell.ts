@@ -49,7 +49,7 @@
 
 import './shell.css';
 
-import type { BootOptions, GameHandle } from '../game/Bootstrap';
+import type { BootOptions, GameHandle, MatchPresentation } from '../game/Bootstrap';
 import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
@@ -59,6 +59,7 @@ import { DEF_TABLES } from '../data/Defs';
 
 import {
   MAPS,
+  DIFFICULTIES,
   SettingsStore,
   armyCount,
   buildMatchQuery,
@@ -2928,6 +2929,42 @@ export class Shell {
   }
 
   /**
+   * Resolve the three facts the top-centre command node owns.
+   *
+   * This is done in the shell because it is the only layer that knows whether
+   * an otherwise identical simulation is a skirmish, operation, replay,
+   * tutorial, or network match. The HUD receives display-ready strings and
+   * never tries to reverse-engineer product state from world contents.
+   */
+  private matchPresentation(backdrop: boolean): MatchPresentation {
+    const mode = backdrop ? 'Main menu'
+      : this.replay !== null ? 'Replay'
+        : this.tutorial !== null ? 'Training'
+          : this.pvp !== null ? 'Multiplayer'
+            : this.operation !== null ? 'Campaign'
+              : 'Skirmish';
+
+    let difficulty = DIFFICULTIES[this.setup.difficulty] ?? 'Normal';
+    if (this.tutorial !== null) {
+      difficulty = 'Training';
+    } else if (this.pvp !== null) {
+      const aiDifficulties = this.pvp.info.ai
+        .map((slot) => this.pvp?.info.difficulty[slot])
+        .filter((value): value is number => value !== undefined);
+      const unique = [...new Set(aiDifficulties)];
+      difficulty = unique.length === 0 ? 'Human'
+        : unique.length === 1 ? (DIFFICULTIES[unique[0]] ?? 'AI')
+          : 'Mixed AI';
+    }
+
+    return {
+      mode,
+      difficulty,
+      mapName: mapById(this.setup.map).name,
+    };
+  }
+
+  /**
    * Tear a running engine down.
    *
    * The system registry is disposed FIRST, deliberately, while `ctx()` is
@@ -3124,6 +3161,7 @@ export class Shell {
       art: query.get('art'),
       tier: settings.graphics.tier === 'auto' ? null : settings.graphics.tier,
       seed,
+      matchPresentation: this.matchPresentation(backdrop),
       onStage: (stage) => { this.status(stage); },
     };
 

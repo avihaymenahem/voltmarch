@@ -703,8 +703,8 @@ export default layout({
      * AI seat owns into `armyIds` and `regroupSquads` drives it to the rally
      * point on the next brain pass — measured on `soviets.02.common-standard` at
      * 116.6 m and 129.2 m off the post inside twenty seconds. A Sentry Gun
-     * cannot be re-tasked, and `AiBrain` has no `issueSell` either, so the only
-     * thing that takes one off the works is the player shooting it.
+     * cannot be re-tasked, and `ai.system.ts` suppresses generic recovery sales
+     * in authored campaigns, so only the player can take one off the works.
      */
     for (const [gx, gz] of HALL_GUNS) {
       const g = { x: HALL.x + gx, z: HALL.z + gz };

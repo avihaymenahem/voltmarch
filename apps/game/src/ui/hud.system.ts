@@ -47,7 +47,7 @@ export default defineSystem({
   order: 100,
 
   async init(): Promise<void> {
-    const { world, channels, cameraRig, handle, registry, debug } = ctx();
+    const { world, channels, cameraRig, handle, registry, debug, matchPresentation } = ctx();
 
     const mount = document.getElementById('hud-root');
     if (mount === null) {
@@ -83,6 +83,7 @@ export default defineSystem({
       channels,
       cameraRig,
       handle,
+      matchPresentation,
       // Sibling detection is a one-shot read at boot: it decides whether the
       // HUD or the input module owns the order-confirmation ring.
       simSystemIds: registry.simOrder(),

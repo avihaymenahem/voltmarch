@@ -108,6 +108,10 @@ function compile(material: THREE.Material, kind: RoadSurfaceKind, which: Backend
     ROAD_ATTRIBUTE_NAMES[kind],
     new THREE.BufferAttribute(new Float32Array(count * 4), 4),
   );
+  geometry.setAttribute(
+    'aRoadFade',
+    new THREE.BufferAttribute(new Float32Array(count).fill(1), 1),
+  );
 
   const mesh = new THREE.Mesh(geometry, material);
   const scene = new Scene();
@@ -451,7 +455,7 @@ describe('the emitted road shaders', () => {
     }
   });
 
-  it('assigns the paint result BEFORE both of its readers, on both backends', () => {
+  it('assigns the paint/age result BEFORE both readers, on both backends', () => {
     /*
      * The one structural risk in this port. `colorNode` and `roughnessNode` share
      * ONE `Fn` call, which three emits into a single var; that is only correct
@@ -481,10 +485,13 @@ describe('the emitted road shaders', () => {
           .toBeLessThan(diffuseAt);
         expect(assignAt, `${kind}/${which}: paint assigned after Roughness`)
           .toBeLessThan(fragment.indexOf(roughLine));
-        // And the paint amount really is what the roughness lerps toward.
-        expect(roughLine, `${kind}/${which}: roughness does not read the paint amount`)
+        // Carriageway/kerb carry paint in `.w`; pavement carries its continuous
+        // shoulder-age mask there. Both must reach the matching response.
+        expect(roughLine, `${kind}/${which}: roughness does not read the material amount`)
           .toContain(`${name}.w`);
-        expect(roughLine).toContain(`${ROAD_MARKS.paintRoughness}`);
+        expect(roughLine).toContain(`${kind === 'pavement'
+          ? ROAD_MARKS.shoulderRoughness
+          : ROAD_MARKS.paintRoughness}`);
       }
       mat.dispose();
     }

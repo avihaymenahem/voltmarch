@@ -315,6 +315,75 @@ float raValue2( vec2 p ) {
   return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
 }
 
+// Continuous terrain-space ageing. This is deliberately SHAPE, not a cloud of
+// stamps: broad wind-carried dust plus sparse crooked line segments selected
+// per 6.5 m cell. Nothing has a radial falloff, so the mask cannot reveal the
+// circular decal footprint that the old ground stories did.
+//
+// x = broad dust/scuff, y = coverage-filtered crack, z = meso-scale grit.
+vec3 raGroundAge( vec2 wxz, float pixelM ) {
+  float broad = raValue2( wxz / 18.0 + vec2( 13.7, 4.2 ) );
+  float meso = raValue2( wxz / 5.5 + vec2( 31.0, 17.0 ) );
+  float dust = smoothstep( 0.36, 0.76, broad ) * ( 0.42 + meso * 0.58 );
+
+  // Long, noise-warped wind scuffs. The two oblique axes stop the result
+  // reading as world-aligned stripes while keeping it directional.
+  float sweepA = abs( fract(
+    ( wxz.x + wxz.y * 0.34 ) / 11.0 + ( broad - 0.5 ) * 0.82
+  ) - 0.5 );
+  float sweepB = abs( fract(
+    ( wxz.y - wxz.x * 0.21 ) / 17.0 + ( meso - 0.5 ) * 0.55
+  ) - 0.5 );
+  float sweep = ( 1.0 - smoothstep( 0.06, 0.38, sweepA ) ) * 0.72
+    + ( 1.0 - smoothstep( 0.05, 0.32, sweepB ) ) * 0.28;
+  dust = clamp( dust * 0.84 + sweep * ( 0.06 + meso * 0.10 ), 0.0, 1.0 );
+
+  // One crooked crack with an occasional branch in a sparse cell. Segment
+  // ends are clipped by their along-distance, never by a round opacity mask.
+  const float crackCellM = 4.2;
+  vec2 cell = floor( wxz / crackCellM );
+  vec2 local = fract( wxz / crackCellM ) - 0.5;
+  float h = raHash21( cell + vec2( 7.0, 19.0 ) );
+  float a = h * 6.2831853;
+  vec2 dir = vec2( cos( a ), sin( a ) );
+  vec2 side = vec2( - dir.y, dir.x );
+  float along = dot( local, dir );
+  float across = dot( local, side ) + sin( along * 17.0 + h * 8.0 ) * 0.025;
+  // Coverage AA, not distance-driven opacity. The earlier whole-feature
+  // multiplier changed as the camera moved and made the crack field pulse.
+  // Widening only the transition by the projected pixel footprint keeps the
+  // same terrain-space line anchored under the camera.
+  float crackAA = clamp( pixelM / crackCellM * 0.75, 0.0015, 0.045 );
+  float mainLine = ( 1.0 - smoothstep(
+    0.008 - crackAA, 0.008 + crackAA, abs( across )
+  ) ) * ( 1.0 - smoothstep(
+    0.17 - crackAA, 0.17 + crackAA, abs( along )
+  ) );
+
+  float turn = ( step( 0.5, h ) * 2.0 - 1.0 ) * 0.88;
+  vec2 branchDir = vec2( cos( a + turn ), sin( a + turn ) );
+  vec2 branchSide = vec2( - branchDir.y, branchDir.x );
+  vec2 branchP = local - dir * 0.04;
+  float branchAlong = dot( branchP, branchDir );
+  float branchAcross = dot( branchP, branchSide );
+  float branch = ( 1.0 - smoothstep(
+    0.007 - crackAA, 0.007 + crackAA, abs( branchAcross )
+  ) ) * ( 1.0 - smoothstep(
+    0.115 - crackAA, 0.115 + crackAA, abs( branchAlong )
+  ) )
+    * step( 0.88, raHash21( cell + vec2( 29.0, 3.0 ) ) );
+  float crack = max( mainLine, branch )
+    * step( 0.87, raHash21( cell + vec2( 2.0, 41.0 ) ) );
+
+  // Aggregate is deliberately MESO-scale. The former 1.65 m threshold was a
+  // sub-pixel stipple field at RTS distance and re-sampled as moving dots.
+  float gritFine = raValue2( wxz / 4.8 + vec2( 9.0, 37.0 ) );
+  float gritWide = raValue2( vec2( wxz.y, -wxz.x ) / 8.5 + vec2( 23.0, 6.0 ) );
+  float grit = smoothstep( 0.40, 0.76, gritFine * 0.68 + gritWide * 0.32 )
+    * ( 0.34 + broad * 0.46 );
+  return vec3( dust, crack, grit );
+}
+
 // The 28-38 m regional layer. Shared by ground AND cliff so a rock face and
 // the dirt at its foot never disagree about which part of the map they are in.
 vec3 raMacro( vec3 col, vec2 wxz ) {
@@ -358,6 +427,12 @@ vec3 raSmoothN = normalize( vRaWorldN );
 //      flat ground as rock on its own.
 vec3 raDx = dFdx( vRaWorld );
 vec3 raDy = dFdy( vRaWorld );
+// World metres covered by one fragment. The crack function uses this to widen
+// only its coverage edge; unlike the former opacity gate, it cannot make the
+// whole feature pulse as the camera moves.
+// Computed before the cliff branch because derivatives in non-uniform control
+// flow are undefined.
+float raPixelM = max( length( raDx.xz ), length( raDy.xz ) );
 vec3 raCross = cross( raDx, raDy );
 float raCrossLen = length( raCross );
 vec3 raFace = raCrossLen > 1e-7 ? raCross / raCrossLen : raSmoothN;
@@ -463,16 +538,28 @@ if ( raIsCliff ) {
   raW[ 0 ] = raS0.r; raW[ 1 ] = raS0.g; raW[ 2 ] = raS0.b; raW[ 3 ] = raS0.a;
   raW[ 4 ] = raS1.r; raW[ 5 ] = raS1.g;
 
-  // 1b. SHARPEN the blend. The control texture carries one texel per 4 m build
-  //     cell, so a raw bilinear fetch dissolves grass into gravel over a whole
-  //     cell and every surface boundary reads as mush. Raising each weight to
-  //     a power and renormalising is monotone — the layer that was winning
-  //     still wins — but it collapses the transition band to about 1/N of a
-  //     cell, which is the crisp edge RA3 actually has.
-  for ( int i = 0; i < 6; i ++ ) raW[ i ] = pow( max( raW[ i ], 0.0 ), uSplatSharpen );
+  // 1b. SHARPEN by material family. Man-made concrete/paving keeps the crisp
+  //     kerb/pad ownership it needs. Natural layers use a gentler exponent so
+  //     exposing more dirt does not reveal the underlying 4 m control texels
+  //     as square camouflage blocks.
+  for ( int i = 0; i < 6; i ++ ) {
+    float sharpen = i < 4 ? uSplatSharpen * 0.58 : uSplatSharpen;
+    raW[ i ] = pow( max( raW[ i ], 0.0 ), sharpen );
+  }
 
   float raSum = raW[0] + raW[1] + raW[2] + raW[3] + raW[4] + raW[5];
   float raNorm = 1.0 / max( raSum, 1e-6 );
+
+  // Material ownership for ageing. Grass/snow remains comparatively clean;
+  // bare earth, sand, rock and poured concrete carry most of the history.
+  float raDustable = clamp((
+    raW[0] * 0.62 + raW[1] + raW[2] * 0.86 +
+    raW[3] * 0.38 + raW[4] * 0.24 + raW[5] * 0.10
+  ) * raNorm, 0.0, 1.0 );
+  float raCrackable = clamp((
+    raW[0] * 0.38 + raW[1] + raW[2] * 0.82 + raW[3] * 0.46 +
+    raW[4] * 0.52 + raW[5] * 0.18
+  ) * raNorm, 0.0, 1.0 );
 
   vec3 raAlbedo = vec3( 0.0 );
   float raR = 0.0;
@@ -499,15 +586,27 @@ if ( raIsCliff ) {
   // 2. Regional breakup.
   raAlbedo = raMacro( raAlbedo, raXZ );
 
-  // 3. Per-build-cell jitter, hard edged and un-smoothed on purpose, with a
-  //    3.5% tail of modestly darker cells (VISUAL_DNA L3).
-  //
-  //    The tail used to be 7% of cells at 2.2x the jitter, i.e. cells up to
-  //    14% dark. On grass that produced texels dark enough that the blue-grey
-  //    fog lerp dragged them into the emerald hue window — the same failure
-  //    the layer palettes were retuned for. Shallower tail, same signature.
-  float raCell = raHash21( floor( raXZ / uCellSize ) + 0.5 );
-  raAlbedo *= 1.0 + ( raCell - 0.5 ) * 2.0 * uCellJitter - step( 0.965, raCell ) * uCellJitter * 1.1;
+  // 2b. Material history. The warm multiply preserves each biome's authored
+  // hue while letting dust gather in broad directional sheets. Cracks are
+  // sparse line segments with cavity-darkening and a roughness response; no
+  // geometry, draw call, sampler or circular decal is added.
+  vec3 raAge = raGroundAge( raXZ, raPixelM );
+  float raDust = raAge.x * raDustable;
+  float raCrack = raAge.y * raCrackable;
+  float raGrit = raAge.z * max( raDustable, raCrackable * 0.6 );
+  raAlbedo *= 1.0 + ( raAge.x - 0.5 ) * 0.11 * raDustable;
+  raAlbedo *= mix( vec3( 1.0 ), vec3( 0.84, 0.72, 0.58 ), raDust * 0.34 );
+  raAlbedo *= 1.0 - raCrack * 0.30 - raGrit * 0.11;
+  raR = clamp( raR + raDust * 0.040 + raCrack * 0.075 + raGrit * 0.030, 0.55, 1.0 );
+
+  // 3. Build-cell-scale variation, smoothly interpolated. A hard hash here was
+  //    invisible while the surface was nearly uniform, then became a literal
+  //    checkerboard as soon as dirt coverage increased. Keep the authored 4 m
+  //    scale, lose the square boundary.
+  float raCell = raValue2( raXZ / uCellSize + vec2( 0.5 ) );
+  float raCellTail = smoothstep( 0.88, 0.98, raCell );
+  raAlbedo *= 1.0 + ( raCell - 0.5 ) * 2.0 * uCellJitter
+    - raCellTail * uCellJitter * 0.45;
 
   raCol = raAlbedo;
   raRough = raR;

@@ -81,13 +81,13 @@ const BLIP_ENEMY = SEMANTIC.danger;
  * accent, and capturing one changed nothing on the map. `BLIP_NEUTRAL` existed,
  * was documented as "Gaia / unowned", and never once appeared.
  *
- * Both passes now let NEUTRALITY WIN OVER ALLIED-NESS for the colour, and only
- * for the colour: the visibility gate is untouched, because a civilian block is
- * map furniture and hiding it behind a radar dome would be a different and
- * worse rule. So a derrick is grey until somebody takes it and their accent the
- * moment they do — which is the only ownership tell a captured civilian
- * structure has, since structure team slabs are baked per-faction into the
- * greeble atlas and do not repaint (see `src/art/BuildingDefs.ts` §4b).
+ * Both passes now let NEUTRALITY WIN OVER ALLIED-NESS for both questions that
+ * matter: a neutral landmark uses the neutral colour, and Gaia's diplomatic
+ * alliance does not bypass fog. The shared `Vision.visibilityOf` rule decides
+ * when it has been scouted; after capture it follows the new owner's ordinary
+ * army visibility and accent. That is the only ownership tell a captured
+ * civilian structure has, since structure team slabs are baked per-faction
+ * into the greeble atlas and do not repaint (see `src/art/BuildingDefs.ts` §4b).
  */
 const BLIP_NEUTRAL = SEMANTIC.neutral;
 /**
@@ -648,7 +648,8 @@ export class Minimap {
       if ((flags & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
 
       const ownerId = store.owner[e] as PlayerId;
-      const mine = ownerId === local || this.world.areAllied(local, ownerId);
+      const mine = ownerId === local
+        || (store.faction[e] !== Faction.Neutral && this.world.areAllied(local, ownerId));
       if (!mine) {
         if (!hasRadar) continue;
         if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
@@ -735,7 +736,8 @@ export class Minimap {
       if ((flags & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
 
       const ownerId = store.owner[e] as PlayerId;
-      const mine = ownerId === local || this.world.areAllied(local, ownerId);
+      const mine = ownerId === local
+        || (store.faction[e] !== Faction.Neutral && this.world.areAllied(local, ownerId));
 
       if (!mine) {
         // Hostile blips are gated on radar AND on the shroud, exactly like the

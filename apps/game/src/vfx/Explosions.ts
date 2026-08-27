@@ -11,13 +11,10 @@
  *
  * THE ONE THING THAT MUST NOT BE COMPROMISED
  * ------------------------------------------
- * Scorecard #14: **"the brightest 40% of any fireball is L>245, channel spread
- * <30"**, and the bible's own gloss: *"a fireball whose centre is orange fails
- * the critique immediately."* Every billow here is emitted with
- * `radial = 1`, which sweeps the fireball ramp across the sprite's RADIUS
- * rather than its age. Because that ramp holds `#FFFAFF` out to t=0.52, each
- * billow gets a pure-white core covering half its radius with the saturated
- * orange fringe outside it — per billow, in one draw call, for free.
+ * Scorecard #14: **"a fireball whose centre is orange fails the critique
+ * immediately."** The compact radial flash owns that ignition core. The
+ * surrounding irregular lobes use life-driven cream -> yellow -> orange ramps;
+ * giving every lobe its own concentric core produced visible hollow bubbles.
  *
  * THE SECOND THING: THE LIGHT
  * ---------------------------
@@ -193,7 +190,7 @@ export function clearExplosions(): void {
 export type ExplosionKind = 'small' | 'unit' | 'structure';
 
 /**
- * The full RA3 detonation: white flash disc, 8–14 white-cored fireball billows,
+ * The full detonation: compact white flash, 8–14 irregular cooling fire lobes,
  * a ground-flattened shockwave ring, a lit smoke plume, tumbling debris,
  * flickering embers, a scorch mark, a PointLight and camera trauma.
  *
@@ -346,7 +343,7 @@ export function spawnExplosion(
     }
   }
 
-  /* -- 2. fireball: 8–14 billows, each with a WHITE RADIAL CORE ----------- */
+  /* -- 2. fireball: irregular hot lobes around one compact white core ----- */
   /*
    * The billow COUNT comes down with the glare, not only the gain, and the
    * reason is measured rather than aesthetic.
@@ -395,14 +392,23 @@ export function spawnExplosion(
     e.z = z + sz * shell;
     e.vx = sx * v; e.vy = sy * v * 0.85 + 1.2 * k; e.vz = sz * v;
     e.drag = 2.6;
+    // A short stagger lets the mass unfold instead of exposing every sprite's
+    // silhouette on one frame. This is especially important for structure
+    // deaths, where simultaneous lobes read as a pile of orange bubbles.
+    e.delayMs = rng.range(0, X.billowStaggerMs);
     e.lifeMs = X.billowLifeMs * rng.range(0.75, 1.15);
     e.size0 = X.billowSize0TL * TL * k * rng.range(0.8, 1.15);
     e.size1 = X.billowSize1TL * TL * k * rng.range(0.85, 1.2);
     e.sizeEase = 0.55;
-    // radial = 1 is the whole ballgame — see the header. The >1 span is what
-    // keeps the orange fringe inside the sprite's visible alpha.
-    e.ramp = VFX_RAMP.fireball; e.tA = 0; e.tB = X.billowRadialSpan; e.radial = 1;
-    e.tile = (i & 1) === 0 ? VFX_TILE.billow : VFX_TILE.puffAlt;
+    // The compact flash above owns the white ignition core. Individual lobes
+    // use a LIFE ramp, not a radial ramp: concentric colour/alpha bands on a
+    // dozen overlapping sprites are the hollow orange "bubble" look. A solid
+    // lobe that cools cream -> yellow -> orange keeps volume and silhouette.
+    e.ramp = VFX_RAMP.fireball;
+    e.tA = rng.range(0.08, 0.22); e.tB = rng.range(0.72, 0.90); e.radial = 0;
+    e.tile = (i % 3) === 0 ? VFX_TILE.lobe
+      : (i & 1) === 0 ? VFX_TILE.billow : VFX_TILE.puffAlt;
+    e.aspect = rng.range(0.72, 1.34);
     e.rot = rng.range(0, Math.PI * 2);
     e.rotVel = rng.range(-1, 1) * X.billowSpinDegPerSec * Math.PI / 180;
     e.i0 = billowGain; e.i1 = 0.35 * glare;
@@ -887,45 +893,83 @@ export function spawnDamageWisp(x: number, y: number, z: number, scale = 1): voi
 }
 
 /**
- * The 32–1% health state: a black puff plus 2–4 flame tongues flickering at
- * 12 Hz on the hull, and a flickering ember-orange light.
+ * The 32–1% health state: layered, tapered flame tongues under a broken smoke
+ * plume, plus hot pinprick embers and a restrained ember-orange light.
  */
 export function spawnDamageFire(x: number, y: number, z: number, scale = 1): void {
   const S = VFX_SMOKE;
   const rng = presentationRng;
 
   const smoke = resetEmit();
-  smoke.x = x + rng.range(-0.35, 0.35); smoke.y = y; smoke.z = z + rng.range(-0.35, 0.35);
-  smoke.vy = 2.3; smoke.vx = rng.range(-0.4, 0.4); smoke.vz = rng.range(-0.4, 0.4);
+  smoke.x = x + rng.range(-0.55, 0.55) * scale;
+  smoke.y = y + rng.range(0.18, 0.52) * scale;
+  smoke.z = z + rng.range(-0.55, 0.55) * scale;
+  smoke.vy = rng.range(1.7, 2.25);
+  smoke.vx = rng.range(-0.55, 0.55); smoke.vz = rng.range(-0.55, 0.55);
   smoke.drag = 0.42;
-  smoke.lifeMs = 3000;
-  smoke.size0 = 0.55 * scale; smoke.size1 = 3.0 * scale; smoke.sizeEase = 0.7;
-  smoke.ramp = VFX_RAMP.smokeDark; smoke.tA = 0; smoke.tB = 1;
-  smoke.tile = VFX_TILE.billow;
+  smoke.lifeMs = rng.range(1750, 2350);
+  smoke.size0 = 0.38 * scale; smoke.size1 = 1.75 * scale; smoke.sizeEase = 0.76;
+  smoke.ramp = VFX_RAMP.smokeDark; smoke.tA = 0.08; smoke.tB = 0.92;
+  smoke.tile = rng.chance(0.5) ? VFX_TILE.lobe : VFX_TILE.puffAlt;
   smoke.rot = rng.range(0, Math.PI * 2);
-  smoke.alpha = 0.88;
+  smoke.rotVel = rng.range(-0.28, 0.28);
+  // Calls overlap at 220 ms intervals. At 0.88 these accumulated into an
+  // opaque grey dome; this remains dark smoke while allowing fire through it.
+  smoke.alpha = rng.range(0.38, 0.52);
   emitLit(smoke);
 
   const tongues = rng.int(S.tongueMin, S.tongueMax);
   for (let i = 0; i < tongues; i++) {
     const h = rng.range(S.tongueTL[0], S.tongueTL[1]) * TL * scale;
     const e = resetEmit();
-    e.x = x + rng.range(-0.5, 0.5) * scale;
-    e.y = y + h * 0.35;
-    e.z = z + rng.range(-0.5, 0.5) * scale;
-    e.vy = 1.4;
-    e.lifeMs = rng.range(280, 460);
-    e.size0 = h * 0.55; e.size1 = h * 0.28; e.sizeEase = 1.2;
-    e.aspect = 1.9;
+    e.x = x + rng.range(-0.62, 0.62) * scale;
+    e.y = y + h * 0.22;
+    e.z = z + rng.range(-0.62, 0.62) * scale;
+    e.vx = rng.range(-0.22, 0.22) * scale;
+    e.vy = rng.range(1.15, 1.75) * scale;
+    e.vz = rng.range(-0.22, 0.22) * scale;
+    e.drag = 1.1;
+    e.delayMs = i * rng.range(18, 42);
+    e.lifeMs = rng.range(330, 560);
+    // `kite` has one sharp tip and a rounded base. Stretching a round billow
+    // produced the low-poly cone/circle fire seen on wrecks and buildings.
+    e.size0 = h * rng.range(0.25, 0.34);
+    e.size1 = h * rng.range(0.10, 0.17);
+    e.sizeEase = 1.15;
+    e.aspect = rng.range(2.3, 3.1);
     // A HULL FLAME IS ORANGE, NOT WHITE. Bible §8.8 gives these tongues
     // `#FFB020 -> #FF6A00`; the white-cored fireball ramp belongs to a
     // detonation. Rendering a burning tank as a cluster of small white
     // fireballs is what makes a battlefield read as a particle demo — the
     // ember ramp starts at #FFC24A and never goes near pure white.
     e.ramp = VFX_RAMP.ember; e.tA = 0.18; e.tB = 1; e.radial = 0;
-    e.tile = VFX_TILE.billow;
+    e.tile = VFX_TILE.kite;
+    e.rot = rng.range(-0.16, 0.16);
+    e.rotVel = rng.range(-0.35, 0.35);
     e.flickerHz = S.tongueFlickerHz;
     e.i0 = 1.9; e.i1 = 0.35;
+    emitAdditive(e);
+  }
+
+  // A few tiny embers make the fire feel turbulent without enlarging it or
+  // claiming another draw call (the additive pool already owns them).
+  const embers = rng.int(2, 4);
+  for (let i = 0; i < embers; i++) {
+    const e = resetEmit();
+    e.x = x + rng.range(-0.5, 0.5) * scale;
+    e.y = y + rng.range(0.2, 0.7) * scale;
+    e.z = z + rng.range(-0.5, 0.5) * scale;
+    e.vx = rng.range(-0.45, 0.45) * scale;
+    e.vy = rng.range(1.6, 3.1) * scale;
+    e.vz = rng.range(-0.45, 0.45) * scale;
+    e.drag = 0.55;
+    e.lifeMs = rng.range(420, 820);
+    e.size0 = rng.range(0.045, 0.085) * scale;
+    e.size1 = 0.012 * scale;
+    e.ramp = VFX_RAMP.ember; e.tA = 0.08; e.tB = 1;
+    e.tile = VFX_TILE.emberDot;
+    e.flickerHz = S.tongueFlickerHz;
+    e.i0 = 1.45; e.i1 = 0;
     emitAdditive(e);
   }
 

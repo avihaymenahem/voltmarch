@@ -83,8 +83,8 @@
  * ============================================================================
  */
 
-import { BuildTab, EntityFlag, EntityKind } from '../core/types';
-import type { DefTables, PlayerId } from '../core/types';
+import { BuildTab, EntityFlag, EntityKind, NONE } from '../core/types';
+import type { DefTables, EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { SELL_REFUND } from '../core/config';
 /*
@@ -421,6 +421,100 @@ export function surveyOreCrisis(
     ? OreCrisisState.SellOut
     : OreCrisisState.Stranded;
   return out;
+}
+
+/**
+ * Pick one structure whose sale advances a real route out of `SellOut`.
+ *
+ * This is the command-side companion to `surveyOreCrisis`: the survey proves
+ * that some sequence of sales can buy either a harvester (route V) or a new
+ * refinery (route S), while this function names ONE safe next click. It never
+ * sells a prerequisite or the factory the chosen route needs, and it asks for
+ * only one structure so the caller must observe the resulting world before it
+ * decides again. That is what prevents a queued burst of sales from destroying
+ * a route that the first refund had already made affordable.
+ *
+ * The choice is intentionally conservative. Non-producing tech/defence is
+ * spent before a refinery, and a refinery before a factory; within that least
+ * damaging tier, use the smallest refund that closes the gap or otherwise the
+ * largest refund that advances it. An income-only `SellOut` returns NONE — the
+ * bank is already rising, so selling a base would be needless.
+ *
+ * The caller supplies `out` and this module reuses the same route sets as the
+ * survey. No allocation, RNG, profile or local-player information is involved.
+ */
+export function oreCrisisSaleCandidate(
+  world: World,
+  prod: ProductionService,
+  player: PlayerId,
+  out: OreCrisisSurvey,
+): EntityId {
+  surveyOreCrisis(world, prod, player, out);
+  if (out.state !== OreCrisisState.SellOut) return NONE;
+
+  const canV = out.harvesterBuildable
+    && out.credits + out.raisableForHarvester >= out.harvesterCost;
+  const canS = out.refineryBuildable
+    && out.credits + out.raisableForRefinery >= out.refineryCost;
+  // Route M (captured-structure income) can produce SellOut by itself. Waiting
+  // is already a complete recovery plan and costs no structure.
+  if (!canV && !canS) return NONE;
+
+  const needV = canV ? Math.max(0, out.harvesterCost - out.credits) : Number.POSITIVE_INFINITY;
+  const needS = canS ? Math.max(0, out.refineryCost - out.credits) : Number.POSITIVE_INFINITY;
+  const keep = needV <= needS ? keepV : keepS;
+  const need = Math.min(needV, needS);
+  if (!Number.isFinite(need) || need <= 0) return NONE;
+
+  const st = world.store;
+  const owner = player as number;
+  const list = st.byKind[EntityKind.Building];
+  const count = st.byKindCount[EntityKind.Building];
+  let covering = NONE;
+  let coveringRefund = Number.POSITIVE_INFINITY;
+  let progress = NONE;
+  let progressRefund = 0;
+  let bestTier = Number.POSITIVE_INFINITY;
+
+  for (let a = 0; a < count; a++) {
+    const i = list[a];
+    if (st.owner[i] !== owner || keep.has(i)) continue;
+    const f = st.flags[i];
+    if ((f & EntityFlag.Alive) === 0) continue;
+    if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+    if ((f & EntityFlag.Sellable) === 0) continue;
+    const entry = prod.entryOf(st.handleOf(i));
+    if (entry === null) continue;
+    const refund = refundOf(entry);
+    if (refund <= 0) continue;
+
+    // Preserve production capacity whenever any non-producing structure can
+    // advance the route. A refinery is the middle tier because losing one is
+    // painful but still leaves the chosen route intact; a tab producer is the
+    // last resort. This is content truth (`shipsWith` / `producesTabs`), not a
+    // parallel AI role table.
+    const tier = entry.producesTabs.length > 0 ? 2 : entry.shipsWith !== '' ? 1 : 0;
+    if (tier > bestTier) continue;
+    if (tier < bestTier) {
+      bestTier = tier;
+      covering = NONE;
+      coveringRefund = Number.POSITIVE_INFINITY;
+      progress = NONE;
+      progressRefund = 0;
+    }
+
+    if (refund >= need) {
+      if (refund < coveringRefund) {
+        covering = st.handleOf(i);
+        coveringRefund = refund;
+      }
+    } else if (covering === NONE && refund > progressRefund) {
+      progress = st.handleOf(i);
+      progressRefund = refund;
+    }
+  }
+
+  return covering !== NONE ? covering : progress;
 }
 
 /**

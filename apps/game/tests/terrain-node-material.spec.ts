@@ -23,6 +23,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import {
   GLSLNodeBuilder, Mesh, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGPURenderer,
@@ -40,6 +41,9 @@ import { CELL, CLIFF_SLOPE, MAP_SIZE } from '../src/core/config';
  * 60x the bytes for a question none of them ask. */
 const LAYER_SIZE = 8;
 const SEED = 1234;
+const GLSL_TERRAIN_SOURCE = readFileSync(
+  new URL('../src/world/TerrainMaterial.ts', import.meta.url), 'utf8',
+);
 
 function makeSet(biome: BiomeDef = BIOMES.temperate) {
   return createTerrainNodeMaterials({ biome, layerTextureSize: LAYER_SIZE, seed: SEED });
@@ -196,6 +200,26 @@ describe('the translated shader keeps the GLSL structures', () => {
     expect(fragment).toMatch(/dpdx/);
     expect(fragment).toMatch(/dpdy/);
     set.dispose();
+  });
+
+  it('uses the world-space pixel footprint for stable crack coverage, not opacity pumping', () => {
+    const set = makeSet();
+    for (const which of ['wgsl', 'glsl'] as const) {
+      const { fragment } = compile(set.material, which);
+      expect(fragment).toContain('raPixelM');
+      expect(fragment).toContain('raAgeCrackAA');
+      expect(fragment).not.toContain('raGritAA');
+    }
+    set.dispose();
+
+    // The separately shipped WebGL material must carry the same coverage AA,
+    // not merely the WebGPU-default node path. Camera footprint widens the
+    // transition inside raGroundAge; it never gates the feature after sampling.
+    expect(GLSL_TERRAIN_SOURCE).toContain('float raPixelM = max');
+    expect(GLSL_TERRAIN_SOURCE).toContain('float crackAA = clamp( pixelM / crackCellM');
+    expect(GLSL_TERRAIN_SOURCE).not.toContain('raGritAA');
+    expect(GLSL_TERRAIN_SOURCE.indexOf('float raPixelM = max'))
+      .toBeLessThan(GLSL_TERRAIN_SOURCE.indexOf('if ( raIsCliff )'));
   });
 
   it('disables WGSL derivative-uniformity diagnostics, so the branch is legal', () => {

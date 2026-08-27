@@ -1632,10 +1632,10 @@ export class BarkDirector {
       1.8,
     );
     this.applyDucks();
-    played.source.onended = () => {
+    played.onEnded(() => {
       if (through !== null) { try { through.disconnect(); } catch { /* gone */ } }
       this.done();
-    };
+    });
   }
 
   private applyDucks(): void {

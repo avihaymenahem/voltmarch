@@ -142,6 +142,7 @@ export function campaignObjectiveView(): ProgressionView | null {
         target: 1,
         reward: credits > 0 ? [{ kind: 'credits' as const, amount: credits }] : [],
         creditRewardPaid: credits > 0,
+        objectiveTier: r.kind === 'primary' ? 'main' as const : 'side' as const,
         flag: true,
         progress: {
           id: r.id,

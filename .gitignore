@@ -69,6 +69,9 @@ apps/desktop/release/
 # electron-builder output path open. They contain the same generated binaries.
 apps/desktop/release-v*/
 apps/desktop/*.log
+# Persistent Chromium profile created by `npm run desktop:dev`. It contains
+# browser caches and local game settings, never source or release input.
+.desktop-dev-profile/
 # Generated binaries left at the pre-monorepo location are not source.
 /desktop/
 

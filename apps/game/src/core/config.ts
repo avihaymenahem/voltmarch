@@ -380,8 +380,10 @@ export const CAMERA = {
   pitchDeg: 52,
   /** Vertical field of view in degrees. Narrow keeps the perspective honest. */
   fovDeg: 36,
-  /** Closest dolly distance in metres. */
+  /** Absolute dolly floor for authored shots and camera tooling. */
   minDistance: 30,
+  /** Closest distance reachable through player zoom controls. */
+  gameplayMinDistance: 36,
   /** Furthest dolly distance in metres. */
   maxDistance: 140,
   /**
@@ -418,7 +420,7 @@ export const CAMERA = {
    * `RENDER_CONFIG.camera.zoomStep` at boot. 0.12 therefore multiplied the
    * distance by 0.12 on a single notch — every wheel event slammed the camera
    * onto `minDistance` or `maxDistance` with nothing in between. 1.14 is ~13%
-   * per notch, which is nine notches across the whole 30..140 m range.
+   * per notch, which is about ten notches across the playable 36..140 m range.
    */
   zoomStep: 1.14,
   /** Critically-damped spring half-life in seconds for pan/zoom smoothing. */
@@ -490,7 +492,7 @@ export const CAMERA_NAV = {
    * failure message.
    *
    * DERIVED, NOT MEASURED ON A MAC — nobody here has one. The dolly is
-   * ln(140/30)/ln(1.14) = 11.757 notches end to end. A comfortable macOS swipe
+   * ln(140/36)/ln(1.14) = 10.365 notches end to end. A comfortable macOS swipe
    * including the inertia tail is 300-800 px, which at 1.0 is 3-8 notches, i.e.
    * a third to two thirds of the range per gesture, and `maxNotchesPerEvent`
    * (3) catches a coalesced flick. The tail alone (~130 px of decaying events
@@ -501,7 +503,7 @@ export const CAMERA_NAV = {
    *
    * DO NOT reuse `pinchZoomSensitivity` here. It is 0.035 PER PIXEL, sized for
    * pinch deltas of 0.5-3; against a 130 px scroll tail it is 4.5 notches,
-   * which is the whole 55 -> 30 m span arriving after the player stopped
+   * which is more than the whole 55 -> 36 m span arriving after the player stopped
    * moving.
    */
   trackpadZoomSensitivity: 1.0,
@@ -566,8 +568,8 @@ export const CAMERA_NAV = {
    * Notches of zoom per second while a zoom key is HELD (`cam.zoomIn` /
    * `cam.zoomOut`, `=` and `-` by default).
    *
-   * THE WHOLE DOLLY IS 11.757 NOTCHES — ln(140/30)/ln(1.14) — so 4/s crosses
-   * it in 2.9 s, which is the same order as `panSpeed`'s 42 m/s crossing a
+   * THE PLAYABLE DOLLY IS 10.365 NOTCHES — ln(140/36)/ln(1.14) — so 4/s crosses
+   * it in 2.6 s, which is the same order as `panSpeed`'s 42 m/s crossing a
    * 512 m map. Not a taste: it is the only figure that makes a held key feel
    * like the pan keys beside it.
    *
@@ -4222,6 +4224,30 @@ export const AI_REPAIR = {
 } as const;
 
 /**
+ * SELLING OUT OF A STOPPED ECONOMY.
+ *
+ * `OreCrisis` already proves when selling can buy a replacement harvester or
+ * refinery, and the player gets a HUD instruction naming the Sell tool. The AI
+ * used to have no caller of `CommandBus.issueSell`, so exactly that recoverable
+ * state was permanent for a computer seat.
+ *
+ * This is deliberately slower than the ten-second stranded-economy rescue. A
+ * sale is irreversible and changes the base, so the brain must remain in the
+ * proven state for twelve seconds plus its difficulty reaction latency before
+ * it acts. It then sells ONE structure and waits four seconds before asking
+ * again. The production service applies the same 50% refund and last-builder
+ * lockout as it does for a human; this block grants no credits and sees no fog.
+ * Authored campaign operations opt out at the live oracle because some use
+ * fixed AI-owned buildings as mission pieces whose survival is load-bearing.
+ */
+export const AI_RECOVERY = {
+  /** Continuous seconds with a valid sale candidate before the first click. */
+  sellDelaySeconds: 12,
+  /** Minimum seconds between irreversible sale commands. */
+  sellIntervalSeconds: 4,
+} as const;
+
+/**
  * REPLACING A LOST CONSTRUCTION YARD.
  *
  * The other half of the same report. `conyard` is what carries
@@ -6688,7 +6714,7 @@ export const VFX_EXPLOSION = {
   structureFlashLifeMul: 1.30, structureFlashIntensityMul: 0.80,
 
   /**
-   * How far the RADIAL fireball ramp is stretched across the sprite quad.
+   * How far the radial fire ramp is stretched across small flash/impact quads.
    *
    * `radial = 1` sweeps the ramp from t=0 at the sprite centre to t=`this` at
    * the quad's edge. It must be >1, and the reason is easy to miss: the billow
@@ -6699,7 +6725,8 @@ export const VFX_EXPLOSION = {
    * guards against, and it looks like fog.
    *
    * 1.18 keeps the dark orange/soot tail inside the visible portion of the
-   * billow tile, which is what lets overlapping sprites retain separate volume.
+   * billow tile. Full death fireballs now use life-driven lobes; this remains
+   * the shared radial span for impact flashes and short flame effects.
    */
   billowRadialSpan: 1.18,
 
@@ -6716,10 +6743,12 @@ export const VFX_EXPLOSION = {
    * billows are born on a `billowShellTL` shell and drift ~2 m outward against
    * drag 2.6 over their 750 ms life, so at 1.0 TL each the envelope comes out
    * at about 2.5 TL, which is the bible's fireball plus its sparse outliers.
-   * The RADIAL ramp fractions are untouched, so scorecard #14 is unaffected —
-   * a billow is the same picture, smaller.
+   * The compact ignition flash remains independently sized, while these lobes
+   * carry the irregular orange mass around it.
    */
   billowSize0TL: 0.34, billowSize1TL: 1.00, billowLifeMs: 750,
+  /** Maximum per-lobe ignition stagger; breaks the simultaneous bubble wall. */
+  billowStaggerMs: 95,
   billowSpinDegPerSec: 35,
   /**
    * HDR gain of one billow, in scene-linear — halved from the authored 4.2.
@@ -6729,8 +6758,8 @@ export const VFX_EXPLOSION = {
    * far over the 0.85 bloom threshold that every billow's ENTIRE disc was above
    * it and the ensemble read as one solid white plate — 10% of the whole frame
    * for a single tank. At 2.1 the core still clips to white (that is what the
-   * fireball ramp's `#FFFAFF`-to-t=0.52 hold is for) while the fringes fall
-   * back under threshold and the individual billows become visible again.
+   * compact flash still clips to white while the life-driven lobe bodies retain
+   * saturated yellow/orange separation.
    */
   billowIntensity: 2.1,
   /**
@@ -6763,8 +6792,7 @@ export const VFX_EXPLOSION = {
    * to something the tonemapper returns pure white for, and the fireball
    * renders as a featureless pale haze with no billow structure and no orange
    * anywhere. Measured, twice. Spread them onto a real shell and each one reads
-   * as its own white-cored, orange-fringed mass, which is what "8-14 billows"
-   * is asking for in the first place.
+   * as its own irregular cooling mass instead of a pile of identical circles.
    *
    * IT IS AN ABSOLUTE LENGTH ON PURPOSE. It used to be a fraction of
    * `billowSize0TL`, which coupled it to the billow's own size — so shrinking
@@ -7649,6 +7677,24 @@ export const ROAD_SAMPLE_METRES = 2.0;
  */
 export const ROAD_SURFACE_LIFT = 0.06;
 /**
+ * Length of the physical taper at an interior road terminus.
+ *
+ * A generated arterial is allowed to end when hostile terrain prevents the
+ * network from reaching another node. Ending the full-width asphalt, kerb and
+ * pavement on one cross-section reads as a missing mesh. Over this distance
+ * the whole section narrows and settles into the terrain instead. Border exits
+ * and junction mouths never use the taper.
+ */
+export const ROAD_END_FADE_METRES = 16;
+/**
+ * Fastest a carriageway half-width may change between centreline samples,
+ * metres of width per metre travelled. The raw concave-offset solution can
+ * pinch by almost two metres over one 2 m sample; connecting those rows makes
+ * a bow-tie quad and the asphalt reads as cracked shards. This rate only ever
+ * narrows neighbouring rows, so it cannot violate the bend's safe offset.
+ */
+export const ROAD_WIDTH_CHANGE_PER_METRE = 0.42;
+/**
  * Longest span, in metres, of any edge of a road-surface triangle — carriageway
  * ribbon, junction pad and pavement alike. Below the 1 m terrain grid, so a
  * span cannot chord over a whole heightfield cell.
@@ -7747,15 +7793,16 @@ export const ROAD_SLAB_JOINT = 0.03;
 /**
  * Fixed decal pool. Every decal is a slot in ONE shared BufferGeometry, so
  * this is also the whole decal draw budget: 1 draw call, always.
- * 512 x 18 triangles = 9.2k tris, which is 3% of what the terrain spends.
+ * At six quads per side the default 512-slot field is 36.9k triangles.
  */
 export const DECAL_POOL = 512;
 /**
- * Quads per side of a decal patch. 3 => 4x4 vertices => 18 triangles. The
- * heightfield is 1 m and decals are 1.5-6 m, so 3 subdivisions conforms a
- * decal to the ground to well under a centimetre.
+ * Quads per side of a decal patch. 6 => 7x7 vertices => 72 triangles. Three
+ * subdivisions let large rotated marks bridge several one-metre heightfield
+ * faces and intermittently cross the terrain depth while the camera moved.
+ * Six keeps those chords short without pushing either live pool past Uint16.
  */
-export const DECAL_GRID = 3;
+export const DECAL_GRID = 6;
 /**
  * Metres a decal floats above the heightfield.
  *
@@ -8584,6 +8631,36 @@ export const PROP_MATERIAL = {
  * the whole plaza, which is the exact failure R5 warns about.
  */
 export const PROP_EMISSIVE_GAIN = 1.6;
+
+/**
+ * Runtime life encoded in the prop geometry's existing aSurface.x channel.
+ * Values <= 1 remain the old steady scalar. Integer bands above that are tiny
+ * animated fixtures and cost no extra material or draw call.
+ */
+export const PROP_LIGHT_ANIM = {
+  faultCapableCode: 2,
+  signalRedCode: 3,
+  signalAmberCode: 4,
+  signalGreenCode: 5,
+  /** Share of lamp instances whose ballast is faulty. */
+  faultyFraction: 0.18,
+  faultHashFrequency: 12.9898,
+  faultHashScale: 43758.5453,
+  /** Two incommensurate rates make short drop-outs instead of a clean pulse. */
+  flickerFastRadians: 17.4,
+  flickerSlowRadians: 2.3,
+  flickerFastPhase: 2.1,
+  flickerSlowPhase: 4.7,
+  flickerFastThreshold: -0.72,
+  flickerSlowThreshold: -0.93,
+  faultyFloor: 0.05,
+  /** Traffic signals complete one readable phase cycle at this interval. */
+  signalCycleSeconds: 10,
+  signalRedEnd: 0.42,
+  signalAmberEnd: 0.49,
+  signalGreenEnd: 0.94,
+  signalIdleGain: 0.045,
+} as const;
 
 /**
  * The decal pool is split in two so a tank charge cannot evict the road's

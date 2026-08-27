@@ -196,6 +196,123 @@ function slab(mesh: PropMesh, c: V3, size: V3, rot: V3, chamfer: number): void {
 }
 
 /**
+ * A torn, tapered armoured hull tub. A single box may be dimensionally
+ * correct, but from the gameplay camera its uninterrupted roof becomes a huge
+ * rectangular slab and hides every useful wreck cue underneath it. This shell
+ * is built from four deliberately uneven cross-sections instead:
+ *
+ * - a narrow, dropped glacis at the nose;
+ * - broad, sloped shoulder plates around the fighting compartment;
+ * - an asymmetric collapsed rear with its centre deck missing, leaving an
+ *   open engine cavity.
+ *
+ * The broad faces stay cheap and the whole primitive shares the wreck's
+ * existing vertex-colour material and instance batch.
+ */
+function tornHullTub(
+  mesh: PropMesh, c: V3, width: number, depth: number, length: number, rot: V3,
+): void {
+  interface Station {
+    z: number;
+    left: number;
+    right: number;
+    bottom: number;
+    shoulder: number;
+    deck: number;
+    inset: number;
+  }
+
+  // +Z is the nose. The deliberately mismatched left/right values make the
+  // rear tear readable without adding noisy little fragments to the hull.
+  const stations: readonly Station[] = [
+    { z: length * 0.43, left: -width * 0.27, right: width * 0.31, bottom: -depth * 0.28, shoulder: depth * 0.02, deck: depth * 0.18, inset: 0.63 },
+    { z: length * 0.20, left: -width * 0.48, right: width * 0.46, bottom: -depth * 0.47, shoulder: depth * 0.13, deck: depth * 0.48, inset: 0.67 },
+    { z: -length * 0.12, left: -width * 0.45, right: width * 0.50, bottom: -depth * 0.50, shoulder: depth * 0.12, deck: depth * 0.45, inset: 0.66 },
+    { z: -length * 0.43, left: -width * 0.38, right: width * 0.29, bottom: -depth * 0.33, shoulder: depth * 0.04, deck: depth * 0.28, inset: 0.60 },
+  ];
+  const matrix = euler(rot[0], rot[1], rot[2]);
+
+  const point = (s: Station, x: number, y: number): [number, number, number] =>
+    xf(matrix, c, x, y, s.z);
+  const quad = (a: V3, bb: V3, cc: V3, d: V3, outward: V3, bevel = false): void => {
+    const A = xf(matrix, c, a[0], a[1], a[2]);
+    const B = xf(matrix, c, bb[0], bb[1], bb[2]);
+    const C = xf(matrix, c, cc[0], cc[1], cc[2]);
+    const D = xf(matrix, c, d[0], d[1], d[2]);
+    const N = dir(matrix, outward[0], outward[1], outward[2]);
+    mesh.quad(
+      A[0], A[1], A[2], B[0], B[1], B[2], C[0], C[1], C[2], D[0], D[1], D[2],
+      N[0], N[1], N[2], bevel,
+    );
+  };
+
+  for (let i = 0; i + 1 < stations.length; i++) {
+    const a = stations[i];
+    const b = stations[i + 1];
+    const ali = a.left * a.inset, ari = a.right * a.inset;
+    const bli = b.left * b.inset, bri = b.right * b.inset;
+
+    // Floor and outer side armour.
+    quad(
+      [a.left, a.bottom, a.z], [a.right, a.bottom, a.z],
+      [b.right, b.bottom, b.z], [b.left, b.bottom, b.z], [0, -1, 0],
+    );
+    quad(
+      [a.left, a.bottom, a.z], [b.left, b.bottom, b.z],
+      [b.left, b.shoulder, b.z], [a.left, a.shoulder, a.z], [-1, 0, 0],
+    );
+    quad(
+      [a.right, a.bottom, a.z], [a.right, a.shoulder, a.z],
+      [b.right, b.shoulder, b.z], [b.right, b.bottom, b.z], [1, 0, 0],
+    );
+
+    // Sloped shoulder plates provide the armour silhouette without a giant
+    // flat roof. They use the edge colour to expose the torn upper rim.
+    quad(
+      [a.left, a.shoulder, a.z], [b.left, b.shoulder, b.z],
+      [bli, b.deck, b.z], [ali, a.deck, a.z], [-0.45, 1, 0], true,
+    );
+    quad(
+      [ari, a.deck, a.z], [bri, b.deck, b.z],
+      [b.right, b.shoulder, b.z], [a.right, a.shoulder, a.z], [0.45, 1, 0], true,
+    );
+
+    // The rear segment deliberately has no centre deck. That negative space
+    // is the open engine bay and prevents the wreck reading as a solid block.
+    if (i < stations.length - 2) {
+      quad(
+        [ali, a.deck, a.z], [bli, b.deck, b.z],
+        [bri, b.deck, b.z], [ari, a.deck, a.z], [0, 1, 0],
+      );
+    }
+  }
+
+  const front = stations[0];
+  const rear = stations[stations.length - 1];
+  // Close only the lower portions. The rear cap stops below the torn rim so
+  // the engine cavity remains visibly hollow from the normal RTS pitch.
+  quad(
+    [front.left, front.bottom, front.z], [front.right, front.bottom, front.z],
+    [front.right, front.shoulder, front.z], [front.left, front.shoulder, front.z], [0, 0, 1],
+  );
+  quad(
+    [rear.right, rear.bottom, rear.z], [rear.left, rear.bottom, rear.z],
+    [rear.left, rear.shoulder, rear.z], [rear.right, rear.shoulder, rear.z], [0, 0, -1], true,
+  );
+
+  // Two small end wedges close the nose shoulders without restoring the broad
+  // rectangular face this helper exists to remove.
+  const fli = front.left * front.inset, fri = front.right * front.inset;
+  const A = point(front, front.left, front.shoulder);
+  const B = point(front, fli, front.deck);
+  const C = point(front, fri, front.deck);
+  const D = point(front, front.right, front.shoulder);
+  const N = dir(matrix, 0, 0.6, 1);
+  mesh.tri(A[0], A[1], A[2], B[0], B[1], B[2], C[0], C[1], C[2], N[0], N[1], N[2], true);
+  mesh.tri(A[0], A[1], A[2], C[0], C[1], C[2], D[0], D[1], D[2], N[0], N[1], N[2], true);
+}
+
+/**
  * A faceted drum at an arbitrary orientation, with chamfered rims. Its axis runs
  * along the LOCAL +Y and it is centred on `c`, so a turret lying on its side is
  * one call with `rot.z = HALF_PI`.
@@ -389,7 +506,7 @@ function hulkSeed(faction: WreckFaction, cls: WreckClass): number {
  * Six primary masses, and the whole design brief is "a critic must read 'a tank
  * died here' from 40 m in about four shapes":
  *
- *   1. the hull tub, dropped nose-down and rolled off level;
+ *   1. the tapered, torn hull tub, dropped nose-down with its engine bay open;
  *   2. one track run still on, one peeled off and lying beside it;
  *   3. the turret THROWN CLEAR and resting on its side — this is the single
  *      strongest cue and the reason a hulk never reads as a parked tank;
@@ -420,12 +537,30 @@ export function buildVehicleWreck(
   const tipX = -0.07 + rng.range(-0.025, 0.025);   // nose-down
   const roll = rng.range(-0.07, 0.07);
   const yaw = rng.range(-0.14, 0.14);
-  const hullY = D * 0.62;
+  const hullY = D * 0.52;
+  const hullRot: V3 = [tipX, yaw, roll];
+  const hullMatrix = euler(hullRot[0], hullRot[1], hullRot[2]);
+  const hullPoint = (x: number, y: number, z: number): [number, number, number] =>
+    xf(hullMatrix, [0, hullY, 0], x, y, z);
   m.color(b.char).bevel(b.tear);
-  slab(m, [0, hullY, 0], [W, D, L * 0.86], [tipX, yaw, roll], D * 0.16);
-  // A sheared-off glacis lying back over the bow, half torn away.
+  tornHullTub(m, [0, hullY, 0], W, D, L * 0.86, hullRot);
+  // A curled glacis fragment lies back over the bow. It is a sheet, not a
+  // second rectangular hull stacked on the first one.
   m.color(b.deep).bevel(b.tear);
-  slab(m, [0, hullY + D * 0.34, L * 0.30], [W * 0.80, D * 0.16, L * 0.24], [tipX - 0.52, yaw, roll * 0.6], D * 0.10);
+  tornPlate(m, hullPoint(0, D * 0.47, L * 0.27), W * 0.62, L * 0.18,
+    [tipX - 0.38, yaw + 0.05, roll * 0.6], D * 0.10);
+
+  // The missing rear deck exposes a dark, sunken engine bay. Two low cylinder
+  // heads are enough to make it read as machinery without filling the opening
+  // with detail that disappears at gameplay distance.
+  const bay = hullPoint(-W * 0.03, D * 0.02, -L * 0.26);
+  slab(m, bay, [W * 0.43, D * 0.07, L * 0.22], hullRot, D * 0.02);
+  m.color(b.rust).bevel(b.tear);
+  for (const side of [-1, 1] as const) {
+    const head = hullPoint(side * W * 0.12, D * 0.15, -L * 0.27);
+    drum(m, head, W * 0.065, W * 0.055, D * 0.30, 8, W * 0.012,
+      [tipX + side * 0.07, yaw, roll + side * 0.05]);
+  }
 
   /* -- 2. running gear --------------------------------------------------- */
   if (faction === 'meridian') {
@@ -538,10 +673,12 @@ export function buildVehicleWreck(
   slab(m, [W * 0.30, hullY + D * 0.10, -L * 0.24], [W * 0.30, D * 0.34, 0.07],
     [tipX, yaw + 0.10, roll], 0.03);
 
-  /* -- embers, down inside the bay --------------------------------------- */
+  /* -- embers, down inside the open bay ---------------------------------- */
   m.color(b.ember).bevel(b.ember).emissive(0.62).gloss(0);
-  slab(m, [0, hullY + D * 0.18, -L * 0.14], [W * 0.40, 0.07, L * 0.20], [tipX, yaw, roll], 0.02);
-  slab(m, [-W * 0.16, hullY + D * 0.06, L * 0.20], [W * 0.20, 0.06, L * 0.10], [tipX, yaw + 0.4, roll], 0.02);
+  tornPlate(m, hullPoint(W * 0.07, D * 0.20, -L * 0.25), W * 0.16, L * 0.09,
+    hullRot, D * 0.015);
+  tornPlate(m, hullPoint(-W * 0.12, D * 0.17, -L * 0.31), W * 0.12, L * 0.07,
+    [tipX, yaw + 0.34, roll], D * 0.012);
   m.emissive(0);
 
   return m.toGeometry(`wreck.${faction}.${cls}`);

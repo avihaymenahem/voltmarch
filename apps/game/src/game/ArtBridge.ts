@@ -129,6 +129,7 @@ export function cameraPatch(): DeepPartial<RenderConfig> {
       far: CAMERA.far,
       distance: CAMERA.defaultDistance,
       minDistance: CAMERA.minDistance,
+      gameplayMinDistance: CAMERA.gameplayMinDistance,
       maxDistance: CAMERA.maxDistance,
       panSpeed: CAMERA.panSpeed,
       edgePanPixels: CAMERA.edgePanPixels,

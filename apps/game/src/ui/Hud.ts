@@ -66,6 +66,7 @@ import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
 import type { RendererHandle } from '../render/renderer';
+import type { MatchPresentation } from '../game/Bootstrap';
 // One statement of the self-repair rule, shared with the overlay. See the note
 // on the import in `src/ui/Overlay.ts`.
 import { UNIT_PUBLIC_ID_BASE } from '../sim/Production';
@@ -862,6 +863,8 @@ export interface HudOptions {
   handle: RendererHandle;
   /** Ids of every registered sim system. Used to detect sibling modules. */
   simSystemIds: readonly string[];
+  /** Product mode, difficulty and map name resolved by the shell. */
+  matchPresentation: MatchPresentation;
 }
 
 export class Hud {
@@ -925,6 +928,8 @@ export class Hud {
   private readonly telemetry: HudTelemetry = {
     army: 0, structures: 0, incomePerMin: 0, storageMax: 0,
     advice: 'All systems nominal', adviceKind: 'info',
+    matchMode: 'Skirmish', matchDifficulty: 'Normal', mapName: 'Battlefield',
+    commandPortrait: '', commandSpeaker: '', weather: 'clear', gameSpeed: 1,
   };
   /** Credits banked since the last income flush, and the smoothed rate. */
   private incomeBucket = 0;
@@ -1014,6 +1019,9 @@ export class Hud {
     this.channels = opts.channels;
     this.cameraRig = opts.cameraRig;
     this.handle = opts.handle;
+    this.telemetry.matchMode = opts.matchPresentation.mode;
+    this.telemetry.matchDifficulty = opts.matchPresentation.difficulty;
+    this.telemetry.mapName = opts.matchPresentation.mapName;
 
     const local = this.world.players[this.world.localPlayer as number];
     this.faction = local !== undefined ? local.faction : Faction.Allies;
@@ -1784,6 +1792,20 @@ export class Hud {
      * renders as no denominator at all rather than as a cap of zero. */
     const me = this.world.players[local as number];
     tele.storageMax = me !== undefined && me.storageMax > 0 ? me.storageMax : 0;
+
+    /* -- hybrid command node -------------------------------------------
+     * Mode, difficulty and map identity are immutable for a running boot and
+     * were copied from HudOptions in the constructor. Only portrait, weather
+     * and speed are live telemetry. Objectives stay in their dedicated panel. */
+    const commandPortrait = globalThis.__vmCommandPortrait;
+    tele.commandPortrait = commandPortrait?.src ?? '';
+    tele.commandSpeaker = commandPortrait?.speaker ?? '';
+    const weather = (globalThis as {
+      __vmWeatherHud?: { kind: 'clear' | 'light' | 'heavy'; intensity: number };
+    }).__vmWeatherHud;
+    tele.weather = weather?.kind ?? 'clear';
+    const speed = (globalThis as { __vmGameSpeed?: number }).__vmGameSpeed;
+    tele.gameSpeed = typeof speed === 'number' && Number.isFinite(speed) ? speed : 1;
 
     /* -- the advice line ------------------------------------------------
      * Ordered by what would kill you soonest. Exactly one sentence shows, and

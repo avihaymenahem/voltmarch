@@ -10,8 +10,8 @@
  *
  *   SellOut   -> a HUD chip and `EvaLine.NoOreMiner`, naming the sell tool.
  *                LOCAL PLAYER ONLY, and nothing about the world changes. An
- *                AI does not need to be told; it needs to be able to act, and
- *                it already sells nothing.
+ *                AI does not need the chip; `AiBrain.recoverEconomy` asks this
+ *                module's arithmetic for one safe sale and uses the same tool.
  *   Stranded  -> after `RESCUE_DELAY_TICKS`, one standing refinery redeems its
  *                `shipsWith` harvester. EVERY player, human and AI, because
  *                this one moves entities and a rule that bound only the human

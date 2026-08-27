@@ -29,8 +29,8 @@ structures, capturable civic landmarks and resource vehicles now use original Me
 that pass through the local VOLTMARCH asset pipeline.
 
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
-are built from Three.js geometry, custom shaders and procedural canvas generators. **Six shipped
-asset groups are not generated from runtime code**, all deliberate: the first five live in
+are built from Three.js geometry, custom shaders and procedural canvas generators. **Seven shipped
+asset groups are not generated from runtime code**, all deliberate: the first six live in
 `apps/game/public/`; imported game-world models live in `apps/game/src/assets/` and Vite emits them into the build.
 
 1. **Rajdhani** (OFL-1.1) in `apps/game/public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
@@ -147,8 +147,15 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-6. **Imported faction/civilian structures and selected units** in
-   `apps/game/src/assets/{buildings,units}/` — original Meshy AI generations
+6. **Skirmish battlefield preview terrain** in `apps/game/public/maps/previews/` — seven original
+   ImageGen-authored 1024 x 576 WebP terrain layers, one for each published battlefield. They are
+   interface artwork, not world textures: `MapPreview.ts` draws starting positions, ore markers,
+   metadata and the scan/grid grade as deterministic live overlays, and falls back to the seeded
+   canvas survey if an image cannot decode. Prompts, roster mapping and delivery treatment are
+   recorded in `apps/game/public/maps/previews/README.md`.
+
+7. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
+   `apps/game/src/assets/{buildings,units,wrecks}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
@@ -156,11 +163,12 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw. The neutral slice currently
    replaces the Oil Derrick, Civilian Hospital, Apartment Block and Ore Mine while retaining their
    faction-agnostic capture registration and procedural fallbacks. The Allied Ore Silo also has its
-   own conditioned imported model; the old modular shell is fallback/socket authority only. These
-   and the imported structures are the only
-   non-procedural game-world models currently shipped.
+   own conditioned imported model; the old modular shell is fallback/socket authority only. A
+   conditioned neutral tank hulk supplies deferred Allied/Soviet combat-vehicle wrecks, while the
+   rest of the roster retains procedural wreck art. These are the only non-procedural game-world
+   models currently shipped.
 
-7. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+8. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `apps/game/public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `apps/game/tests/credits-truthful.spec.ts` checks that screen against
@@ -1571,10 +1579,10 @@ commands through the same bus a player does. Audited against every verb:
 ```
 uses:   Move  Attack  AttackMove  Capture  Deploy  Harvest  Enter  Unload  UseAbility
         issueOrder  issuePlaceBuilding  issueProductionStart
-        issueRepairToggle  issueSetStance  issueUsePower
+        issueRepairToggle  issueSell  issueSetStance  issueUsePower
 
 NEVER:  ForceAttack  Stop  Guard  Repair  Scatter  Patrol
-        issueSell  issueSetRally  issueSetPrimary  issueRelocate
+        issueSetRally  issueSetPrimary  issueRelocate
         issueProductionCancel  issueProductionPause  issueSelfDestruct
 ```
 
@@ -1671,12 +1679,28 @@ sides get the change, `enemyLost` moved in both directions.
 **WHAT IS STILL MISSING, and the audit is a MAP, NOT A CHECKLIST.** `SelfDestruct`,
 `ProductionPause`, `ProductionCancel` and `Relocate` are deliberately skipped: a human almost never
 uses them and an AI cancelling and re-queueing production reads as indecision rather than skill.
-The two that remain real gaps:
+`Stop`, `Guard`, rally flags, primary factories and explicit formation buttons are control-surface
+verbs whose outcomes the brain already produces through direct group orders, its rally point and
+the navigation formation planner. Adding the button press would not add play.
 
-- **Per-unit retreat.** `flee=0` at every sample of every rung — only the harvester layer ever sets
-  `UnitState.Fleeing`. Group retreat (`shouldRetreat`) is real and should stay.
-- **`issueSell`.** `OreCrisis`'s `SellOut` branch is a documented route out of a dead economy that
-  the AI structurally cannot take.
+The real remaining capability gaps are narrower: it does not occupy a garrisonable building, use
+an engineer's one-shot full repair, deliberately force-fire empty ground, or scatter in reaction to
+an incoming area weapon. The last two are intentionally withheld until a telegraphed reaction and
+difficulty ladder exist — perfect splash dodging or firing into fog would be an unfair strength
+increase. Garrisoning and engineer repair are legitimate future operations, but both need resource
+commitment and abandonment rules so they do not remove infantry/engineers from the army forever.
+
+**`issueSell` IS NO LONGER A GAP.** `AiBrain.recoverEconomy` asks the live `ProductionService`
+through its structural oracle, and `OreCrisis.oreCrisisSaleCandidate` names one structure outside
+the prerequisites/factory of a proven recovery route. The brain waits twelve seconds plus the
+difficulty's ordinary reaction latency, spends one action, sells one structure, and re-surveys the
+changed world before another sale. Non-producing tech/defence goes before a refinery, and a factory
+is last resort. The actual click is `CommandBus.issueSell`, so the same 50% refund, ownership rule,
+last-builder lockout and no-economic-bonus rule bind both players. A genuinely `Stranded` economy
+still uses the shared refinery rescue; a captured-structure income route sells nothing.
+`ai.system.ts` suppresses this generic recovery in authored campaign operations: several layouts use
+fixed AI-owned buildings as mission pieces, and their director rather than skirmish doctrine owns
+whether those pieces may disappear.
 
 **ENGINEER CAPTURE IS NOW A REAL AI OPERATION, NOT A FREE VERB.** Each faction's engineer has the
 dedicated `BuildRole.Engineer`. A disciplined AI buys at most one when it has current vision of a
@@ -2118,6 +2142,19 @@ argument for why draping rather than grading the heightfield.
   drafts got this wrong in opposite directions — one claimed ZERO, by measuring the offset CURVE
   and then making a claim about the STRIP; the next quoted two quads and doubled their areas, by
   reading a three-case pin as a roster figure and a cross product as an area.
+- **ROAD COHERENCE IS ENFORCED BEFORE AND AFTER ROUTING.** `pruneParallelRoutes` removes only a
+  sustained near-parallel duplicate whose removal preserves both endpoint degrees; it must not
+  convert a useful connection into a new dead end or delete a brief tangent/crossing. At mesh time,
+  the ownership grid culls road triangles already covered by an earlier chain or junction. These
+  solve different failures and neither is a licence to hide an invalid route under another road.
+- **A LEGITIMATE INTERIOR ROAD END TAPERS PHYSICALLY AND VISUALLY.** `RoadChain.fade` narrows the
+  carriageway, kerb, pavement and mask while `aRoadFade` removes the final material edge. Border
+  exits and junction mouths stay full width. Do not restore a flat alpha card or a hard rectangular
+  cap; the geometry, collision mask and shader must describe the same end.
+- **STRUCTURE CLEARANCE USES `isRoad`, NOT ONLY `isCarriageway`.** Scenario and civilian footprints
+  sample the 2 m road mask at quarter-cell offsets so no building may overlap tarmac, kerb or
+  pavement. Props use the narrower `isCarriageway` rule because benches and lamps belong on the
+  sidewalk; buildings do not.
 
 ## There are two renderers now, and a WebGL player downloads exactly one of them
 
@@ -2489,6 +2526,11 @@ before touching it. The workspace boundary is structural, not a convention.
   query paths.
 - **The AI issues the same commands the player does**, through `channels.command`. It must never
   reach into entity state directly.
+- **Completed speech must release its mixer slot before director callbacks run.** `AudioEngine`
+  owns `AudioBufferSourceNode.onended`; EVA and bark directors subscribe through
+  `PlayedBufferVoice.onEnded`. Assigning `played.source.onended` in either caller overwrites the
+  category-budget cleanup. With the voice cap at two, a few ordinary lines then leave only stolen
+  ghosts and permanently silence EVA, infantry and vehicles for the rest of the session.
 - **No `AmbientLight` anywhere.** `HemisphereLight` only — a flat ambient kills the shadow tint that
   the whole grade depends on.
 

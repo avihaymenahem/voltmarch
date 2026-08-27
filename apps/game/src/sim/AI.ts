@@ -91,7 +91,7 @@
 
 import {
   AI_BUILD, AI_CADENCE, AI_ECONOMY, AI_MEMORY, AI_MILITARY, AI_REBUILD, AI_REPAIR,
-  AI_ROSTER_CAP, AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
+  AI_RECOVERY, AI_ROSTER_CAP, AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
   ABILITIES, AbilityId,
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
 } from '../core/config';
@@ -274,6 +274,8 @@ export interface AiIntent {
   powersBought: number;
   /** Drip-repairs this brain has switched on. */
   repairsOrdered: number;
+  /** Structures sold to fund a proven ore-economy recovery route. */
+  recoverySales: number;
   /** Structures owned, by role name. */
   structures: Record<string, number>;
   /** Observed threat mix, by class name, normalised. */
@@ -772,6 +774,12 @@ export class AiBrain {
    * "never tried" from "tried and could not pay".
    */
   private repairsOrdered = 0;
+  /** Sell commands issued to escape a proven stopped economy. */
+  private recoverySales = 0;
+  /** First tick the production oracle continuously offered a safe sale. */
+  private recoverySaleSeenTick = -1e9;
+  /** Last irreversible sale command, so one stale survey cannot burst. */
+  private recoverySaleIssuedTick = -1e9;
   /** Aim point scratch for the cluster scorer. Written, never retained. */
   private readonly aimOut = new Float64Array(2);
 
@@ -997,7 +1005,10 @@ export class AiBrain {
     // The economy layer runs one tick before the build layer: build decisions
     // consume `wantHarvesters` / `powerUrgent`, and a stale power reading is
     // exactly how an AI blacks itself out.
-    if (t % AI_CADENCE.economy === 1) this.economy(s, p);
+    if (t % AI_CADENCE.economy === 1) {
+      this.economy(s, p);
+      this.recoverEconomy(s);
+    }
     // Deployment runs BETWEEN economy and build, on the build clock. Economy is
     // what discovers `expandX` (the ore field a second yard would be for), and
     // build is what needs the yard this layer produces — so it belongs exactly
@@ -1037,6 +1048,39 @@ export class AiBrain {
     // `commanderAbility` runs after `squad`: firing a superweapon at the strike
     // group's position wants this tick's census, not the last one's.
     if (t % AI_CADENCE.build === 8) this.lateGame(s, p);
+  }
+
+  /**
+   * Sell ONE safe structure when the ordinary economy is provably recoverable
+   * only through the Sell tool.
+   *
+   * The oracle is the live ProductionService plus OreCrisis arithmetic. It
+   * returns no candidate for a genuinely stranded player (the shared rescue
+   * rule owns that case), for an income-funded recovery, or when selling would
+   * remove a prerequisite/factory required by the chosen route. This method
+   * contributes only human texture: reaction time, the shared APM budget and a
+   * delay between irreversible clicks. The actual sale is the player's own
+   * command and remains subject to the production service's lockout/refund.
+   */
+  private recoverEconomy(s: SimContext): void {
+    const target = (this.oracle?.recoverySale?.(this.player as number) ?? 0) as EntityId;
+    if (target === NONE) {
+      this.recoverySaleSeenTick = -1e9;
+      return;
+    }
+    if (this.recoverySaleSeenTick < 0) this.recoverySaleSeenTick = s.tick;
+
+    const delay = Math.round(AI_RECOVERY.sellDelaySeconds * SIM_HZ) + this.diff.reactionTicks;
+    if (s.tick - this.recoverySaleSeenTick < delay) return;
+    const interval = Math.round(AI_RECOVERY.sellIntervalSeconds * SIM_HZ);
+    if (s.tick - this.recoverySaleIssuedTick < interval) return;
+    if (!this.spend()) return;
+
+    this.commands.issueSell(this.player, target);
+    this.recoverySaleIssuedTick = s.tick;
+    this.recoverySales++;
+    this.buildGoal = 'selling a structure to restart ore income';
+    this.blocked = '';
   }
 
   /* ======================================================================
@@ -5962,6 +6006,8 @@ export class AiBrain {
    * structure list records that it ever happened.
    */
   get repairOrderCount(): number { return this.repairsOrdered; }
+  /** Buildings sold through the same recovery route the HUD teaches humans. */
+  get recoverySaleCount(): number { return this.recoverySales; }
   /**
    * Build passes that held a price back for a saving target instead of
    * converting the bank into whatever was cheap. See `consider`.
@@ -6084,6 +6130,7 @@ export class AiBrain {
       upgradesBought: this.upgradesRequested,
       powersBought: this.powersBought,
       repairsOrdered: this.repairsOrdered,
+      recoverySales: this.recoverySales,
       structures,
       threat,
       waveThreshold: this.waveThreshold(),

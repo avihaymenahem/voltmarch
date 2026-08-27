@@ -240,6 +240,17 @@ describe('the credits describe the product that actually ships', () => {
     ).toBe(false);
   });
 
+  it('declares the authored skirmish preview terrain wherever shipped asset provenance is recorded', () => {
+    const previews = publicAssets().filter((file) => /^maps\/previews\/.*\.webp$/i.test(file));
+    if (previews.length === 0) return;
+    expect(allText, 'the in-game credits omit the authored skirmish preview terrain')
+      .toMatch(/skirmish map preview terrain.*ImageGen/i);
+    expect(rootText('README.md'), 'README.md omits the authored skirmish preview terrain')
+      .toMatch(/skirmish cards use original ImageGen-authored terrain layers/i);
+    expect(rootText('CLAUDE.md'), 'CLAUDE.md omits the authored skirmish preview terrain')
+      .toMatch(/Skirmish battlefield preview terrain.*ImageGen-authored/is);
+  });
+
   it('THE GENERAL GUARD: every absolute "no X anywhere" claim is checked or absent', () => {
     // Absolute claims are the ones that rot: the product changes and the
     // sentence does not. If someone adds a new one they have to come here and
@@ -260,7 +271,7 @@ describe('the credits describe the product that actually ships', () => {
   it('ships no undeclared binary asset from public/', () => {
     // Public asset families are declared. Imported world assets are bundled from
     // `src/assets/` and checked independently above.
-    // `fonts/`, `brand/` and `audio/`
+    // `fonts/`, `brand/`, `audio/`, `campaign/` and `maps/previews/`
     // are the DECLARED exceptions — named in the credits, README.md and
     // CLAUDE.md. Anything appearing elsewhere in public/ is a new undeclared
     // asset and fails here rather than silently making three documents wrong.
@@ -273,7 +284,7 @@ describe('the credits describe the product that actually ships', () => {
     const BANNED = /\.(gltf|glb|fbx|obj|dae|png|jpe?g|webp|ktx2?|dds|tga|mp3|ogg|wav|m4a)$/i;
     // CAMPAIGN joined in the gold-master vertical slice. These are interface
     // portraits, named in credits and provenance, never world textures.
-    const DECLARED = /^(brand|fonts|audio|campaign)\//;
+    const DECLARED = /^(brand|fonts|audio|campaign|maps\/previews)\//;
     const offenders = publicAssets().filter((f) => BANNED.test(f) && !DECLARED.test(f));
     expect(
       offenders,

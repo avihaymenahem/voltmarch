@@ -243,7 +243,7 @@ export function applySettings(
     configureRender({
       camera: {
         fov: settings.graphics.fov,
-        minDistance: settings.graphics.minZoom,
+        gameplayMinDistance: settings.graphics.minZoom,
         maxDistance: settings.graphics.maxZoom,
       },
     });
@@ -1777,7 +1777,7 @@ export class SettingsScreen implements Screen {
     cam.appendChild(row(
       'Closest Zoom',
       slider({
-        min: 12, max: 60, step: 1, value: g.minZoom,
+        min: 36, max: 60, step: 1, value: g.minZoom,
         format: (v) => `${Math.round(v)} m`,
         onChange: (v) => set({ minZoom: v }),
       }),

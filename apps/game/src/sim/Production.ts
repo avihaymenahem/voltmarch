@@ -3198,8 +3198,9 @@ export class ProductionService implements QueueHooks {
     // -an-MCV-for play.
     //
     // It is enforced HERE, in the sim, so the AI is bound by the identical rule
-    // through the identical `channels.command` path. (It never sells today; if
-    // it learns to, it cannot learn to sell itself into a coma.)
+    // through the identical `channels.command` path. Its ore-crisis recovery
+    // does sell now, and this is what keeps that doctrine from selling itself
+    // into a coma.
     if (this.sellWouldStrand(p, i)) {
       this.refuseSell(p, entry?.name ?? 'that structure');
       return;

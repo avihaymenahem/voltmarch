@@ -373,16 +373,16 @@ beforeEach(() => {
  * ========================================================================== */
 
 /** One more row plus the gap that would precede it, in design units. */
-const GAP_AND_ROW_UNITS = 36;
+const GAP_AND_ROW_UNITS = 49;
 
 describe('frame budget arithmetic', () => {
   it('reproduces every reading quoted in the Objectives.ts header', () => {
     expect(objectivesPanelHeightUnits('summary', 0)).toBe(0);
     expect(objectivesPanelHeightUnits('collapsed', 1)).toBe(34);
-    expect(objectivesPanelHeightUnits('summary', 1)).toBe(70);
-    expect(objectivesPanelHeightUnits('summary', 2)).toBe(106);
-    expect(objectivesPanelHeightUnits('summary', 3)).toBe(142);
-    expect(objectivesPanelHeightUnits('expanded', 6)).toBe(250);
+    expect(objectivesPanelHeightUnits('summary', 1)).toBe(83);
+    expect(objectivesPanelHeightUnits('summary', 2)).toBe(132);
+    expect(objectivesPanelHeightUnits('summary', 3)).toBe(181);
+    expect(objectivesPanelHeightUnits('expanded', 6)).toBe(328);
   });
 
   it('turns those heights into the quoted frame shares', () => {
@@ -408,8 +408,8 @@ describe('frame budget arithmetic', () => {
     // more) rather than a height frozen from a superseded layout.
     const before = objectivesPanelHeightUnits('summary', MAX_VISIBLE_OBJECTIVES);
     const appendedOverflowWouldBe = before + GAP_AND_ROW_UNITS;
-    expect(before).toBe(142);
-    expect(appendedOverflowWouldBe).toBe(178);
+    expect(before).toBe(181);
+    expect(appendedOverflowWouldBe).toBe(230);
     expect(objectivesFrameShareOf(appendedOverflowWouldBe, 1280, 720)).toBeGreaterThan(
       objectivesFrameShareOf(before, 1280, 720),
     );
@@ -471,6 +471,21 @@ describe('fold persistence', () => {
  * ========================================================================== */
 
 describe('seeing all objectives', () => {
+  it('labels and represents main, side, and global work in the summary', () => {
+    const mainA = { ...objective('main-a'), objectiveTier: 'main' as const };
+    const mainB = { ...objective('main-b'), objectiveTier: 'main' as const };
+    const side = { ...objective('side'), objectiveTier: 'side' as const };
+    const global = { ...objective('global'), scope: 'profile' as const };
+    const h = mountPanel([mainA, mainB, side, global]);
+    const rows = allByClass(h.panel.root as unknown as StubElement, 'vm-obj')
+      .filter((row) => !row.hidden);
+
+    expect(visibleTitles(h.panel)).toEqual(['Title main-a', 'Title side', 'Title global']);
+    expect(rows.map((row) => byClass(row, 'vm-obj-tier')?.textContent))
+      .toEqual(['main', 'side', 'global']);
+    expect(rows.map((row) => row.dataset.tier)).toEqual(['main', 'side', 'global']);
+  });
+
   it('shows three objectives and a "+2" chip, not two and a dead line', () => {
     const h = mountPanel([1, 2, 3, 4, 5].map((n) => objective(`m${n}`)));
     expect(visibleTitles(h.panel)).toEqual(['Title m1', 'Title m2', 'Title m3']);
@@ -587,8 +602,8 @@ describe('seeing all objectives', () => {
     headToggle(h.panel).click();
     const collapsed = h.panel.objectivesFrameShareModelled(1280, 720);
 
-    expect(Math.round(summary * 10000) / 100).toBe(2.43);
-    expect(Math.round(expanded * 10000) / 100).toBe(4.29);
+    expect(Math.round(summary * 10000) / 100).toBe(3.1);
+    expect(Math.round(expanded * 10000) / 100).toBe(5.62);
     expect(Math.round(collapsed * 10000) / 100).toBe(0.58);
 
     // The budget claim, stated as something this file can actually own.
@@ -610,8 +625,10 @@ describe('seeing all objectives', () => {
     // The panel was 4u of padding with 2u gaps throughout and a row height fixed
     // (its own comment said so) "so three rows are exactly the height the budget
     // says they are" — the budget was setting the typography, which is backwards.
-    // Padding is now 9u, gaps 5u, rows 19u+desc, and the summary fold costs
-    // 2.43% (the expanded fold, all six, is 4.29%).
+    // Padding is now 9u, gaps 5u, and each row has separate metadata and title
+    // lanes plus its description. The summary fold costs 3.10% (the expanded
+    // fold, all six, is 5.62%). The extra lane is what prevents MAIN / SIDE /
+    // GLOBAL and a long progress value from crushing the title into a sliver.
     //
     // The budget's AUTHORITY also lapsed between the two raises: §38's 12-16%
     // band derives from the RA3 reference frames, and the user retired that
@@ -619,7 +636,7 @@ describe('seeing all objectives', () => {
     // refs"). A ceiling inherited from a target nobody aims at should not be
     // deciding whether a player can read their objectives.
     //
-    // It stays an assertion rather than a deletion — 2.60 leaves no room for a
+    // It stays an assertion rather than a deletion — 3.25 leaves no room for a
     // silent third increase, and a real one should arrive with a sentence like
     // this attached.
     //
@@ -638,7 +655,7 @@ describe('seeing all objectives', () => {
     // STATUS dock measures ~47% empty and duplicates five stats that already
     // appear in the top strip. Reclaiming that is worth several times what
     // this line costs.
-    expect(summary * 100).toBeLessThan(2.6);
+    expect(summary * 100).toBeLessThan(3.25);
     // Opening the list is a real cost, not a rounding difference — that is why
     // it is user-invoked and transient rather than the default.
     expect((expanded - summary) * 100).toBeGreaterThan(0.5);

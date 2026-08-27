@@ -172,10 +172,13 @@ The tactics strip adds four formation diagrams whenever at least two mobile unit
 **Line**, **Rectangle**, **V**, and **Triangle**. Clicking one immediately arranges the group around
 its current centre. Later group moves preserve the resulting shape; **Scatter** deliberately breaks it.
 
-### Objectives (top right) and toasts (top left)
+### Objectives (top left) and toasts
 
-The objectives panel lists optional side goals — *Ore Quota*, *Draw Blood*, *Field Promotion* and
-so on — with progress bars. They are not win conditions. They feed progression.
+The objectives panel mixes three clearly labelled kinds of work: **MAIN** match priorities,
+optional **SIDE** challenges, and long-running **GLOBAL** Service Record goals. Match objectives can
+shape the current battle; global goals continue across games. Drag the panel's lower edge to choose
+how much of the board stays visible—the height is remembered on this device, and overflow scrolls
+without squeezing or overlapping rows.
 
 Toasts carry battlefield alerts and repeat events merge into one colour-coded chip rather than
 stacking up. Spoken EVA and unit responses also have a dedicated bottom-centre subtitle strip when

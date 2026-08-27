@@ -51,7 +51,8 @@ import { setGameContext } from '../src/game/context';
 import type { GameContext } from '../src/game/Bootstrap';
 
 import {
-  OreCrisisState, makeOreCrisisSurvey, refineryEntryFor, refundOf, surveyOreCrisis,
+  OreCrisisState, makeOreCrisisSurvey, oreCrisisSaleCandidate, refineryEntryFor, refundOf,
+  surveyOreCrisis,
 } from '../src/sim/OreCrisis';
 import crisisSystem, {
   CRISIS_SURVEY_INTERVAL, RESCUE_DELAY_TICKS, localCrisis, rescuesGranted,
@@ -386,6 +387,63 @@ describe('surveyOreCrisis', () => {
     // Proving ground 1000 + radar 500 + barracks 250 + power 150 = 1900 >= 1400.
     expect(s.raisableForHarvester).toBeGreaterThanOrEqual(s.harvesterCost);
     expect(s.state).toBe(OreCrisisState.SellOut);
+  });
+
+  it('names one conservative sale at a time and preserves the recovery route', async () => {
+    const rig = await makeRig();
+    building(rig, 'conyard', 40, 40);
+    building(rig, 'powerPlant', 52, 40);
+    building(rig, 'refinery', 64, 40);
+    building(rig, 'warFactory', 76, 40);
+    building(rig, 'battleLab', 88, 40);
+    building(rig, 'radar', 100, 40);
+    building(rig, 'barracks', 112, 40);
+    killHarvesters(rig);
+    rig.world.player(P0).credits = 0;
+    step(rig, 1);
+
+    const survey = makeOreCrisisSurvey();
+    const first = oreCrisisSaleCandidate(rig.world, rig.production, P0, survey);
+    expect(rig.production.entryOf(first)?.key).toBe('battleLab');
+    // The 1000-credit refund does not quite buy the 1400-credit Allied miner,
+    // so the planner must observe this sale before naming another one.
+    rig.production.sell(P0, first);
+    step(rig, 1);
+    expect(rig.world.player(P0).credits).toBe(1000);
+
+    const second = oreCrisisSaleCandidate(rig.world, rig.production, P0, survey);
+    expect(rig.production.entryOf(second)?.key).toBe('radar');
+    rig.production.sell(P0, second);
+    step(rig, 1);
+    expect(rig.world.player(P0).credits).toBeGreaterThanOrEqual(survey.harvesterCost);
+    expect(surveyOreCrisis(rig.world, rig.production, P0, survey).state)
+      .toBe(OreCrisisState.None);
+
+    const survivors: string[] = [];
+    const st = rig.world.store;
+    const list = st.byKind[EntityKind.Building];
+    for (let a = 0; a < st.byKindCount[EntityKind.Building]; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (P0 as number)) continue;
+      const key = rig.production.entryOf(st.handleOf(i))?.key;
+      if (key !== undefined) survivors.push(key);
+    }
+    expect(survivors).toEqual(expect.arrayContaining(['conyard', 'refinery', 'warFactory']));
+  });
+
+  it('offers no sale when the position is genuinely stranded', async () => {
+    const rig = await makeRig();
+    building(rig, 'conyard', 40, 40);
+    building(rig, 'powerPlant', 52, 40);
+    building(rig, 'refinery', 64, 40);
+    killHarvesters(rig);
+    rig.world.player(P0).credits = 0;
+    step(rig, 1);
+
+    const survey = makeOreCrisisSurvey();
+    expect(surveyOreCrisis(rig.world, rig.production, P0, survey).state)
+      .toBe(OreCrisisState.Stranded);
+    expect(oreCrisisSaleCandidate(rig.world, rig.production, P0, survey)).toBe(0);
   });
 
   it('a queued harvester ends the crisis — income is already on its way', async () => {

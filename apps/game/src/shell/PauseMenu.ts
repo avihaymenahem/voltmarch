@@ -60,7 +60,7 @@ import { campaignBriefing, campaignTheme } from './CampaignPresentation';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
 import { desktopBridge } from '../platform/desktop';
 import { campaignObjectiveView } from '../ui/objectives.system';
-import { readProgression, type ActiveObjective } from '../ui/Objectives';
+import { objectiveDisplayTier, readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
   button,
   el,
@@ -374,7 +374,8 @@ export class PauseMenuScreen implements Screen {
     // case of a very short window and a very long mission chain.
     for (const o of active) {
       const row = el('div', `vm-pause-obj-row${o.progress.complete ? ' is-done' : ''}`);
-      const name = el('span', 'vm-pause-obj-name', o.title);
+      const tier = objectiveDisplayTier(o);
+      const name = el('span', 'vm-pause-obj-name', `${tier.toUpperCase()} · ${o.title}`);
       name.title = o.description;
       row.appendChild(name);
       const reward = objectiveCreditReward(o);

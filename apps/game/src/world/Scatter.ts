@@ -107,8 +107,12 @@ import {
 import { clamp, clamp01, DEG2RAD, fbm2, Rng, smoothstep, TAU } from '../core/math';
 import { SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
-import { isCarriageway } from './Roads';
+import { getRoads, isCarriageway, type RoadFurnitureRun } from './Roads';
 import { DecalKind, type DecalField } from './Decals';
+import { isFaultyLampAt } from './prop-life';
+import {
+  roadsideLayoutFor, roadsideRunAllows, type RoadsideLayout,
+} from './roadside-layout';
 import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
   type PropDef, type PropFamily, type PropGeometry, type PropMaterialSet, type PropPalette,
@@ -437,6 +441,7 @@ export interface GroundStoryStats {
   readonly service: number;
   readonly civic: number;
   readonly vehicle: number;
+  readonly lighting: number;
 }
 
 /** A contextual ground-story anchor without importing the scenario module. */
@@ -455,6 +460,7 @@ const VEHICLE_STORY_KEYS: ReadonlySet<string> = new Set([
 const SERVICE_STORY_KEYS: ReadonlySet<string> = new Set([
   'crateStack', 'containerStack', 'barrel', 'haystack',
 ]);
+const LAMP_STORY_KEYS: ReadonlySet<string> = new Set(['streetLamp', 'streetLampTwin']);
 /** One authored beat in the local frame of an MCV opening. */
 interface OpeningBeat {
   /** Metres sideways from the route toward map centre. */
@@ -822,7 +828,7 @@ export class Scatter {
   groundStoryMarks = 0;
   private storiesPainted = false;
   private storyStats: GroundStoryStats = {
-    total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0,
+    total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0, lighting: 0,
   };
   visibleInstances = 0;
   visibleChunks = 0;
@@ -1093,84 +1099,40 @@ export class Scatter {
     return placed;
   }
 
-  /**
-   * Trace the kerb lines of the map: cells whose surface is man-made and which
-   * touch a soft cell. Returns polylines of world positions in metres.
-   *
-   * This is how street furniture finds roads without a road module existing.
-   * Terrain paints Concrete/Paving into splat slots 4 and 5 and a road module
-   * will stamp more of it later; either way the boundary of the hard surface is
-   * the kerb, and that is where lamps, benches and railings live.
-   */
-  private traceKerbs(rng: Rng): number[][] {
-    const t = this.terrain;
-    const isHard = (cx: number, cz: number): boolean => {
-      if (cx < 0 || cz < 0 || cx >= MAP_CELLS || cz >= MAP_CELLS) return false;
-      const s = t.surface[cz * MAP_CELLS + cx];
-      return s === SurfaceId.Concrete || s === SurfaceId.Paving;
-    };
-    const kerb = new Uint8Array(MAP_CELL_COUNT);
-    const list: number[] = [];
-    for (let cz = 1; cz < MAP_CELLS - 1; cz++) {
-      for (let cx = 1; cx < MAP_CELLS - 1; cx++) {
-        if (!isHard(cx, cz)) continue;
-        if (isHard(cx + 1, cz) && isHard(cx - 1, cz) && isHard(cx, cz + 1) && isHard(cx, cz - 1)) continue;
-        kerb[cz * MAP_CELLS + cx] = 1;
-        list.push(cz * MAP_CELLS + cx);
-      }
-    }
-    if (list.length === 0) return [];
-
-    // Greedy chain following: from an unvisited kerb cell, always step to the
-    // nearest unvisited 8-neighbour. Good enough for a kerb, which is a thin
-    // 1-cell ring by construction.
-    const visited = new Uint8Array(MAP_CELL_COUNT);
-    const lines: number[][] = [];
-    rng.shuffle(list);
-    for (let s = 0; s < list.length; s++) {
-      const start = list[s];
-      if (visited[start] !== 0) continue;
-      const line: number[] = [];
-      let cur = start;
-      while (cur >= 0 && visited[cur] === 0) {
-        visited[cur] = 1;
-        const cx = cur % MAP_CELLS, cz = (cur / MAP_CELLS) | 0;
-        line.push((cx + 0.5) * CELL, (cz + 0.5) * CELL);
-        let next = -1;
-        for (let dz = -1; dz <= 1 && next < 0; dz++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dz === 0) continue;
-            const nx = cx + dx, nz = cz + dz;
-            if (nx < 0 || nz < 0 || nx >= MAP_CELLS || nz >= MAP_CELLS) continue;
-            const ni = nz * MAP_CELLS + nx;
-            if (kerb[ni] !== 0 && visited[ni] === 0) { next = ni; break; }
-          }
-        }
-        cur = next;
-      }
-      // A 3-cell stub is a corner artefact, not a street.
-      if (line.length >= 8) lines.push(line);
-    }
-    return lines;
+  /** Real kerb geometry only; concrete pads and building yards are not roads. */
+  private traceKerbs(): readonly RoadFurnitureRun[] {
+    return getRoads()?.streetFurnitureRuns() ?? [];
   }
 
   /**
-   * Lay a type along a polyline at a regular pitch, offset to the soft side.
-   * Bible §6.3/§6.5: street rows at 8-12 m pitch, 1.5-2.5 m off the kerb,
-   * +/-0.4 m jitter. The REGULARITY is the point — it is what separates a
-   * street from a meadow.
+   * Lay a type along a polyline, offset to the soft side. Synthetic wilderness
+   * lines keep the old 8-12 m utility rhythm; authored road runs receive the
+   * much sparser story policy from roadside-layout.ts. The latter deliberately
+   * contains long gaps so the street does not read as an asset catalogue.
    */
   private placeAlongLine(
     defIndex: number, def: PropDef, line: readonly number[], rng: Rng, budget: number,
+    outward: readonly number[] | null = null, layout: RoadsideLayout | null = null,
   ): number {
-    const pitch = def.spacing > SCATTER_CLUSTER.streetPitchMax
-      ? def.spacing
-      : rng.range(SCATTER_CLUSTER.streetPitchMin, SCATTER_CLUSTER.streetPitchMax);
+    const roads = getRoads();
+    const pitch = layout !== null
+      ? rng.range(layout.pitchMin, layout.pitchMax)
+      : def.spacing > SCATTER_CLUSTER.streetPitchMax
+        ? def.spacing
+        : rng.range(SCATTER_CLUSTER.streetPitchMin, SCATTER_CLUSTER.streetPitchMax);
     const offset = rng.range(SCATTER_CLUSTER.kerbOffsetMin, SCATTER_CLUSTER.kerbOffsetMax);
     const side = rng.sign();
     let placed = 0;
-    let travelled = rng.range(0, pitch);
-    for (let i = 0; i + 3 < line.length && placed < budget; i += 2) {
+    const cap = Math.min(budget, layout?.maxPerRun ?? budget);
+    const endClearance = layout?.endClearance ?? 0;
+    let totalLength = 0;
+    for (let i = 0; i + 3 < line.length; i += 2) {
+      totalLength += Math.hypot(line[i + 2] - line[i], line[i + 3] - line[i + 1]);
+    }
+    if (totalLength <= endClearance * 2 + 1) return 0;
+    let nextDistance = endClearance + rng.range(0, pitch);
+    let distanceAtSegment = 0;
+    for (let i = 0; i + 3 < line.length && placed < cap; i += 2) {
       const ax = line[i], az = line[i + 1], bx = line[i + 2], bz = line[i + 3];
       const dx = bx - ax, dz = bz - az;
       const seg = Math.hypot(dx, dz);
@@ -1180,30 +1142,51 @@ export class Scatter {
       // pavement, a tree row wants the verge. Probe both and take whichever
       // side the type's surface mask actually accepts; only fall back to the
       // random side when neither or both are legal.
-      let px = -uz * side, pz = ux * side;
-      const mx = (ax + bx) * 0.5, mz = (az + bz) * 0.5;
-      const sA = this.terrain.surfaceAt(mx + px * offset, mz + pz * offset);
-      const sB = this.terrain.surfaceAt(mx - px * offset, mz - pz * offset);
-      const okA = (def.surfaces & (1 << sA)) !== 0;
-      const okB = (def.surfaces & (1 << sB)) !== 0;
-      if (!okA && okB) { px = -px; pz = -pz; }
+      let px: number, pz: number;
+      if (outward !== null) {
+        px = outward[i] + outward[i + 2];
+        pz = outward[i + 1] + outward[i + 3];
+        const pl = Math.hypot(px, pz) || 1;
+        px /= pl; pz /= pl;
+      } else {
+        px = -uz * side; pz = ux * side;
+        const mx = (ax + bx) * 0.5, mz = (az + bz) * 0.5;
+        const sA = this.terrain.surfaceAt(mx + px * offset, mz + pz * offset);
+        const sB = this.terrain.surfaceAt(mx - px * offset, mz - pz * offset);
+        const okA = (def.surfaces & (1 << sA)) !== 0;
+        const okB = (def.surfaces & (1 << sB)) !== 0;
+        if (!okA && okB) { px = -px; pz = -pz; }
+      }
 
-      let along = 0;
-      while (along < seg && placed < budget) {
-        const step = pitch - travelled;
-        if (along + step > seg) { travelled += seg - along; break; }
-        along += step;
-        travelled = 0;
-        const x = ax + ux * along + px * offset + rng.range(-1, 1) * SCATTER_CLUSTER.streetJitter;
-        const z = az + uz * along + pz * offset + rng.range(-1, 1) * SCATTER_CLUSTER.streetJitter;
+      while (nextDistance <= distanceAtSegment + seg
+        && nextDistance <= totalLength - endClearance && placed < cap) {
+        const along = nextDistance - distanceAtSegment;
+        nextDistance += pitch * rng.range(0.88, 1.14);
+        // Road-authored runs already carry the exact across-road normal. Keep
+        // jitter along the kerb so a lamp can never wander off its sidewalk.
+        const jitter = rng.range(-1, 1) * SCATTER_CLUSTER.streetJitter;
+        const x = ax + ux * (along + jitter) + px * offset;
+        const z = az + uz * (along + jitter) + pz * offset;
         if (!this.legal(def, x, z)) continue;
-        // Street furniture faces the road: yaw is overwritten after placement.
+        // A single-arm lamp extends along local +X. Point that arm INWARD over
+        // the carriageway; using the tangent here was the visible 90/180-degree
+        // inversion on curved sidewalks.
         if (this.place(defIndex, def, x, z, rng)) {
           const p = this.placements[this.placements.length - 1];
-          p.yaw = Math.atan2(ux, uz) + rng.range(-0.08, 0.08);
+          if (def.sidewalkOnly === true && outward !== null) {
+            // Aim at the live centreline rather than trusting a curve's
+            // averaged kerb normal. At a junction corner the latter can be
+            // 20-30 degrees off even though it points to the correct side.
+            p.yaw = roads?.nearestRoadPoint(p.x, p.z, 18, ROAD_POINT_SCRATCH) === true
+              ? Math.atan2(p.z - ROAD_POINT_SCRATCH[1], ROAD_POINT_SCRATCH[0] - p.x)
+              : Math.atan2(pz, -px);
+          } else {
+            p.yaw = Math.atan2(ux, uz) + rng.range(-0.08, 0.08);
+          }
           placed++;
         }
       }
+      distanceAtSegment += seg;
     }
     return placed;
   }
@@ -1270,7 +1253,7 @@ export class Scatter {
     this.groundStoryMarks = 0;
     this.storiesPainted = false;
     this.storyStats = {
-      total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0,
+      total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0, lighting: 0,
     };
     this.clearedProps = 0;
     this.lastClearScanned = 0;
@@ -1360,7 +1343,7 @@ export class Scatter {
     const grassCap = Math.round(budget * SCATTER_DENSITY.maxGrassFraction);
     let grassPlaced = 0;
 
-    const kerbs = this.traceKerbs(rng.fork());
+    const kerbs = this.traceKerbs();
     // A low-frequency habitat field so 'field' props are patchy, not uniform.
     const habitatSeed = (this.opts.seed ^ 0x51ed) >>> 0;
 
@@ -1408,12 +1391,20 @@ export class Scatter {
         case 'street': {
           if (kerbs.length > 0) {
             for (let k = 0; k < kerbs.length && placed < share; k++) {
-              placed += this.placeAlongLine(type.defIndex, def, kerbs[k], typeRng, share - placed);
+              const layout = roadsideLayoutFor(def.key);
+              if (layout !== null && !roadsideRunAllows(this.opts.seed, def.key, k)) continue;
+              placed += this.placeAlongLine(
+                type.defIndex, def, kerbs[k].points, typeRng, share - placed, kerbs[k].outward,
+                layout,
+              );
             }
           }
-          // Wilderness, or the kerbs ran out: lay synthetic runs.
-          for (let a = 0; a < 24 && placed < share; a++) {
-            placed += this.placeSyntheticLine(type.defIndex, def, typeRng, share - placed);
+          // A lamp is sidewalk infrastructure, never a decorative pole in a
+          // meadow. Fences and telegraph lines keep their wilderness fallback.
+          if (kerbs.length === 0 && def.sidewalkOnly !== true) {
+            for (let a = 0; a < 24 && placed < share; a++) {
+              placed += this.placeSyntheticLine(type.defIndex, def, typeRng, share - placed);
+            }
           }
           break;
         }
@@ -1865,7 +1856,9 @@ export class Scatter {
     this.storiesPainted = true;
 
     const centres: number[] = [];
-    const stats = { total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0 };
+    const stats = {
+      total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0, lighting: 0,
+    };
     const biome = this.opts.biome;
 
     const legal = (x: number, z: number, roadOkay = false): boolean => {
@@ -1928,6 +1921,25 @@ export class Scatter {
           add('vehicle', 2);
         }
 
+      }
+    }
+
+    /* Street lighting is a relationship, not another stain. The prop shader
+     * owns the bright head; this pooled ellipse is the light arriving on the
+     * paving. Faulty lamps deliberately get no permanent pool, so their visual
+     * story remains "bad ballast" instead of "shader blinking over a lit disc". */
+    {
+      const rng = new Rng((this.opts.seed ^ 0x51a77e19) >>> 0);
+      let anchors = 0;
+      for (let i = 0; i < this.placements.length && anchors < 24 && hasRoom(); i++) {
+        const p = this.placements[i];
+        const def = PROP_DEFS[p.defIndex];
+        if (!p.alive || def === undefined || !LAMP_STORY_KEYS.has(def.key)) continue;
+        if (isFaultyLampAt(p.x, p.z) || rng.next() > 0.86) continue;
+        if (!legal(p.x, p.z, true) || !reserve(p.x, p.z, 6.5)) continue;
+        decals.lightPool(p.x, p.z, 3.6 * p.scale, rng.range(0.18, 0.25));
+        add('lighting');
+        anchors++;
       }
     }
 
@@ -3276,6 +3288,8 @@ const CLUMP_BUCKET_N = Math.max(1, Math.ceil(MAP_SIZE / CLUMP_BUCKET_METRES));
 const EMPTY_F32 = new Float32Array(0);
 const EMPTY_I32 = new Int32Array(0);
 const NORMAL_SCRATCH = new Float32Array(3);
+/** Nearest road point for sidewalk-fixture orientation. Build-time only. */
+const ROAD_POINT_SCRATCH = new Float32Array(4);
 const JITTER_OUT = new Float32Array(3);
 
 function chunkOf(x: number, z: number): number {

@@ -86,9 +86,9 @@ import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, If, attribute, cameraViewMatrix, clamp, cross, dot, float, floor, fract, int, max, min, mix,
+  Fn, If, attribute, cameraViewMatrix, clamp, cos, cross, dot, float, floor, fract, int, max, min, mix,
   mod, normalize, positionWorld, normalWorldGeometry, pow, screenCoordinate, smoothstep, step,
-  texture, uniform, uniformArray, varying, vec2, vec3, vec4,
+  sin, texture, uniform, uniformArray, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SURFACE_COUNT, SurfaceId, type BiomeDef } from './Biomes';
 import {
@@ -542,6 +542,69 @@ export function createTerrainNodeMaterials(
     return mix(lit, U.uMacroTint, clamp(float(0.55).sub(m.g).mul(U.uMacroStrength).mul(1.5), 0.0, 1.0));
   };
 
+  /**
+   * Continuous terrain-space ageing, byte-for-byte in intent with
+   * `TerrainMaterial.raGroundAge`: directional dust, sparse crooked crack
+   * segments, and meso-scale grit. There is no radial mask and no added sampler.
+   */
+  const raGroundAge = (wxz: Vec2N, pixelM: FloatN): Vec3N => {
+    const broad = raValue2(wxz.div(18.0).add(vec2(13.7, 4.2))).toVar('raAgeBroad');
+    const meso = raValue2(wxz.div(5.5).add(vec2(31.0, 17.0))).toVar('raAgeMeso');
+    const dust = smoothstep(0.36, 0.76, broad).mul(float(0.42).add(meso.mul(0.58)))
+      .toVar('raAgeDust');
+
+    const sweepA = fract(wxz.x.add(wxz.y.mul(0.34)).div(11.0)
+      .add(broad.sub(0.5).mul(0.82))).sub(0.5).abs().toVar('raAgeSweepA');
+    const sweepB = fract(wxz.y.sub(wxz.x.mul(0.21)).div(17.0)
+      .add(meso.sub(0.5).mul(0.55))).sub(0.5).abs().toVar('raAgeSweepB');
+    const sweep = smoothstep(0.06, 0.38, sweepA).oneMinus().mul(0.72)
+      .add(smoothstep(0.05, 0.32, sweepB).oneMinus().mul(0.28))
+      .toVar('raAgeSweep');
+    dust.assign(clamp(dust.mul(0.84).add(sweep.mul(float(0.06).add(meso.mul(0.10)))), 0.0, 1.0));
+
+    const crackCellM = 4.2;
+    const cell = floor(wxz.div(crackCellM)).toVar('raAgeCell');
+    const local = fract(wxz.div(crackCellM)).sub(0.5).toVar('raAgeLocal');
+    const h = raHash21(cell.add(vec2(7.0, 19.0))).toVar('raAgeHash');
+    const angle = h.mul(6.2831853).toVar('raAgeAngle');
+    const dir = vec2(cos(angle), sin(angle)).toVar('raAgeDir');
+    const side = vec2(dir.y.negate(), dir.x).toVar('raAgeSide');
+    const along = dot(local, dir).toVar('raAgeAlong');
+    const across = dot(local, side).add(sin(along.mul(17.0).add(h.mul(8.0))).mul(0.025))
+      .toVar('raAgeAcross');
+    // Coverage AA keeps one terrain-space crack stable. Multiplying the whole
+    // feature by a camera-distance factor made it pulse during pans.
+    const crackAA = clamp(pixelM.div(crackCellM).mul(0.75), 0.0015, 0.045)
+      .toVar('raAgeCrackAA');
+    const mainLine = smoothstep(float(0.008).sub(crackAA), float(0.008).add(crackAA),
+      across.abs()).oneMinus()
+      .mul(smoothstep(float(0.17).sub(crackAA), float(0.17).add(crackAA),
+        along.abs()).oneMinus()).toVar('raAgeMain');
+
+    const turn = step(0.5, h).mul(2.0).sub(1.0).mul(0.88).toVar('raAgeTurn');
+    const branchDir = vec2(cos(angle.add(turn)), sin(angle.add(turn))).toVar('raAgeBranchDir');
+    const branchSide = vec2(branchDir.y.negate(), branchDir.x).toVar('raAgeBranchSide');
+    const branchP = local.sub(dir.mul(0.04)).toVar('raAgeBranchP');
+    const branchAlong = dot(branchP, branchDir).toVar('raAgeBranchAlong');
+    const branchAcross = dot(branchP, branchSide).toVar('raAgeBranchAcross');
+    const branch = smoothstep(float(0.007).sub(crackAA), float(0.007).add(crackAA),
+      branchAcross.abs()).oneMinus()
+      .mul(smoothstep(float(0.115).sub(crackAA), float(0.115).add(crackAA),
+        branchAlong.abs()).oneMinus())
+      .mul(step(0.88, raHash21(cell.add(vec2(29.0, 3.0)))))
+      .toVar('raAgeBranch');
+    const crack = max(mainLine, branch)
+      .mul(step(0.87, raHash21(cell.add(vec2(2.0, 41.0)))))
+      .toVar('raAgeCrack');
+
+    const gritFine = raValue2(wxz.div(4.8).add(vec2(9.0, 37.0))).toVar('raAgeGritFine');
+    const gritWide = raValue2(vec2(wxz.y, wxz.x.negate()).div(8.5).add(vec2(23.0, 6.0)))
+      .toVar('raAgeGritWide');
+    const grit = smoothstep(0.40, 0.76, gritFine.mul(0.68).add(gritWide.mul(0.32)))
+      .mul(float(0.34).add(broad.mul(0.46))).toVar('raAgeGrit');
+    return vec3(dust, crack, grit);
+  };
+
   /* ----------------------------------------------------------------------
    * 4d. THE STRIATION BASIS — the ALU shared by the cliff's colour and its
    * normal. Returns `vec3( raHoriz, raBand, raSub )`.
@@ -581,6 +644,14 @@ export function createTerrainNodeMaterials(
    * -------------------------------------------------------------------- */
   const raSurface = Fn(() => {
     const raXZ = positionWorld.xz.toVar('raXZ');
+    // World metres covered by one fragment. This drives crack-edge coverage,
+    // never whole-feature opacity. Keep the derivatives outside the
+    // cliff branch: WGSL's uniformity rules are stricter than GLSL's undefined
+    // behaviour here, and both backends need the same stable result.
+    const raPixelM = max(
+      positionWorld.dFdx().xz.length(),
+      positionWorld.dFdy().xz.length(),
+    ).toVar('raPixelM');
     const raFace = raFaceNormal().toVar('raFaceS');
 
     const raCol = vec3(0.5).toVar('raCol');
@@ -707,12 +778,25 @@ export function createTerrainNodeMaterials(
        * a uniformity hazard in WGSL that we have no reason to take on.
        */
       const raW: FloatN[] = [raS0.r, raS0.g, raS0.b, raS0.a, raS1.r, raS1.g].map(
-        (w, i) => pow(max(w, 0.0), U.uSplatSharpen).toVar(`raW${i}`),
+        (w, i) => pow(max(w, 0.0), i < 4 ? U.uSplatSharpen.mul(0.58) : U.uSplatSharpen)
+          .toVar(`raW${i}`),
       );
 
       const raSum = raW[0].add(raW[1]).add(raW[2]).add(raW[3]).add(raW[4]).add(raW[5])
         .toVar('raSum');
       const raNorm = float(1.0).div(max(raSum, 1e-6)).toVar('raNorm');
+
+      const raDustable = clamp(
+        raW[0].mul(0.62).add(raW[1]).add(raW[2].mul(0.86))
+          .add(raW[3].mul(0.38)).add(raW[4].mul(0.24)).add(raW[5].mul(0.10))
+          .mul(raNorm),
+        0.0, 1.0,
+      ).toVar('raDustable');
+      const raCrackable = clamp(
+        raW[0].mul(0.38).add(raW[1]).add(raW[2].mul(0.82)).add(raW[3].mul(0.46))
+          .add(raW[4].mul(0.52)).add(raW[5].mul(0.18)).mul(raNorm),
+        0.0, 1.0,
+      ).toVar('raCrackable');
 
       const raAlbedo = vec3(0.0).toVar('raAlbedo');
       const raR = float(0.0).toVar('raR');
@@ -739,16 +823,24 @@ export function createTerrainNodeMaterials(
       // 2. Regional breakup.
       raAlbedo.assign(raMacro(raAlbedo, raXZ));
 
-      /*
-       * 3. Per-build-cell jitter, hard edged and un-smoothed on purpose, with a
-       *    3.5% tail of modestly darker cells (VISUAL_DNA L3). This quantised
-       *    variation is a signature of the series and reads as "authored tiles"
-       *    rather than "noise function".
-       */
-      const raCell = raHash21(floor(raXZ.div(U.uCellSize)).add(0.5)).toVar('raCell');
+      // 2b. Continuous material history. No decals, no extra draw and no
+      // sampler: only terrain-space ALU over the already blended surface.
+      const raAge = raGroundAge(raXZ, raPixelM).toVar('raAge');
+      const raDust = raAge.x.mul(raDustable).toVar('raDust');
+      const raCrack = raAge.y.mul(raCrackable).toVar('raCrack');
+      const raGrit = raAge.z.mul(max(raDustable, raCrackable.mul(0.6))).toVar('raGrit');
+      raAlbedo.mulAssign(float(1.0).add(raAge.x.sub(0.5).mul(0.11).mul(raDustable)));
+      raAlbedo.mulAssign(mix(vec3(1.0), vec3(0.84, 0.72, 0.58), raDust.mul(0.34)));
+      raAlbedo.mulAssign(float(1.0).sub(raCrack.mul(0.30)).sub(raGrit.mul(0.11)));
+      raR.assign(clamp(raR.add(raDust.mul(0.040)).add(raCrack.mul(0.075))
+        .add(raGrit.mul(0.030)), 0.55, 1.0));
+
+      // 3. Build-cell-scale variation without exposing the control grid.
+      const raCell = raValue2(raXZ.div(U.uCellSize).add(vec2(0.5))).toVar('raCell');
+      const raCellTail = smoothstep(0.88, 0.98, raCell).toVar('raCellTail');
       raAlbedo.mulAssign(float(1.0)
         .add(raCell.sub(0.5).mul(2.0).mul(U.uCellJitter))
-        .sub(step(0.965, raCell).mul(U.uCellJitter).mul(1.1)));
+        .sub(raCellTail.mul(U.uCellJitter).mul(0.45)));
 
       raCol.assign(raAlbedo);
       raRough.assign(raR);

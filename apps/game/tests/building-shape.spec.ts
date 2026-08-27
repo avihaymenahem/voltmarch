@@ -198,6 +198,21 @@ describe('every shipped structure clears its own boxiness band', () => {
   });
 });
 
+describe('every non-wall structure carries a visible emissive fixture layer', () => {
+  for (const b of BUILT) {
+    if ((b.list.cls ?? 'structure') === 'wall') continue;
+    it(`${b.army}/${b.list.key}`, () => {
+      const feature = b.model.body.getAttribute('aFeature');
+      let windows = 0;
+      for (let i = 0; i < feature.count; i++) {
+        if (Math.round(feature.getX(i)) === Feature.Window) windows++;
+      }
+      expect(windows, `${b.list.key} emissive vertices`).toBeGreaterThan(0);
+      expect(b.model.stats.emissiveFraction, `${b.list.key} emissive area`).toBeGreaterThan(0);
+    });
+  }
+});
+
 /* ==========================================================================
  * 3. THE BAKED OCCLUSION IS REAL
  * ========================================================================== */

@@ -58,6 +58,16 @@ profiles reduce the family from 52.14 to 40.90 MiB on disk, while conservative 8
 from 624 to 104 MiB. Each promoted file is individually smaller than its approved conventional source;
 the geometry-only LOD and shadow files continue sharing the already-resident LOD0 material.
 
+- **Conventional tank wreck family — integrated.** Meshy preview
+  `01a042f1-71dc-75b7-94d6-49de14380554` and PBR refine
+  `01a042fd-31ed-704b-b510-09f9aab15725` yield one 3,544-triangle neutral hulk.
+  The fused presentation pedestal was removed before vehicle-profile promotion.
+  Deferred Allied/Soviet light–heavy overrides fit the shared source to their
+  class envelope; support, naval, Meridian and Reclamation wrecks retain their
+  bespoke procedural silhouettes, and every imported override retains that
+  procedural load-failure path. WebGPU integration is live; final desktop
+  gameplay-scale review remains before promotion to `validated`.
+
 ## Soviet Union — 18 structures
 
 | Wave | Key | Asset | Route | Current state | Family plan |

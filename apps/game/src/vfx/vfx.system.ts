@@ -320,12 +320,16 @@ function flameJet(
     e.vx = ux * 11 * scale; e.vy = uy * 11 * scale + 1.2; e.vz = uz * 11 * scale;
     e.drag = 3.2;
     e.lifeMs = 320 + f * 260;
-    e.size0 = 0.55 * scale * (1 + f); e.size1 = 2.2 * scale * (1 + f);
-    e.sizeEase = 0.6;
-    // Radial fireball ramp: even a flame tongue keeps a white core.
-    e.ramp = VFX_RAMP.fireball; e.tA = 0; e.tB = VFX_EXPLOSION.billowRadialSpan; e.radial = 1;
-    e.tile = VFX_TILE.billow;
-    e.i0 = 3.6; e.i1 = 0.3;
+    e.size0 = 0.28 * scale * (1 + f * 0.8);
+    e.size1 = 0.65 * scale * (1 + f * 1.2);
+    e.sizeEase = 0.72;
+    e.aspect = 2.6;
+    // A projected teardrop along the velocity reads as a flame jet. The old
+    // radial billow made this seven expanding orange circles in a row.
+    e.ramp = VFX_RAMP.rocketFlame; e.tA = 0.02; e.tB = 0.92; e.radial = 0;
+    e.tile = VFX_TILE.kite;
+    e.alignVel = 1;
+    e.i0 = 2.8; e.i1 = 0.25;
     P.additive.emit(e);
   }
 }

@@ -880,9 +880,9 @@ export default layout({
      * hull an AI seat owns into `armyIds` and `regroupSquads` drives it to the
      * rally point on the next brain pass — measured on `soviets.02.common-standard`
      * at 116.6 m and 129.2 m off the post inside twenty seconds. A Spitpost
-     * cannot be re-tasked, `AiBrain` has no `issueSell`, and `rclSpitpost` draws
-     * no power, so the only thing that takes one off the derrick is the player
-     * shooting it.
+     * cannot be re-tasked, campaign doctrine suppresses generic recovery sales,
+     * and `rclSpitpost` draws no power, so only the player can take one off the
+     * derrick.
      */
     for (const [dx, dz] of POSTS) {
       const g = { x: RETAINER.x + dx, z: RETAINER.z + dz };

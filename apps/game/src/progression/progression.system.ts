@@ -165,7 +165,7 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
     },
 
     activeObjectives(): readonly ObjectiveEntry[] {
-      const ids = t.activeObjectiveIds();
+      const ids = [...t.activeObjectiveIds(), ...t.activeGlobalObjectiveIds()];
       const out: ObjectiveEntry[] = [];
       for (let i = 0; i < ids.length; i++) {
         const def = t.defOf(ids[i]);

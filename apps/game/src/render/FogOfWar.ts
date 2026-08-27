@@ -268,6 +268,20 @@ const SHROUD_TINT_FRAG = /* glsl */ `
   }
 `;
 
+/**
+ * Multiply overlays emit a FACTOR, not a colour. Under shroud their neutral
+ * value is therefore white (multiply by one), not the fog tint itself.
+ */
+const SHROUD_FACTOR_FRAG = /* glsl */ `
+  {
+    float vmV    = texture2D(uFogMask, vShroudUv).r;
+    float vmRem  = 1.0 - smoothstep(0.0, uFogParams.y, vmV);
+    float vmFog  = 1.0 - smoothstep(uFogParams.y, 1.0, vmV);
+    float vmA    = mix(uFogTint.w * vmFog, uFogDark.w, vmRem) * uFogAmount;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vmA);
+  }
+`;
+
 /** The shape `onBeforeCompile` is handed. Narrow on purpose. */
 export interface ShroudShaderHost {
   vertexShader: string;
@@ -330,6 +344,50 @@ varying vec2 vShroudUv;
 void main() {`,
     )
     .replace('#include <tonemapping_fragment>', `${SHROUD_TINT_FRAG}\n  #include <tonemapping_fragment>`);
+}
+
+/**
+ * Fade a multiply-blended ground overlay toward its no-op factor under fog.
+ *
+ * Using `applyShroudTint` here would be mathematically wrong: tinting a factor
+ * toward black and then multiplying the framebuffer by it makes fog patches
+ * darker. A lamp pool has the opposite failure and brightens through shroud.
+ * White is the one value that leaves the already-shrouded ground unchanged.
+ */
+export function applyShroudFactor(shader: ShroudShaderHost): void {
+  shader.uniforms.uFogMask = shroudUniforms.uFogMask;
+  shader.uniforms.uFogTint = shroudUniforms.uFogTint;
+  shader.uniforms.uFogDark = shroudUniforms.uFogDark;
+  shader.uniforms.uFogParams = shroudUniforms.uFogParams;
+  shader.uniforms.uFogAmount = shroudUniforms.uFogAmount;
+
+  shader.vertexShader = shader.vertexShader
+    .replace('void main() {', 'varying vec2 vShroudUv;\nvoid main() {')
+    .replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+  {
+    vec4 vmWp = vec4(transformed, 1.0);
+    #ifdef USE_INSTANCING
+      vmWp = instanceMatrix * vmWp;
+    #endif
+    vmWp = modelMatrix * vmWp;
+    vShroudUv = vmWp.xz * ${SHROUD_UV_SCALE.toFixed(10)};
+  }`,
+    );
+
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      'void main() {',
+      `uniform sampler2D uFogMask;
+uniform vec4 uFogTint;
+uniform vec4 uFogDark;
+uniform vec2 uFogParams;
+uniform float uFogAmount;
+varying vec2 vShroudUv;
+void main() {`,
+    )
+    .replace('#include <tonemapping_fragment>', `${SHROUD_FACTOR_FRAG}\n  #include <tonemapping_fragment>`);
 }
 
 /* ==========================================================================

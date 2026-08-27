@@ -66,7 +66,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { PROP_EMISSIVE_GAIN, PROP_MATERIAL, SCATTER_WIND } from '../core/config';
+import {
+  PROP_EMISSIVE_GAIN, PROP_LIGHT_ANIM, PROP_MATERIAL, SCATTER_WIND,
+} from '../core/config';
 import { clamp, clamp01, Rng, srgbToLinear, TAU } from '../core/math';
 import { linearColorTriple } from '../core/assets';
 import { applyShroudTint } from '../render/FogOfWar';
@@ -314,7 +316,10 @@ export class PropMesh {
     this.br = this.facetRgb[0]; this.bg = this.facetRgb[1]; this.bb = this.facetRgb[2];
   }
 
-  /** 0 = lit paint, 1 = full emissive. Bible R-T5: clean discs and rounded rects. */
+  /**
+   * 0..1 = steady emissive scalar; 2..5 are sparse animated fixture bands.
+   * Bible R-T5 still owns the shapes: clean discs and rounded rectangles only.
+   */
   emissive(e: number): this { this.emit = e; return this; }
 
   /**
@@ -1084,6 +1089,8 @@ export interface PropDef {
   readonly biome: Readonly<Record<BiomeName, number>>;
   /** Would stop a tank. Advisory — scatter never writes the nav grid. */
   readonly blocksNav: boolean;
+  /** Never invent a field-side fallback: this prop only belongs on a traced kerb. */
+  readonly sidewalkOnly?: boolean;
   /** Per-instance uniform scale band. Defaults to SCATTER_JITTER's. */
   readonly scaleMin?: number;
   readonly scaleMax?: number;
@@ -1807,12 +1814,14 @@ function streetLamp(m: PropMesh, rng: Rng, p: PropPalette, twin: boolean): void 
       m.color(p.darkSteel);
       m.cyl(s * 0.55, h - 0.35, 0, 0.075, 0.075, 1.05, 8, 0.02, false, false);
       m.box(s * 0.55, h + 0.44, 0, 1.15, 0.18, 0.44, 0.05);
-      m.color(p.lampGlow).emissive(1).box(s * 0.55, h + 0.31, 0, 0.95, 0.10, 0.34, 0.03);
+      m.color(p.lampGlow).emissive(PROP_LIGHT_ANIM.faultCapableCode)
+        .box(s * 0.55, h + 0.31, 0, 0.95, 0.10, 0.34, 0.03);
       m.emissive(0);
     }
   } else {
     m.color(p.darkSteel).box(0.44, h + 0.12, 0, 1.30, 0.22, 0.42, 0.06);
-    m.color(p.lampGlow).emissive(1).box(0.54, h - 0.01, 0, 0.98, 0.10, 0.32, 0.03);
+    m.color(p.lampGlow).emissive(PROP_LIGHT_ANIM.faultCapableCode)
+      .box(0.54, h - 0.01, 0, 0.98, 0.10, 0.32, 0.03);
     m.emissive(0);
   }
   // Banded collar at eye height — the greeble that says "not a stick".
@@ -1922,15 +1931,21 @@ function buildTrafficLight(m: PropMesh, rng: Rng, p: PropPalette): void {
   const arm = 3.2;
   m.box(arm * 0.5, h - 0.15, 0, arm, 0.16, 0.16, 0.04);
   m.box(arm, h - 0.85, 0, 0.34, 1.24, 0.30, 0.05);
-  m.color(p.signalRed).emissive(1).blob(arm, h - 0.44, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
-  m.color(p.signalAmber).emissive(1).blob(arm, h - 0.85, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
-  m.color(p.signalGreen).emissive(1).blob(arm, h - 1.26, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.color(p.signalRed).emissive(PROP_LIGHT_ANIM.signalRedCode)
+    .blob(arm, h - 0.44, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.color(p.signalAmber).emissive(PROP_LIGHT_ANIM.signalAmberCode)
+    .blob(arm, h - 0.85, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.color(p.signalGreen).emissive(PROP_LIGHT_ANIM.signalGreenCode)
+    .blob(arm, h - 1.26, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
   m.emissive(0);
   // Pole-mounted repeater head.
   m.color(p.darkSteel).box(0, h * 0.60, 0.24, 0.32, 1.14, 0.28, 0.05);
-  m.color(p.signalRed).emissive(1).blob(0, h * 0.60 + 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
-  m.color(p.signalAmber).emissive(1).blob(0, h * 0.60, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
-  m.color(p.signalGreen).emissive(1).blob(0, h * 0.60 - 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.color(p.signalRed).emissive(PROP_LIGHT_ANIM.signalRedCode)
+    .blob(0, h * 0.60 + 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.color(p.signalAmber).emissive(PROP_LIGHT_ANIM.signalAmberCode)
+    .blob(0, h * 0.60, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.color(p.signalGreen).emissive(PROP_LIGHT_ANIM.signalGreenCode)
+    .blob(0, h * 0.60 - 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
   m.emissive(0).gloss(0);
 }
 
@@ -2276,11 +2291,11 @@ export const PROP_DEFS: readonly PropDef[] = [
   { key: 'streetLamp', family: 'street', radius: 0.5, height: 7.0, adorn: 6.5, spacing: 7.0,
     surfaces: SURF_ANY, maxSlope: 0.18, mode: 'street', clumpMin: 1, clumpMax: 1,
     clumpSpread: 0, urban: 1.00, biome: B(0.75, 0.75, 0.75, 1.00), blocksNav: false,
-    scaleMin: 0.95, scaleMax: 1.08, jitter: 0.25, build: buildLamp },
+    sidewalkOnly: true, scaleMin: 0.95, scaleMax: 1.08, jitter: 0.25, build: buildLamp },
   { key: 'streetLampTwin', family: 'street', radius: 0.5, height: 8.0, adorn: 7.0, spacing: 9.0,
     surfaces: SURF_ANY, maxSlope: 0.18, mode: 'street', clumpMin: 1, clumpMax: 1,
     clumpSpread: 0, urban: 1.00, biome: B(0.35, 0.35, 0.35, 0.70), blocksNav: false,
-    scaleMin: 0.95, scaleMax: 1.06, jitter: 0.25, build: buildLampTwin },
+    sidewalkOnly: true, scaleMin: 0.95, scaleMax: 1.06, jitter: 0.25, build: buildLampTwin },
   { key: 'bench', family: 'street', radius: 1.2, height: 0.9, adorn: 3.2, spacing: 4.0,
     surfaces: SURF_HARD, maxSlope: 0.12, mode: 'street', clumpMin: 1, clumpMax: 2,
     clumpSpread: 6, urban: 1.00, biome: B(0.60, 0.60, 0.60, 1.00), blocksNav: false,
@@ -2430,19 +2445,61 @@ export function createPropMaterial(): PropMaterialSet {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>',
         `#include <common>\n${WIND_PARS}\nattribute vec2 aSurface;\nvarying float vEmit;`
-        + '\nvarying float vGloss;')
+        + '\nvarying float vGloss;\nvarying float vLifePhase;')
       .replace('#include <begin_vertex>',
-        `#include <begin_vertex>\nvEmit = aSurface.x;\nvGloss = aSurface.y;${WIND_BODY}`);
+        `#include <begin_vertex>\nvEmit = aSurface.x;\nvGloss = aSurface.y;`
+        + `\n#ifdef USE_INSTANCING\n  vLifePhase = instanceMatrix[3].x * ${PROP_WIND.phaseX}`
+        + ` + instanceMatrix[3].z * ${PROP_WIND.phaseZ};\n#else\n  vLifePhase = 0.0;\n#endif${WIND_BODY}`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>',
         '#include <common>\nvarying float vEmit;\nuniform float uEmitGain;'
-        + '\nvarying float vGloss;\nuniform float uGlossRough;')
+        + '\nvarying float vGloss;\nuniform float uGlossRough;'
+        + '\nvarying float vLifePhase;\nuniform float uWindTime;')
       // Straight after roughness is resolved and before it reaches the BRDF.
       // A lerp, so vGloss = 0 leaves the matte default bit-for-bit untouched.
       .replace('#include <roughnessmap_fragment>',
         '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, uGlossRough, vGloss);')
       .replace('#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vEmit * uEmitGain;');
+        `#include <emissivemap_fragment>
+        {
+          float raCode = vEmit;
+          float raBaseEmit = min(raCode, 1.0);
+          float raFaultBand = step(${PROP_LIGHT_ANIM.faultCapableCode - 0.5}, raCode)
+                            * step(raCode, ${PROP_LIGHT_ANIM.faultCapableCode + 0.5});
+          float raFaultRoll = fract(sin(vLifePhase * ${PROP_LIGHT_ANIM.faultHashFrequency})
+                                    * ${PROP_LIGHT_ANIM.faultHashScale});
+          float raFaulty = raFaultBand * step(${1 - PROP_LIGHT_ANIM.faultyFraction}, raFaultRoll);
+          float raFast = step(${PROP_LIGHT_ANIM.flickerFastThreshold},
+            sin(uWindTime * ${PROP_LIGHT_ANIM.flickerFastRadians}
+              + vLifePhase * ${PROP_LIGHT_ANIM.flickerFastPhase}));
+          float raSlow = step(${PROP_LIGHT_ANIM.flickerSlowThreshold},
+            sin(uWindTime * ${PROP_LIGHT_ANIM.flickerSlowRadians}
+              + vLifePhase * ${PROP_LIGHT_ANIM.flickerSlowPhase}));
+          float raLampGain = mix(1.0,
+            ${PROP_LIGHT_ANIM.faultyFloor} + ${1 - PROP_LIGHT_ANIM.faultyFloor} * raFast * raSlow,
+            raFaulty);
+
+          float raCycle = fract(uWindTime / ${PROP_LIGHT_ANIM.signalCycleSeconds}
+            + fract(vLifePhase * 0.0795775));
+          float raRedOn = step(raCycle, ${PROP_LIGHT_ANIM.signalRedEnd});
+          float raAmberOn = step(${PROP_LIGHT_ANIM.signalRedEnd}, raCycle)
+                          * step(raCycle, ${PROP_LIGHT_ANIM.signalAmberEnd})
+                          + step(${PROP_LIGHT_ANIM.signalGreenEnd}, raCycle);
+          float raGreenOn = step(${PROP_LIGHT_ANIM.signalAmberEnd}, raCycle)
+                          * step(raCycle, ${PROP_LIGHT_ANIM.signalGreenEnd});
+          float raRedBand = step(${PROP_LIGHT_ANIM.signalRedCode - 0.5}, raCode)
+                          * step(raCode, ${PROP_LIGHT_ANIM.signalRedCode + 0.5});
+          float raAmberBand = step(${PROP_LIGHT_ANIM.signalAmberCode - 0.5}, raCode)
+                            * step(raCode, ${PROP_LIGHT_ANIM.signalAmberCode + 0.5});
+          float raGreenBand = step(${PROP_LIGHT_ANIM.signalGreenCode - 0.5}, raCode)
+                            * step(raCode, ${PROP_LIGHT_ANIM.signalGreenCode + 0.5});
+          float raIsSignal = clamp(raRedBand + raAmberBand + raGreenBand, 0.0, 1.0);
+          float raSignalOn = clamp(raRedBand * raRedOn + raAmberBand * raAmberOn
+                                 + raGreenBand * raGreenOn, 0.0, 1.0);
+          float raSignalGain = mix(1.0,
+            mix(${PROP_LIGHT_ANIM.signalIdleGain}, 1.0, raSignalOn), raIsSignal);
+          totalEmissiveRadiance += vColor.rgb * raBaseEmit * raLampGain * raSignalGain * uEmitGain;
+        }`);
 
     // Scatter instances these as TALL, depth-writing meshes standing on the
     // terrain. Required by the depth-tested fog carpet: without it a forest
@@ -2456,7 +2513,7 @@ export function createPropMaterial(): PropMaterialSet {
   // port. Every value is identical and every one prints as the literal it
   // replaced, but the SOURCE changed, and stopping the cache serving a program
   // built from different source is this key's whole job.
-  material.customProgramCacheKey = (): string => 'ra-prop-v4';
+  material.customProgramCacheKey = (): string => 'ra-prop-v5-life';
 
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depthMaterial.name = 'PropDepth';

@@ -1079,6 +1079,15 @@ export interface ProductionOracle {
    * which have no production module, keep working against the heuristics.
    */
   entityKey?(id: number): string;
+  /**
+   * One safe structure the economy can sell to recover from a proven ore
+   * crisis, or 0 when no sale is needed/valid.
+   *
+   * Optional because headless doctrine tests have no ProductionService. The
+   * live implementation delegates to OreCrisis's exact refund/prerequisite
+   * arithmetic rather than giving the brain a second opinion about sellability.
+   */
+  recoverySale?(player: number): number;
 }
 
 /**

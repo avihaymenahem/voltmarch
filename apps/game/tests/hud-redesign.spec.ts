@@ -43,6 +43,30 @@ describe('perimeter HUD composition', () => {
     expect(INPUT).toContain('invokeHudFormation');
   });
 
+  it('uses the centre node for match identity, not a duplicate objective', () => {
+    expect(SIDEBAR).toContain("'vm-command-map'");
+    expect(SIDEBAR).toContain('tele.matchMode');
+    expect(SIDEBAR).toContain('tele.matchDifficulty');
+    expect(SIDEBAR).toContain('tele.mapName');
+    expect(SIDEBAR).not.toContain("'vm-command-objective'");
+    expect(CSS).toContain('.vm-command-map');
+  });
+
+  it('gives the power meter, numbers and status badge separate columns', () => {
+    expect(CSS).toMatch(
+      /\.vm-res-power \.vm-power-line\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:[^;]*max-content;/,
+    );
+    expect(CSS).toMatch(/\.vm-res-power \.vm-power-value\s*\{[\s\S]*?min-width:\s*0;/);
+  });
+
+  it('puts objective tier/progress above a full-width title lane', () => {
+    expect(CSS).toMatch(
+      /\.vm-objectives \.vm-obj-top\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-areas:[\s\S]*?'tier value'[\s\S]*?'name name'/,
+    );
+    expect(CSS).toMatch(/\.vm-objectives \.vm-obj-name\s*\{[\s\S]*?grid-area:\s*name;/);
+    expect(CSS).toMatch(/\.vm-objectives \.vm-obj\s*\{[\s\S]*?flex:\s*0 0 auto;/);
+  });
+
   it('keeps stance and formation orders as compact action strips', () => {
     expect(SIDEBAR).toContain("'vm-stances vm-stance-actions'");
     expect(SIDEBAR).toContain("formationRow.setAttribute('aria-label', 'Formation orders')");

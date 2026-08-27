@@ -627,6 +627,20 @@ export interface PlayOptions {
   pan?: number;
 }
 
+/**
+ * A caller-controlled voice played from an already-rendered buffer.
+ *
+ * Completion listeners go through `onEnded` rather than assigning directly to
+ * `source.onended`. The engine owns that event so it can always retire the
+ * voice-budget slot first; replacing it leaks the slot and eventually makes
+ * every EVA/unit response fail once the `voice` category reaches its cap.
+ */
+export interface PlayedBufferVoice {
+  readonly source: AudioBufferSourceNode;
+  readonly amp: GainNode;
+  onEnded(callback: () => void): void;
+}
+
 /* ==========================================================================
  * 6. VOICES
  * ========================================================================== */
@@ -1369,7 +1383,7 @@ export class AudioEngine {
   playBuffer(
     buffer: AudioBuffer, bus: BusName, category: VoiceCategory, db: number,
     through: AudioNode | null = null, opts?: PlayOptions,
-  ): { source: AudioBufferSourceNode; amp: GainNode } | null {
+  ): PlayedBufferVoice | null {
     if (this.muted || this.disposed || this.ctx.state !== 'running') return null;
     if (!this.claimVoice(category, dbToGain(db))) return null;
     const ctx = this.ctx;
@@ -1385,13 +1399,35 @@ export class AudioEngine {
     const voice: Voice = {
       src, amp, category, startedAt: this.now(), finalGain: amp.gain.value, stolen: false,
     };
+    const completionCallbacks = new Set<() => void>();
+    let ended = false;
+    const finish = (): void => {
+      if (ended) return;
+      ended = true;
+      // Retire the mixer slot before notifying directors. A callback is free to
+      // enqueue another line immediately without seeing a phantom full budget.
+      this.releaseVoice(voice);
+      for (const callback of completionCallbacks) {
+        try { callback(); } catch (error) {
+          console.warn('[audio] buffer completion callback failed', error);
+        }
+      }
+      completionCallbacks.clear();
+    };
     this.voices.push(voice);
-    src.onended = () => this.releaseVoice(voice);
+    src.onended = finish;
     try { src.start(this.now() + Math.max(0, opts?.delay ?? 0)); } catch {
       this.releaseVoice(voice);
       return null;
     }
-    return { source: src, amp };
+    return {
+      source: src,
+      amp,
+      onEnded(callback: () => void): void {
+        if (ended) callback();
+        else completionCallbacks.add(callback);
+      },
+    };
   }
 
   /* ---------------------------------------------------------------------- */

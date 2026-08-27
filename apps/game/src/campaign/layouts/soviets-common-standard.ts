@@ -374,10 +374,9 @@ export default layout({
      *
      * **A BUILDING CANNOT BE RE-TASKED, AND THAT IS STRUCTURAL RATHER THAN
      * LUCKY.** `census` forks on `EntityKind.Building` into `roleCount` and
-     * never touches `armyIds`, so `regroupSquads` cannot see one. The brain also
-     * has no `issueSell` — CLAUDE.md's capability audit lists it as one of the
-     * three real gaps — so it cannot remove the post either. The only thing that
-     * takes this off the park is the player shooting it, which is the whole
+     * never touches `armyIds`, so `regroupSquads` cannot see one. The campaign
+     * oracle also suppresses generic AI recovery sales, so the only thing that
+     * takes this post off the park is the player shooting it, which is the whole
      * point.
      *
      * **`pillbox` IS THE ONLY EMPLACEMENT THIS OPERATION'S ROSTER PERMITS, AND

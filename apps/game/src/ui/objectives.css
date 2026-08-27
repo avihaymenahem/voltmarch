@@ -143,6 +143,24 @@
 .vm-hud .vm-objectives .vm-obj-tick { display: none; }
 .vm-hud .vm-objectives .vm-obj-tick.is-on { display: block; }
 
+/* Main, side and persistent career work never share a visual identity. The
+   perimeter skin gives this label a dedicated metadata lane above the title,
+   so GLOBAL cannot squeeze a long objective name into a broken sliver. */
+.vm-hud .vm-objectives .vm-obj-tier {
+  flex: 0 0 auto;
+  min-width: calc(27 * var(--vm-u, 1px));
+  font-size: calc(7 * var(--vm-u, 1px) * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-objectives .vm-obj[data-tier='main'] .vm-obj-tier { color: var(--vm-accent); }
+.vm-hud .vm-objectives .vm-obj[data-tier='side'] .vm-obj-tier { color: var(--vm-dim); }
+.vm-hud .vm-objectives .vm-obj[data-tier='global'] .vm-obj-tier { color: var(--vm-gold); }
+
 /* ==========================================================================
  * 2. THE EXPANDED LIST
  *
@@ -394,6 +412,11 @@
  * ========================================================================== */
 
 .vm-hud .vm-objectives .vm-obj {
+  /* The list is itself a flex column. Without a zero shrink factor, a
+     resized/expanded panel compresses every row before scrolling engages.
+     Text still paints at full size, so a wrapped title lands on top of its
+     description. Rows keep their intrinsic height; the list owns overflow. */
+  flex: 0 0 auto;
   height: auto;
   min-height: calc(15 * var(--vm-u));
 }

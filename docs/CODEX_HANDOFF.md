@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.10.0**.
-- The `v3.10.0` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.11.0**.
+- The `v3.11.0` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -130,6 +130,11 @@ read it from Meshy immediately before spending.
   explicit desktop fullscreen toggle.
 - HUD density matters. Selection, stance and formation actions must remain compact; clicking a build
   card must not double the panel height or cover the battlefield.
+- The Objective and Construction panels are vertically resizable and persist their chosen heights;
+  the Performance panel is draggable and persists its position. Objective rows are non-shrinking
+  scroll items, so resizing a panel must never compress wrapped titles into the next row.
+- The top command node reports current mode, difficulty and map. It does not duplicate an objective;
+  the objective board remains the one source for main, side and global objective progress.
 - Text defaults to 115% and is adjustable through accessibility settings. Fix clipping and layout at
   every supported scale rather than shrinking text locally.
 - Performance diagnostics belong under Objectives, not in the middle of the battlefield.
@@ -141,14 +146,18 @@ read it from Meshy immediately before spending.
 ## Audio decisions
 
 - The original score is Silent Horizon, Disciplined Ostinato, Echoes of the Siege and Endless
-  Warfront. The title always starts Echoes with a fade-in; matches choose a local random cue and loop
-  it. In-match music is intentionally lower than menu music. The main-menu player can pause/resume
-  without navigation or retry timers silently restarting it.
+  Warfront. The title rotates all four cues, beginning from a local random choice; matches choose a
+  local random cue and loop it. In-match music is intentionally lower than menu music. The main-menu
+  player can pause/resume without navigation or retry timers silently restarting it. Decorative
+  title-world voices and explosions never duck the menu score.
 - Finishing background WebGPU preparation must not restart, stop or duck the menu soundtrack.
 - Unit speech is caused by selection or an explicit player action. Do not reintroduce periodic/random
   chatter, economy-state chatter or duplicated “unit ready” announcements.
 - Effects, voices and ambience must survive rematch/retry and long sessions; stale match-end timers
   must not mute non-music buses in the next match.
+- `AudioEngine.playBuffer` owns `source.onended` so every completed speech source releases its shared
+  voice-budget slot. EVA and bark directors attach completion work through `PlayedBufferVoice.onEnded`;
+  replacing the engine callback recreates the long-session total-voice-loss bug.
 - `docs/VOICEOVER_PLAN.md` is the current production checkpoint. Campaign recording is explicitly
   outside the active non-campaign round until the user resumes it.
 

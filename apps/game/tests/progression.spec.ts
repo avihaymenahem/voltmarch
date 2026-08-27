@@ -24,7 +24,11 @@ import { CreditReason, EntityKind, Faction, NONE } from '../src/core/types';
 import type { EntityId, PlayerId } from '../src/core/types';
 
 import { MISSIONS, MISSION_UNLOCK_IDS, UNLOCKS, validateMissions } from '../src/data/Missions';
-import { MissionTracker } from '../src/progression/MissionTracker';
+import {
+  GLOBAL_OBJECTIVE_LIMIT,
+  MATCH_OBJECTIVE_LIMIT,
+  MissionTracker,
+} from '../src/progression/MissionTracker';
 import { UnlockGate, filterBuildable, isBuildable, setUnlockGate } from '../src/progression/UnlockGate';
 import {
   PROFILE_STORAGE_KEY,
@@ -416,6 +420,34 @@ describe('MissionTracker — the match lifecycle', () => {
     detach();
   });
 
+  it('does not complete match objectives that were not drawn onto the board', () => {
+    const defs: MissionDef[] = [
+      {
+        id: 'test.drawn', scope: 'match', category: 'combat', objectiveTier: 'main', target: 1,
+        title: 'Drawn', description: 'Kill once.', rule: { on: 'kill' },
+        reward: [{ kind: 'credits', amount: 100 }],
+      },
+      {
+        id: 'test.hidden', scope: 'match', category: 'combat', objectiveTier: 'side', target: 1,
+        title: 'Hidden', description: 'Kill once.', rule: { on: 'kill' },
+        reward: [{ kind: 'credits', amount: 100 }],
+      },
+    ];
+    const store = makeStore(seededStorage());
+    const tracker = new MissionTracker(defs, store, { ...NO_TIMERS, objectiveLimit: 1 });
+    const channels = new Channels();
+    const detach = tracker.attach(channels.events);
+
+    tracker.beginMatch({ seed: 9, localPlayer: 0, faction: Faction.Allies });
+    const drawn = tracker.activeObjectiveIds()[0];
+    const hidden = defs.find((def) => def.id !== drawn)!.id;
+    emitKill(channels, P1, P0, EntityKind.Vehicle);
+
+    expect(tracker.progressOf(drawn).complete).toBe(true);
+    expect(tracker.progressOf(hidden).value).toBe(0);
+    detach();
+  });
+
   it('draws the same objective board for the same seed', () => {
     const store = makeStore(seededStorage());
     const tracker = new MissionTracker(MISSIONS, store, { ...NO_TIMERS });
@@ -428,9 +460,27 @@ describe('MissionTracker — the match lifecycle', () => {
     const c = [...tracker.activeObjectiveIds()];
 
     expect(a).toEqual(b);
-    expect(a.length).toBeLessThanOrEqual(5);
+    expect(a.length).toBe(MATCH_OBJECTIVE_LIMIT);
     expect(a.length).toBeGreaterThan(0);
     expect(c).not.toEqual(a);
+
+    const drawn = a.map((id) => tracker.defOf(id));
+    expect(drawn.filter((def) => def?.objectiveTier === 'main')).toHaveLength(4);
+    expect(drawn.filter((def) => def?.objectiveTier === 'side')).toHaveLength(4);
+    expect(drawn.some((def) => def?.objectiveTier === 'main' && def.difficulty === 3)).toBe(true);
+  });
+
+  it('pins deterministic unfinished global objectives beside the match board', () => {
+    const store = makeStore(seededStorage());
+    const tracker = new MissionTracker(MISSIONS, store, { ...NO_TIMERS });
+
+    tracker.beginMatch({ seed: 0x51c0de, localPlayer: 0, faction: Faction.Allies });
+    const first = [...tracker.activeGlobalObjectiveIds()];
+    tracker.beginMatch({ seed: 0x51c0de, localPlayer: 0, faction: Faction.Allies });
+    expect(tracker.activeGlobalObjectiveIds()).toEqual(first);
+    expect(first).toHaveLength(GLOBAL_OBJECTIVE_LIMIT);
+    expect(first.every((id) => tracker.defOf(id)?.scope === 'profile')).toBe(true);
+    expect(new Set(first.map((id) => tracker.defOf(id)?.category)).size).toBe(first.length);
   });
 
   it('credits only the faction actually played', () => {
@@ -806,8 +856,9 @@ describe('ProgressionView — the shape the UI codes against', () => {
     expect(view.activeObjectives()).toEqual([]);
     view.beginMatch({ seed: 3, localPlayer: 0, faction: Faction.Allies });
     expect(view.inMatch()).toBe(true);
-    expect(view.activeObjectives().length).toBeGreaterThan(0);
-    expect(view.activeObjectives().every((o) => o.scope === 'match')).toBe(true);
+    const active = view.activeObjectives();
+    expect(active.filter((o) => o.scope === 'match')).toHaveLength(MATCH_OBJECTIVE_LIMIT);
+    expect(active.filter((o) => o.scope === 'profile')).toHaveLength(GLOBAL_OBJECTIVE_LIMIT);
 
     const p = view.profile();
     expect(p.version).toBe(PROFILE_VERSION);

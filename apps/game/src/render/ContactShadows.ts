@@ -49,7 +49,7 @@ import {
 } from '../core/config';
 import { EntityFlag, EntityKind } from '../core/types';
 import type { World } from '../core/world';
-import { applyShroudTint } from './FogOfWar';
+import { applyShroudFactor } from './FogOfWar';
 import { nodePath } from './gpu-path';
 
 /* ==========================================================================
@@ -91,6 +91,7 @@ void main() {
   // pool can never take the ground below the shared decal floor.
   vec3 f = mix(vec3(1.0), uColor, k);
   gl_FragColor = vec4(max(f, vec3(uFloor)), 1.0);
+  #include <tonemapping_fragment>
 }
 `;
 
@@ -171,10 +172,10 @@ export class ContactShadowField {
       polygonOffsetUnits: -3,
     });
     if (glsl !== null) {
-      // A pool is ground truth about explored terrain, so it must fade with the
-      // shroud exactly as the thing standing on it does.
-      glsl.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-      glsl.customProgramCacheKey = () => 'vm.contact.shroud.v1';
+      // This shader emits a MULTIPLY FACTOR, whose neutral fog value is white.
+      // Applying a colour tint here darkens fog instead of hiding the pool.
+      glsl.onBeforeCompile = (shader) => { applyShroudFactor(shader); };
+      glsl.customProgramCacheKey = () => 'vm.contact.shroud-factor.v2';
     }
     this.material = glsl ?? np!.createContactShadowMaterial();
 

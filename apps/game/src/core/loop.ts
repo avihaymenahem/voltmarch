@@ -618,6 +618,7 @@ export class GameLoop {
     this.rng = new Rng(seed);
     this.simCtx = { dt: SIM_DT, tick: 0, time: 0, rng: this.rng };
     this.renderCtx = { dt: 0, time: 0, alpha: 0, frame: 0, quality: this.quality };
+    (globalThis as { __vmGameSpeed?: number }).__vmGameSpeed = this.speed;
   }
 
   /** Reseed the sim RNG. Call before a match starts, never during. */
@@ -646,6 +647,7 @@ export class GameLoop {
 
   setSpeed(index: number): void {
     this.speedIndex = index < 0 ? 0 : index >= GAME_SPEEDS.length ? GAME_SPEEDS.length - 1 : index;
+    (globalThis as { __vmGameSpeed?: number }).__vmGameSpeed = this.speed;
   }
 
   cycleSpeed(): void {
@@ -907,6 +909,7 @@ export class GameLoop {
     this.hitchCount = 0;
     this.paused = false;
     this.speedIndex = DEFAULT_SPEED_INDEX;
+    (globalThis as { __vmGameSpeed?: number }).__vmGameSpeed = this.speed;
     this.seed(seed);
   }
 }

@@ -48,6 +48,7 @@ import {
   type DefBinding,
 } from '../src/game/Scenarios';
 import { Terrain } from '../src/world/Terrain';
+import { RoadNetwork, setActiveRoads } from '../src/world/Roads';
 
 const P0 = 0 as PlayerId;
 const NO_DEFS: DefBinding = { tables: null, unitId: {}, buildingId: {} };
@@ -158,6 +159,7 @@ function cellOf(rig: Rig, i: number): [number, number] {
 beforeEach(() => {
   resetNavRescueCount();
   clearScenario();
+  setActiveRoads(null);
 });
 
 /* ==========================================================================
@@ -447,6 +449,30 @@ describe('ScenarioBuilder — nothing spawns in a pit it cannot leave', () => {
     const cx = worldToCell(world.store.posX[i]);
     const cz = worldToCell(world.store.posZ[i]);
     expect(outsidePocket(cx, cz)).toBe(true);
+  });
+
+  it('moves a scenario building off carriageway, kerb and pavement', () => {
+    const world = new World();
+    world.addPlayer(Faction.Allies, 'Commander', true, true);
+    world.addPlayer(Faction.Soviets, 'Opponent', false, false);
+    const keys = new PerEntityObj<string>(world.store);
+    const b = new ScenarioBuilder(world, NO_DEFS, keys, 4242, 'temperate');
+    const fakeRoad = {
+      // A 20 m horizontal corridor through the requested structure centre.
+      isRoad: (_x: number, z: number): boolean => Math.abs(z - 200) <= 10,
+    } as unknown as RoadNetwork;
+    setActiveRoads(fakeRoad);
+    try {
+      const id = b.spawnBuilding('civApartments', b.gaia, 200, 200);
+      const i = world.store.index(id);
+      expect(i).toBeGreaterThanOrEqual(0);
+      // The whole footprint has to clear the band, so moving only its centre
+      // to z=211 would still fail this assertion through the required margin.
+      const half = world.store.footprintH[i] * CELL * 0.5;
+      expect(Math.abs(world.store.posZ[i] - 200) - half).toBeGreaterThan(10);
+    } finally {
+      setActiveRoads(null);
+    }
   });
 
   it('leaves everything on healthy ground exactly where the layout put it', () => {

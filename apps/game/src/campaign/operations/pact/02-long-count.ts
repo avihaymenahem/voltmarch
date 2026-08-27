@@ -117,9 +117,10 @@
  * ASSUMED.** Their largest ungated MOBILE blast is `heavyCannon` (Anvil Tank,
  * 2.1 m), which needs to land within 7.76 m of the post's centre; `artillery`
  * — the 6.5 m V4 Launcher — has **no carrier at all**, which `Defs.ts` states
- * in as many words. `isValidTarget` refuses an allied target, so the AI never
- * aims at it; the brain has no `issueSell`, so it cannot remove it; and
- * placement refuses occupied ground, so it cannot build over it. **The only
+ * in as many words. `isValidTarget` refuses an allied target, the campaign
+ * oracle suppresses generic AI recovery sales (and civilian spawn clears
+ * `Sellable` here anyway), and placement refuses occupied ground, so it cannot
+ * build over it. **The only
  * army that can break the reading post is yours** — until you take the deed
  * off them, which is what route B below is really selling.
  *

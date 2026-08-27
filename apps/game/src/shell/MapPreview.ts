@@ -70,6 +70,53 @@ function startPositions(players: number): readonly [number, number][] {
     : [[0.18, 0.22], [0.82, 0.78]];
 }
 
+/**
+ * Strategic facts remain code-drawn over the authored battlefield art. This
+ * keeps starts and ore crisp at any shell scale and, more importantly, means a
+ * balance edit never requires repainting text or markers baked into an image.
+ */
+function paintTacticalFacts(
+  c: CanvasRenderingContext2D,
+  map: MapChoice,
+  random: () => number,
+): void {
+  const p = PALETTES[map.biome] ?? PALETTES.temperate;
+
+  // Ore is the other strategic fact the list blurb promises. The positions
+  // are seeded and stable, with a central contested field always visible.
+  const ores: [number, number][] = [[W * 0.5, H * 0.5]];
+  for (let i = 0; i < 4; i++) ores.push([34 + random() * (W - 68), 26 + random() * (H - 52)]);
+  for (const [x, y] of ores) {
+    c.fillStyle = p.ore;
+    c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x + 5, y + 4); c.lineTo(x - 5, y + 4); c.closePath(); c.fill();
+  }
+
+  for (let i = 0; i < map.players; i++) {
+    const [px, py] = startPositions(map.players)[i] ?? [0.5, 0.5];
+    const x = px * W;
+    const y = py * H;
+    c.fillStyle = '#071019';
+    c.strokeStyle = '#45d7f2';
+    c.lineWidth = 2;
+    c.beginPath(); c.arc(x, y, 9, 0, Math.PI * 2); c.fill(); c.stroke();
+    c.fillStyle = '#d9f8ff';
+    c.font = '700 10px monospace';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(String(i + 1), x, y + 0.5);
+  }
+}
+
+/** Paint only the transparent strategic overlay used above authored art. */
+function paintMapOverlay(canvas: HTMLCanvasElement, map: MapChoice): void {
+  canvas.width = W;
+  canvas.height = H;
+  if (typeof canvas.getContext !== 'function') return;
+  const c = canvas.getContext('2d');
+  if (c === null) return;
+  paintTacticalFacts(c, map, rng(map.mapSeed ^ 0x6d61_7073));
+}
+
 /** Paint the map's strategic silhouette onto an existing canvas. */
 export function paintMapPreview(canvas: HTMLCanvasElement, map: MapChoice): void {
   canvas.width = W;
@@ -127,30 +174,7 @@ export function paintMapPreview(canvas: HTMLCanvasElement, map: MapChoice): void
   }
   c.restore();
 
-  // Ore is the other strategic fact the list blurb promises. The positions
-  // are seeded and stable, with a central contested field always visible.
-  const ores: [number, number][] = [[W * 0.5, H * 0.5]];
-  for (let i = 0; i < 4; i++) ores.push([34 + random() * (W - 68), 26 + random() * (H - 52)]);
-  for (const [x, y] of ores) {
-    c.fillStyle = p.ore;
-    c.beginPath();
-    c.moveTo(x, y - 6); c.lineTo(x + 5, y + 4); c.lineTo(x - 5, y + 4); c.closePath(); c.fill();
-  }
-
-  for (let i = 0; i < map.players; i++) {
-    const [px, py] = startPositions(map.players)[i] ?? [0.5, 0.5];
-    const x = px * W;
-    const y = py * H;
-    c.fillStyle = '#071019';
-    c.strokeStyle = '#45d7f2';
-    c.lineWidth = 2;
-    c.beginPath(); c.arc(x, y, 9, 0, Math.PI * 2); c.fill(); c.stroke();
-    c.fillStyle = '#d9f8ff';
-    c.font = '700 10px monospace';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(String(i + 1), x, y + 0.5);
-  }
+  paintTacticalFacts(c, map, rng(map.mapSeed ^ 0x6d61_7073));
 }
 
 /** Build the selected-map preview card used by the lobby. */
@@ -159,10 +183,26 @@ export function mapPreview(map: MapChoice): HTMLElement {
   root.className = 'vm-map-preview';
   root.setAttribute('aria-label', `${map.name} tactical preview`);
 
+  const art = document.createElement('img');
+  art.className = 'vm-map-preview-art';
+  art.src = `/maps/previews/${map.id}.webp`;
+  art.alt = '';
+  art.draggable = false;
+  art.setAttribute('aria-hidden', 'true');
+  root.appendChild(art);
+
   const canvas = document.createElement('canvas');
   canvas.className = 'vm-map-preview-canvas';
-  paintMapPreview(canvas, map);
+  paintMapOverlay(canvas, map);
   root.appendChild(canvas);
+
+  // Public assets can still fail behind a stale service-worker cache. The old
+  // deterministic survey remains a complete fallback rather than a broken
+  // image icon or an empty black card.
+  art.addEventListener('error', () => {
+    root.classList.add('is-fallback');
+    paintMapPreview(canvas, map);
+  }, { once: true });
 
   const caption = document.createElement('figcaption');
   caption.className = 'vm-map-preview-caption';

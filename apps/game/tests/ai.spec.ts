@@ -24,7 +24,7 @@ import type {
   AvailabilityResult, Command, EntityId, IRng, IVision, PlayerId, SimContext,
 } from '../src/core/types';
 import {
-  AI_DIFFICULTY, AI_MILITARY, AI_SQUAD_MIN, BUILD_TAB_ORDER, CELL, SIM_DT, SIM_HZ,
+  AI_DIFFICULTY, AI_MILITARY, AI_RECOVERY, AI_SQUAD_MIN, BUILD_TAB_ORDER, CELL, SIM_DT, SIM_HZ,
 } from '../src/core/config';
 
 /**
@@ -418,6 +418,37 @@ describe('AIStrategy — the production oracle', () => {
       const f = line.split('|');
       expect([f[7], f[8]]).toEqual([String(ONLY_CX), String(ONLY_CZ)]);
     }
+  });
+
+  it('uses the Sell command after a human-sized delay, one structure at a time', () => {
+    const seen: string[] = [];
+    let candidate = 0;
+    const oracle: ProductionOracle = {
+      ...fakeOracle(seen),
+      recoverySale: () => candidate,
+    };
+    const h = makeHarness({ oracle });
+    const st = h.world.store;
+    const owned = st.byKind[EntityKind.Building];
+    candidate = st.handleOf(owned[0]);
+
+    const baseDelay = Math.round(AI_RECOVERY.sellDelaySeconds * SIM_HZ);
+    h.step(baseDelay - 1);
+    expect(h.brain.recoverySaleCount).toBe(0);
+    expect(h.log.filter((l) => l.startsWith(`${CommandKind.SellBuilding}|`))).toHaveLength(0);
+
+    // Normal adds its ordinary 1.2 s reaction latency, and the economy layer
+    // only asks twice a second. This margin clears both without pinning the
+    // test to player 1's cadence offset.
+    h.step(Math.round(AI_DIFFICULTY[1].reactionSec * SIM_HZ) + SIM_HZ);
+    expect(h.brain.recoverySaleCount).toBe(1);
+    expect(h.log.filter((l) => l.startsWith(`${CommandKind.SellBuilding}|`))).toHaveLength(1);
+
+    h.step(Math.round(AI_RECOVERY.sellIntervalSeconds * SIM_HZ) - SIM_HZ);
+    expect(h.brain.recoverySaleCount).toBe(1);
+    candidate = 0;
+    h.step(SIM_HZ);
+    expect(h.brain.recoverySaleCount).toBe(1);
   });
 });
 

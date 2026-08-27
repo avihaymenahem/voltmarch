@@ -19,8 +19,9 @@ systems. It does not replace them with thousands of independent GLBs or unique 2
 - More context families. Dirt, oil, rubble and props now form a first set of small stories around
   roads, openings and structures; depots, civilian blocks, shorelines and resource sites still need
   more authored combinations.
-- More contact variation. Dust, grime, rust and service stains are live, but terrain-composed mud,
-  leaf litter and gravel need better forms than the rejected circular decal stamps.
+- More context-specific contact variation. Continuous terrain-space dust, grit and sparse cracks are
+  live without added draws; mud, leaf litter and loose gravel still need geometry or broad material
+  composition that cannot read as repeated circular stamps.
 - Prop fidelity. Cars, crate stacks, umbrellas, rocks, and some civic props have good silhouettes at
   ordinary RTS distance but lack the larger secondary forms that survive close inspection.
 - Biome aging. The same object should collect dust in desert, damp grime in temperate maps, exposed
@@ -49,6 +50,20 @@ The first static composition slice is live, with one important correction from i
   marks before base wear and combat effects;
 - WebGPU terrain and scatter objects are batched by shadow policy, so the additional composition
   does not restore the cold-start pipeline duplication removed during the Electron boot pass.
+- both terrain backends now add continuous world-space dust sweeps, meso grit and sparse crooked
+  cracks in the base material. Coverage anti-aliasing changes only crack edges, never whole-feature
+  opacity, so panning cannot make a patch pulse in and out;
+- the pooled decal field conforms every mark with a 6 × 6 grid. Marks remain bounded to the same two
+  draws while following local height changes closely enough not to shimmer against the terrain;
+- roads carry restrained shoulder ageing in their own material, taper valid interior termini, cull
+  overlapping surface triangles and remove sustained near-parallel duplicate routes;
+- roadside amenities now follow exact kerb runs with sparse independent layout policies. Lamps face
+  inward over the carriageway, most runs remain empty, and only deterministic faulty lamps flicker;
+- the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
+  repeated roadside cars/planters/benches were reduced so limited prop diversity is not amplified by
+  uniform spacing;
+- civilian apartments are six separately scattered, mirrored strongpoints hidden until scouted;
+  Oil Derrick, Hospital and Ore Mine counts are unchanged.
 
 The original 2026-08-26 matrix was technically clean but failed later in-product readability review:
 the physical-debris stamps were visibly artificial. The corrected contract is now pinned by tests:
@@ -66,9 +81,10 @@ at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
 
 ### 1. Surface variation — existing terrain, no extra object draws
 
-Add only low-frequency, context-driven splat edits: dusty road shoulders, compacted depot dirt,
-muddy drainage, exposed earth under autumn canopies, salt-stained shoreline strips, and gravel near
-ore fields. These are irregular stamps tied to features, not a repeated texture applied everywhere.
+The live baseline uses low-frequency world-space dust sweeps, material-filtered cracks, meso grit and
+road-shoulder ageing. Future additions remain context-driven: compacted depot dirt, muddy drainage,
+exposed earth under autumn canopies, salt-stained shoreline strips, and gravel near ore fields. They
+must be broad irregular compositions tied to features, not a repeated texture applied everywhere.
 
 Rules:
 
@@ -77,16 +93,16 @@ Rules:
 - reserve clean negative space around selection, building exits, and primary combat lanes;
 - deterministic placement from map/scenario seed only.
 
-### 2. Ground story decals — extend the existing two-draw atlas
+### 2. Ground story decals — preserve the bounded two-draw atlas
 
-Add atlas kinds for leaf litter, mud/road-edge dirt, rust runoff, gravel scatter, curb grime, paper
-litter, and demolition dust. Stamp them in small compositions around authored anchors. The existing
-decal field supplies pooled geometry, terrain conformance, eviction, mipmaps, and WebGL/WebGPU paths;
-the new kinds should not add a draw call.
+The atlas is reserved for shapes its multiply/additive layers represent honestly: tyre tracks, oil,
+scorch, craters, faint dust/grime and demolition dust. It supplies pooled geometry, 6 × 6 terrain
+conformance, eviction, mipmaps, and WebGL/WebGPU paths without adding a draw call. Leaf litter,
+paper, gravel and broken stone remain excluded after their lobed stamps read as dark circles; those
+materials require broad terrain composition or actual batched geometry.
 
-Density is measured in clusters, not specks. A leaf patch is one readable 2–5 m mass with a few edge
-leaves, not hundreds of alpha cards. Rust is placed beneath metal or drainage points, not randomly
-on grass. Oil appears near factories, depots, wrecks, and parked vehicles.
+Density is measured in clusters, not specks. Rust belongs beneath metal or drainage points, oil near
+factories, depots, wrecks and parked vehicles, and physical litter must have a visible source.
 
 ### 3. Instanced prop families — improve silhouettes, preserve batching
 

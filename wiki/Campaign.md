@@ -6,9 +6,9 @@ Two different things share this page's name, and only one of them existed until 
 objectives and a medal. It is reached from **Campaign** on the title screen, above Skirmish. It is
 real, it is playable, and it is **partial** — §1 says exactly how partial, in numbers.
 
-**Progression** is the other one: a 46-row mission table that watches every skirmish you play and
-pays out when you hit a number. It is what actually widens your roster, and none of it has changed —
-§4 onward is that table, exactly as it was.
+**Progression** is the other one: a 55-row mission table that watches every skirmish you play and
+pays out when you hit a number. It is what actually widens your roster; §4 onward documents that
+table and the main, side and global objectives now shown during a skirmish.
 
 **The two do not touch, and that is deliberate rather than unfinished.** An operation advances
 nothing on your profile — no mission, no unlock, no win, no streak, no lifetime counter. §3 is that
@@ -293,16 +293,17 @@ written back over the settings you chose for skirmishes.
 
 | | Profile missions | Match objectives |
 | --- | --- | --- |
-| Count | 33 | 13 |
+| Count | 33 | 22 |
 | Persist between matches | yes | no — reset every match |
-| Shown | Missions screen | objective panel, in match |
-| How many at once | all of them | **5**, drawn from the seed |
-| Pay | unlocks, maps, cosmetics | credits |
+| Shown | Missions screen and **2 global HUD rows** | objective panel, in match |
+| How many at once | all in Missions; **2 pinned globally per match** | **8**: 4 main + 4 side, drawn from the seed |
+| Pay | unlocks, maps, cosmetics | deferred credit metadata only — not paid |
 | Grant unlocks | **yes — all of them** | never |
 
-Profile missions are the chains. Match objectives are the per-match board: five are drawn
-deterministically from the match seed, so the same seed always draws the same five, and a replay
-shows the same board.
+Profile missions are the chains. Two unlocked, unfinished profile rows are pinned to the HUD as
+**global objectives** for the duration of each match. The per-match board draws eight objectives
+deterministically from the seed, balanced to four **main** and four **side** rows when both pools
+have enough entries. The same seed and profile therefore reproduce the same board in a replay.
 
 Both listen to the same events, which is why the objective board also advances your profile chains.
 A player who never opens the objective panel loses nothing permanent.
@@ -388,27 +389,38 @@ resets it.
 
 ## 6. The match objectives
 
-Five of these thirteen are on the board each match, drawn from the match seed.
+Eight of these twenty-two are on the board each match: four main and four side objectives whenever
+both pools can fill their half. The compact HUD always keeps main, side and global work represented;
+expanding it or opening the pause ledger shows the complete drawn board.
 
-| Objective | Target | Deferred value (not paid) |
-| --- | --- | --- |
-| Draw Blood | destroy 10 enemy units | 400 |
-| Attrition | destroy 30 enemy units | 900 |
-| Break The Column | destroy 12 enemy vehicles | 700 |
-| Structural Damage | destroy 5 enemy structures | 700 |
-| Field Promotion | promote 3 units to veteran | 600 |
-| Ore Quota | mine 5,000 credits of ore | 500 |
-| Liquidity | hold 15,000 credits at once | 600 |
-| Keep The Lights On | reach a 150-point power surplus | 400 |
-| Base Of Operations | complete 8 structures | 500 |
-| Standing Army | train or build 20 units | 500 |
-| Seize The Asset | capture an enemy structure | 800 |
-| Intact | finish the match without losing a structure | 1,200 |
-| Lightning Campaign | win inside 15 minutes | 1,500 |
+| Objective | Type | Target | Deferred value (not paid) |
+| --- | --- | --- | --- |
+| Draw Blood | Side | destroy 10 enemy units | 400 |
+| Attrition | Main | destroy 30 enemy units | 900 |
+| Break The Column | Main | destroy 12 enemy vehicles | 700 |
+| Structural Damage | Main | destroy 5 enemy structures | 700 |
+| Field Promotion | Side | promote 3 units to veteran | 600 |
+| Thin The Ranks | Side | destroy 20 enemy infantry | 550 |
+| Costly Exchange | Main | destroy 15,000 credits worth of enemy assets | 1,100 |
+| Decorated Corps | Main | promote 2 units to elite | 1,000 |
+| Ore Quota | Side | mine 5,000 credits of ore | 500 |
+| Liquidity | Main | hold 15,000 credits at once | 600 |
+| Keep The Lights On | Side | reach a 150-point power surplus | 400 |
+| Industrial Appetite | Main | mine 20,000 credits of ore | 1,000 |
+| Reserve Capacity | Main | reach a 300-point power surplus | 750 |
+| Base Of Operations | Main | complete 8 structures | 500 |
+| Standing Army | Main | train or build 20 units | 500 |
+| Boots On The Ground | Side | train 12 infantry units | 500 |
+| Motorised Force | Side | build 12 vehicles | 650 |
+| Seize The Asset | Side | capture an enemy structure | 800 |
+| Hostile Acquisition | Main | capture 3 enemy structures | 1,300 |
+| Intact | Main | finish the match without losing a structure | 1,200 |
+| Lightning Campaign | Main | win inside 15 minutes | 1,500 |
+| Preserve The Spearhead | Side | win without losing a vehicle | 1,200 |
 
 > ### The credits are not paid
 >
-> **All thirteen retain authored credit values, and nothing in the game pays them out.** Those values
+> **All twenty-two retain authored credit values, and nothing in the game pays them out.** Those values
 > are now hidden from the live board, completion banner, pause ledger, Missions screen and end screen.
 > Progress is still recorded, but the UI makes no currency promise while no code path adds the number
 > to a player's bank. There is no credit reason for an objective payout and no deterministic consumer
@@ -533,7 +545,7 @@ unpaid and hidden. Here is the state of each, honestly.
 | Map unlocks | 4 | **Yes.** The lobby unlocks the map. |
 | Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
-| Objective credits | 13 | **No.** Nothing pays them (§6). |
+| Objective credits | 22 | **No.** Nothing pays them (§6). |
 | Cosmetics | 17 | **Yes.** They render in Service Record with source mission and progress. |
 
 Those first two counts read 5 and 3 for a long time and were already too low

@@ -45,6 +45,9 @@ export type MissionScope = 'profile' | 'match';
 
 export type MissionCategory = 'combat' | 'economy' | 'construction' | 'tactics' | 'mastery';
 
+/** How an objective is presented in the in-match HUD. Profile rows are global. */
+export type ObjectiveTier = 'main' | 'side';
+
 /**
  * What completing a mission pays out.
  *
@@ -80,6 +83,8 @@ export interface MissionDef {
   /** `Faction` enum value, for faction-specific chains. */
   faction?: number;
   difficulty?: 1 | 2 | 3;
+  /** Match-board importance. Profile missions are always presented as global. */
+  objectiveTier?: ObjectiveTier;
 
   /* -- authoring extensions ------------------------------------------------
    * Deliberately OPTIONAL so that a module holding a `MissionDef` built before

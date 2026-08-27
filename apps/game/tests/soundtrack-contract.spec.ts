@@ -3,8 +3,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  MENU_SOUNDTRACK_ID,
-  MENU_SOUNDTRACK_INDEX,
   SOUNDTRACK,
   chooseRandomTrack,
   musicPath,
@@ -43,10 +41,21 @@ describe('original soundtrack delivery contract', () => {
     }
   });
 
-  it('pins the title screen to Echoes of the Siege', () => {
-    expect(MENU_SOUNDTRACK_ID).toBe('echoes-of-the-siege');
-    expect(MENU_SOUNDTRACK_INDEX).toBeGreaterThanOrEqual(0);
-    expect(SOUNDTRACK[MENU_SOUNDTRACK_INDEX]?.title).toBe('Echoes of the Siege');
+  it('rotates all four cues on the title instead of pinning one loop', () => {
+    const track = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'TrackMusic.ts'), 'utf8');
+    expect(track).toContain('this.switchTo(chooseRandomTrack(-1), true, MENU_FADE_SEC)');
+    expect(track).toContain("element.addEventListener('ended'");
+    expect(track).toContain('this.switchTo((Math.max(0, this.index) + 1) % SOUNDTRACK.length)');
+    expect(track).toContain('this.element.loop = false');
+    expect(track).not.toContain('MENU_SOUNDTRACK_INDEX');
+  });
+
+  it('allows music ducking only after a real match starts', () => {
+    const system = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'audio.system.ts'), 'utf8');
+    const eva = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'Eva.ts'), 'utf8');
+    expect(system).toContain('canDuck: () => matchStartAt >= 0');
+    expect(system).toContain('matchStartAt >= 0 && (kind === FxKind.ExplosionLarge');
+    expect(eva).toContain('if (!this.canDuck()) return;');
   });
 
   it('exposes a synchronized pause control on the main-menu player', () => {

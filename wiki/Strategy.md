@@ -684,6 +684,12 @@ Behaviours worth knowing:
 - From Normal upward, if it can currently see a legal capturable structure and has four escorts
   available without leaving its base under pressure, it may buy one engineer, escort it with
   Attack-Move, and attempt the capture. Hidden and campaign-vetoed targets are ignored.
+- If its last harvester is destroyed and the ordinary economy survey proves that selling can fund
+  a replacement, it waits at least twelve seconds, then sells one non-producing structure at a
+  time through the same Sell command and for the same 50% refund you receive. It never receives
+  the refund bonus used for harvested income, and it will not sell a prerequisite needed by its
+  chosen recovery route. Authored campaign opponents keep their scripted bases instead of using
+  this generic skirmish recovery.
 - **It builds superweapons, and it earns its commander powers the same way you do.** From Normal
   upward it will raise a Command Post and buy the powers its difficulty allows — Normal gets Ore
   Boost and Emergency Repair, Hard adds the Airstrike and the Orbital Scan, Brutal gets all five —

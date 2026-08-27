@@ -743,7 +743,7 @@ export class CameraRig {
    * Multiply the dolly by `zoomStep^notches`.
    *
    * MULTIPLICATIVE BECAUSE A DOLLY IS A RATIO: one notch has to mean the same
-   * 13% at 30 m as at 140 m, or the camera crawls at one end of the range and
+   * 13% at 36 m as at 140 m, or the camera crawls at one end of the range and
    * jumps at the other. `CAMERA.zoomStep`'s own comment records what happened
    * when this was read as a fraction instead.
    *
@@ -754,17 +754,23 @@ export class CameraRig {
    * The `dt` is the load-bearing half; a fixed step per frame is 4x faster at
    * 240 fps.
    *
-   * IT CARRIES NO `inputEnabled` GUARD, deliberately: it is the programmatic
-   * dolly and the shell uses it on posed and scripted cameras. Every INPUT
-   * route into it is guarded elsewhere — `handleWheel` returns early, and the
-   * key poll only runs during a match. A pause menu cannot reach it because
+   * IT CARRIES NO `inputEnabled` GUARD, deliberately: every caller is already
+   * an input route guarded elsewhere — `handleWheel` returns early, and the
+   * key poll only runs during a match. Authored cameras use `setDistance` or
+   * `setPose`, which retain the lower absolute floor. A pause menu cannot
+   * reach this because
    * `.vm-screen` (`src/shell/shell.css`) is a full-bleed `pointer-events: auto`
    * layer, so the wheel never reaches the canvas or the HUD. That means the
    * third file is load-bearing: make a screen non-full-bleed and this reopens.
    */
   zoomBy(notches: number): void {
     const cfg = RENDER_CONFIG.camera;
-    this.setDistance(this.targetDistance * Math.pow(cfg.zoomStep, notches));
+    const playerFloor = Math.max(cfg.minDistance, cfg.gameplayMinDistance);
+    this.targetDistance = THREE.MathUtils.clamp(
+      this.targetDistance * Math.pow(cfg.zoomStep, notches),
+      playerFloor,
+      cfg.maxDistance,
+    );
   }
 
   setYaw(radians: number, immediate = false): void {
@@ -1286,7 +1292,7 @@ export class CameraRig {
    * It was a BOOLEAN `fineScale`, with `pinch || kind === 'trackpad'` folded
    * into it. That collapse is exactly what must not come back: routing a
    * trackpad SCROLL through the pinch scale puts the ~130 px macOS inertia
-   * tail at 4.5 notches — the entire 55 -> 30 m span, arriving after the
+   * tail at 4.5 notches — more than the entire 55 -> 36 m span, arriving after the
    * player stopped moving. `tests/camera-nav.spec.ts` pins the tail budget.
    */
   private wheelZoom(e: WheelEvent, scale: 'pinch' | 'wheel' | 'trackpad'): void {

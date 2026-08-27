@@ -11,7 +11,7 @@ import * as THREE from 'three';
 
 import { World } from '../src/core/world';
 import { devAsserts } from '../src/core/loop';
-import { EntityFlag, EntityKind, Faction } from '../src/core/types';
+import { EntityFlag, EntityKind, Faction, VisionLevel } from '../src/core/types';
 import type { EntityId, PlayerId } from '../src/core/types';
 import {
   CELL, MAP_CELLS, MAP_CELL_COUNT, MAP_SIZE,
@@ -134,6 +134,28 @@ describe('Vision — canSee', () => {
     const v = new Vision(world);
     const mine = spawnScout(world, P0, 400, 400, 10);
     expect(v.canSee(P0, mine as never)).toBe(true);
+  });
+
+  it('does not reveal Gaia landmarks merely because Gaia is diplomatically allied', () => {
+    const world = makeWorld();
+    const gaia = world.addPlayer(Faction.Neutral, 'Gaia', false, false);
+    world.player(P0).allyMask |= 1 << (gaia as number);
+    world.player(gaia).allyMask |= 1 << (P0 as number);
+    const v = new Vision(world);
+    const apartments = world.store.alloc(
+      EntityKind.Building, 0, gaia, Faction.Neutral, 300, 0, 300,
+    );
+
+    v.update();
+    expect(v.visibilityOf(P0, apartments)).toBe(VisionLevel.Hidden);
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(apartments)).toBe(true);
+
+    spawnScout(world, P0, 304, 300, 20);
+    v.update();
+    expect(v.visibilityOf(P0, apartments)).toBe(VisionLevel.Live);
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(apartments)).toBe(false);
   });
 
   it('refuses an enemy standing in the dark and allows one in the light', () => {

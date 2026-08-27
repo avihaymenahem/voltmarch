@@ -218,6 +218,22 @@ export function shroudTint(out: Vec4N): Vec4N {
   return vec4(shroudTintRgb(out.rgb), out.a);
 }
 
+/** Node twin of `applyShroudFactor` for multiply-blended ground overlays. */
+const shroudFactorRgb = Fn(([rgb]: [Vec3N]) => {
+  const U = shroudNodeUniforms;
+  const v = U.uFogMask.sample(shroudUv).r.toVar('vmFactorV');
+  const remembered = smoothstep(0.0, U.uFogParams.y, v).oneMinus().toVar('vmFactorRem');
+  const fogged = smoothstep(U.uFogParams.y, 1.0, v).oneMinus().toVar('vmFactorFog');
+  const a = mix(U.uFogTint.w.mul(fogged), U.uFogDark.w, remembered)
+    .mul(U.uFogAmount).toVar('vmFactorA');
+  return mix(rgb, vec3(1.0), a);
+});
+
+/** Fade a multiply factor toward its neutral value (white) under shroud. */
+export function shroudFactor(out: Vec4N): Vec4N {
+  return vec4(shroudFactorRgb(out.rgb), out.a);
+}
+
 /* ==========================================================================
  * 4. THE MIXIN
  *

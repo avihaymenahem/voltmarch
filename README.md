@@ -58,6 +58,10 @@ immediately readable to genre veterans while pushing each army toward a distinct
 | Multiplayer | Online duels and co-op with commander identities, chat, ally pings and AI takeover on disconnect |
 | Replays | Every match records automatically and can be watched from the result screen or replay browser |
 
+The seven skirmish cards use original ImageGen-authored terrain layers made for VOLTMARCH. Starts,
+ore fields, map metadata and the tactical scan treatment remain deterministic live overlays, so the
+art improves presentation without disguising the map configuration the player is choosing.
+
 The battlefield is more than open ground. Seeded civilian settlement pockets place apartments,
 hospitals, mines and oil sites around capturable forward-build space instead of repeating one fixed
 layout. Capture them, fortify key lanes, cross water with landing ships, repair damaged armour,
@@ -71,20 +75,25 @@ sell exposed positions and use the terrain to hide the shape of your next attack
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.10.0
+## What's new in 3.11.0
 
-- **Faster WebGPU starts:** the title screen stays responsive while the battlefield prepares, and
-  Electron keeps initialization moving when the window loses focus.
-- **A more lived-in battlefield:** denser menu scenery, contextual dirt and geometry debris, subtle
-  film grain, and optional longer-form light or heavy rain with occasional lightning.
-- **Clearer construction:** faction-coloured terrain grids, real building silhouettes, one unified
-  build boundary, and the restored rise-from-ground completion animation.
-- **Stronger combat feedback:** corrected projectile trails and larger layered vehicle and structure
-  explosions without the unstable screen-space artifacts from the earlier pass.
-- **New production assets:** the Allied Ore Silo and civilian Ore Mine now use conditioned Meshy
-  models with KTX2 materials, reviewed LOD/shadow paths, and procedural failure fallbacks.
-- **Better title audio controls:** the main-menu soundtrack can now be paused and resumed as well as
-  moved to the previous or next cue.
+- **A smarter but fairer opponent:** AI engineers can capture neutral assets, production decisions
+  cover more of the player's command set, and a stalled economy can sell exposed structures to
+  recover without receiving free credits or hidden production advantages.
+- **Richer, more stable battlefields:** continuous terrain-space dust, grit and cracks replace
+  circular stain clusters; road shoulders blend into the ground; roadside lighting is sparse and
+  kerb-aligned; and completed speech and terrain effects no longer leak or jitter over long play.
+- **Coherent roads and civilian space:** sustained parallel duplicates and overlapping junction
+  fragments are rejected, legitimate road ends taper into the terrain, structures stay off the road
+  corridor, and apartment blocks are scattered as hidden neutral strongpoints instead of fixed trios.
+- **A more useful command HUD:** main, side and global objectives share the board; Objective and
+  Construction panels retain their chosen height; Performance can be dragged; and the command node
+  reports mode, difficulty and map without crowding power status.
+- **Improved combat and map presentation:** layered fire and explosions, a conditioned wreckage
+  family, less repetitive roadside clutter, and authored skirmish preview images make both battles
+  and map selection easier to read.
+- **Reliable session audio:** the title rotates all four original tracks without decorative-world
+  ducking, and EVA, soldier and vehicle lines now release their mixer slots correctly for long games.
 
 ## Play VOLTMARCH
 
@@ -93,7 +102,7 @@ sell exposed positions and use the terrain to hide the shape of your next attack
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.10.0**. The
+The browser build and Windows release share the same game. The current release is **3.11.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

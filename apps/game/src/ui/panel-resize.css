@@ -1,0 +1,69 @@
+/* Height-only grab rail shared by Objectives and the construction palette. */
+
+.vm-hud .vm-height-resizable.has-user-height {
+  height: var(--vm-user-panel-height);
+}
+
+/* `hud-redesign.css` deliberately restates the perimeter rail height late in
+   the bundle. Once the player has chosen a height, that preference outranks the
+   layout default regardless of stylesheet emission order. */
+.vm-hud .vm-dock-build.vm-height-resizable.has-user-height {
+  height: var(--vm-user-panel-height) !important;
+}
+
+.vm-hud .vm-objectives.vm-height-resizable.has-user-height {
+  max-height: var(--vm-user-panel-max-height);
+  overflow: hidden;
+}
+
+.vm-hud .vm-objectives.vm-height-resizable.has-user-height .vm-obj-list {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.vm-hud .vm-objectives.vm-height-resizable.is-collapsed {
+  height: auto;
+}
+
+.vm-hud .vm-panel-height-handle {
+  position: absolute;
+  left: calc(8 * var(--vm-u, 1px));
+  right: calc(8 * var(--vm-u, 1px));
+  bottom: 0;
+  z-index: 20;
+  height: calc(8 * var(--vm-u, 1px));
+  cursor: ns-resize;
+  touch-action: none;
+  pointer-events: auto;
+  outline: none;
+}
+
+.vm-hud .vm-panel-height-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(2 * var(--vm-u, 1px));
+  width: calc(34 * var(--vm-u, 1px));
+  height: 1px;
+  transform: translateX(-50%);
+  background: rgba(var(--vm-accent-rgb), 0.34);
+  box-shadow: 0 0 calc(4 * var(--vm-u, 1px)) rgba(var(--vm-accent-rgb), 0.16);
+  transition: width 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.vm-hud .vm-panel-height-handle:hover::before,
+.vm-hud .vm-panel-height-handle:focus-visible::before,
+.vm-hud .is-height-resizing > .vm-panel-height-handle::before {
+  width: calc(56 * var(--vm-u, 1px));
+  background: var(--vm-accent);
+  box-shadow: 0 0 calc(7 * var(--vm-u, 1px)) rgba(var(--vm-accent-rgb), 0.42);
+}
+
+.vm-hud .vm-objectives.is-collapsed > .vm-panel-height-handle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud .vm-panel-height-handle::before { transition: none; }
+}

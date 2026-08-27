@@ -305,13 +305,16 @@ const TEMPERATE: BiomeDef = {
   // drifts inland; dirt supplies the quieter secondary mass.
   sandPatchAmount: 0.04,
   dirtPatchMetres: 17,
-  dirtPatchAmount: 0.14,
+  // Broad exposed-soil masses are part of the terrain classification itself,
+  // not decals. Raised enough to break the lawn into authored regions while
+  // leaving grass the dominant gameplay read.
+  dirtPatchAmount: 0.20,
   dirtAltitude: 0.20,
 
   macroMetres: 34,
   // Keep the 34 m layer as regional breakup; the non-repeating splat and the
   // mesoscale surface field now carry the material-sized visible variation.
-  macroStrength: 0.08,
+  macroStrength: 0.095,
   macroTint: '#544A26',
   warpMetres: 11.0,
   warpAmplitude: 0.55,
@@ -381,7 +384,7 @@ const DESERT: BiomeDef = {
   sandBandMetres: 0,
   sandPatchAmount: 0.24,
   dirtPatchMetres: 24,
-  dirtPatchAmount: 0.34,
+  dirtPatchAmount: 0.36,
   dirtAltitude: 0.18,
 
   macroMetres: 38,
@@ -447,11 +450,11 @@ const SNOW: BiomeDef = {
   sandBandMetres: 1.2,
   sandPatchAmount: 0.06,
   dirtPatchMetres: 20,
-  dirtPatchAmount: 0.14,
+  dirtPatchAmount: 0.18,
   dirtAltitude: 0.24,
 
   macroMetres: 30,
-  macroStrength: 0.10,
+  macroStrength: 0.105,
   macroTint: '#6E7278',
   warpMetres: 13.0,
   warpAmplitude: 0.62,
@@ -515,11 +518,11 @@ const URBAN: BiomeDef = {
   sandBandMetres: 0,
   sandPatchAmount: 0.04,
   dirtPatchMetres: 16,
-  dirtPatchAmount: 0.14,
+  dirtPatchAmount: 0.22,
   dirtAltitude: 0.14,
 
   macroMetres: 28,
-  macroStrength: 0.085,
+  macroStrength: 0.10,
   macroTint: '#4E4A3E',
   warpMetres: 10.0,
   warpAmplitude: 0.45,

@@ -974,6 +974,8 @@ export interface EvaOptions {
   mode?: EvaMode;
   /** Every line emits its text for the subtitle layer. */
   onSubtitle?: (text: string, dwellSec: number) => void;
+  /** False in decorative/menu worlds, whose muted speech must not duck music. */
+  canDuck?: () => boolean;
 }
 
 interface QueueItem { id: string; priority: number; at: number }
@@ -1001,10 +1003,12 @@ export class EvaAnnouncer {
 
   mode: EvaMode;
   private readonly onSubtitle: ((text: string, dwellSec: number) => void) | null;
+  private readonly canDuck: () => boolean;
 
   constructor(private readonly engine: AudioEngine, options: EvaOptions = {}) {
     this.mode = options.mode ?? 'synth';
     this.onSubtitle = options.onSubtitle ?? null;
+    this.canDuck = options.canDuck ?? (() => true);
   }
 
   /** Wall-clock seconds. Cooldowns are wall-clock, not sim time, by design:
@@ -1153,10 +1157,10 @@ export class EvaAnnouncer {
     if (played === null) { this.finish(); return; }
     this.current = { source: played.source, id };
     this.applyDucks();
-    played.source.onended = () => {
+    played.onEnded(() => {
       if (this.current?.source === played.source) this.current = null;
       this.finish();
-    };
+    });
   }
 
   /**
@@ -1235,6 +1239,7 @@ export class EvaAnnouncer {
    */
   private applyDucks(): void {
     this.releaseDucks();
+    if (!this.canDuck()) return;
     const e = this.engine;
     const D = AUDIO_DUCK;
     this.ducks = [

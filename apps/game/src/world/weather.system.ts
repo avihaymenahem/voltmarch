@@ -9,11 +9,22 @@ import { weatherAt, lightningAt, type RainKind } from './Weather';
 
 type WeatherMode = 'off' | 'dynamic' | 'light' | 'heavy';
 
+export interface WeatherHudState {
+  kind: RainKind;
+  intensity: number;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __vmWeatherHud: WeatherHudState | undefined;
+}
+
 let elapsed = 0;
 let seed = 1;
 let mode: WeatherMode = 'off';
 let lastKind: RainKind = 'clear';
 let lastLightning = 0;
+const weatherHudState: WeatherHudState = { kind: 'clear', intensity: 0 };
 let baseSunIntensity = 0;
 let baseHemiIntensity = 0;
 const baseSunColor = new THREE.Color();
@@ -54,6 +65,9 @@ export default defineSystem({
     baseSunColor.copy(sceneRig.sun.color);
     baseHemiColor.copy(sceneRig.hemi.color);
     post.setWeatherIntensity(0);
+    weatherHudState.kind = 'clear';
+    weatherHudState.intensity = 0;
+    globalThis.__vmWeatherHud = weatherHudState;
   },
 
   frame(rc: RenderContext): void {
@@ -70,6 +84,8 @@ export default defineSystem({
 
     const { post, sceneRig } = ctx();
     post.setWeatherIntensity(frame.intensity);
+    weatherHudState.kind = frame.kind;
+    weatherHudState.intensity = frame.intensity;
 
     // Pick up a live art-mood/config change while the sky is not already under
     // our flash. During a pulse the stored values remain the unmodified base.
@@ -107,5 +123,6 @@ export default defineSystem({
     elapsed = 0;
     lastKind = 'clear';
     lastLightning = 0;
+    globalThis.__vmWeatherHud = undefined;
   },
 });

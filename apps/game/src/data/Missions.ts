@@ -11,9 +11,10 @@
  * TWO SCOPES
  * ----------
  * `profile` — cross-game. Persisted, tracked across every match, and the only
- *   scope that grants unlocks. These are the chains.
- * `match` — the per-match objective board. Reset at match start, paid in
- *   credits, capped at five on screen. They ALSO feed profile progress, because
+ *   scope that grants unlocks. Two unlocked, unfinished rows are pinned to the
+ *   in-match HUD as global objectives.
+ * `match` — the per-match objective board. Reset at match start, split into
+ *   main and side work, with eight drawn per match. They ALSO feed profile progress, because
  *   the profile missions are listening to the same events — nothing special
  *   wires the two together, which is why they do not feel bolted on.
  *
@@ -790,8 +791,9 @@ const MASTERY: readonly MissionDef[] = [
 /* ==========================================================================
  * 3. MATCH OBJECTIVES
  *
- * The per-match board. Five are drawn per match from the sim seed, so a replay
- * of the same seed draws the same board. Their credit values are retained as
+ * The per-match board. Eight are drawn per match from the sim seed — normally
+ * four main and four side — so a replay of the same seed draws the same board.
+ * Their credit values are retained as
  * deferred design metadata, but are not advertised: no deterministic economy
  * consumer pays them yet. Every unlock remains behind a profile chain, so a
  * player who ignores the board is not locked out of content.
@@ -800,7 +802,7 @@ const MASTERY: readonly MissionDef[] = [
 const OBJECTIVES: readonly MissionDef[] = [
   {
     id: 'obj.kills.10',
-    scope: 'match', category: 'combat', difficulty: 1,
+    scope: 'match', category: 'combat', difficulty: 1, objectiveTier: 'side',
     title: 'Draw Blood',
     description: 'Destroy 10 enemy units.',
     target: 10,
@@ -809,7 +811,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.kills.30',
-    scope: 'match', category: 'combat', difficulty: 2,
+    scope: 'match', category: 'combat', difficulty: 2, objectiveTier: 'main',
     title: 'Attrition',
     description: 'Destroy 30 enemy units.',
     target: 30,
@@ -818,7 +820,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.armour.12',
-    scope: 'match', category: 'combat', difficulty: 2,
+    scope: 'match', category: 'combat', difficulty: 2, objectiveTier: 'main',
     title: 'Break The Column',
     description: 'Destroy 12 enemy vehicles.',
     target: 12,
@@ -827,7 +829,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.raze.5',
-    scope: 'match', category: 'combat', difficulty: 2,
+    scope: 'match', category: 'combat', difficulty: 2, objectiveTier: 'main',
     title: 'Structural Damage',
     description: 'Destroy 5 enemy structures.',
     target: 5,
@@ -836,7 +838,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.veteran.3',
-    scope: 'match', category: 'combat', difficulty: 2,
+    scope: 'match', category: 'combat', difficulty: 2, objectiveTier: 'side',
     title: 'Field Promotion',
     description: 'Promote 3 units to veteran rank.',
     target: 3,
@@ -844,8 +846,35 @@ const OBJECTIVES: readonly MissionDef[] = [
     reward: [credits(600)],
   },
   {
+    id: 'obj.infantry.20',
+    scope: 'match', category: 'combat', difficulty: 1, objectiveTier: 'side',
+    title: 'Thin The Ranks',
+    description: 'Destroy 20 enemy infantry.',
+    target: 20,
+    rule: { on: 'kill', kinds: [EntityKind.Infantry] },
+    reward: [credits(550)],
+  },
+  {
+    id: 'obj.asset-value.15000',
+    scope: 'match', category: 'combat', difficulty: 3, objectiveTier: 'main',
+    title: 'Costly Exchange',
+    description: 'Destroy 15,000 credits worth of enemy assets.',
+    target: 15_000,
+    rule: { on: 'kill', metric: 'value' },
+    reward: [credits(1100)],
+  },
+  {
+    id: 'obj.elite.2',
+    scope: 'match', category: 'combat', difficulty: 3, objectiveTier: 'main',
+    title: 'Decorated Corps',
+    description: 'Promote 2 units to elite rank.',
+    target: 2,
+    rule: { on: 'veterancy', rank: 2 },
+    reward: [credits(1000)],
+  },
+  {
     id: 'obj.harvest.5000',
-    scope: 'match', category: 'economy', difficulty: 1,
+    scope: 'match', category: 'economy', difficulty: 1, objectiveTier: 'side',
     title: 'Ore Quota',
     description: 'Mine 5,000 credits of ore this match.',
     target: 5000,
@@ -854,7 +883,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.bank.15000',
-    scope: 'match', category: 'economy', difficulty: 2,
+    scope: 'match', category: 'economy', difficulty: 2, objectiveTier: 'main',
     title: 'Liquidity',
     description: 'Hold 15,000 credits at one time.',
     target: 15_000,
@@ -863,7 +892,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.power.150',
-    scope: 'match', category: 'economy', difficulty: 1,
+    scope: 'match', category: 'economy', difficulty: 1, objectiveTier: 'side',
     title: 'Keep The Lights On',
     description: 'Reach a 150-point power surplus.',
     target: 150,
@@ -871,8 +900,26 @@ const OBJECTIVES: readonly MissionDef[] = [
     reward: [credits(400)],
   },
   {
+    id: 'obj.harvest.20000',
+    scope: 'match', category: 'economy', difficulty: 3, objectiveTier: 'main',
+    title: 'Industrial Appetite',
+    description: 'Mine 20,000 credits of ore this match.',
+    target: 20_000,
+    rule: { on: 'earn', reasons: [CreditReason.Harvest] },
+    reward: [credits(1000)],
+  },
+  {
+    id: 'obj.power.300',
+    scope: 'match', category: 'economy', difficulty: 2, objectiveTier: 'main',
+    title: 'Reserve Capacity',
+    description: 'Reach a 300-point power surplus.',
+    target: 300,
+    rule: { on: 'power' },
+    reward: [credits(750)],
+  },
+  {
     id: 'obj.build.8',
-    scope: 'match', category: 'construction', difficulty: 1,
+    scope: 'match', category: 'construction', difficulty: 1, objectiveTier: 'main',
     title: 'Base Of Operations',
     description: 'Complete 8 structures.',
     target: 8,
@@ -881,7 +928,7 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.produce.20',
-    scope: 'match', category: 'construction', difficulty: 1,
+    scope: 'match', category: 'construction', difficulty: 1, objectiveTier: 'main',
     title: 'Standing Army',
     description: 'Train or build 20 units.',
     target: 20,
@@ -889,8 +936,26 @@ const OBJECTIVES: readonly MissionDef[] = [
     reward: [credits(500)],
   },
   {
+    id: 'obj.infantry-production.12',
+    scope: 'match', category: 'construction', difficulty: 1, objectiveTier: 'side',
+    title: 'Boots On The Ground',
+    description: 'Train 12 infantry units.',
+    target: 12,
+    rule: { on: 'produce', tab: BuildTab.Infantry },
+    reward: [credits(500)],
+  },
+  {
+    id: 'obj.vehicle-production.12',
+    scope: 'match', category: 'construction', difficulty: 2, objectiveTier: 'side',
+    title: 'Motorised Force',
+    description: 'Build 12 vehicles.',
+    target: 12,
+    rule: { on: 'produce', tab: BuildTab.Vehicles },
+    reward: [credits(650)],
+  },
+  {
     id: 'obj.capture.1',
-    scope: 'match', category: 'tactics', difficulty: 2,
+    scope: 'match', category: 'tactics', difficulty: 2, objectiveTier: 'side',
     title: 'Seize The Asset',
     description: 'Capture an enemy structure.',
     target: 1,
@@ -898,8 +963,17 @@ const OBJECTIVES: readonly MissionDef[] = [
     reward: [credits(800)],
   },
   {
+    id: 'obj.capture.3',
+    scope: 'match', category: 'tactics', difficulty: 3, objectiveTier: 'main',
+    title: 'Hostile Acquisition',
+    description: 'Capture 3 enemy structures.',
+    target: 3,
+    rule: { on: 'capture' },
+    reward: [credits(1300)],
+  },
+  {
     id: 'obj.noLoss.structures',
-    scope: 'match', category: 'tactics', difficulty: 3,
+    scope: 'match', category: 'tactics', difficulty: 3, objectiveTier: 'main',
     title: 'Intact',
     description: 'Finish the match without losing a structure.',
     target: 1,
@@ -908,12 +982,21 @@ const OBJECTIVES: readonly MissionDef[] = [
   },
   {
     id: 'obj.fast.win',
-    scope: 'match', category: 'tactics', difficulty: 3,
+    scope: 'match', category: 'tactics', difficulty: 3, objectiveTier: 'main',
     title: 'Lightning Campaign',
     description: 'Win inside 15 minutes.',
     target: 1,
     rule: { on: 'win', withinSec: 900 },
     reward: [credits(1500)],
+  },
+  {
+    id: 'obj.noLoss.vehicles',
+    scope: 'match', category: 'tactics', difficulty: 3, objectiveTier: 'side',
+    title: 'Preserve The Spearhead',
+    description: 'Win without losing a vehicle.',
+    target: 1,
+    rule: { on: 'noLoss', kinds: VEHICLES, requireWin: true },
+    reward: [credits(1200)],
   },
 ];
 
@@ -1078,6 +1161,12 @@ export function validateMissions(defs: readonly MissionDef[]): string[] {
     }
     if (m.scope === 'match' && (rule.on === 'winStreak' || rule.on === 'play')) {
       problems.push(`mission "${m.id}" uses "${rule.on}", which only makes sense at profile scope`);
+    }
+    if (m.scope === 'match' && m.objectiveTier !== 'main' && m.objectiveTier !== 'side') {
+      problems.push(`match objective "${m.id}" has no main/side objective tier`);
+    }
+    if (m.scope === 'profile' && m.objectiveTier !== undefined) {
+      problems.push(`profile mission "${m.id}" declares a match-only objective tier`);
     }
     if (rule.on === 'win' && rule.faction !== undefined && m.faction !== rule.faction) {
       problems.push(`mission "${m.id}" filters on faction ${rule.faction} but is tagged ${String(m.faction)}`);

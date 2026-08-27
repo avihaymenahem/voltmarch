@@ -440,7 +440,14 @@ export class Vision implements IVision {
       const owner = s.owner[i];
       const ally = world.players[owner]?.allyMask ?? (1 << owner);
 
-      const r = this.sightOf(i, f);
+      // Gaia's alliance exists so neutral landmarks are non-hostile and
+      // capturable; it must not turn those landmarks into free map-wide scout
+      // posts. In particular, a civilian apartment's default building sight
+      // used to stamp its own cell into every army's grid and reveal itself at
+      // match start. Capturing it changes the entity faction to the new
+      // owner's, so ordinary structure vision resumes automatically.
+      const neutralOwner = s.faction[i] === Faction.Neutral;
+      const r = neutralOwner ? 0 : this.sightOf(i, f);
       if (r > 0) {
         this.sourceCount++;
         this.stampCircle(ally, s.posX[i], s.posZ[i], r, np);
@@ -707,7 +714,16 @@ export class Vision implements IVision {
    */
   private levelAt(i: number, viewer: PlayerId): VisionLevel {
     const s = this.world.store;
-    if (this.world.areAllied(viewer, s.owner[i] as PlayerId)) return VisionLevel.Live;
+    const owner = s.owner[i] as PlayerId;
+    // Gaia is allied to every army so civilian landmarks can be captured and
+    // garrisoned without becoming hostile. That diplomatic convenience is not
+    // shared vision: otherwise every neutral apartment, derrick and mine is
+    // revealed at match start. Own entities and real allied armies remain live;
+    // neutral-owned map content has to be scouted like the ground beneath it.
+    if (owner === viewer) return VisionLevel.Live;
+    if (s.faction[i] !== Faction.Neutral && this.world.areAllied(viewer, owner)) {
+      return VisionLevel.Live;
+    }
     if (this.isConcealed(i, viewer)) return VisionLevel.Hidden;
     if (!this.on) return VisionLevel.Live;
 

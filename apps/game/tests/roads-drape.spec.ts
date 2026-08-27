@@ -77,6 +77,7 @@ import { MAPS } from '../src/shell/settings-store';
 import { Terrain } from '../src/world/Terrain';
 import { RoadNetwork, isCarriageway, setActiveRoads } from '../src/world/Roads';
 import { Scatter } from '../src/world/Scatter';
+import { PROP_DEFS } from '../src/world/PropLibrary';
 import type { BiomeName } from '../src/world/Biomes';
 
 interface Case {
@@ -245,6 +246,48 @@ describe('nothing stands in the carriageway', () => {
     }, 120000);
   }
 
+  it('street lamps use real pavement runs and point their heads over the road', () => {
+    const c = CASES[0];
+    const b = build(c);
+    setActiveRoads(b.net);
+    const scene = new THREE.Scene();
+    const scatter = new Scatter({
+      scene,
+      terrain: b.terrain,
+      biome: c.biome,
+      seed: (c.mapSeed ^ 0x5ca77e) >>> 0,
+      urban: c.urban,
+      densityScale: c.scatter,
+      focus: null,
+    });
+    scatter.generate();
+
+    const placements = (scatter as unknown as {
+      placements: readonly {
+        defIndex: number; x: number; z: number; yaw: number; alive: boolean;
+      }[];
+    }).placements;
+    const nearest = new Float32Array(4);
+    let lamps = 0;
+    for (const p of placements) {
+      if (!p.alive || PROP_DEFS[p.defIndex]?.sidewalkOnly !== true) continue;
+      lamps++;
+      expect(b.net.isPavement(p.x, p.z), `lamp ${lamps} left the pavement`).toBe(true);
+      expect(b.net.nearestRoadPoint(p.x, p.z, 18, nearest), `lamp ${lamps} lost its road`).toBe(true);
+      const dx = nearest[0] - p.x, dz = nearest[1] - p.z;
+      const length = Math.hypot(dx, dz) || 1;
+      // The asymmetric lamp head extends along local +X. Its world direction
+      // is (cos(yaw), -sin(yaw)); require it to point toward the carriageway.
+      const alignment = Math.cos(p.yaw) * dx / length + -Math.sin(p.yaw) * dz / length;
+      expect(alignment, `lamp ${lamps} faces away from its road`).toBeGreaterThan(0.92);
+    }
+    expect(lamps).toBeGreaterThan(4);
+
+    scatter.dispose();
+    setActiveRoads(null);
+    b.net.dispose();
+  }, 120000);
+
   /**
    * AND THE MAP IS STILL DRESSED AFTERWARDS.
    *
@@ -338,15 +381,20 @@ describe('road ends, bounded rather than fixed', () => {
       });
       net.generate();
       const inner = net as unknown as {
-        chains: readonly { nodeA: number; nodeB: number }[];
+        chains: readonly { nodeA: number; nodeB: number; fade: readonly number[] }[];
         nodes: readonly { x: number; z: number; edges: readonly number[]; border: boolean }[];
       };
       let here = 0;
       for (const ch of inner.chains) {
-        for (const nid of [ch.nodeA, ch.nodeB]) {
+        for (const [nid, atStart] of [[ch.nodeA, true], [ch.nodeB, false]] as const) {
           const n = inner.nodes[nid];
           if (n.edges.length > 1 || n.border) continue;
           if (n.x < 40 || n.z < 40 || n.x > MAP_SIZE - 40 || n.z > MAP_SIZE - 40) continue;
+          const end = atStart ? 0 : ch.fade.length - 1;
+          expect(ch.fade[end], `${c.label}: dead-end opacity reaches zero`).toBeCloseTo(0, 8);
+          const inboard = atStart ? Math.min(2, ch.fade.length - 1) : Math.max(0, ch.fade.length - 3);
+          expect(ch.fade[inboard], `${c.label}: fade rises toward the live road`)
+            .toBeGreaterThan(ch.fade[end]);
           here++;
         }
       }
@@ -384,23 +432,23 @@ describe('road ends, bounded rather than fixed', () => {
  * on `build`). Treat a move here as a routing change to explain, not a number
  * to re-baseline.
  */
-/** Measured 2026-08-18, same terrain and caveat as CENSUS below. */
+/** Re-measured 2026-08-27 after compact pads and parallel-street deduplication. */
 const KERB_DASHES: Record<string, number> = {
-  'industrial-grid': 24,
+  'industrial-grid': 12,
   'foundry-line': 0,
-  'temperate-valley': 69,
-  'contested-strait': 12,
+  'temperate-valley': 24,
+  'contested-strait': 0,
   'frozen-sector': 0,
-  'airbase-flats': 80,
+  'airbase-flats': 52,
 };
 
 const CENSUS: Record<string, number> = {
-  'industrial-grid': 369,
+  'industrial-grid': 303,
   'foundry-line': 76,
-  'temperate-valley': 519,
-  'contested-strait': 7,
+  'temperate-valley': 141,
+  'contested-strait': 18,
   'frozen-sector': 60,
-  'airbase-flats': 4,
+  'airbase-flats': 24,
 };
 
 describe('no chain paints markings on a carriageway another chain owns', () => {
@@ -425,10 +473,11 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
    * THE CENSUS, PINNED — and it is a read on the ROUTING, not on this fix.
    *
    * A high number here means the router laid that much road on top of other
-   * road; the marking suppression is only what stops it being visible. The
-   * real defect underneath is untouched and is recorded in the task list:
-   * 26.6% of laid road sits on other road, and one chain runs 632 m to join two
-   * nodes 84 m apart.
+   * road; the marking suppression is only the final safety net. The generator
+   * now removes a sustained near-parallel street when doing so preserves both
+   * endpoint continuations. That cut temperate-valley's census from 582 to 141
+   * without manufacturing an interior road end; protected arterials and graph
+   * bridges deliberately remain for a future whole-route coalescing pass.
    *
    * Pinned per map so a routing change announces itself in either direction,
    * the same contract `tests/terrain-lod.spec.ts` uses for its chunk counts.
@@ -437,8 +486,15 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
    */
   it('suppresses the number of cross-sections it suppressed when measured', () => {
     const got: Record<string, number> = {};
-    for (const c of CASES) got[c.label] = build(c).net.stats().foreignPaintRows;
+    let removed = 0;
+    for (const c of CASES) {
+      const net = build(c).net;
+      got[c.label] = net.stats().foreignPaintRows;
+      removed += net.stats().parallelEdgesRemoved;
+      net.dispose();
+    }
     expect(got).toEqual(CENSUS);
+    expect(removed).toBeGreaterThan(0);
   });
 
   /**
@@ -582,8 +638,8 @@ describe('the carriageway paint frame matches the row it is written on', () => {
   const FRAME_CASES: readonly {
     readonly map: string; readonly seed: number; readonly clamped: number;
   }[] = [
-    { map: 'coral-shore', seed: 3, clamped: 6 },
-    { map: 'temperate-valley', seed: 1, clamped: 5 },
+    { map: 'coral-shore', seed: 3, clamped: 9 },
+    { map: 'temperate-valley', seed: 1, clamped: 13 },
     { map: 'industrial-grid', seed: 1, clamped: 0 },
   ];
 
@@ -731,40 +787,15 @@ describe('the carriageway paint frame matches the row it is written on', () => {
    * from one seed to the next — but a collapse toward zero is a real defect and
    * this is where it reports.
    *
-   * TWO INVERTED QUADS SURVIVE ACROSS THESE THREE CASES AND THEY ARE PINNED,
-   * NOT ZEROED — and see the roster figure below, because three cases is not
-   * the roster. The offset CURVE never inverts — that is what the 0.85 buys — but
-   * the ribbon is a strip of quads between consecutive rows, and where `wl`
-   * falls 5.22 m -> 3.42 m across one 1.95 m step the row's own left edge
-   * outruns the advance and the quad goes non-convex:
-   *
-   *     coral-shore      chain 0  row  46 of 181   second triangle -0.83 m2
-   *     temperate-valley chain 17 row 134 of 207   second triangle -1.08 m2
-   *
-   * Those two areas read -1.66 and -2.15 until they were checked: `area2` below
-   * returns the CROSS PRODUCT, which is twice the signed area. The pin only
-   * tests the sign, so the test was right and only the prose was doubled.
-   *
-   * Both sit on the tightest bend of the tightest chain on their map.
-   *
-   * THE ROSTER FIGURE IS LARGER AND THE ARTEFACT IS A BOWTIE, NOT A SLIVER.
-   * Over all seven maps at seeds 0..9: 27 inverted triangles of 100 836
-   * (0.027%), across 50 418 quads (0.054% of quads) — on temperate-valley and
-   * coral-shore only, but at 10 of 10 seeds on both, so this is a standing
-   * property and not a seed accident. The worst is -29.08 m2 at coral-shore
-   * chain 0, and it carries a +49.63 m2 partner: the row order crosses over
-   * itself, which is a bowtie rather than the thin sliver the two cases above
-   * suggest. Still inside the 0.2% budget `makeRoadMaterial` already records — and it is why that material is
-   * `THREE.DoubleSide`, so the back-facing triangle fills its pixels with
-   * slightly wrong lighting instead of leaving bare terrain showing through.
-   * Rasterising the carriageway at 0.5 m and flood-filling confirms it: no
-   * enclosed empty region anywhere near a clamped row. Fixing it properly means
-   * rate-limiting how fast `wl`/`wr` may move between rows, which is a change
-   * to `resolveChainEdges` with its own consequences; it is bounded here so it
-   * cannot grow unnoticed.
+   * THIS USED TO PIN TWO INVERTED TRIANGLES IN THESE CASES (27 over the full
+   * seven-map/ten-seed sweep). Both came from a width falling faster than the
+   * centreline advanced, turning the strip quad into a bowtie. The production
+   * solver now propagates a maximum width change backward and forward through
+   * each chain. Zero is the contract: a road surface never folds under itself.
    */
   it('a tight bend pinches the ribbon and never folds it', () => {
     const rows: string[] = [];
+    const folds: string[] = [];
     let inverted = 0;
     let narrowest = Infinity;
     let tightest = Infinity;
@@ -776,8 +807,11 @@ describe('the carriageway paint frame matches the row it is written on', () => {
         for (let i = 0; i < ch.pts.length / 2; i++) {
           narrow = Math.min(narrow, (ch.wl[i] + ch.wr[i]) / (ch.halfWidth * 2));
           if (i === 0) continue;
-          // The ribbon quad aL, aR, bR, bL walked in order. Both triangles wind
-          // the same way unless the row order has crossed over itself.
+          // The ribbon quad aL, aR, bR, bL walked in order. Production splits
+          // it over the aL-bL diagonal: that is the safe diagonal for the
+          // intentionally asymmetric row produced by a tight concave bend.
+          // Check the exact two triangles `buildChainRibbon` sends to triUp;
+          // the opposite diagonal can invert even while this quad is valid.
           const q = [
             ch.edgeL[i * 2 - 2], ch.edgeL[i * 2 - 1], ch.edgeR[i * 2 - 2], ch.edgeR[i * 2 - 1],
             ch.edgeR[i * 2], ch.edgeR[i * 2 + 1], ch.edgeL[i * 2], ch.edgeL[i * 2 + 1],
@@ -785,8 +819,16 @@ describe('the carriageway paint frame matches the row it is written on', () => {
           const area2 = (a: number, b2: number, c2: number): number =>
             (q[b2 * 2] - q[a * 2]) * (q[c2 * 2 + 1] - q[a * 2 + 1])
             - (q[b2 * 2 + 1] - q[a * 2 + 1]) * (q[c2 * 2] - q[a * 2]);
-          if (area2(0, 1, 2) < 0) inverted++;
-          if (area2(0, 2, 3) < 0) inverted++;
+          const first = area2(0, 3, 1);
+          const second = area2(1, 3, 2);
+          if (first >= 0) {
+            inverted++;
+            folds.push(`${c.map}/${c.seed} chain ${ch.id} row ${i} first ${first.toFixed(3)}`);
+          }
+          if (second >= 0) {
+            inverted++;
+            folds.push(`${c.map}/${c.seed} chain ${ch.id} row ${i} second ${second.toFixed(3)}`);
+          }
         }
       }
       narrowest = Math.min(narrowest, narrow);
@@ -796,7 +838,8 @@ describe('the carriageway paint frame matches the row it is written on', () => {
       b.net.dispose();
     }
 
-    expect(`inverted ribbon triangles: ${inverted}`).toBe('inverted ribbon triangles: 2');
+    expect(`inverted ribbon triangles: ${inverted} (${folds.join(', ')})`)
+      .toBe('inverted ribbon triangles: 0 ()');
     // 70.4% measured; a road that pinches below half its width is a kink.
     expect(`${rows.join(' | ')} -- narrowest ${(narrowest * 100).toFixed(1)}%`)
       .toBe(`${rows.join(' | ')} -- narrowest ${(Math.max(narrowest, 0.5) * 100).toFixed(1)}%`);

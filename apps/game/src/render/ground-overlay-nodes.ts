@@ -19,7 +19,7 @@
  * Same reason as `sky-nodes.ts`: the stage inventory tracked `onBeforeCompile`
  * sites and the raw `ShaderMaterial`s that carry LIT shading, and these two are
  * unlit `ShaderMaterial`s that nothing injects into (the contact pool's single
- * `onBeforeCompile` is one call to `applyShroudTint`, which counted as a shroud
+ * `onBeforeCompile` is one call to `applyShroudFactor`, which counted as a shroud
  * site rather than a material). `ShaderMaterial` is absent from
  * `StandardNodeLibrary`, so under `WebGPURenderer` both draw through a bare
  * `NodeMaterial` — a black quad where a multiply factor should be, over a
@@ -45,7 +45,7 @@ import {
   DECAL_DARKEN_FLOOR,
 } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
-import { shroudTint, shroudVertexUv } from './shroud-nodes';
+import { shroudFactor, shroudVertexUv } from './shroud-nodes';
 
 type Vec4N = Node<'vec4'>;
 
@@ -56,12 +56,10 @@ type Vec4N = Node<'vec4'>;
 /**
  * The node twin of `ContactShadows.ts`'s material.
  *
- * IT CARRIES THE SHROUD SELF-TINT, because the GLSL does: a pool is ground truth
- * about explored terrain and must fade with the shroud exactly as the hull
- * standing on it does. `shroudVertexUv()` in `setupPosition` and `shroudTint()`
- * in `setupOutput` are the documented pair from `shroud-nodes.ts` §4 — forget
- * the first and the second reads an unwritten varying, which is a garbage tint
- * rather than an error.
+ * It carries the shroud multiply-factor fade from the GLSL path: a pool is
+ * ground truth about explored terrain and must become the neutral factor white
+ * under fog. `shroudVertexUv()` in `setupPosition` and `shroudFactor()` in
+ * `setupOutput` are a pair — forget the first and the second samples garbage.
  */
 export function createContactShadowNodeMaterial(): NodeMaterial {
   const rgb = new Float32Array(3);
@@ -93,7 +91,7 @@ export function createContactShadowNodeMaterial(): NodeMaterial {
     override setupOutput(
       builder: Parameters<NodeMaterial['setupOutput']>[0], out: Node,
     ): Node {
-      return super.setupOutput(builder, shroudTint(out as Vec4N)) as Node;
+      return super.setupOutput(builder, shroudFactor(out as Vec4N)) as Node;
     }
   })();
 
@@ -187,7 +185,13 @@ export function createDecalNodeMaterial(
       vUv.assign(aUv);
       vParams.assign(aParams);
       vTint.assign(aTint);
+      shroudVertexUv();
       return position;
+    }
+    override setupOutput(
+      builder: Parameters<NodeMaterial['setupOutput']>[0], out: Node,
+    ): Node {
+      return super.setupOutput(builder, shroudFactor(out as Vec4N)) as Node;
     }
   })();
 

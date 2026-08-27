@@ -32,6 +32,20 @@ describe('voiceover presentation wiring', () => {
     expect(settings).toContain('setBarkMode(');
   });
 
+  it('cannot leak completed speech into the shared voice budget', () => {
+    const engine = read('apps/game/src/audio/AudioEngine.ts');
+    const eva = read('apps/game/src/audio/Eva.ts');
+    const barks = read('apps/game/src/audio/Barks.ts');
+
+    expect(engine).toContain('export interface PlayedBufferVoice');
+    expect(engine).toContain('this.releaseVoice(voice);');
+    expect(engine).toContain('onEnded(callback: () => void): void');
+    expect(eva).toContain('played.onEnded(() => {');
+    expect(barks).toContain('played.onEnded(() => {');
+    expect(eva).not.toContain('played.source.onended =');
+    expect(barks).not.toContain('played.source.onended =');
+  });
+
   it('routes the real content key before falling back to broad entity flags', () => {
     const audio = read('apps/game/src/audio/audio.system.ts');
     const realKey = audio.indexOf('let hint = contentKeyOf(world, i)');

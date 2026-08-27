@@ -61,6 +61,10 @@ import { FACTION_ANY, registerKindMesh, type KindMesh } from '../render/RenderBr
 import type { PropMaterialSetLike } from '../render/gpu-path';
 import { createPropMaterial, PropLibrary, propPalette } from './PropLibrary';
 import { buildWreckSet, type WreckFaction, type WreckSet } from '../art/Wrecks';
+import {
+  IMPORTED_WRECK_CLASSES, loadImportedWreckSet,
+  type ImportedWreckSet,
+} from '../art/ImportedWreckAssets';
 import { isBiomeName, type BiomeName } from './Biomes';
 import { getTerrain } from './Terrain';
 
@@ -98,6 +102,8 @@ function activeBiome(): BiomeName {
 let materials: PropMaterialSetLike | null = null;
 let library: PropLibrary | null = null;
 let wreckSet: WreckSet | null = null;
+let importedWreckSet: ImportedWreckSet | null = null;
+let importedWreckEpoch = 0;
 
 export default defineSystem({
   id: 'art.entityProps',
@@ -111,6 +117,7 @@ export default defineSystem({
 
   init(): void {
     const { debug } = ctx();
+    const assetEpoch = ++importedWreckEpoch;
     const biome = activeBiome();
     const palette = propPalette(biome);
 
@@ -203,6 +210,44 @@ export default defineSystem({
     for (const m of missing) {
       console.warn(`[props] no PropLibrary archetype for ${m} — it will draw the hazard box`);
     }
+
+    // Load the authored conventional tank hulk after the match is already
+    // interactive. Procedural class/faction wrecks stay registered until this
+    // resolves and remain the permanent fallback on any asset failure.
+    void loadImportedWreckSet().then((imported) => {
+      if (assetEpoch !== importedWreckEpoch) {
+        imported.dispose();
+        return;
+      }
+      importedWreckSet = imported;
+      let overrides = 0;
+      for (const cls of IMPORTED_WRECK_CLASSES) {
+        registerKindMesh(
+          EntityKind.Wreck, Faction.Allies,
+          imported.hulk('allies', cls), VEHICLE_WRECK_DEF[cls], true,
+        );
+        registerKindMesh(
+          EntityKind.Wreck, Faction.Soviets,
+          imported.hulk('soviets', cls), VEHICLE_WRECK_DEF[cls], true,
+        );
+        // Neutral/legacy conventional wrecks use the same hulk. Exact
+        // Meridian/Reclaim registrations above still win over this wildcard.
+        registerKindMesh(
+          EntityKind.Wreck, FACTION_ANY,
+          imported.hulk('neutral', cls), VEHICLE_WRECK_DEF[cls], true,
+        );
+        overrides += 3;
+      }
+      debug.counters.entityPropImportedWreckModels = overrides;
+      console.info(
+        `[props] ${overrides} authored tank-wreck override(s) ready `
+        + `(${imported.triangles} tris each; procedural fallback retained)`,
+      );
+    }).catch((error: unknown) => {
+      if (assetEpoch !== importedWreckEpoch) return;
+      debug.counters.entityPropImportedWreckModels = 0;
+      console.warn('[props] authored tank wreck unavailable; keeping procedural wrecks', error);
+    });
   },
 
   frame(r: RenderContext): void {
@@ -212,6 +257,9 @@ export default defineSystem({
   },
 
   dispose(): void {
+    importedWreckEpoch++;
+    importedWreckSet?.dispose();
+    importedWreckSet = null;
     // The bridge's own `clearKindMeshes()` drops the registrations; these are
     // the GPU objects nobody else holds a reference to.
     wreckSet?.dispose();

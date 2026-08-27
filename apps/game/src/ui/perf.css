@@ -55,10 +55,8 @@
   gap: calc(3 * var(--vm-u, 1px));
   padding: calc(4 * var(--vm-u, 1px));
 
-  /* Deliberately NOT `.vm-panel`: that primitive sets `pointer-events: auto`,
-     and a diagnostic that swallows a click during a fight is worse than no
-     diagnostic. PerfHud.ts also sets this inline, so a stylesheet that fails to
-     load cannot arm the bug. */
+  /* Deliberately NOT `.vm-panel`: the body remains click-through. Only the
+     header opts back into pointer input so it can serve as a drag handle. */
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -86,7 +84,19 @@
   gap: calc(4 * var(--vm-u, 1px));
   height: calc(11 * var(--vm-u, 1px));
   border-bottom: 1px solid var(--vm-hairline-soft, rgba(255, 255, 255, 0.10));
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+  outline: none;
 }
+
+.vm-perf-head:focus-visible {
+  color: var(--vm-text, #eaf2fa);
+  border-bottom-color: var(--vm-accent, #9d5bd2);
+  box-shadow: 0 calc(2 * var(--vm-u, 1px)) 0 rgba(var(--vm-accent-rgb), 0.22);
+}
+
+.vm-perf.is-dragging .vm-perf-head { cursor: grabbing; }
 
 .vm-perf-title {
   /* The panel's name is never the part that gets cut. */

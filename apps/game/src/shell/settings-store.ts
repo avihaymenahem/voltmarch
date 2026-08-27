@@ -553,7 +553,7 @@ export function defaultSettings(): Settings {
       panelBlur: 'auto',
       perfOverlay: false,
       fov: 36,
-      minZoom: 30,
+      minZoom: 36,
       maxZoom: 140,
       fpsCap: 0,
     },
@@ -717,7 +717,9 @@ export function normalizeSettings(raw: unknown): Settings {
   for (const k of KEYBINDS) bindings[k.id] = normalizeChord(rawBinds[k.id], k.def);
   migrateBindings(bindings, storedVersion);
 
-  const minZoom = num(g.minZoom, 8, 260, d.graphics.minZoom);
+  // 36 m is the shipping gameplay floor. The renderer keeps a separate 30 m
+  // absolute floor for authored shots, which is intentionally not a setting.
+  const minZoom = num(g.minZoom, 36, 260, d.graphics.minZoom);
   const maxZoom = num(g.maxZoom, 8, 400, d.graphics.maxZoom);
 
   return {

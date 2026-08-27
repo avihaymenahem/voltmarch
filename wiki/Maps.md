@@ -298,10 +298,17 @@ one chassis that can contest both the sea and the shore.
 
 ## 7. Roads
 
-Roads generate on every map. The network is a jittered 4 × 4 lattice — blocks of roughly 100 m — plus
-one arterial running the full width of the map and one running its full depth. Edges are refused
-where the ground is wet, impassable or steeper than 0.14 rise/run, so the network bends around
-terrain rather than through it.
+Roads generate as one connected network on every map. The route search begins from a jittered block
+grid and map-crossing arterial candidates, refuses wet, impassable and steep ground, then removes
+sustained near-parallel duplicates before the visible chains are built. A short bend or a real
+crossing remains; two separate roads running beside each other through the same corridor do not.
+
+The mesh drapes to the terrain at sub-cell intervals. Junction pads are accepted only when their
+interior and outer pavement skirt stay on valid ground, and road triangles already owned by another
+chain or junction are culled rather than layered into cracked-looking fragments. A legitimate
+interior terminus narrows, lowers and fades into the surrounding ground instead of ending as a hard
+rectangular cut. Sidewalk shoulders carry restrained terrain-coloured wear so paving meets the map
+without a pasted-on edge.
 
 A carriageway cell's path cost drops from 100 to 72, and then again by locomotor: **foot 63, tracked
 56, wheeled 42**. Concrete pads and paving around your own base get the same discount.
@@ -362,22 +369,22 @@ unoccupied ground, and after ten minutes a single credit crate is worth more tha
 
 ---
 
-## 10. The civilian hamlets
+## 10. Civilian landmarks
 
-Two mirrored settlements of three neutral buildings sit on the **perpendicular bisector of the lane
-between the two openings** — the only line on the map where a point is equally far from both armies,
-whatever the generator did to the start shelves. Their exact layout now varies with the map seed:
-the pair sits **54–69 m** either side of the midpoint, slides up to 8 m along the lane, and uses
-**14–20 m** of internal spread. The two sides remain mirrored, so the variation changes the fight
-without giving one opening a shorter capture route. Both stay outside the home build radius and
-clear of the contested midpoint ore.
+Two mirrored capture pockets sit on the **perpendicular bisector of the lane between the two
+openings**—the line where a point is equally far from both armies. Their exact position varies with
+the map seed: the pair sits **54–69 m** either side of the midpoint and slides up to 8 m along the
+lane. Each pocket keeps one Oil Derrick and one Civilian Hospital, preserving the economic and
+garrison contest without repeating the old three-building formation.
 
 **Two of them, and you cannot hold both.** One hamlet would be a race the army whose ore field
 happens to lie that way simply wins. Two is a decision.
 
-Each hamlet is a derrick with two garrisonable blocks flanking it. A nearby forward build pad is
-kept clear of decorative props, giving the winner room to turn a captured settlement into an
-outpost instead of capturing three buildings they cannot sensibly build around.
+Six Apartment Blocks spawn separately as three point-mirrored pairs across approaches and outer
+flanks. They are tactical cover, not extra income, so the numbers of Oil Derricks, Hospitals and Ore
+Mines do not increase. Neutral landmarks grant no shared vision and stay absent from the minimap
+until scouted. Every civilian footprint is validated against the complete road corridor, including
+kerb and pavement, before it is accepted.
 
 | Structure | Footprint | HP | What it is for |
 | --- | --- | --- | --- |
@@ -385,8 +392,9 @@ outpost instead of capturing three buildings they cannot sensibly build around.
 | **Civilian Hospital** | 3 × 2 (12 × 8 m) | 1,100 | The widest garrison on the map |
 | **Apartment Block** | 2 × 3 (8 × 12 m) | 800 | The tallest — a held block reads from across the map |
 
-Nobody can build these. They exist only on the map, owned by the neutral player, and there are
-exactly six of them per match.
+Nobody can build these. They exist only on the map, owned by the neutral player. A standard match
+contains two Oil Derricks, two Civilian Hospitals and six Apartment Blocks; Ore Mine placement is
+unchanged.
 
 ### Taking one
 

@@ -861,9 +861,9 @@ export default layout({
      * hull an AI seat owns into `armyIds` and `regroupSquads` drives it to the
      * rally point on the next brain pass — measured on `soviets.02.common-standard`
      * at 116.6 m and 129.2 m off the post inside twenty seconds. A Glaive Post
-     * cannot be re-tasked, and `AiBrain` has no `issueSell` either, so the only
-     * things that take one off the head are the player shooting it and the
-     * Order's own grid going into deficit.
+     * cannot be re-tasked, and `ai.system.ts` suppresses generic recovery sales
+     * in authored campaigns, so the only things that take one off the head are
+     * the player shooting it and the Order's own grid going into deficit.
      */
     for (const [dx, dz] of ARC_POSTS) {
       const g = { x: ARC.x + dx, z: ARC.z + dz };

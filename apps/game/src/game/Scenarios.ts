@@ -80,6 +80,7 @@ import { MoveClass, TerrainRegions } from '../sim/Flowfield';
 import { setMoveClass } from '../sim/Movement';
 import { facedFootprintH, facedFootprintW, yawToFacing } from '../sim/Placement';
 import { getTerrain } from '../world/Terrain';
+import { getRoads } from '../world/Roads';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
 // and `isBuildable` answers "yes" when no gate has been installed.
 import { isBuildable } from '../progression/UnlockGate';
@@ -2585,12 +2586,14 @@ export class ScenarioBuilder {
 
   /**
    * True when every cell a `fw` x `fh` footprint centred on (x, z) would cover
-   * is free of another structure.
+   * is free of another structure and of the generated road corridor.
    *
    * `terrain.isOccupied` is the same grid `markOccupied` writes at the end of
    * this function, so a structure placed earlier in the layout is visible to
    * every one placed after it — which is what makes a single forward pass
-   * enough and why no two-phase reservation is needed.
+   * enough and why no two-phase reservation is needed. Roads initialise before
+   * scenarios, so the same search also keeps authored/civilian structures off
+   * carriageway, kerb and pavement; headless scenario tests simply see null.
    */
   footprintClear(x: number, z: number, fw: number, fh: number): boolean {
     footprintOriginCell(x, z, fw, fh, scratchCell);
@@ -2602,6 +2605,24 @@ export class ScenarioBuilder {
         const cz = oz + dz;
         if (!isInMap(cx, cz)) return false;
         if (this.world.terrain.isOccupied(cx, cz)) return false;
+      }
+    }
+    const roads = getRoads();
+    if (roads !== null) {
+      // The road mask is 2 m while a terrain cell is 4 m. Quarter-cell samples
+      // reproduce that density and catch even a footprint that only clips the
+      // sidewalk along one edge; checking the building centre alone is how the
+      // roadside apartment from the report passed validation.
+      for (let dz = 0; dz < fh; dz++) {
+        for (let dx = 0; dx < fw; dx++) {
+          const cx = ox + dx;
+          const cz = oz + dz;
+          for (const ozf of [0.25, 0.75]) {
+            for (const oxf of [0.25, 0.75]) {
+              if (roads.isRoad((cx + oxf) * CELL, (cz + ozf) * CELL)) return false;
+            }
+          }
+        }
       }
     }
     return true;
@@ -3967,6 +3988,42 @@ export const CIVILIAN_CAPTURE_BUILD_CLEARANCE = 16;
 /** Lane distance from a capture cluster to its reserved forward-build pad. */
 export const CIVILIAN_CAPTURE_BUILD_PAD_OFFSET = 48;
 
+/** Apartment blocks are map cover, not one more prize glued to each hamlet. */
+export const CIVILIAN_APARTMENT_COUNT = 6;
+
+export interface CivilianApartmentOffset {
+  /** Metres along the lane's perpendicular bisector. */
+  readonly u: number;
+  /** Metres along the lane between the two openings. */
+  readonly v: number;
+}
+
+/**
+ * Three seed-derived apartment sites. Each is mirrored through the map midpoint
+ * by `addCivilians`, producing six blocks with exact strategic symmetry.
+ *
+ * These are deliberately nowhere near the hamlet's `(u ~= 62, v ~= 0)` trio:
+ * one punctuates each approach and two sit on different outer flanks. The hash
+ * changes their spacing without consuming the scenario RNG, so adding urban
+ * cover cannot reshuffle ore, props or either opening.
+ */
+export function civilianApartmentOffsets(seed: number): readonly CivilianApartmentOffset[] {
+  const h = hashU32((seed ^ 0xb41f8e73) >>> 0);
+  const jitter = (shift: number): number => ((h >>> shift) & 15) - 8;
+  return [
+    { u: 36 + (h & 7), v: 56 + jitter(4) },
+    { u: 88 + ((h >>> 8) & 15), v: -30 + jitter(12) },
+    { u: 60 + ((h >>> 16) & 15), v: -66 + jitter(20) },
+  ];
+}
+
+/** Local, mirrored fallbacks when a generated ridge occupies an apartment site. */
+const APARTMENT_SITE_NUDGES: readonly (readonly [number, number])[] = [
+  [0, 0], [0, 12], [0, -12], [12, 0], [-12, 0],
+  [12, 12], [-12, 12], [12, -12], [-12, -12],
+  [0, 24], [0, -24], [24, 0], [-24, 0],
+];
+
 /** Seed-derived settlement proportions without advancing the layout RNG. */
 export function civilianSettlementShape(seed: number): {
   offset: number; laneShift: number; spread: number;
@@ -4102,13 +4159,12 @@ export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): v
         { yawDeg: wrapDeg(face + turn) },
       );
     };
-    // The derrick on the crossroads itself and the two garrisonable blocks
-    // flanking it, ~23 m out — far enough that a 3x2 hospital and a 2x3 block
-    // cannot contest each other's cells, close enough that one squad holding
-    // the derrick is inside the other two's field of fire.
+    // The economic prize and the service landmark remain a matched capture
+    // pocket. Apartment blocks are spawned in their own map-wide pass below;
+    // keeping one here is what made every civilian settlement read as the same
+    // artificial trio.
     put(CIVILIAN_KEYS[0]!, 0, 0, 0);
     put(CIVILIAN_KEYS[1]!, -shape.spread, shape.spread - 2 + shape.laneShift, 90);
-    put(CIVILIAN_KEYS[2]!, shape.spread, -shape.spread + 2 + shape.laneShift, -90);
 
     // Keep one genuinely usable pad beside the prize free of decorative
     // scatter. It is mirrored with the settlement and remains ordinary terrain
@@ -4135,6 +4191,47 @@ export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): v
       const mzp = hz + uz * side * du;
       if (!b.footprintBuildable(mxp, mzp, mineDim.w, mineDim.h)) continue;
       b.spawnBuilding(CIVILIAN_KEYS[3]!, owner, mxp, mzp, { yawDeg: wrapDeg(face) });
+      break;
+    }
+  }
+
+  /* -- THE APARTMENT DISTRICT --------------------------------------------
+   * Six garrisonable blocks, as three point-mirrored pairs. They are scenery
+   * and tactical cover rather than income sources, so increasing this count
+   * does not multiply derricks, hospitals or mines. Point mirroring preserves
+   * equal walking distance from the two openings while no longer arranging
+   * the buildings in repeated three-object clusters.
+   *
+   * Generated terrain gets a small deterministic local search. A pair is only
+   * accepted when BOTH mirrored footprints fit, so a ridge cannot quietly
+   * hand one player an extra strongpoint. The search is over fixed offsets and
+   * consumes no RNG.
+   * ---------------------------------------------------------------------- */
+  const apartmentDim = CIV[CIVILIAN_KEYS[2]!]!;
+  const apartmentFits = (x: number, z: number, yawDeg: number): boolean => {
+    const yaw = wrapAngle(yawDeg * DEG2RAD);
+    const facing = yawToFacing(yaw);
+    const fw = facedFootprintW(apartmentDim.w, apartmentDim.h, facing);
+    const fh = facedFootprintH(apartmentDim.w, apartmentDim.h, facing);
+    snapFootprintToGrid(x, z, fw, fh, scratch2);
+    return b.footprintBuildable(scratch2[0], scratch2[1], fw, fh)
+      && b.footprintClear(scratch2[0], scratch2[1], fw, fh);
+  };
+
+  for (const base of civilianApartmentOffsets(b.seed)) {
+    for (const [nudgeU, nudgeV] of APARTMENT_SITE_NUDGES) {
+      const u = base.u + nudgeU;
+      const v = base.v + nudgeV;
+      const ax = mx + ux * u + vx * v;
+      const az = mz + uz * u + vz * v;
+      const bx = mx - ux * u - vx * v;
+      const bz = mz - uz * u - vz * v;
+      // Face inward. The mirrored partner is exactly 180 degrees around.
+      const aYaw = Math.atan2(mx - ax, mz - az) / DEG2RAD;
+      const bYaw = wrapDeg(aYaw + 180);
+      if (!apartmentFits(ax, az, aYaw) || !apartmentFits(bx, bz, bYaw)) continue;
+      b.spawnBuilding(CIVILIAN_KEYS[2]!, owner, ax, az, { yawDeg: wrapDeg(aYaw) });
+      b.spawnBuilding(CIVILIAN_KEYS[2]!, owner, bx, bz, { yawDeg: bYaw });
       break;
     }
   }

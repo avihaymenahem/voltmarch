@@ -68,7 +68,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
   Fn, If, abs, attribute, clamp, float, floor, fwidth, materialColor, materialRoughness, max, mix,
-  mod, select, smoothstep, step, texture, uniform, varyingProperty, vec2, vec4,
+  mod, select, sin, smoothstep, step, texture, uniform, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
   ROAD_CROSSWALK_DEPTH, ROAD_CROSSWALK_PERIOD, ROAD_CROSSWALK_START, ROAD_KERB_HEIGHT,
@@ -105,6 +105,7 @@ type Vec4N = Node<'vec4'>;
  * `road-markings.ts`'s and `MeshBuf.toGeometry` writes exactly those.
  */
 const attributeCache = new Map<RoadSurfaceKind, Vec4N>();
+let fadeAttributeNode: FloatN | null = null;
 
 function roadAttribute(kind: RoadSurfaceKind): Vec4N {
   let node = attributeCache.get(kind);
@@ -113,6 +114,11 @@ function roadAttribute(kind: RoadSurfaceKind): Vec4N {
     attributeCache.set(kind, node);
   }
   return node;
+}
+
+function roadFadeAttribute(): FloatN {
+  fadeAttributeNode ??= attribute<'float'>('aRoadFade', 'float');
+  return fadeAttributeNode;
 }
 
 /**
@@ -126,6 +132,7 @@ function roadAttribute(kind: RoadSurfaceKind): Vec4N {
  * three snippets transcribable one for one.
  */
 const vRoad = varyingProperty('vec4', 'vRoad');
+const vRoadFade = varyingProperty('float', 'vRoadFade');
 
 /* ==========================================================================
  * 2. THE UNIFORMS
@@ -380,7 +387,23 @@ const kerbPaint = Fn(([base, U]: [Vec3N, RoadNodeUniforms]) => {
 const pavementPaint = Fn(([base]: [Vec3N]) => {
   const M = ROAD_MARKS;
   const soldier = smoothstep(M.soldierLo, M.soldierHi, vRoad.z).toVar('paveSoldier');
-  return vec4(base.mul(float(1.0).sub(soldier.mul(M.soldierDarken))), float(0.0));
+  const rgb = base.mul(float(1.0).sub(soldier.mul(M.soldierDarken))).toVar('paveRgb');
+
+  const shoulderWave = sin(vRoad.y.mul(0.17).add(sin(vRoad.y.mul(0.047)).mul(1.8))).mul(0.62)
+    .add(sin(vRoad.y.mul(0.41).add(2.3)).mul(0.38)).toVar('paveShoulderWave');
+  const shoulderStart = float(M.shoulderBase).add(shoulderWave.mul(M.shoulderWobble))
+    .toVar('paveShoulderStart');
+  const shoulderEdge = smoothstep(shoulderStart, shoulderStart.add(M.shoulderWidth), vRoad.z)
+    .toVar('paveShoulderEdge');
+  const shoulderBreak = float(0.62).add(sin(vRoad.y.mul(0.73).add(vRoad.x.mul(0.19)).add(0.8))
+    .mul(0.5).add(0.5).mul(0.38)).toVar('paveShoulderBreak');
+  const age = clamp(max(vRoad.w, shoulderEdge.mul(shoulderBreak)), 0.0, 1.0)
+    .toVar('paveShoulderAge');
+  rgb.mulAssign(mix(vec3(1.0), vec3(0.72, 0.64, 0.52), age.mul(M.shoulderDarken)));
+
+  // For pavement only `.w` is the ageing amount. The material factory below
+  // routes it to roughness instead of the paint response used by road/kerb.
+  return vec4(rgb, age);
 });
 /* NO LAYOUT — reads `vRoad`. See the note under `carriagewayPaint`. */
 
@@ -398,7 +421,10 @@ const pavementPaint = Fn(([base]: [Vec3N]) => {
  * buys nothing.
  */
 class RoadStandardNodeMaterial extends MeshStandardNodeMaterial {
-  constructor(private readonly attributeNode: Vec4N) {
+  constructor(
+    private readonly attributeNode: Vec4N,
+    private readonly fadeNode: FloatN,
+  ) {
     super();
   }
 
@@ -413,6 +439,7 @@ class RoadStandardNodeMaterial extends MeshStandardNodeMaterial {
    */
   override setupPosition(builder: NodeBuilder): Vec3N {
     vRoad.assign(this.attributeNode);
+    vRoadFade.assign(this.fadeNode);
     return super.setupPosition(builder) as Vec3N;
   }
 
@@ -461,7 +488,7 @@ export function createRoadNodeMaterial(
 ): MeshStandardNodeMaterial {
   const { map, normalMap, ormMap } = roadSurfaceTextures(kind, anisotropy);
 
-  const mat = new RoadStandardNodeMaterial(roadAttribute(kind));
+  const mat = new RoadStandardNodeMaterial(roadAttribute(kind), roadFadeAttribute());
   mat.name = ROAD_MATERIAL_NAMES[kind];
   mat.map = map;
   mat.normalMap = normalMap;
@@ -494,6 +521,9 @@ export function createRoadNodeMaterial(
    * leaving a hole with bare terrain showing through.
    */
   mat.side = THREE.DoubleSide;
+  mat.transparent = true;
+  mat.alphaTest = 0.015;
+  mat.depthWrite = true;
 
   /*
    * ONE CALL, TWO CONSUMERS. `materialColor` is `color * map` — exactly what
@@ -517,8 +547,10 @@ export function createRoadNodeMaterial(
    * `vec4()` arity error recorded in `StructureNodeMaterial`.
    */
   const painted = paintFor(kind, materialColor.rgb, uniforms);
-  mat.colorNode = vec4(painted.xyz, float(1.0));
-  mat.roughnessNode = mix(materialRoughness, ROAD_MARKS.paintRoughness, painted.w);
+  mat.colorNode = vec4(painted.xyz, vRoadFade);
+  mat.roughnessNode = kind === 'pavement'
+    ? mix(materialRoughness, ROAD_MARKS.shoulderRoughness, painted.w.mul(0.42))
+    : mix(materialRoughness, ROAD_MARKS.paintRoughness, painted.w);
 
   return mat;
 }

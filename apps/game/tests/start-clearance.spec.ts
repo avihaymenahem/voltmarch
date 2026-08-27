@@ -221,10 +221,16 @@ describe('every army can deploy where it spawns', () => {
         const st = world.store;
         let props = 0;
         for (let a = 0; a < st.aliveCount; a++) {
-          if (st.kind[st.alive[a]] === EntityKind.Prop) props++;
+          const kind = st.kind[st.alive[a]];
+          // Scatter's crate archetype is intentionally interactive and
+          // therefore allocates as EntityKind.Crate. It is still visible map
+          // dressing and must count for this anti-empty-map guard; excluding
+          // it made sparse roadside composition look like lost decoration.
+          if (kind === EntityKind.Prop || kind === EntityKind.Crate) props++;
         }
-        // The skirmish plan asks for 140. `urban` legitimately places fewer
-        // (its list includes `crate`, which allocates as EntityKind.Crate).
+        // The skirmish plan asks for 140 visible scatter entities. Urban can
+        // still place fewer after clearance and road reservations, but it may
+        // not buy safe starts by emptying the battlefield.
         expect(props, `${map} placed only ${props} props`).toBeGreaterThan(100);
       } finally {
         clearScenario();

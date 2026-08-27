@@ -7,11 +7,12 @@
  * `tools/prepare-music.py`. They are streamed one at a time: a multi-minute
  * stereo soundtrack must never become hundreds of megabytes of decoded PCM.
  *
- * The title screen always opens on Echoes of the Siege with a slow fade-in. A
- * match then chooses any cue at random and loops it for the whole battle. Music
- * is presentation, not simulation, so the choice deliberately uses local
- * entropy and never enters the lockstep command stream. Manual previous/next
- * controls use the same player from both the title and pause menus.
+ * The title screen rotates the complete four-cue score, starting at a locally
+ * chosen cue and advancing when each one ends. A match chooses any cue at
+ * random and loops it for the whole battle. Music is presentation, not
+ * simulation, so the choices deliberately use local entropy and never enter
+ * the lockstep command stream. Manual previous/next controls use the same
+ * player from both the title and pause menus.
  * ============================================================================
  */
 
@@ -32,8 +33,6 @@ export const SOUNDTRACK = [
 ] as const satisfies readonly SoundtrackCue[];
 
 export const MUSIC_TRACK_EVENT = 'voltmarch:music-track';
-export const MENU_SOUNDTRACK_ID = 'echoes-of-the-siege';
-export const MENU_SOUNDTRACK_INDEX = SOUNDTRACK.findIndex((cue) => cue.id === MENU_SOUNDTRACK_ID);
 
 const MUSIC_DIR = 'audio/music';
 const SWITCH_FADE_SEC = 0.24;
@@ -67,6 +66,7 @@ export class TrackMusic {
   private heatRaw = 0;
   private switchGeneration = 0;
   private userPaused = false;
+  private menuMode = true;
 
   constructor(engine: AudioEngine) {
     this.engine = engine;
@@ -83,7 +83,7 @@ export class TrackMusic {
 
     try {
       const element = new Audio();
-      element.loop = true;
+      element.loop = false;
       // The title cue is a first-screen asset, not optional metadata. The HTML
       // preload starts its request before modules parse; `auto` lets this same
       // element consume the body immediately instead of issuing a range fetch
@@ -92,6 +92,10 @@ export class TrackMusic {
       element.addEventListener('error', () => {
         const cue = SOUNDTRACK[this.index];
         this.useFallback(`cue "${cue?.title ?? 'unknown'}" failed to load`);
+      });
+      element.addEventListener('ended', () => {
+        if (!this.menuMode || this.disposed || this.userPaused) return;
+        this.switchTo((Math.max(0, this.index) + 1) % SOUNDTRACK.length);
       });
 
       const source = this.engine.ctx.createMediaElementSource(element);
@@ -105,20 +109,25 @@ export class TrackMusic {
       return;
     }
 
-    this.switchTo(MENU_SOUNDTRACK_INDEX, true, MENU_FADE_SEC);
+    this.switchTo(chooseRandomTrack(-1), true, MENU_FADE_SEC);
     this.retryTimer = setInterval(() => this.ensurePlaying(), RETRY_MS);
   }
 
   /** Select from all four cues exactly once when a real match begins. */
   startMatch(): void {
     if (this.fallback !== null) return;
+    this.menuMode = false;
+    if (this.element !== null) this.element.loop = true;
     this.switchTo(chooseRandomTrack(-1));
   }
 
-  /** Restore the title cue when returning from a match or another shell route. */
+  /** Rotate the full score when returning from a match or another shell route. */
   playMenu(): void {
-    if (this.fallback !== null || this.index === MENU_SOUNDTRACK_INDEX) return;
-    this.switchTo(MENU_SOUNDTRACK_INDEX);
+    if (this.fallback !== null) return;
+    this.menuMode = true;
+    if (this.element !== null) this.element.loop = false;
+    if (this.index < 0) this.switchTo(chooseRandomTrack(-1));
+    else this.ensurePlaying();
   }
 
   next(): void {

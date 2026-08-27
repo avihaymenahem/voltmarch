@@ -114,6 +114,10 @@
 import { el, svgEl } from './Chrome';
 import { makeIcon } from './icons';
 import { persistentStorage } from '../platform/storage';
+import {
+  OBJECTIVES_PANEL_HEIGHT_KEY,
+  VerticalPanelResize,
+} from './VerticalPanelResize';
 
 import './objectives.css';
 
@@ -128,6 +132,8 @@ import './objectives.css';
 
 export type MissionScope = 'profile' | 'match';
 export type MissionCategory = 'combat' | 'economy' | 'construction' | 'tactics' | 'mastery';
+export type ObjectiveTier = 'main' | 'side';
+export type ObjectiveDisplayTier = ObjectiveTier | 'global';
 
 export type Reward =
   | { kind: 'unlock'; unlockId: string }
@@ -155,6 +161,8 @@ export interface MissionDef {
   /** `Faction` enum value, for faction-specific chains. */
   faction?: number;
   difficulty?: 1 | 2 | 3;
+  /** Match-board importance. Profile missions are displayed as global. */
+  objectiveTier?: ObjectiveTier;
   /**
    * TRUE when this objective is DONE-OR-NOT rather than a count, so the row
    * must not draw a counter. A campaign operation's objectives are all of this
@@ -313,6 +321,14 @@ export const MAX_EXPANDED_OBJECTIVES = 12;
 /** Seconds a freshly completed objective is held at the top of the panel. */
 export const COMPLETE_HOLD_SECONDS = 10;
 
+/** The label and summary-selection class for an objective row. */
+export function objectiveDisplayTier(
+  o: Pick<MissionDef, 'scope' | 'objectiveTier'>,
+): ObjectiveDisplayTier {
+  if (o.scope === 'profile') return 'global';
+  return o.objectiveTier === 'side' ? 'side' : 'main';
+}
+
 /* -- layout arithmetic, in code so the header comment cannot go stale ----- */
 
 /** Panel width in design units. Mirrors `.vm-objectives` in hud.css. */
@@ -343,15 +359,15 @@ const GAP_UNITS = 5;
  */
 const DESC_UNITS = 12;
 /**
- * One objective row: an 11u title line, the 12u description, a 3u gap and a
- * 2u bar.
+ * One objective row: a 7u tier/value lane, a 2u lane gap, a 13u title lane,
+ * the 12u description, two 3u flex gaps, and a 2u bar with 2u top margin.
  *
  * Every objective authored in `src/data/Missions.ts` — all 49 — carries a
  * description, so the description is modelled as always present. A row without
  * one is 12u SHORTER than this says, which is the safe direction for a budget
  * to be wrong in.
  */
-const ROW_UNITS = 19 + DESC_UNITS;
+const ROW_UNITS = 44;
 
 /** The three folds the panel can be in. Persisted across matches. */
 export type ObjectivesView = 'collapsed' | 'summary' | 'expanded';
@@ -447,7 +463,20 @@ export function selectVisibleObjectives(
     else stale.push(o);
   }
 
-  const ordered = [...fresh, ...live, ...stale];
+  // The summary has three slots. Reserve the first live slot for each class so
+  // a board with eight match rows and two career rows cannot hide all of its
+  // side/global work behind the authored main-objective order.
+  const balanced: ActiveObjective[] = [];
+  const chosen = new Set<string>();
+  for (const tier of ['main', 'side', 'global'] as const) {
+    const row = live.find((o) => objectiveDisplayTier(o) === tier);
+    if (row === undefined) continue;
+    balanced.push(row);
+    chosen.add(row.id);
+  }
+  for (const row of live) if (!chosen.has(row.id)) balanced.push(row);
+
+  const ordered = [...fresh, ...balanced, ...stale];
   const limit = max < 0 ? 0 : max;
   return {
     rows: ordered.slice(0, limit),
@@ -464,7 +493,7 @@ export function selectVisibleObjectives(
 export function objectiveSignature(rows: readonly ActiveObjective[], overflow: number): string {
   let out = `${overflow}`;
   for (const o of rows) {
-    out += `|${o.id}:${Math.floor(o.progress.value)}/${o.progress.target}:${o.progress.complete ? 1 : 0}`;
+    out += `|${o.id}:${objectiveDisplayTier(o)}:${Math.floor(o.progress.value)}/${o.progress.target}:${o.progress.complete ? 1 : 0}`;
   }
   return out;
 }
@@ -536,6 +565,7 @@ export function toggleExpandView(view: ObjectivesView): ObjectivesView {
 /** One pooled row. Rebuilt in place; the list is never re-created. */
 interface Row {
   root: HTMLElement;
+  tier: HTMLElement;
   name: HTMLElement;
   /**
    * The objective's description, rendered INLINE under the title.
@@ -576,6 +606,7 @@ export class ObjectivesPanel {
   private readonly count: HTMLElement;
   private readonly caret: SVGSVGElement;
   private readonly all: HTMLButtonElement;
+  private readonly heightResize: VerticalPanelResize;
   private readonly rows: Row[] = [];
 
   private progression: ProgressionView | null;
@@ -656,6 +687,13 @@ export class ObjectivesPanel {
     this.toggle.setAttribute('aria-controls', this.list.id);
     this.all.setAttribute('aria-controls', this.list.id);
     this.ensureRows(MAX_VISIBLE_OBJECTIVES);
+
+    this.heightResize = new VerticalPanelResize(this.root, {
+      storageKey: OBJECTIVES_PANEL_HEIGHT_KEY,
+      label: 'Resize objectives panel height',
+      minHeightPx: 84,
+      maxViewportShare: 0.54,
+    });
 
     this.applyView();
     this.bind();
@@ -792,6 +830,7 @@ export class ObjectivesPanel {
     this.progression = null;
     this.doneAt.clear();
     this.announced.clear();
+    this.heightResize.dispose();
     this.root.remove();
   }
 
@@ -841,6 +880,7 @@ export class ObjectivesPanel {
   private makeRow(): Row {
     const root = el('div', 'vm-obj', this.list);
     const top = el('div', 'vm-obj-top', root);
+    const tier = el('span', 'vm-obj-tier', top);
     const name = el('span', 'vm-obj-name', top);
     // `hidden` is an HTMLElement property; an SVG element does not have one, so
     // the tick is shown and hidden by a class the stylesheet owns.
@@ -853,7 +893,7 @@ export class ObjectivesPanel {
     const bar = el('div', 'vm-obj-bar', root);
     const fill = el('i', 'vm-obj-fill', bar);
     root.hidden = true;
-    return { root, name, desc, value, fill, tick, id: '', complete: false };
+    return { root, tier, name, desc, value, fill, tick, id: '', complete: false };
   }
 
   private applyView(): void {
@@ -982,6 +1022,9 @@ export class ObjectivesPanel {
     // fallback now, not the only way to read this.
     row.root.title = o.description;
     if (changed) {
+      const tier = objectiveDisplayTier(o);
+      row.tier.textContent = tier;
+      row.root.dataset.tier = tier;
       row.name.textContent = o.title;
       row.desc.textContent = o.description;
       // An objective with no description must not leave an empty line behind
@@ -993,9 +1036,9 @@ export class ObjectivesPanel {
     }
 
     // A flag objective reads empty until it is done, and the cell is HIDDEN
-    // rather than merely blanked: `.vm-obj-top` is a flex row with a 4u gap, so
-    // an empty span still spends a gap it has nothing to separate. Never empty
-    // for a counter, so a skirmish row is untouched by both lines.
+    // rather than merely blanked: the value owns a grid cell, so an empty span
+    // would still reserve a useless column. Never empty for a counter, so a
+    // skirmish row is untouched by both lines.
     const readout = objectiveReadout(o.progress, o.flag === true);
     row.value.textContent = readout;
     row.value.hidden = readout === '';

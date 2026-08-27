@@ -14,20 +14,20 @@
  * THE THREE DECISIONS THAT SHAPE THIS FILE
  * ----------------------------------------
  * 1. **One mesh, one draw call, forever.** Every decal in the game is a slot in
- *    a single pre-allocated BufferGeometry. A slot owns (DECAL_GRID+1)^2 = 16
- *    vertices and 18 triangles. Spawning writes into typed arrays that already
+ *    a single pre-allocated BufferGeometry. A slot owns (DECAL_GRID+1)^2
+ *    vertices and DECAL_GRID^2*2 triangles. Spawning writes into typed arrays that already
  *    exist and marks a contiguous byte range dirty; nothing is ever allocated,
  *    no object is ever created, and the pool recycles oldest-first when it
- *    fills. At DECAL_POOL = 512 that is 9.2k triangles — 3% of what terrain
- *    spends — for the entire ground-detail layer.
+ *    fills. At DECAL_POOL = 512 that is 36.9k triangles for the entire
+ *    ground-detail layer.
  *
  * 2. **Conformed on the CPU at spawn, not in the vertex shader.** The obvious
  *    alternative is to upload the heightfield as a float texture and displace
  *    in the vertex shader. It is prettier on paper and worse in practice: it
  *    needs OES_texture_float_linear, it cannot be unit-tested without a GL
  *    context, and it costs a texture fetch per vertex per frame forever. A
- *    decal is 16 vertices and it moves exactly once — at spawn. 16 `heightAt`
- *    calls at spawn is nothing, and the result is a plain static mesh.
+ *    decal is 49 vertices and it moves exactly once — at spawn. Those
+ *    `heightAt` calls are cheap, and the result is a plain static mesh.
  *
  * 3. **Multiply blending, not alpha blending.** Bible §8.10 is explicit that a
  *    tread mark "multiplies the ground by 0.72" rather than painting a flat
@@ -59,6 +59,7 @@ import {
   TREAD_PAVING_FALLOFF, TYRE_DARKEN, TYRE_HALF_WIDTH,
 } from '../core/config';
 import { clamp, clamp01, fbm2, smoothstep } from '../core/math';
+import { applyShroudFactor } from '../render/FogOfWar';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
 
 /* ==========================================================================
@@ -563,7 +564,8 @@ void main() {
   vUv = aUv;
   vParams = aParams;
   vTint = aTint;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <begin_vertex>
+  #include <project_vertex>
 }
 `;
 
@@ -603,6 +605,7 @@ void main() {
   // emit here multiplies the lit frame — and the floor is what stops a single
   // scorch from taking a square metre of terrain to black.
   gl_FragColor = vec4(max(mix(vec3(1.0), factor, a), vec3(uFloor)), 1.0);
+  #include <tonemapping_fragment>
 }
 `;
 
@@ -793,6 +796,10 @@ export class DecalField {
     });
 
     if (glsl !== null) {
+      // Decals sit above the depth-tested shroud carpet. Their multiply factor
+      // must become a no-op in fog or bright lamp pools punch visible holes.
+      glsl.onBeforeCompile = (shader) => { applyShroudFactor(shader); };
+      glsl.customProgramCacheKey = () => 'vm.decals.shroud-factor.v1';
       this.material = glsl;
       this.setMaterialTime = (t) => { glsl.uniforms.uTime.value = t; };
     } else {
@@ -989,7 +996,7 @@ export class DecalField {
    * INTERNALS
    * ====================================================================== */
 
-  /** Squash a slot's 16 vertices onto one point: 18 degenerate triangles. */
+  /** Squash one slot onto a point, making all of its triangles degenerate. */
   private collapse(slot: number): void {
     const base = slot * VERTS_PER_DECAL;
     const p0 = base * 3;

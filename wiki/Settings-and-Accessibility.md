@@ -39,9 +39,10 @@ Full, Selection Only and Off; Selection Only keeps selection acknowledgement whi
 chatter.
 
 The original score contains **Silent Horizon**, **Disciplined Ostinato**, **Echoes of the Siege**
-and **Endless Warfront**. The title screen opens with a faded-in Echoes of the Siege loop. A match
-chooses a cue locally and loops it; the compact music control on the title and pause screens can
-pause or change it. Music streams instead of decoding an entire track into memory.
+and **Endless Warfront**. The title screen begins from a locally chosen cue and rotates through all
+four tracks without letting its decorative battle sounds lower the music. A match chooses a cue
+locally and loops it; the compact music control on the title and pause screens can pause or change
+it. Music streams instead of decoding an entire track into memory.
 
 Voice Subtitles live on Gameplay because they are a presentation choice. They caption both EVA and
 unit responses without consuming alert toasts.
@@ -60,6 +61,14 @@ career statistics.
 - High Contrast, which strengthens secondary text and panel edges without replacing faction colour;
 - Reduce Interface Motion, which suppresses non-essential menu and HUD animation while leaving the
   battlefield and camera functional.
+
+In a match, the Objectives and Construction panels have height-only resize grips and remember the
+chosen sizes. The optional Performance panel can be dragged anywhere on-screen; its position is
+saved and clamped back into view after a resolution or window-size change.
+
+The top-centre command node identifies the current mode, difficulty and map. Objectives remain in
+their own panel, where the Main, Side or Global tier and progress occupy a metadata line above the
+objective title so long names can wrap without colliding with either badge.
 
 The Interface section controls tooltips, floating damage numbers, voice subtitles, battlefield tips
 and screen shake. Pointer, camera and keyboard navigation belong on Controls instead.

@@ -54,6 +54,8 @@ import {
   CIVILIAN_CAPTURE_BUILD_CLEARANCE, CIVILIAN_CAPTURE_BUILD_PAD_OFFSET,
   CIVILIAN_HAMLET_OFFSET, FALLBACK_BUILDINGS, START_CLEAR_RADIUS, buildScenario,
   civilianSettlementShape,
+  civilianApartmentOffsets,
+  CIVILIAN_APARTMENT_COUNT,
   clearScenario, entityKeyOf, resolveDefBinding, startSpots,
 } from '../src/game/Scenarios';
 import { STRUCTURE_BY_KEY } from '../src/art/BuildingDefs';
@@ -587,12 +589,14 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
     return out;
   }
 
-  it('places two hamlets of all three structures', () => {
+  it('keeps the income landmarks at two and scatters six apartment blocks', () => {
     const placed = civiliansIn(4242);
-    expect(placed.length).toBe(CIVILIAN_KEYS.length * 2);
-    for (const key of CIVILIAN_KEYS) {
-      expect(placed.filter((p) => p.key === key).length, key).toBe(2);
-    }
+    expect(placed.filter((p) => p.key === CIVILIAN_KEYS[0]).length).toBe(2);
+    expect(placed.filter((p) => p.key === CIVILIAN_KEYS[1]).length).toBe(2);
+    expect(placed.filter((p) => p.key === CIVILIAN_KEYS[2]).length)
+      .toBe(CIVILIAN_APARTMENT_COUNT);
+    expect(placed.filter((p) => p.key === CIVILIAN_KEYS[3]).length).toBe(2);
+    expect(placed.length).toBe(12);
   });
 
   it('is byte-identical from the same seed, and different from another', () => {
@@ -606,6 +610,18 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
     expect(c).not.toEqual(a);
     expect(civilianSettlementShape(4242)).toEqual(civilianSettlementShape(4242));
     expect(civilianSettlementShape(90210)).not.toEqual(civilianSettlementShape(4242));
+    expect(civilianApartmentOffsets(4242)).toEqual(civilianApartmentOffsets(4242));
+    expect(civilianApartmentOffsets(90210)).not.toEqual(civilianApartmentOffsets(4242));
+  });
+
+  it('does not glue apartment blocks back onto either capture pocket', () => {
+    const placed = civiliansIn(4242);
+    const apartments = placed.filter((p) => p.key === CIVILIAN_KEYS[2]);
+    const prizes = placed.filter((p) => p.key === CIVILIAN_KEYS[0] || p.key === CIVILIAN_KEYS[1]);
+    for (const a of apartments) for (const p of prizes) {
+      expect(Math.hypot(a.x - p.x, a.z - p.z), 'apartment repeated the old trio')
+        .toBeGreaterThan(30);
+    }
   });
 
   it('puts nothing inside either opening', () => {

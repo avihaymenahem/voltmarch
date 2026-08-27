@@ -18,6 +18,17 @@ export interface CampaignCommsMessage {
   readonly text: string;
 }
 
+export interface CommandPortraitState {
+  readonly src: string;
+  readonly speaker: string;
+  readonly role: string;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __vmCommandPortrait: CommandPortraitState | undefined;
+}
+
 /** Fuses above the largest shipped operation, guarded by campaign-text.spec. */
 export const CAMPAIGN_COMMS_HISTORY_MAX = 64;
 export const CAMPAIGN_COMMS_QUEUE_MAX = 96;
@@ -257,6 +268,11 @@ export class CampaignComms {
     this.portrait.hidden = message.portrait === '';
     this.monogram.hidden = message.portrait !== '';
     if (message.portrait !== '') this.portrait.src = message.portrait;
+    globalThis.__vmCommandPortrait = message.portrait === '' ? undefined : {
+      src: message.portrait,
+      speaker: message.speaker,
+      role: message.role,
+    };
     this.updateQueueCount();
     if (campaignCommsSignals(message.pageIndex)) this.onSignal?.();
 
@@ -280,6 +296,7 @@ export class CampaignComms {
     this.fading = false;
     this.root.hidden = true;
     this.root.classList.remove('is-enter', 'is-exit');
+    globalThis.__vmCommandPortrait = undefined;
     this.updateQueueCount();
   }
 

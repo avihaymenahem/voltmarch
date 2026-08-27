@@ -39,11 +39,11 @@ import * as THREE from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, attribute, batch, cos, instancedMesh, materialEmissive, materialRoughness, mix,
-  normalGeometry, normalLocal, positionGeometry, positionLocal, sin, uniform,
-  varyingProperty, vec3, vertexColor,
+  Fn, attribute, batch, clamp, cos, fract, instancedMesh, materialEmissive,
+  materialRoughness, min, mix, normalGeometry, normalLocal, positionGeometry,
+  positionLocal, sin, step, uniform, varyingProperty, vec3, vertexColor,
 } from 'three/tsl';
-import { PROP_EMISSIVE_GAIN, PROP_MATERIAL } from '../core/config';
+import { PROP_EMISSIVE_GAIN, PROP_LIGHT_ANIM, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
@@ -89,6 +89,8 @@ const aSurface = attribute<'vec2'>('aSurface', 'vec2');
 
 const vEmit = varyingProperty('float', 'vEmit');
 const vGloss = varyingProperty('float', 'vGloss');
+/** Shared per-instance clock phase for faulty lamps and traffic signals. */
+const vLifePhase = varyingProperty('float', 'vLifePhase');
 /** Three's BatchedMesh vertex setup publishes its RGBA instance colour here. */
 const vBatchColor = varyingProperty('vec4', 'vBatchColor');
 
@@ -155,7 +157,41 @@ function applyPropVertex(uniforms: PropNodeUniforms, phase: FloatN = aSwayPhase)
   positionLocal.addAssign(windOffset(uniforms.uWindTime, uniforms.uWindFreq, phase));
   vEmit.assign(aSurface.x);
   vGloss.assign(aSurface.y);
+  vLifePhase.assign(phase);
 }
+
+/**
+ * Decode the sparse animated fixture bands carried above the old 0..1 mask.
+ * Regular emissives are bit-for-bit unchanged; only codes 2..5 enter here.
+ */
+const propLifeGain = Fn(([time, phase, code]: [FloatN, FloatN, FloatN]) => {
+  const A = PROP_LIGHT_ANIM;
+  const band = (value: number): FloatN => step(value - 0.5, code).mul(step(code, value + 0.5));
+
+  const faultRoll = fract(sin(phase.mul(A.faultHashFrequency)).mul(A.faultHashScale));
+  const faulty = band(A.faultCapableCode).mul(step(1 - A.faultyFraction, faultRoll));
+  const fast = step(A.flickerFastThreshold,
+    sin(time.mul(A.flickerFastRadians).add(phase.mul(A.flickerFastPhase))));
+  const slow = step(A.flickerSlowThreshold,
+    sin(time.mul(A.flickerSlowRadians).add(phase.mul(A.flickerSlowPhase))));
+  const brokenGain = fast.mul(slow).mul(1 - A.faultyFloor).add(A.faultyFloor);
+  const lampGain = mix(1.0, brokenGain, faulty);
+
+  const cycle = fract(time.div(A.signalCycleSeconds).add(fract(phase.mul(0.0795775))));
+  const redOn = step(cycle, A.signalRedEnd);
+  const amberOn = step(A.signalRedEnd, cycle).mul(step(cycle, A.signalAmberEnd))
+    .add(step(A.signalGreenEnd, cycle));
+  const greenOn = step(A.signalAmberEnd, cycle).mul(step(cycle, A.signalGreenEnd));
+  const redBand = band(A.signalRedCode);
+  const amberBand = band(A.signalAmberCode);
+  const greenBand = band(A.signalGreenCode);
+  const isSignal = clamp(redBand.add(amberBand).add(greenBand), 0.0, 1.0);
+  const signalOn = clamp(redBand.mul(redOn).add(amberBand.mul(amberOn))
+    .add(greenBand.mul(greenOn)), 0.0, 1.0);
+  const signalGain = mix(1.0, mix(A.signalIdleGain, 1.0, signalOn), isSignal);
+
+  return min(code, 1.0).mul(lampGain).mul(signalGain);
+});
 
 function isBatched(builder: NodeBuilder): builder is NodeBuilder & { object: THREE.BatchedMesh } {
   return (builder.object as THREE.Object3D & { isBatchedMesh?: boolean }).isBatchedMesh === true;
@@ -272,7 +308,9 @@ export function createPropNodeMaterials(): PropNodeMaterialSet {
    * `totalEmissiveRadiance` at the point the injection lands.
    */
   material.emissiveNode = materialEmissive
-    .add(vertexColor().rgb.mul(vEmit).mul(uniforms.uEmitGain));
+    .add(vertexColor().rgb
+      .mul(propLifeGain(uniforms.uWindTime, vLifePhase, vEmit))
+      .mul(uniforms.uEmitGain));
 
   /*
    * THE NODE-PATH TWIN OF `createPropMaterial`'s SECOND MATERIAL, which this

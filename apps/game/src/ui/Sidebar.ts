@@ -87,6 +87,10 @@ import {
   type CameoRendererTarget, type CameoSubject,
 } from './Cameos';
 import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
+import {
+  BUILD_PANEL_HEIGHT_KEY,
+  VerticalPanelResize,
+} from './VerticalPanelResize';
 
 /* ==========================================================================
  * SECTION 1 — THE SHARED VOCABULARY
@@ -556,6 +560,17 @@ export interface HudTelemetry {
   /** One sentence about the state of the base. Never empty. */
   advice: string;
   adviceKind: AdviceKind;
+  /** Stable match identity shown in the top-centre command node. */
+  matchMode: string;
+  matchDifficulty: string;
+  mapName: string;
+  /** Empty unless a campaign transmission with a real portrait is live. */
+  commandPortrait: string;
+  commandSpeaker: string;
+  /** Dynamic weather, or clear when no weather system is active. */
+  weather: 'clear' | 'light' | 'heavy';
+  /** Current simulation multiplier. Normal speed is 1. */
+  gameSpeed: number;
 }
 
 /** Everything the bottom bar hands back up. */
@@ -938,6 +953,12 @@ export class ResourceStrip {
   private readonly baseNode: Text;
   private readonly incomeEl: HTMLElement;
   private readonly incomeNode: Text;
+  private readonly commandEmblem: HTMLElement;
+  private readonly commandPortrait: HTMLImageElement;
+  private readonly commandKicker: Text;
+  private readonly commandMap: Text;
+  private readonly commandWeather: HTMLElement;
+  private readonly commandSpeed: HTMLElement;
 
   private readonly counter = new RollingCounter();
   /** Seconds since the last credit flyout, or a large number when idle. */
@@ -951,6 +972,7 @@ export class ResourceStrip {
   private lastIncome = '';
   /** `credits|cap|capped` — the storage readout's signature. */
   private lastCap = '';
+  private lastCommand = '';
 
   constructor(parent: HTMLElement) {
     this.root = panel(parent, 'vm-resources', 'ends');
@@ -964,6 +986,33 @@ export class ResourceStrip {
      * nothing here knows a faction exists. */
     this.root.appendChild(makeIcon('crest', 'vm-icon vm-res-crest'));
     el('span', 'vm-res-rule', this.root);
+
+    /* -- hybrid command node -------------------------------------------
+     * The former silhouette reserved a large central cut and then put nothing
+     * in it. This node pays that space back with stable match identity:
+     * faction/commander portrait, mode + difficulty, map name, and only
+     * exceptional live context. It deliberately does not duplicate the
+     * objectives panel or become a seventh resource cell. --------------- */
+    const command = el('section', 'vm-command-node', this.root);
+    command.setAttribute('aria-label', 'Command status');
+    this.commandEmblem = el('span', 'vm-command-emblem', command);
+    this.commandEmblem.appendChild(makeIcon('crest', 'vm-icon'));
+    this.commandPortrait = document.createElement('img');
+    this.commandPortrait.className = 'vm-command-portrait';
+    this.commandPortrait.alt = '';
+    this.commandPortrait.decoding = 'async';
+    this.commandPortrait.hidden = true;
+    command.appendChild(this.commandPortrait);
+    const commandBody = el('div', 'vm-command-body', command);
+    const kicker = el('span', 'vm-command-kicker', commandBody);
+    this.commandKicker = textNode(kicker, 'Skirmish · Normal');
+    const map = el('strong', 'vm-command-map', commandBody);
+    this.commandMap = textNode(map, 'Battlefield');
+    const context = el('div', 'vm-command-context', command);
+    this.commandWeather = el('span', 'vm-command-chip is-weather', context);
+    this.commandSpeed = el('span', 'vm-command-chip is-speed', context);
+    this.commandWeather.hidden = true;
+    this.commandSpeed.hidden = true;
 
     /* -- credits -------------------------------------------------------
      * BANKED / STORED, on the power cell's model. The label said "Credits" and
@@ -1148,6 +1197,35 @@ export class ResourceStrip {
       this.lastIncome = income;
       this.incomeNode.nodeValue = income;
       this.incomeEl.classList.toggle('is-live', tele.incomePerMin > 5);
+    }
+
+    const portrait = tele.commandPortrait;
+    const weather = tele.weather === 'heavy' ? 'HEAVY RAIN'
+      : tele.weather === 'light' ? 'LIGHT RAIN' : '';
+    const speed = Number.isFinite(tele.gameSpeed) && Math.abs(tele.gameSpeed - 1) > 0.001
+      ? `${tele.gameSpeed.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}×`
+      : '';
+    const commandSig = `${tele.matchMode}|${tele.matchDifficulty}|${tele.mapName}|${portrait}|`
+      + `${tele.commandSpeaker}|${weather}|${speed}`;
+    if (commandSig !== this.lastCommand) {
+      this.lastCommand = commandSig;
+      this.commandMap.nodeValue = tele.mapName || 'Battlefield';
+      this.commandKicker.nodeValue = `${tele.matchMode || 'Skirmish'} · `
+        + `${tele.matchDifficulty || 'Normal'}`;
+      this.commandPortrait.hidden = portrait === '';
+      this.commandEmblem.hidden = portrait !== '';
+      if (portrait !== '') {
+        this.commandPortrait.src = portrait;
+        this.commandPortrait.alt = tele.commandSpeaker;
+      } else {
+        this.commandPortrait.removeAttribute('src');
+        this.commandPortrait.alt = '';
+      }
+      this.commandWeather.hidden = weather === '';
+      this.commandWeather.textContent = weather;
+      this.commandSpeed.hidden = speed === '';
+      this.commandSpeed.textContent = speed;
+      this.root.classList.toggle('has-command-portrait', portrait !== '');
     }
   }
 
@@ -2188,6 +2266,7 @@ interface BuildSlot {
 class BuildPanel {
   readonly root: HTMLElement;
 
+  private readonly heightResize: VerticalPanelResize;
   private readonly tabs: HTMLButtonElement[] = [];
   private readonly tabAlerts: HTMLElement[] = [];
   private readonly grid: HTMLElement;
@@ -2354,6 +2433,13 @@ class BuildPanel {
     this.briefNameNode = label(brief, 'vm-brief-name');
     this.briefTextEl = el('span', 'vm-brief-text', brief);
     this.briefTextNode = textNode(this.briefTextEl);
+
+    this.heightResize = new VerticalPanelResize(this.root, {
+      storageKey: BUILD_PANEL_HEIGHT_KEY,
+      label: 'Resize construction panel height',
+      minHeightPx: 260,
+      maxViewportShare: 0.75,
+    });
   }
 
   get slotCount(): number { return this.slots.length; }
@@ -2963,6 +3049,7 @@ class BuildPanel {
   }
 
   dispose(): void {
+    this.heightResize.dispose();
     this.tooltip.dispose();
     this.root.remove();
   }

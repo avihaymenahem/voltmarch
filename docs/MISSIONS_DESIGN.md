@@ -63,12 +63,15 @@ catalogues, in miniature.
 ## Two scopes, one system
 
 **Profile missions** — cross-game. Persist in a save profile, track across every match, drive
-unlocks. *"Destroy 250 vehicles." "Win a match with each faction." "Bank 20,000 credits in a single
-match."*
+unlocks. Two unlocked, unfinished rows are also pinned to the in-match HUD as **global objectives**,
+so career progress is visible without opening a separate screen. *"Destroy 250 vehicles." "Win a
+match with each faction." "Bank 20,000 credits in a single match."*
 
-**Match objectives** — per-match, alongside the win condition. *"Lose no harvesters." "Win inside 15
-minutes." "Capture the neutral tech lab."* They pay out in-match **and** feed profile progress, which
-is what stops the two systems feeling bolted together.
+**Match objectives** — per-match, alongside the win condition. Eight are drawn from balanced
+**main** and **side** pools, so quick optional work cannot replace the longer goals that shape a
+match. *"Lose no harvesters." "Win inside 15 minutes." "Capture the neutral tech lab."* They feed
+profile progress, which is what stops the two systems feeling bolted together. Their authored credit
+values remain deferred metadata and are not advertised as payouts.
 
 ## Architecture
 
@@ -192,7 +195,9 @@ schema, and an explicit migration path. Two requirements that are easy to skip a
 ## UI surfaces
 
 - **Main menu → Missions**: chains, progress bars, rewards, locked/unlocked state.
-- **In match**: objective panel in the HUD, collapsible, showing active objectives and progress.
+- **In match**: objective panel in the HUD, collapsible, showing labelled main, side and global
+  objectives. The three-row summary keeps one of each class visible when available; expansion shows
+  the complete seeded board.
 - **Pause menu**: current objectives (sits naturally beside the new help screen).
 - **End screen**: objectives completed, missions advanced, unlocks earned — with a reveal beat.
 
