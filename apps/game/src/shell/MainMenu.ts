@@ -449,6 +449,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'The loading screen key art, a supplied illustration',
       'Campaign command portraits — original AI-assisted artwork',
       'Skirmish map preview terrain — original ImageGen-authored artwork with live tactical overlays',
+      'Universal terrain detail mask — original project-owner-supplied grayscale artwork',
       'Faction structures, selected units and vehicle wreckage — original Meshy AI models for VOLTMARCH',
       'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',
       'Original faction unit voice packs generated with ElevenLabs',
@@ -456,7 +457,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'Warfork by Team Forbidden — CC0',
       'EVA rendered with Piper, LibriVox voice — public domain',
       'Original VOLTMARCH soundtrack — user-supplied masters',
-      'No other imported world textures',
+      'World textures otherwise remain procedural or belong to conditioned model PBR sets',
     ],
   },
   {

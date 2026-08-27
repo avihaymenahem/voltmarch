@@ -53,10 +53,19 @@ The first static composition slice is live, with one important correction from i
 - both terrain backends now add continuous world-space dust sweeps, meso grit and sparse crooked
   cracks in the base material. Coverage anti-aliasing changes only crack edges, never whole-feature
   opacity, so panning cannot make a patch pulse in and out;
+- both terrain backends also sample the project-owner-supplied tileable grayscale detail mask at a
+  72 m world-space repeat. It is a deliberately restrained base-surface exception to the normal
+  ban on global grime: natural surfaces receive a readable but bounded +/-22% extreme luminance
+  range plus a small roughness response, multiplied by normalized ground/dirt/sand/rock ownership;
+  a separate colour-quiet but roughness-forward pass reuses the same GPU texture on asphalt and
+  sidewalk paving before road markings, while raised kerbs remain untouched;
 - the pooled decal field conforms every mark with a 6 × 6 grid. Marks remain bounded to the same two
   draws while following local height changes closely enough not to shimmer against the terrain;
-- roads carry restrained shoulder ageing in their own material, taper valid interior termini, cull
-  overlapping surface triangles and remove sustained near-parallel duplicate routes;
+- roads carry restrained shoulder ageing in their own material, taper valid interior termini and
+  enforce one owner per sustained corridor: directional A* reservations, whole-chain rerouting and
+  a post-bend audit remove independent near-parallel routes, shared approaches coalesce at divergence,
+  and full-width cliff/water validation cuts both safe banks with an authored end fade before the
+  overlap-triangle culler is needed as a final safety fuse;
 - roadside amenities now follow exact kerb runs with sparse independent layout policies. Lamps face
   inward over the carriageway, most runs remain empty, and only deterministic faulty lamps flicker;
 - the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
@@ -81,8 +90,8 @@ at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
 
 ### 1. Surface variation — existing terrain, no extra object draws
 
-The live baseline uses low-frequency world-space dust sweeps, material-filtered cracks, meso grit and
-road-shoulder ageing. Future additions remain context-driven: compacted depot dirt, muddy drainage,
+The live baseline uses low-frequency world-space dust sweeps, material-filtered cracks, meso grit,
+the restrained owner-supplied natural-terrain detail mask and road-shoulder ageing. Future additions remain context-driven: compacted depot dirt, muddy drainage,
 exposed earth under autumn canopies, salt-stained shoreline strips, and gravel near ore fields. They
 must be broad irregular compositions tied to features, not a repeated texture applied everywhere.
 

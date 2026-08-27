@@ -78,6 +78,11 @@ import {
   ROAD_ARROW, ROAD_ATTRIBUTE_NAMES, ROAD_MARKS, ROAD_MARK_LINEAR, ROAD_MATERIAL_NAMES,
   ROAD_SURFACE_KINDS, SURFACE_TILE_METRES, arrowMask, roadSurfaceTextures, type RoadSurfaceKind,
 } from './road-markings';
+import {
+  PAVEMENT_DETAIL_ROUGHNESS, PAVEMENT_DETAIL_STRENGTH,
+  ROAD_DETAIL_ROUGHNESS, ROAD_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
+  createTerrainDetailMask,
+} from './terrain-detail-mask';
 import { DEG2RAD, Rng, clamp, clamp01, wrapAngle } from '../core/math';
 import { Locomotor } from '../core/types';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
@@ -432,6 +437,8 @@ interface RoadEdgeRec {
 /** One chain endpoint as seen by a junction. */
 interface RoadArm {
   chain: number;
+  /** Which physical end of the chain this arm represents. */
+  atStart: boolean;
   /** Origin: the trimmed ribbon end centre. */
   ox: number;
   oz: number;
@@ -448,6 +455,8 @@ interface RoadArm {
 
 interface RoadChainRec {
   id: number;
+  /** Original graph chain; both bank fragments retain this after a cliff cut. */
+  sourceId: number;
   cls: RoadClass;
   halfWidth: number;
   nodeA: number;
@@ -482,6 +491,9 @@ interface RoadChainRec {
   /** True when the corresponding end is a real junction (gets a crosswalk). */
   junctionA: boolean;
   junctionB: boolean;
+  /** Final corridor validation detached this end from its original graph node. */
+  detachedA: boolean;
+  detachedB: boolean;
 }
 
 /* ==========================================================================
@@ -847,6 +859,26 @@ const PARALLEL_ROUTE_JOIN_METRES = 22;
 const PARALLEL_ROUTE_MIN_METRES = 36;
 /** Only similarly-directed pieces participate; crossings remain junctions. */
 const PARALLEL_ROUTE_COS = Math.cos(25 * DEG2RAD);
+
+/**
+ * Minimum centreline clearance claimed by every accepted graph edge.
+ *
+ * This is deliberately the widest possible finished corridor (arterial
+ * carriageway + both kerb/pavement shoulders), rounded up to a whole metre.
+ * The old generator routed every edge independently and tried to delete
+ * duplicates afterwards. That cannot repair an arterial without breaking its
+ * border-to-border route, and it cannot see a conflict introduced later by the
+ * decorative bend pass. Reserving the real corridor while routing means a
+ * second edge must either meet at a graph node or find different ground.
+ */
+const ROUTE_RESERVATION_METRES = Math.ceil(corridorHalfWidth(RoadClass.Arterial) * 2);
+
+/**
+ * Distance around an existing graph node in which a new arm may share the
+ * reservation while it enters/leaves the junction. Beyond this throat two
+ * routes are independent and the full reservation applies again.
+ */
+const ROUTE_JOIN_THROAT_METRES = Math.max(PARALLEL_ROUTE_MIN_METRES, ROUTE_RESERVATION_METRES);
 
 /**
  * True when (x,z) is buried by more than `margin` inside a pad, given the pad's
@@ -1246,6 +1278,12 @@ interface RoadUniforms {
   uKerbYellow: { value: THREE.Vector3 };
   uArrowStraight: { value: THREE.Texture };
   uArrowTurn: { value: THREE.Texture };
+  uTerrainDetail: { value: THREE.Texture };
+  uTerrainDetailTileM: { value: number };
+  uRoadDetailStrength: { value: number };
+  uRoadDetailRoughness: { value: number };
+  uPavementDetailStrength: { value: number };
+  uPavementDetailRoughness: { value: number };
   [k: string]: THREE.IUniform;
 }
 
@@ -1259,6 +1297,12 @@ function makeRoadUniforms(): RoadUniforms {
     uKerbYellow: { value: vec3Of(ROAD_MARK_LINEAR.kerbYellow) },
     uArrowStraight: { value: arrowMask('arrowStraight') },
     uArrowTurn: { value: arrowMask('arrowTurn') },
+    uTerrainDetail: { value: createTerrainDetailMask() },
+    uTerrainDetailTileM: { value: TERRAIN_DETAIL_TILE_METRES },
+    uRoadDetailStrength: { value: ROAD_DETAIL_STRENGTH },
+    uRoadDetailRoughness: { value: ROAD_DETAIL_ROUGHNESS },
+    uPavementDetailStrength: { value: PAVEMENT_DETAIL_STRENGTH },
+    uPavementDetailRoughness: { value: PAVEMENT_DETAIL_ROUGHNESS },
   };
 }
 
@@ -1492,14 +1536,22 @@ function patchMaterial(
 ): void {
   const attrName = ROAD_ATTRIBUTE_NAMES[kind];
   const glsl = ROAD_GLSL[kind];
+  const detail = kind === 'kerb'
+    ? '  float roadDetailRoughness = 0.0;'
+    : `  float roadDetailSample = texture2D( uTerrainDetail,
+    vRoadWorldXZ / uTerrainDetailTileM ).r;
+  float roadDetailStrength = ${kind === 'carriageway' ? 'uRoadDetailStrength' : 'uPavementDetailStrength'};
+  float roadDetailRoughness = ( 0.5 - roadDetailSample )
+    * ${kind === 'carriageway' ? 'uRoadDetailRoughness' : 'uPavementDetailRoughness'};
+  diffuseColor.rgb *= 1.0 + ( roadDetailSample - 0.5 ) * roadDetailStrength;`;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader =
       `attribute vec4 ${attrName};\nattribute float aRoadFade;\n` +
-      'varying vec4 vRoad;\nvarying float vRoadFade;\n' +
+      'varying vec4 vRoad;\nvarying float vRoadFade;\nvarying vec2 vRoadWorldXZ;\n' +
       shader.vertexShader.replace(
         '#include <begin_vertex>',
-        `#include <begin_vertex>\n  vRoad = ${attrName};\n  vRoadFade = aRoadFade;`,
+        `#include <begin_vertex>\n  vRoad = ${attrName};\n  vRoadFade = aRoadFade;\n  vRoadWorldXZ = ( modelMatrix * vec4( transformed, 1.0 ) ).xz;`,
       );
     // `roadPaintAmt` is a LOCAL declared by each snippet, not a varying —
     // varyings are read-only in the fragment stage. map_fragment runs before
@@ -1509,15 +1561,18 @@ function patchMaterial(
       'uniform float uLaneWidth;\nuniform vec3 uCentre;\nuniform vec3 uPaint;\n' +
       'uniform vec3 uWheelPath;\nuniform vec3 uKerbRed;\nuniform vec3 uKerbYellow;\n' +
       'uniform sampler2D uArrowStraight;\nuniform sampler2D uArrowTurn;\n' +
-      'varying vec4 vRoad;\nvarying float vRoadFade;\n' +
+      'uniform sampler2D uTerrainDetail;\nuniform float uTerrainDetailTileM;\n' +
+      'uniform float uRoadDetailStrength;\nuniform float uRoadDetailRoughness;\n' +
+      'uniform float uPavementDetailStrength;\nuniform float uPavementDetailRoughness;\n' +
+      'varying vec4 vRoad;\nvarying float vRoadFade;\nvarying vec2 vRoadWorldXZ;\n' +
       shader.fragmentShader
-        .replace('#include <map_fragment>', `#include <map_fragment>\n${glsl}\n  diffuseColor.a *= vRoadFade;`)
+        .replace('#include <map_fragment>', `#include <map_fragment>\n${detail}\n${glsl}\n  diffuseColor.a *= vRoadFade;`)
         // Paint is smoother than the surface it sits on. Without this the
         // markings take the same broad lobe as the aggregate and stop reading
         // as paint at a grazing angle.
         .replace(
           '#include <roughnessmap_fragment>',
-          '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, '
+          '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(roughnessFactor + roadDetailRoughness, 0.45, 1.0);\n  roughnessFactor = mix(roughnessFactor, '
           + `${glf(ROAD_MARKS.paintRoughness)}, roadPaintAmt);\n  roughnessFactor = mix(roughnessFactor, `
           + `${glf(ROAD_MARKS.shoulderRoughness)}, roadAgeAmt * 0.42);`,
         );
@@ -1538,7 +1593,7 @@ function patchMaterial(
    * be stale — and a stale key hands back the previous program with nothing
    * thrown and nothing logged. `tests/road-node-material.spec.ts` §5 pins that.
    */
-  mat.customProgramCacheKey = () => `road:${attrName}:v4-end-fade`;
+  mat.customProgramCacheKey = () => `road:${attrName}:v5-surface-detail`;
 }
 
 /**
@@ -1614,6 +1669,8 @@ export interface RoadGlslMaterialSet {
 export function createRoadGlslMaterials(
   anisotropy: number, uniforms: RoadUniforms = makeRoadUniforms(),
 ): RoadGlslMaterialSet {
+  uniforms.uTerrainDetail.value.anisotropy = anisotropy;
+  uniforms.uTerrainDetail.value.needsUpdate = true;
   const materials = {
     carriageway: makeMaterial('carriageway', anisotropy),
     kerb: makeMaterial('kerb', anisotropy),
@@ -1690,6 +1747,10 @@ export interface RoadStats {
   overlapTrianglesCulled: number;
   /** Candidate graph edges removed because they shadowed another route. */
   parallelEdgesRemoved: number;
+  /** Chains terminated before a water/cliff span crossed their full corridor. */
+  unsafeCorridorCuts: number;
+  /** Redundant shared-node approaches merged into one rendered corridor. */
+  coalescedBranches: number;
   /** Cross-sections emitted in total, so the above has a denominator. */
   ribbonRows: number;
   /**
@@ -1750,6 +1811,10 @@ export class RoadNetwork {
   private overlapTrianglesCulled = 0;
   /** Duplicate near-parallel topology removed before chains are built. */
   private parallelEdgesRemoved = 0;
+  /** Roads clipped to the last safe full-width cross-section. */
+  private unsafeCorridorCuts = 0;
+  /** Shared approaches collapsed to one physical road. */
+  private coalescedBranches = 0;
   /** Cross-sections emitted, the denominator for the above. */
   private ribbonRows = 0;
   /**
@@ -1795,6 +1860,14 @@ export class RoadNetwork {
   private readonly legalCell = new Uint8Array(MAP_CELLS * MAP_CELLS);
   /** 1 where `legalCell` holds for the whole 3x3 neighbourhood (12 m clear). */
   private readonly roomCell = new Uint8Array(MAP_CELLS * MAP_CELLS);
+  /**
+   * Cells claimed by accepted road corridors during graph construction.
+   *
+   * This is topology, not a render mask: it exists before chains, splines or
+   * meshes and prevents a later candidate from occupying an earlier route.
+   * Shared graph-node throats are the only exception.
+   */
+  private readonly routeClaim = new Uint16Array(MAP_CELLS * MAP_CELLS);
   private readonly gScore = new Float32Array(MAP_CELLS * MAP_CELLS);
   private readonly fScore = new Float32Array(MAP_CELLS * MAP_CELLS);
   private readonly cameFrom = new Int32Array(MAP_CELLS * MAP_CELLS);
@@ -1837,7 +1910,10 @@ export class RoadNetwork {
     this.deduplicateParallelEdges();
     this.pruneDeadEnds();
     this.buildChains();
+    this.repairRoutedParallelChains();
     this.shapeChains();
+    this.clipUnsafeCorridors();
+    this.coalesceSharedParallelArms();
     this.solveJunctions();
     this.trimChains();
     this.solveJunctionPads();
@@ -1979,6 +2055,81 @@ export class RoadNetwork {
     }
   }
 
+  /** Is a claimed build cell legal for this edge's two real graph joins? */
+  private routeClaimAllows(
+    cell: number,
+    ax: number, az: number, bx: number, bz: number,
+    joinA: boolean, joinB: boolean, dx: number, dz: number,
+  ): boolean {
+    const claim = this.routeClaim[cell];
+    if (claim === 0) return true;
+    const x = (cell % MAP_CELLS + 0.5) * CELL;
+    const z = (((cell / MAP_CELLS) | 0) + 0.5) * CELL;
+    const throat2 = ROUTE_JOIN_THROAT_METRES * ROUTE_JOIN_THROAT_METRES;
+    if (joinA && (x - ax) * (x - ax) + (z - az) * (z - az) <= throat2) return true;
+    if (joinB && (x - bx) * (x - bx) + (z - bz) * (z - bz) <= throat2) return true;
+
+    // Sixteen undirected heading bins cover [0, PI). Five adjacent bins span
+    // +/-22.5 degrees, matching the 25-degree sustained-parallel definition
+    // closely while still allowing a real crossing through the reservation.
+    const angle = Math.atan2(dz, dx);
+    const wrapped = angle < 0 ? angle + Math.PI : angle >= Math.PI ? angle - Math.PI : angle;
+    const bin = Math.round(wrapped * (16 / Math.PI)) & 15;
+    for (let d = -2; d <= 2; d++) {
+      if ((claim & (1 << ((bin + d + 16) & 15))) !== 0) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Test a direct candidate against already-owned road ground.
+   *
+   * Sampling at half a build cell makes it impossible for a diagonal segment
+   * to jump over a claimed cell between two tests. A route may overlap only in
+   * a throat belonging to an endpoint that already participates in the graph;
+   * geometric proximity to an unrelated road is never mistaken for a join.
+   */
+  private routeClaimClear(
+    ax: number, az: number, bx: number, bz: number,
+    joinA: boolean, joinB: boolean,
+  ): boolean {
+    const len = Math.hypot(bx - ax, bz - az);
+    const steps = Math.max(1, Math.ceil(len / (CELL * 0.5)));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const cell = this.cellIndexAt(ax + (bx - ax) * t, az + (bz - az) * t);
+      if (cell < 0
+        || !this.routeClaimAllows(cell, ax, az, bx, bz, joinA, joinB, bx - ax, bz - az)) return false;
+    }
+    return true;
+  }
+
+  /** Reserve the entire finished-road corridor around one accepted edge. */
+  private reserveRoute(path: readonly number[]): void {
+    const r = ROUTE_RESERVATION_METRES;
+    const r2 = r * r;
+    for (let i = 2; i < path.length; i += 2) {
+      const ax = path[i - 2], az = path[i - 1];
+      const bx = path[i], bz = path[i + 1];
+      const angle = Math.atan2(bz - az, bx - ax);
+      const wrapped = angle < 0 ? angle + Math.PI : angle >= Math.PI ? angle - Math.PI : angle;
+      const direction = 1 << (Math.round(wrapped * (16 / Math.PI)) & 15);
+      const cx0 = Math.max(0, Math.floor((Math.min(ax, bx) - r) / CELL));
+      const cz0 = Math.max(0, Math.floor((Math.min(az, bz) - r) / CELL));
+      const cx1 = Math.min(MAP_CELLS - 1, Math.floor((Math.max(ax, bx) + r) / CELL));
+      const cz1 = Math.min(MAP_CELLS - 1, Math.floor((Math.max(az, bz) + r) / CELL));
+      for (let cz = cz0; cz <= cz1; cz++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const x = (cx + 0.5) * CELL;
+          const z = (cz + 0.5) * CELL;
+          if (distSqToSegment(x, z, ax, az, bx, bz) <= r2) {
+            this.routeClaim[cz * MAP_CELLS + cx] |= direction;
+          }
+        }
+      }
+    }
+  }
+
   /**
    * A* over the build grid, 8-connected, no corner cutting.
    *
@@ -1993,8 +2144,13 @@ export class RoadNetwork {
    */
   private routeCells(
     a: number, b: number, grid: Uint8Array, out: number[],
+    ax: number, az: number, bxWorld: number, bzWorld: number,
+    joinA: boolean, joinB: boolean, avoidParallel: boolean,
   ): boolean {
-    if (grid[a] === 0 || grid[b] === 0) return false;
+    if (grid[a] === 0 || grid[b] === 0
+      || (avoidParallel
+        && (!this.routeClaimAllows(a, ax, az, bxWorld, bzWorld, joinA, joinB, bxWorld - ax, bzWorld - az)
+          || !this.routeClaimAllows(b, ax, az, bxWorld, bzWorld, joinA, joinB, bxWorld - ax, bzWorld - az)))) return false;
     const g = this.gScore;
     const f = this.fScore;
     const from = this.cameFrom;
@@ -2068,10 +2224,17 @@ export class RoadNetwork {
           const nz = cz + dz;
           if (nx < 0 || nz < 0 || nx >= MAP_CELLS || nz >= MAP_CELLS) continue;
           const ni = nz * MAP_CELLS + nx;
-          if (grid[ni] === 0) continue;
+          if (grid[ni] === 0
+            || (avoidParallel
+              && !this.routeClaimAllows(ni, ax, az, bxWorld, bzWorld, joinA, joinB, dx, dz))) continue;
           if (dx !== 0 && dz !== 0) {
             // No corner cutting: a 20 m road cannot squeeze through a diagonal.
-            if (grid[cz * MAP_CELLS + nx] === 0 || grid[nz * MAP_CELLS + cx] === 0) continue;
+            const sideA = cz * MAP_CELLS + nx;
+            const sideB = nz * MAP_CELLS + cx;
+            if (grid[sideA] === 0 || grid[sideB] === 0
+              || (avoidParallel
+                && (!this.routeClaimAllows(sideA, ax, az, bxWorld, bzWorld, joinA, joinB, dx, dz)
+                  || !this.routeClaimAllows(sideB, ax, az, bxWorld, bzWorld, joinA, joinB, dx, dz)))) continue;
           }
           const step = dx !== 0 && dz !== 0 ? Math.SQRT2 : 1;
           const ng = g[cur] + step;
@@ -2104,17 +2267,27 @@ export class RoadNetwork {
    */
   private routeThrough(
     ax: number, az: number, bx: number, bz: number, out: number[],
+    joinA: boolean, joinB: boolean, avoidParallel: boolean, allowFallback: boolean,
   ): boolean {
     out.length = 0;
-    if (this.routeLegal(ax, az, bx, bz)) return true;
+    if (this.routeLegal(ax, az, bx, bz)
+      && (!avoidParallel || this.routeClaimClear(ax, az, bx, bz, joinA, joinB))) return true;
 
     const a = this.cellIndexAt(ax, az);
     const b = this.cellIndexAt(bx, bz);
     if (a < 0 || b < 0) return false;
 
     const cells = this.routeScratch;
-    if (!this.routeCells(a, b, this.roomCell, cells)
-      && !this.routeCells(a, b, this.legalCell, cells)) return false;
+    if (!this.routeCells(a, b, this.roomCell, cells, ax, az, bx, bz, joinA, joinB, avoidParallel)
+      && !this.routeCells(a, b, this.legalCell, cells, ax, az, bx, bz, joinA, joinB, avoidParallel)) {
+      // Hostile terrain can leave one usable pass. Preserve the arterial's
+      // border-to-border topology in that case and let the post-route
+      // deduplicator/cover fuse arbitrate the unavoidable shared throat.
+      if (!avoidParallel || !allowFallback) return false;
+      if (this.routeLegal(ax, az, bx, bz)) return true;
+      if (!this.routeCells(a, b, this.roomCell, cells, ax, az, bx, bz, joinA, joinB, false)
+        && !this.routeCells(a, b, this.legalCell, cells, ax, az, bx, bz, joinA, joinB, false)) return false;
+    }
 
     const world: number[] = [];
     world.push(ax, az);
@@ -2153,11 +2326,18 @@ export class RoadNetwork {
       const nb = this.nodes[b];
       if (!na.active || !nb.active) return false;
       const way: number[] = [];
-      if (!this.routeThrough(na.x, na.z, nb.x, nb.z, way)) return false;
+      // Only an endpoint that already owns an edge is a real graph join. A
+      // fresh node that merely lies near a road is not allowed to borrow its
+      // throat; that was the remaining source of unconnected T-shaped slabs.
+      const joinA = na.edges.some((edge) => this.edges[edge].alive);
+      const joinB = nb.edges.some((edge) => this.edges[edge].alive);
+      const avoidParallel = cls === RoadClass.Arterial;
+      if (!this.routeThrough(na.x, na.z, nb.x, nb.z, way, joinA, joinB, avoidParallel, true)) return false;
       const id = this.edges.length;
       this.edges.push({ a, b, cls, alive: true, chain: -1, way });
       na.edges.push(id);
       nb.edges.push(id);
+      if (avoidParallel) this.reserveRoute([na.x, na.z, ...way, nb.x, nb.z]);
       return true;
     };
 
@@ -2458,11 +2638,12 @@ export class RoadNetwork {
       }
 
       this.chains.push({
-        id: this.chains.length, cls, halfWidth: roadHalfWidth(cls),
+        id: this.chains.length, sourceId: this.chains.length, cls, halfWidth: roadHalfWidth(cls),
         nodeA: startNode, nodeB: node, way,
         spline: [], pts: [], nrm: [], wl: [], wr: [], edgeL: [], edgeR: [], fade: [],
         trimA: 0, trimB: 0,
         junctionA: false, junctionB: false,
+        detachedA: false, detachedB: false,
       });
     };
 
@@ -2477,6 +2658,99 @@ export class RoadNetwork {
       walk(this.edges[e].a, e);
     }
 
+  }
+
+  /**
+   * Reroute complete independent chains that still claim the same corridor.
+   *
+   * Edge-level deduplication cannot safely remove an arterial link: doing so
+   * turns a protected border-to-border route into two stubs. At chain scope we
+   * finally know both real graph endpoints, so the losing chain can be solved
+   * again end-to-end while every other chain reserves its finished corridor.
+   * Perpendicular crossings remain available through the directional claim
+   * mask; only a sustained parallel use of occupied ground is forbidden.
+   */
+  private repairRoutedParallelChains(): void {
+    const reroute = (chain: RoadChainRec): boolean => {
+      this.routeClaim.fill(0);
+      for (const other of this.chains) {
+        if (other.id === chain.id) continue;
+        this.reserveRoute(other.way);
+      }
+      const a = this.nodes[chain.nodeA];
+      const b = this.nodes[chain.nodeB];
+      const interior: number[] = [];
+      const ok = this.routeThrough(
+        a.x, a.z, b.x, b.z, interior,
+        this.degree(a) > 1, this.degree(b) > 1,
+        true, false,
+      );
+      if (!ok) return false;
+      chain.way.length = 0;
+      chain.way.push(a.x, a.z, ...interior, b.x, b.z);
+      return true;
+    };
+
+    for (let pass = 0; pass < 8; pass++) {
+      let changed = false;
+      for (let ai = 0; ai < this.chains.length; ai++) {
+        for (let bi = ai + 1; bi < this.chains.length; bi++) {
+          const a = this.chains[ai];
+          const b = this.chains[bi];
+          if (a.nodeA === b.nodeA || a.nodeA === b.nodeB
+            || a.nodeB === b.nodeA || a.nodeB === b.nodeB) continue;
+          if (this.parallelRouteMetres(a.way, b.way, []) < PARALLEL_ROUTE_MIN_METRES
+            && this.parallelRouteMetres(b.way, a.way, []) < PARALLEL_ROUTE_MIN_METRES) continue;
+          const loser = a.cls !== b.cls
+            ? (a.cls === RoadClass.Street ? a : b)
+            : (a.id > b.id ? a : b);
+          if (reroute(loser)) changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+
+    // If terrain leaves literally one pass, an independent route can be
+    // impossible even at whole-chain scope. Do not render two roads in that
+    // pass. Drop the lower-priority chain's graph edges and rebuild chains so
+    // every downstream consumer (junctions, mask, path cost and meshes) sees
+    // the same single network. This is the topology fallback the old visual
+    // overlap culler could never provide.
+    const conflictingLosers = (): Set<number> => {
+      const losers = new Set<number>();
+      for (let ai = 0; ai < this.chains.length; ai++) {
+        for (let bi = ai + 1; bi < this.chains.length; bi++) {
+          const a = this.chains[ai];
+          const b = this.chains[bi];
+          if (a.nodeA === b.nodeA || a.nodeA === b.nodeB
+            || a.nodeB === b.nodeA || a.nodeB === b.nodeB) continue;
+          if (this.parallelRouteMetres(a.way, b.way, []) < PARALLEL_ROUTE_MIN_METRES
+            && this.parallelRouteMetres(b.way, a.way, []) < PARALLEL_ROUTE_MIN_METRES) continue;
+          const loser = a.cls !== b.cls
+            ? (a.cls === RoadClass.Street ? a : b)
+            : (a.id > b.id ? a : b);
+          losers.add(loser.id);
+        }
+      }
+      return losers;
+    };
+    for (let dropPass = 0; dropPass < 4; dropPass++) {
+      const losers = conflictingLosers();
+      if (losers.size === 0) break;
+      for (const edge of this.edges) {
+        if (!edge.alive || !losers.has(edge.chain)) continue;
+        edge.alive = false;
+        this.parallelEdgesRemoved++;
+      }
+      for (const node of this.nodes) node.edges = node.edges.filter((edge) => this.edges[edge].alive);
+      this.chains.length = 0;
+      for (const edge of this.edges) if (edge.alive) edge.chain = -1;
+      this.pruneDeadEnds();
+      this.buildChains();
+    }
+    // The claim field has served its build-topology purpose. Clear it so an
+    // accidental later query cannot observe whichever reroute happened last.
+    this.routeClaim.fill(0);
   }
 
   /** True when this node really did produce junction-pad geometry. */
@@ -2529,8 +2803,10 @@ export class RoadNetwork {
    */
   private markJunctionMouths(): void {
     for (const c of this.chains) {
-      c.junctionA = this.hasPad(this.nodes[c.nodeA]) && !this.untrimmed.has(`${c.id}:a`);
-      c.junctionB = this.hasPad(this.nodes[c.nodeB]) && !this.untrimmed.has(`${c.id}:b`);
+      c.junctionA = !c.detachedA
+        && this.hasPad(this.nodes[c.nodeA]) && !this.untrimmed.has(`${c.id}:a`);
+      c.junctionB = !c.detachedB
+        && this.hasPad(this.nodes[c.nodeB]) && !this.untrimmed.has(`${c.id}:b`);
     }
   }
 
@@ -2656,6 +2932,346 @@ export class RoadNetwork {
         if (off < this.minOffAxis) this.minOffAxis = off;
       }
     }
+    this.repairShapedParallelRoutes();
+  }
+
+  /**
+   * Remove conflicts introduced by the decorative midpoint bends.
+   *
+   * Duplicate rejection runs on routed graph edges, correctly, before chains
+   * exist. `shapeChains` then adds an offset midpoint to otherwise clear legs;
+   * on a long leg that offset can be eighteen metres and used to bend two
+   * independent roads back into the same corridor. Re-run the sustained
+   * parallel test on the actual splines. Both conflicting chains give up their
+   * decorative midpoint and return exactly to the terrain-safe routed paths,
+   * preserving graph endpoints, connectivity and junction arms.
+   */
+  private repairShapedParallelRoutes(): void {
+    const repaired = new Set<number>();
+    const rebuild = (c: RoadChainRec): void => {
+      c.spline.length = 0;
+      // Keep the repair exactly on the route the topology solver proved clear.
+      // Even a compact fillet can cut across a hairpin's inside and re-enter a
+      // neighbouring corridor. `trimChains` uniformly resamples this polyline,
+      // so the exceptional fallback is still continuous; ownership is more
+      // important than adding another curve that changes the solved topology.
+      c.spline.push(...c.way);
+    };
+
+    for (let pass = 0; pass < 3; pass++) {
+      let changed = false;
+      for (let ai = 0; ai < this.chains.length; ai++) {
+        for (let bi = ai + 1; bi < this.chains.length; bi++) {
+          const a = this.chains[ai];
+          const b = this.chains[bi];
+          const shared: RoadNodeRec[] = [];
+          if (a.nodeA === b.nodeA || a.nodeA === b.nodeB) shared.push(this.nodes[a.nodeA]);
+          if ((a.nodeB === b.nodeA || a.nodeB === b.nodeB) && a.nodeB !== a.nodeA) {
+            shared.push(this.nodes[a.nodeB]);
+          }
+          // Shared arms need topology coalescing rather than deforming both
+          // complete roads here; their immediate merge belongs to the pad.
+          if (shared.length > 0) continue;
+          if (this.parallelRouteMetres(a.spline, b.spline, shared) < PARALLEL_ROUTE_MIN_METRES
+            && this.parallelRouteMetres(b.spline, a.spline, shared) < PARALLEL_ROUTE_MIN_METRES) continue;
+
+          // The conflict may have been introduced by EITHER decorative bend.
+          // Reset both independent routes to their topology-solved paths; only
+          // resetting the lower-ranked one leaves the winner free to bow a
+          // hundred metres into it on a long hairpin.
+          if (!repaired.has(a.id)) {
+            rebuild(a);
+            repaired.add(a.id);
+            changed = true;
+          }
+          if (!repaired.has(b.id)) {
+            rebuild(b);
+            repaired.add(b.id);
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+  }
+
+  /**
+   * Give a shared approach to one road, then start the branch at divergence.
+   *
+   * Two chains may legitimately share a graph node, but the node owns only a
+   * compact junction throat. If both arms continue down the same corridor for
+   * tens of metres, drawing both ribbons creates the broken doubled asphalt
+   * and conflicting lane paint from the report. Keep the higher-priority road
+   * through the approach; cut the loser to the first point beyond the shared
+   * run and fade its new end in as the branch separates.
+   */
+  private coalesceSharedParallelArms(): void {
+    const coalesced = new Set<number>();
+    const cutDistance = (
+      path: readonly number[], fromStart: boolean, other: readonly number[],
+    ): number => {
+      if (path.length < 4 || other.length < 4) return 0;
+      const sampled: number[] = [];
+      resample(path, ROAD_SAMPLE_METRES, 0, polylineLength(path), sampled);
+      const n = sampled.length / 2;
+      const clear2 = PARALLEL_ROUTE_CLEARANCE_METRES * PARALLEL_ROUTE_CLEARANCE_METRES;
+      let first = Number.POSITIVE_INFINITY;
+      let last = 0;
+      let along = 0;
+      for (let step = 0; step < n; step++) {
+        const i = fromStart ? step : n - 1 - step;
+        if (step > 0) {
+          const prev = fromStart ? i - 1 : i + 1;
+          along += Math.hypot(
+            sampled[i * 2] - sampled[prev * 2],
+            sampled[i * 2 + 1] - sampled[prev * 2 + 1],
+          );
+        }
+        if (along < PARALLEL_ROUTE_JOIN_METRES) continue;
+        const i0 = fromStart ? Math.max(0, i - 1) : Math.min(n - 1, i + 1);
+        const i1 = fromStart ? Math.min(n - 1, i + 1) : Math.max(0, i - 1);
+        let tx = sampled[i1 * 2] - sampled[i0 * 2];
+        let tz = sampled[i1 * 2 + 1] - sampled[i0 * 2 + 1];
+        const tl = Math.hypot(tx, tz) || 1;
+        tx /= tl; tz /= tl;
+        let parallel = false;
+        for (let j = 2; j < other.length && !parallel; j += 2) {
+          const ax = other[j - 2], az = other[j - 1];
+          const bx = other[j], bz = other[j + 1];
+          const bl = Math.hypot(bx - ax, bz - az);
+          if (bl < 1e-5) continue;
+          const dot = Math.abs(tx * ((bx - ax) / bl) + tz * ((bz - az) / bl));
+          if (dot < PARALLEL_ROUTE_COS) continue;
+          if (distSqToSegment(sampled[i * 2], sampled[i * 2 + 1], ax, az, bx, bz) <= clear2) {
+            parallel = true;
+          }
+        }
+        if (!parallel) continue;
+        first = Math.min(first, along);
+        last = along;
+      }
+      // This pass owns a duplicated APPROACH, not a later hairpin encounter.
+      if (!Number.isFinite(first) || first > PARALLEL_ROUTE_JOIN_METRES + CELL * 2
+        || last < PARALLEL_ROUTE_MIN_METRES) return 0;
+      return last + ROAD_SAMPLE_METRES;
+    };
+
+    const trimEnd = (c: RoadChainRec, fromStart: boolean, metres: number): void => {
+      if (metres <= 0 || c.spline.length < 4) return;
+      const total = polylineLength(c.spline);
+      if (metres >= total - ROAD_SAMPLE_METRES * 2) {
+        c.spline.length = 0;
+        c.detachedA = true;
+        c.detachedB = true;
+        return;
+      }
+      const kept: number[] = [];
+      resample(c.spline, ROAD_SAMPLE_METRES,
+        fromStart ? metres : 0, fromStart ? total : total - metres, kept);
+      c.spline.length = 0;
+      c.spline.push(...kept);
+      if (fromStart) c.detachedA = true;
+      else c.detachedB = true;
+    };
+
+    for (let pass = 0; pass < 4; pass++) {
+      let changed = false;
+      for (let ai = 0; ai < this.chains.length; ai++) {
+        for (let bi = ai + 1; bi < this.chains.length; bi++) {
+        const a = this.chains[ai];
+        const b = this.chains[bi];
+        if (a.sourceId === b.sourceId || a.spline.length < 4 || b.spline.length < 4) continue;
+        const loser = a.cls !== b.cls
+          ? (a.cls === RoadClass.Street ? a : b)
+          : (a.id > b.id ? a : b);
+        const winner = loser === a ? b : a;
+        const shared = new Set<number>();
+        if (a.nodeA === b.nodeA || a.nodeA === b.nodeB) shared.add(a.nodeA);
+        if (a.nodeB === b.nodeA || a.nodeB === b.nodeB) shared.add(a.nodeB);
+        const sharedNodes = [...shared].map((id) => this.nodes[id]);
+        const sustained = Math.max(
+          this.parallelRouteMetres(loser.spline, winner.spline, sharedNodes),
+          this.parallelRouteMetres(winner.spline, loser.spline, sharedNodes),
+        );
+        if (sustained < PARALLEL_ROUTE_MIN_METRES) continue;
+          for (const node of shared) {
+            const loserEnds: boolean[] = [];
+            if (loser.nodeA === node) loserEnds.push(true);
+            if (loser.nodeB === node) loserEnds.push(false);
+            for (const fromStart of loserEnds) {
+              // The detailed walk finds the real divergence when the overlap
+              // begins in the authored throat. A later shallow merge still must
+              // not render twice; in that fallback consume the exempt throat
+              // plus the measured duplicate distance.
+              const measured = cutDistance(loser.spline, fromStart, winner.spline);
+              const metres = measured > 0 ? measured : PARALLEL_ROUTE_JOIN_METRES + sustained;
+              trimEnd(loser, fromStart, metres);
+              coalesced.add(loser.sourceId);
+              changed = true;
+            }
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    // If repeated prefix consumption leaves no distinct tail, the branch was
+    // never a second road at all. Remove only that rendered duplicate; the
+    // winner already owns the complete shared movement corridor.
+    for (let ai = 0; ai < this.chains.length; ai++) {
+      for (let bi = ai + 1; bi < this.chains.length; bi++) {
+        const a = this.chains[ai], b = this.chains[bi];
+        if (a.sourceId === b.sourceId || a.spline.length < 4 || b.spline.length < 4) continue;
+        const shared: RoadNodeRec[] = [];
+        if (a.nodeA === b.nodeA || a.nodeA === b.nodeB) shared.push(this.nodes[a.nodeA]);
+        if ((a.nodeB === b.nodeA || a.nodeB === b.nodeB) && a.nodeB !== a.nodeA) {
+          shared.push(this.nodes[a.nodeB]);
+        }
+        if (shared.length === 0) continue;
+        const residual = Math.max(
+          this.parallelRouteMetres(a.spline, b.spline, shared),
+          this.parallelRouteMetres(b.spline, a.spline, shared),
+        );
+        if (residual < PARALLEL_ROUTE_MIN_METRES) continue;
+        const loser = a.cls !== b.cls
+          ? (a.cls === RoadClass.Street ? a : b)
+          : (a.id > b.id ? a : b);
+        loser.spline.length = 0;
+        loser.detachedA = true;
+        loser.detachedB = true;
+        coalesced.add(loser.sourceId);
+      }
+    }
+    this.coalescedBranches += coalesced.size;
+  }
+
+  /**
+   * Terminate a road before its full rendered corridor crosses a cliff/water.
+   *
+   * A legal centreline is not enough for a 20 m arterial corridor. The centre
+   * can remain on a terrace while one carriageway edge and its pavement span a
+   * ravine, producing the apparent asphalt bridge in the report. Validate the
+   * actual left/right outside edges both across and along every final sample.
+   * If a chain contains unsafe ground, keep the coherent run attached to each
+   * real bank and detach the new cut end(s) from their graph nodes; the normal
+   * road-end fade then owns carriageway, kerb, pavement, mask and movement
+   * cost together. No isolated middle strip survives between two cuts.
+   */
+  private clipUnsafeCorridors(): void {
+    const sampled: number[] = [];
+    const originalCount = this.chains.length;
+    for (let chainIndex = 0; chainIndex < originalCount; chainIndex++) {
+      const c = this.chains[chainIndex];
+      c.detachedA = false;
+      c.detachedB = false;
+      if (c.spline.length < 4) continue;
+      sampled.length = 0;
+      const total = polylineLength(c.spline);
+      resample(c.spline, ROAD_SAMPLE_METRES, 0, total, sampled);
+      const n = sampled.length / 2;
+      if (n < 2) continue;
+
+      const reach = corridorHalfWidth(c.cls);
+      const left = new Array<number>(n * 2);
+      const right = new Array<number>(n * 2);
+      const safe = new Uint8Array(n);
+      safe.fill(1);
+      for (let i = 0; i < n; i++) {
+        const i0 = Math.max(0, i - 1);
+        const i1 = Math.min(n - 1, i + 1);
+        let tx = sampled[i1 * 2] - sampled[i0 * 2];
+        let tz = sampled[i1 * 2 + 1] - sampled[i0 * 2 + 1];
+        const len = Math.hypot(tx, tz) || 1;
+        tx /= len; tz /= len;
+        const px = -tz, pz = tx;
+        const x = sampled[i * 2], z = sampled[i * 2 + 1];
+        left[i * 2] = x + px * reach;
+        left[i * 2 + 1] = z + pz * reach;
+        right[i * 2] = x - px * reach;
+        right[i * 2 + 1] = z - pz * reach;
+        if (!this.terrainSpanSafe(
+          left[i * 2], left[i * 2 + 1], right[i * 2], right[i * 2 + 1], 8.0,
+        )) {
+          safe[i] = 0;
+        }
+      }
+      for (let i = 1; i < n; i++) {
+        const longitudinalSafe = this.terrainSpanSafe(
+          sampled[i * 2 - 2], sampled[i * 2 - 1], sampled[i * 2], sampled[i * 2 + 1], 8.0,
+        ) && this.terrainSpanSafe(
+          left[i * 2 - 2], left[i * 2 - 1], left[i * 2], left[i * 2 + 1], 8.0,
+        ) && this.terrainSpanSafe(
+          right[i * 2 - 2], right[i * 2 - 1], right[i * 2], right[i * 2 + 1], 8.0,
+        );
+        if (!longitudinalSafe) {
+          safe[i - 1] = 0;
+          safe[i] = 0;
+        }
+      }
+
+      // Border arterials intentionally leave the playable map. Their outer
+      // pavement corners fall outside the heightfield near the exit and are
+      // not a cliff failure. Preserve the authored exit throat; only interior
+      // terrain discontinuities are eligible for a cutoff.
+      const preserveBorderRows = Math.ceil((reach + ROAD_SAMPLE_METRES) / ROAD_SAMPLE_METRES);
+      if (this.nodes[c.nodeA].border) {
+        for (let i = 0; i < Math.min(n, preserveBorderRows); i++) safe[i] = 1;
+      }
+      if (this.nodes[c.nodeB].border) {
+        for (let i = Math.max(0, n - preserveBorderRows); i < n; i++) safe[i] = 1;
+      }
+
+      let unsafe = false;
+      for (let i = 0; i < n; i++) if (safe[i] === 0) { unsafe = true; break; }
+      if (!unsafe) continue;
+
+      // Keep only safe runs connected to a real graph endpoint. An older
+      // longest-run implementation could leave an isolated strip of asphalt
+      // floating between two cliff cuts. When a ravine crosses the middle of
+      // a road, preserve BOTH banks as separate fragments and fade both new
+      // ends toward the gap.
+      let prefixEnd = -1;
+      while (prefixEnd + 1 < n && safe[prefixEnd + 1] !== 0) prefixEnd++;
+      let suffixStart = n;
+      while (suffixStart - 1 >= 0 && safe[suffixStart - 1] !== 0) suffixStart--;
+
+      const fragments: { a: number; b: number; detachedA: boolean; detachedB: boolean }[] = [];
+      if (prefixEnd >= 1) fragments.push({ a: 0, b: prefixEnd, detachedA: false, detachedB: true });
+      if (suffixStart <= n - 2 && suffixStart > prefixEnd) {
+        fragments.push({ a: suffixStart, b: n - 1, detachedA: true, detachedB: false });
+      }
+
+      const assign = (
+        target: RoadChainRec,
+        fragment: { a: number; b: number; detachedA: boolean; detachedB: boolean },
+      ): void => {
+        target.spline.length = 0;
+        for (let i = fragment.a; i <= fragment.b; i++) {
+          target.spline.push(sampled[i * 2], sampled[i * 2 + 1]);
+        }
+        target.detachedA = fragment.detachedA;
+        target.detachedB = fragment.detachedB;
+      };
+
+      if (fragments.length === 0) {
+        c.spline.length = 0;
+        c.detachedA = true;
+        c.detachedB = true;
+      } else {
+        assign(c, fragments[0]);
+        if (fragments.length > 1) {
+          const fragment: RoadChainRec = {
+            ...c,
+            id: this.chains.length,
+            way: [], spline: [], pts: [], nrm: [], wl: [], wr: [], edgeL: [], edgeR: [], fade: [],
+            trimA: 0, trimB: 0, junctionA: false, junctionB: false,
+          };
+          assign(fragment, fragments[1]);
+          this.chains.push(fragment);
+        }
+      }
+      this.unsafeCorridorCuts++;
+    }
   }
 
   /* ======================================================================
@@ -2703,28 +3319,33 @@ export class RoadNetwork {
       n.arms.length = 0;
       const taken = new Set<string>();
 
-      for (const eid of n.edges) {
-        const cid = this.edges[eid].chain;
-        if (cid < 0) continue;
-        const c = this.chains[cid];
-        const atStart = c.nodeA === n.id;
-        if (!atStart && c.nodeB !== n.id) continue;
-        if (c.spline.length < 4) continue;
-        // A chain whose two ends are the SAME junction (a ring road closing on
-        // itself) contributes two arms, and they must not be the same arm.
-        const key = `${cid}:${atStart ? 'a' : 'b'}`;
-        if (taken.has(key)) continue;
-        taken.add(key);
+      // Scan physical chain ends, not edge->chain ownership. Corridor clipping
+      // may split one graph chain into two rendered bank fragments, and a ring
+      // legitimately contributes both its start and end arm at the same node.
+      for (const c of this.chains) {
+        for (const atStart of [true, false]) {
+          const cid = c.id;
+          // An unsplit pure cycle already contributed its graph degree through
+          // the chain's start. Treating the identical endpoint as a second
+          // physical arm changes pad trimming on an otherwise valid ring.
+          if (!atStart && c.nodeA === c.nodeB && c.sourceId === c.id) continue;
+          if ((atStart ? c.nodeA : c.nodeB) !== n.id) continue;
+          if ((atStart && c.detachedA) || (!atStart && c.detachedB)) continue;
+          if (c.spline.length < 4) continue;
+          const key = `${cid}:${atStart ? 'a' : 'b'}`;
+          if (taken.has(key)) continue;
+          taken.add(key);
 
-        this.probeDirection(c.spline, 12, atStart, dir);
-        n.arms.push({
-          chain: cid,
-          ox: n.x, oz: n.z,
-          dx: dir[0], dz: dir[1],
-          halfWidth: c.halfWidth,
-          angle: Math.atan2(dir[1], dir[0]),
-          lx: 0, lz: 0, rx: 0, rz: 0,
-        });
+          this.probeDirection(c.spline, 12, atStart, dir);
+          n.arms.push({
+            chain: cid, atStart,
+            ox: n.x, oz: n.z,
+            dx: dir[0], dz: dir[1],
+            halfWidth: c.halfWidth,
+            angle: Math.atan2(dir[1], dir[0]),
+            lx: 0, lz: 0, rx: 0, rz: 0,
+          });
+        }
       }
       if (this.mergeArms(n) < 3) continue;
 
@@ -2913,17 +3534,17 @@ export class RoadNetwork {
 
   /** Flag a chain end as "do not trim": its arm lost a near-duplicate merge. */
   private markUntrimmed(nodeId: number, arm: RoadArm): void {
-    const c = this.chains[arm.chain];
-    this.untrimmed.add(`${arm.chain}:${c.nodeA === nodeId ? 'a' : 'b'}`);
+    void nodeId;
+    this.untrimmed.add(`${arm.chain}:${arm.atStart ? 'a' : 'b'}`);
   }
 
   /** Cut one chain back by its end nodes' trim radii and resample uniformly. */
   private trimChain(c: RoadChainRec): void {
     if (c.spline.length < 4) return;
     const L = polylineLength(c.spline);
-    const ta = this.degree(this.nodes[c.nodeA]) >= 3 && !this.untrimmed.has(`${c.id}:a`)
+    const ta = !c.detachedA && this.degree(this.nodes[c.nodeA]) >= 3 && !this.untrimmed.has(`${c.id}:a`)
       ? this.nodes[c.nodeA].trimRadius : 0;
-    const tb = this.degree(this.nodes[c.nodeB]) >= 3 && !this.untrimmed.has(`${c.id}:b`)
+    const tb = !c.detachedB && this.degree(this.nodes[c.nodeB]) >= 3 && !this.untrimmed.has(`${c.id}:b`)
       ? this.nodes[c.nodeB].trimRadius : 0;
     // Never let two junctions eat a whole chain; leave at least 8 m of road.
     const room = Math.max(L - 8, 0);
@@ -2944,7 +3565,7 @@ export class RoadNetwork {
     for (const arm of n.arms) {
       const c = this.chains[arm.chain];
       if (c.pts.length < 6) continue;
-      const atStart = c.nodeA === n.id;
+      const atStart = arm.atStart;
       // `i` is the endpoint nearest this node, `j` its inboard neighbour.
       // Walking from the endpoint toward its inboard neighbour always moves
       // AWAY from the node — at the start because arc length increases, at the
@@ -3059,10 +3680,58 @@ export class RoadNetwork {
     smooth(rawL);
     smooth(rawR);
 
+    // Enforce the exact winding used by `buildChainRibbon`. Curvature clamps
+    // and width-rate limits normally guarantee this, but a junction trim can
+    // begin a row halfway through a tight bend and leave one marginal bow-tie.
+    // Each triangle's signed area is affine in the one current-row width it
+    // depends on, so a short binary search finds the widest non-folding row
+    // without moving the centreline or its previous edge.
+    const edgeArea = (i: number, left: boolean, width: number): number => {
+      const px0 = c.nrm[i * 2 - 2], pz0 = c.nrm[i * 2 - 1];
+      const px1 = c.nrm[i * 2], pz1 = c.nrm[i * 2 + 1];
+      const prevLx = p[i * 2 - 2] + px0 * rawL[i - 1];
+      const prevLz = p[i * 2 - 1] + pz0 * rawL[i - 1];
+      const prevRx = p[i * 2 - 2] - px0 * rawR[i - 1];
+      const prevRz = p[i * 2 - 1] - pz0 * rawR[i - 1];
+      const curLx = p[i * 2] + px1 * (left ? width : rawL[i]);
+      const curLz = p[i * 2 + 1] + pz1 * (left ? width : rawL[i]);
+      const curRx = p[i * 2] - px1 * (left ? rawR[i] : width);
+      const curRz = p[i * 2 + 1] - pz1 * (left ? rawR[i] : width);
+      return left
+        ? (curLx - prevLx) * (prevRz - prevLz) - (curLz - prevLz) * (prevRx - prevLx)
+        : (curLx - prevRx) * (curRz - prevRz) - (curLz - prevRz) * (curRx - prevRx);
+    };
+    const constrain = (): void => {
+      for (let i = 1; i < n; i++) {
+        if (edgeArea(i, true, rawL[i]) >= -1e-6) {
+          let lo = 0, hi = rawL[i];
+          for (let k = 0; k < 12; k++) {
+            const mid = (lo + hi) * 0.5;
+            if (edgeArea(i, true, mid) < -1e-6) lo = mid;
+            else hi = mid;
+          }
+          rawL[i] = lo;
+        }
+        if (edgeArea(i, false, rawR[i]) >= -1e-6) {
+          let lo = 0, hi = rawR[i];
+          for (let k = 0; k < 12; k++) {
+            const mid = (lo + hi) * 0.5;
+            if (edgeArea(i, false, mid) < -1e-6) lo = mid;
+            else hi = mid;
+          }
+          rawR[i] = lo;
+        }
+      }
+    };
+    constrain();
+    smooth(rawL);
+    smooth(rawR);
+    constrain();
+
     const aNode = this.nodes[c.nodeA];
     const bNode = this.nodes[c.nodeB];
-    const fadeA = this.degree(aNode) === 1 && !aNode.border;
-    const fadeB = this.degree(bNode) === 1 && !bNode.border;
+    const fadeA = c.detachedA || (this.degree(aNode) === 1 && !aNode.border);
+    const fadeB = c.detachedB || (this.degree(bNode) === 1 && !bNode.border);
     const total = arc[n - 1];
     for (let i = 0; i < n; i++) {
       let f = 1;
@@ -3670,6 +4339,7 @@ export class RoadNetwork {
           }
         }
       }
+
       for (let k = 0; k <= spans; k++) prev[k] = cur[k];
       havePrev = true;
       prevAlong = along;
@@ -3802,6 +4472,13 @@ export class RoadNetwork {
 
   /** Reject real heightfield steps without rejecting ordinary sloped asphalt. */
   private junctionSpanSafe(ax: number, az: number, bx: number, bz: number): boolean {
+    return this.terrainSpanSafe(ax, az, bx, bz, 0.9);
+  }
+
+  /** Validate a terrain span at 1.5 m resolution against water and cliff steps. */
+  private terrainSpanSafe(
+    ax: number, az: number, bx: number, bz: number, maxHeightStep: number,
+  ): boolean {
     const len = Math.hypot(bx - ax, bz - az);
     const steps = Math.max(1, Math.ceil(len / 1.5));
     let previous = this.terrain.heightAt(ax, az);
@@ -3815,7 +4492,7 @@ export class RoadNetwork {
       const height = this.terrain.heightAt(x, z);
       // Normal terrain undulation is draped by `conformSpans`; a terrace wall
       // changes several metres inside one sample and must never be bridged.
-      if (i > 0 && Math.abs(height - previous) > 0.9) return false;
+      if (i > 0 && Math.abs(height - previous) > maxHeightStep) return false;
       previous = height;
     }
     return true;
@@ -4407,6 +5084,21 @@ export class RoadNetwork {
         out[3] = Math.atan2(p[j] - p[i], p[j + 1] - p[i + 1]);
       }
     }
+    // A junction pad can extend beyond the nearest uniformly sampled mouth
+    // after a redundant approach is coalesced. It is still real road-owned
+    // pavement, so furniture on that pad may target its centre.
+    for (const n of this.nodes) {
+      if (!this.hasPad(n)) continue;
+      const dx = n.x - x, dz = n.z - z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= bestD) continue;
+      bestD = d2;
+      found = true;
+      out[0] = n.x;
+      out[1] = n.z;
+      out[2] = Math.sqrt(d2);
+      out[3] = 0;
+    }
     return found;
   }
 
@@ -4450,6 +5142,8 @@ export class RoadNetwork {
       foreignPaintRows: this.foreignPaintRows,
       overlapTrianglesCulled: this.overlapTrianglesCulled,
       parallelEdgesRemoved: this.parallelEdgesRemoved,
+      unsafeCorridorCuts: this.unsafeCorridorCuts,
+      coalescedBranches: this.coalescedBranches,
       ribbonRows: this.ribbonRows,
       kerbDashRows: this.kerbDashRows,
       shoulderMarks: this.shoulderMarks,

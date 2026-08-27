@@ -109,6 +109,10 @@ import {
   TERRAIN_SCALAR_DEFAULTS, TERRAIN_VEC3_DEFAULTS,
   applyTerrainBiome, type TerrainBiomeSink,
 } from './terrain-uniforms';
+import {
+  TERRAIN_DETAIL_ROUGHNESS, TERRAIN_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
+  createTerrainDetailMask,
+} from './terrain-detail-mask';
 
 /* ==========================================================================
  * 1. THE UNIFORM BLOCK
@@ -133,6 +137,8 @@ export interface TerrainUniforms {
   uWarp: { value: THREE.DataTexture | null };
   /** Low-frequency breakup + tint mask. */
   uMacro: { value: THREE.DataTexture | null };
+  /** Project-owner-supplied tileable detail, restricted to natural splat layers. */
+  uTerrainDetail: { value: THREE.Texture };
 
   uInvMapSize: { value: number };
   uLayerScale: { value: number[] };
@@ -141,6 +147,9 @@ export interface TerrainUniforms {
   uMacroScale: { value: number };
   uMacroStrength: { value: number };
   uMacroTint: { value: THREE.Vector3 };
+  uTerrainDetailTileM: { value: number };
+  uTerrainDetailStrength: { value: number };
+  uTerrainDetailRoughness: { value: number };
   uWarpScale: { value: number };
   uWarpAmp: { value: number };
   uCellSize: { value: number };
@@ -183,7 +192,7 @@ export interface TerrainUniforms {
  * is the drift CLAUDE.md catalogues. The values below are unchanged — this is a
  * move, not an edit, and `npm run shots` is what says so.
  */
-function createUniforms(): TerrainUniforms {
+function createUniforms(terrainDetail: THREE.Texture): TerrainUniforms {
   const S = TERRAIN_SCALAR_DEFAULTS;
   const v3 = (c: readonly number[]): THREE.Vector3 => new THREE.Vector3(c[0], c[1], c[2]);
   return {
@@ -193,6 +202,7 @@ function createUniforms(): TerrainUniforms {
     uSplat1: { value: null },
     uWarp: { value: null },
     uMacro: { value: null },
+    uTerrainDetail: { value: terrainDetail },
 
     uInvMapSize: { value: S.uInvMapSize },
     uLayerScale: { value: TERRAIN_LAYER_SCALE_DEFAULT.slice() },
@@ -201,6 +211,9 @@ function createUniforms(): TerrainUniforms {
     uMacroScale: { value: S.uMacroScale },
     uMacroStrength: { value: S.uMacroStrength },
     uMacroTint: { value: v3(TERRAIN_VEC3_DEFAULTS.uMacroTint) },
+    uTerrainDetailTileM: { value: TERRAIN_DETAIL_TILE_METRES },
+    uTerrainDetailStrength: { value: TERRAIN_DETAIL_STRENGTH },
+    uTerrainDetailRoughness: { value: TERRAIN_DETAIL_ROUGHNESS },
     uWarpScale: { value: S.uWarpScale },
     uWarpAmp: { value: S.uWarpAmp },
     uCellSize: { value: S.uCellSize },
@@ -263,12 +276,16 @@ uniform sampler2D uSplat0;
 uniform sampler2D uSplat1;
 uniform sampler2D uWarp;
 uniform sampler2D uMacro;
+uniform sampler2D uTerrainDetail;
 uniform float uLayerScale[ 6 ];
 uniform float uLayerRough[ 6 ];
 uniform float uInvMapSize;
 uniform float uMacroScale;
 uniform float uMacroStrength;
 uniform vec3  uMacroTint;
+uniform float uTerrainDetailTileM;
+uniform float uTerrainDetailStrength;
+uniform float uTerrainDetailRoughness;
 uniform float uWarpScale;
 uniform float uWarpAmp;
 uniform float uCellSize;
@@ -586,6 +603,18 @@ if ( raIsCliff ) {
   // 2. Regional breakup.
   raAlbedo = raMacro( raAlbedo, raXZ );
 
+  // 2a. Supplied tileable detail, owned by NATURAL splat layers only. Roads,
+  // sidewalks and other hard surfaces are layers 4/5, so their normalized
+  // contribution converges to exactly zero instead of relying on overdraw.
+  float raNatural = clamp(
+    ( raW[0] + raW[1] + raW[2] + raW[3] ) * raNorm, 0.0, 1.0 );
+  float raTerrainDetail = texture2D(
+    uTerrainDetail, raXZ / uTerrainDetailTileM ).r;
+  raAlbedo *= 1.0 + ( raTerrainDetail - 0.5 )
+    * uTerrainDetailStrength * raNatural;
+  raR = clamp( raR + ( 0.5 - raTerrainDetail )
+    * uTerrainDetailRoughness * raNatural, 0.55, 1.0 );
+
   // 2b. Material history. The warm multiply preserves each biome's authored
   // hue while letting dust gather in broad directional sheets. Cracks are
   // sparse line segments with cavity-darkening and a roughness response; no
@@ -807,7 +836,8 @@ export interface CreateTerrainMaterialOptions {
 }
 
 export function createTerrainMaterials(options: CreateTerrainMaterialOptions): TerrainMaterialSet {
-  const uniforms = createUniforms();
+  const terrainDetail = createTerrainDetailMask();
+  const uniforms = createUniforms(terrainDetail);
 
   /*
    * The biome sink. Every field is a live reference into `uniforms`, so
@@ -937,7 +967,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
   // Bumped with every change to the injected GLSL above. three caches compiled
   // programs by this string, so leaving it stale after editing a chunk hands
   // you the OLD shader in any session that already compiled one.
-  material.customProgramCacheKey = () => 'ra-terrain-v4';
+  material.customProgramCacheKey = () => 'ra-terrain-v5';
 
   function applyBiome(biome: BiomeDef): void {
     applyTerrainBiome(biome, biomeSink);
@@ -976,6 +1006,8 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
     applyBiome,
 
     setAnisotropy(a: number): void {
+      terrainDetail.anisotropy = a;
+      terrainDetail.needsUpdate = true;
       if (layers) {
         layers.anisotropy = a;
         layers.needsUpdate = true;

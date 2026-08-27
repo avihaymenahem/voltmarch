@@ -67,6 +67,11 @@ hospitals, mines and oil sites around capturable forward-build space instead of 
 layout. Capture them, fortify key lanes, cross water with landing ships, repair damaged armour,
 sell exposed positions and use the terrain to hide the shape of your next attack.
 
+Natural ground also carries a project-owner-supplied tileable terrain detail mask, sampled in world
+space as colour and roughness variation. Its terrain pass follows only ground, dirt, sand and rock;
+the separate road pass reuses the same GPU texture more quietly on asphalt and sidewalk paving,
+before crisp lane, slab-edge and kerb treatments are applied.
+
 <p align="center">
   <img src="docs/progress/13-atoll-crossing.png" alt="Current in-engine capture of an Allied amphibious force approaching an island base" width="900" />
 </p>
@@ -75,25 +80,15 @@ sell exposed positions and use the terrain to hide the shape of your next attack
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.11.0
+## What's new in 3.11.1
 
-- **A smarter but fairer opponent:** AI engineers can capture neutral assets, production decisions
-  cover more of the player's command set, and a stalled economy can sell exposed structures to
-  recover without receiving free credits or hidden production advantages.
-- **Richer, more stable battlefields:** continuous terrain-space dust, grit and cracks replace
-  circular stain clusters; road shoulders blend into the ground; roadside lighting is sparse and
-  kerb-aligned; and completed speech and terrain effects no longer leak or jitter over long play.
-- **Coherent roads and civilian space:** sustained parallel duplicates and overlapping junction
-  fragments are rejected, legitimate road ends taper into the terrain, structures stay off the road
-  corridor, and apartment blocks are scattered as hidden neutral strongpoints instead of fixed trios.
-- **A more useful command HUD:** main, side and global objectives share the board; Objective and
-  Construction panels retain their chosen height; Performance can be dragged; and the command node
-  reports mode, difficulty and map without crowding power status.
-- **Improved combat and map presentation:** layered fire and explosions, a conditioned wreckage
-  family, less repetitive roadside clutter, and authored skirmish preview images make both battles
-  and map selection easier to read.
-- **Reliable session audio:** the title rotates all four original tracks without decorative-world
-  ducking, and EVA, soldier and vehicle lines now release their mixer slots correctly for long games.
+- **Road networks that fail safely:** independent parallel routes are rerouted or removed as whole
+  chains, shared junction approaches split only at their real divergence, tight ribbons cannot fold
+  over themselves, and roads now stop with the normal authored fade before unsafe cliff, ravine or
+  water crossings.
+- **More legible terrain and paving:** a conditioned project-owner-supplied tileable mask adds
+  world-space colour and roughness detail to natural terrain, with a separate roughness-forward pass
+  for asphalt and sidewalks that leaves lane paint and raised kerbs crisp.
 
 ## Play VOLTMARCH
 
@@ -102,7 +97,7 @@ sell exposed positions and use the terrain to hide the shape of your next attack
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.11.0**. The
+The browser build and Windows release share the same game. The current release is **3.11.1**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

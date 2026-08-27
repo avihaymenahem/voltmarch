@@ -29,9 +29,9 @@ structures, capturable civic landmarks and resource vehicles now use original Me
 that pass through the local VOLTMARCH asset pipeline.
 
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
-are built from Three.js geometry, custom shaders and procedural canvas generators. **Seven shipped
+are built from Three.js geometry, custom shaders and procedural canvas generators. **Eight shipped
 asset groups are not generated from runtime code**, all deliberate: the first six live in
-`apps/game/public/`; imported game-world models live in `apps/game/src/assets/` and Vite emits them into the build.
+`apps/game/public/`; the last two live in `apps/game/src/assets/` and Vite emits them into the build.
 
 1. **Rajdhani** (OFL-1.1) in `apps/game/public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -154,7 +154,16 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    canvas survey if an image cannot decode. Prompts, roster mapping and delivery treatment are
    recorded in `apps/game/public/maps/previews/README.md`.
 
-7. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
+7. **Universal terrain detail mask** in `apps/game/src/assets/terrain/` — an original tileable
+   8192 × 8192 grayscale master supplied by the project owner on 2026-08-27, conditioned to a
+   lossless 4096 × 4096 runtime derivative. Both terrain shader paths sample it in world space as
+   luminance and roughness variation. The terrain pass is multiplied by normalized natural splat
+   ownership (ground, dirt, sand and rock), so it cannot bleed onto hard surfaces. A separate road
+   pass reuses the same GPU texture at lower strength on asphalt and sidewalk paving before markings
+   are applied; raised kerbs remain untouched. The runtime-size decision and provenance live beside
+   the asset.
+
+8. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
    `apps/game/src/assets/{buildings,units,wrecks}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
@@ -168,7 +177,7 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    rest of the roster retains procedural wreck art. These are the only non-procedural game-world
    models currently shipped.
 
-8. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+9. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `apps/game/public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `apps/game/tests/credits-truthful.spec.ts` checks that screen against
@@ -2106,13 +2115,14 @@ argument for why draping rather than grading the heightfield.
   TURN arrow, which turns toward the kerb when there is no side road to turn into.
   `markJunctionMouths` now derives the flag from the pad that actually exists, immediately before
   `buildMeshes` reads it.
-- **What was deliberately NOT fixed, and why.** `pruneDeadEnds` refuses to cut an arterial edge, so an
+- **What remains deliberately bounded.** `pruneDeadEnds` refuses to cut an arterial edge, so an
   arterial that could not reach the far border stops in open country — 2 on frozen-sector, 1 on
   contested-strait, **0 on either urban map**, so it is not what the report saw. Its own comment
   records that removing that guard produced maps with no roads at all on a third of seeds. Bounded by
-  a test instead of changed. Likewise the residual burial (0.3-1.5%, worst 3.9 m) is a terrace FACE
-  crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
-  erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
+  a test instead of changed. Terrace faces are handled separately now: the final full-width corridor
+  sweep checks the centre, both outside pavement edges, water and ravine-scale height discontinuities.
+  It keeps the safe road on both banks, removes any floating middle strip, and applies the same authored
+  end gradient at both new cut points. Border exits are explicitly exempt from this interior-cliff rule.
 - **THE PAINT FRAME READS THE ROW'S OWN TWO HALF-WIDTHS, NOT THE NOMINAL ONE.** `resolveChainEdges`
   clamps each side of a cross-section INDEPENDENTLY through `maxSafeOffset` (0.85 of the local
   radius), so on a tight bend the emitted row spans `wl + wr` and the centreline sits at `wl` from
@@ -2130,23 +2140,25 @@ argument for why draping rather than grading the heightfield.
   requires precisely the cusp that 0.45 exists to prevent. Measured `bendRadiusMin` 4.05 m on
   coral-shore against a 6.8 m arterial half-width. Widening such a bend is a ROUTING change, and the
   route already survived `routeLegal` — the legs are short because the ground refused longer.
-- **A TIGHT BEND PINCHES THE RIBBON; IT DOES NOT TEAR IT OPEN.** Worst emitted row 9.57 m against a
-  13.60 m nominal (70.4%). Some ribbon quads DO wind backwards: over all seven maps at seeds 0..9,
-  **27 inverted triangles of 100 836** (0.027%), confined to temperate-valley and coral-shore but
-  present at **10 of 10 seeds on both**, so it is a standing property rather than a seed accident.
-  The worst is **-29.08 m2 with a +49.63 m2 partner** — the row order crosses over itself, so it is
-  a BOWTIE, not the thin sliver a single-map reading suggests. Inside the 0.2% budget
-  `makeRoadMaterial` records, and the reason that material is `DoubleSide`. **Pinned rather than
-  zeroed**: the honest fix rate-limits how fast `wl`/`wr` may move between rows, in
-  `resolveChainEdges`, on a hot path, for a 0.03% artefact `DoubleSide` already covers. Two earlier
-  drafts got this wrong in opposite directions — one claimed ZERO, by measuring the offset CURVE
-  and then making a claim about the STRIP; the next quoted two quads and doubled their areas, by
-  reading a three-case pin as a roster figure and a cross product as an area.
-- **ROAD COHERENCE IS ENFORCED BEFORE AND AFTER ROUTING.** `pruneParallelRoutes` removes only a
-  sustained near-parallel duplicate whose removal preserves both endpoint degrees; it must not
-  convert a useful connection into a new dead end or delete a brief tangent/crossing. At mesh time,
-  the ownership grid culls road triangles already covered by an earlier chain or junction. These
-  solve different failures and neither is a licence to hide an invalid route under another road.
+- **A TIGHT BEND PINCHES THE RIBBON; IT DOES NOT TEAR IT OPEN.** Width propagation still bounds the
+  pinch, and `resolveChainEdges` now additionally constrains each row against the exact two triangle
+  windings emitted by `buildChainRibbon`. The check is affine in one edge width and keeps the widest
+  non-folding solution, so junction trims and topology coalescing cannot recreate a bow-tie. The
+  shipped-frame sweep asserts zero inverted carriageway triangles.
+- **ONE SUSTAINED CORRIDOR HAS ONE ROAD OWNER.** The topology pass is layered because no one-stage
+  heuristic covers the failure. Arterials reserve a 16-bin directional corridor while A* runs, so a
+  second near-parallel route must move while a perpendicular crossing remains legal;
+  `deduplicateParallelEdges` removes safe street duplicates; and, once graph endpoints are known,
+  `repairRoutedParallelChains` reroutes an independent loser end-to-end. If terrain truly exposes
+  only one pass, the lower-priority chain's graph edges are removed and chains are rebuilt rather
+  than drawing two ribbons. Finally, `repairShapedParallelRoutes` audits the actual decorative
+  splines because midpoint bending can reintroduce a conflict after routing; both independent bends
+  revert to the proven route when that happens. A shared node owns only its compact throat: when two
+  arms remain parallel beyond it, the lower-priority branch begins at divergence with the normal end
+  gradient, and a branch that never finds distinct ground is omitted. The ownership grid and triangle
+  culler remain the last safety fuse, not a substitute for valid topology. `roads-topology.spec.ts`
+  sweeps four biomes and 32 networks across same/opposite direction, curved, shallow-merge, street and
+  arterial cases, plus a synthetic ravine that pins two faded bank fragments and no floating middle.
 - **A LEGITIMATE INTERIOR ROAD END TAPERS PHYSICALLY AND VISUALLY.** `RoadChain.fade` narrows the
   carriageway, kerb, pavement and mask while `aRoadFade` removes the final material edge. Border
   exits and junction mouths stay full width. Do not restore a flat alpha card or a hard rectangular

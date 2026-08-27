@@ -44,6 +44,12 @@ const SEED = 1234;
 const GLSL_TERRAIN_SOURCE = readFileSync(
   new URL('../src/world/TerrainMaterial.ts', import.meta.url), 'utf8',
 );
+const NODE_TERRAIN_SOURCE = readFileSync(
+  new URL('../src/world/TerrainNodeMaterial.ts', import.meta.url), 'utf8',
+);
+const TERRAIN_DETAIL_MASK = readFileSync(
+  new URL('../src/assets/terrain/universal-terrain-mask-4k.png', import.meta.url),
+);
 
 function makeSet(biome: BiomeDef = BIOMES.temperate) {
   return createTerrainNodeMaterials({ biome, layerTextureSize: LAYER_SIZE, seed: SEED });
@@ -176,6 +182,34 @@ describe('the TSL terrain graph compiles', () => {
  * ========================================================================== */
 
 describe('the translated shader keeps the GLSL structures', () => {
+  it('ships a 4K detail mask and applies it only to natural splat ownership', () => {
+    // PNG IHDR stores width/height as big-endian uint32 values at bytes 16/20.
+    expect(TERRAIN_DETAIL_MASK.subarray(1, 4).toString()).toBe('PNG');
+    expect(TERRAIN_DETAIL_MASK.readUInt32BE(16)).toBe(4096);
+    expect(TERRAIN_DETAIL_MASK.readUInt32BE(20)).toBe(4096);
+
+    // Layers 0..3 are ground/dirt/sand/rock. Concrete and paving are 4/5 and
+    // must not participate in the ownership term on either renderer path.
+    expect(GLSL_TERRAIN_SOURCE).toMatch(
+      /float raNatural = clamp\(\s*\( raW\[0\] \+ raW\[1\] \+ raW\[2\] \+ raW\[3\] \) \* raNorm/,
+    );
+    expect(NODE_TERRAIN_SOURCE).toContain(
+      'raW[0].add(raW[1]).add(raW[2]).add(raW[3]).mul(raNorm)',
+    );
+    expect(GLSL_TERRAIN_SOURCE).toContain('* uTerrainDetailStrength * raNatural');
+    expect(NODE_TERRAIN_SOURCE).toContain(
+      'raTerrainDetail.sub(0.5).mul(U.uTerrainDetailStrength).mul(raNatural)',
+    );
+
+    const set = makeSet();
+    for (const which of ['wgsl', 'glsl'] as const) {
+      const { fragment } = compile(set.material, which);
+      expect(fragment).toContain('raTerrainDetail');
+      expect(fragment).toContain('raNatural');
+    }
+    set.dispose();
+  });
+
   it('samples six albedos and six responses through two array bindings, not twelve', () => {
     /*
      * The whole reason the splat fits a draw-call budget: six albedos through
@@ -612,7 +646,7 @@ describe('program caching', () => {
     /*
      * `customProgramCacheKey` STILL FIRES on node materials — it is the half of
      * the old mechanism that survives `onBeforeCompile`'s silent death. The
-     * shipping GLSL material returns `'ra-terrain-v4'`, a string a human has to
+     * shipping GLSL material returns `'ra-terrain-v5'`, a string a human has to
      * remember to bump whenever the injected GLSL changes. There is no injected
      * GLSL on this path, so that string could only ever be stale, and a stale
      * key hands back the previous program with nothing thrown and nothing
@@ -622,8 +656,8 @@ describe('program caching', () => {
     const glsl = createTerrainMaterials({
       biome: BIOMES.temperate, layerTextureSize: LAYER_SIZE, seed: SEED,
     });
-    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v4');
-    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v4');
+    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v5');
+    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v5');
     node.dispose();
     glsl.dispose();
   });

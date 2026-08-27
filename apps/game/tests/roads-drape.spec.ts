@@ -443,9 +443,9 @@ const KERB_DASHES: Record<string, number> = {
 };
 
 const CENSUS: Record<string, number> = {
-  'industrial-grid': 303,
-  'foundry-line': 76,
-  'temperate-valley': 141,
+  'industrial-grid': 18,
+  'foundry-line': 17,
+  'temperate-valley': 135,
   'contested-strait': 18,
   'frozen-sector': 60,
   'airbase-flats': 24,
@@ -474,10 +474,12 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
    *
    * A high number here means the router laid that much road on top of other
    * road; the marking suppression is only the final safety net. The generator
-   * now removes a sustained near-parallel street when doing so preserves both
-   * endpoint continuations. That cut temperate-valley's census from 582 to 141
-   * without manufacturing an interior road end; protected arterials and graph
-   * bridges deliberately remain for a future whole-route coalescing pass.
+   * now reserves arterial corridors, reroutes independent complete chains and
+   * removes a lower-priority route only when terrain leaves no second pass.
+   * That cut temperate-valley's census from 582 to 135; shared-node approach
+   * coalescing then cut industrial-grid from 296 to 18 and foundry-line from
+   * 77 to 17. This remains the final overlap safety fuse rather than the
+   * topology repair itself.
    *
    * Pinned per map so a routing change announces itself in either direction,
    * the same contract `tests/terrain-lod.spec.ts` uses for its chunk counts.
@@ -614,6 +616,9 @@ describe('the carriageway paint frame matches the row it is written on', () => {
 
   interface Chain {
     readonly id: number;
+    readonly sourceId: number;
+    readonly detachedA: boolean;
+    readonly detachedB: boolean;
     readonly pts: number[];
     readonly wl: number[];
     readonly wr: number[];
@@ -639,7 +644,7 @@ describe('the carriageway paint frame matches the row it is written on', () => {
     readonly map: string; readonly seed: number; readonly clamped: number;
   }[] = [
     { map: 'coral-shore', seed: 3, clamped: 9 },
-    { map: 'temperate-valley', seed: 1, clamped: 13 },
+    { map: 'temperate-valley', seed: 1, clamped: 21 },
     { map: 'industrial-grid', seed: 1, clamped: 0 },
   ];
 
@@ -823,11 +828,13 @@ describe('the carriageway paint frame matches the row it is written on', () => {
           const second = area2(1, 3, 2);
           if (first >= 0) {
             inverted++;
-            folds.push(`${c.map}/${c.seed} chain ${ch.id} row ${i} first ${first.toFixed(3)}`);
+            folds.push(`${c.map}/${c.seed} chain ${ch.id}/${ch.sourceId} ${ch.detachedA}/${ch.detachedB} `
+              + `row ${i}/${ch.pts.length / 2} first ${first.toFixed(3)}`);
           }
           if (second >= 0) {
             inverted++;
-            folds.push(`${c.map}/${c.seed} chain ${ch.id} row ${i} second ${second.toFixed(3)}`);
+            folds.push(`${c.map}/${c.seed} chain ${ch.id}/${ch.sourceId} ${ch.detachedA}/${ch.detachedB} `
+              + `row ${i}/${ch.pts.length / 2} second ${second.toFixed(3)}`);
           }
         }
       }

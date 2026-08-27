@@ -35,6 +35,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import {
   GLSLNodeBuilder, MeshStandardNodeMaterial, PerspectiveCamera, PlaneGeometry, Scene,
@@ -54,6 +55,12 @@ import {
 } from '../src/world/road-markings';
 import { createRoadNodeMaterial, createRoadNodeMaterials } from '../src/world/RoadNodeMaterial';
 import { DITHER_SHIFT_LITERAL } from '../src/render/dither-nodes';
+import {
+  PAVEMENT_DETAIL_ROUGHNESS, PAVEMENT_DETAIL_STRENGTH,
+  ROAD_DETAIL_ROUGHNESS, ROAD_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
+} from '../src/world/terrain-detail-mask';
+
+const ROADS_SOURCE = readFileSync(new URL('../src/world/Roads.ts', import.meta.url), 'utf8');
 
 /* ==========================================================================
  * 0. THE OFFLINE COMPILER
@@ -478,7 +485,7 @@ describe('the emitted road shaders', () => {
 
         const assignAt = fragment.indexOf(`\t${name} = `);
         const diffuseAt = fragment.indexOf('DiffuseColor = vec4');
-        const roughLine = /Roughness = .*/.exec(fragment)?.[0] ?? '';
+        const roughLine = /^\s*Roughness = .*$/m.exec(fragment)?.[0] ?? '';
 
         expect(assignAt, `${kind}/${which}: ${name} is never assigned`).toBeGreaterThan(-1);
         expect(assignAt, `${kind}/${which}: paint assigned after DiffuseColor`)
@@ -495,6 +502,40 @@ describe('the emitted road shaders', () => {
       }
       mat.dispose();
     }
+  });
+
+  it('samples one world-space mask on asphalt and pavement but leaves the raised kerb clean', () => {
+    for (const kind of ['carriageway', 'pavement'] as const) {
+      const mat = roadMaterial(kind);
+      for (const which of BOTH) {
+        const { fragment } = compile(mat, kind, which);
+        expect(fragment).toContain('roadDetailSample');
+        expect(fragment).toContain('roadDetailedBase');
+      }
+      mat.dispose();
+    }
+
+    const kerb = roadMaterial('kerb');
+    for (const which of BOTH) {
+      expect(compile(kerb, 'kerb', which).fragment).not.toContain('roadDetailSample');
+    }
+    kerb.dispose();
+
+    // The separately shipped WebGL path must make the same choice and apply
+    // the detail before the surface-specific marking snippet.
+    expect(ROADS_SOURCE).toContain('vRoadWorldXZ / uTerrainDetailTileM');
+    expect(ROADS_SOURCE).toContain("const detail = kind === 'kerb'");
+    expect(ROADS_SOURCE.indexOf('${detail}\\n${glsl}')).toBeGreaterThan(-1);
+  });
+
+  it('keeps the road pass quieter than natural terrain and paving slightly stronger than asphalt', () => {
+    expect(TERRAIN_DETAIL_TILE_METRES).toBe(72);
+    expect(ROAD_DETAIL_STRENGTH).toBe(0.24);
+    expect(PAVEMENT_DETAIL_STRENGTH).toBe(0.30);
+    expect(PAVEMENT_DETAIL_STRENGTH).toBeGreaterThan(ROAD_DETAIL_STRENGTH);
+    expect(ROAD_DETAIL_ROUGHNESS).toBe(0.42);
+    expect(PAVEMENT_DETAIL_ROUGHNESS).toBe(0.30);
+    expect(ROAD_DETAIL_ROUGHNESS).toBeGreaterThan(PAVEMENT_DETAIL_ROUGHNESS);
   });
 
   it('takes both derivatives and both arrow samples OUTSIDE the branch', () => {

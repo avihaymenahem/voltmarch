@@ -68,7 +68,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
   Fn, If, abs, attribute, clamp, float, floor, fwidth, materialColor, materialRoughness, max, mix,
-  mod, select, sin, smoothstep, step, texture, uniform, varyingProperty, vec2, vec3, vec4,
+  mod, positionWorld, select, sin, smoothstep, step, texture, uniform, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
   ROAD_CROSSWALK_DEPTH, ROAD_CROSSWALK_PERIOD, ROAD_CROSSWALK_START, ROAD_KERB_HEIGHT,
@@ -79,6 +79,11 @@ import {
   ROAD_ARROW, ROAD_ATTRIBUTE_NAMES, ROAD_MARKS, ROAD_MARK_LINEAR, ROAD_MATERIAL_NAMES,
   ROAD_SURFACE_KINDS, arrowMask, roadSurfaceTextures, type RoadSurfaceKind,
 } from './road-markings';
+import {
+  PAVEMENT_DETAIL_ROUGHNESS, PAVEMENT_DETAIL_STRENGTH,
+  ROAD_DETAIL_ROUGHNESS, ROAD_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
+  createTerrainDetailMask,
+} from './terrain-detail-mask';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -147,8 +152,11 @@ const vRoadFade = varyingProperty('float', 'vRoadFade');
  * arrow masks are built here rather than assigned later. They are cached by the
  * texture factory, so this costs one map lookup per road network.
  */
-function createUniforms() {
+function createUniforms(anisotropy = 4) {
   const lin = ROAD_MARK_LINEAR;
+  const terrainDetail = createTerrainDetailMask();
+  terrainDetail.anisotropy = anisotropy;
+  terrainDetail.needsUpdate = true;
   return {
     uLaneWidth: uniform(ROAD_LANE_WIDTH),
     uCentre: uniform(new THREE.Vector3(...lin.centre)),
@@ -158,6 +166,12 @@ function createUniforms() {
     uKerbYellow: uniform(new THREE.Vector3(...lin.kerbYellow)),
     uArrowStraight: texture(arrowMask('arrowStraight')),
     uArrowTurn: texture(arrowMask('arrowTurn')),
+    uTerrainDetail: texture(terrainDetail),
+    uTerrainDetailTileM: uniform(TERRAIN_DETAIL_TILE_METRES),
+    uRoadDetailStrength: uniform(ROAD_DETAIL_STRENGTH),
+    uRoadDetailRoughness: uniform(ROAD_DETAIL_ROUGHNESS),
+    uPavementDetailStrength: uniform(PAVEMENT_DETAIL_STRENGTH),
+    uPavementDetailRoughness: uniform(PAVEMENT_DETAIL_ROUGHNESS),
   };
 }
 
@@ -546,11 +560,30 @@ export function createRoadNodeMaterial(
    * typecheck against the declaration and fail against the value, which is the
    * `vec4()` arity error recorded in `StructureNodeMaterial`.
    */
-  const painted = paintFor(kind, materialColor.rgb, uniforms);
+  // One world-space texture, sampled before road paint. Lane markings and
+  // kerb colours therefore remain crisp instead of inheriting the mask.
+  const detailSample: FloatN = kind === 'kerb'
+    ? float(0.5)
+    : uniforms.uTerrainDetail.sample(positionWorld.xz.div(uniforms.uTerrainDetailTileM)).r
+      .toVar('roadDetailSample');
+  const detailStrength: FloatN = kind === 'carriageway'
+    ? uniforms.uRoadDetailStrength
+    : kind === 'pavement' ? uniforms.uPavementDetailStrength : float(0.0);
+  const detailRoughness: FloatN = kind === 'carriageway'
+    ? uniforms.uRoadDetailRoughness
+    : kind === 'pavement' ? uniforms.uPavementDetailRoughness : float(0.0);
+  const detailedBase = materialColor.rgb.mul(float(1.0).add(
+    detailSample.sub(0.5).mul(detailStrength),
+  )).toVar('roadDetailedBase');
+  const detailedRoughness = clamp(materialRoughness.add(
+    float(0.5).sub(detailSample).mul(detailRoughness),
+  ), 0.45, 1.0).toVar('roadDetailedRoughness');
+
+  const painted = paintFor(kind, detailedBase, uniforms);
   mat.colorNode = vec4(painted.xyz, vRoadFade);
   mat.roughnessNode = kind === 'pavement'
-    ? mix(materialRoughness, ROAD_MARKS.shoulderRoughness, painted.w.mul(0.42))
-    : mix(materialRoughness, ROAD_MARKS.paintRoughness, painted.w);
+    ? mix(detailedRoughness, ROAD_MARKS.shoulderRoughness, painted.w.mul(0.42))
+    : mix(detailedRoughness, ROAD_MARKS.paintRoughness, painted.w);
 
   return mat;
 }
@@ -563,7 +596,7 @@ export function createRoadNodeMaterial(
  * that cannot compile the injection.
  */
 export function createRoadNodeMaterials(anisotropy: number): RoadNodeMaterialSet {
-  const uniforms = createUniforms();
+  const uniforms = createUniforms(anisotropy);
   const materials = {
     carriageway: createRoadNodeMaterial('carriageway', anisotropy, uniforms),
     kerb: createRoadNodeMaterial('kerb', anisotropy, uniforms),

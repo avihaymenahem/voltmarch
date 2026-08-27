@@ -102,6 +102,10 @@ import {
   applyTerrainBiome, type TerrainBiomeSink,
 } from './terrain-uniforms';
 import type { CreateTerrainMaterialOptions } from './TerrainMaterial';
+import {
+  TERRAIN_DETAIL_ROUGHNESS, TERRAIN_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
+  createTerrainDetailMask,
+} from './terrain-detail-mask';
 
 /**
  * TSL node types, named once so the shader below reads as shader code.
@@ -142,6 +146,7 @@ function v3(c: readonly number[]): THREE.Vector3 {
  */
 function createUniformNodes(
   warp: THREE.DataTexture, macro: THREE.DataTexture,
+  terrainDetail: THREE.Texture,
   layersStandIn: THREE.DataArrayTexture,
   responsesStandIn: THREE.DataArrayTexture,
   splat0StandIn: THREE.DataTexture, splat1StandIn: THREE.DataTexture,
@@ -154,6 +159,7 @@ function createUniformNodes(
     uSplat1: texture(splat1StandIn),
     uWarp: texture(warp),
     uMacro: texture(macro),
+    uTerrainDetail: texture(terrainDetail),
 
     uLayerScale: uniformArray<'float'>(TERRAIN_LAYER_SCALE_DEFAULT.slice(), 'float'),
     uLayerRough: uniformArray<'float'>(TERRAIN_LAYER_ROUGH_DEFAULT.slice(), 'float'),
@@ -162,6 +168,9 @@ function createUniformNodes(
     uMacroScale: uniform(S.uMacroScale),
     uMacroStrength: uniform(S.uMacroStrength),
     uMacroTint: uniform(v3(TERRAIN_VEC3_DEFAULTS.uMacroTint)),
+    uTerrainDetailTileM: uniform(TERRAIN_DETAIL_TILE_METRES),
+    uTerrainDetailStrength: uniform(TERRAIN_DETAIL_STRENGTH),
+    uTerrainDetailRoughness: uniform(TERRAIN_DETAIL_ROUGHNESS),
     uWarpScale: uniform(S.uWarpScale),
     uWarpAmp: uniform(S.uWarpAmp),
     uCellSize: uniform(S.uCellSize),
@@ -451,6 +460,7 @@ export function createTerrainNodeMaterials(
 
   const warp = warpTexture(adopted && pre !== null ? pre.warp : buildWarpBytes(warpSeed(options.seed)));
   const macro = macroTexture(adopted && pre !== null ? pre.macro : buildMacroBytes(macroSeed(options.seed)));
+  const terrainDetail = createTerrainDetailMask();
 
   const layersPlaceholder = placeholderArray('terrain.layers.placeholder');
   const responsesPlaceholder = placeholderArray('terrain.responses.placeholder', false);
@@ -458,7 +468,7 @@ export function createTerrainNodeMaterials(
   const splat1Placeholder = placeholder2D('terrain.splatB.placeholder');
 
   const uniforms = createUniformNodes(
-    warp, macro, layersPlaceholder, responsesPlaceholder,
+    warp, macro, terrainDetail, layersPlaceholder, responsesPlaceholder,
     splat0Placeholder, splat1Placeholder,
   );
   const U = uniforms;
@@ -823,6 +833,20 @@ export function createTerrainNodeMaterials(
       // 2. Regional breakup.
       raAlbedo.assign(raMacro(raAlbedo, raXZ));
 
+      // 2a. The supplied detail belongs only to natural splat layers 0..3.
+      // Concrete and paving are 4/5, so roads and sidewalks receive zero.
+      const raNatural = clamp(
+        raW[0].add(raW[1]).add(raW[2]).add(raW[3]).mul(raNorm), 0.0, 1.0,
+      ).toVar('raNatural');
+      const raTerrainDetail = U.uTerrainDetail
+        .sample(raXZ.div(U.uTerrainDetailTileM)).r.toVar('raTerrainDetail');
+      raAlbedo.mulAssign(float(1.0).add(
+        raTerrainDetail.sub(0.5).mul(U.uTerrainDetailStrength).mul(raNatural),
+      ));
+      raR.assign(clamp(raR.add(
+        float(0.5).sub(raTerrainDetail).mul(U.uTerrainDetailRoughness).mul(raNatural),
+      ), 0.55, 1.0));
+
       // 2b. Continuous material history. No decals, no extra draw and no
       // sampler: only terrain-space ALU over the already blended surface.
       const raAge = raGroundAge(raXZ, raPixelM).toVar('raAge');
@@ -1059,6 +1083,8 @@ export function createTerrainNodeMaterials(
 
     setAnisotropy(a: number): void {
       anisotropy = a;
+      terrainDetail.anisotropy = a;
+      terrainDetail.needsUpdate = true;
       if (layers) {
         layers.anisotropy = a;
         layers.needsUpdate = true;

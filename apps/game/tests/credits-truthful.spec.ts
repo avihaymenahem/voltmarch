@@ -251,6 +251,21 @@ describe('the credits describe the product that actually ships', () => {
       .toMatch(/Skirmish battlefield preview terrain.*ImageGen-authored/is);
   });
 
+  it('declares the project-owner-supplied terrain detail mask wherever provenance is recorded', () => {
+    const masks = importedWorldAssets().filter((file) => /^terrain\/.*\.png$/i.test(file));
+    expect(masks).toContain('terrain/universal-terrain-mask-4k.png');
+    expect(allText, 'the in-game credits omit the supplied terrain detail mask')
+      .toMatch(/terrain detail mask.*project-owner-supplied/i);
+    expect(rootText('README.md'), 'README.md omits the supplied terrain detail mask')
+      .toMatch(/project-owner-supplied tileable terrain detail mask/i);
+    expect(rootText('CLAUDE.md'), 'CLAUDE.md omits the supplied terrain detail mask')
+      .toMatch(/Universal terrain detail mask.*project owner/is);
+    expect(
+      rootText('apps/game/src/assets/terrain/README.md'),
+      'the runtime terrain asset has no local provenance record',
+    ).toMatch(/8192 × 8192 grayscale master supplied by the VOLTMARCH project owner/i);
+  });
+
   it('THE GENERAL GUARD: every absolute "no X anywhere" claim is checked or absent', () => {
     // Absolute claims are the ones that rot: the product changes and the
     // sentence does not. If someone adds a new one they have to come here and
