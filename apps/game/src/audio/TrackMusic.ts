@@ -66,6 +66,7 @@ export class TrackMusic {
   private index = -1;
   private heatRaw = 0;
   private switchGeneration = 0;
+  private userPaused = false;
 
   constructor(engine: AudioEngine) {
     this.engine = engine;
@@ -130,6 +131,18 @@ export class TrackMusic {
     this.switchTo((Math.max(0, this.index) - 1 + SOUNDTRACK.length) % SOUNDTRACK.length);
   }
 
+  togglePaused(): void {
+    this.userPaused = !this.userPaused;
+    if (this.fallback !== null) {
+      if (this.userPaused) this.fallback.pause();
+      else this.fallback.resume();
+    } else if (this.element !== null) {
+      if (this.userPaused) this.element.pause();
+      else this.ensurePlaying();
+    }
+    this.emitTrack();
+  }
+
   private switchTo(index: number, immediate = false, fadeInSec = immediate ? 0 : SWITCH_FADE_SEC): void {
     const element = this.element;
     const gain = this.gain;
@@ -172,7 +185,7 @@ export class TrackMusic {
 
   private ensurePlaying(): void {
     const element = this.element;
-    if (element === null || !this.engine.running || !element.paused) return;
+    if (element === null || this.userPaused || !this.engine.running || !element.paused) return;
     void element.play().catch(() => { /* context still locked; retry on the timer */ });
   }
 
@@ -198,6 +211,7 @@ export class TrackMusic {
     this.fallback = new MusicDirector(this.engine);
     this.fallback.start();
     this.fallback.primeHeat(this.heatRaw);
+    if (this.userPaused) this.fallback.pause();
   }
 
   private clearTimers(): void {
@@ -248,7 +262,13 @@ export class TrackMusic {
   get snapshot(): MusicTrackSnapshot | null {
     const cue = SOUNDTRACK[this.index];
     if (cue === undefined || this.fallback !== null) return null;
-    return { id: cue.id, title: cue.title, index: this.index, total: SOUNDTRACK.length };
+    return {
+      id: cue.id,
+      title: cue.title,
+      index: this.index,
+      total: SOUNDTRACK.length,
+      paused: this.userPaused,
+    };
   }
 
   get intensity(): number { return this.fallback?.intensity ?? this.heatRaw; }

@@ -12,7 +12,8 @@
  *      18 mass lists" against a roster that has been 26 for several releases and
  *      is 27 now — a count in prose is a claim that rots on the next unit, and
  *      the boot line already prints the real figure.)
- *   4. Publishes them on `unitLibrary` and hands them to RenderBridge.
+ *   4. Publishes them on `unitLibrary` and hands them to RenderBridge. Imported
+ *      non-MCV overrides stream after an MCV opening becomes interactive.
  *   5. Prints the scorecard line for every unit, so the critic loop has numbers
  *      instead of opinions.
  *
@@ -41,7 +42,7 @@ import { defineSystem } from '../core/loop';
 import { QUALITY_PRESETS, RA3_UNIT_PALETTE, UNIT_GREEBLE, MAP_SIZE, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId, type QualityTier } from '../core/types';
 import { ctx } from '../game/context';
-import { resolveDefBinding, type DefBinding } from '../game/Scenarios';
+import { plannedScenario, resolveDefBinding, type DefBinding } from '../game/Scenarios';
 import { FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec } from '../render/RenderBridge';
 import { ARMY_ORDER, GAIA_SLOT, type PerArmy } from './faction-models';
 import { formatStats } from './MassList';
@@ -282,6 +283,8 @@ function paradeRequested(): boolean {
 }
 
 let paradeRoot: THREE.Group | null = null;
+let deferredImportTimer = 0;
+let importedAssetEpoch = 0;
 
 /**
  * A deterministic display rack: every unit, one per slot, facing the camera's
@@ -367,21 +370,38 @@ export default defineSystem({
           ? isArtFactionPlanned(Faction.Soviets)
           : false,
     );
-    for (const spec of importedSpecs) {
-      const model = unitLibrary.get(spec.key);
-      if (model === undefined) {
-        console.error(`[units] imported override ${spec.key} has no procedural fallback`);
-        continue;
+    const loadSpecs = async (specs: typeof importedSpecs): Promise<Array<{
+      key: string;
+      mesh: KindMesh;
+    }>> => {
+      const loaded: Array<{ key: string; mesh: KindMesh }> = [];
+      for (const spec of specs) {
+        const model = unitLibrary.get(spec.key);
+        if (model === undefined) {
+          console.error(`[units] imported override ${spec.key} has no procedural fallback`);
+          continue;
+        }
+        try {
+          loaded.push({ key: spec.key, mesh: await loadImportedUnitOverride(model, spec) });
+          console.info(`[units] imported ${spec.label} with articulated LOD/shadow path`);
+        } catch (error) {
+          // The generated model is cosmetic. A bad binary, unsupported texture
+          // format or pivot regression must never make the gameplay unit vanish.
+          console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
+        }
       }
-      try {
-        meshes.set(spec.key, await loadImportedUnitOverride(model, spec));
-        console.info(`[units] imported ${spec.label} with articulated LOD/shadow path`);
-      } catch (error) {
-        // The generated model is cosmetic. A bad binary, unsupported texture
-        // format or pivot regression must never make the gameplay unit vanish.
-        console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
-      }
-    }
+      return loaded;
+    };
+    const fastMcvBoot = plannedScenario().start === 'mcv' && !paradeRequested();
+    const immediateSpecs = fastMcvBoot ? [] : importedSpecs;
+    const deferredSpecs = fastMcvBoot ? importedSpecs : [];
+    for (const result of await loadSpecs(immediateSpecs)) meshes.set(result.key, result.mesh);
+    /*
+     * None of the authored unit overrides is an MCV. Waiting for harvesters and
+     * tanks before showing an MCV-only opening added about one second to every
+     * cold boot, so those overrides stream after the match becomes interactive.
+     * RenderBridge's registry version rebinds any procedural stand-in live.
+     */
     const meshFor = (key: string): KindMesh | null => {
       const model = unitLibrary.get(key);
       if (model === undefined) return null;
@@ -393,12 +413,27 @@ export default defineSystem({
     // (a) per-faction defaults at defId -1. Entities spawned before the content
     //     tables exist carry defId -1, so without this every unit in every
     //     scenario would draw as the bridge's hazard box.
+    const registrations: Array<{
+      kind: EntityKind;
+      faction: Faction | typeof FACTION_ANY;
+      key: string;
+      defId: number;
+    }> = [];
     let registered = 0;
-    for (const d of DEFAULTS) {
-      const mesh = meshFor(d.key);
-      if (mesh === null) continue;
-      registerKindMesh(d.kind, d.faction, mesh, -1);
+    const register = (
+      kind: EntityKind,
+      faction: Faction | typeof FACTION_ANY,
+      key: string,
+      defId: number,
+    ): void => {
+      const mesh = meshFor(key);
+      if (mesh === null) return;
+      registerKindMesh(kind, faction, mesh, defId);
+      registrations.push({ kind, faction, key, defId });
       registered++;
+    };
+    for (const d of DEFAULTS) {
+      register(d.kind, d.faction, d.key, -1);
     }
 
     // (b) exact per-def registrations, the moment a def table exists.
@@ -413,8 +448,7 @@ export default defineSystem({
       const kind = model.cls === 'infantry' || INFANTRY_CONTENT.has(contentKey)
         ? EntityKind.Infantry
         : EntityKind.Vehicle;
-      registerKindMesh(kind, faction, mesh, defId);
-      registered++;
+      register(kind, faction, modelKey, defId);
     };
 
     for (const [contentKey, modelKey] of Object.entries(CONTENT_TO_MODEL)) {
@@ -443,6 +477,29 @@ export default defineSystem({
       bound++;
     }
     assertNoSharedDefs(binding);
+    if (deferredSpecs.length > 0) {
+      const epoch = ++importedAssetEpoch;
+      deferredImportTimer = window.setTimeout(() => {
+        deferredImportTimer = 0;
+        void loadSpecs(deferredSpecs).then((results) => {
+          if (epoch !== importedAssetEpoch) return;
+          for (const result of results) {
+            meshes.set(result.key, result.mesh);
+            for (const registration of registrations) {
+              if (registration.key !== result.key) continue;
+              registerKindMesh(
+                registration.kind,
+                registration.faction,
+                result.mesh,
+                registration.defId,
+                true,
+              );
+            }
+          }
+          console.info(`[units] streamed ${results.length} authored models`);
+        });
+      }, 12_000);
+    }
     if (bound === 0) {
       console.warn(
         '[units] no unit def table resolved, so every unit carries defId -1 and each army ' +
@@ -477,6 +534,11 @@ export default defineSystem({
   },
 
   dispose(): void {
+    importedAssetEpoch++;
+    if (deferredImportTimer !== 0) {
+      window.clearTimeout(deferredImportTimer);
+      deferredImportTimer = 0;
+    }
     if (paradeRoot !== null) {
       paradeRoot.removeFromParent();
       paradeRoot = null;

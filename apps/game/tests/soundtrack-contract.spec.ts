@@ -49,6 +49,27 @@ describe('original soundtrack delivery contract', () => {
     expect(SOUNDTRACK[MENU_SOUNDTRACK_INDEX]?.title).toBe('Echoes of the Siege');
   });
 
+  it('exposes a synchronized pause control on the main-menu player', () => {
+    const track = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'TrackMusic.ts'), 'utf8');
+    const engine = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'AudioEngine.ts'), 'utf8');
+    const system = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'audio.system.ts'), 'utf8');
+    const application = readFileSync(
+      join(import.meta.dirname, '..', 'src', 'audio', 'ApplicationAudio.ts'),
+      'utf8',
+    );
+    const control = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'MusicControl.ts'), 'utf8');
+
+    expect(track).toContain('togglePaused(): void');
+    expect(track).toContain('this.userPaused || !this.engine.running');
+    expect(track).toContain('paused: this.userPaused');
+    expect(engine).toContain('toggleMusicPaused(): void;');
+    expect(system).toContain('toggleMusicPaused: () => { music?.togglePaused(); }');
+    expect(application).toContain('toggleMusicPaused: () => { app.music.togglePaused(); }');
+    expect(control).toContain("context === 'menu'");
+    expect(control).toContain("audio()?.toggleMusicPaused()");
+    expect(control).toContain("track.paused ? 'play' : 'pause'");
+  });
+
   it('keeps the mixer and title score alive when the WebGPU backdrop is replaced', () => {
     const source = readFileSync(join(import.meta.dirname, '..', 'src', 'audio', 'audio.system.ts'), 'utf8');
     const application = readFileSync(

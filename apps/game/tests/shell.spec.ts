@@ -594,6 +594,7 @@ describe('boot flags', () => {
     expect(q.get('seed')).toBe('1234');
     expect(q.get('mapseed')).toBeTruthy();
     expect(q.get('ai')).toBe('normal');
+    expect(q.get('weather')).toBe('on');
   });
 
   it('NEVER writes ?shot= — that flag belongs to the screenshot harness', () => {
@@ -612,10 +613,15 @@ describe('boot flags', () => {
   });
 
   it('replaces stale values of the flags it does own', () => {
-    const q = buildMatchQuery(defaultSetup(), settings, 'map=urban&seed=7&ai=brutal', 99);
+    const q = buildMatchQuery(
+      { ...defaultSetup(), weather: false }, settings,
+      'map=urban&seed=7&ai=brutal&weather=heavy&backdrop=1', 99,
+    );
     expect(q.getAll('map').length).toBe(1);
     expect(q.get('seed')).toBe('99');
     expect(q.get('ai')).toBe('normal');
+    expect(q.get('weather')).toBe('off');
+    expect(q.has('backdrop')).toBe(false);
   });
 
   it('only pins ?tier= when the player chose one', () => {

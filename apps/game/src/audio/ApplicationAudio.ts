@@ -35,6 +35,7 @@ function shellFacade(app: ApplicationAudio): AudioFacade {
     playMenuMusic: () => { app.music.playMenu(); },
     previousMusicTrack: () => { app.music.previous(); },
     nextMusicTrack: () => { app.music.next(); },
+    toggleMusicPaused: () => { app.music.togglePaused(); },
     get musicTrack() { return app.music.snapshot; },
     get engine() { return app.engine; },
   };
@@ -80,4 +81,3 @@ export function disposeApplicationAudio(): void {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => { disposeApplicationAudio(); });
 }
-

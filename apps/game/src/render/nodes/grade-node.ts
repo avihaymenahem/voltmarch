@@ -8,34 +8,16 @@
  *     unsharp mask (luma only) -> exposure -> tonemap -> 3-way tint ->
  *     lift/gain -> gamma contrast about scene-linear 0.18 -> white point ->
  *     saturation (shadows desaturate further) -> blown-to-paper-white fold ->
- *     vignette -> sRGB encode
+ *     vignette -> rain -> sRGB encode -> restrained film grain
  *
  * The reasoning for every one of those stages lives in `post.ts` and is NOT
  * repeated here; this file records only what is different about expressing it
  * as nodes. Read `post.ts` first.
  *
- * ── TWO STAGES ARE DELIBERATELY ABSENT, AND THAT IS THE POINT ────────────────
- * The GLSL pass has a chromatic-aberration branch and a film-grain branch. This
- * one has NEITHER, and cannot be given either without editing this file.
- *
- * CLAUDE.md bans both by name. `docs/RENDER_FINDINGS.md` §5 records what
- * happened anyway: `ShaderPass` deep-copied the shader description, so
- * `syncConfig` wrote into a detached object and both effects ran LIVE for the
- * entire life of the pass — grain re-rolling at 24 Hz, CA splitting R from B by
- * ~5 px at 1080p — while `config.ts` said 0 and `tests/banned-effects.spec.ts`,
- * which scans config source, passed throughout. The defect was not the value.
- * The defect was that a banned effect had a live code path at all, and every
- * mechanism guarding it was pointed at the number rather than at the shader.
- *
- * So the port does not carry them across. `GradeConfig.grain`, `grainSize` and
- * `chromaticAberration` are read by NOTHING in this chain, `gradeUniformValuesFor`
- * does not produce them, and there is no uniform to arrive through. The shipped
- * config holds all three at 0, so this changes no pixel; what it changes is that
- * turning them on is now a code edit that fails
- * `tests/post-nodes.spec.ts`, instead of a config write that silently succeeds.
- *
- * `uTime` goes with them — it existed only to animate the grain, and §5 notes it
- * never advanced, which is the only reason the shot harness never caught it.
+ * Chromatic aberration remains deliberately absent. The small film-grain path
+ * is intentional art direction as of 2026-08-27 and is implemented here as well
+ * as in GLSL so WebGPU remains the primary renderer. The same time uniform also
+ * drives screen-space rain without another pass or draw call.
  *
  * ── WHAT IS NOT ABSENT ───────────────────────────────────────────────────────
  * The unsharp mask IS ported, exactly, including the luma-only application. It
@@ -59,8 +41,8 @@
 import { Vector2, Vector3 } from 'three/webgpu';
 import type { Node, TextureNode, UniformNode } from 'three/webgpu';
 import {
-  Fn, If, clamp, dot, float, int, length, log2, max, min, mix,
-  pow, screenUV, smoothstep, step, uniform, vec2, vec3, vec4,
+  Fn, If, abs, clamp, dot, float, floor, fract, int, length, log2, max, min, mix,
+  pow, screenUV, sin, smoothstep, step, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 
 import type { GradeConfig } from '../renderer';
@@ -110,6 +92,10 @@ export interface GradeNodeUniforms {
   shadowSaturation: UniformNode<'float', number>;
   vignette: UniformNode<'float', number>;
   vignetteSoftness: UniformNode<'float', number>;
+  grain: UniformNode<'float', number>;
+  grainSize: UniformNode<'float', number>;
+  time: UniformNode<'float', number>;
+  rain: UniformNode<'float', number>;
   sharpen: UniformNode<'float', number>;
   /** 1 / resolution, in the INPUT texture's pixels. Driven by `setGradeTexel`. */
   texel: UniformNode<'vec2', Vector2>;
@@ -142,6 +128,10 @@ export function createGradeUniforms(): GradeNodeUniforms {
     shadowSaturation: uniform(v.shadowSaturation) as UniformNode<'float', number>,
     vignette: uniform(v.vignette) as UniformNode<'float', number>,
     vignetteSoftness: uniform(v.vignetteSoftness) as UniformNode<'float', number>,
+    grain: uniform(v.grain) as UniformNode<'float', number>,
+    grainSize: uniform(v.grainSize) as UniformNode<'float', number>,
+    time: uniform(0) as UniformNode<'float', number>,
+    rain: uniform(0) as UniformNode<'float', number>,
     sharpen: uniform(v.sharpen) as UniformNode<'float', number>,
     texel: uniform(new Vector2(1 / 1920, 1 / 1080)) as UniformNode<'vec2', Vector2>,
   };
@@ -173,6 +163,8 @@ export function applyGradeConfig(u: GradeNodeUniforms, cfg: GradeConfig): void {
   u.shadowSaturation.value = v.shadowSaturation;
   u.vignette.value = v.vignette;
   u.vignetteSoftness.value = v.vignetteSoftness;
+  u.grain.value = v.grain;
+  u.grainSize.value = v.grainSize;
   u.sharpen.value = v.sharpen;
 }
 
@@ -196,6 +188,38 @@ const LUMA = vec3(GRADE_LUMA[0], GRADE_LUMA[1], GRADE_LUMA[2]);
 
 function luma(c: Vec3): Flt {
   return dot(c, LUMA);
+}
+
+function hash21(p: Node<'vec2'>): Flt {
+  return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+}
+
+function rainLayer(
+  pixel: Node<'vec2'>,
+  time: Flt,
+  spacing: number,
+  cellHeight: number,
+  speed: number,
+  density: number,
+  slant: number,
+): Flt {
+  // One short drop may occupy a cell. Randomising both its horizontal offset
+  // and whether the cell is populated avoids the evenly spaced "barcode"
+  // pattern produced by continuous screen-height lanes.
+  const slantedX = pixel.x.add(pixel.y.mul(slant)).toVar();
+  // f(y - t) moves toward increasing screen Y. The previous `+ time` made
+  // every drop climb upward, which was especially obvious from the RTS camera.
+  const fallingY = pixel.y.sub(time.mul(speed)).toVar();
+  const grid = vec2(slantedX.div(spacing), fallingY.div(cellHeight)).toVar();
+  const cell = floor(grid).toVar();
+  const local = fract(grid).toVar();
+  const random = hash21(cell.add(vec2(17, 53))).toVar();
+  const centre = hash21(cell.add(vec2(3, 11))).mul(0.5).add(0.25).toVar();
+  const line = float(1).sub(smoothstep(0.012, 0.050, abs(local.x.sub(centre))));
+  const head = smoothstep(0.08, 0.15, local.y);
+  const tail = float(1).sub(smoothstep(0.30, 0.44, local.y));
+  const occupied = step(float(1 - density), random);
+  return line.mul(head).mul(tail).mul(occupied).mul(random.mul(0.55).add(0.45));
 }
 
 /* ---------------- AgX (Blender / Filament minimal implementation) --------- */
@@ -449,8 +473,36 @@ export function gradeNode(options: GradeNodeOptions): Node<'vec4'> {
       col.mulAssign(mix(float(1), v, u.vignette));
     });
 
-    /* --- display encode. NO film grain: see the file header. --------------- */
-    return vec4(linearToSrgb(col), 1.0);
+    /* --- rain: screen-space streaks plus a restrained cool, wet grade. ------ */
+    If(u.rain.greaterThan(0.0001), () => {
+      const grey = vec3(luma(col)).toVar();
+      const wet = mix(grey, col, 0.82).mul(vec3(0.92, 0.96, 1.02)).toVar();
+      col.assign(mix(col, wet, u.rain.mul(0.22)));
+      col.mulAssign(float(1).sub(u.rain.mul(0.06)));
+    });
+
+    const outCol = vec3(linearToSrgb(col)).toVar();
+
+    If(u.rain.greaterThan(0.0001), () => {
+      const pixel = uvNode.div(u.texel).toVar();
+      const nearRain = rainLayer(pixel, u.time, 30, 120, 980, 0.18, 0.31).mul(0.085).toVar();
+      const farRain = rainLayer(pixel.add(vec2(71, 29)), u.time, 20, 82, 760, 0.09, 0.24)
+        .mul(0.038)
+        .mul(smoothstep(0.42, 0.9, u.rain));
+      const streak = nearRain.add(farRain).mul(u.rain);
+      outCol.addAssign(vec3(0.68, 0.78, 0.90).mul(streak));
+    });
+
+    /* --- film grain: display-space, mid-weighted, intentionally subtle. ---- */
+    If(u.grain.greaterThan(0.0001), () => {
+      const pixel = floor(uvNode.div(u.texel).div(max(u.grainSize, 0.5))).toVar();
+      const frame = floor(u.time.mul(12)).toVar();
+      const noise = hash21(pixel.add(vec2(frame, frame.mul(0.37))));
+      const response = float(1).sub(abs(luma(outCol).mul(2).sub(1)));
+      outCol.addAssign(noise.sub(0.5).mul(u.grain).mul(response).mul(2));
+    });
+
+    return vec4(clamp(outCol, 0, 1), 1.0);
   })() as Node<'vec4'>;
 }
 

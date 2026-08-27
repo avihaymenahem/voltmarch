@@ -394,6 +394,7 @@ interface GridRow {
 interface PlacementSeam {
   readonly active: boolean;
   readonly relocating: number;
+  readonly entry?: { readonly name: string } | null;
   /* Read-only, and every one OPTIONAL: they are what the overlay needs to
      caption the rotate keys under the ghost, and a controller that predates
      them must still light the relocate button. `report.w`/`h` are the
@@ -1714,7 +1715,9 @@ export class Hud {
       this.overlay.clearPlacementHint();
       return;
     }
-    this.overlay.setPlacementHint(seam.cx, seam.cz, report.w, report.h);
+    this.overlay.setPlacementHint(
+      seam.cx, seam.cz, report.w, report.h, seam.entry?.name ?? '', report.ok,
+    );
   }
 
   /* ------------------------------------------------------------------ */

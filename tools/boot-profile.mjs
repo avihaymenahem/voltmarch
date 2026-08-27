@@ -187,7 +187,8 @@ for (let run = 0; run < RUNS; run++) {
     if (!scene) return null;
     const parts = [];
     scene.traverse((o) => {
-      if (typeof o.name === 'string' && o.name.startsWith('terrain.chunk.')) parts.push(o);
+      if (typeof o.name === 'string' &&
+          (o.name.startsWith('terrain.chunk.') || o.name.startsWith('terrain.batch.'))) parts.push(o);
     });
     parts.sort((a, b) => (a.name < b.name ? -1 : 1));
     let h = 0x811c9dc5;
@@ -202,6 +203,13 @@ for (let run = 0; run < RUNS; run++) {
       const idx = g.getIndex();
       if (idx) mix(fnv(new Uint8Array(idx.array.buffer, idx.array.byteOffset, idx.array.byteLength)));
       mix(m.castShadow ? 1 : 0);
+      if (m.isBatchedMesh === true) {
+        const matrix = m.matrix.clone();
+        for (let i = 0; i < m.instanceCount; i++) {
+          m.getMatrixAt(i, matrix);
+          mix(fnv(new Uint8Array(new Float32Array(matrix.elements).buffer)));
+        }
+      }
     }
     const w = window.__vmWater;
     let water = 0;
@@ -212,7 +220,11 @@ for (let run = 0; run < RUNS; run++) {
       )), 0x01000193) >>> 0;
       water = Math.imul(water ^ fnv(w.waterCells), 0x01000193) >>> 0;
     }
-    return { chunks: parts.length, terrain: h, water };
+    const chunks = parts.reduce(
+      (total, part) => total + (part.isBatchedMesh === true ? part.instanceCount : 1),
+      0,
+    );
+    return { chunks, terrain: h, water };
   });
 
   const text = lines.join('\n');

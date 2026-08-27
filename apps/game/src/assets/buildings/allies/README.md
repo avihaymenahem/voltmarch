@@ -1,6 +1,6 @@
 # Allied imported buildings
 
-The twelve LOD0 files in this directory are the approved, texture-normalized
+The thirteen LOD0 files in this directory are the approved, texture-normalized
 sources for the Allied production-building and landmark waves. Runtime loads their KTX2 copies
 from `compressed/`; `derived/` contains geometry-only colour LODs and shadow
 casters. The procedural structures remain fallback/socket authorities only.
@@ -19,9 +19,10 @@ casters. The procedural structures remain fallback/socket authorities only.
 | `allied_navalyard` | `naval-yard.glb` | 39,462 | LOD1 18,888 | 2,148 |
 | `allied_chrono` | `displacement-ring.glb` | 39,469 | LOD1 17,760 | 1,848 |
 | `allied_weather` | `weather-device.glb` | 39,602 | LOD1 19,119 | 2,568 |
+| `allied_silo` | `ore-silo.glb` | 13,799 | none required | 2,280 |
 
-The compressed family reduces the twelve GLBs from 64.68 MiB to 50.00 MiB and
-conservative texture residency from 576 MiB RGBA8 to 96 MiB at an 8-bpp target.
+The compressed family reduces the thirteen GLBs from 70.48 MiB to 54.80 MiB and
+conservative texture residency from 624 MiB RGBA8 to 104 MiB at an 8-bpp target.
 Blocked LOD2 candidates are intentionally absent; the simplifier could not
 reach their geometry ceiling without violating the reusable pipeline gate.
 

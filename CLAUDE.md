@@ -96,7 +96,8 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    by Team Forbidden, and Piper for EVA. `music/` is now the original VOLTMARCH soundtrack:
    **Silent Horizon**, **Disciplined Ostinato**, **Echoes of the Siege**, and **Endless Warfront**, supplied by the project
    owner from a paid Suno Pro account. One delivery cue streams and loops at a time; a match selects
-   one locally at random and title/pause controls can cycle it. See `apps/game/public/audio/README.md`
+   one locally at random and title/pause controls can cycle it. The title control can also pause and
+   resume without a route change or automatic retry restarting playback. See `apps/game/public/audio/README.md`
    and `docs/MUSIC_PROVENANCE.md`. Only ambience is still synthesised by default.
 
    **The first faction voice slice is live.** Allied combat vehicles resolve to the stable `AL-ARM`
@@ -153,8 +154,10 @@ asset groups are not generated from runtime code**, all deliberate: the first fi
    source views and shipping budgets are recorded beside the GLBs and in
    `docs/ASSET_CONVERSION_MAP.md`. The selected unit slice currently comprises the Soviet Ore Collector,
    Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw. The neutral slice currently
-   replaces the Oil Derrick and Civilian Hospital while retaining their faction-agnostic capture
-   registration and procedural fallbacks. These and the imported structures are the only
+   replaces the Oil Derrick, Civilian Hospital, Apartment Block and Ore Mine while retaining their
+   faction-agnostic capture registration and procedural fallbacks. The Allied Ore Silo also has its
+   own conditioned imported model; the old modular shell is fallback/socket authority only. These
+   and the imported structures are the only
    non-procedural game-world models currently shipped.
 
 7. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
@@ -190,7 +193,7 @@ npm test             # complete tests for every workspace
                      #   specs require a CURRENT dist, not merely an existing one, so run
                      #   `npm run build` first whenever their result is part of the claim.
 npm run build        # must exit 0
-npm run server:test  # the relay's own 110 in 24 suites, via node --test
+npm run server:test  # the relay's own 111 in 25 suites, via node --test
 npm run check:affected # PR/branch gate: only affected workspace scopes
 npm run check:all    # complete release-equivalent monorepo gate
 ```
@@ -2331,6 +2334,11 @@ before touching it. The workspace boundary is structural, not a convention.
   a newer client, so forgetting a separate dispatch disables Multiplayer everywhere.
   `workflow_dispatch` remains a recovery mechanism for redeploying an explicit ref.
 
+- **BACKGROUNDING MUST NOT PAUSE A COLD BOOT.** Electron appends
+  `--disable-renderer-backgrounding` before ready, constructs the `BrowserWindow` with
+  `backgroundThrottling: false`, and reasserts the live `webContents.backgroundThrottling` property.
+  Removing any of those reopens the reproduced Skirmish → Start → Alt-Tab initialization stall.
+
   **`bridge` is a VERSION and the check is EQUALITY** — v5 added native key/value and binary-save
   capabilities. A bump on
   one side only makes the game fall silently back to web behaviour: no Display section, no error,
@@ -2610,8 +2618,23 @@ not linear** — the bible's numbers are perceptual, and mixing the two frames m
 darker than it is. This bit me once already.
 
 Things that are explicitly banned because they read as "generic engine" and lose points: fog on
-daylight maps, chromatic aberration, film grain, depth of field, motion blur, and reflective water.
+daylight maps, chromatic aberration, depth of field, motion blur, and reflective water.
 If a change would add one of those, it is wrong even if it looks fine in isolation.
+
+Film grain is the one deliberate exception, explicitly requested on 2026-08-27: it is capped at
+0.008 (shipping at 0.006), updates at 12 Hz, and must exist in both WebGPU and WebGL. Do not restore
+the former 0.016/24 Hz effect or use this exception to reintroduce chromatic aberration.
+
+Dynamic weather is presentation-only and opt-in from Skirmish Advanced settings. Its seeded state
+may choose light or heavy rain, holds each rain window for 84–114 seconds, and uses short occasional
+lightning pulses to brighten the existing shadow-casting sun and hemisphere fill. Rain streaks are
+camera-projected, narrow, and available in both renderer backends; they must never become simulation
+state or return to upright screen-space lines when the camera tilts.
+
+Construction placement borrows the resolved building geometry for its hologram, draws a bounded
+terrain-following grid in the faction HUD accent, and collapses allied build coverage into one
+outline instead of one circle per structure. A completed structure grows from below grade with its
+existing build-rise cue. Do not restore the anonymous box ghost or the overlapping radius circles.
 
 ### What the harness guarantees, and the one thing it does not
 

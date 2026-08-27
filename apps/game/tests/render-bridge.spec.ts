@@ -19,6 +19,7 @@ import {
   RenderBridge,
   clearKindMeshes,
   registerKindMesh,
+  resolveKindPreviewParts,
   setRenderBridge,
   type KindMesh,
 } from '../src/render/RenderBridge';
@@ -104,6 +105,56 @@ describe('RenderBridge — placeholders', () => {
     bridge.update(1);
     expect(meshes(scene).length).toBe(3);
     expect(bridge.batchCount).toBe(3);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — unowned model previews', () => {
+  it('hands placement the same faction/definition geometry and local offsets', () => {
+    clearKindMeshes();
+    const root = new THREE.BoxGeometry(5, 2, 4);
+    const stack = new THREE.CylinderGeometry(0.4, 0.5, 3);
+    registerKindMesh(EntityKind.Building, Faction.Allies, {
+      geometry: root,
+      material: new THREE.MeshStandardMaterial(),
+      parts: [{
+        geometry: stack,
+        material: new THREE.MeshStandardMaterial(),
+        x: 1.25,
+        y: 2,
+        z: -0.5,
+      }],
+    }, 17);
+
+    const preview = resolveKindPreviewParts(EntityKind.Building, Faction.Allies, 17);
+    expect(preview).toHaveLength(2);
+    expect(preview[0].geometry).toBe(root);
+    expect(preview[1].geometry).toBe(stack);
+    expect([preview[1].offsetX, preview[1].offsetY, preview[1].offsetZ])
+      .toEqual([1.25, 2, -0.5]);
+    clearKindMeshes();
+  });
+});
+
+describe('RenderBridge — imported WebGPU construction rise', () => {
+  it('raises marked parts from below ground using the existing build progress', () => {
+    const { store, scene, bridge } = makeRig();
+    registerKindMesh(EntityKind.Building, Faction.Allies, {
+      geometry: new THREE.BoxGeometry(4, 8, 4),
+      material: new THREE.MeshStandardMaterial(),
+      constructionRise: 8,
+    }, 23);
+    const id = store.alloc(EntityKind.Building, 23, P0, Faction.Allies, 30, 10, 40, 0);
+    const i = store.index(id);
+    store.buildProgress[i] = 0.25;
+    store.snapshotPrev();
+
+    bridge.update(1);
+    expect(translation(meshes(scene)[0], 0)[1]).toBeCloseTo(4, 5);
+
+    store.buildProgress[i] = 1;
+    bridge.update(1);
+    expect(translation(meshes(scene)[0], 0)[1]).toBeCloseTo(10, 5);
     teardown(bridge);
   });
 });

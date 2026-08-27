@@ -211,7 +211,7 @@ export function createDecalNodeMaterial(
  *
  * src is a FACTOR, dst is the lit frame. Alpha is left alone so an overlay can
  * never punch a hole in a target carrying coverage. The polygon offset is what
- * keeps a 3.5 cm lift sufficient at a grazing camera.
+ * supplements the physical overlay lift at a grazing camera.
  */
 function applyMultiplyBlend(material: NodeMaterial): void {
   material.transparent = true;

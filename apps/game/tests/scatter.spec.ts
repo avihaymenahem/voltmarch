@@ -22,8 +22,9 @@ import {
   bevelHighlight, PropLibrary, PropMesh, PROP_DEFS, propPalette, shadeOf,
 } from '../src/world/PropLibrary';
 import {
-  Scatter, CHUNK_COUNT, COVER_N, SCATTER_SHADOW_MIN_RADIUS,
+  Scatter, CHUNK_COUNT, COVER_N, GROUND_STORY_CAP, SCATTER_SHADOW_MIN_RADIUS,
 } from '../src/world/Scatter';
+import { DECAL_LAYOUT, DecalField, DecalKind } from '../src/world/Decals';
 
 const BIOMES: readonly BiomeName[] = ['temperate', 'desert', 'snow', 'urban'];
 
@@ -41,7 +42,10 @@ const SHADOW_GATE_SRC = ['apps/game/src/render/RenderBridge.ts', 'apps/game/src/
   .map((f) => readFileSync(join(ROOT, f), 'utf8'))
   .join('\n');
 
-function rig(biome: BiomeName, urban: number, densityScale: number): {
+function rig(
+  biome: BiomeName, urban: number, densityScale: number,
+  openingCenters: readonly { readonly x: number; readonly z: number }[] = [],
+): {
   scene: THREE.Scene; terrain: Terrain; scatter: Scatter;
 } {
   const scene = new THREE.Scene();
@@ -49,6 +53,7 @@ function rig(biome: BiomeName, urban: number, densityScale: number): {
   const scatter = new Scatter({
     scene, terrain, biome, seed: 0x5ca77e, urban, densityScale,
     preferred: ['tree', 'bush', 'rock'],
+    openingCenters,
   });
   return { scene, terrain, scatter };
 }
@@ -485,20 +490,24 @@ describe('Scatter — placement', () => {
         scatter.generate();
 
         const label = `${biome}/${seed.terrain.toString(16)}`;
-        // Eleven designed beats are offered. Terrain and spacing may reject a
-        // minority, but fewer than seven means the opening has fallen back to
+        // Fourteen designed beats are offered. Terrain and spacing may reject a
+        // minority, but fewer than nine means the opening has fallen back to
         // ordinary random scatter and no longer reads as an authored place.
-        expect(scatter.openingProps, label).toBeGreaterThanOrEqual(7);
+        expect(scatter.openingProps, label).toBeGreaterThanOrEqual(9);
 
         const out = new Float32Array(scatter.propCount * 4);
         const n = scatter.positions(out);
+        let physicalDebris = 0;
         for (let i = 0; i < n; i++) {
           const d = Math.hypot(out[i * 4] - 160, out[i * 4 + 2] - 160);
-          if (d >= 17.9) continue;
           const def = PROP_DEFS[out[i * 4 + 3]];
+          if (d <= 30 && def?.key === 'debrisPile') physicalDebris++;
+          if (d >= 17.9) continue;
           expect(def?.family, `${label}: ${def?.key ?? 'unknown'} entered the deploy core`)
             .toBe('grass');
         }
+        expect(physicalDebris, `${label}: no real debris in the opening camera`)
+          .toBeGreaterThanOrEqual(2);
         expect(scatter.propCount, label).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
         scatter.dispose();
       }
@@ -522,6 +531,106 @@ describe('Scatter — placement', () => {
       expect(out[i * 3 + 2]).toBeGreaterThanOrEqual(0);
     }
     scatter.dispose();
+  });
+
+  it('composes bounded deterministic ground stories in every biome', () => {
+    for (const biome of BIOMES) {
+      const a = rig(biome, biome === 'urban' ? 0.95 : 0.25, 1.0);
+      const b = rig(biome, biome === 'urban' ? 0.95 : 0.25, 1.0);
+      a.scatter.generate();
+      b.scatter.generate();
+      const da = new DecalField({ scene: a.scene, capacity: 128 });
+      const db = new DecalField({ scene: b.scene, capacity: 128 });
+      const sa = a.scatter.paintGroundStories(da);
+      const sb = b.scatter.paintGroundStories(db);
+
+      expect(sa, biome).toEqual(sb);
+      expect(sa.total, biome).toBeGreaterThan(3);
+      expect(sa.total, biome).toBeLessThanOrEqual(GROUND_STORY_CAP);
+      expect(da.stats().spawned, biome).toBe(sa.total);
+      expect([
+        sa.foliage, sa.mineral, sa.service, sa.civic, sa.vehicle,
+      ].filter((n) => n > 0).length, biome).toBeGreaterThanOrEqual(1);
+
+      // Presentation is idempotent: a second call cannot spend the static
+      // pool again or produce a second overlapping copy of every composition.
+      expect(a.scatter.paintGroundStories(da)).toEqual(sa);
+      expect(da.stats().spawned, biome).toBe(sa.total);
+
+      da.dispose(); db.dispose(); a.scatter.dispose(); b.scatter.dispose();
+    }
+  });
+
+  it('keeps opening decals to tracks and leaves physical debris to geometry', () => {
+    const opening = { x: 160, z: 160 };
+    const { scatter, scene } = rig('temperate', 0.25, 1.0, [opening]);
+    scatter.generate();
+    const decals = new DecalField({ scene, capacity: 128 });
+    const stats = scatter.paintGroundStories(decals);
+    const positions = decals.mesh.geometry.getAttribute('position');
+    const params = decals.mesh.geometry.getAttribute('aParams');
+    const openingKinds: number[] = [];
+    for (let slot = 0; slot < stats.total; slot++) {
+      const base = slot * DECAL_LAYOUT.vertsPerDecal;
+      let x = 0, z = 0;
+      for (let v = 0; v < DECAL_LAYOUT.vertsPerDecal; v++) {
+        x += positions.getX(base + v);
+        z += positions.getZ(base + v);
+      }
+      x /= DECAL_LAYOUT.vertsPerDecal;
+      z /= DECAL_LAYOUT.vertsPerDecal;
+      if (slot < 4) {
+        expect(Math.hypot(x - opening.x, z - opening.z)).toBeLessThan(18);
+        expect(params.getW(base)).toBeCloseTo(0.72, 5);
+        openingKinds.push(params.getX(base));
+      }
+    }
+    expect(openingKinds).toEqual([
+      DecalKind.Tyre, DecalKind.Tyre, DecalKind.Tyre, DecalKind.Tyre,
+    ]);
+    for (let slot = 0; slot < stats.total; slot++) {
+      const kind = params.getX(slot * DECAL_LAYOUT.vertsPerDecal);
+      expect(kind).not.toBe(DecalKind.LeafLitter);
+      expect(kind).not.toBe(DecalKind.Gravel);
+      expect(kind).not.toBe(DecalKind.PaperLitter);
+    }
+    expect(stats.total).toBeLessThanOrEqual(GROUND_STORY_CAP);
+    decals.dispose(); scatter.dispose();
+  });
+
+  it('does not stamp authored ore-field edges with oval gravel decals', () => {
+    const anchors = [
+      { x: 128, z: 128, radius: 22 },
+      { x: 384, z: 384, radius: 26 },
+    ];
+    const a = rig('temperate', 0.25, 1.0);
+    const b = rig('temperate', 0.25, 1.0);
+    const control = rig('temperate', 0.25, 1.0);
+    a.scatter.generate();
+    b.scatter.generate();
+    control.scatter.generate();
+    const da = new DecalField({ scene: a.scene, capacity: 128 });
+    const db = new DecalField({ scene: b.scene, capacity: 128 });
+    const dc = new DecalField({ scene: control.scene, capacity: 128 });
+
+    const sa = a.scatter.paintGroundStories(da, anchors);
+    const sb = b.scatter.paintGroundStories(db, anchors);
+    const baseline = control.scatter.paintGroundStories(dc);
+
+    expect(sa).toEqual(sb);
+    expect(sa).toEqual(baseline);
+    expect(sa.total).toBeLessThanOrEqual(GROUND_STORY_CAP);
+    expect(da.stats().spawned).toBe(sa.total);
+    const params = da.mesh.geometry.getAttribute('aParams');
+    for (let slot = 0; slot < sa.total; slot++) {
+      const kind = params.getX(slot * DECAL_LAYOUT.vertsPerDecal);
+      expect(kind).not.toBe(DecalKind.Gravel);
+      expect(kind).not.toBe(DecalKind.LeafLitter);
+      expect(kind).not.toBe(DecalKind.PaperLitter);
+    }
+
+    da.dispose(); db.dispose(); dc.dispose();
+    a.scatter.dispose(); b.scatter.dispose(); control.scatter.dispose();
   });
 
   it('spends the photographed-area boost on extra clumps, not uniform singles', () => {

@@ -1660,6 +1660,8 @@ export interface RoadStats {
    * means something has coupled the kerb to a value that is not a distance.
    */
   kerbDashRows: number;
+  /** Sparse permanent dirt/gravel seams just outside the pavement edge. */
+  shoulderMarks: number;
   /** Fraction of the map covered by the road corridor. */
   coverage: number;
   drawCalls: number;
@@ -1706,6 +1708,8 @@ export class RoadNetwork {
    * cheapest thing that notices.
    */
   private kerbDashRows = 0;
+  /** Permanent outside-edge stories emitted by `scatterRoadDecals`. */
+  private shoulderMarks = 0;
   /** Measured, for `stats()` and for the boot-log conformance line. */
   private cornerRadii: number[] = [];
   private bendRadii: number[] = [];
@@ -3851,6 +3855,12 @@ export class RoadNetwork {
    * thing — noise — and RA3's roads are conspicuously clean. Sparse enough that
    * you notice an individual patch is the target; dense enough that they read
    * as a pattern is the failure.
+   *
+   * The last layer sits OUTSIDE the pavement: sparse grime/gravel masses that
+   * let the hard road corridor meet the terrain instead of ending at a clean
+   * procedural cut. Their inner half is deliberately hidden below the raised
+   * pavement, so the visible half reads as soil gathered against the edge and
+   * never as a decal painted on top of the slab.
    */
   private scatterRoadDecals(): void {
     const d = this.decals;
@@ -4006,6 +4016,7 @@ export class RoadNetwork {
       foreignPaintRows: this.foreignPaintRows,
       ribbonRows: this.ribbonRows,
       kerbDashRows: this.kerbDashRows,
+      shoulderMarks: this.shoulderMarks,
       coverage: covered / this.mask.length,
       drawCalls: 3,
     };

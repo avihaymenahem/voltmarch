@@ -232,7 +232,9 @@ function rowLabels(node: StubElement): string[] {
 }
 
 /** The five rows the disclosure owns, and the six that must stay in the open. */
-const HIDDEN_ROWS = ['Personality', 'Starting Credits', 'Game Speed', 'Opponent Tech', 'Map Seed'];
+const HIDDEN_ROWS = [
+  'Personality', 'Starting Credits', 'Game Speed', 'Opponent Tech', 'Dynamic Weather', 'Map Seed',
+];
 const OPEN_ROWS = ['Sides', 'Enemy Faction', 'Difficulty', 'Starting Condition'];
 
 /* ==========================================================================

@@ -5355,7 +5355,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
 .vm-shell .vm-music-step:hover,
 .vm-shell .vm-music-step:focus-visible,
-.vm-shell .vm-music-step.is-focus {
+.vm-shell .vm-music-step.is-focus,
+.vm-shell .vm-music-step.is-active {
   background: rgba(var(--vm-accent-rgb), 0.12);
   color: var(--vm-accent);
 }

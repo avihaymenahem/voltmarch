@@ -28,24 +28,27 @@ function glbJson(file: string): Record<string, any> {
 }
 
 describe('the imported civilian building family', () => {
-  it('ships the Oil Derrick, Hospital and Apartment Block inside explicit geometry and transfer budgets', () => {
+  it('ships all four civilian landmarks inside explicit geometry and transfer budgets', () => {
     expect(manifest.assets.map((asset: any) => asset.key)).toEqual([
       'civ_derrick',
       'civ_hospital',
       'civ_apartments',
+      'civ_mine',
     ]);
-    expect(compression.rows).toHaveLength(3);
-    expect(optimization.rows).toHaveLength(3);
+    expect(compression.rows).toHaveLength(4);
+    expect(optimization.rows).toHaveLength(4);
 
     const triangleCaps: Record<string, number> = {
       civ_derrick: 20_000,
       civ_hospital: 40_000,
       civ_apartments: 40_000,
+      civ_mine: 25_000,
     };
     const transferCaps: Record<string, number> = {
       civ_derrick: 3.25 * 1024 * 1024,
       civ_hospital: 4.25 * 1024 * 1024,
       civ_apartments: 4.25 * 1024 * 1024,
+      civ_mine: 4 * 1024 * 1024,
     };
 
     for (const asset of manifest.assets) {
@@ -69,6 +72,10 @@ describe('the imported civilian building family', () => {
         expect(lods.find((output: any) => output.profile === 'lod1')?.status).toBe('candidate');
         expect(lods.find((output: any) => output.profile === 'lod1')?.triangles).toBeLessThanOrEqual(15_000);
         expect(lods.find((output: any) => output.profile === 'lod2')?.status).toBe('blocked');
+      } else if (row.key === 'civ_mine') {
+        expect(lods.find((output: any) => output.profile === 'lod1')?.status).toBe('candidate');
+        expect(lods.find((output: any) => output.profile === 'lod1')?.triangles).toBeLessThanOrEqual(16_500);
+        expect(lods.find((output: any) => output.profile === 'lod2')?.status).toBe('blocked');
       } else {
         expect(lods, row.key).toHaveLength(0);
       }
@@ -89,9 +96,13 @@ describe('the imported civilian building family', () => {
     expect(source).toContain("key: 'civ_apartments'");
     expect(source).toContain("civilian/compressed/apartment-block.glb");
     expect(source).toContain("civilian/derived/apartment-block.lod1.glb");
+    expect(source).toContain("key: 'civ_mine'");
+    expect(source).toContain("civilian/compressed/ore-mine.glb");
+    expect(source).toContain("civilian/derived/ore-mine.lod1.glb");
     expect(source).toContain('...IMPORTED_CIVILIAN_STRUCTURES');
     expect(source).toContain("civOilDerrick: 'civ_derrick'");
     expect(source).toContain("civHospital: 'civ_hospital'");
     expect(source).toContain("civApartments: 'civ_apartments'");
+    expect(source).toContain("civOreMine: 'civ_mine'");
   });
 });

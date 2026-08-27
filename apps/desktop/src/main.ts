@@ -391,6 +391,15 @@ function createWindow(): BrowserWindow {
   });
 
   /*
+   * Re-assert the live WebContents property as well as the constructor option.
+   * Together with the process-wide `--disable-renderer-backgrounding` switch
+   * appended before ready, this covers all three Electron enforcement points:
+   * Chromium process priority, BrowserWindow creation and the live renderer.
+   * Match startup and lockstep must keep progressing when the player Alt-Tabs.
+   */
+  win.webContents.backgroundThrottling = false;
+
+  /*
    * ALT+ENTER TOGGLES FULLSCREEN, AND IT IS THE ESCAPE HATCH OF LAST RESORT.
    *
    * The pause menu carries a Minimize button, which is the discoverable route.

@@ -59,9 +59,11 @@ Additional standing rulings:
 - **Soviets are olive-green `#4A6B33`, not grey.** Second-biggest tell.
 - **No `AmbientLight` anywhere in the codebase.** `HemisphereLight` only. A flat ambient kills the
   blue shadow tint, which is the measured signature of the whole grade.
-- **No fog on daylight maps. No chromatic aberration. No film grain. No depth of field. No motion
-  blur.** All measured at exactly zero in the references. Every one of these is a "modern engine"
+- **No fog on daylight maps. No chromatic aberration. No depth of field. No motion blur.** All
+  measured at exactly zero in the references. Every one of these is a "modern engine"
   tell that loses points.
+- **Film grain is a deliberate VOLTMARCH deviation as of 2026-08-27.** Keep it restrained: 0.006
+  shipping strength, 0.008 hard ceiling, 12 Hz cadence, and identical availability on WebGPU/WebGL.
 
 ---
 
@@ -271,9 +273,10 @@ at 0.8, 0.830 at 1.0**. → offset/radius **0.62**, smoothness **0.55**, darknes
 
 - **Chromatic aberration: 0.0 px.** Sub-pixel R/B-vs-G edge registration measured at frame centre
   *and* corner across five images: +0.0 px in every case.
-- **Film grain: 0.** The high-frequency energy in "flat" ground patches (σ ≈ 8–16/255) is **albedo
-  texture detail** — gravel, cracks, tarmac mottle. This is a positive requirement: our procedural
-  ground must carry **±3–6% per-pixel luminance detail** or terrain reads as plastic.
+- **Film grain: restrained exception.** References measure zero, but the 2026-08-27 direction calls
+  for a subtle display-space layer (0.006, never above 0.008). This does not replace the positive
+  requirement that ground carry **±3–6% per-pixel luminance detail** through gravel, cracks and
+  tarmac mottle; grain must never be used to hide plastic terrain.
 - **Fog: null on all daylight maps.** Far-field bands measure *equal or higher* saturation than
   near-field bands in every reference. Any grey fog is an instant fail. If a map needs depth
   separation, use `FogExp2(0x2A3038, 0.0015)` capped so the far edge loses ≤8% luminance and ≤0.03
@@ -804,7 +807,7 @@ Night blue is **ambient, not fog**: far bands measure `#102B4F` at S 0.80 vs nea
 3. **Do not shrink the units** to realistic proportions. R-S1 through R-S5 are law.
 4. **Do not make the VFX subtle.** Muzzle flashes are 5× the barrel diameter and white.
 5. **Do not soften the shadows** into VSM/PCSS mush.
-6. **Do not add fog, DOF, CA, grain, motion blur, or lens dirt.** All measured at zero.
+6. **Do not add fog, DOF, CA, motion blur, or lens dirt.** Grain alone has the restrained §4.6 exception.
 7. **Do not add a sky.** 0 of 14 frames show one. Spend the budget on terrain.
 8. **Do not mirror the water.** Absorption + foam + tight glint. SSR capped at 0.10.
 9. **Do not lift the blacks** for "contrast safety". p1 = 0.022.
@@ -892,7 +895,7 @@ that the baseline moved and by how much.
 > transferred onto canonical frames. Do not demote the metric: subject crops remain in band while
 > the ground is materially under-detailed, and the split is still useful art-direction evidence.
 | 35 | Terraced relief | Relief is 4–8 m discrete steps with coping caps or striated cliffs; no smooth Perlin hills | 2 |
-| 36 | No CA / no grain | R/B-vs-G edge registration 0.0 px at corners; flat-patch noise is albedo detail only | 1 |
+| 36 | No CA / restrained grain | R/B-vs-G edge registration 0.0 px at corners; grain ≤0.008 and terrain detail remains authored | 1 |
 | 37 | Vignette | Corner mean luminance 0.80–0.87 of centre, flat inside r=0.55 | 1 |
 | 38 | HUD budget | HUD occupies 12–16% of frame; centre and lower-left third clear | 1 |
 | 39 | Per-instance jitter | No two adjacent trees identical; scale 0.8–1.25×, visible hue/value spread | 1 |

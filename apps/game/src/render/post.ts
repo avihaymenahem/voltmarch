@@ -406,6 +406,7 @@ uniform float uVignette;
 uniform float uVignetteSoftness;
 uniform float uGrain;
 uniform float uGrainSize;
+uniform float uRain;
 uniform float uCA;
 uniform float uSharpen;
 
@@ -520,6 +521,35 @@ vec3 tonemap(vec3 c) {
 vec3 linearToSrgb(vec3 c) {
   c = clamp(c, 0.0, 1.0);
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float rainLayer(
+  vec2 pixel,
+  float spacing,
+  float cellHeight,
+  float speed,
+  float density,
+  float slant
+) {
+  // Sparse, finite drops rather than continuous evenly spaced screen-height
+  // lanes. Empty cells and random horizontal offsets break up repetition.
+  float slantedX = pixel.x + pixel.y * slant;
+  // Subtracting time makes constant-phase features travel down the screen.
+  float fallingY = pixel.y - uTime * speed;
+  vec2 grid = vec2(slantedX / spacing, fallingY / cellHeight);
+  vec2 cell = floor(grid);
+  vec2 local = fract(grid);
+  float random = hash21(cell + vec2(17.0, 53.0));
+  float centre = 0.25 + hash21(cell + vec2(3.0, 11.0)) * 0.5;
+  float line = 1.0 - smoothstep(0.012, 0.050, abs(local.x - centre));
+  float head = smoothstep(0.08, 0.15, local.y);
+  float tail = 1.0 - smoothstep(0.30, 0.44, local.y);
+  float occupied = step(1.0 - density, random);
+  return line * head * tail * occupied * (0.45 + random * 0.55);
 }
 
 /* ---------------- grain --------------------------------------------------- */
@@ -638,13 +668,29 @@ void main() {
     col *= mix(1.0, v, uVignette);
   }
 
+  /* --- rain: screen-space streaks plus a restrained cool, wet grade ------ */
+  if (uRain > 0.0001) {
+    float wetLuma = luma(col);
+    vec3 wet = mix(vec3(wetLuma), col, 0.82) * vec3(0.92, 0.96, 1.02);
+    col = mix(col, wet, uRain * 0.22);
+    col *= 1.0 - uRain * 0.06;
+  }
+
   /* --- display encode ---------------------------------------------------- */
   vec3 outCol = linearToSrgb(col);
+
+  if (uRain > 0.0001) {
+    vec2 pixel = vUv / uTexel;
+    float streak = rainLayer(pixel, 30.0, 120.0, 980.0, 0.18, 0.31) * 0.085;
+    streak += rainLayer(pixel + vec2(71.0, 29.0), 20.0, 82.0, 760.0, 0.09, 0.24)
+      * 0.038 * smoothstep(0.42, 0.90, uRain);
+    outCol += vec3(0.68, 0.78, 0.90) * streak * uRain;
+  }
 
   /* --- film grain (display space, mid-weighted) -------------------------- */
   if (uGrain > 0.0001) {
     vec2 gp = floor(gl_FragCoord.xy / max(uGrainSize, 0.5));
-    float n = hash13(vec3(gp, floor(uTime * 24.0)));
+    float n = hash13(vec3(gp, floor(uTime * 12.0)));
     // Strongest in the mids, absent in blacks and blown highlights.
     float resp = 1.0 - abs(luma(outCol) * 2.0 - 1.0);
     outCol += (n - 0.5) * uGrain * resp * 2.0;
@@ -672,6 +718,7 @@ export interface GradeUniforms {
   uVignetteSoftness: { value: number };
   uGrain: { value: number };
   uGrainSize: { value: number };
+  uRain: { value: number };
   uCA: { value: number };
   uSharpen: { value: number };
   [key: string]: THREE.IUniform;
@@ -694,9 +741,10 @@ export function makeGradeUniforms(): GradeUniforms {
     uShadowSaturation: { value: 0.94 },
     uVignette: { value: 0.20 },
     uVignetteSoftness: { value: 0.62 },
-    uGrain: { value: 0.016 },
-    uGrainSize: { value: 1.4 },
-    uCA: { value: 0.0016 },
+    uGrain: { value: 0.006 },
+    uGrainSize: { value: 1.0 },
+    uRain: { value: 0 },
+    uCA: { value: 0 },
     uSharpen: { value: 0.40 },
   };
 }
@@ -950,6 +998,8 @@ export interface PostChain {
   isPassEnabled(id: PassId): boolean;
   /** Re-read RENDER_CONFIG.post into every pass uniform. Cheap; no rebuilds. */
   syncConfig(): void;
+  /** Screen-space rain intensity, 0 (clear) through 1 (heavy). */
+  setWeatherIntensity(intensity: number): void;
   setSize(width: number, height: number): void;
   dispose(): void;
 }
@@ -999,6 +1049,7 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
   let scene = options.scene;
   let camera = options.camera;
   let enabled = cfg.enabled;
+  let weatherIntensity = 0;
   let disposed = false;
 
   function applyToneMapping(): void {
@@ -1032,9 +1083,8 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
     render(dt: number): void {
       if (disposed) return;
       if (handle.isContextLost()) return;
-      if (enabled) chain.render();
+      if (enabled) chain.render(dt);
       else nodeRenderer.render(scene, camera);
-      void dt;
     },
 
     setCamera(nextCamera: THREE.Camera): void {
@@ -1081,6 +1131,11 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
       applyToneMapping();
     },
 
+    setWeatherIntensity(intensity: number): void {
+      weatherIntensity = THREE.MathUtils.clamp(intensity, 0, 1);
+      chain.setWeatherIntensity(weatherIntensity);
+    },
+
     setSize(width: number, height: number): void { chain.setSize(width, height); },
 
     dispose(): void {
@@ -1114,6 +1169,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
   let composer: EffectComposer | null = null;
   let gradeUniforms: GradeUniforms | null = null;
+  let weatherIntensity = 0;
   let elapsed = 0;
   let disposed = false;
   let enabled = cfg.enabled;
@@ -2331,6 +2387,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       gradeUniforms.uVignetteSoftness.value = THREE.MathUtils.clamp(g.vignetteSoftness, 0.05, 1.15);
       gradeUniforms.uGrain.value = g.grain;
       gradeUniforms.uGrainSize.value = g.grainSize;
+      gradeUniforms.uRain.value = weatherIntensity;
       gradeUniforms.uCA.value = g.chromaticAberration;
       gradeUniforms.uSharpen.value = g.sharpen;
     }
@@ -2571,6 +2628,10 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     },
 
     syncConfig,
+    setWeatherIntensity(intensity: number) {
+      weatherIntensity = THREE.MathUtils.clamp(intensity, 0, 1);
+      if (gradeUniforms) gradeUniforms.uRain.value = weatherIntensity;
+    },
     setSize,
 
     dispose() {

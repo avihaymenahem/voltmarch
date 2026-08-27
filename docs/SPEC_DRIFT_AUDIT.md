@@ -319,7 +319,11 @@ it is exactly confirmed case 1 repeating.
 
 ---
 
-### 8. Film grain and chromatic aberration ship ON, against an explicit hard ban, and the check that would catch them is weight 0 — **LIVE, high**
+### 8. Film grain and chromatic aberration shipped ON against an explicit hard ban — **RESOLVED; grain policy superseded 2026-08-27**
+
+The original finding remains below as historical evidence. Chromatic aberration is still banned and
+structurally absent from WebGPU. On 2026-08-27 the user explicitly requested restrained film grain;
+the replacement ships at 0.006 with a tested 0.008 ceiling and 12 Hz cadence in both backends.
 
 `docs/RA3_LOOK_BIBLE.md:62`, `:252`, `:254`, and `:1081-1082` (`// measured exactly zero — do not
 add`) ban both outright. `CLAUDE.md` repeats both as hard bans.

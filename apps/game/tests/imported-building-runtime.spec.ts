@@ -8,10 +8,10 @@ const shellSource = readFileSync(resolve('apps/game/src/shell/Shell.ts'), 'utf8'
 
 describe('imported building runtime contract', () => {
   it('uses derived caster proxies for static imports without putting them in colour or AO', () => {
-    // Thirty-one static buildings have geometry-only caster proxies. Moving
+    // Thirty-three static buildings have geometry-only caster proxies. Moving
     // defences are deliberately excluded: a fused proxy would leave their
     // shadows pointing in the authored direction after the head slews.
-    expect(source.split('.shadow.glb').length - 1).toBe(31);
+    expect(source.split('.shadow.glb').length - 1).toBe(33);
     const sentry = source.match(/key: 'soviet_sentry',[\s\S]*?\n  \},\n  \{\n    key: 'soviet_tesla'/)?.[0];
     expect(sentry).toBeDefined();
     expect(sentry).not.toContain('shadowUrl:');
@@ -45,7 +45,8 @@ describe('imported building runtime contract', () => {
     expect(source).toContain("tesla-reactor.lod2.glb");
     expect(source).toContain("flame-tower.lod1.glb");
     expect(source).toContain("civilian/derived/apartment-block.lod1.glb");
-    expect(source.split('.lod1.glb').length - 1).toBe(21);
+    expect(source).toContain("civilian/derived/ore-mine.lod1.glb");
+    expect(source.split('.lod1.glb').length - 1).toBe(22);
     expect(source.split('.lod2.glb').length - 1).toBe(4);
     expect(source).toContain('minDistance: 78');
     expect(source).toContain('minDistance: 82');
@@ -71,6 +72,7 @@ describe('imported building runtime contract', () => {
       'allied_navalyard',
       'allied_chrono',
       'allied_weather',
+      'allied_silo',
     ]) {
       const block = source.match(new RegExp(`key: '${key}',[\\s\\S]*?proceduralParts: 'none'`))?.[0];
       expect(block, key).toBeDefined();
@@ -88,6 +90,16 @@ describe('imported building runtime contract', () => {
     expect(source).toContain("allies/compressed/naval-yard.glb");
     expect(source).toContain("allies/compressed/displacement-ring.glb");
     expect(source).toContain("allies/compressed/weather-device.glb");
+    expect(source).toContain("allies/compressed/ore-silo.glb");
+  });
+
+  it('ships the civilian ore mine as a complete Meshy replacement', () => {
+    const block = source.match(/key: 'civ_mine',[\s\S]*?proceduralParts: 'none'/)?.[0];
+    expect(block).toBeDefined();
+    expect(block).toContain('shadowInset: 0.94');
+    expect(source).toContain("civilian/compressed/ore-mine.glb");
+    expect(source).toContain("civilian/derived/ore-mine.shadow.glb");
+    expect(source).toContain("civilian/derived/ore-mine.lod1.glb");
   });
 
   it('ships the Allied unique defence trio with sealed authored articulation', () => {
@@ -108,6 +120,12 @@ describe('imported building runtime contract', () => {
     expect(source).toContain('.multiplyScalar(IMPORTED_STRUCTURE_EXPOSURE)');
     expect(source).toContain('spec.style.ambientIntensity * IMPORTED_STRUCTURE_EXPOSURE');
     expect(source).toContain('spec.style.envMapIntensity * IMPORTED_STRUCTURE_EXPOSURE');
+  });
+
+  it('restores the imported construction rise on WebGPU without extra shader pipelines', () => {
+    expect(source).toContain("requestedBackend(window.location.search) === 'webgpu'");
+    expect(source).toContain('const cpuConstructionRise');
+    expect(source).toContain('constructionRise: cpuConstructionRise');
   });
 
   it('uses the approved imported architecture on the title backdrop too', () => {

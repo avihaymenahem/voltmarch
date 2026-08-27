@@ -95,6 +95,7 @@ let unsubscribe: Array<() => void> = [];
 let configuredEvaMode: EvaMode = 'synth';
 /** SFX baking remains battlefield work, but it also happens only once. */
 let battlefieldAudioPrepared = false;
+let battlefieldAudioPreparation: Promise<void> | null = null;
 
 /** Scratch for the pan resolver. Allocated once; the frame loop allocates none. */
 const _v3 = new THREE.Vector3();
@@ -437,6 +438,7 @@ export default defineSystem({
       playMenuMusic: () => { music?.playMenu(); },
       previousMusicTrack: () => { music?.previous(); },
       nextMusicTrack: () => { music?.next(); },
+      toggleMusicPaused: () => { music?.togglePaused(); },
       get musicTrack() { return music?.snapshot ?? null; },
       get engine(): AudioEngine | null { return engine; },
     };
@@ -455,29 +457,33 @@ export default defineSystem({
       // nobody hears until 1.2 s into the match. Both `EvaAnnouncer.say` and
       // `BarkDirector.bark` already bake on demand and play when ready.
       const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-      if (firstAudioBoot) {
-        await liveEngine.bakeAll();
-        await liveEngine.initReverb('temperate');
-        battlefieldAudioPrepared = true;
-      }
-      const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
-      if (firstAudioBoot) {
-        console.info(
-          `%c[audio]%c ${liveEngine.stats.baked} buffers, ${(liveEngine.stats.bytes / 1048576).toFixed(1)} MB, ` +
-            `${Math.round(t1 - t0)} ms — EVA ${evaMode}, ctx ${liveEngine.ctx.sampleRate} Hz ` +
-            `(${liveEngine.ctx.state})`,
-          'color:#7fd', 'color:inherit',
-        );
-      }
-
       const evaRef = eva;
       const barkRef = barks;
-      void (async (): Promise<void> => {
+      if (firstAudioBoot && battlefieldAudioPreparation === null) {
+        battlefieldAudioPreparation = (async (): Promise<void> => {
+          await liveEngine.bakeAll();
+          await liveEngine.initReverb('temperate');
+          battlefieldAudioPrepared = true;
+          const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+          console.info(
+            `%c[audio]%c ${liveEngine.stats.baked} buffers, ` +
+              `${(liveEngine.stats.bytes / 1048576).toFixed(1)} MB, ` +
+              `${Math.round(t1 - t0)} ms in the background — EVA ${evaMode}, ` +
+              `ctx ${liveEngine.ctx.sampleRate} Hz (${liveEngine.ctx.state})`,
+            'color:#7fd', 'color:inherit',
+          );
+        })().finally(() => { battlefieldAudioPreparation = null; });
+      }
+      const bankReady = battlefieldAudioPreparation ?? Promise.resolve();
+      void bankReady.then(async (): Promise<void> => {
+        const voiceStarted = typeof performance !== 'undefined' ? performance.now() : 0;
         await evaRef.bakeAll();
         await barkRef.prebake(['allied_infantry', 'soviet_infantry', 'allied_vehicle', 'soviet_vehicle']);
-        const t2 = typeof performance !== 'undefined' ? performance.now() : 0;
-        console.info(`[audio] voices ready (+${Math.round(t2 - t1)} ms in the background)`);
-      })();
+        const voiceEnded = typeof performance !== 'undefined' ? performance.now() : 0;
+        console.info(`[audio] voices ready (+${Math.round(voiceEnded - voiceStarted)} ms in the background)`);
+      }).catch((error: unknown) => {
+        console.warn('[audio] background preparation failed', error);
+      });
       ambience.startWind(theatreFromFlags());
       ambience.startHum();
       // THE MENU IS SILENT EXCEPT FOR MUSIC. The loops above are started here

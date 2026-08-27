@@ -7,7 +7,7 @@
  * The heightfield, the nav grids, the ramp carver, the start-area guarantee and
  * the whole query API live in `./terrain-gen.ts`, which imports no THREE and no
  * DOM so a Web Worker can run it. This file is the renderer's half: a subclass
- * that adds a scene, two `DataTexture`s, 64 chunk meshes and a material set.
+ * that adds a scene, two `DataTexture`s, two terrain batches and a material set.
  *
  * WHY THE SPLIT EXISTS. Terrain generation was 600-1300 ms of unbroken
  * main-thread time at boot, and the loading curtain cannot animate through any
@@ -110,7 +110,8 @@ export class Terrain extends TerrainFields {
 
   private readonly scene: THREE.Scene;
   private readonly root = new THREE.Group();
-  private readonly chunks: THREE.Mesh[] = [];
+  private readonly batches: THREE.BatchedMesh[] = [];
+  private terrainTriangles = 0;
   /**
    * `TerrainMaterialSetLike`, not `TerrainMaterialSet` — the GLSL set and
    * `TerrainNodeMaterial`'s twin have the same METHODS and different TYPES.
@@ -177,12 +178,13 @@ export class Terrain extends TerrainFields {
    * ====================================================================== */
 
   private disposeMeshes(): void {
-    for (let i = 0; i < this.chunks.length; i++) {
-      const m = this.chunks[i];
-      this.root.remove(m);
-      m.geometry.dispose();
+    for (let i = 0; i < this.batches.length; i++) {
+      const batch = this.batches[i];
+      this.root.remove(batch);
+      batch.dispose();
     }
-    this.chunks.length = 0;
+    this.batches.length = 0;
+    this.terrainTriangles = 0;
   }
 
   /**
@@ -192,7 +194,7 @@ export class Terrain extends TerrainFields {
    * `./terrain-gen.ts`, and it moved for a measured reason: with generation
    * already off-thread, this init still stopped the boot for ~330 ms and all of
    * it was the vertex loop. What is left below genuinely needs THREE —
-   * `BufferGeometry`, `Mesh`, layers, bounds — and does not cross
+   * `BufferGeometry`, `BatchedMesh`, layers, bounds — and does not cross
    * `postMessage`.
    *
    * `adoptedChunks` is a worker's set, consumed once. When it is null (a biome
@@ -207,50 +209,80 @@ export class Terrain extends TerrainFields {
       ?? buildTerrainChunks(this.height, this.wallUp, this.wallTop);
     this.adoptedChunks = null;
 
-    for (const c of chunks) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(c.position, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(c.normal, 3));
-      geo.setAttribute('aUp', new THREE.BufferAttribute(c.up, 1));
-      geo.setAttribute('aTop', new THREE.BufferAttribute(c.top, 1));
-      /*
-       * THE HALF-RESOLUTION INDEX WHEN THE CHUNK EARNED ONE — 2424 triangles
-       * against 8192, over the SAME position/normal/aUp/aTop buffers. There is
-       * no second geometry, no second upload and no runtime switch: which index
-       * a chunk draws was decided in `buildTerrainChunks`, off-thread, from the
-       * heightfield alone. Its own header explains why this cannot crack
-       * against a full-resolution neighbour.
-       *
-       * The unreferenced vertices stay in the buffer and cost nothing per
-       * frame — a draw touches the vertices its indices name, not the array's
-       * length — which is what makes an index-only LOD worth having at all.
-       */
-      geo.setIndex(new THREE.BufferAttribute(c.lodIndex ?? c.index, 1));
-      geo.computeBoundingSphere();
-      geo.computeBoundingBox();
+    /*
+     * A BatchedMesh still keeps every chunk as an independently transformed,
+     * independently frustum-culled draw range. The difference is that Three's
+     * WebGPU renderer sees ONE render object instead of compiling the same
+     * TerrainNodeMaterial once for every visible chunk. Relief and flat chunks
+     * remain separate because only the former belong in the shadow pass.
+     */
+    for (const castsShadow of [false, true]) {
+      const group = chunks.filter((c) => chunkCastsShadow(c.cliffTris) === castsShadow);
+      if (group.length === 0) continue;
 
-      const mesh = new THREE.Mesh(geo, this.materials.material);
-      mesh.name = `terrain.chunk.${c.cx}.${c.cz}`;
-      mesh.position.set(c.cx * TERRAIN_CHUNK_METRES, 0, c.cz * TERRAIN_CHUNK_METRES);
-      // Only chunks with REAL relief go into the shadow map. The shadow
-      // cascade covers several times the camera's ground quad, so this is by
-      // far the cheapest draw call in the module to delete: a chunk whose
-      // steep triangles cover under ~4% of its area has nothing a 38-degree
-      // sun could throw far enough to notice.
-      //
-      // SAME PREDICATE THE LOD GATE CONSULTS, which is why it is a function in
-      // `terrain-gen.ts` rather than a literal here. A decimated chunk has no
-      // steep triangles at all, so it cannot reach this threshold and cannot
-      // cast a shadow from geometry it no longer draws.
-      mesh.castShadow = chunkCastsShadow(c.cliffTris);
-      mesh.receiveShadow = true;
-      mesh.renderOrder = RENDER_ORDER.TERRAIN;
-      mesh.layers.set(LAYERS.DEFAULT);
-      mesh.layers.enable(LAYERS.TERRAIN);
-      mesh.matrixAutoUpdate = false;
-      mesh.updateMatrix();
-      this.root.add(mesh);
-      this.chunks.push(mesh);
+      let vertexCount = 0;
+      let indexCount = 0;
+      for (const c of group) {
+        vertexCount += c.position.length / 3;
+        indexCount += (c.lodIndex ?? c.index).length;
+      }
+
+      const batch = new THREE.BatchedMesh(
+        group.length,
+        vertexCount,
+        indexCount,
+        this.materials.material,
+      );
+      batch.name = castsShadow ? 'terrain.batch.relief' : 'terrain.batch.flat';
+      batch.perObjectFrustumCulled = true;
+      // Opaque terrain does not need per-frame depth sorting; chunk order is
+      // immaterial because the depth buffer resolves it.
+      batch.sortObjects = false;
+      batch.castShadow = castsShadow;
+      batch.receiveShadow = true;
+      batch.renderOrder = RENDER_ORDER.TERRAIN;
+      batch.layers.set(LAYERS.DEFAULT);
+      batch.layers.enable(LAYERS.TERRAIN);
+      batch.matrixAutoUpdate = false;
+      batch.updateMatrix();
+
+      const matrix = new THREE.Matrix4();
+      for (const c of group) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(c.position, 3));
+        geo.setAttribute('normal', new THREE.BufferAttribute(c.normal, 3));
+        geo.setAttribute('aUp', new THREE.BufferAttribute(c.up, 1));
+        geo.setAttribute('aTop', new THREE.BufferAttribute(c.top, 1));
+        /*
+         * THE HALF-RESOLUTION INDEX WHEN THE CHUNK EARNED ONE — 2424 triangles
+         * against 8192, over the SAME position/normal/aUp/aTop buffers. There is
+         * no second geometry, no second upload and no runtime switch: which index
+         * a chunk draws was decided in `buildTerrainChunks`, off-thread, from the
+         * heightfield alone. Its own header explains why this cannot crack
+         * against a full-resolution neighbour.
+         */
+        const index = c.lodIndex ?? c.index;
+        geo.setIndex(new THREE.BufferAttribute(index, 1));
+        geo.computeBoundingSphere();
+        geo.computeBoundingBox();
+
+        const geometryId = batch.addGeometry(geo);
+        const instanceId = batch.addInstance(geometryId);
+        matrix.makeTranslation(
+          c.cx * TERRAIN_CHUNK_METRES,
+          0,
+          c.cz * TERRAIN_CHUNK_METRES,
+        );
+        batch.setMatrixAt(instanceId, matrix);
+        this.terrainTriangles += index.length / 3;
+        // addGeometry copied the attributes into the batch-owned buffers.
+        geo.dispose();
+      }
+
+      batch.computeBoundingBox();
+      batch.computeBoundingSphere();
+      this.root.add(batch);
+      this.batches.push(batch);
     }
   }
 
@@ -270,12 +302,7 @@ export class Terrain extends TerrainFields {
 
   /** Triangle count across every chunk, for the perf budget readout. */
   triangleCount(): number {
-    let n = 0;
-    for (let i = 0; i < this.chunks.length; i++) {
-      const idx = this.chunks[i].geometry.getIndex();
-      if (idx) n += idx.count / 3;
-    }
-    return n;
+    return this.terrainTriangles;
   }
 
   dispose(): void {

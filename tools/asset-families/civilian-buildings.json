@@ -11,6 +11,15 @@
   "assets": [
     { "key": "civ_derrick", "file": "oil-derrick.glb", "class": "landmark", "lods": false },
     { "key": "civ_hospital", "file": "hospital.glb", "class": "landmark", "lods": false },
-    { "key": "civ_apartments", "file": "apartment-block.glb", "class": "landmark", "lods": true }
+    { "key": "civ_apartments", "file": "apartment-block.glb", "class": "landmark", "lods": true },
+    {
+      "key": "civ_mine",
+      "file": "ore-mine.glb",
+      "class": "landmark",
+      "lods": true,
+      "profiles": {
+        "lod1": { "ratio": 0.6, "error": 0.015, "maxRatio": 0.76 }
+      }
+    }
   ]
 }

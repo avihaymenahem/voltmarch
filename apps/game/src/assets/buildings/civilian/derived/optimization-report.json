@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "civilian-buildings",
-  "generatedAt": "2026-08-26T15:45:41.291Z",
+  "generatedAt": "2026-08-26T23:40:36.751Z",
   "write": true,
   "sourceManifest": "tools/asset-families/civilian-buildings.json",
   "rows": [
@@ -115,6 +115,61 @@
             13
           ],
           "occupiedCells": 176
+        }
+      ]
+    },
+    {
+      "key": "civ_mine",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/buildings/civilian/ore-mine.glb",
+        "triangles": 22073,
+        "fileBytes": 4779332
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/buildings/civilian/derived/ore-mine.lod1.glb",
+          "triangles": 16438,
+          "triangleRatio": 0.7447,
+          "boundsDriftMeters": 0.00244,
+          "boundsDriftRatio": 0.00129,
+          "fileBytes": 955148,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 74.4% exceeds 26.0% ceiling"
+          ],
+          "file": "apps/game/src/assets/buildings/civilian/derived/ore-mine.lod2.glb",
+          "triangles": 16414,
+          "triangleRatio": 0.7436,
+          "boundsDriftMeters": 0.00244,
+          "boundsDriftRatio": 0.00129,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/buildings/civilian/derived/ore-mine.shadow.glb",
+          "triangles": 1812,
+          "triangleRatio": 0.0821,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 26184,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 151
         }
       ]
     }

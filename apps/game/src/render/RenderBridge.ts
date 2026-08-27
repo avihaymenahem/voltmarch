@@ -118,6 +118,8 @@ export interface KindMeshPart {
   x?: number;
   y?: number;
   z?: number;
+  /** See `BatchPartSpec.constructionRise`. */
+  constructionRise?: number;
   /** True when this piece slews with the turret rather than the hull. */
   followsTurret?: boolean;
   /** `PartId.Barrel` additionally takes `barrelPitch`. */
@@ -142,6 +144,8 @@ export interface KindMesh {
   geometry: THREE.BufferGeometry;
   lods?: readonly { geometry: THREE.BufferGeometry; minDistance: number }[];
   material: THREE.Material | THREE.Material[];
+  /** See `BatchPartSpec.constructionRise`. */
+  constructionRise?: number;
   /** Turret / barrel / dish / stack. Empty for a one-piece model. */
   parts?: readonly KindMeshPart[];
   /** Muzzles, exhausts, dock points. */
@@ -196,6 +200,20 @@ interface ModelEntry {
   placeholder: boolean;
   kind: EntityKind;
   name: string;
+}
+
+/**
+ * Read-only geometry view for short-lived non-entity previews.
+ *
+ * The placement controller uses this instead of inventing a second model
+ * registry. Geometry is owned by the art module / bridge and MUST NOT be
+ * disposed by the caller.
+ */
+export interface KindPreviewPart {
+  readonly geometry: THREE.BufferGeometry;
+  readonly offsetX?: number;
+  readonly offsetY?: number;
+  readonly offsetZ?: number;
 }
 
 const entries: ModelEntry[] = [];
@@ -277,6 +295,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
     offsetX: 0,
     offsetY: 0,
     offsetZ: 0,
+    constructionRise: mesh.constructionRise,
     followsTurret: false,
     part: mesh.part ?? PartId.Root,
     castShadow: mesh.castShadow !== false
@@ -298,6 +317,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
         offsetX: p.x ?? 0,
         offsetY: p.y ?? 0,
         offsetZ: p.z ?? 0,
+        constructionRise: p.constructionRise,
         followsTurret: p.followsTurret === true,
         part: p.part ?? PartId.Root,
         castShadow: p.castShadow !== false
@@ -368,6 +388,8 @@ export function registerKindMesh(
   faction: Faction | typeof FACTION_ANY,
   mesh: KindMesh,
   defId = -1,
+  /** True when a deferred authored asset intentionally replaces its fallback. */
+  replaceExisting = false,
 ): void {
   let entry = byMesh.get(mesh);
   if (entry === undefined) {
@@ -376,7 +398,7 @@ export function registerKindMesh(
   }
   const key = packKey(kind, faction as number, defId);
   const previous = byKey.get(key);
-  if (previous !== undefined && previous !== entry) {
+  if (previous !== undefined && previous !== entry && !replaceExisting) {
     console.warn(
       `[render.bridge] kind=${kind} faction=${faction} def=${defId} re-registered; ` +
       'the newest model wins',
@@ -568,6 +590,31 @@ function placeholderEntry(kind: EntityKind): ModelEntry {
   entry.placeholder = true;
   placeholders[kind] = entry;
   return entry;
+}
+
+/** Most-specific-first model lookup, shared by entities and placement ghosts. */
+function resolveModelEntry(kind: EntityKind, faction: number, defId: number): ModelEntry {
+  let e = byKey.get(packKey(kind, faction, defId));
+  if (e !== undefined) return e;
+  e = byKey.get(packKey(kind, FACTION_ANY, defId));
+  if (e !== undefined) return e;
+  e = byKey.get(packKey(kind, faction, -1));
+  if (e !== undefined) return e;
+  e = byKey.get(packKey(kind, FACTION_ANY, -1));
+  if (e !== undefined) return e;
+  return placeholderEntry(kind);
+}
+
+/**
+ * Geometry parts for an unowned preview of the model the bridge would render.
+ * The returned array and geometries remain bridge-owned and are read-only.
+ */
+export function resolveKindPreviewParts(
+  kind: EntityKind,
+  faction: number,
+  defId: number,
+): readonly KindPreviewPart[] {
+  return resolveModelEntry(kind, faction, defId).specs;
 }
 
 /**
@@ -1073,6 +1120,16 @@ export class RenderBridge {
         let ty = y + M12[1] * ox + M12[4] * oy + M12[7] * oz;
         let tz = z + M12[2] * ox + M12[5] * oy + M12[8] * oz;
 
+        // Imported WebGPU shells cannot use the legacy GLSL construction
+        // hook: Three accepts `onBeforeCompile` on the material but never runs
+        // it. Sink only the parts explicitly marked by the importer. Terrain
+        // depth reveals them as they rise, and because this is the instance
+        // matrix their colour, AO and shadow passes all agree for free.
+        const constructionRise = spec.constructionRise ?? 0;
+        if (constructionRise > 0 && buildProgress < 1) {
+          ty -= constructionRise * (1 - clamp01(buildProgress));
+        }
+
         // Recoil shoves the gun back along its own -forward.
         if (follows && recoil !== 0) {
           tx -= Math.sin(partYaw) * recoil;
@@ -1174,15 +1231,7 @@ export class RenderBridge {
 
   /** Most-specific-first model lookup, falling through to the placeholder. */
   private resolve(kind: EntityKind, faction: number, defId: number): ModelEntry {
-    let e = byKey.get(packKey(kind, faction, defId));
-    if (e !== undefined) return e;
-    e = byKey.get(packKey(kind, FACTION_ANY, defId));
-    if (e !== undefined) return e;
-    e = byKey.get(packKey(kind, faction, -1));
-    if (e !== undefined) return e;
-    e = byKey.get(packKey(kind, FACTION_ANY, -1));
-    if (e !== undefined) return e;
-    return placeholderEntry(kind);
+    return resolveModelEntry(kind, faction, defId);
   }
 
   /** Return an entity's instance slot to its batch and forget the binding. */

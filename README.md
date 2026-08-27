@@ -71,6 +71,21 @@ sell exposed positions and use the terrain to hide the shape of your next attack
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
+## What's new in 3.10.0
+
+- **Faster WebGPU starts:** the title screen stays responsive while the battlefield prepares, and
+  Electron keeps initialization moving when the window loses focus.
+- **A more lived-in battlefield:** denser menu scenery, contextual dirt and geometry debris, subtle
+  film grain, and optional longer-form light or heavy rain with occasional lightning.
+- **Clearer construction:** faction-coloured terrain grids, real building silhouettes, one unified
+  build boundary, and the restored rise-from-ground completion animation.
+- **Stronger combat feedback:** corrected projectile trails and larger layered vehicle and structure
+  explosions without the unstable screen-space artifacts from the earlier pass.
+- **New production assets:** the Allied Ore Silo and civilian Ore Mine now use conditioned Meshy
+  models with KTX2 materials, reviewed LOD/shadow paths, and procedural failure fallbacks.
+- **Better title audio controls:** the main-menu soundtrack can now be paused and resumed as well as
+  moved to the previous or next cue.
+
 ## Play VOLTMARCH
 
 - **Browser:** [play.voltmarch.com](https://play.voltmarch.com/)
@@ -78,8 +93,9 @@ sell exposed positions and use the terrain to hide the shape of your next attack
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The Windows version uses the native
-Electron storage and update layers and defaults to WebGPU.
+The browser build and Windows release share the same game. The current release is **3.10.0**. The
+Windows version uses the native Electron storage and update layers and is WebGPU-first and
+WebGPU-locked for normal play.
 
 ## For contributors
 
@@ -118,7 +134,7 @@ tools/              Capture, profiling, deployment and asset pipeline tools
 The simulation runs on a fixed deterministic step. Rendering, audio, interface presentation, chat
 and map pings remain outside the lockstep command stream. Imported faction and civilian landmarks
 pass through a local game-asset pipeline for topology, PBR materials, reviewed LODs, shadow meshes
-and WebGL/WebGPU budgets, with procedural fallbacks retained where required.
+and WebGL/WebGPU budgets, with procedural loading/failure fallbacks retained where required.
 
 Useful project documents:
 

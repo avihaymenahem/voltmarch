@@ -12,7 +12,7 @@ fingerprints that came with them.
 npm ci                                      # from the repository root
 npm --workspace @voltmarch/relay run build
 npm --workspace @voltmarch/relay start      # 127.0.0.1:8787
-npm run server:test                         # 110 tests in 24 suites
+npm run server:test                         # 111 tests in 25 suites
 ```
 
 The test count said "31" long after it stopped being 31. Re-count it rather than

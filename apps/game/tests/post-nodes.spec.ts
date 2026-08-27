@@ -253,27 +253,26 @@ describe('the grade compiles, and the compiled source is the instrument', () => 
     expect(fragment.length).toBeGreaterThan(1000);
   });
 
-  it('BANS: no chromatic aberration and no film grain exist in the shader', () => {
+  it('keeps CA structurally absent while compiling restrained grain and rain', () => {
     /*
      * THE ONE THAT WOULD HAVE CAUGHT THE ORIGINAL DEFECT.
      *
      * `tests/banned-effects.spec.ts` passed on every run while both effects were
      * live, because it scans `config.ts` and config was right. This looks at the
-     * emitted code. There is no CA branch to enable and no grain hash to seed:
-     * the TSL grade does not implement either, so the ban is structural.
+     * emitted code. There is no CA branch to enable; grain and rain share one
+     * time-driven procedural path and add no texture samples.
      *
      * Signatures, not names — the generated identifiers are `nodeVarN`:
      *   - CA reads the input at THREE different offsets and takes one channel
      *     from each, so a CA build has strictly more than the five taps the
      *     unsharp mask and the centre fetch account for.
-     *   - the grain is `fract`/`floor` of a hashed screen coordinate against a
-     *     time uniform; with no time uniform there is nothing to animate.
+     *   - grain/rain are arithmetic only, so the texture-tap budget is unchanged.
      */
-    const { fragment } = compileGrade();
+    const { fragment, u } = compileGrade();
     const taps = fragment.match(/textureSample\(/g)?.length ?? 0;
     expect(taps, 'centre fetch + four unsharp taps, and nothing else').toBe(5);
-    expect(fragment).not.toContain('0.1031'); // the hash13 constant
-    expect(fragment.toLowerCase()).not.toContain('grain');
+    expect(fragment).toContain('43758.5453'); // shared procedural hash
+    expect(u.grain.value).toBeLessThanOrEqual(0.008);
   });
 
   it('every config-driven uniform is REFERENCED by the compiled shader', () => {
@@ -978,11 +977,12 @@ describe('the WebGL chain still owns the shipping path', () => {
     expect(read('normalPhi')).toBe(ours.normalPhi);
   });
 
-  it('the shipped config still holds every banned effect at zero', () => {
+  it('the shipped config keeps grain restrained and CA at zero', () => {
     // Belt and braces with `tests/banned-effects.spec.ts`: that file is the
     // source scan, this is the live-config half, and the compiled-shader
     // assertion above is the one neither of them could make before.
-    expect(RENDER_CONFIG.post.grade.grain).toBe(0);
+    expect(RENDER_CONFIG.post.grade.grain).toBeGreaterThan(0);
+    expect(RENDER_CONFIG.post.grade.grain).toBeLessThanOrEqual(0.008);
     expect(RENDER_CONFIG.post.grade.chromaticAberration).toBe(0);
     expect(new Color()).toBeTruthy(); // three/webgpu imported without side effects
   });

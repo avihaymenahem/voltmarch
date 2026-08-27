@@ -20,6 +20,12 @@ describe('initial title-menu boot', () => {
   const bootstrap = read('apps/game/src/game/Bootstrap.ts');
   const main = read('apps/game/src/main.ts');
   const html = read('apps/game/index.html');
+  const terrain = read('apps/game/src/world/Terrain.ts');
+  const scatter = read('apps/game/src/world/Scatter.ts');
+  const scatterSystem = read('apps/game/src/world/scatter.system.ts');
+  const buildings = read('apps/game/src/art/buildings.system.ts');
+  const units = read('apps/game/src/art/units.system.ts');
+  const audio = read('apps/game/src/audio/audio.system.ts');
 
   it('publishes the interactive menu before scheduling its decorative battlefield', () => {
     const branchStart = shell.indexOf('if (!keepBackdrop || this.game === null) {');
@@ -54,6 +60,16 @@ describe('initial title-menu boot', () => {
     expect(shell).toContain('window.clearTimeout(this.enginePreloadTimer)');
   });
 
+  it('never makes match boot depend on requestAnimationFrame while unfocused', () => {
+    const helperAt = shell.indexOf('export function nextFrames');
+    const helper = helperAt < 0 ? '' : shell.slice(helperAt, helperAt + 1_200);
+    expect(helper).toContain('maxWaitMs = 250');
+    expect(helper).toContain('window.setTimeout(finish');
+    expect(helper).toContain('cancelAnimationFrame(frame)');
+    expect(shell).toContain('game.ctx.loop.advanceFrames(5);');
+    expect(shell).not.toContain('await nextFrames(6);');
+  });
+
   it('prefetches code separately and gives fast launch clicks a real quiet window', () => {
     const schedule = /private scheduleInitialBackdrop\(\): void \{([\s\S]*?)\n\s*\}/.exec(shell)?.[1] ?? '';
     expect(schedule).toContain("import('../game/Bootstrap')");
@@ -70,6 +86,16 @@ describe('initial title-menu boot', () => {
     expect(shell).toContain("classList.remove('vm-menu-preparing')");
   });
 
+  it('composes scatter for the wider title camera without changing real matches', () => {
+    expect(shell).toContain("query.set('backdrop', '1')");
+    expect(shell).toContain('distance: backdrop ? TITLE_BACKDROP_CAMERA_DISTANCE : 72');
+    expect(scatterSystem).toContain("const titleBackdrop = flag('backdrop') === '1';");
+    expect(scatterSystem).toContain('visibleGround(TITLE_BACKDROP_CAMERA_DISTANCE)');
+    expect(scatterSystem).toContain('focusBoost: titleBackdrop ? 0.48');
+    expect(scatterSystem).toContain('TITLE_BACKDROP_SCATTER_CLEAR_RADIUS');
+    expect(scatterSystem).toContain("if (plan.start === 'mcv' || titleBackdrop)");
+  });
+
   it('awaits WebGPU async pipeline compilation and reports the real phase split', () => {
     const prime = bootstrap.indexOf('registry.runFrame({');
     const compile = bootstrap.indexOf('.compile(sceneRig.scene');
@@ -81,6 +107,32 @@ describe('initial title-menu boot', () => {
     expect(bootstrap).toContain('compileMs = now() - compileStarted');
     expect(bootstrap).toContain("pipeline cache ${cacheBefore?.battlefieldWarm === true ? 'warm' : 'cold'}");
     expect(bootstrap).toContain('[boot] battlefield');
+  });
+
+  it('batches repeated WebGPU terrain and scatter objects without removing the WebGL path', () => {
+    expect(terrain).toContain('new THREE.BatchedMesh(');
+    expect(terrain).toContain("'terrain.batch.relief'");
+    expect(terrain).toContain('batch.perObjectFrustumCulled = true');
+    expect(scatter).toContain('if (this.batchedNodePath) this.buildNodeBatches();');
+    expect(scatter).toContain("'prop.batch.shadow'");
+    expect(scatter).toContain('new THREE.InstancedMesh(');
+  });
+
+  it('keeps only MCV-critical authored art on the cold-start path', () => {
+    for (const source of [buildings, units]) {
+      expect(source).toContain("plannedScenario().start === 'mcv'");
+      expect(source).toContain('deferredImportTimer = window.setTimeout');
+      expect(source).toContain('registerKindMesh(');
+      expect(source).toContain('12_000');
+    }
+    expect(buildings).toContain("spec.key.endsWith('_conyard')");
+    expect(units).toContain('const immediateSpecs = fastMcvBoot ? [] : importedSpecs;');
+  });
+
+  it('prepares the first battlefield audio bank after gameplay becomes ready', () => {
+    expect(audio).toContain('battlefieldAudioPreparation = (async');
+    expect(audio).toContain('const bankReady = battlefieldAudioPreparation ?? Promise.resolve();');
+    expect(audio).toContain('ms in the background');
   });
 
   it('keeps the full engine behind a dynamic import on both product and harness paths', () => {

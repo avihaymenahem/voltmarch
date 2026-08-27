@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-buildings",
-  "generatedAt": "2026-08-23T17:33:25.450Z",
+  "generatedAt": "2026-08-26T23:40:36.704Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-buildings.json",
   "rows": [
@@ -664,6 +664,35 @@
             15
           ],
           "occupiedCells": 214
+        }
+      ]
+    },
+    {
+      "key": "allied_silo",
+      "class": "utility",
+      "movingParts": false,
+      "source": {
+        "file": "apps/game/src/assets/buildings/allies/ore-silo.glb",
+        "triangles": 13799,
+        "fileBytes": 1984616
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "apps/game/src/assets/buildings/allies/derived/ore-silo.shadow.glb",
+          "triangles": 2280,
+          "triangleRatio": 0.1652,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 32736,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 190
         }
       ]
     },

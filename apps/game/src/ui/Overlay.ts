@@ -243,17 +243,26 @@ const RING_OK = new Uint8Array((MAX_SELECTION + 1) * RING_POINTS);
  * same three-line test — so the picture and the check share their inputs. A
  * screenshot of a ghost sitting on the boundary is the falsifiable version.
  *
- * ONE PATH, FILLED NONZERO. Every disc is a subpath wound the same way, so a
- * single `fill()` paints the union with no seam and no double-darkening where
- * two structures overlap — which is most of a real base.
+ * ONE FILLED UNION, ONE OUTER CONTOUR. Every disc is a same-winding subpath, so
+ * a single `fill()` paints the union without overlap darkening. The boundary is
+ * different: each sampled arc is emitted only when its midpoint is outside
+ * every other disc. That removes all internal circles while preserving the
+ * exact lobed territory the placement rule creates.
  * -------------------------------------------------------------------------- */
 
-/** Fill under the buildable region while a structure is on the cursor. */
-const BUILD_AREA_FILL = 'rgba(120, 210, 255, 0.10)';
-/** The boundary of that region. */
-const BUILD_AREA_EDGE = 'rgba(150, 225, 255, 0.42)';
+/** Alpha under the buildable region while a structure is on the cursor. */
+const BUILD_AREA_FILL_ALPHA = 0.055;
+/** Alpha of the one exterior boundary. */
+const BUILD_AREA_EDGE_ALPHA = 0.68;
 /** Structures whose discs are drawn. A base past this is not the failing case. */
 const BUILD_AREA_MAX = 64;
+/** More samples than selection rings: this is one large, persistent contour. */
+const BUILD_AREA_SEGMENTS = 48;
+/** Reused disc data; drawing placement must not allocate every frame. */
+const BUILD_AREA_X = new Float32Array(BUILD_AREA_MAX);
+const BUILD_AREA_Y = new Float32Array(BUILD_AREA_MAX);
+const BUILD_AREA_Z = new Float32Array(BUILD_AREA_MAX);
+const BUILD_AREA_R = new Float32Array(BUILD_AREA_MAX);
 
 /* --------------------------------------------------------------------------
  * GARRISON HINTS
@@ -576,6 +585,8 @@ export class Overlay {
   private hintCz = 0;
   private hintW = 0;
   private hintH = 0;
+  private hintName = '';
+  private hintValid = false;
 
   /** Buildings a selected squad could man. Rebuilt on a throttle. */
   private readonly garrisonHints = new Int32Array(GARRISON_HINT_MAX);
@@ -709,12 +720,21 @@ export class Overlay {
    *
    * Safe to never call: nothing else in this file reads the flag.
    */
-  setPlacementHint(cx: number, cz: number, w: number, h: number): void {
+  setPlacementHint(
+    cx: number,
+    cz: number,
+    w: number,
+    h: number,
+    name = '',
+    valid = false,
+  ): void {
     this.hintActive = w > 0 && h > 0;
     this.hintCx = cx;
     this.hintCz = cz;
     this.hintW = w;
     this.hintH = h;
+    this.hintName = name;
+    this.hintValid = valid;
   }
 
   clearPlacementHint(): void {
@@ -891,6 +911,7 @@ export class Overlay {
     const terrain = this.world.terrain;
 
     let cx = 0;
+    let minY = Infinity;
     let maxY = -Infinity;
     let seen = 0;
     for (let k = 0; k < 4; k++) {
@@ -899,6 +920,7 @@ export class Overlay {
       this.v3.set(wx, terrain.heightAt(wx, wz), wz);
       if (!this.cameraRig.worldToScreen(this.v3, this.v2)) continue;
       cx += this.v2.x;
+      if (this.v2.y < minY) minY = this.v2.y;
       if (this.v2.y > maxY) maxY = this.v2.y;
       seen++;
     }
@@ -919,6 +941,30 @@ export class Overlay {
     const plateH = keyBox + Math.round(8 * u);
     const x = Math.round(cx - plateW * 0.5);
     const y = Math.round(maxY + HINT_GAP * u);
+
+    // The reference read comes from naming the thing on the cursor, not from
+    // making the player recognise a green block. Keep this plate separate from
+    // the rotate controls so both remain readable at gameplay zoom.
+    if (this.hintName !== '') {
+      const label = this.hintName.toUpperCase().slice(0, 32);
+      const labelSize = Math.round(10 * u);
+      ctx.font = `800 ${labelSize}px ${OVERLAY_FONT}`;
+      const labelPadX = Math.round(9 * u);
+      const labelH = Math.round(21 * u);
+      const labelW = Math.ceil(ctx.measureText(label).width) + labelPadX * 2;
+      const labelX = Math.round(cx - labelW * 0.5);
+      const labelY = Math.round(minY - labelH - 9 * u);
+      const status = this.hintValid ? '#34D399' : '#E03A2A';
+      ctx.fillStyle = 'rgba(4,7,13,0.88)';
+      ctx.fillRect(labelX, labelY, labelW, labelH);
+      ctx.strokeStyle = rgba(status, 0.82);
+      ctx.lineWidth = Math.max(1, u);
+      ctx.strokeRect(labelX + 0.5, labelY + 0.5, labelW - 1, labelH - 1);
+      ctx.fillStyle = status;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, cx, labelY + labelH * 0.53);
+    }
 
     ctx.fillStyle = 'rgba(4,7,13,0.84)';
     ctx.fillRect(x, y, plateW, plateH);
@@ -1323,8 +1369,8 @@ export class Overlay {
    * always-on decoration `docs/RA3_LOOK_BIBLE.md` costs points for. It appears
    * the moment it becomes actionable and goes when the ghost does.
    *
-   * See the block comment at the top of this file for why this is a UNION of
-   * per-structure discs and not one circle.
+   * See the block comment at the top of this file for why this is a union of
+   * per-structure reach but presents as one exterior shape.
    */
   private drawBuildArea(): void {
     if (!this.hintActive) return;
@@ -1334,7 +1380,6 @@ export class Overlay {
     const owner = this.world.localPlayer as number;
     const ctx = this.ctx;
 
-    ctx.beginPath();
     let drawn = 0;
     for (let a = 0; a < count && drawn < BUILD_AREA_MAX; a++) {
       const i = list[a];
@@ -1346,19 +1391,30 @@ export class Overlay {
       // the same two constants that function does.
       const r = ((flags & EntityFlag.IsBuilder) !== 0 ? BUILD_RADIUS : PLACEMENT.adjacencyRadius)
         + store.radius[i];
-      this.addGroundDisc(store.posX[i], store.posY[i], store.posZ[i], r);
+      BUILD_AREA_X[drawn] = store.posX[i];
+      BUILD_AREA_Y[drawn] = store.posY[i];
+      BUILD_AREA_Z[drawn] = store.posZ[i];
+      BUILD_AREA_R[drawn] = r;
       drawn++;
     }
     if (drawn === 0) return;
 
-    // Nonzero winding, so overlapping discs are one region rather than a stack
-    // of washes. The stroke follows the same path: the internal arcs it draws
-    // are the individual structures' own reach, which is information — it is
-    // what shows a player that the far tower is what is holding the edge out.
-    ctx.fillStyle = BUILD_AREA_FILL;
+    // First paint the reach as one quiet faction-coloured region. Same-winding
+    // subpaths make overlaps no darker than the rest of the territory.
+    ctx.beginPath();
+    for (let i = 0; i < drawn; i++) {
+      this.addGroundDisc(BUILD_AREA_X[i], BUILD_AREA_Y[i], BUILD_AREA_Z[i], BUILD_AREA_R[i]);
+    }
+    ctx.fillStyle = rgba(this.accent, BUILD_AREA_FILL_ALPHA);
     ctx.fill('nonzero');
-    ctx.strokeStyle = BUILD_AREA_EDGE;
-    ctx.lineWidth = Math.max(1, this.scale / this.dpr);
+
+    // Then draw only the arcs exposed on the union's exterior. Stroking the
+    // fill path itself redraws every source circle and produces the wireframe
+    // tangle this view is specifically meant to avoid.
+    ctx.beginPath();
+    for (let i = 0; i < drawn; i++) this.addBuildBoundaryArcs(i, drawn);
+    ctx.strokeStyle = rgba(this.accent, BUILD_AREA_EDGE_ALPHA);
+    ctx.lineWidth = Math.max(1.25, 1.35 * this.scale / this.dpr);
     ctx.stroke();
   }
 
@@ -1382,6 +1438,44 @@ export class Overlay {
       else ctx.lineTo(this.v2.x, this.v2.y);
     }
     if (started) ctx.closePath();
+  }
+
+  /**
+   * Append only the portions of one reach disc that are not covered by any
+   * other reach disc. Those exposed arcs are precisely the union's perimeter.
+   */
+  private addBuildBoundaryArcs(index: number, count: number): void {
+    const cx = BUILD_AREA_X[index];
+    const cy = BUILD_AREA_Y[index];
+    const cz = BUILD_AREA_Z[index];
+    const r = BUILD_AREA_R[index];
+    for (let s = 0; s < BUILD_AREA_SEGMENTS; s++) {
+      const a0 = (s / BUILD_AREA_SEGMENTS) * Math.PI * 2;
+      const a1 = ((s + 1) / BUILD_AREA_SEGMENTS) * Math.PI * 2;
+      const am = (a0 + a1) * 0.5;
+      const mx = cx + Math.cos(am) * r;
+      const mz = cz + Math.sin(am) * r;
+      let covered = false;
+      for (let other = 0; other < count; other++) {
+        if (other === index) continue;
+        const dx = mx - BUILD_AREA_X[other];
+        const dz = mz - BUILD_AREA_Z[other];
+        const rr = BUILD_AREA_R[other];
+        if (dx * dx + dz * dz < rr * rr) { covered = true; break; }
+      }
+      if (covered) continue;
+
+      const x0 = cx + Math.cos(a0) * r;
+      const z0 = cz + Math.sin(a0) * r;
+      const x1 = cx + Math.cos(a1) * r;
+      const z1 = cz + Math.sin(a1) * r;
+      this.v3.set(x0, cy + 0.06, z0);
+      if (!this.cameraRig.worldToScreen(this.v3, this.v2)) continue;
+      this.v3.set(x1, cy + 0.06, z1);
+      if (!this.cameraRig.worldToScreen(this.v3, this.v2b)) continue;
+      this.ctx.moveTo(this.v2.x, this.v2.y);
+      this.ctx.lineTo(this.v2b.x, this.v2b.y);
+    }
   }
 
   /* ------------------------------------------------------------------ */

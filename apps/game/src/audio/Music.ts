@@ -235,6 +235,7 @@ export class MusicDirector {
   private mode: MusicMode = 'stopped';
   private detuneCents = 0;
   private started = false;
+  private paused = false;
 
   constructor(private readonly host: MusicHost) {
     const ctx = host.ctx;
@@ -297,6 +298,7 @@ export class MusicDirector {
   stop(fadeSec = 1.5): void {
     if (!this.started) return;
     this.started = false;
+    this.paused = false;
     this.mode = 'stopped';
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
     const t = this.host.now();
@@ -304,6 +306,23 @@ export class MusicDirector {
     this.bus.gain.setValueAtTime(Math.max(0.0001, this.bus.gain.value), t);
     this.bus.gain.exponentialRampToValueAtTime(0.0001, t + fadeSec);
     this.bus.gain.setValueAtTime(0, t + fadeSec);
+  }
+
+  pause(): void {
+    if (!this.started || this.paused) return;
+    this.paused = true;
+    if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
+    const t = this.host.now();
+    this.bus.gain.cancelScheduledValues(t);
+    this.bus.gain.setTargetAtTime(0.0001, t, 0.035);
+  }
+
+  resume(): void {
+    if (!this.started || !this.paused) return;
+    this.paused = false;
+    this.nextStepTime = this.host.now() + 0.1;
+    this.applyLayer(this.layer, true);
+    this.timer = setInterval(() => this.tick(), AUDIO_MUSIC.tickMs);
   }
 
   dispose(): void {
@@ -349,7 +368,7 @@ export class MusicDirector {
   get rawHeat(): number { return this.heat; }
   /** 16ths scheduled since the loop began. Zero here means the timer is dead. */
   get scheduledSteps(): number { return this.step; }
-  get running(): boolean { return this.started; }
+  get running(): boolean { return this.started && !this.paused; }
   get currentLayer(): number { return this.layer; }
 
   /** Match won: crossfade to an E major, 108 BPM, brass-led variant over 1.5 s. */

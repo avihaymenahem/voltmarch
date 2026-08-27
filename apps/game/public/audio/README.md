@@ -140,8 +140,10 @@ masters stay archival and are not committed or shipped; their hashes and measure
 
 Only one cue is streamed through one `MediaElementSource` at a time. A match chooses a fresh cue
 locally, loops it for the entire battle, and the title/pause controls can cycle it manually. The
-longest delivery cue would occupy roughly 85 MB as decoded stereo Float32 by itself; streaming
-keeps it out of the resident sound-effect budget.
+main-menu control can also pause and resume the active cue; that user-paused state survives route
+changes and suppresses automatic load-retry playback until the player resumes. The longest delivery
+cue would occupy roughly 85 MB as decoded stereo Float32 by itself; streaming keeps it out of the
+resident sound-effect budget.
 
 ## What is still generated
 

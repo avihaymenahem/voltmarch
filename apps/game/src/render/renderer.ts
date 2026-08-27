@@ -530,31 +530,13 @@ export const RENDER_CONFIG: RenderConfig = {
       vignette: 0.28,
       vignetteSoftness: 0.55,
       /*
-       * GRAIN AND CHROMATIC ABERRATION ARE BANNED, AND BOTH SHIPPED ON.
-       *
-       * CLAUDE.md lists them by name among the effects "explicitly banned
-       * because they read as 'generic engine' and lose points", and
-       * `docs/SPEC_DRIFT_AUDIT.md` finding 8 recorded them shipping enabled
-       * against that ban on 2026-08-05. They were still enabled.
-       *
-       * `core/config.ts` already had them at 0 — which is why a search there
-       * says the ban is honoured. It is not: these defaults and the literals in
-       * `shell/Settings.ts#applySettings` both override it, and `filmGrain`
-       * defaults to true, so the values below were live on frame one of every
-       * session. Two knobs for one quantity in three files.
-       *
-       * What the player saw: grain re-rolled at 24 Hz in 1.4 px blocks, ~9 of
-       * 255 levels peak-to-peak, animated over the whole frame; and CA
-       * displacing R against B by ~5 px at 1080p in the outer third. Neither is
-       * something SMAA can touch — SMAA's edge threshold is 0.1 and grain never
-       * trips it — so both survive antialiasing and read exactly as "even with
-       * antialiasing on, I can see artifacts".
-       *
-       * Set to 0 at the source. `grainSize` is kept because it is inert while
-       * `grain` is 0 and is the parameter a dither would need.
+       * 2026-08-27 art direction explicitly restored FILM GRAIN, but not the
+       * old effect: this is 0.006 at a calmer 12 Hz, with a tested 0.008 hard
+       * ceiling, rather than the former 0.016 at 24 Hz. Chromatic aberration
+       * remains banned and has no WebGPU implementation.
        */
-      grain: 0,
-      grainSize: 1.4,
+      grain: 0.006,
+      grainSize: 1.0,
       chromaticAberration: 0,
       sharpen: 0.22,
     },

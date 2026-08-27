@@ -94,14 +94,20 @@ describe('the two DecalKind enums do not agree', () => {
     expect(VFX_SYSTEM).toMatch(/DECAL_PORT_MAP\[kind as number\]/);
   });
 
-  it('maps the four kinds the sim actually emits', () => {
+  it('maps the three one-to-one kinds the sim actually emits', () => {
     // grep of `src/sim/**`: Scorch (Abilities, Damage x3, Superweapons),
-    // Crater (Superweapons, CommanderPowers), Rubble (Damage), Squish (Crush).
+    // Crater (Superweapons, CommanderPowers), Squish (Crush). Rubble is the
+    // explicit one-to-many composition asserted below.
     for (const k of [
-      'DecalKind.Scorch]', 'DecalKind.Crater]', 'DecalKind.Rubble]', 'DecalKind.Squish]',
+      'DecalKind.Scorch]', 'DecalKind.Crater]', 'DecalKind.Squish]',
     ]) {
       expect(VFX_SYSTEM, `${k} must be mapped`).toContain(k);
     }
+  });
+
+  it('expands rubble into its persistent ground composition', () => {
+    expect(VFX_SYSTEM).toContain('layRubbleStory');
+    expect(VFX_SYSTEM).toMatch(/kind === DecalKind\.Rubble/);
   });
 
   it('lands Squish on the field tile that was authored for it', () => {

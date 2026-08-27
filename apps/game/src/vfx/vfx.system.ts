@@ -53,7 +53,7 @@ import {
 import {
   DecalKind, EntityFlag, EntityKind, Faction, FxKind, NONE, PartId, RenderPhase,
 } from '../core/types';
-import { DecalKind as WorldDecalKind, layDecal } from '../world/Decals';
+import { DecalKind as WorldDecalKind, layDecal, layRubbleStory } from '../world/Decals';
 import type { EntityId, RenderContext } from '../core/types';
 import { ctx } from '../game/context';
 import { renderBridge, socketWorld } from '../render/RenderBridge';
@@ -105,10 +105,6 @@ const DECAL_PORT_MAP: Readonly<Record<number, WorldDecalKind>> = {
   [DecalKind.Scorch]: WorldDecalKind.Scorch,
   [DecalKind.Crater]: WorldDecalKind.Crater,
   [DecalKind.Squish]: WorldDecalKind.Squish,
-  // The closest thing the field owns to broken masonry: a wide soft smudge.
-  // A collapsed structure leaving nothing at all is the current behaviour and
-  // is worse than an approximation.
-  [DecalKind.Rubble]: WorldDecalKind.Dust,
 };
 let shots: TracerSystem | null = null;
 
@@ -711,6 +707,13 @@ export default defineSystem({
       attach: () => -1,
       detach: () => {},
       decal: (kind, x, z, rot, size) => {
+        // Rubble is a COMPOSITION rather than a one-tile translation: fading
+        // dust over permanent grime plus two broken-stone fans. The persistent
+        // Wreck entity supplies the large ruin silhouette above it.
+        if (kind === DecalKind.Rubble) {
+          layRubbleStory(x, z, Math.max(0.25, size), rot);
+          return;
+        }
         const mapped = DECAL_PORT_MAP[kind as number];
         if (mapped !== undefined) layDecal(mapped, x, z, Math.max(0.25, size), rot);
       },

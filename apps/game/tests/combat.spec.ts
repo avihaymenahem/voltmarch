@@ -18,7 +18,8 @@ import {
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
-  ARMOR_MATRIX, BURN_HP_THRESHOLD, COMBAT_DAMAGE, SIM_DT, VETERANCY_KILLS, MAX_PROJECTILES,
+  ARMOR_MATRIX, BURN_HP_THRESHOLD, COMBAT_DAMAGE, COMBAT_PROJECTILES, SIM_DT,
+  VETERANCY_KILLS, MAX_PROJECTILES,
 } from '../src/core/config';
 import {
   BUILDING_RUBBLE_DEF, VEHICLE_WRECK_DEF, vehicleWreckDefForRadius,
@@ -679,6 +680,43 @@ describe('projectiles', () => {
     expect(rig.projectiles.readLive(out)).toBe(1);
     expect(out[0]).toBeCloseTo(11, 5);
     expect(out[2]).toBeCloseTo(12, 5);
+  });
+
+  it('emits exactly one tracer for one physical round', () => {
+    rig.projectiles.spawn(
+      ProjectileKind.Bullet, WarheadClass.ArmorPiercing, 55, 0, 0,
+      100, 20, 100, 1, 0, 0, 115,
+      0 as EntityId, 0 as EntityId, P0, Faction.Allies,
+      FxKind.ImpactMetal, FxKind.TracerCannon, 0,
+    );
+
+    expect(rig.channels.fx.count).toBe(1);
+    expect(rig.channels.fx.kind[0]).toBe(FxKind.TracerCannon);
+
+    // Cross several old 2.4 m bead boundaries without draining presentation.
+    for (let tick = 0; tick < 4; tick++) rig.projectiles.tick(rig.ctx());
+    expect(rig.channels.fx.count).toBe(1);
+  });
+
+  it('feeds repeating trails movement, not projectile velocity', () => {
+    rig.projectiles.spawn(
+      ProjectileKind.Rocket, WarheadClass.Rocket, 60, 2.4, 0.3,
+      100, 20, 100, 1, 0, 0, 38,
+      0 as EntityId, 0 as EntityId, P0, Faction.Allies,
+      FxKind.ExplosionSmall, FxKind.RocketTrail, 0,
+    );
+
+    // Two 30 Hz steps cross the 2.4 m trail cadence once.
+    rig.projectiles.tick(rig.ctx());
+    rig.projectiles.tick(rig.ctx());
+    expect(rig.channels.fx.count).toBe(1);
+    expect(rig.channels.fx.kind[0]).toBe(FxKind.RocketTrail);
+    expect(Math.hypot(
+      rig.channels.fx.dx[0], rig.channels.fx.dy[0], rig.channels.fx.dz[0],
+    )).toBeCloseTo(38 * SIM_DT, 5);
+    expect(Math.hypot(
+      rig.channels.fx.dx[0], rig.channels.fx.dy[0], rig.channels.fx.dz[0],
+    )).toBeLessThan(COMBAT_PROJECTILES.trailBeadMetres);
   });
 });
 

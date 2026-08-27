@@ -53,7 +53,7 @@ import type { BootOptions, GameHandle } from '../game/Bootstrap';
 import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
-import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
+import { DEFAULT_ART, GAME_SPEEDS, TITLE_BACKDROP_CAMERA_DISTANCE } from '../core/config';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
 import { DEF_TABLES } from '../data/Defs';
 
@@ -322,6 +322,7 @@ export function focusable<T extends HTMLElement>(node: T): T {
 
 const ICON_PATHS: Readonly<Record<string, string>> = {
   play: 'M8 5.5 19 12 8 18.5Z',
+  pause: 'M9 6v12M15 6v12',
   swords: 'M4 4h3l9.5 9.5M20 4h-3L7.5 13.5M4 20l4.5-4.5M20 20l-4.5-4.5M14 18l2 2 4-4-2-2',
   folder: 'M3 6.5h6l2 2.5h10V19H3Z',
   sliders: 'M4 7h10M18 7h2M4 12h4M12 12h8M4 17h13M21 17h-1M14 5v4M8 10v4M17 15v4',
@@ -2125,7 +2126,9 @@ export class Shell {
         'loading',
       );
       // Two frames so the loading screen is actually painted before the boot
-      // blocks the main thread on shader compilation.
+      // blocks the main thread on shader compilation. `nextFrames` has a
+      // deadline: Chromium may suspend rAF as soon as the window loses focus,
+      // and a paint courtesy must never become a match-start prerequisite.
       await nextFrames(2);
 
       await this.finishOrCancelInitialBackdrop();
@@ -2981,6 +2984,10 @@ export class Shell {
     const query = buildMatchQuery(this.setup, settings, location.search, seed);
     if (backdrop) {
       query.set('ai', 'off');
+      // `ai=off` determines the scenario opening, while this dedicated marker
+      // lets presentation systems compose for the title camera without making
+      // an ordinary opponent-less match denser than the player's selection.
+      query.set('backdrop', '1');
     }
     // Historical builds put `title=1` on the backdrop to suppress imported
     // architecture. That made the first thing a player saw disagree with the
@@ -3170,20 +3177,33 @@ export class Shell {
      * ALREADY DIVERGED, because the AI's first spend decision reads a bank that
      * appeared at a different tick each time.
      *
-     * The wait is real and stays — `game.scenario` re-asserts its authored
-     * camera pose on every frame up to frame 4, so a pose set earlier is
-     * silently overwritten. But that is the CAMERA, which is presentation and
-     * cannot affect the simulation. Splitting the two is the whole fix: the
-     * bank and the game speed are written here, at tick 0, every time.
+     * The presentation settle is real and stays — `game.scenario` re-asserts
+     * its authored camera pose on every frame up to frame 4, so a pose set
+     * earlier is silently overwritten. It now runs synchronously below rather
+     * than waiting on browser frames. The bank and game speed still land here,
+     * at tick 0, before either presentation settling or the live loop.
      */
     this.applySimPostBoot(game, backdrop);
-    game.start();
-
     this.status('Deploying');
     applySettings(this.settings.get(), game);
 
-    await nextFrames(6);
+    /*
+     * SETTLE PRESENTATION SYNCHRONOUSLY, WITHOUT WAITING FOR THE WINDOW.
+     *
+     * `game.scenario` owns camera framing through render frame 4. This used to
+     * start the live rAF loop and then await six browser frames before applying
+     * the player's home-base camera. A background Chromium window is allowed
+     * to throttle rAF to seconds (or suspend it), so a complete 20 s cold boot
+     * could sit behind INITIALISING for most of another minute.
+     *
+     * `advanceFrames` runs the same presentation systems with no simulation
+     * ticks and presents only its final frame. The loop reaches frame 5 while
+     * still on this stack, the scenario releases the camera deterministically,
+     * and match readiness no longer depends on focus or refresh rate.
+     */
+    game.ctx.loop.advanceFrames(5);
     this.applyCameraPostBoot(game, backdrop);
+    game.start();
   }
 
   /**
@@ -3507,8 +3527,8 @@ export class Shell {
   }
 
   /**
-   * Everything post-boot that only the CAMERA can see. Runs after the six-frame
-   * wait, which is what it needed the wait for.
+   * Everything post-boot that only the CAMERA can see. Runs after five
+   * synchronous presentation frames release the scenario's opening pose.
    */
   private applyCameraPostBoot(game: GameHandle, backdrop: boolean): void {
     const { world, cameraRig } = game.ctx;
@@ -3524,7 +3544,7 @@ export class Shell {
         // The backdrop pulls right out: at match distance the orbit sweeps the
         // camera through the buildings it is orbiting, and the menu column
         // covers the left third of whatever is on screen.
-        distance: backdrop ? 104 : 72,
+        distance: backdrop ? TITLE_BACKDROP_CAMERA_DISTANCE : 72,
         immediate: true,
       });
     }
@@ -4183,16 +4203,34 @@ export function matchesChord(e: KeyboardEvent, c: Chord | undefined): boolean {
   );
 }
 
-/** Resolve after `n` presented frames. */
-export function nextFrames(n: number): Promise<void> {
+/**
+ * Resolve after `n` presented frames, or after a short paint deadline.
+ *
+ * This helper exists only to let already-visible shell UI paint before a
+ * main-thread-heavy transition. It is never valid for correctness: Chromium
+ * may stop requestAnimationFrame callbacks when an Electron window loses
+ * focus. The deadline keeps a hidden window moving through the real work.
+ */
+export function nextFrames(n: number, maxWaitMs = 250): Promise<void> {
   return new Promise((resolve) => {
     let left = Math.max(1, n);
-    const step = (): void => {
-      left--;
-      if (left <= 0) resolve();
-      else requestAnimationFrame(step);
+    let frame = 0;
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(deadline);
+      if (frame !== 0) cancelAnimationFrame(frame);
+      resolve();
     };
-    requestAnimationFrame(step);
+    const step = (): void => {
+      if (settled) return;
+      left--;
+      if (left <= 0) finish();
+      else frame = requestAnimationFrame(step);
+    };
+    const deadline = window.setTimeout(finish, Math.max(0, maxWaitMs));
+    frame = requestAnimationFrame(step);
   });
 }
 

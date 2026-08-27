@@ -938,7 +938,7 @@ export class DamageSystem {
     }
 
     // Rubble + scorch over the whole footprint, permanently.
-    w.vfx.decal(DecalKind.Rubble, x, z, 0, Math.max(fw, fh) * CELL * 0.95);
+    w.vfx.decal(DecalKind.Rubble, x, z, seed * 6.283185, Math.max(fw, fh) * CELL * 0.95);
     w.vfx.decal(DecalKind.Scorch, x, z, seed * 6.283185, Math.max(fw, fh) * CELL * 0.8);
     // The nav grid must be released or the ruin blocks pathing forever.
     if (fw > 0) {

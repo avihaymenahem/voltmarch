@@ -922,6 +922,41 @@ describe('particle layers', () => {
     pool.dispose();
     P.dispose();
   });
+
+  it('vehicle and building deaths throw readable radial streaks, cook-offs do not', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    spawnExplosion(256, 1, 256, VFX_EXPLOSION.unitDeathTL, 'unit');
+    P.step(20, makeCamera(), 154);
+    let quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
+    let longestAspect = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      const width = quad[i * 4];
+      if (width <= 0) continue;
+      longestAspect = Math.max(longestAspect, quad[i * 4 + 1] / width);
+    }
+    expect(longestAspect).toBeGreaterThan(20);
+
+    P.clear();
+    spawnExplosion(256, 1, 256, VFX_EXPLOSION.smallTL, 'small');
+    P.step(20, makeCamera(), 154);
+    quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
+    longestAspect = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      const width = quad[i * 4];
+      if (width <= 0) continue;
+      longestAspect = Math.max(longestAspect, quad[i * 4 + 1] / width);
+    }
+    expect(longestAspect).toBeLessThanOrEqual(1.01);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
 });
 
 /* ========================================================================== */
@@ -1292,6 +1327,7 @@ describe('the detonation bloom budget', () => {
       ['flashIntensity', VFX_EXPLOSION.flashIntensity],
       ['billowIntensity', VFX_EXPLOSION.billowIntensity],
       ['shockIntensity', VFX_EXPLOSION.shockIntensity],
+      ['ejectaIntensity', VFX_EXPLOSION.ejectaIntensity],
       ['emberIntensity', VFX_EXPLOSION.emberIntensity],
       ['muzzle flashCoreIntensity', VFX_GUNS.flashCoreIntensity],
     ];

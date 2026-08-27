@@ -42,10 +42,13 @@ import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '
 import {
   AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS,
   MCV_START_SCATTER_CLEAR_RADIUS, SCATTER_SEED,
+  TITLE_BACKDROP_CAMERA_DISTANCE, TITLE_BACKDROP_SCATTER_CLEAR_RADIUS,
 } from '../core/config';
 import { clamp, Rng, TAU } from '../core/math';
 import { ctx } from '../game/context';
-import { activeScenario, plannedScenario, plannedStartPoints } from '../game/Scenarios';
+import {
+  activeScenario, plannedScenario, plannedStartPoints, visibleGround,
+} from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
 import { DecalKind, groundDecals } from './Decals';
@@ -92,6 +95,18 @@ export default defineSystem({
 
     const plan = plannedScenario();
     const spec = activeScenario();
+    const titleBackdrop = flag('backdrop') === '1';
+    const titleView = titleBackdrop ? visibleGround(TITLE_BACKDROP_CAMERA_DISTANCE) : null;
+    const focus = spec === null
+      ? null
+      : titleView === null
+        ? spec.framed
+        : {
+            minX: spec.camera.x - titleView.width * 0.5,
+            minZ: spec.camera.z - titleView.back,
+            maxX: spec.camera.x + titleView.width * 0.5,
+            maxZ: spec.camera.z + titleView.front,
+          };
 
     scatter = new Scatter({
       scene: sceneRig.scene,
@@ -101,15 +116,15 @@ export default defineSystem({
       urban: plan.preset.urban,
       densityScale: plan.preset.scatter * numFlag('scatterdensity', 1),
       preferred: plan.preset.props,
-      focus: spec !== null ? spec.framed : null,
+      focus,
       // An MCV opening is the first landscape the player studies, not an
       // already-busy base photograph. Spend substantially more of the bounded
       // instance budget there and let same-family islands sit closer together:
       // grass/shrub carpets become continuous compositions and trees form a
       // perimeter instead of three lonely stamps. Hard exclusions still own
       // the deploy pocket and the escort lane, and maxProps remains unchanged.
-      focusBoost: plan.start === 'mcv' ? 0.55 : 0.18,
-      focusClumpGapScale: plan.start === 'mcv' ? 0.55 : 1,
+      focusBoost: titleBackdrop ? 0.48 : plan.start === 'mcv' ? 0.55 : 0.18,
+      focusClumpGapScale: titleBackdrop ? 0.55 : plan.start === 'mcv' ? 0.55 : 1,
       openingCenters: plan.start === 'mcv' ? plannedStartPoints() : [],
     });
 
@@ -127,9 +142,13 @@ export default defineSystem({
     // annulus outside those functional pockets is intentionally dressed.
     const startApron = plan.start === 'mcv'
       ? MCV_START_SCATTER_CLEAR_RADIUS
-      : AUTO_BASE_APRON_RADIUS;
+      : titleBackdrop
+        ? TITLE_BACKDROP_SCATTER_CLEAR_RADIUS
+        : AUTO_BASE_APRON_RADIUS;
     for (const p of plannedStartPoints()) {
-      if (plan.start === 'mcv') scatter.addLowProfileExclusion(p.x, p.z, startApron);
+      if (plan.start === 'mcv' || titleBackdrop) {
+        scatter.addLowProfileExclusion(p.x, p.z, startApron);
+      }
       else scatter.addExclusion(p.x, p.z, startApron);
     }
 
@@ -185,6 +204,11 @@ export default defineSystem({
      */
     scatter.paintGroundComposition();
 
+    const decals = groundDecals();
+    const groundStories = decals !== null
+      ? scatter.paintGroundStories(decals, spec?.ore ?? [])
+      : null;
+
     /* -- base weathering ------------------------------------------------- *
      * A pristine pad ending exactly at a pristine wall reads like a low-poly
      * model placed on top of the world. Dress the OUTSIDE of footprints with
@@ -192,7 +216,6 @@ export default defineSystem({
      * oil. These are authored shapes rather than texture noise and all share
      * the existing pooled decal mesh: one draw, no extra material per asset,
      * no new geometry and a hard cap that leaves most slots for combat FX.   */
-    const decals = groundDecals();
     const wearRng = new Rng((plan.seed ^ 0x6b512d09) >>> 0);
     let baseWear = 0;
     const maxBaseWear = 112;
@@ -245,7 +268,7 @@ export default defineSystem({
             wearRng.range(2.4, 4.8),
             angle + wearRng.range(-0.25, 0.25),
             0,
-            wearRng.range(0.24, 0.42),
+            wearRng.range(0.30, 0.46),
           );
           baseWear++;
         }
@@ -275,7 +298,8 @@ export default defineSystem({
       `(${s.propsPerHectare.toFixed(0)}/ha over ${(report?.walkableHectares ?? 0).toFixed(1)} ha), ` +
       `${scatter.library.totalTriangles} tris in the library, ` +
       `${(scatter.library.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place, ` +
-      `${scatter.groundPatches} habitat patches + ${baseWear} base-wear marks`,
+      `${scatter.groundPatches} habitat patches + ${groundStories?.total ?? 0} ground-story ` +
+      `marks + ${baseWear} base-wear marks`,
       'color:#7fd', 'color:inherit',
     );
     console.info(
@@ -324,6 +348,11 @@ export default defineSystem({
     debug.setCounter('props', s.props);
     debug.setCounter('propTypes', s.types);
     debug.setCounter('groundPatches', scatter.groundPatches);
+    debug.setCounter('groundStories', groundStories?.total ?? 0);
+    debug.setCounter('storyFamilies', groundStories === null ? 0 : [
+      groundStories.foliage, groundStories.mineral, groundStories.service,
+      groundStories.civic, groundStories.vehicle,
+    ].filter((n) => n > 0).length);
     debug.setCounter('openingProps', scatter.openingProps);
     debug.setCounter('baseWear', baseWear);
   },

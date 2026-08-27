@@ -200,7 +200,7 @@ Fixed in `22b123c`. What it had been hiding:
 1. The whole 3-way colour balance was inert — `shadowTint`, `midTint`, `highlightTint`, `lift`,
    `gain`. An entire measurement campaign in `config.ts`'s shadowTint block moved a uniform the
    shader never saw.
-2. **Grain (0.016) and chromatic aberration (0.0016) were LIVE**, both banned by name, both
+2. **Grain (0.016) and chromatic aberration (0.0016) were LIVE**, both banned by name at the time, both
    correctly `0` in config, and config reached nothing.
 3. The unsharp mask sampled a 1920×1080 texel grid at 1440p.
 4. `uTime` never advanced — **the only reason the shot harness never caught the grain.** A frozen

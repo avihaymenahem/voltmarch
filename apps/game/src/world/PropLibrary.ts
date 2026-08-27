@@ -1558,6 +1558,52 @@ function buildRockCluster(m: PropMesh, rng: Rng, p: PropPalette): void {
   }
 }
 
+/**
+ * Low-profile physical clutter for the opening camera.
+ *
+ * Leaves, stones and paper cannot be represented by the multiply-only ground
+ * decal material: once made visible, its authored lobes read as black stamped
+ * circles. This pile uses real shaded geometry instead—stones, broken timber,
+ * bent sheet metal and two pale scraps—so every piece has an edge, height and
+ * shadow. It remains below infantry knee height and never blocks navigation.
+ */
+function buildDebrisPile(m: PropMesh, rng: Rng, p: PropPalette): void {
+  m.ao(0.52, 0, 0.75).sway(0, 0, 1).gloss(0);
+  for (let i = 0; i < 7; i++) {
+    const a = rng.range(0, TAU);
+    const d = rng.range(0.25, 1.45);
+    const w = rng.range(0.28, 0.62);
+    const h = rng.range(0.16, 0.38);
+    const z = rng.range(0.30, 0.70);
+    // Each loose piece gets its own tiny ground penetration. Random boxes may
+    // overlap (that is what makes this a pile), but sharing one exact underside
+    // plane makes the overlap z-fight whenever the terrain exposes an edge.
+    const bed = 0.010 + i * 0.002;
+    m.color(i % 3 === 0 ? p.rockCap : p.rock);
+    m.box(Math.cos(a) * d, h * 0.5 + bed, Math.sin(a) * d,
+      w, h, z, Math.min(0.06, h * 0.18), a + rng.range(-0.4, 0.4));
+  }
+  const scrapColours = [p.wood, p.woodDark, p.rust, p.darkSteel];
+  for (let i = 0; i < 5; i++) {
+    const a = rng.range(0, TAU);
+    const d = rng.range(0.35, 1.25);
+    const h = rng.range(0.07, 0.14);
+    const bed = 0.026 + i * 0.002;
+    m.color(scrapColours[i % scrapColours.length]);
+    m.box(Math.cos(a) * d, h * 0.5 + bed, Math.sin(a) * d,
+      rng.range(0.65, 1.25), h, rng.range(0.16, 0.34), 0.025, a);
+  }
+  // One bent plate stands proud enough to keep the pile readable at the RTS
+  // camera. It is still below infantry knee height and cannot imply cover.
+  m.color(p.rust);
+  m.box(0.18, 0.302, 0.12, 0.72, 0.52, 0.22, 0.035, -0.36);
+  // Two countable paper/card scraps. Real top faces, not bright atlas pixels.
+  m.color(p.paintWhite);
+  m.box(-0.72, 0.068, 0.48, 0.52, 0.06, 0.30, 0.015, 0.34);
+  m.color(p.hay);
+  m.box(0.64, 0.075, -0.58, 0.44, 0.07, 0.27, 0.015, -0.48);
+}
+
 /* ---- yard ---------------------------------------------------------------- */
 
 function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
@@ -2199,6 +2245,11 @@ export const PROP_DEFS: readonly PropDef[] = [
     surfaces: SURF_SOFT | SURF_STONE, maxSlope: 0.85, mode: 'field',
     clumpMin: 2, clumpMax: 6, clumpSpread: 10,
     urban: 0.13, biome: B(0.55, 0.65, 0.59, 0.26), blocksNav: false, build: buildRockCluster },
+
+  { key: 'debrisPile', family: 'yard', radius: 1.7, height: 0.75, adorn: 3.4, spacing: 5.0,
+    surfaces: SURF_ANY, maxSlope: 0.22, mode: 'clump', clumpMin: 1, clumpMax: 2,
+    clumpSpread: 7, urban: 0.65, biome: B(0.20, 0.22, 0.16, 0.34), blocksNav: false,
+    scaleMin: 0.88, scaleMax: 1.12, jitter: 0.35, build: buildDebrisPile },
 
   /* --- yard ------------------------------------------------------------ */
   { key: 'haystack', family: 'yard', radius: 2.4, height: 3.4, adorn: 5.0, spacing: 5.5,

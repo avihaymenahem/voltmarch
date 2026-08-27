@@ -1177,10 +1177,11 @@ describe('the starting bank lands on tick 0, not on a render frame', () => {
    * took: measured between roughly 3 and 18. The AI's first spend decision
    * reads that bank, so the two runs part company within a second.
    *
-   * The wait is real and had to stay: `game.scenario` re-asserts its authored
-   * camera pose up to frame 4, so a pose set earlier is overwritten. But that
-   * is presentation. Splitting the sim-visible half out and running it before
-   * `game.start()` is the whole fix.
+   * The scenario settling is real and has to stay: `game.scenario` re-asserts
+   * its authored camera pose up to frame 4, so a pose set earlier is
+   * overwritten. It is now advanced synchronously, without simulation or rAF,
+   * before the live loop starts. Splitting the sim-visible half out and running
+   * it before that presentation work is the whole determinism fix.
    */
   it('writes credits before the loop starts', () => {
     const src = read('apps/game/src/shell/Shell.ts');
@@ -1190,12 +1191,15 @@ describe('the starting bank lands on tick 0, not on a render frame', () => {
     expect(startAt, 'and it must come BEFORE game.start()').toBeGreaterThan(simAt);
   });
 
-  it('poses the camera after the six-frame wait, which is what needed it', () => {
+  it('settles five presentation frames without rAF before posing the camera', () => {
     const src = read('apps/game/src/shell/Shell.ts');
-    const waitAt = src.indexOf('await nextFrames(6);');
+    const settleAt = src.indexOf('game.ctx.loop.advanceFrames(5);');
     const camAt = src.indexOf('this.applyCameraPostBoot(game, backdrop);');
-    expect(waitAt).toBeGreaterThan(0);
-    expect(camAt, 'the camera pose must stay after the wait').toBeGreaterThan(waitAt);
+    const startAt = src.indexOf('game.start();', camAt);
+    expect(settleAt).toBeGreaterThan(0);
+    expect(camAt, 'the camera pose must stay after scenario settling').toBeGreaterThan(settleAt);
+    expect(startAt, 'the live loop must start after deterministic settling').toBeGreaterThan(camAt);
+    expect(src).not.toContain('await nextFrames(6);');
   });
 
   it('keeps the two halves separate — no sim write may drift back into the camera pass', () => {

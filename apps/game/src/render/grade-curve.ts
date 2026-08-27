@@ -130,11 +130,9 @@ function clamp(v: number, lo: number, hi: number): number {
 /**
  * Every scalar and vector the grade shader needs, derived from config.
  *
- * `grain`, `grainSize` and `chromaticAberration` are ABSENT, and that is a
- * decision rather than an oversight — see `nodes/grade-node.ts`. Both effects
- * are banned by name in CLAUDE.md and `RA3_LOOK_BIBLE.md` §4.6/§11, both are 0
- * in the shipped config, and the TSL grade does not implement either, so there
- * is no uniform for them to arrive through.
+ * Chromatic aberration remains deliberately absent. Film grain is carried into
+ * both render backends after the 2026-08-27 art-direction change, but is capped
+ * to a very small display-space amount by the shipped config and tests.
  */
 export interface GradeUniformValues {
   exposure: number;
@@ -149,6 +147,8 @@ export interface GradeUniformValues {
   shadowSaturation: number;
   vignette: number;
   vignetteSoftness: number;
+  grain: number;
+  grainSize: number;
   sharpen: number;
 }
 
@@ -168,6 +168,8 @@ export function makeGradeUniformValues(): GradeUniformValues {
     shadowSaturation: 1,
     vignette: 0,
     vignetteSoftness: 0.62,
+    grain: 0,
+    grainSize: 1,
     sharpen: 0,
   };
 }
@@ -203,6 +205,8 @@ export function gradeUniformValuesFor(cfg: GradeConfig, out: GradeUniformValues)
   out.shadowSaturation = cfg.shadowSaturation;
   out.vignette = cfg.vignette;
   out.vignetteSoftness = clamp(cfg.vignetteSoftness, VIGNETTE_SOFTNESS_MIN, VIGNETTE_SOFTNESS_MAX);
+  out.grain = clamp(cfg.grain, 0, 0.008);
+  out.grainSize = clamp(cfg.grainSize, 0.5, 3);
   out.sharpen = cfg.sharpen;
   return out;
 }

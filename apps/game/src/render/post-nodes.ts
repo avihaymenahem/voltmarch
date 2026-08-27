@@ -480,8 +480,9 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
 export interface NodePostChain {
   readonly pipeline: RenderPipeline;
   readonly graph: PostGraph;
-  render(): void;
+  render(dt: number): void;
   syncConfig(): void;
+  setWeatherIntensity(intensity: number): void;
   setSize(width: number, height: number): void;
   dispose(): void;
 }
@@ -564,6 +565,8 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const pipeline = new RenderPipeline(renderer, graph.output);
 
   let passSignature = JSON.stringify(enabledPasses(cfg));
+  let elapsed = 0;
+  let rainIntensity = 0;
 
   const chain: NodePostChain = {
     pipeline,
@@ -571,7 +574,9 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
       return graph;
     },
 
-    render(): void {
+    render(dt: number): void {
+      elapsed += Math.max(0, Math.min(dt, 0.25));
+      if (graph.gradeUniforms !== null) graph.gradeUniforms.time.value = elapsed;
       pipeline.render();
     },
 
@@ -589,12 +594,21 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
           height: s.height,
           ssgiPreset,
         });
+        if (graph.gradeUniforms !== null) {
+          graph.gradeUniforms.time.value = elapsed;
+          graph.gradeUniforms.rain.value = rainIntensity;
+        }
         pipeline.outputNode = graph.output;
         pipeline.outputColorTransform = graph.needsOutputColorTransform;
         pipeline.needsUpdate = true;
         return;
       }
       graph.syncConfig(cfg);
+    },
+
+    setWeatherIntensity(intensity: number): void {
+      rainIntensity = Math.max(0, Math.min(1, intensity));
+      if (graph.gradeUniforms !== null) graph.gradeUniforms.rain.value = rainIntensity;
     },
 
     setSize(width: number, height: number): void {

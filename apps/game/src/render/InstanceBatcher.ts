@@ -83,6 +83,12 @@ export interface BatchPartSpec {
   offsetX?: number;
   offsetY?: number;
   offsetZ?: number;
+  /**
+   * CPU-side construction rise in metres. The part starts this far below its
+   * authored transform and reaches it at buildProgress 1. Used by imported
+   * WebGPU shells whose legacy `onBeforeCompile` hook is not executed.
+   */
+  constructionRise?: number;
   /** True when this piece slews with the turret instead of the hull. */
   followsTurret?: boolean;
   /** Which sub-part this is, so anim/VFX can find it. */

@@ -20,8 +20,8 @@ function glbJson(file: string): Record<string, any> {
 }
 
 describe('the Allied imported building roster', () => {
-  it('ships fifteen one-material KTX2 PBR replacements within their geometry gates', () => {
-    expect(manifest.assets).toHaveLength(15);
+  it('ships sixteen one-material KTX2 PBR replacements within their geometry gates', () => {
+    expect(manifest.assets).toHaveLength(16);
     expect(compression.rows).toHaveLength(manifest.assets.length);
     expect(optimization.rows).toHaveLength(manifest.assets.length);
 
@@ -31,7 +31,9 @@ describe('the Allied imported building roster', () => {
       const sourceRow = optimization.rows.find((row: any) => row.key === asset.key);
       expect(fs.existsSync(source), asset.key).toBe(true);
       expect(fs.existsSync(promoted), asset.key).toBe(true);
-      const [minimum, maximum] = asset.class === 'defence' ? [8_000, 14_000] : [24_000, 40_000];
+      const [minimum, maximum] = asset.class === 'defence' || asset.class === 'utility'
+        ? [8_000, 14_000]
+        : [24_000, 40_000];
       expect(sourceRow.source.triangles, asset.key).toBeGreaterThanOrEqual(minimum);
       expect(sourceRow.source.triangles, asset.key).toBeLessThanOrEqual(maximum);
 

@@ -39,12 +39,12 @@ import * as THREE from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, attribute, cos, materialEmissive, materialRoughness, mix, positionLocal, sin, uniform,
+  Fn, attribute, batch, cos, instancedMesh, materialEmissive, materialRoughness, mix,
+  normalGeometry, normalLocal, positionGeometry, positionLocal, sin, uniform,
   varyingProperty, vec3, vertexColor,
 } from 'three/tsl';
 import { PROP_EMISSIVE_GAIN, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
-import { castShadowPosition } from '../render/cast-shadow-nodes';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
@@ -89,6 +89,8 @@ const aSurface = attribute<'vec2'>('aSurface', 'vec2');
 
 const vEmit = varyingProperty('float', 'vEmit');
 const vGloss = varyingProperty('float', 'vGloss');
+/** Three's BatchedMesh vertex setup publishes its RGBA instance colour here. */
+const vBatchColor = varyingProperty('vec4', 'vBatchColor');
 
 /* ==========================================================================
  * 2. THE UNIFORMS
@@ -120,9 +122,9 @@ export type PropNodeUniforms = ReturnType<typeof createUniforms>;
  * `material.positionNode` would land it — every tree in the forest would lean
  * the same way, and it would look deliberate.
  */
-const windOffset = Fn(([time, freq]: [FloatN, FloatN]) => {
+const windOffset = Fn(([time, freq, phaseIn]: [FloatN, FloatN, FloatN]) => {
   const W = PROP_WIND;
-  const phase = aSwayPhase.toVar('swayPhase');
+  const phase = phaseIn.toVar('swayPhase');
   const w = time.mul(freq).add(phase).toVar('w');
   // Two harmonics so the motion never reads as one clean sine.
   const sx = sin(w).mul(W.harmonicA)
@@ -149,10 +151,43 @@ const windOffset = Fn(([time, freq]: [FloatN, FloatN]) => {
  * the colour path. Neither is read by the shadow pass, and assigning an unread
  * varying costs a dead store the backend removes.
  */
-function applyPropVertex(uniforms: PropNodeUniforms): void {
-  positionLocal.addAssign(windOffset(uniforms.uWindTime, uniforms.uWindFreq));
+function applyPropVertex(uniforms: PropNodeUniforms, phase: FloatN = aSwayPhase): void {
+  positionLocal.addAssign(windOffset(uniforms.uWindTime, uniforms.uWindFreq, phase));
   vEmit.assign(aSurface.x);
   vGloss.assign(aSurface.y);
+}
+
+function isBatched(builder: NodeBuilder): builder is NodeBuilder & { object: THREE.BatchedMesh } {
+  return (builder.object as THREE.Object3D & { isBatchedMesh?: boolean }).isBatchedMesh === true;
+}
+
+/**
+ * Shadow twin for both scatter layouts.
+ *
+ * InstancedMesh keeps the original model-space path. BatchedMesh has already
+ * packed each prop's transform and RGB jitter into textures, so its wind phase
+ * rides in the otherwise-unused alpha channel and the displacement is applied
+ * after Three's batch transform in both colour and shadow passes.
+ */
+function propShadowPosition(uniforms: PropNodeUniforms): Vec3N {
+  return Fn((builder: NodeBuilder) => {
+    positionLocal.assign(positionGeometry);
+    normalLocal.assign(normalGeometry);
+
+    if (isBatched(builder)) {
+      batch(builder.object);
+      applyPropVertex(uniforms, vBatchColor.a);
+    } else {
+      applyPropVertex(uniforms);
+      const object = builder.object as THREE.Object3D & Partial<THREE.InstancedMesh>;
+      if (object.isInstancedMesh === true &&
+          object.instanceMatrix?.isInstancedBufferAttribute === true) {
+        instancedMesh(object as THREE.InstancedMesh);
+      }
+    }
+
+    return positionLocal;
+  })();
 }
 
 /* ==========================================================================
@@ -165,6 +200,13 @@ class PropStandardNodeMaterial extends MeshPhysicalNodeMaterial {
   }
 
   override setupPosition(builder: NodeBuilder): Vec3N {
+    if (isBatched(builder)) {
+      const position = super.setupPosition(builder) as Vec3N;
+      applyPropVertex(this.uniforms, vBatchColor.a);
+      shroudVertexUv();
+      return position;
+    }
+
     applyPropVertex(this.uniforms);
     const position = super.setupPosition(builder) as Vec3N;
     /*
@@ -241,7 +283,7 @@ export function createPropNodeMaterials(): PropNodeMaterialSet {
    * no `customDepthMaterial` and no extra upload. `render/cast-shadow-nodes.ts`
    * carries the whole mechanism.
    */
-  material.castShadowPositionNode = castShadowPosition(() => applyPropVertex(uniforms));
+  material.castShadowPositionNode = propShadowPosition(uniforms);
 
   return {
     material,

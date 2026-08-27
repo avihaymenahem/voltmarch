@@ -129,16 +129,7 @@ export interface GraphicsSettings {
    * which is a better judge than a capability guess made at boot.
    */
   msaa: boolean;
-  /**
-   * Vignette strength — strong (0.28) when on, subtle (0.12) when off.
-   *
-   * This said "Film grain, vignette, chromatic aberration — the 'cinematic'
-   * layer", and it drove all three. Grain and chromatic aberration are on
-   * CLAUDE.md's explicit ban list and are now pinned to 0 in both arms of
-   * `Settings.ts#applySettings`; only the vignette still moves. The KEY keeps
-   * its old name so a stored profile still loads — renaming it would need a
-   * schema migration for no player-visible gain.
-   */
+  /** Restrained film grain plus vignette. Chromatic aberration is never enabled. */
   filmGrain: boolean;
   /**
    * Frosted-glass HUD/menu panels. `auto` disables it on macOS/iOS, where
@@ -1042,6 +1033,8 @@ export interface MatchSetup {
   speed: number;
   /** Sim RNG seed. 0 means "roll a fresh one at launch". */
   seed: number;
+  /** Allow deterministic light/heavy rain events during this match. */
+  weather: boolean;
   /**
    * Every AI army, in seat order. Length 1 for a 1v1, 3 for a four-way.
    *
@@ -1262,6 +1255,7 @@ export function defaultSetup(): MatchSetup {
     startingCredits: 10000,
     speed: 1,
     seed: 0,
+    weather: true,
     opponents: [{ faction: 'soviets', difficulty: 1, personality: -1, team: defaultTeamFor(0) }],
   };
 }
@@ -1430,6 +1424,7 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
     startingCredits: Math.round(num(r.startingCredits, 0, 200000, d.startingCredits)),
     speed: Math.round(num(r.speed, 0, SPEEDS.length - 1, d.speed)),
     seed: Math.round(num(r.seed, 0, 0xffffffff, d.seed)),
+    weather: bool(r.weather, d.weather),
     opponents,
   };
 }
@@ -1448,7 +1443,7 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
 
 /** Query keys this shell owns. Everything else on the URL is preserved. */
 export const MANAGED_FLAGS: readonly string[] = [
-  'map', 'biome', 'mapseed', 'seed', 'ai', 'aip', 'art', 'tier',
+  'map', 'biome', 'mapseed', 'seed', 'ai', 'aip', 'art', 'tier', 'weather', 'backdrop',
 ];
 
 /** The value every entry shares, or null when they differ. */
@@ -1488,6 +1483,7 @@ export function buildMatchQuery(
   q.set('biome', map.biome);
   q.set('mapseed', String(map.mapSeed | 0));
   q.set('seed', String((seedOverride ?? setup.seed) >>> 0));
+  q.set('weather', setup.weather ? 'on' : 'off');
   q.set('art', map.mood);
 
   const armies = effectiveOpponents(setup);

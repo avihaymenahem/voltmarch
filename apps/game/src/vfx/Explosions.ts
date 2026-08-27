@@ -275,6 +275,77 @@ export function spawnExplosion(
     emitAdditive(e);
   }
 
+  /* -- 1b. radial ejecta: hot spokes with smoke beads ------------------- */
+  /*
+   * The old recipe jumped from a round flash straight to round billows. It
+   * had plenty of particles but no FORCE: nothing visibly travelled away from
+   * the dying hull. These long, velocity-aligned streaks establish the blast's
+   * radial silhouette, while two delayed lit beads on alternating rays make
+   * them read as burning fragments with short smoke trails rather than lasers.
+   * Small cook-offs skip the layer so a building's secondary pops do not bury
+   * the main death in repeated starbursts.
+   */
+  if (kind !== 'small') {
+    const structure = kind === 'structure';
+    const rayMul = structure ? X.structureEjectaCountMul : 1;
+    const lengthMul = structure ? X.structureEjectaLengthMul : 1;
+    const rays = Math.round(rng.int(X.ejectaRayMin, X.ejectaRayMax) * rayMul);
+    const width = Math.max(0.045, X.ejectaWidthPx * metresPerPixel() * 2.2);
+    for (let i = 0; i < rays; i++) {
+      // Golden-angle spacing prevents the RNG from accidentally bunching the
+      // whole fan to one side. Jitter keeps it from looking procedural.
+      const azimuth = i * 2.39996323 + rng.range(-0.18, 0.18);
+      const elevation = rng.range(0.18, 0.82);
+      const horizontal = Math.cos(elevation);
+      const dx = Math.cos(azimuth) * horizontal;
+      const dy = Math.sin(elevation);
+      const dz = Math.sin(azimuth) * horizontal;
+      const speed = rng.range(X.ejectaSpeedTL[0], X.ejectaSpeedTL[1]) * TL
+        * (0.72 + 0.28 * k);
+      const length = rng.range(X.ejectaLengthTL[0], X.ejectaLengthTL[1]) * TL
+        * k * lengthMul;
+
+      e = resetEmit();
+      e.x = x + dx * 0.35 * k;
+      e.y = y + 0.35 * k + dy * 0.25 * k;
+      e.z = z + dz * 0.35 * k;
+      e.vx = dx * speed; e.vy = dy * speed; e.vz = dz * speed;
+      e.gravity = 13.5; e.drag = 0.72;
+      e.floorY = floor;
+      e.delayMs = (i % 3) * 18;
+      e.lifeMs = X.ejectaLifeMs * rng.range(0.78, 1.18);
+      e.size0 = width; e.size1 = width * 0.38;
+      e.aspect = length / width;
+      e.ramp = VFX_RAMP.spark; e.tA = 0; e.tB = 1;
+      e.tile = VFX_TILE.spark;
+      e.alignVel = 1;
+      e.i0 = X.ejectaIntensity * glare; e.i1 = 0.12 * glare;
+      emitAdditive(e);
+
+      if ((i & 1) !== 0) continue;
+      for (let bead = 0; bead < X.ejectaSmokeBeads; bead++) {
+        e = resetEmit();
+        e.x = x + dx * 0.4 * k;
+        e.y = y + 0.25 * k;
+        e.z = z + dz * 0.4 * k;
+        const beadSpeed = speed * (0.53 + bead * 0.09);
+        e.vx = dx * beadSpeed; e.vy = dy * beadSpeed; e.vz = dz * beadSpeed;
+        e.gravity = 7.5; e.drag = 1.65;
+        e.floorY = floor;
+        e.delayMs = 42 + bead * 72 + (i % 3) * 12;
+        e.lifeMs = X.ejectaSmokeLifeMs * rng.range(0.75, 1.18);
+        e.size0 = 0.22 * k; e.size1 = 0.95 * k;
+        e.sizeEase = 0.72;
+        e.ramp = VFX_RAMP.smokeDark; e.tA = 0.05; e.tB = 0.78;
+        e.tile = bead === 0 ? VFX_TILE.puffAlt : VFX_TILE.lobe;
+        e.rot = rng.range(0, Math.PI * 2);
+        e.rotVel = rng.range(-0.5, 0.5);
+        e.alpha = 0.48;
+        emitLit(e);
+      }
+    }
+  }
+
   /* -- 2. fireball: 8–14 billows, each with a WHITE RADIAL CORE ----------- */
   /*
    * The billow COUNT comes down with the glare, not only the gain, and the

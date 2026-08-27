@@ -1,6 +1,6 @@
 # VOLTMARCH environment realism and prop renewal
 
-Status: in progress · owner: world/art pipeline · updated 2026-08-26
+Status: in progress · owner: world/art pipeline · updated 2026-08-27
 
 ## Intent
 
@@ -14,18 +14,53 @@ renderer-neutral material, each live type is one instanced colour draw, placemen
 and static/transient ground marks are pooled into two bounded decal draws. This plan extends those
 systems. It does not replace them with thousands of independent GLBs or unique 2K textures.
 
-## What is missing
+## What remains
 
-- Context. Dirt, oil, leaves, rubble, and props are not yet arranged as small stories around roads,
-  depots, civilian blocks, resource sites, shorelines, and faction bases.
-- Contact variation. The existing dust wear outside some buildings is useful, but there are too few
-  families of edge grime, rust runoff, mud, leaf litter, gravel, and service stains.
+- More context families. Dirt, oil, rubble and props now form a first set of small stories around
+  roads, openings and structures; depots, civilian blocks, shorelines and resource sites still need
+  more authored combinations.
+- More contact variation. Dust, grime, rust and service stains are live, but terrain-composed mud,
+  leaf litter and gravel need better forms than the rejected circular decal stamps.
 - Prop fidelity. Cars, crate stacks, umbrellas, rocks, and some civic props have good silhouettes at
   ordinary RTS distance but lack the larger secondary forms that survive close inspection.
 - Biome aging. The same object should collect dust in desert, damp grime in temperate maps, exposed
   rust around salt water, and dirty snow at roadsides without requiring a unique material per object.
 - Destruction continuity. Scorch, craters, tracks, and construction clearing exist; persistent small
   rubble and disturbed-ground compositions need to connect them visually.
+
+## Current implementation checkpoint
+
+The first static composition slice is live, with one important correction from in-product visual QA:
+
+- leaf, gravel and paper atlas stamps were rejected. At RTS distance their authored lobes read as
+  rings of dark circles, so normal map generation no longer has any runtime spawn site for those
+  three physical-debris decal kinds;
+- physical debris is geometry-only: a new low-profile batched debris pile combines stones, timber,
+  rusted plate and pale scraps, settles deterministically around MCV openings and does not block nav;
+- deterministic ground stories are restricted to marks the multiply layer represents truthfully:
+  tyre tracks, oil, faint dust/grime, scorch and craters;
+- road and ore edges no longer receive gravel atlas stamps. A future pass must solve those edges
+  with terrain composition or real geometry, not by restoring oval decal clusters;
+- structure footprints receive bounded dust, grime, rust and occasional oil outside their gameplay
+  clearance;
+- a destroyed structure leaves fading demolition dust and faint permanent grime beneath its
+  existing faction-specific rubble geometry; the rejected broken-stone decal fans are gone;
+- composition remains deterministic and idempotent, and the shared ground-story ceiling remains 92
+  marks before base wear and combat effects;
+- WebGPU terrain and scatter objects are batched by shadow policy, so the additional composition
+  does not restore the cold-start pipeline duplication removed during the Electron boot pass.
+
+The original 2026-08-26 matrix was technically clean but failed later in-product readability review:
+the physical-debris stamps were visibly artificial. The corrected contract is now pinned by tests:
+no leaf/gravel/paper decal can spawn from openings, roads, ore edges, semantic scatter stories or
+demolition rubble. The geometry replacement remains inside the existing WebGPU prop batches.
+
+Dynamic atmosphere is also live. Skirmish Advanced settings can disable it; when enabled, seeded
+presentation state selects clear, light-rain or heavy-rain windows without entering the deterministic
+simulation. Rain uses narrow camera-projected streaks in WebGPU and WebGL, windows last 84–114 seconds
+to avoid rapid switching, and occasional lightning briefly raises the existing sun and hemisphere
+lights so the flash affects the world and its shadows. Film grain is a separate restrained post layer
+at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
 
 ## The five-layer solution
 

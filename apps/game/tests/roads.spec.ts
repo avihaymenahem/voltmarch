@@ -19,6 +19,7 @@ import * as THREE from 'three';
 
 import {
   DECAL_GRID, DECAL_LIFT, MAP_SIZE, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
+  ROAD_SURFACE_LIFT,
   ROAD_KERB_HEIGHT, ROAD_LANE_WIDTH, ROAD_MIN_AXIS_DEGREES, ROAD_MOVE_COST, SCORCH_DARKEN,
   SQUISH_DARKEN, SQUISH_LIFE_SECONDS, TREAD_DARKEN,
 } from '../src/core/config';
@@ -29,7 +30,8 @@ import {
   roadHalfWidth, setActiveRoads,
 } from '../src/world/Roads';
 import {
-  DECAL_LAYOUT, DecalField, DecalKind, groundDecals, layDecal, setActiveDecals,
+  DECAL_LAYOUT, DecalField, DecalKind, groundDecals, layDecal, layRubbleStory,
+  setActiveDecals,
 } from '../src/world/Decals';
 
 /* ==========================================================================
@@ -315,7 +317,31 @@ describe('RoadNetwork — end to end', () => {
     expect(b.chains).toBe(a.chains);
     expect(b.junctions).toBe(a.junctions);
     expect(b.metres).toBeCloseTo(a.metres, 3);
+    expect(b.shoulderMarks).toBe(a.shoulderMarks);
     other.dispose();
+  });
+
+  it('does not fake road shoulders with oval physical-debris decals', () => {
+    const scene2 = new THREE.Scene();
+    const decals = new DecalField({
+      scene: scene2, capacity: 384, heightAt: (x, z) => terrain.heightAt(x, z),
+    });
+    const dressed = new RoadNetwork({
+      scene: scene2, terrain, seed: 0x1234abc, decals, stampTerrain: false,
+    });
+    dressed.generate();
+    const s = dressed.stats();
+    expect(s.shoulderMarks).toBe(0);
+    const params = decals.mesh.geometry.getAttribute('aParams');
+    for (let slot = 0; slot < decals.liveCount; slot++) {
+      const vertex = slot * DECAL_LAYOUT.vertsPerDecal;
+      const kind = params.getX(vertex);
+      expect(kind).not.toBe(DecalKind.Gravel);
+      expect(kind).not.toBe(DecalKind.LeafLitter);
+      expect(kind).not.toBe(DecalKind.PaperLitter);
+    }
+    dressed.dispose();
+    decals.dispose();
   });
 
   it('routes the complete road corridor around reserved base aprons', () => {
@@ -376,6 +402,11 @@ describe('DecalField — the pool', () => {
       expect(pos.getY(i)).toBeCloseTo(expected, 5);
     }
     f.dispose();
+  });
+
+  it('keeps ground marks physically above terrain and road depth noise', () => {
+    expect(DECAL_LIFT).toBeGreaterThan(ROAD_SURFACE_LIFT);
+    expect(DECAL_LIFT - ROAD_SURFACE_LIFT).toBeGreaterThanOrEqual(0.019);
   });
 
   it('sizes a slot at (DECAL_GRID+1)^2 vertices and 18 triangles', () => {
@@ -498,6 +529,30 @@ describe('DecalField — the pool', () => {
     setActiveDecals(null);
     f.dispose();
   });
+
+  it('leaves a bounded rubble story after the explosion dust fades', () => {
+    const f = new DecalField({ scene: new THREE.Scene(), capacity: 8 });
+    setActiveDecals(f);
+    layRubbleStory(20, 30, 8, 0.7);
+    expect(f.liveCount).toBe(2);
+    const p = f.mesh.geometry.getAttribute('aParams');
+    const kinds: number[] = [];
+    const lives: number[] = [];
+    const strengths: number[] = [];
+    for (let slot = 0; slot < 2; slot++) {
+      const i = slot * DECAL_LAYOUT.vertsPerDecal;
+      kinds.push(p.getX(i));
+      lives.push(p.getZ(i));
+      strengths.push(p.getW(i));
+    }
+    expect(kinds).toEqual([DecalKind.Dust, DecalKind.Grime]);
+    expect(lives[0]).toBeGreaterThan(0);
+    expect(lives.slice(1)).toEqual([0]);
+    expect(strengths[0]).toBeLessThan(0.4);
+    expect(strengths[1]).toBeLessThan(0.3);
+    setActiveDecals(null);
+    f.dispose();
+  });
 });
 
 /* ==========================================================================
@@ -551,6 +606,8 @@ describe('the procedural decal atlas has a drawn tile for every kind', () => {
     ['Manhole', DecalKind.Manhole], ['LightPool', DecalKind.LightPool],
     ['Crack', DecalKind.Crack], ['Patch', DecalKind.Patch], ['Squish', DecalKind.Squish],
     ['Rust', DecalKind.Rust], ['Grime', DecalKind.Grime],
+    ['LeafLitter', DecalKind.LeafLitter], ['Gravel', DecalKind.Gravel],
+    ['PaperLitter', DecalKind.PaperLitter],
   ];
 
   for (const [name, kind] of KINDS) {

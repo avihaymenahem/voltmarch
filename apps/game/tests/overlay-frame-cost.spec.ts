@@ -188,6 +188,31 @@ describe('Overlay — the selection ring is projected once and stroked three tim
   });
 });
 
+describe('Overlay — build reach reads as one territory, not stacked circles', () => {
+  const text = src('apps/game/src/ui/Overlay.ts');
+
+  it('fills all reach discs together but strokes only uncovered exterior arcs', () => {
+    const draw = text.slice(
+      text.indexOf('private drawBuildArea('),
+      text.indexOf('private addGroundDisc('),
+    );
+    const boundary = text.slice(
+      text.indexOf('private addBuildBoundaryArcs('),
+      text.indexOf('/* ------------------------------------------------------------------ */',
+        text.indexOf('private addBuildBoundaryArcs(')),
+    );
+    expect(draw).toContain("ctx.fill('nonzero')");
+    expect(draw).toContain('this.addBuildBoundaryArcs(i, drawn)');
+    expect(boundary).toContain('if (covered) continue;');
+    expect(boundary).toContain('dx * dx + dz * dz < rr * rr');
+  });
+
+  it('keeps its disc scratch at module scope instead of allocating each frame', () => {
+    expect(text).toContain('const BUILD_AREA_X = new Float32Array(BUILD_AREA_MAX)');
+    expect(text).toContain('const BUILD_AREA_R = new Float32Array(BUILD_AREA_MAX)');
+  });
+});
+
 /* ========================================================================== */
 
 describe('order markers — one submission per frame, not two', () => {

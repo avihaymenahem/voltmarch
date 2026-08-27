@@ -744,7 +744,7 @@ export class SkirmishSetupScreen implements Screen {
      * is. Collapsed by default and rebuilt with the column, so a Starting
      * Condition change still re-derives the credit ladder underneath it.     */
     const adv = this.disclosure(
-      col, 'Advanced', 'Personality · Credits · Speed · Tech · Seed',
+      col, 'Advanced', 'Personality · Credits · Speed · Tech · Weather · Seed',
     );
 
     // ONE ROW PER OPPONENT, LABELLED BY NUMBER when there is more than one.
@@ -800,6 +800,16 @@ export class SkirmishSetupScreen implements Screen {
         'Mirrored, the AI fields only what you have unlocked. Unrestricted, it fields everything.',
       ));
     }
+
+    adv.appendChild(row(
+      'Dynamic Weather',
+      chooser(
+        [{ value: 1, label: 'Enabled' }, { value: 0, label: 'Disabled' }],
+        this.setup.weather ? 1 : 0,
+        (v) => { this.setup.weather = v === 1; },
+      ),
+      'Randomly brings in light or heavy rain. Visual only; simulation and balance stay unchanged.',
+    ));
 
     /* -- seed ------------------------------------------------------------- */
     const seedRow = el('div', 'vm-row-control');
@@ -899,6 +909,7 @@ export class SkirmishSetupScreen implements Screen {
       startingCredits: this.setup.startingCredits,
       speed: this.setup.speed,
       seed: rollSeed(),
+      weather: this.setup.weather,
       opponents: [{ faction: foe, difficulty, personality: -1, team: teams[0] ?? defaultTeamFor(0) }],
     }, seats, this.factions.map((f) => f.key));
     this.setup.opponents.forEach((o, i) => { o.team = teams[i] ?? o.team; });

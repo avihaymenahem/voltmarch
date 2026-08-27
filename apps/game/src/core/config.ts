@@ -285,6 +285,16 @@ export const STOREY = 3.2;
  */
 export const AUTO_BASE_APRON_RADIUS = 52;
 
+/** Dolly distance used by the slowly orbiting title-screen battlefield. */
+export const TITLE_BACKDROP_CAMERA_DISTANCE = 104;
+
+/**
+ * Tall-prop clearance around the non-playable title-screen base. Grass and
+ * other low ground cover may remain inside it; trees, rocks and yard props
+ * frame the compound instead of occupying its lanes.
+ */
+export const TITLE_BACKDROP_SCATTER_CLEAR_RADIUS = 44;
+
 /**
  * Prop-free core around an MCV opening.
  *
@@ -6776,6 +6786,24 @@ export const VFX_EXPLOSION = {
    */
   shockIntensity: 1.7,
 
+  /* -- radial destruction ejecta --------------------------------------- */
+
+  /**
+   * Long hot spokes thrown out of a vehicle/building detonation. These are
+   * deliberately sparse and readable, not the 30-45 hairline sparks used for
+   * routine armour impacts: a death needs a visible radial silhouette.
+   */
+  ejectaRayMin: 12, ejectaRayMax: 18,
+  /** Buildings throw a denser, longer fan without changing the flash size. */
+  structureEjectaCountMul: 1.55, structureEjectaLengthMul: 1.35,
+  /** World speed in TL/s and visible streak length in TL. */
+  ejectaSpeedTL: [3.8, 7.2] as const,
+  ejectaLengthTL: [0.55, 1.25] as const,
+  /** Screen-stable line width, quick hot phase, and restrained HDR gain. */
+  ejectaWidthPx: 1.35, ejectaLifeMs: 620, ejectaIntensity: 3.4,
+  /** Every other ray carries this many staggered smoke beads behind it. */
+  ejectaSmokeBeads: 2, ejectaSmokeLifeMs: 1050,
+
   /** Smoke plume: 14-22 puffs, onset 120 ms, dead at 5.5 s. */
   puffMin: 14, puffMax: 22,
   /**
@@ -7728,8 +7756,17 @@ export const DECAL_POOL = 512;
  * decal to the ground to well under a centimetre.
  */
 export const DECAL_GRID = 3;
-/** Metres a decal floats above the heightfield. Under the road lift, on purpose. */
-export const DECAL_LIFT = 0.035;
+/**
+ * Metres a decal floats above the heightfield.
+ *
+ * This must clear `ROAD_SURFACE_LIFT` as well as the terrain itself. At 3.5 cm
+ * a rotated, terrain-conformed tread could intersect both the one-metre terrain
+ * triangles and the 6 cm road ribbon between its sampled vertices. WebGPU then
+ * alternated which surface won the depth test as the camera moved, making the
+ * mark visibly jitter. Eight centimetres remains visually welded to the ground
+ * while leaving a real depth gap on every supported ground surface.
+ */
+export const DECAL_LIFT = 0.08;
 /** Edge length of the procedural decal atlas (4x4 tiles). */
 export const DECAL_ATLAS_SIZE = 512;
 /** Slots swept per frame looking for expired decals to collapse. */
@@ -7855,10 +7892,10 @@ export const CONTACT_DARKEN_CORE = 0.34;
 /**
  * Metres the pool floats above the heightfield.
  *
- * Above `DECAL_LIFT` (0.035) on purpose. Both layers multiply and multiplication
- * commutes, so the ORDER does not matter — but a tread strip and a pool at the
- * same height on a slope decided by two different conforming schemes would
- * z-fight, and neither writes depth to break the tie.
+ * Kept on its own depth plane. Both layers multiply and multiplication
+ * commutes, so whether a contact pool is physically above or below a tread does
+ * not change the colour — only the separation matters, because neither writes
+ * depth and two differently conformed overlays at one height would z-fight.
  */
 export const CONTACT_DARKEN_LIFT = 0.055;
 /**

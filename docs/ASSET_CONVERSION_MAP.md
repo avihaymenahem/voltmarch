@@ -117,7 +117,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A2 | `allied_tech` | Tech Centre | BLD | integrated | 26,554-triangle laboratory landmark, 11,949-triangle LOD1 and 1,632-triangle inset caster |
 | A2 | `allied_commandpost` | Command Post | BLD | integrated | 24,543-triangle static aerial silhouette and 2,472-triangle inset caster; no radar-dish duplication |
 | A2 | `allied_depot` | Repair Depot | BLD | integrated | 26,643-triangle open service deck, 11,988-triangle LOD1 and 1,992-triangle inset caster |
-| A2 | `allied_silo` | Ore Silo | BLD | integrated shared kit | Small faction-atlas storage module retained and audited; hopper/dock sockets preserved without a unique texture allocation |
+| A2 | `allied_silo` | Ore Silo | BLD | integrated | Geometry `01a0405e-c2dc-78d9-893a-3b5ce47c3818`, remesh `01a04064-fbd0-7b3c-8f14-e55eabe55300`, texture `01a04067-7ba0-7b3f-8b52-93cb97656a56`; 13,799-triangle ceramic/graphite storage landmark, 2,280-triangle caster and KTX2 PBR. The procedural shell is now fallback/socket authority only. |
 | A2 | `allied_navalyard` | Naval Yard | BLD | integrated | 39,462-triangle open waterline factory, 18,888-triangle LOD1 and 2,148-triangle inset caster |
 | A2 | `allied_pillbox` | Pillbox | DEF | integrated shared kit | Animation-safe fixed casemate retained and audited; graphite embrasure and muzzle socket remain authoritative |
 | A2 | `allied_aa` | AA Battery | DEF | integrated shared kit | Animation-safe fixed base and real turret pivot retained; dual muzzle sockets and broad faction bands validated |
@@ -236,7 +236,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | N1 | `civ_derrick` | Oil Derrick | BLD | validated | Geometry `01a03e6b-f287-70ec-84a0-a2b567e4943b`, 20k retopo `01a03e71-cda0-72f7-aa35-f42cf6e74c9a`, texture `01a03e7b-b3f1-76b9-b7cb-72ec959f2af5`; 19,673-triangle pumpjack landmark, 2,880-triangle caster and KTX2 PBR. Auto colour LOD was visually rejected and quarantined; procedural fallback retained. |
 | N1 | `civ_hospital` | Civilian Hospital | BLD | validated | Geometry `01a03e6d-be61-7b25-a21d-b96285c5dca5`, texture `01a03e7d-7160-771f-86f2-3a91c63a2b98`; conservative local hard-surface reduction to 39,291 triangles, 2,112-triangle caster and KTX2 PBR. The 17k Meshy retopo and generated colour LOD were rejected for window holes/faceting; procedural fallback retained. |
 | N1 | `civ_apartments` | Apartment Block | BLD | validated | Geometry `01a03eab-d27f-7ece-baf9-7caa397bc084`, texture `01a03eb7-ad43-7b59-bd6f-e708b6e0744e`; conservative local hard-surface reduction to 33,363 shipping triangles, reviewed 14,981-triangle LOD1, 2,112-triangle caster and KTX2 PBR. The paid 33k Meshy remesh was rejected for rounding the facade and collapsing balcony recesses; the stricter automatic LOD2 remains blocked and is not referenced. Procedural fallback retained. |
-| N1 | `civ_mine` | Ore Mine | BLD | procedural | Neutral industrial kit; headframe/sheave/spoil silhouette |
+| N1 | `civ_mine` | Ore Mine | BLD | integrated | Geometry `01a0405e-c3c4-7553-a1cc-910c52928425`, remesh `01a04064-fca5-7f23-8910-2a914744cf99`, texture `01a04067-7c98-7b40-9624-6df71607c93a`; 22,073-triangle A-frame headhouse with twin winding drums, reviewed 16,438-triangle LOD1, 1,812-triangle caster and KTX2 PBR. The procedural shell is now fallback/socket authority only. |
 
 ## Neutral environment props
 

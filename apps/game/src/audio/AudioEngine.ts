@@ -1774,6 +1774,7 @@ export interface MusicTrackSnapshot {
   readonly title: string;
   readonly index: number;
   readonly total: number;
+  readonly paused: boolean;
 }
 
 export interface AudioFacade {
@@ -1787,6 +1788,7 @@ export interface AudioFacade {
   playMenuMusic(): void;
   previousMusicTrack(): void;
   nextMusicTrack(): void;
+  toggleMusicPaused(): void;
   readonly musicTrack: MusicTrackSnapshot | null;
   readonly engine: AudioEngine | null;
 }

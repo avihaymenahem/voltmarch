@@ -17,15 +17,14 @@
  *      structure snapped to the build grid, a per-cell green/red validity
  *      carpet under it, and a commit that lands with a thunk.
  *
- * WHY THE GHOST IS A HOLOGRAM AND NOT THE REAL MESH
- * -------------------------------------------------
- * The RenderBridge owns every real model and hands them out per ENTITY; there
- * is no "draw me this model at this transform, unowned" path, and inventing one
- * would mean a second instancing system. A chamfer-free translucent volume plus
- * a bright edge wire is also closer to what RA3 actually draws: the reference
- * frames (refs/ra3steam_07.jpg) show structures sitting inside a painted
- * foundation rectangle, and the rectangle is doing most of the reading, not the
- * building silhouette.
+ * THE GHOST USES THE REAL SILHOUETTE
+ * ----------------------------------
+ * The bridge exposes a read-only view of the geometry it already resolved for
+ * live entities. Placement borrows those geometries, gives them one shared
+ * hologram material, and never disposes them. This keeps one model registry and
+ * makes a Power Plant look like a Power Plant before the click instead of like
+ * an anonymous box. A larger terrain-following grid supplies the construction
+ * context; the footprint carpet remains the exact per-cell legality answer.
  *
  * THE CONCRETE PAD
  * ----------------
@@ -54,13 +53,14 @@
 import * as THREE from 'three';
 
 import {
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, PLACEMENT, PRODUCTION, RENDER_ORDER,
+  BUILD_RADIUS, CELL, FACTION_PALETTE, MAP_CELLS, MAP_SIZE, PLACEMENT, PRODUCTION, RENDER_ORDER,
 } from '../core/config';
-import { EntityFlag, EntityKind, Locomotor, NONE } from '../core/types';
+import { EntityFlag, EntityKind, FACTION_PALETTE_KEYS, Locomotor, NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { clampWorld, footprintOriginCell, hexToInt, isInMap, worldToCell } from '../core/math';
 import type { CameraRig } from '../render/camera';
+import { resolveKindPreviewParts } from '../render/RenderBridge';
 // Pure data, no imports of its own, and already read by `src/ui/Sidebar.ts` for
 // exactly this reason: the key the engine listens for and the key the help
 // screen promises must be ONE array. This module already reaches into
@@ -665,6 +665,13 @@ const bandColor = new THREE.Color();
 const arrowColor = new THREE.Color();
 const originCell = new Int32Array(2);
 
+/** Four cells of context around the exact footprint, like a construction mat. */
+const GRID_MARGIN_CELLS = 4;
+const GRID_MAX_SPAN = PLACEMENT.maxFootprintCells + GRID_MARGIN_CELLS * 2;
+const GRID_MAX_SEGMENTS = 2 * GRID_MAX_SPAN * (GRID_MAX_SPAN + 1);
+const GRID_LIFT = 0.11;
+const PREVIEW_OPACITY = 0.44;
+
 /**
  * The keys that turn the ghost. FIXED, and handled by this controller's own
  * window listener rather than by `src/input/input.system.ts`, for the same
@@ -802,6 +809,14 @@ export class PlacementController {
   private readonly cellMat: THREE.MeshBasicMaterial;
   private readonly boxGeo: THREE.BoxGeometry;
   private readonly edgeGeo: THREE.EdgesGeometry;
+  /** Terrain-following construction grid around the exact validity carpet. */
+  private readonly grid: THREE.LineSegments;
+  private readonly gridGeo: THREE.BufferGeometry;
+  private readonly gridMat: THREE.LineBasicMaterial;
+  private readonly gridPos: Float32Array;
+  /** Real building silhouette, rebuilt only when a different item is picked up. */
+  private readonly previewRoot: THREE.Group;
+  private readonly previewMat: THREE.MeshStandardMaterial;
   /* THE FACING MARKER. See the block comment above `FACING_BAND_DEPTH`: on 35
    * of the 41 buildings the footprint does not change with a turn, so this pair
    * is the ONLY thing on screen that says which way the structure is holding.
@@ -934,6 +949,10 @@ export class PlacementController {
     this.volume.castShadow = false;
     this.volume.receiveShadow = false;
     this.volume.frustumCulled = false;
+    // Kept as the measured footprint envelope, but superseded visually by the
+    // real silhouette below. A full-height box over the model makes every
+    // structure look identical and muddies the construction grid.
+    this.volume.visible = false;
     this.group.add(this.volume);
 
     this.edgeGeo = new THREE.EdgesGeometry(this.boxGeo);
@@ -948,7 +967,49 @@ export class PlacementController {
     this.edges = new THREE.LineSegments(this.edgeGeo, this.edgeMat);
     this.edges.renderOrder = RENDER_ORDER.overlay + 1;
     this.edges.frustumCulled = false;
+    this.edges.visible = false;
     this.group.add(this.edges);
+
+    // A broad LOCAL grid provides context without painting the entire map.
+    // Each segment follows the heightfield, so the mat stays glued to slopes
+    // and keeps the camera's real perspective under every tilt.
+    this.gridPos = new Float32Array(GRID_MAX_SEGMENTS * 2 * 3);
+    this.gridGeo = new THREE.BufferGeometry();
+    this.gridGeo.setAttribute('position', new THREE.BufferAttribute(this.gridPos, 3));
+    this.gridGeo.setDrawRange(0, 0);
+    this.gridMat = new THREE.LineBasicMaterial({
+      color: ghostTint,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.grid = new THREE.LineSegments(this.gridGeo, this.gridMat);
+    this.grid.name = 'placement-construction-grid';
+    this.grid.renderOrder = RENDER_ORDER.overlay - 1;
+    this.grid.frustumCulled = false;
+    this.group.add(this.grid);
+
+    // The actual resolved building geometry, rendered with one deliberately
+    // simple lit material. Lighting keeps roofs, stacks and machinery legible
+    // inside the tint; borrowing the live materials here would also borrow
+    // construction-sink shaders and opaque texture state.
+    this.previewMat = new THREE.MeshStandardMaterial({
+      color: ghostTint,
+      emissive: ghostTint,
+      emissiveIntensity: 0.28,
+      roughness: 0.72,
+      metalness: 0.06,
+      transparent: true,
+      opacity: PREVIEW_OPACITY,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.previewRoot = new THREE.Group();
+    this.previewRoot.name = 'placement-building-preview';
+    this.previewRoot.matrixAutoUpdate = false;
+    this.group.add(this.previewRoot);
 
     // One instanced quad per footprint cell, tinted per instance.
     const quad = new THREE.PlaneGeometry(1, 1);
@@ -1057,6 +1118,7 @@ export class PlacementController {
     this.relocating = NONE;
     this.srcCell.w = 0;
     this.entry = entry;
+    this.rebuildPreview(this.deps.world.player(player).faction, entry.defId);
     this.active = true;
     this.dirty = true;
     this.attach();
@@ -1167,6 +1229,7 @@ export class PlacementController {
 
     this.relocating = building;
     this.entry = entry;
+    this.rebuildPreview(store.faction[i], store.defId[i]);
     this.active = true;
     this.dirty = true;
     // Adopt the structure's own facing. A sticky facing left over from the last
@@ -1434,7 +1497,27 @@ export class PlacementController {
     }
   }
 
-  /** Push the current footprint into the three meshes. Zero allocation. */
+  /** Rebuild the borrowed real-model silhouette when the carried item changes. */
+  private rebuildPreview(faction: number, defId: number): void {
+    this.previewRoot.clear();
+    const paletteKey = FACTION_PALETTE_KEYS[faction] ?? 'neutral';
+    this.gridMat.color.set(FACTION_PALETTE[paletteKey].hudAccent);
+    const parts = resolveKindPreviewParts(EntityKind.Building, faction, defId);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const mesh = new THREE.Mesh(part.geometry, this.previewMat);
+      mesh.position.set(part.offsetX ?? 0, part.offsetY ?? 0, part.offsetZ ?? 0);
+      mesh.updateMatrix();
+      mesh.matrixAutoUpdate = false;
+      mesh.renderOrder = RENDER_ORDER.overlay;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.frustumCulled = false;
+      this.previewRoot.add(mesh);
+    }
+  }
+
+  /** Push the current footprint into the placement meshes. */
   private updateMeshes(): void {
     const entry = this.entry;
     if (entry === null) return;
@@ -1467,6 +1550,41 @@ export class PlacementController {
     this.cells.instanceMatrix.needsUpdate = true;
     if (this.cells.instanceColor !== null) this.cells.instanceColor.needsUpdate = true;
 
+    /* -- construction grid ----------------------------------------------- */
+    const gx0 = Math.max(0, cx - GRID_MARGIN_CELLS);
+    const gz0 = Math.max(0, cz - GRID_MARGIN_CELLS);
+    const gx1 = Math.min(MAP_CELLS, cx + w + GRID_MARGIN_CELLS);
+    const gz1 = Math.min(MAP_CELLS, cz + h + GRID_MARGIN_CELLS);
+    let gp = 0;
+    for (let z = gz0; z <= gz1; z++) {
+      const wz = z * CELL;
+      for (let x = gx0; x < gx1; x++) {
+        const wx0 = x * CELL;
+        const wx1 = (x + 1) * CELL;
+        this.gridPos[gp++] = wx0;
+        this.gridPos[gp++] = world.terrain.heightAt(wx0, wz) + GRID_LIFT;
+        this.gridPos[gp++] = wz;
+        this.gridPos[gp++] = wx1;
+        this.gridPos[gp++] = world.terrain.heightAt(wx1, wz) + GRID_LIFT;
+        this.gridPos[gp++] = wz;
+      }
+    }
+    for (let x = gx0; x <= gx1; x++) {
+      const wx = x * CELL;
+      for (let z = gz0; z < gz1; z++) {
+        const wz0 = z * CELL;
+        const wz1 = (z + 1) * CELL;
+        this.gridPos[gp++] = wx;
+        this.gridPos[gp++] = world.terrain.heightAt(wx, wz0) + GRID_LIFT;
+        this.gridPos[gp++] = wz0;
+        this.gridPos[gp++] = wx;
+        this.gridPos[gp++] = world.terrain.heightAt(wx, wz1) + GRID_LIFT;
+        this.gridPos[gp++] = wz1;
+      }
+    }
+    this.gridGeo.setDrawRange(0, gp / 3);
+    this.gridGeo.attributes.position.needsUpdate = true;
+
     /* -- hologram --------------------------------------------------------- */
     // Sample the footprint corners so the volume sits ON the ground it will be
     // founded on, not on the height under its centre.
@@ -1488,6 +1606,14 @@ export class PlacementController {
     this.edges.position.copy(this.volume.position);
     this.edges.updateMatrix();
     this.edges.matrixWorldNeedsUpdate = true;
+
+    // Real model origins are ground-plane centres. The preview carries the
+    // local authored facing while the axis-aligned envelope uses swapped world
+    // extents, exactly like the committed entity.
+    this.previewRoot.position.set(bx, base, bz);
+    this.previewRoot.rotation.set(0, facingYaw(this.facing), 0);
+    this.previewRoot.updateMatrix();
+    this.previewRoot.matrixWorldNeedsUpdate = true;
 
     /* -- the facing marker -------------------------------------------------
      * Local +Z is forward (`BuildEntry.exitZ` is measured off that edge), so
@@ -1555,6 +1681,8 @@ export class PlacementController {
     const tint = this.report.ok ? okColor : badColor;
     this.volumeMat.color.copy(tint);
     this.edgeMat.color.copy(tint);
+    this.previewMat.color.copy(tint);
+    this.previewMat.emissive.copy(tint);
 
     this.group.visible = true;
   }
@@ -1619,11 +1747,14 @@ export class PlacementController {
     this.group.removeFromParent();
     this.boxGeo.dispose();
     this.edgeGeo.dispose();
+    this.gridGeo.dispose();
     this.bandGeo.dispose();
     this.arrowGeo.dispose();
     this.cells.geometry.dispose();
     this.volumeMat.dispose();
     this.edgeMat.dispose();
+    this.gridMat.dispose();
+    this.previewMat.dispose();
     this.cellMat.dispose();
     this.bandMat.dispose();
     this.arrowMat.dispose();

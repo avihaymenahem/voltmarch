@@ -7,6 +7,7 @@ export class MusicControl {
   readonly root: HTMLElement;
   private readonly title: HTMLElement;
   private readonly position: HTMLElement;
+  private readonly toggle: HTMLButtonElement | null;
   private listening = false;
 
   private readonly onTrack = (event: Event): void => {
@@ -37,6 +38,10 @@ export class MusicControl {
     controls.appendChild(this.step('Previous soundtrack cue', 'chevronLeft', () => {
       audio()?.previousMusicTrack();
     }));
+    this.toggle = context === 'menu'
+      ? this.step('Pause soundtrack', 'pause', () => { audio()?.toggleMusicPaused(); })
+      : null;
+    if (this.toggle !== null) controls.appendChild(this.toggle);
     controls.appendChild(this.step('Next soundtrack cue', 'chevronRight', () => {
       audio()?.nextMusicTrack();
     }));
@@ -74,5 +79,13 @@ export class MusicControl {
     }
     this.title.textContent = track.title;
     this.position.textContent = `${String(track.index + 1).padStart(2, '0')} / ${String(track.total).padStart(2, '0')}`;
+    if (this.toggle !== null) {
+      const label = track.paused ? 'Resume soundtrack' : 'Pause soundtrack';
+      this.toggle.setAttribute('aria-label', label);
+      this.toggle.setAttribute('aria-pressed', String(track.paused));
+      this.toggle.title = label;
+      this.toggle.replaceChildren(icon(track.paused ? 'play' : 'pause', 15));
+      this.toggle.classList.toggle('is-active', track.paused);
+    }
   }
 }

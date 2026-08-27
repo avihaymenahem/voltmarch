@@ -206,12 +206,24 @@ export class ProjectileSystem {
     this.splashFalloff[i] = splashFalloff;
     this.airMul[i] = airMul;
     this.impactFx[i] = impactFx;
-    this.travelFx[i] = travelFx;
+    // A tracer describes the round itself, not a smoke trail. The old path
+    // stored it here and `bead()` emitted another independent tracer every
+    // 2.4 metres, so a single tank shell became a moving bundle of roughly ten
+    // luminous lines. Emit it once at launch and keep only genuinely repeating
+    // trail effects in the projectile slot.
+    const isTracer = travelFx === FxKind.TracerBullet || travelFx === FxKind.TracerCannon;
+    this.travelFx[i] = isTracer ? FxKind.None : travelFx;
 
     this.attacker[i] = attacker as number;
     this.target[i] = target as number;
     this.owner[i] = owner as number;
     this.faction[i] = faction;
+
+    if (isTracer) {
+      this.channels.fx.push(
+        travelFx, ox, oy, oz, dirX, dirY, dirZ, 1, attacker, faction,
+      );
+    }
 
     this.livePos[i] = this.liveCountInternal;
     this.liveList[this.liveCountInternal++] = i;
@@ -289,7 +301,7 @@ export class ProjectileSystem {
         continue;
       }
 
-      this.bead(i, step);
+      this.bead(i, dx, dy, dz, step);
     }
   }
 
@@ -476,7 +488,7 @@ export class ProjectileSystem {
    * per `trailBeadMetres` is how the sim expresses that without knowing
    * anything about particles.
    */
-  private bead(i: number, step: number): void {
+  private bead(i: number, dx: number, dy: number, dz: number, step: number): void {
     const fx = this.travelFx[i];
     if (fx === FxKind.None) return;
     this.nextBead[i] -= step;
@@ -484,7 +496,7 @@ export class ProjectileSystem {
     this.nextBead[i] += COMBAT_PROJECTILES.trailBeadMetres;
     this.channels.fx.push(
       fx as FxKind, this.x[i], this.y[i], this.z[i],
-      this.vx[i], this.vy[i], this.vz[i], 1,
+      dx, dy, dz, 1,
       this.attacker[i] as EntityId, this.faction[i] as Faction,
     );
   }

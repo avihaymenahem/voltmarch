@@ -281,7 +281,7 @@ describe('post chain construction', () => {
     // the grade graph and renderer AgX together instead of drawing the scene
     // directly like the WebGL implementation does.
     expect(POST_TS).toMatch(
-      /if \(enabled\) chain\.render\(\);\s*else nodeRenderer\.render\(scene, camera\);/,
+      /if \(enabled\) chain\.render\(dt\);\s*else nodeRenderer\.render\(scene, camera\);/,
     );
   });
 });

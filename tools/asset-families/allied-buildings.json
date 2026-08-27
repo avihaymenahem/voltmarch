@@ -21,6 +21,7 @@
     { "key": "allied_navalyard", "file": "naval-yard.glb", "class": "landmark", "lods": true },
     { "key": "allied_chrono", "file": "displacement-ring.glb", "class": "landmark", "lods": true },
     { "key": "allied_weather", "file": "weather-device.glb", "class": "landmark", "lods": true },
+    { "key": "allied_silo", "file": "ore-silo.glb", "class": "utility", "lods": false },
     { "key": "allied_pillbox", "file": "pillbox.glb", "class": "defence", "lods": false },
     { "key": "allied_aa", "file": "aa-battery.glb", "class": "defence", "lods": false, "movingParts": true },
     { "key": "allied_prismtower", "file": "refractor-tower.glb", "class": "defence", "lods": false, "movingParts": true }

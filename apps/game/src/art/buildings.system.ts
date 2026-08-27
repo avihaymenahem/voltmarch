@@ -13,6 +13,8 @@
  *   4. Measures the live heightfield to prove the foundation pads' skirt is
  *      deep enough to meet terrain on every buildable cell.
  *   5. Publishes them on `buildingLibrary` and hands them to RenderBridge.
+ *      On an MCV opening, only Construction Yard GLBs block first reveal; the
+ *      remaining authored overrides stream into RenderBridge after boot.
  *   6. Prints the scorecard line for every structure, so the critic loop gets
  *      numbers instead of opinions.
  *
@@ -57,7 +59,7 @@ import {
 } from '../core/config';
 import { EntityKind, Faction, RenderPhase, type QualityTier, type RenderContext } from '../core/types';
 import { ctx } from '../game/context';
-import { resolveDefBinding } from '../game/Scenarios';
+import { plannedScenario, resolveDefBinding } from '../game/Scenarios';
 import { requestedBackend } from '../render/backend';
 import {
   FACTION_ANY,
@@ -1034,6 +1036,29 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
     },
   },
   {
+    key: 'allied_silo',
+    label: 'Allied Ore Silo',
+    url: new URL('../assets/buildings/allies/compressed/ore-silo.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/allies/derived/ore-silo.shadow.glb', import.meta.url).href,
+    widthScale: 0.90,
+    depthScale: 0.90,
+    heightScale: 0.94,
+    creaseAngle: 42,
+    shadowInset: 0.90,
+    proceduralParts: 'none',
+    style: {
+      color: [0.90, 0.95, 1.00],
+      metalness: 0.16,
+      roughness: 0.57,
+      normalScale: 1.24,
+      ambient: [0.13, 0.26, 0.43],
+      ambientIntensity: 0.09,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.48,
+      envMapIntensity: 1.08,
+    },
+  },
+  {
     key: 'allied_pillbox',
     label: 'Allied Pillbox',
     url: new URL('../assets/buildings/allies/compressed/pillbox.glb', import.meta.url).href,
@@ -1194,6 +1219,33 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
       envMapIntensity: 0.62,
     },
   },
+  {
+    key: 'civ_mine',
+    label: 'Civilian Ore Mine',
+    url: new URL('../assets/buildings/civilian/compressed/ore-mine.glb', import.meta.url).href,
+    shadowUrl: new URL('../assets/buildings/civilian/derived/ore-mine.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../assets/buildings/civilian/derived/ore-mine.lod1.glb', import.meta.url).href, minDistance: 94 },
+    ],
+    widthScale: 0.94,
+    depthScale: 0.92,
+    heightScale: 0.96,
+    creaseAngle: 40,
+    lodCreaseAngle: 42,
+    shadowInset: 0.94,
+    proceduralParts: 'none',
+    style: {
+      color: [0.90, 0.82, 0.72],
+      metalness: 0.18,
+      roughness: 0.76,
+      normalScale: 1.18,
+      ambient: [0.16, 0.11, 0.08],
+      ambientIntensity: 0.06,
+      clearcoat: 0.01,
+      clearcoatRoughness: 0.92,
+      envMapIntensity: 0.65,
+    },
+  },
 ];
 
 const IMPORTED_STRUCTURES: readonly ImportedStructureSpec[] = [
@@ -1208,6 +1260,8 @@ const importedRuntimeMaterials = new Set<THREE.Material>();
 const importedRuntimeTextures = new Set<THREE.Texture>();
 const importedStructureLoader = new GLTFLoader();
 let importedKTX2Loader: KTX2Loader | null = null;
+let deferredImportTimer = 0;
+let importedAssetEpoch = 0;
 /** Per-family linear radiance compensation; deliberately not a global grade change. */
 const IMPORTED_STRUCTURE_EXPOSURE = 1.10;
 
@@ -1599,6 +1653,13 @@ export async function loadImportedStructureOverride(
   const targetWidth = model.footprintW * CELL * spec.widthScale;
   const targetDepth = model.footprintH * CELL * spec.depthScale;
   const targetHeight = model.stats.targetHeight * spec.heightScale;
+  // Imported materials still carry the WebGL animation injection. On WebGPU
+  // that hook is deliberately inert, so RenderBridge performs the identical
+  // below-ground rise in the instance matrix instead. This avoids minting a
+  // second physical-node pipeline for every imported PBR material at boot.
+  const cpuConstructionRise = requestedBackend(window.location.search) === 'webgpu'
+    ? targetHeight
+    : undefined;
 
   const fitDerivedGeometry = (
     scene: THREE.Object3D,
@@ -1682,6 +1743,7 @@ export async function loadImportedStructureOverride(
       material,
       y: importedTurretPivotY,
       followsTurret: true,
+      constructionRise: cpuConstructionRise,
       castShadow: true,
       customDepthMaterial: depthMaterial,
       receiveShadow: true,
@@ -1699,6 +1761,7 @@ export async function loadImportedStructureOverride(
     proceduralParts.push({
       geometry: shadowGeometry,
       material: shadowOnlyMaterial(),
+      constructionRise: cpuConstructionRise,
       castShadow: true,
       customDepthMaterial: depthMaterial,
       receiveShadow: false,
@@ -1743,6 +1806,7 @@ export async function loadImportedStructureOverride(
     geometry,
     lods,
     material,
+    constructionRise: cpuConstructionRise,
     castShadow: shadowGeometry === undefined,
     parts: proceduralParts,
     sockets,
@@ -1926,8 +1990,8 @@ export default defineSystem({
           ? isArtFactionPlanned(Faction.Soviets)
           : true,
     );
-    const importedResults = await mapConcurrent(
-      importedSpecs,
+    const loadSpecs = (specs: readonly ImportedStructureSpec[]) => mapConcurrent(
+      specs,
       importedStructureConcurrency(),
       async (spec) => {
         const model = buildingLibrary.get(spec.key);
@@ -1942,6 +2006,23 @@ export default defineSystem({
         }
       },
     );
+
+    /*
+     * An MCV opening has no structures in its first frame. Parsing all 36 current
+     * authored GLBs before revealing that frame cost 3.6-3.9 seconds on the
+     * desktop cold path. Keep each army's Construction Yard critical (the MCV
+     * can deploy immediately), then stream the rest after the match is live.
+     * RegisterKindMesh's versioned rebinding upgrades any procedural fallback
+     * that appeared in the meantime on the next render frame.
+     */
+    const fastMcvBoot = plannedScenario().start === 'mcv' && !paradeRequested();
+    const immediateSpecs = fastMcvBoot
+      ? importedSpecs.filter((spec) => spec.key.endsWith('_conyard'))
+      : importedSpecs;
+    const deferredSpecs = fastMcvBoot
+      ? importedSpecs.filter((spec) => !spec.key.endsWith('_conyard'))
+      : [];
+    const importedResults = await loadSpecs(immediateSpecs);
     for (const result of importedResults) {
       if (result !== null) importedMeshes.set(result[0], result[1]);
     }
@@ -1963,11 +2044,17 @@ export default defineSystem({
       return mesh;
     };
 
+    const registrations: Array<{
+      faction: Faction | typeof FACTION_ANY;
+      key: string;
+      defId: number;
+    }> = [];
     let registered = 0;
     const register = (faction: Faction | typeof FACTION_ANY, key: string, defId: number): void => {
       const mesh = meshFor(key);
       if (mesh === null) return;
       registerKindMesh(EntityKind.Building, faction, mesh, defId);
+      registrations.push({ faction, key, defId });
       registered++;
     };
 
@@ -2006,6 +2093,37 @@ export default defineSystem({
       // per faction here would mask the (kind, faction, -1) defaults.
       register(FACTION_ANY, modelKey, defId);
       bound++;
+    }
+
+    if (deferredSpecs.length > 0) {
+      const epoch = ++importedAssetEpoch;
+      deferredImportTimer = window.setTimeout(() => {
+        deferredImportTimer = 0;
+        void loadSpecs(deferredSpecs).then((results) => {
+          if (epoch !== importedAssetEpoch) {
+            return;
+          }
+          let loaded = importedMeshes.size;
+          for (const result of results) {
+            if (result === null) continue;
+            const [key, mesh] = result;
+            importedMeshes.set(key, mesh);
+            loaded++;
+            for (const registration of registrations) {
+              if (registration.key !== key) continue;
+              registerKindMesh(
+                EntityKind.Building,
+                registration.faction,
+                mesh,
+                registration.defId,
+                true,
+              );
+            }
+          }
+          debug.setCounter('importedBuildings', loaded);
+          console.info(`[buildings] streamed ${results.filter((r) => r !== null).length} authored models`);
+        });
+      }, 12_000);
     }
 
     /* -- prove the pads meet the ground ------------------------------------ */
@@ -2073,6 +2191,11 @@ export default defineSystem({
   },
 
   dispose(): void {
+    importedAssetEpoch++;
+    if (deferredImportTimer !== 0) {
+      window.clearTimeout(deferredImportTimer);
+      deferredImportTimer = 0;
+    }
     if (paradeRoot !== null) {
       paradeRoot.removeFromParent();
       paradeRoot = null;

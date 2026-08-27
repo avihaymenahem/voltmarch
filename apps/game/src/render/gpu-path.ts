@@ -251,8 +251,9 @@ export interface NodeRendererLike {
 
 /** The post chain, reduced to what `PostChain` needs to forward. */
 export interface NodePostChainLike {
-  render(): void;
+  render(dt: number): void;
   syncConfig(): void;
+  setWeatherIntensity(intensity: number): void;
   setSize(width: number, height: number): void;
   /**
    * Draw calls, split by pass, for the LAST frame — or null when the node

@@ -177,7 +177,7 @@ export default defineSystem({
         `${s.triangles} tris in ${ms | 0} ms · corners ${s.cornerRadiusMin.toFixed(1)}-` +
         `${s.cornerRadiusMax.toFixed(1)} m, bends ${s.bendRadiusMin.toFixed(0)}-` +
         `${s.bendRadiusMax.toFixed(0)} m, min off-axis ${s.minOffAxisDegrees.toFixed(1)} deg, ` +
-        `${(s.coverage * 100).toFixed(1)}% of map`,
+        `${s.shoulderMarks} shoulder stories, ${(s.coverage * 100).toFixed(1)}% of map`,
       'color:#cda', 'color:inherit',
     );
 

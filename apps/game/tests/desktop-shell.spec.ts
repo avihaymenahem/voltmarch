@@ -117,6 +117,12 @@ describe('desktop flags', () => {
     }
   });
 
+  it('also disables throttling on both the BrowserWindow and live WebContents', () => {
+    const main = readFileSync(path.join(process.cwd(), 'apps/desktop/src/main.ts'), 'utf8');
+    expect(main).toContain('backgroundThrottling: false');
+    expect(main).toContain('win.webContents.backgroundThrottling = false');
+  });
+
   it('does NOT unlock the frame rate by default — it would break HardwareCalibration', () => {
     /*
      * `CALIBRATION.flatSlopeMs` is 1.0 and a fitted slope below it returns

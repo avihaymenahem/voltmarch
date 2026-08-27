@@ -104,9 +104,15 @@ export const enum DecalKind {
   Rust = 11,
   /** Broad service grime: old soil, soot and traffic gathered at a footprint. */
   Grime = 12,
+  /** A readable 2-5 m mass of fallen leaves beneath temperate canopies. */
+  LeafLitter = 13,
+  /** Broad gravel and broken-stone scatter around rocks, ore and yard edges. */
+  Gravel = 14,
+  /** A few large paper scraps around civic and roadside activity. */
+  PaperLitter = 15,
 }
 
-/** Atlas tiles per row/column. 4x4 = 16 slots, 13 used. */
+/** Atlas tiles per row/column. 4x4 = 16 slots, all used. */
 const ATLAS_COLS = 4;
 const ATLAS_TILE = DECAL_ATLAS_SIZE / ATLAS_COLS;
 
@@ -141,14 +147,17 @@ const KIND_TINT: readonly (readonly [number, number, number])[] = [
   // ground are the ones already in the dirt, and `tools/metrics.mjs` scores hue
   // leakage. A crush mark is a dark stain, not a puddle.
   [SQUISH_DARKEN, SQUISH_DARKEN * 0.90, SQUISH_DARKEN * 0.86], // Squish
-  [0.82, 0.61, 0.43],                                          // Rust — oxidised iron
+  [0.78, 0.48, 0.26],                                          // Rust — oxidised iron
   [0.67, 0.65, 0.58],                                          // Grime — old earth/soot
+  [0.92, 0.55, 0.18],                                          // LeafLitter — dry ochre/brown
+  [1.16, 1.10, 0.96],                                          // Gravel — sunlit broken stone
+  [1.38, 1.32, 1.12],                                          // PaperLitter — faded off-white
 ];
 
 /** Default lifetime in seconds. 0 = permanent. */
 const KIND_LIFE: readonly number[] = [
   TREAD_LIFE_SECONDS, TREAD_LIFE_SECONDS * 0.8, 150, 240, 180, 14, 0, 0, 0, 0,
-  SQUISH_LIFE_SECONDS, 0, 0,
+  SQUISH_LIFE_SECONDS, 0, 0, 0, 0, 0,
 ];
 
 /* ==========================================================================
@@ -207,6 +216,19 @@ function buildDecalAtlas(): THREE.DataTexture {
 
   const T = ATLAS_TILE;
   const inv = 1 / (T - 1);
+  const oval = (
+    x: number, y: number, cx: number, cy: number, rx: number, ry: number,
+  ): number => 1 - smoothstep(0.72, 1.0, Math.hypot((x - cx) / rx, (y - cy) / ry));
+  const scrap = (
+    x: number, y: number, cx: number, cy: number,
+    halfW: number, halfH: number, yaw: number,
+  ): number => {
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const dx = x - cx, dy = y - cy;
+    const bx = Math.abs(dx * c + dy * s) / halfW;
+    const by = Math.abs(-dx * s + dy * c) / halfH;
+    return 1 - smoothstep(0.82, 1.0, Math.max(bx, by));
+  };
 
   for (let ly = 0; ly < T; ly++) {
     const v = ly * inv;
@@ -433,6 +455,78 @@ function buildDecalAtlas(): THREE.DataTexture {
           * (1 - smoothstep(0.15, 0.96, Math.abs(sy))) * 0.34;
         const a = clamp01(body * 0.78 + dragged) * margin;
         put(DecalKind.Grime, lx, ly, 0.5, 0.5, 0.5, a);
+      }
+
+      /* -- 13: LEAF LITTER ---------------------------------------------- */
+      {
+        // Nine broad leaf-shaped lobes form one 2-5 m readable mass. This is
+        // deliberately not a carpet of alpha-card specks: every member is
+        // large enough to survive normal RTS zoom, while the soft under-bed
+        // binds them into one authored patch beneath a canopy.
+        const bed = 1 - smoothstep(0.48, 1.0, Math.hypot(sx / 0.94, sy / 0.72));
+        const leaves = Math.max(
+          oval(sx, sy, -0.55, -0.18, 0.20, 0.10),
+          oval(sx, sy, -0.24, 0.34, 0.18, 0.09),
+          oval(sx, sy, 0.05, -0.42, 0.22, 0.11),
+          oval(sx, sy, 0.34, 0.16, 0.19, 0.10),
+          oval(sx, sy, 0.58, -0.25, 0.17, 0.09),
+          oval(sx, sy, -0.42, 0.52, 0.15, 0.08),
+          oval(sx, sy, 0.18, 0.55, 0.16, 0.08),
+          oval(sx, sy, -0.05, 0.06, 0.24, 0.12),
+          oval(sx, sy, 0.52, 0.48, 0.13, 0.07),
+        );
+        // The earlier 22% under-bed became an obvious translucent oval when
+        // the pile was made readable. Keep only enough contact tone to bind
+        // the leaves; the lobes themselves must own the silhouette.
+        const a = clamp01(bed * 0.06 + leaves * 0.92) * margin;
+        // A broad left-to-right value change gives the pile two colour masses
+        // without introducing texture-frequency noise.
+        const warm = clamp01(0.5 + sx * 0.28 - sy * 0.12);
+        put(DecalKind.LeafLitter, lx, ly, 0.43 + warm * 0.13, 0.40 + warm * 0.08, 0.34, a);
+      }
+
+      /* -- 14: GRAVEL ---------------------------------------------------- */
+      {
+        // Eleven stones, each a broad asymmetric oval with a faint common
+        // dust bed. At gameplay distance they read as a broken-stone cluster,
+        // not as procedural salt-and-pepper noise.
+        const bed = 1 - smoothstep(0.52, 1.0, Math.hypot(sx / 0.98, sy / 0.76));
+        const stones = Math.max(
+          oval(sx, sy, -0.62, -0.35, 0.21, 0.14),
+          oval(sx, sy, -0.31, -0.04, 0.16, 0.11),
+          oval(sx, sy, -0.50, 0.43, 0.18, 0.12),
+          oval(sx, sy, -0.10, -0.50, 0.15, 0.10),
+          oval(sx, sy, 0.02, 0.20, 0.22, 0.14),
+          oval(sx, sy, 0.30, -0.23, 0.17, 0.12),
+          oval(sx, sy, 0.55, 0.05, 0.20, 0.13),
+          oval(sx, sy, 0.66, 0.48, 0.13, 0.09),
+          oval(sx, sy, 0.23, 0.55, 0.16, 0.10),
+          oval(sx, sy, -0.22, 0.62, 0.12, 0.08),
+          oval(sx, sy, 0.47, -0.58, 0.11, 0.08),
+        );
+        const a = clamp01(bed * 0.05 + stones * 0.94) * margin;
+        const lift = stones * (0.06 + clamp01(sx * 0.5 + 0.5) * 0.08);
+        put(DecalKind.Gravel, lx, ly, 0.46 + lift, 0.46 + lift * 0.96, 0.45 + lift * 0.88, a);
+      }
+
+      /* -- 15: PAPER LITTER --------------------------------------------- */
+      {
+        // Six deliberately oversized scraps. Paper is a civic/roadside cue,
+        // so it must remain countable and sparse instead of becoming white
+        // screen-space flecks across the battlefield.
+        const papers = Math.max(
+          scrap(sx, sy, -0.58, -0.35, 0.17, 0.09, 0.28),
+          scrap(sx, sy, -0.22, 0.30, 0.13, 0.08, -0.42),
+          scrap(sx, sy, 0.12, -0.12, 0.16, 0.10, 0.18),
+          scrap(sx, sy, 0.48, 0.34, 0.14, 0.08, 0.55),
+          scrap(sx, sy, 0.60, -0.48, 0.12, 0.07, -0.22),
+          scrap(sx, sy, -0.46, 0.62, 0.11, 0.07, 0.62),
+        );
+        // A faint dirt halo prevents the bright papers looking pasted on.
+        const halo = (1 - smoothstep(0.54, 1.0, Math.hypot(sx / 0.96, sy / 0.82))) * 0.03;
+        const a = clamp01(papers * 0.96 + halo) * margin;
+        const paperTone = 0.54 + clamp01((sx - sy) * 0.35 + 0.5) * 0.08;
+        put(DecalKind.PaperLitter, lx, ly, paperTone, paperTone * 0.98, paperTone * 0.88, a);
       }
     }
   }
@@ -690,8 +784,9 @@ export class DecalField {
       blendDst: THREE.ZeroFactor,
       blendSrcAlpha: THREE.ZeroFactor,
       blendDstAlpha: THREE.OneFactor,
-      // The decal lies ON the ground it is conformed to; without the offset the
-      // 3.5 cm lift is not always enough at a grazing camera.
+      // The decal lies close to the ground it is conformed to. The physical
+      // lift clears terrain/roads; polygon offset is the remaining raster-depth
+      // guard at grazing angles.
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
@@ -1000,6 +1095,26 @@ export function layDecal(
   kind: DecalKind, x: number, z: number, radius: number, yaw = 0, strength = 1,
 ): void {
   active?.spawn(kind, x, z, radius, radius, yaw, -1, strength);
+}
+
+/**
+ * Compose the ground left by a collapsed structure.
+ *
+ * The ballistic debris and smoke are short-lived VFX, while the Wreck entity
+ * carries the large ruin silhouette. This fills the scale between them with
+ * one fading dust mass and one permanent, low-strength disturbed-ground
+ * mark. Physical rubble is carried by the Wreck geometry; gravel-shaped atlas
+ * lobes were removed after live QA showed them as a ring of dark dots.
+ * Everything stays in the existing static decal pool and therefore in
+ * its single colour draw; a base being levelled cannot grow a new object or
+ * material batch per building.
+ */
+export function layRubbleStory(x: number, z: number, radius: number, yaw = 0): void {
+  const field = active;
+  if (field === null) return;
+  const r = Math.max(0.25, radius);
+  field.spawn(DecalKind.Dust, x, z, r * 0.72, r * 0.95, yaw, 18, 0.38);
+  field.spawn(DecalKind.Grime, x, z, r * 0.62, r * 0.78, yaw + 0.31, 0, 0.28);
 }
 
 /** Convenience for the damage system: scorch a patch of ground. */

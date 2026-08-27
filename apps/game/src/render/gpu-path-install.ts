@@ -194,6 +194,7 @@ function createNodePostAdapter(
 
   let liveScene = scene;
   let liveCamera = camera;
+  let rainIntensity = 0;
   let chain = createNodePostChain({
     renderer: renderer as unknown as ChainRenderer,
     scene: liveScene as unknown as ChainScene,
@@ -207,11 +208,16 @@ function createNodePostAdapter(
       scene: liveScene as unknown as ChainScene,
       camera: liveCamera as unknown as ChainCamera,
     });
+    chain.setWeatherIntensity(rainIntensity);
   }
 
   return {
-    render(): void { chain.render(); },
+    render(dt: number): void { chain.render(dt); },
     syncConfig(): void { chain.syncConfig(); },
+    setWeatherIntensity(intensity: number): void {
+      rainIntensity = intensity;
+      chain.setWeatherIntensity(intensity);
+    },
     setSize(w: number, h: number): void { chain.setSize(w, h); },
     drawCallsByPass(): null { return null; },
     setScene(next: THREE.Scene): void {

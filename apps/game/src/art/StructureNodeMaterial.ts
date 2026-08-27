@@ -347,8 +347,8 @@ export function createStructureNodeMaterial(
    * also settles the ordering question the GLSL raises — the injection lands
    * after `<map_fragment>` and before `<color_fragment>` folds in the vertex
    * colours, whereas `colorNode` is applied before both. Scalar multiplies
-   * commute, so the two agree. That is only true while it stays a scalar.
-   */
+  * commute, so the two agree. That is only true while it stays a scalar.
+  */
   mat.colorNode = materialColor.mul(sootFactor());
   mat.emissiveNode = structureEmissive(materialEmissive);
   mat.maskNode = vRaClip.greaterThanEqual(0.0);
@@ -359,9 +359,9 @@ export function createStructureNodeMaterial(
    * calls our `setupPosition`. So the mask compared an unassigned varying, no
    * fragment discarded, and a structure at `buildProgress` 0.3 cast the
    * silhouette of a finished one. `render/cast-shadow-nodes.ts` carries the
-   * mechanism; it runs the SAME function, so the sink, the door, the spin and
-   * the cut cannot drift between the two passes.
-   */
+  * mechanism; it runs the SAME function, so the sink, the door, the spin and
+  * the cut cannot drift between the two passes.
+  */
   mat.castShadowPositionNode = castShadowPosition(applyStructureVertex);
 
   assertUnitMaterialRuling(mat, 'node');

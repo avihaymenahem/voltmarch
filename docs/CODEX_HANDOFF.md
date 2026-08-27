@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-08-26
+Last refreshed: 2026-08-27
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -22,10 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.9.0**.
-- The `v3.9.0` tag is the current desktop/web/relay release baseline. `main` is intentionally ahead
-  of that tag by documentation and publishing-workflow changes; do not bump or retag merely to make
-  those commits match the tag.
+- Public version: **3.10.0**.
+- The `v3.10.0` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -124,6 +122,10 @@ read it from Meshy immediately before spending.
 - Title/menu presentation is image-first. Show the key art and interactive menu before loading or
   compiling the game scene. Returning from a match must not block on shader preparation again.
 - Do not pause loading, rendering or simulation solely because the desktop window loses focus.
+- Electron disables renderer backgrounding at the process, window-construction and live-WebContents
+  layers. This is the fix for cold Skirmish initialization appearing frozen after an Alt-Tab.
+- Placement uses the real resolved structure silhouette, a faction-accent terrain grid and one
+  unified allied build boundary. Completed structures rise from below grade.
 - Use Electron native fullscreen semantics. Escape belongs to the game/pause UI; Alt+Enter is the
   explicit desktop fullscreen toggle.
 - HUD density matters. Selection, stance and formation actions must remain compact; clicking a build
@@ -140,7 +142,8 @@ read it from Meshy immediately before spending.
 
 - The original score is Silent Horizon, Disciplined Ostinato, Echoes of the Siege and Endless
   Warfront. The title always starts Echoes with a fade-in; matches choose a local random cue and loop
-  it. In-match music is intentionally lower than menu music.
+  it. In-match music is intentionally lower than menu music. The main-menu player can pause/resume
+  without navigation or retry timers silently restarting it.
 - Finishing background WebGPU preparation must not restart, stop or duck the menu soundtrack.
 - Unit speech is caused by selection or an explicit player action. Do not reintroduce periodic/random
   chatter, economy-state chatter or duplicated “unit ready” announcements.
@@ -186,8 +189,9 @@ This is an index, not a duplicate checklist:
 - **Asset conversion:** `docs/ASSET_CONVERSION_MAP.md` — continue imported assets only through the
   approved pipeline; do not infer completion from concept folders alone.
 - **Environment realism:** `docs/ENVIRONMENT_REALISM_PLAN.md` — contextual dirt/leaf/rust/gravel
-  stamps, prop-family integration and bounded atmosphere. The civilian sedan is an approved candidate,
-  not automatically a runtime replacement.
+  composition, physical geometry debris, prop-family integration and bounded atmosphere. Dynamic
+  rain/lightning is shipped; the civilian sedan remains an approved candidate, not automatically a
+  runtime replacement.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

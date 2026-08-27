@@ -23,16 +23,14 @@
  *    A 512 m map is 26.2 ha, so wilderness means ~6800 props. That is fine,
  *    because of (2).
  *
- * 2. ONE DRAW CALL PER TYPE, AND ONLY THE VISIBLE INSTANCES IN IT. One
- *    InstancedMesh per prop type spans the whole map, so its bounding sphere is
- *    useless for culling — three would happily draw 6800 trees to show 200.
- *    Instead props are bucketed into 32 m chunks, the chunk set is frustum
- *    tested every frame (256 sphere tests, no allocation), and the instance
- *    buffers are REPACKED ONLY WHEN THAT SET CHANGES. A static camera costs
- *    literally nothing; a panning one costs one memcpy of a few hundred
- *    matrices and an upload of exactly those, not of the whole allocation.
+ * 2. ONLY THE VISIBLE INSTANCES. Props are bucketed into 32 m chunks and the
+ *    chunk set is frustum tested every frame. WebGL keeps one InstancedMesh per
+ *    type and repacks its visible prefixes. WebGPU packs those types into at
+ *    most two BatchedMeshes (shadow/no-shadow), because Three otherwise keys
+ *    every InstancedMesh pipeline by object UUID and recompiles the identical
+ *    node graph per type during a cold boot.
  *
- *    ONE COLOUR DRAW PER TYPE, plus one shadow draw if the type clears
+ *    On WebGL that remains ONE colour draw per type, plus one shadow draw if the type clears
  *    `SCATTER_SHADOW_MIN_RADIUS` — which today every type in the roster does.
  *    TWO submissions per type, not three: this said three because a scatter
  *    mesh is opaque on the DEFAULT layer and `GTAOPass` used to draw the whole
@@ -110,6 +108,7 @@ import { clamp, clamp01, DEG2RAD, fbm2, Rng, smoothstep, TAU } from '../core/mat
 import { SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
 import { isCarriageway } from './Roads';
+import { DecalKind, type DecalField } from './Decals';
 import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
   type PropDef, type PropFamily, type PropGeometry, type PropMaterialSet, type PropPalette,
@@ -430,6 +429,32 @@ export interface ScatterOptions {
   readonly openingCenters?: readonly { readonly x: number; readonly z: number }[];
 }
 
+/** Permanent marks composed around semantic prop anchors. */
+export interface GroundStoryStats {
+  readonly total: number;
+  readonly foliage: number;
+  readonly mineral: number;
+  readonly service: number;
+  readonly civic: number;
+  readonly vehicle: number;
+}
+
+/** A contextual ground-story anchor without importing the scenario module. */
+export interface GroundStoryAnchor {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+}
+
+/** Static composition budget reserved from the shared combat-decal pool. */
+export const GROUND_STORY_CAP = 92;
+
+const VEHICLE_STORY_KEYS: ReadonlySet<string> = new Set([
+  'carSedan', 'carVan', 'carPickup',
+]);
+const SERVICE_STORY_KEYS: ReadonlySet<string> = new Set([
+  'crateStack', 'containerStack', 'barrel', 'haystack',
+]);
 /** One authored beat in the local frame of an MCV opening. */
 interface OpeningBeat {
   /** Metres sideways from the route toward map centre. */
@@ -458,6 +483,9 @@ interface OpeningBeat {
  */
 const OPENING_BEATS: Readonly<Record<BiomeName, readonly OpeningBeat[]>> = {
   temperate: [
+    { lateral: 24, forward: -12, keys: ['debrisPile'], yaw: 0.35, settle: 4.0 },
+    { lateral: -25, forward: 7, keys: ['debrisPile'], yaw: -0.45, settle: 4.0 },
+    { lateral: 20, forward: 20, keys: ['debrisPile'], yaw: 0.80, settle: 4.0 },
     { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
     { lateral: 28, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
     { lateral: 25, forward: -24, keys: ['crateStack', 'haystack'], yaw: -0.42, settle: 3.0 },
@@ -471,6 +499,9 @@ const OPENING_BEATS: Readonly<Record<BiomeName, readonly OpeningBeat[]>> = {
     { lateral: 35, forward: 8, keys: ['bush', 'rockCluster'], yaw: -0.25, settle: 3.0 },
   ],
   desert: [
+    { lateral: 24, forward: -12, keys: ['debrisPile'], yaw: 0.35, settle: 4.0 },
+    { lateral: -25, forward: 7, keys: ['debrisPile'], yaw: -0.45, settle: 4.0 },
+    { lateral: 20, forward: 20, keys: ['debrisPile'], yaw: 0.80, settle: 4.0 },
     { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
     { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
     { lateral: 25, forward: -25, keys: ['crateStack'], yaw: -0.42, settle: 3.0 },
@@ -484,6 +515,9 @@ const OPENING_BEATS: Readonly<Record<BiomeName, readonly OpeningBeat[]>> = {
     { lateral: 36, forward: 7, keys: ['boulder', 'rockCluster'], yaw: -0.25, settle: 4.0 },
   ],
   snow: [
+    { lateral: 24, forward: -12, keys: ['debrisPile'], yaw: 0.35, settle: 4.0 },
+    { lateral: -25, forward: 7, keys: ['debrisPile'], yaw: -0.45, settle: 4.0 },
+    { lateral: 20, forward: 20, keys: ['debrisPile'], yaw: 0.80, settle: 4.0 },
     { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
     { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
     { lateral: 25, forward: -25, keys: ['crateStack'], yaw: -0.42, settle: 3.0 },
@@ -497,6 +531,9 @@ const OPENING_BEATS: Readonly<Record<BiomeName, readonly OpeningBeat[]>> = {
     { lateral: 36, forward: 7, keys: ['boulder', 'rockCluster'], yaw: -0.25, settle: 4.0 },
   ],
   urban: [
+    { lateral: 24, forward: -12, keys: ['debrisPile'], yaw: 0.35, settle: 4.0 },
+    { lateral: -25, forward: 7, keys: ['debrisPile'], yaw: -0.45, settle: 4.0 },
+    { lateral: 20, forward: 20, keys: ['debrisPile'], yaw: 0.80, settle: 4.0 },
     { lateral: 23, forward: -18, keys: ['crateStack'], yaw: 0.18, settle: 3.0 },
     { lateral: 29, forward: -16, keys: ['barrel'], yaw: -0.12, settle: 2.5 },
     { lateral: 25, forward: -25, keys: ['containerStack', 'crateStack'], yaw: -0.42, settle: 3.5 },
@@ -519,6 +556,10 @@ interface ScatterType {
   readonly defIndex: number;
   readonly geo: PropGeometry;
   mesh: THREE.InstancedMesh | null;
+  /** WebGPU batch holding this type, null on the WebGL InstancedMesh path. */
+  batch: THREE.BatchedMesh | null;
+  /** Chunk-sorted instance index -> BatchedMesh instance id. */
+  batchInstances: Int32Array;
   /** LIVE instance count. Decremented by `clearFootprint()`. */
   count: number;
   /** 16 floats per instance, sorted by chunk. */
@@ -701,9 +742,11 @@ export class Scatter {
   private readonly scene: THREE.Scene;
   private readonly terrain: Terrain;
   private readonly opts: ScatterOptions;
+  private readonly batchedNodePath: boolean;
 
   private types: ScatterType[] = [];
   private placements: Placement[] = [];
+  private readonly nodeBatches: THREE.BatchedMesh[] = [];
 
   /* ---- masks and accelerators ------------------------------------------ */
 
@@ -775,6 +818,12 @@ export class Scatter {
   groundPatches = 0;
   /** Authored props successfully settled around MCV openings. */
   openingProps = 0;
+  /** Permanent pooled decals correlated with nearby props. */
+  groundStoryMarks = 0;
+  private storiesPainted = false;
+  private storyStats: GroundStoryStats = {
+    total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0,
+  };
   visibleInstances = 0;
   visibleChunks = 0;
   lastReport: CoverageReport | null = null;
@@ -805,6 +854,7 @@ export class Scatter {
     this.palette = propPalette(options.biome);
     this.library = new PropLibrary({ biome: options.biome, seed: options.seed });
     const np = nodePath();
+    this.batchedNodePath = np !== null;
     this.materials = np !== null ? np.createPropMaterials() : createPropMaterial();
     this.root.name = 'PropScatter';
     this.root.matrixAutoUpdate = false;
@@ -1217,6 +1267,11 @@ export class Scatter {
     this.openingDefIndices.clear();
     this.groundPatches = 0;
     this.openingProps = 0;
+    this.groundStoryMarks = 0;
+    this.storiesPainted = false;
+    this.storyStats = {
+      total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0,
+    };
     this.clearedProps = 0;
     this.lastClearScanned = 0;
     this.lastClearCount = 0;
@@ -1248,7 +1303,7 @@ export class Scatter {
       if (pref >= 0) w *= preferenceMultiplier(pref);
       if (w <= 1e-3) continue;
       avail.push({
-        def, defIndex: i, geo, mesh: null, count: 0,
+        def, defIndex: i, geo, mesh: null, batch: null, batchInstances: EMPTY_I32, count: 0,
         srcMatrix: EMPTY_F32, srcColor: EMPTY_F32, srcPhase: EMPTY_F32,
         chunkStart: EMPTY_I32, chunkLive: EMPTY_I32, instOf: EMPTY_I32,
         drawCount: 0,
@@ -1793,6 +1848,175 @@ export class Scatter {
   }
 
   /**
+   * Compose permanent ground stories around props that already explain them.
+   *
+   * This deliberately consumes the existing static `DecalField`: every mark
+   * remains inside its one pooled colour draw in both renderers. The caps are
+   * per semantic family so a dense forest cannot spend the entire pool before
+   * the generator reaches a parked car or service cache. A shared separation
+   * list leaves clean ground between stories and keeps the battlefield from
+   * turning into uniform grime.
+   */
+  paintGroundStories(
+    decals: DecalField,
+    _oreFields: readonly GroundStoryAnchor[] = [],
+  ): GroundStoryStats {
+    if (this.storiesPainted) return this.storyStats;
+    this.storiesPainted = true;
+
+    const centres: number[] = [];
+    const stats = { total: 0, foliage: 0, mineral: 0, service: 0, civic: 0, vehicle: 0 };
+    const biome = this.opts.biome;
+
+    const legal = (x: number, z: number, roadOkay = false): boolean => {
+      if (x < CELL || z < CELL || x >= MAP_SIZE - CELL || z >= MAP_SIZE - CELL) return false;
+      const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+      if (this.terrain.isWater(cx, cz) || this.terrain.isCliff(cx, cz)) return false;
+      return roadOkay || !isCarriageway(x, z);
+    };
+    const reserve = (x: number, z: number, gap: number): boolean => {
+      const g2 = gap * gap;
+      for (let i = 0; i < centres.length; i += 2) {
+        const dx = centres[i] - x, dz = centres[i + 1] - z;
+        if (dx * dx + dz * dz < g2) return false;
+      }
+      centres.push(x, z);
+      return true;
+    };
+    const offset = (
+      p: Placement, rng: Rng, min: number, max: number,
+    ): readonly [number, number, number] => {
+      const yaw = p.yaw + rng.range(-0.85, 0.85);
+      const d = rng.range(min, max) * p.scale;
+      return [p.x + Math.sin(yaw) * d, p.z + Math.cos(yaw) * d, yaw];
+    };
+    const add = (family: keyof Omit<GroundStoryStats, 'total'>, count = 1): void => {
+      stats[family] += count;
+      stats.total += count;
+    };
+    const hasRoom = (count = 1): boolean => stats.total + count <= GROUND_STORY_CAP;
+
+    /* MCV openings need their own readable ground history. The first version
+     * spent the complete story budget across the 512 m map, which produced a
+     * healthy debug counter and an opening camera with zero identifiable
+     * marks. Keep the same global cap, but spend twelve deterministic marks in
+     * each start footprint before the world-wide semantic passes compete for
+     * the remainder. Only paired tyre trails belong in the multiply layer.
+     * Physical debris is real `debrisPile` geometry in `OPENING_BEATS`; putting
+     * leaves or stones here produced unmistakable stamped circles. */
+    {
+      const openings = this.opts.openingCenters ?? [];
+      for (let i = 0; i < openings.length && hasRoom(); i++) {
+        const centre = openings[i];
+        let fx = MAP_SIZE * 0.5 - centre.x;
+        let fz = MAP_SIZE * 0.5 - centre.z;
+        const length = Math.hypot(fx, fz) || 1;
+        fx /= length; fz /= length;
+        const rx = -fz, rz = fx;
+        const yaw = Math.atan2(fx, fz);
+
+        // Two paired arrival beats, behind the construction vehicle.
+        for (const back of [7, 14]) {
+          if (!hasRoom(2)) break;
+          const bx = centre.x - fx * back;
+          const bz = centre.z - fz * back;
+          const gauge = 1.25;
+          decals.spawn(DecalKind.Tyre, bx + rx * gauge, bz + rz * gauge,
+            0.22, 3.4, yaw, 0, 0.72);
+          decals.spawn(DecalKind.Tyre, bx - rx * gauge, bz - rz * gauge,
+            0.22, 3.4, yaw, 0, 0.72);
+          add('vehicle', 2);
+        }
+
+      }
+    }
+
+    /* Parked vehicle + tyre/oil history. The two tyre strips are permanent;
+     * movement uses the separate transient track field. */
+    {
+      const rng = new Rng((this.opts.seed ^ 0x2f5a4c19) >>> 0);
+      let anchors = 0;
+      for (let i = 0; i < this.placements.length && anchors < 8 && hasRoom(3); i++) {
+        const p = this.placements[i];
+        const def = PROP_DEFS[p.defIndex];
+        if (!p.alive || def === undefined || !VEHICLE_STORY_KEYS.has(def.key)) continue;
+        if (rng.next() > 0.82 || !legal(p.x, p.z, true) || !reserve(p.x, p.z, 12)) continue;
+        const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+        const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+        const bx = p.x - fx * 1.25 * p.scale;
+        const bz = p.z - fz * 1.25 * p.scale;
+        const gauge = 0.72 * p.scale;
+        decals.spawn(DecalKind.Tyre, bx + rx * gauge, bz + rz * gauge,
+          0.13, 1.55 * p.scale, p.yaw, 0, 0.58);
+        decals.spawn(DecalKind.Tyre, bx - rx * gauge, bz - rz * gauge,
+          0.13, 1.55 * p.scale, p.yaw, 0, 0.58);
+        decals.oil(
+          p.x - fx * 0.55 * p.scale,
+          p.z - fz * 0.55 * p.scale,
+          rng.range(0.65, 1.15) * p.scale,
+          p.yaw + rng.range(-0.25, 0.25),
+          rng.range(0.38, 0.52),
+        );
+        add('vehicle', 3);
+        anchors++;
+      }
+    }
+
+    /* Yard caches get one broad traffic stain and, occasionally, a small
+     * litter edge. The prop is the reason for both marks. */
+    {
+      const rng = new Rng((this.opts.seed ^ 0x6ac31e07) >>> 0);
+      let anchors = 0;
+      for (let i = 0; i < this.placements.length && anchors < 10 && hasRoom(); i++) {
+        const p = this.placements[i];
+        const def = PROP_DEFS[p.defIndex];
+        if (!p.alive || def === undefined || !SERVICE_STORY_KEYS.has(def.key)) continue;
+        if (rng.next() > 0.42 || !reserve(p.x, p.z, 10)) continue;
+        const [x, z, yaw] = offset(p, rng, 0.3, 1.1);
+        if (!legal(x, z)) continue;
+        decals.spawn(
+          biome === 'snow' ? DecalKind.Grime : DecalKind.Dust,
+          x, z, rng.range(2.5, 4.0), rng.range(3.8, 6.2), yaw, 0,
+          biome === 'snow' ? rng.range(0.16, 0.24) : rng.range(0.18, 0.28),
+        );
+        add('service');
+        anchors++;
+      }
+    }
+
+    /* Canopy contact changes by theatre: fallen leaves in temperate/urban,
+     * dirty compressed snow below conifers, and wind-blown dust below palms. */
+    {
+      const rng = new Rng((this.opts.seed ^ 0x1be749d3) >>> 0);
+      let anchors = 0;
+      for (let i = 0; i < this.placements.length && anchors < 16 && hasRoom(); i++) {
+        const p = this.placements[i];
+        const def = PROP_DEFS[p.defIndex];
+        if (!p.alive || def?.family !== 'canopy') continue;
+        const chance = def.key === 'treeAutumn' ? 0.72 : 0.16;
+        if (rng.next() > chance || !reserve(p.x, p.z, 11)) continue;
+        const [x, z, yaw] = offset(p, rng, 0.1, 1.2);
+        if (!legal(x, z)) continue;
+        // Fallen leaves are physical objects. The old LeafLitter multiply tile
+        // was nine dark ovals and read exactly like nine dark ovals. Temperate
+        // and urban maps now get real debrisPile geometry instead.
+        if (biome === 'temperate' || biome === 'urban') continue;
+        const kind = biome === 'snow' ? DecalKind.Grime : DecalKind.Dust;
+        decals.spawn(kind, x, z, rng.range(2.2, 3.7), rng.range(3.0, 5.0), yaw, 0,
+          rng.range(0.18, 0.28));
+        add('foliage');
+        anchors++;
+      }
+    }
+
+    this.storyStats = stats;
+    this.groundStoryMarks = stats.total;
+    return this.storyStats;
+  }
+
+  groundStories(): GroundStoryStats { return this.storyStats; }
+
+  /**
    * THE ADORNMENT GATE, AUTOMATED (bible §6.6, scorecard #15, weight 3).
    *
    * Two rules, in priority order:
@@ -2048,6 +2272,12 @@ export class Scatter {
         * (type.def.scaleMax ?? SCATTER_JITTER.scaleMax);
       if (reach > this.maxPropReach) this.maxPropReach = reach;
 
+      if (this.batchedNodePath) {
+        type.mesh = null;
+        type.drawCount = 0;
+        continue;
+      }
+
       const mesh = new THREE.InstancedMesh(type.geo.geometry, this.materials.material, list.length);
       mesh.name = `prop.${type.def.key}`;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -2093,6 +2323,8 @@ export class Scatter {
       type.drawCount = 0;
       this.root.add(mesh);
     }
+
+    if (this.batchedNodePath) this.buildNodeBatches();
 
     // Chunks with no props still need finite Y bounds for the culling sphere.
     for (let c = 0; c < CHUNK_COUNT; c++) {
@@ -2169,6 +2401,31 @@ export class Scatter {
     if (!changed) return;
     this.chunkVisiblePrev.set(this.chunkVisible);
     this.visibleChunks = visible;
+
+    if (this.batchedNodePath) {
+      let instances = 0;
+      for (let s = 0; s < this.types.length; s++) {
+        const type = this.types[s];
+        const batch = type.batch;
+        if (batch === null) continue;
+        const start = type.chunkStart;
+        let drawn = 0;
+        for (let c = 0; c < CHUNK_COUNT; c++) {
+          const showChunk = this.chunkVisible[c] !== 0;
+          const a = start[c], b = start[c + 1];
+          for (let i = a; i < b; i++) {
+            const placement = this.placements[type.instOf[i]];
+            const show = showChunk && placement?.alive === true;
+            batch.setVisibleAt(type.batchInstances[i], show);
+            if (show) drawn++;
+          }
+        }
+        type.drawCount = drawn;
+        instances += drawn;
+      }
+      this.visibleInstances = instances;
+      return;
+    }
 
     let instances = 0;
     for (let s = 0; s < this.types.length; s++) {
@@ -2497,6 +2754,81 @@ export class Scatter {
     return n;
   }
 
+  /**
+   * Pack the WebGPU prop carpet into at most two render objects.
+   *
+   * Three r185 deliberately includes an InstancedMesh's UUID in its node-cache
+   * key, so one mesh per prop type rebuilds the identical prop node graph for
+   * every type during a cold boot. BatchedMesh supports different geometries
+   * and transforms in one submission; splitting only on the existing shadow
+   * gate keeps that visual rule while deleting the duplicate pipeline work.
+   */
+  private buildNodeBatches(): void {
+    const matrix = new THREE.Matrix4();
+    const color = new THREE.Vector4();
+
+    for (const castsShadow of [false, true]) {
+      const group = this.types.filter((type) =>
+        type.count > 0 && typeCastsShadow(type.geo) === castsShadow);
+      if (group.length === 0) continue;
+
+      let instances = 0;
+      let vertices = 0;
+      let indices = 0;
+      for (const type of group) {
+        const geometry = type.geo.geometry;
+        instances += type.count;
+        vertices += geometry.getAttribute('position').count;
+        indices += geometry.getIndex()?.count ?? geometry.getAttribute('position').count;
+      }
+
+      const batch = new THREE.BatchedMesh(
+        instances,
+        vertices,
+        indices,
+        this.materials.material,
+      );
+      batch.name = castsShadow ? 'prop.batch.shadow' : 'prop.batch.no-shadow';
+      // Scatter already performs exact 32 m AABB culling. Per-object culling
+      // would repeat thousands of sphere tests inside Three every frame.
+      batch.perObjectFrustumCulled = false;
+      batch.sortObjects = false;
+      batch.frustumCulled = false;
+      batch.castShadow = castsShadow;
+      batch.receiveShadow = true;
+      batch.matrixAutoUpdate = false;
+      batch.updateMatrix();
+
+      for (const type of group) {
+        const geometryId = batch.addGeometry(type.geo.geometry);
+        const ids = new Int32Array(type.count);
+        for (let i = 0; i < type.count; i++) {
+          const instanceId = batch.addInstance(geometryId);
+          ids[i] = instanceId;
+          matrix.fromArray(type.srcMatrix, i * 16);
+          batch.setMatrixAt(instanceId, matrix);
+          color.set(
+            type.srcColor[i * 3],
+            type.srcColor[i * 3 + 1],
+            type.srcColor[i * 3 + 2],
+            type.srcPhase[i],
+          );
+          // RGB is the existing jitter multiplier. Alpha is unused by the
+          // opaque surface and carries wind phase to PropNodeMaterial.
+          batch.setColorAt(instanceId, color);
+          batch.setVisibleAt(instanceId, false);
+        }
+        type.batch = batch;
+        type.batchInstances = ids;
+      }
+
+      batch.computeBoundingBox();
+      batch.computeBoundingSphere();
+      this.root.add(batch);
+      this.nodeBatches.push(batch);
+    }
+  }
+
   /** Natural composition anchors as (x, z, familyCode) triples. */
   compositionCenters(out: Float32Array): number {
     const n = Math.min((out.length / 3) | 0, (this.compositionAnchors.length / 3) | 0);
@@ -2703,6 +3035,14 @@ export class Scatter {
     if (s < 0) return;
     const type = this.types[s];
     const c = p.chunk;
+    if (this.batchedNodePath) {
+      const instanceId = type.batchInstances[p.inst];
+      if (type.batch !== null && instanceId >= 0) type.batch.setVisibleAt(instanceId, false);
+      type.chunkLive[c]--;
+      type.count--;
+      p.slot = -1;
+      return;
+    }
     const base = type.chunkStart[c];
     const last = base + type.chunkLive[c] - 1;
     const i = p.inst;
@@ -2853,6 +3193,15 @@ export class Scatter {
   get propCount(): number { return this.liveProps; }
   get typeCount(): number { return this.types.length; }
   get drawCalls(): number {
+    if (this.batchedNodePath) {
+      let n = 0;
+      for (const batch of this.nodeBatches) {
+        for (const type of this.types) {
+          if (type.batch === batch && type.drawCount > 0) { n++; break; }
+        }
+      }
+      return n;
+    }
     let n = 0;
     for (let i = 0; i < this.types.length; i++) if (this.types[i].drawCount > 0) n++;
     return n;
@@ -2879,12 +3228,20 @@ export class Scatter {
    * ====================================================================== */
 
   private disposeMeshes(): void {
+    for (const batch of this.nodeBatches) {
+      this.root.remove(batch);
+      batch.dispose();
+    }
+    this.nodeBatches.length = 0;
     for (let i = 0; i < this.types.length; i++) {
       const m = this.types[i].mesh;
-      if (m === null) continue;
-      this.root.remove(m);
-      m.dispose();
+      if (m !== null) {
+        this.root.remove(m);
+        m.dispose();
+      }
       this.types[i].mesh = null;
+      this.types[i].batch = null;
+      this.types[i].batchInstances = EMPTY_I32;
     }
   }
 

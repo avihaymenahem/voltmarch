@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-buildings",
-  "generatedAt": "2026-08-23T17:33:37.249Z",
+  "generatedAt": "2026-08-26T23:40:43.135Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -802,6 +802,72 @@
       ]
     },
     {
+      "key": "allied_silo",
+      "source": "apps/game/src/assets/buildings/allies/ore-silo.glb",
+      "output": "apps/game/src/assets/buildings/allies/compressed/ore-silo.glb",
+      "sourceFileBytes": 1984616,
+      "outputFileBytes": 1644660,
+      "transferRatio": 0.8287,
+      "sourceTextureBytes": 943152,
+      "ktx2TextureBytes": 603000,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 438093,
+          "ktx2Bytes": 264667,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 101124,
+          "ktx2Bytes": 78074,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 403935,
+          "ktx2Bytes": 260259,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
       "key": "allied_pillbox",
       "source": "apps/game/src/assets/buildings/allies/pillbox.glb",
       "output": "apps/game/src/assets/buildings/allies/compressed/pillbox.glb",
@@ -1001,13 +1067,13 @@
     }
   ],
   "totals": {
-    "sourceFileBytes": 71920860,
-    "outputFileBytes": 55816384,
-    "transferRatio": 0.7761,
-    "sourceTextureBytes": 43008720,
-    "ktx2TextureBytes": 26903879,
-    "sourceGpuBytesRGBA8": 641728452,
-    "compressedGpuBytes8bpp": 106954737,
-    "compressedGpuBytes4bpp": 53477391
+    "sourceFileBytes": 73905476,
+    "outputFileBytes": 57461044,
+    "transferRatio": 0.7775,
+    "sourceTextureBytes": 43951872,
+    "ktx2TextureBytes": 27506879,
+    "sourceGpuBytesRGBA8": 654311360,
+    "compressedGpuBytes8bpp": 109051888,
+    "compressedGpuBytes4bpp": 54525968
   }
 }
