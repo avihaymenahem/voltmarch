@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import {
@@ -50,6 +50,52 @@ const NODE_TERRAIN_SOURCE = readFileSync(
 const TERRAIN_DETAIL_MASK = readFileSync(
   new URL('../src/assets/terrain/universal-terrain-mask-4k.png', import.meta.url),
 );
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('the browser terrain-detail texture is WebGPU-uploadable immediately', () => {
+  it('starts on a real neutral canvas and swaps to the decoded image later', async () => {
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ fillStyle: '', fillRect: vi.fn() }),
+    } as unknown as HTMLCanvasElement;
+    let image: FakeImage | null = null;
+
+    class FakeImage {
+      decoding = '';
+      src = '';
+      private load: (() => void) | null = null;
+
+      constructor() { image = this; }
+
+      addEventListener(type: string, listener: () => void): void {
+        if (type === 'load') this.load = listener;
+      }
+
+      finish(): void { this.load?.(); }
+    }
+
+    vi.stubGlobal('document', { createElement: () => canvas });
+    vi.stubGlobal('Image', FakeImage);
+    vi.resetModules();
+    const { createTerrainDetailMask } = await import('../src/world/terrain-detail-mask');
+
+    const texture = createTerrainDetailMask();
+    const placeholderVersion = texture.version;
+    expect(texture.image).toBe(canvas);
+    expect(canvas.width).toBe(1);
+    expect(canvas.height).toBe(1);
+    expect(placeholderVersion).toBeGreaterThan(0);
+
+    expect(image).not.toBeNull();
+    image!.finish();
+    expect(texture.image).toBe(image);
+    expect(texture.version).toBeGreaterThan(placeholderVersion);
+  });
+});
 
 function makeSet(biome: BiomeDef = BIOMES.temperate) {
   return createTerrainNodeMaterials({ biome, layerTextureSize: LAYER_SIZE, seed: SEED });

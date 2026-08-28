@@ -80,7 +80,11 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.11.2
+## What's new in 3.12.0
+
+- **Reliable WebGPU match startup:** terrain detail now begins with an immediately uploadable neutral
+  texture and swaps to the full-resolution mask after decoding, preventing the production
+  `mipLevelCount` crash and flat-orange battlefield on cold starts.
 
 - **Faction-authored construction and air fleets:** all four construction vehicles and aircraft now
   use optimized Meshy assets with generated LOD and shadow variants, including corrected Soviet
@@ -97,7 +101,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.11.2**. The
+The browser build and Windows release share the same game. The current release is **3.12.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

@@ -161,7 +161,10 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    ownership (ground, dirt, sand and rock), so it cannot bleed onto hard surfaces. A separate road
    pass reuses the same GPU texture at lower strength on asphalt and sidewalk paving before markings
    are applied; raised kerbs remain untouched. The runtime-size decision and provenance live beside
-   the asset.
+   the asset. In browser/Electron startup, the texture must begin on a synchronously uploadable
+   neutral 1 x 1 canvas and swap to the decoded PNG from its load handler. A pending
+   `HTMLImageElement` is not sufficient: WebGPU can create its sampler binding before a GPU texture
+   exists, then crash bind-group creation while reading `mipLevelCount`, leaving a flat-orange world.
 
 8. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
    `apps/game/src/assets/{buildings,units,wrecks}/` — original Meshy AI generations

@@ -41,18 +41,29 @@ export function createTerrainDetailMask(): THREE.Texture {
       THREE.RGBAFormat,
       THREE.UnsignedByteType,
     );
-    mask.needsUpdate = true;
   } else {
-    // TextureLoader leaves `texture.image` null until the request completes.
-    // WebGPU's texture validation reads `image.complete` while compiling the
-    // deferred title world, so that transient null crashes a cold boot before
-    // the local image has decoded. Attach the Image synchronously instead;
-    // `complete === false` is a valid pending source and the same Texture is
-    // uploaded once its pixels arrive.
+    // A pending HTMLImageElement is NOT an uploadable WebGPU texture. If the
+    // first terrain pipeline compiles before the 4K PNG finishes decoding,
+    // Three creates the sampler binding but no GPUTexture; bind-group creation
+    // then dereferences `texture.mipLevelCount` on undefined and aborts the
+    // whole match. Seed the same Texture with a real 1x1 canvas, which WebGPU
+    // can allocate synchronously, and replace its source after the PNG loads.
+    const placeholder = document.createElement('canvas');
+    placeholder.width = 1;
+    placeholder.height = 1;
+    const placeholderContext = placeholder.getContext('2d');
+    if (placeholderContext !== null) {
+      placeholderContext.fillStyle = 'rgb(128, 128, 128)';
+      placeholderContext.fillRect(0, 0, 1, 1);
+    }
+    mask = new THREE.Texture(placeholder);
+
     const image = new Image();
     image.decoding = 'async';
-    mask = new THREE.Texture(image);
-    image.addEventListener('load', () => { mask.needsUpdate = true; }, { once: true });
+    image.addEventListener('load', () => {
+      mask.image = image;
+      mask.needsUpdate = true;
+    }, { once: true });
     image.src = terrainDetailUrl;
   }
 
@@ -63,6 +74,9 @@ export function createTerrainDetailMask(): THREE.Texture {
   mask.magFilter = THREE.LinearFilter;
   mask.minFilter = THREE.LinearMipmapLinearFilter;
   mask.generateMipmaps = true;
+  // Upload the neutral stand-in immediately. The real browser image bumps the
+  // version again from its load handler; Node's DataTexture uses this upload.
+  mask.needsUpdate = true;
   sharedMask = mask;
   return mask;
 }
