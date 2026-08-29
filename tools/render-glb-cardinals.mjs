@@ -8,11 +8,16 @@ const args = process.argv.slice(2);
 const originalMaterial = args.includes('--material=original');
 const topdown = args.includes('--mode=top');
 const articulation = args.includes('--mode=articulation');
+const backendArg = args.find((arg) => arg.startsWith('--backend='));
+const backend = backendArg?.slice('--backend='.length) ?? 'webgl';
+if (!new Set(['webgl', 'webgpu']).has(backend)) {
+  throw new Error('--backend must be webgl or webgpu');
+}
 const pivotArg = args.find((arg) => arg.startsWith('--pivot='));
 const turretArg = args.find((arg) => arg.startsWith('--turret='));
 const positional = args.filter((arg) => arg !== '--material=original'
   && arg !== '--mode=top' && arg !== '--mode=articulation'
-  && arg !== pivotArg && arg !== turretArg);
+  && arg !== pivotArg && arg !== turretArg && arg !== backendArg);
 const [modelArg, outputArg, baseUrlArg = 'http://localhost:5173'] = positional;
 if (!modelArg || !outputArg) {
   throw new Error('usage: node tools/render-glb-cardinals.mjs <model.glb> <output.png> [base-url]');
@@ -32,7 +37,10 @@ await fs.mkdir(path.dirname(output), { recursive: true });
 const browser = await chromium.launch({
   headless: true,
   channel: 'chrome',
-  args: ['--use-angle=default', '--enable-gpu', '--ignore-gpu-blocklist'],
+  args: [
+    '--use-angle=default', '--enable-gpu', '--ignore-gpu-blocklist',
+    '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU',
+  ],
 });
 
 try {
@@ -45,6 +53,7 @@ try {
   });
   const url = new URL('/tools/glb-cardinals.html', baseUrlArg);
   url.searchParams.set('model', `/${relative}`);
+  url.searchParams.set('backend', backend);
   if (originalMaterial) url.searchParams.set('material', 'original');
   if (topdown) url.searchParams.set('mode', 'top');
   if (articulation) {
@@ -60,8 +69,12 @@ try {
     await page.screenshot({ path: output }).catch(() => undefined);
     throw new Error(`cardinal page did not become ready: ${messages.join('\n')}`, { cause: error });
   }
+  const readyTitle = await page.title();
+  if (backend === 'webgpu' && !readyTitle.startsWith('READY webgpu ')) {
+    throw new Error(`WebGPU audit fell back: ${readyTitle}`);
+  }
   await page.screenshot({ path: output });
-  console.log(`${relative} -> ${output}`);
+  console.log(`${relative} -> ${output} (${readyTitle})`);
 } finally {
   await browser.close();
 }

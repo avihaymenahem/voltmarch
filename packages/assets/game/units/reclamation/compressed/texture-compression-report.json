@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-29T14:26:38.297Z",
+  "generatedAt": "2026-08-29T17:52:25.314Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -421,16 +421,82 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "reclaim_hauler",
+      "source": "packages/assets/game/units/reclamation/slag-hauler.glb",
+      "output": "packages/assets/game/units/reclamation/compressed/slag-hauler.glb",
+      "sourceFileBytes": 3569960,
+      "outputFileBytes": 2999592,
+      "transferRatio": 0.8402,
+      "sourceTextureBytes": 1944338,
+      "ktx2TextureBytes": 1373760,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 932776,
+          "ktx2Bytes": 603516,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 237442,
+          "ktx2Bytes": 183075,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 774120,
+          "ktx2Bytes": 587169,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 41487088,
-    "outputFileBytes": 22847588,
-    "transferRatio": 0.5507,
-    "sourceTextureBytes": 30163204,
-    "ktx2TextureBytes": 11522485,
-    "sourceGpuBytesRGBA8": 357913916,
-    "compressedGpuBytes8bpp": 64312655,
-    "compressedGpuBytes4bpp": 32156337
+    "sourceFileBytes": 45057048,
+    "outputFileBytes": 25847180,
+    "transferRatio": 0.5737,
+    "sourceTextureBytes": 32107542,
+    "ktx2TextureBytes": 12896245,
+    "sourceGpuBytesRGBA8": 408245560,
+    "compressedGpuBytes8bpp": 72701262,
+    "compressedGpuBytes4bpp": 36350642
   }
 }

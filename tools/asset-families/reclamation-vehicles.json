@@ -57,6 +57,13 @@
       "class": "hero",
       "lods": true,
       "movingParts": true
+    },
+    {
+      "key": "reclaim_hauler",
+      "file": "slag-hauler.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

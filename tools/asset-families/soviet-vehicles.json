@@ -83,6 +83,20 @@
       "class": "hero",
       "lods": true,
       "movingParts": true
+    },
+    {
+      "key": "soviet_transport",
+      "file": "hover-transport.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "soviet_lighter",
+      "file": "assault-barge.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

@@ -700,6 +700,189 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     normalScale: 1.14,
     envMapIntensity: 0.48,
   },
+  {
+    key: 'soviet_transport',
+    label: 'Soviet Hover Transport',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/hover-transport.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/hover-transport.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [5.0, 3.4, 9.6],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.24,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+  },
+  {
+    key: 'soviet_lighter',
+    label: 'Soviet Assault Barge',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/assault-barge.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/assault-barge.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/assault-barge.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/assault-barge.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [5.2, 3.0, 11.0],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.24,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+  },
+  {
+    key: 'allied_transport',
+    label: 'Allied Hover Transport',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/hover-transport.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/allies/derived/hover-transport.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 48,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/allies/derived/hover-transport.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 78,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/hover-transport.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [5.0, 3.4, 9.6],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'allied_lighter',
+    label: 'Allied Landing Craft',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/landing-craft.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/allies/derived/landing-craft.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/allies/derived/landing-craft.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/landing-craft.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [5.0, 3.0, 11.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'meridian_lighter',
+    label: 'Meridian Sun Lighter',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/sun-lighter.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/meridian/derived/sun-lighter.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/sun-lighter.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [5.0, 3.0, 11.2],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.14,
+    envMapIntensity: 0.56,
+  },
+  {
+    key: 'meridian_argosy',
+    label: 'Meridian Argosy',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/argosy.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/meridian/derived/argosy.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 56,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/meridian/derived/argosy.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 90,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/argosy.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [6.0, 3.6, 13.2],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.14,
+    envMapIntensity: 0.56,
+  },
+  {
+    key: 'reclaim_hauler',
+    label: 'Reclamation Slag Hauler',
+    url: new URL(
+      '../../../../packages/assets/game/units/reclamation/compressed/slag-hauler.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/slag-hauler.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [6.2, 3.6, 13.0],
+    yawDeg: 90,
+    baseColorGain: 1.20,
+    roughnessGain: 1.26,
+    normalScale: 1.14,
+    envMapIntensity: 0.48,
+  },
 ];
 
 const loader = new GLTFLoader();

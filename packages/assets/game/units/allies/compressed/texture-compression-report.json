@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "generatedAt": "2026-08-29T14:26:38.060Z",
+  "generatedAt": "2026-08-29T17:52:44.471Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -438,16 +438,148 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "allied_transport",
+      "source": "packages/assets/game/units/allies/hover-transport.glb",
+      "output": "packages/assets/game/units/allies/compressed/hover-transport.glb",
+      "sourceFileBytes": 3446652,
+      "outputFileBytes": 2553568,
+      "transferRatio": 0.7409,
+      "sourceTextureBytes": 2276135,
+      "ktx2TextureBytes": 1382850,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1325674,
+          "ktx2Bytes": 589484,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 185286,
+          "ktx2Bytes": 138788,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 765175,
+          "ktx2Bytes": 654578,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "allied_lighter",
+      "source": "packages/assets/game/units/allies/landing-craft.glb",
+      "output": "packages/assets/game/units/allies/compressed/landing-craft.glb",
+      "sourceFileBytes": 3279828,
+      "outputFileBytes": 2394624,
+      "transferRatio": 0.7301,
+      "sourceTextureBytes": 2158179,
+      "ktx2TextureBytes": 1272784,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1317755,
+          "ktx2Bytes": 555800,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 175836,
+          "ktx2Bytes": 133230,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 664588,
+          "ktx2Bytes": 583754,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 43142436,
-    "outputFileBytes": 26227320,
-    "transferRatio": 0.6079,
-    "sourceTextureBytes": 29396690,
-    "ktx2TextureBytes": 12480347,
-    "sourceGpuBytesRGBA8": 346729104,
-    "compressedGpuBytes8bpp": 61516452,
-    "compressedGpuBytes4bpp": 30758236
+    "sourceFileBytes": 49868916,
+    "outputFileBytes": 31175512,
+    "transferRatio": 0.6251,
+    "sourceTextureBytes": 33831004,
+    "ktx2TextureBytes": 15135981,
+    "sourceGpuBytesRGBA8": 447392392,
+    "compressedGpuBytes8bpp": 78293666,
+    "compressedGpuBytes4bpp": 39146846
   }
 }

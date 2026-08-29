@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-29T14:25:39.085Z",
+  "generatedAt": "2026-08-29T17:42:44.571Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
   "rows": [
@@ -328,6 +328,63 @@
             11
           ],
           "occupiedCells": 161
+        }
+      ]
+    },
+    {
+      "key": "reclaim_hauler",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/slag-hauler.glb",
+        "triangles": 24605,
+        "fileBytes": 3535168
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 91.1% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/slag-hauler.lod1.glb",
+          "triangles": 22408,
+          "triangleRatio": 0.9107,
+          "boundsDriftMeters": 0.00336,
+          "boundsDriftRatio": 0.00355,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 83.6% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/slag-hauler.lod2.glb",
+          "triangles": 20574,
+          "triangleRatio": 0.8362,
+          "boundsDriftMeters": 0.00502,
+          "boundsDriftRatio": 0.00531,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slag-hauler.shadow.glb",
+          "triangles": 1512,
+          "triangleRatio": 0.0615,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 22004,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 126
         }
       ]
     }

@@ -188,6 +188,13 @@ describe('imported unit shipping budgets', () => {
       { key: 'soviet_dreadnought', faction: 'soviets', file: 'dreadnought.glb', meshes: ['Hull', 'Turret'] },
       { key: 'meridian_monitor', faction: 'meridian', file: 'sunmonitor.glb', meshes: ['Hull', 'Turret'] },
       { key: 'reclaim_hulk', faction: 'reclamation', file: 'reclaimed-hulk.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'soviet_transport', faction: 'soviets', file: 'hover-transport.glb', meshes: ['Hull'] },
+      { key: 'soviet_lighter', faction: 'soviets', file: 'assault-barge.glb', meshes: ['Hull'] },
+      { key: 'allied_transport', faction: 'allies', file: 'hover-transport.glb', meshes: ['Hull'] },
+      { key: 'allied_lighter', faction: 'allies', file: 'landing-craft.glb', meshes: ['Hull'] },
+      { key: 'meridian_lighter', faction: 'meridian', file: 'sun-lighter.glb', meshes: ['Hull'] },
+      { key: 'meridian_argosy', faction: 'meridian', file: 'argosy.glb', meshes: ['Hull'] },
+      { key: 'reclaim_hauler', faction: 'reclamation', file: 'slag-hauler.glb', meshes: ['Hull'] },
     ] as const;
     const runtime = fs.readFileSync(
       path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
@@ -205,7 +212,46 @@ describe('imported unit shipping budgets', () => {
       expect(compressed.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
       expect(runtime).toContain(`key: '${ship.key}'`);
       expect(runtime).toContain(`${ship.faction}/compressed/${ship.file}`);
+      const shadow = path.join(
+        sourceDir, 'derived', `${path.basename(ship.file, '.glb')}.shadow.glb`,
+      );
+      expect(fs.existsSync(shadow), `${ship.key} shadow proxy`).toBe(true);
+      expect(triangles(glbJson(shadow).json), ship.key).toBeLessThanOrEqual(2_000);
     }
+  });
+
+  it('loads every private-faction ship override before publishing its registry', () => {
+    for (const contract of [
+      {
+        file: 'Faction3Units.ts',
+        keys: [
+          'meridian_cutter', 'meridian_corvette', 'meridian_monitor',
+          'meridian_lighter', 'meridian_argosy',
+        ],
+      },
+      {
+        file: 'Faction4Units.ts',
+        keys: ['reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler'],
+      },
+    ]) {
+      const source = fs.readFileSync(path.join(root, 'apps/game/src/art', contract.file), 'utf8');
+      const importsStart = source.indexOf('const importedKeys = [');
+      const imports = source.slice(importsStart, source.indexOf('] as const;', importsStart));
+      for (const key of contract.keys) expect(imports, `${contract.file}:${key}`).toContain(`'${key}'`);
+      expect(source.indexOf('for (const key of importedKeys)'))
+        .toBeLessThan(source.indexOf('for (const [contentKey, modelKey] of Object.entries('));
+    }
+  });
+
+  it('keeps the final transport wave on its gameplay envelopes', () => {
+    const targets = new Map(IMPORTED_UNIT_SPECS.map((spec) => [spec.key, spec.target] as const));
+    expect(targets.get('soviet_transport')).toEqual([5.0, 3.4, 9.6]);
+    expect(targets.get('soviet_lighter')).toEqual([5.2, 3.0, 11.0]);
+    expect(targets.get('allied_transport')).toEqual([5.0, 3.4, 9.6]);
+    expect(targets.get('allied_lighter')).toEqual([5.0, 3.0, 11.0]);
+    expect(targets.get('meridian_lighter')).toEqual([5.0, 3.0, 11.2]);
+    expect(targets.get('meridian_argosy')).toEqual([6.0, 3.6, 13.2]);
+    expect(targets.get('reclaim_hauler')).toEqual([6.2, 3.6, 13.0]);
   });
 
   it('keeps the fleet-wide recon and Allied combat ladders synchronized', () => {

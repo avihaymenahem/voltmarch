@@ -13,10 +13,17 @@
 
   const params = new URLSearchParams(location.search);
   const modelUrl = params.get('model');
+  const backend = params.get('backend') ?? 'webgl';
   if (!modelUrl) throw new Error('Pass ?model=/path/to/model.glb');
+  if (!['webgl', 'webgpu'].includes(backend)) throw new Error('Pass ?backend=webgl|webgpu');
 
   const canvas = document.querySelector('#view');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  const renderer = backend === 'webgpu'
+    ? new (await import('three/webgpu')).WebGPURenderer({
+        canvas, antialias: true, preserveDrawingBuffer: true,
+      })
+    : new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  if (backend === 'webgpu') await renderer.init();
   renderer.setPixelRatio(1);
   renderer.setSize(1200, 1200, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -102,17 +109,23 @@
     if (turret !== null) turret.rotation.y = THREE.MathUtils.degToRad(views[i][2]);
     renderer.setViewport(x, y, viewportSize, viewportSize);
     renderer.setScissor(x, y, viewportSize, viewportSize);
-    renderer.render(scene, camera);
+    if (backend === 'webgpu') await renderer.renderAsync(scene, camera);
+    else renderer.render(scene, camera);
   }
-  renderer.getContext().finish();
+  if (backend === 'webgl') renderer.getContext().finish();
   await new Promise((resolve) => requestAnimationFrame(resolve));
   // Freeze the completed WebGL frame into a regular image so automated
   // screenshots can capture it even when the browser composites canvases
   // outside the page bitmap.
-  const capture = document.createElement('img');
-  capture.alt = 'GLB cardinal audit';
-  capture.src = canvas.toDataURL('image/png');
-  capture.style.cssText = 'position:fixed;inset:0;margin:auto;width:min(100vw,100vh);height:min(100vw,100vh);object-fit:contain;background:#24282e';
-  document.body.append(capture);
-  document.title = `READY ${views.map((v) => v[0]).join(' ')}`;
+  if (backend === 'webgl') {
+    const capture = document.createElement('img');
+    capture.alt = 'GLB cardinal audit';
+    capture.src = canvas.toDataURL('image/png');
+    capture.style.cssText = 'position:fixed;inset:0;margin:auto;width:min(100vw,100vh);height:min(100vw,100vh);object-fit:contain;background:#24282e';
+    document.body.append(capture);
+  }
+  const actualBackend = backend === 'webgpu'
+    ? (renderer.backend?.isWebGPUBackend === true ? 'webgpu' : 'webgl2-fallback')
+    : 'webgl';
+  document.title = `READY ${actualBackend} ${views.map((v) => v[0]).join(' ')}`;
 </script>

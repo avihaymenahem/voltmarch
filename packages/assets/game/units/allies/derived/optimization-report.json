@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "generatedAt": "2026-08-29T14:25:37.836Z",
+  "generatedAt": "2026-08-29T17:42:44.162Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-vehicles.json",
   "rows": [
@@ -332,6 +332,112 @@
             6
           ],
           "occupiedCells": 94
+        }
+      ]
+    },
+    {
+      "key": "allied_transport",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/hover-transport.glb",
+        "triangles": 24954,
+        "fileBytes": 2891744
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/hover-transport.lod1.glb",
+          "triangles": 11224,
+          "triangleRatio": 0.4498,
+          "boundsDriftMeters": 0.00039,
+          "boundsDriftRatio": 0.00031,
+          "fileBytes": 375292,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/hover-transport.lod2.glb",
+          "triangles": 4490,
+          "triangleRatio": 0.1799,
+          "boundsDriftMeters": 0.0007,
+          "boundsDriftRatio": 0.00061,
+          "fileBytes": 176568,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/hover-transport.shadow.glb",
+          "triangles": 1656,
+          "triangleRatio": 0.0664,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24020,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 138
+        }
+      ]
+    },
+    {
+      "key": "allied_lighter",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/landing-craft.glb",
+        "triangles": 24352,
+        "fileBytes": 2655440
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/landing-craft.lod1.glb",
+          "triangles": 10956,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00024,
+          "boundsDriftRatio": 0.00037,
+          "fileBytes": 345252,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/landing-craft.lod2.glb",
+          "triangles": 4382,
+          "triangleRatio": 0.1799,
+          "boundsDriftMeters": 0.00024,
+          "boundsDriftRatio": 0.00037,
+          "fileBytes": 156120,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/landing-craft.shadow.glb",
+          "triangles": 1152,
+          "triangleRatio": 0.0473,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16960,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 96
         }
       ]
     }

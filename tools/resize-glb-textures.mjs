@@ -28,13 +28,16 @@ if (!inputArg || !outputArg) {
   throw new Error(
     'usage: node tools/resize-glb-textures.mjs <input.glb> <output.glb> '
     + '[--profile building|vehicle|hero|infantry|troop|defence] '
-    + '[--palette none|soviet-field] [--accent-preset none|soviet-conyard] '
+    + '[--palette none|soviet-field|allied-ceramic|meridian-solar|reclamation-salvage] '
+    + '[--accent-preset none|soviet-conyard] '
     + '[--surface-profile none|soviet-family] [--seal-swatch]',
   );
 }
 const profile = PROFILES[profileName];
 if (!profile) throw new Error(`unknown texture profile "${profileName}"`);
-if (!new Set(['none', 'soviet-field']).has(paletteName)) {
+if (!new Set([
+  'none', 'soviet-field', 'allied-ceramic', 'meridian-solar', 'reclamation-salvage',
+]).has(paletteName)) {
   throw new Error(`unknown texture palette "${paletteName}"`);
 }
 if (!new Set(['none', 'soviet-conyard']).has(accentPreset)) {
@@ -76,13 +79,10 @@ function hsvToRgb(hue, saturation, value) {
 }
 
 /**
- * Meshy frequently turns a tightly specified olive concept into one broad
- * sandstone/orange material. This deterministic conditioning pass restores
- * the Soviet material hierarchy without repainting normals or metal/roughness:
- * deep red stays red, copper-red trim becomes a controlled Soviet red accent,
- * saturated machinery becomes safety yellow, and the remaining warm shell
- * becomes field-painted olive. Very dark machinery is left dark so the model
- * keeps readable material separation after the broad armor lift.
+ * Deterministic faction palette conditioning for generated base-colour maps.
+ * It preserves the authored value/detail hierarchy and never touches normals
+ * or metal/roughness. This is also the recovery path when a geometry-first
+ * material reference returns an otherwise useful neutral atlas.
  */
 function rasterizeUvTriangle(mask, width, height, triangle) {
   const points = triangle.map(([u, v]) => [
@@ -118,40 +118,59 @@ async function applyBasePalette(bytes, palette, accentTriangles) {
     const b = data[offset + 2] / 255;
     let [h, s, v] = rgbToHsv(r, g, b);
 
-    const red = (h <= 15 || h >= 345) && s >= 0.30;
-    const sovietAccent = h > 15 && h <= 34 && s >= 0.20 && v >= 0.16;
-    const safetyYellow = h > 32 && h <= 58 && s >= 0.62 && v >= 0.55;
-    const warmShell = h > 34 && h <= 72 && s >= 0.08 && v >= 0.12;
-    const neutralArmor = s < 0.18 && v >= 0.22 && v <= 0.88;
-    if (red) {
-      h = 355;
-      s = clamp01(Math.max(0.68, s * 1.08));
-      v = clamp01(0.08 + v * 0.96);
-    } else if (sovietAccent) {
-      // Meshy encoded the requested red faction slabs as sparse copper/brown.
-      // Reclassify only sufficiently saturated, non-shadow copper pixels so
-      // pipes and deliberate trim become readable red without flooding armor.
-      h = 356;
-      s = clamp01(0.66 + s * 0.22);
-      v = clamp01(0.11 + v * 0.92);
-    } else if (safetyYellow) {
-      h = 47;
-      s = clamp01(Math.max(0.72, s));
-      v = clamp01(0.02 + v * 1.00);
-    } else if (warmShell) {
-      h = 78;
-      s = clamp01(0.31 + Math.min(s, 0.55) * 0.25);
-      // Preserve the generated texture's panel hierarchy. The first pass
-      // multiplied every warm value by 0.68, crushing broad Soviet walls into
-      // nearly one black mass under the game's directional light.
-      v = clamp01(0.10 + v * 0.80);
-    } else if (neutralArmor) {
-      // Clean retextures often satisfy "no wear" by returning neutral gunmetal.
-      // Mid-value neutral plates are the painted shell; keep very dark steel
-      // machinery and bright windows neutral while restoring Soviet olive.
-      h = 78;
-      s = 0.24;
-      v = clamp01(0.07 + v * 0.86);
+    if (palette === 'soviet-field') {
+      const red = (h <= 15 || h >= 345) && s >= 0.30;
+      const sovietAccent = h > 15 && h <= 34 && s >= 0.20 && v >= 0.16;
+      const safetyYellow = h > 32 && h <= 58 && s >= 0.62 && v >= 0.55;
+      const warmShell = h > 34 && h <= 72 && s >= 0.08 && v >= 0.12;
+      const neutralArmor = s < 0.18 && v >= 0.22 && v <= 0.88;
+      if (red) {
+        h = 355;
+        s = clamp01(Math.max(0.68, s * 1.08));
+        v = clamp01(0.08 + v * 0.96);
+      } else if (sovietAccent) {
+        h = 356;
+        s = clamp01(0.66 + s * 0.22);
+        v = clamp01(0.11 + v * 0.92);
+      } else if (safetyYellow) {
+        h = 47;
+        s = clamp01(Math.max(0.72, s));
+        v = clamp01(0.02 + v * 1.00);
+      } else if (warmShell) {
+        h = 78;
+        s = clamp01(0.31 + Math.min(s, 0.55) * 0.25);
+        v = clamp01(0.10 + v * 0.80);
+      } else if (neutralArmor) {
+        h = 78;
+        s = 0.24;
+        v = clamp01(0.07 + v * 0.86);
+      }
+    } else if (palette === 'allied-ceramic') {
+      if (v < 0.28) {
+        h = 215; s = 0.18; v = clamp01(0.08 + v * 0.70);
+      } else if (v < 0.52) {
+        h = 218; s = 0.48; v = clamp01(0.12 + v * 0.82);
+      } else {
+        h = 210; s = 0.08; v = clamp01(0.28 + v * 0.72);
+      }
+    } else if (palette === 'meridian-solar') {
+      if (v < 0.25) {
+        h = 184; s = 0.48; v = clamp01(0.06 + v * 0.74);
+      } else if (v < 0.46) {
+        h = 181; s = 0.55; v = clamp01(0.10 + v * 0.82);
+      } else if (v < 0.67) {
+        h = 43; s = 0.44; v = clamp01(0.16 + v * 0.88);
+      } else {
+        h = 48; s = 0.12; v = clamp01(0.26 + v * 0.72);
+      }
+    } else if (palette === 'reclamation-salvage') {
+      if (v < 0.25) {
+        h = 210; s = 0.10; v = clamp01(0.04 + v * 0.66);
+      } else if (v < 0.58) {
+        h = 24; s = 0.50; v = clamp01(0.08 + v * 0.78);
+      } else {
+        h = 35; s = 0.56; v = clamp01(0.08 + v * 0.88);
+      }
     }
 
     const [outR, outG, outB] = hsvToRgb(h, s, v);

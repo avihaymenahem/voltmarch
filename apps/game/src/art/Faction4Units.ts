@@ -1665,6 +1665,7 @@ export async function buildAndRegisterReclaimUnits(
   }
   const importedKeys = [
     'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
+    'reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler',
   ] as const;
   for (const key of importedKeys) {
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);

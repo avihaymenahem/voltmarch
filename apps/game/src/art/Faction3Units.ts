@@ -1609,6 +1609,8 @@ export async function buildAndRegisterMeridianUnits(
   }
   const importedKeys = [
     'meridian_collector', 'meridian_carryall', 'meridian_kestrel',
+    'meridian_cutter', 'meridian_corvette', 'meridian_monitor',
+    'meridian_lighter', 'meridian_argosy',
   ] as const;
   for (const key of importedKeys) {
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);

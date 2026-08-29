@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-29T14:25:38.658Z",
+  "generatedAt": "2026-08-29T17:42:44.531Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -332,6 +332,114 @@
             6
           ],
           "occupiedCells": 59
+        }
+      ]
+    },
+    {
+      "key": "meridian_lighter",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/meridian/sun-lighter.glb",
+        "triangles": 24280,
+        "fileBytes": 2854072
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/sun-lighter.lod1.glb",
+          "triangles": 11083,
+          "triangleRatio": 0.4565,
+          "boundsDriftMeters": 0.00919,
+          "boundsDriftRatio": 0.00953,
+          "fileBytes": 453848,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 38.0% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/sun-lighter.lod2.glb",
+          "triangles": 9219,
+          "triangleRatio": 0.3797,
+          "boundsDriftMeters": 0.02593,
+          "boundsDriftRatio": 0.01297,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/sun-lighter.shadow.glb",
+          "triangles": 1104,
+          "triangleRatio": 0.0455,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16288,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            7
+          ],
+          "occupiedCells": 92
+        }
+      ]
+    },
+    {
+      "key": "meridian_argosy",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/meridian/argosy.glb",
+        "triangles": 24409,
+        "fileBytes": 3158000
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/argosy.lod1.glb",
+          "triangles": 10966,
+          "triangleRatio": 0.4493,
+          "boundsDriftMeters": 0.00293,
+          "boundsDriftRatio": 0.00452,
+          "fileBytes": 388300,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/argosy.lod2.glb",
+          "triangles": 4486,
+          "triangleRatio": 0.1838,
+          "boundsDriftMeters": 0.01361,
+          "boundsDriftRatio": 0.01535,
+          "fileBytes": 198856,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/argosy.shadow.glb",
+          "triangles": 1752,
+          "triangleRatio": 0.0718,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 25364,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            11
+          ],
+          "occupiedCells": 146
         }
       ]
     }

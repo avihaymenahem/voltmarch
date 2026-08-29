@@ -115,8 +115,17 @@ The normal successful route has been 20 Meshy credits for multi-image geometry p
 texture. Paid remesh is exceptional. The current account balance is intentionally not copied here;
 read it from Meshy immediately before spending.
 
-The current imported-unit checkpoint adds all four construction vehicles, all four aircraft and the
-Soviet Attack Dog as faction-distinct Meshy shells. The dog also has a local eight-joint review rig
+The current imported-unit checkpoint adds all four construction vehicles, all four aircraft, the
+Soviet Attack Dog and the final seven naval transport/support hulls as faction-distinct Meshy shells.
+The naval wave comprises both Soviet and Allied hover transports, the Soviet Assault Barge, Allied
+Landing Craft, Meridian Sun Lighter and Argosy, and Reclamation Slag Hauler. Each ships through
+`ImportedUnitAssets.ts` with a 24k-25k-triangle `Hull`, KTX2 PBR textures, a bounded shadow proxy,
+reviewed colour LODs where simplification preserved the silhouette, and the procedural model as the
+load/deploy/socket fallback. The private Meridian and Reclamation registries must list every imported
+naval key before publication; their older warship imports were previously specified but omitted from
+those registry key sets. The naval wave used exactly 210 Meshy credits (seven 20-credit geometry tasks
+and seven 10-credit texture tasks); task IDs and measured budgets are recorded in
+`docs/ASSET_CONVERSION_MAP.md` and the seven concept READMEs. The dog also has a local eight-joint review rig
 with shared Idle/Walk/Run/Bite clips in Asset Lab; gameplay still uses its instanced gait. Vehicles and aircraft ship through
 `ImportedUnitAssets.ts` with reviewed colour LODs, a geometry-only shadow proxy, required KTX2
 textures and their original procedural model as the load/deploy/socket fallback. The dog uses the

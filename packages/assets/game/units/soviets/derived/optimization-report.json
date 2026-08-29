@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-29T14:25:38.239Z",
+  "generatedAt": "2026-08-29T17:42:43.820Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -496,6 +496,116 @@
             8
           ],
           "occupiedCells": 117
+        }
+      ]
+    },
+    {
+      "key": "soviet_transport",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/hover-transport.glb",
+        "triangles": 24852,
+        "fileBytes": 3087624
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "bounds drift 4.11% exceeds 2.00% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/hover-transport.lod1.glb",
+          "triangles": 11165,
+          "triangleRatio": 0.4493,
+          "boundsDriftMeters": 0.0284,
+          "boundsDriftRatio": 0.04108,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "bounds drift 4.11% exceeds 2.00% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/hover-transport.lod2.glb",
+          "triangles": 4719,
+          "triangleRatio": 0.1899,
+          "boundsDriftMeters": 0.02842,
+          "boundsDriftRatio": 0.04109,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/hover-transport.shadow.glb",
+          "triangles": 1920,
+          "triangleRatio": 0.0773,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27700,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            10
+          ],
+          "occupiedCells": 160
+        }
+      ]
+    },
+    {
+      "key": "soviet_lighter",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/assault-barge.glb",
+        "triangles": 24504,
+        "fileBytes": 2239320
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/assault-barge.lod1.glb",
+          "triangles": 11018,
+          "triangleRatio": 0.4496,
+          "boundsDriftMeters": 0.00169,
+          "boundsDriftRatio": 0.00232,
+          "fileBytes": 349720,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/assault-barge.lod2.glb",
+          "triangles": 4410,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00378,
+          "boundsDriftRatio": 0.0052,
+          "fileBytes": 169424,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/assault-barge.shadow.glb",
+          "triangles": 1152,
+          "triangleRatio": 0.047,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16960,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 96
         }
       ]
     }

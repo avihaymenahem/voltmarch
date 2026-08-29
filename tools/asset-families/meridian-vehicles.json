@@ -56,6 +56,20 @@
       "class": "hero",
       "lods": true,
       "movingParts": true
+    },
+    {
+      "key": "meridian_lighter",
+      "file": "sun-lighter.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "meridian_argosy",
+      "file": "argosy.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }
