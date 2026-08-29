@@ -1651,8 +1651,12 @@ function ship(o: ShipOpts): UnitMassList {
   const superZ = lander ? -L * 0.34 : -L * 0.10;
   const superL = lander ? L * 0.22 : L * 0.34;
   const mastZ = lander ? superZ : -L * 0.16;
-  const turreted = o.armament === 'turret';
-  const turretY = hullH + H * 0.19;
+  // The escort's generated replacement has a genuinely separate fore mount.
+  // Keep the procedural fallback on the same articulation contract: without a
+  // turret pivot the importer aligns its source ring to Y=0 and buries almost
+  // the entire fitted hull below the naval entity's waterline.
+  const turreted = o.armament === 'turret' || o.armament === 'escort';
+  const turretY = hullH + H * (o.armament === 'escort' ? 0.18 : 0.19);
   const turretZ = L * 0.28;
 
   const masses: MassDef[] = [
@@ -1724,14 +1728,14 @@ function ship(o: ShipOpts): UnitMassList {
     );
   } else if (o.armament === 'escort') {
     masses.push(
-      greeble('foreTurret', 'revolve', [W * 0.44, H * 0.18, W * 0.48], [0, hullH + H * 0.18, L * 0.28], 'paintMed', {
-        group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
+      primary('foreTurret', 'revolve', [W * 0.44, H * 0.18, W * 0.48], [0, hullH + H * 0.18, L * 0.28], 'paintMed', {
+        turret: true, group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
       }),
       barrelMass('foreBarrel', 0.22, L * 0.22, [0, hullH + H * 0.20, L * 0.35], {
-        role: MassRole.Greeble, group: 'fore mount',
+        role: MassRole.Greeble, group: 'fore mount', turret: true,
       }),
       greeble('foreMuzzle', 'cone', [0.32, L * 0.06, 0.32], [0, hullH + H * 0.20, L * 0.43], 'bareMetal', {
-        rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
+        turret: true, rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
       }),
       greeble('ciws', 'revolve', [W * 0.28, H * 0.15, W * 0.28], [0, deckTop + H * 0.08, -L * 0.34], 'bareMetal', {
         group: 'aft mount', shape: { profile: DOME_PROFILE, segments: 12 },

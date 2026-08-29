@@ -241,6 +241,20 @@ describe('imported unit shipping budgets', () => {
       .toBeLessThan(NAVAL_UNIT_DIMENSIONS.destroyer.l);
   });
 
+  it('keeps the Assault Destroyer hull anchored to its articulated waterline', () => {
+    const assault = UNIT_MASS_LISTS.find((model) => model.key === 'allied_gunboat');
+    const imported = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'allied_gunboat');
+    expect(assault).toBeDefined();
+    expect(imported?.sourceTurretPivot).toBeDefined();
+    expect(assault?.turretPivot).toBeDefined();
+    // A missing target ring becomes [0,0,0] in UnitFactory. Aligning the
+    // imported source ring to that point puts nearly its whole hull underwater.
+    expect(assault!.turretPivot![1]).toBeGreaterThan(1.5);
+    const foreMount = assault!.masses.filter((mass) => mass.name.startsWith('fore'));
+    expect(foreMount).toHaveLength(3);
+    expect(foreMount.every((mass) => mass.turret === true)).toBe(true);
+  });
+
   it('rejects a microscopic post-fit Allied hull before registration', () => {
     const assault = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'allied_gunboat');
     expect(assault).toBeDefined();
