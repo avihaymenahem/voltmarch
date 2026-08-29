@@ -51,6 +51,8 @@ import { tutorialCompleted, tutorialMenuHint, tutorialUntouched } from './Tutori
 import { requestedBackend, type LiveBackend } from '../render/backend';
 import { audio } from '../audio/AudioEngine';
 import { MusicControl } from './MusicControl';
+import { desktopBridge } from '../platform/desktop';
+import { normalizeCommanderName } from '../net/protocol';
 
 /* ==========================================================================
  * MAIN MENU
@@ -147,8 +149,53 @@ export class MainMenuScreen implements Screen {
 
     const inner = el('div', 'vm-menu-inner');
 
+    /* -- compact utility bar --------------------------------------------- */
+    // Keep identity and infrequent routes available without making them
+    // compete with the play choices.  The title screen should read as a
+    // battlefield first and a menu second, not as a dashboard of equal boxes.
+    const top = el('header', 'vm-cinematic-topbar');
+    const identity = el('button', 'vm-cinematic-identity');
+    identity.type = 'button';
+    identity.setAttribute('aria-label', 'Open Service Record');
+    identity.addEventListener('click', () => this.shell.openProfile());
+    identity.appendChild(icon('trophy', 20));
+    const identityCopy = el('span', 'vm-cinematic-identity-copy');
+    identityCopy.appendChild(el('span', 'vm-cinematic-overline', 'COMMANDER PROFILE'));
+    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
+      ?? 'Commander';
+    identityCopy.appendChild(el('strong', 'vm-cinematic-callsign', commanderName.toLocaleUpperCase()));
+    identity.appendChild(identityCopy);
+    top.appendChild(identity);
+
+    const topActions = el('nav', 'vm-cinematic-top-actions');
+    topActions.setAttribute('aria-label', 'System menu');
+    const topAction = (control: HTMLButtonElement): HTMLButtonElement => {
+      control.classList.add('vm-cinematic-top-action');
+      return control;
+    };
+    const profileAction = topAction(button('Profile', {
+      iconName: 'trophy',
+      hint: profileHint(),
+      onClick: () => this.shell.openProfile(),
+    }));
+    profileAction.setAttribute('aria-label', 'Open Service Record');
+    topActions.appendChild(profileAction);
+    topActions.appendChild(topAction(button('Settings', {
+      iconName: 'sliders',
+      onClick: () => this.shell.openSettings('menu'),
+    })));
+    const desktop = desktopBridge();
+    if (desktop !== null) {
+      topActions.appendChild(topAction(button('Quit', {
+        iconName: 'power',
+        variant: 'danger',
+        onClick: () => desktop.quit(),
+      })));
+    }
+    inner.appendChild(top);
+
     /* -- brand ------------------------------------------------------------ */
-    const brand = el('div', 'vm-menu-brand');
+    const brand = el('div', 'vm-menu-brand vm-cinematic-brand');
     const title = el('h1', 'vm-title');
     // The supplied lockup rather than a CSS re-creation of it, so the menu, the
     // boot curtain and the favicon are all literally the same artwork.
@@ -167,9 +214,30 @@ export class MainMenuScreen implements Screen {
     brand.appendChild(el('p', 'vm-subtitle', 'Forge Armies. Command the Front.'));
     inner.appendChild(brand);
 
-    /* -- nav -------------------------------------------------------------- */
-    const nav = el('nav', 'vm-menu-nav');
+    /* -- play field ------------------------------------------------------- */
+    const play = el('main', 'vm-cinematic-play');
+    const playHeading = el('div', 'vm-cinematic-heading');
+    playHeading.appendChild(el('span', 'vm-cinematic-overline', 'VOLTMARCH // COMMAND THE FRONT'));
+    playHeading.appendChild(el('h2', 'vm-cinematic-title', 'Enter The Theatre'));
+    playHeading.appendChild(el('p', 'vm-cinematic-lede', 'Choose an operation and deploy.'));
+    play.appendChild(playHeading);
+
+    const nav = el('nav', 'vm-menu-nav vm-cinematic-modes');
     nav.setAttribute('aria-label', 'Main menu');
+
+    let modeIndex = 0;
+    const operationButton = (
+      control: HTMLButtonElement,
+      kind: 'feature' | 'standard' | 'online',
+      eyebrow: string,
+    ): HTMLButtonElement => {
+      modeIndex += 1;
+      control.classList.add('vm-cinematic-mode', `is-${kind}`);
+      control.insertBefore(el('span', 'vm-cinematic-mode-index', `0${modeIndex}`), control.firstChild);
+      control.appendChild(el('span', 'vm-cinematic-mode-eyebrow', eyebrow));
+      control.appendChild(icon('chevronRight', 18));
+      return control;
+    };
 
     // FIRST, and accented until it has been opened once.
     //
@@ -179,30 +247,30 @@ export class MainMenuScreen implements Screen {
     // returning player is not shouted at by a screen they have finished with.
     const fresh = tutorialUntouched();
     if (!tutorialCompleted()) {
-      nav.appendChild(button('Tutorial', {
+      nav.appendChild(operationButton(button('Tutorial', {
         iconName: 'info',
         hint: tutorialMenuHint(),
         variant: fresh ? 'primary' : 'default',
         onClick: () => { void this.shell.startTutorial(); },
-      }));
+      }), fresh ? 'feature' : 'standard', 'COMMAND SCHOOL'));
     }
 
     // ABOVE SKIRMISH, DELIBERATELY. The campaign is the authored content and
     // the skirmish is the sandbox; a title screen whose first playable row is
     // the sandbox tells a new player which one the game is about, and it would
     // be telling them the wrong thing.
-    nav.appendChild(button('Campaign', {
+    nav.appendChild(operationButton(button('Campaign', {
       iconName: 'flag',
       hint: campaignHint(),
       onClick: () => this.shell.openCampaign(),
-    }));
+    }), tutorialCompleted() ? 'feature' : 'standard', 'AUTHORED OPERATIONS'));
 
-    nav.appendChild(button('Skirmish', {
+    nav.appendChild(operationButton(button('Skirmish', {
       iconName: 'swords',
       hint: 'vs AI',
       variant: fresh ? 'default' : 'primary',
       onClick: () => this.shell.openSetup(),
-    }));
+    }), 'standard', 'CUSTOM BATTLE'));
 
     // Directly under Skirmish, because the two are the same verb pointed at a
     // different opponent.
@@ -215,51 +283,33 @@ export class MainMenuScreen implements Screen {
     // DISABLED RATHER THAN HIDDEN, because a missing menu entry is
     // indistinguishable from a feature that does not exist. The hint carries the
     // reason: no server configured, wrong scheme, or simply not answering.
-    nav.appendChild(this.multiplayerButton());
+    const multiplayer = operationButton(this.multiplayerButton(), 'online', 'ONLINE COMMAND');
+    nav.appendChild(multiplayer);
+    play.appendChild(nav);
 
-    // One retention surface for the lifetime record, campaign medals, faction
-    // wins and cosmetic collection. Its footer opens the complete mission
-    // catalogue, keeping both halves of progression one click from the menu
-    // without growing the title screen past its nine-row height budget.
-    nav.appendChild(button('Service Record', {
-      iconName: 'trophy',
-      hint: profileHint(),
-      onClick: () => this.shell.openProfile(),
-    }));
-
+    const secondary = el('div', 'vm-cinematic-secondary');
+    secondary.appendChild(topActions);
     const saves = saveSlots().length;
-    nav.appendChild(button('Load Game', {
+    secondary.appendChild(topAction(button('Load Game', {
       iconName: 'folder',
       hint: loadHint(saves),
       disabled: saves === 0,
       onClick: () => this.shell.openLoadGame(),
-    }));
+    })));
 
     // NEVER DISABLED, unlike Load Game, and the difference is real rather than
     // an inconsistency: the load screen can only offer what is in this
     // browser's storage, while this one can always open a file somebody sent.
     // The hint says whether there is also a match from this session to watch.
-    nav.appendChild(button('Replays', {
+    secondary.appendChild(topAction(button('Replays', {
       iconName: 'monitor',
       hint: this.shell.latestReplay() === null ? 'Open a recording' : 'Last match ready',
       onClick: () => this.shell.openReplays(),
-    }));
-
-    nav.appendChild(button('Settings', {
-      iconName: 'sliders',
-      onClick: () => this.shell.openSettings('menu'),
-    }));
-
-
-    nav.appendChild(button('Quit', {
-      iconName: 'power',
-      variant: 'danger',
-      onClick: () => this.quit(),
-    }));
-
-    inner.appendChild(nav);
+    })));
     this.musicControl = new MusicControl('menu');
-    inner.appendChild(this.musicControl.root);
+    secondary.appendChild(this.musicControl.root);
+    play.appendChild(secondary);
+    inner.appendChild(play);
     host.appendChild(inner);
 
     /* -- footer chips ----------------------------------------------------- */
@@ -352,25 +402,6 @@ export class MainMenuScreen implements Screen {
     return b;
   }
 
-  /**
-   * A browser tab cannot reliably be closed by script unless the script opened
-   * it. Try, and if we are still here a moment later, say so instead of
-   * pretending the button did nothing.
-   */
-  private quit(): void {
-    const host = this.host;
-    if (host === null) return;
-    window.close();
-    window.setTimeout(() => {
-      if (this.host !== host) return;
-      const notice = el('div', 'vm-chip');
-      notice.style.cssText = 'position:absolute;left:50%;bottom:64px;transform:translateX(-50%);pointer-events:auto;';
-      notice.appendChild(icon('info', 14));
-      notice.appendChild(el('span', undefined, 'Close the browser tab to quit'));
-      host.appendChild(notice);
-      window.setTimeout(() => notice.remove(), 4000);
-    }, 250);
-  }
 }
 
 /* ==========================================================================
@@ -379,6 +410,7 @@ export class MainMenuScreen implements Screen {
 
 export interface CreditGroup {
   readonly title: string;
+  readonly summary: string;
   readonly lines: readonly string[];
 }
 
@@ -394,6 +426,7 @@ export interface CreditGroup {
 export const CREDITS: readonly CreditGroup[] = [
   {
     title: 'Engine',
+    summary: 'Deterministic strategy technology built for large, readable battles.',
     lines: [
       'Fixed-timestep simulation at 30 Hz',
       'Deterministic seeded RNG, replayable from a seed',
@@ -413,6 +446,7 @@ export const CREDITS: readonly CreditGroup[] = [
      * change in the same commit.
      */
     title: 'Art',
+    summary: 'A hybrid procedural and authored pipeline tuned for RTS-scale silhouettes.',
     lines: [
       'Procedural unit and structure roster with runtime fallbacks',
       'Selected faction structures and resource vehicles generated with Meshy and optimized locally',
@@ -443,6 +477,7 @@ export const CREDITS: readonly CreditGroup[] = [
      * `public/audio/README.md`.
      */
     title: 'Shipped Assets',
+    summary: 'Attribution and provenance for the third-party and commissioned work in the build.',
     lines: [
       'Rajdhani — the UI typeface, SIL Open Font License 1.1',
       'The wordmark and app icons, from a supplied logo',
@@ -462,6 +497,7 @@ export const CREDITS: readonly CreditGroup[] = [
   },
   {
     title: 'Original Soundtrack',
+    summary: 'Four original tracks prepared as level-matched, seamless battlefield loops.',
     lines: [
       '"Silent Horizon" · "Disciplined Ostinato" · "Echoes of the Siege" · "Endless Warfront"',
       'Created for VOLTMARCH from user-supplied Suno Pro masters',
@@ -471,6 +507,7 @@ export const CREDITS: readonly CreditGroup[] = [
   },
   {
     title: 'Built With',
+    summary: 'The open web technology underneath the simulation and interface.',
     lines: [
       'three.js r185',
       'TypeScript 5 · Vite 7 · Vitest',
@@ -479,6 +516,7 @@ export const CREDITS: readonly CreditGroup[] = [
   },
   {
     title: 'Inspired By',
+    summary: 'The design values that guide every command, silhouette and feedback loop.',
     lines: [
       'The golden age of base-building real-time strategy',
       'Readable silhouettes, honest feedback, no hidden math',

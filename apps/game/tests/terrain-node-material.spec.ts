@@ -36,6 +36,11 @@ import {
   TERRAIN_SCALAR_DEFAULTS, TERRAIN_VEC3_DEFAULTS,
 } from '../src/world/terrain-uniforms';
 import { CELL, CLIFF_SLOPE, MAP_SIZE } from '../src/core/config';
+import {
+  PAVEMENT_DETAIL_STRENGTH,
+  ROAD_DETAIL_STRENGTH,
+  TERRAIN_DETAIL_STRENGTH,
+} from '../src/world/terrain-detail-mask';
 
 /* Small, because these tests build the real procedural tiles and 256 would be
  * 60x the bytes for a question none of them ask. */
@@ -48,7 +53,7 @@ const NODE_TERRAIN_SOURCE = readFileSync(
   new URL('../src/world/TerrainNodeMaterial.ts', import.meta.url), 'utf8',
 );
 const TERRAIN_DETAIL_MASK = readFileSync(
-  new URL('../src/assets/terrain/universal-terrain-mask-4k.png', import.meta.url),
+  new URL('../../../packages/assets/game/terrain/universal-terrain-mask-4k.png', import.meta.url),
 );
 
 afterEach(() => {
@@ -233,6 +238,9 @@ describe('the translated shader keeps the GLSL structures', () => {
     expect(TERRAIN_DETAIL_MASK.subarray(1, 4).toString()).toBe('PNG');
     expect(TERRAIN_DETAIL_MASK.readUInt32BE(16)).toBe(4096);
     expect(TERRAIN_DETAIL_MASK.readUInt32BE(20)).toBe(4096);
+    expect(TERRAIN_DETAIL_STRENGTH).toBeCloseTo(0.44 * 0.95, 12);
+    expect(ROAD_DETAIL_STRENGTH).toBe(0.24);
+    expect(PAVEMENT_DETAIL_STRENGTH).toBe(0.30);
 
     // Layers 0..3 are ground/dirt/sand/rock. Concrete and paving are 4/5 and
     // must not participate in the ownership term on either renderer path.

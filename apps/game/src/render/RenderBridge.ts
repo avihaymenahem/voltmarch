@@ -76,6 +76,7 @@ import type { EntityStore } from '../core/world';
 
 import { InstanceBatcher, type BatchPartSpec, type InstanceBatch } from './InstanceBatcher';
 import { applyShroudTint } from './FogOfWar';
+import type { RenderCullVolume } from './RenderCullVolume';
 import { LAYERS } from './scene';
 
 /* ==========================================================================
@@ -130,6 +131,8 @@ export interface KindMeshPart {
   customDepthMaterial?: THREE.Material;
   /** False keeps this part out of the GTAO normal prepass. See `BatchPartSpec.aoOccluder`. */
   aoOccluder?: boolean;
+  /** Cheap silhouette proxy submitted only to shadow-map passes. */
+  shadowOnly?: boolean;
 }
 
 /**
@@ -164,6 +167,8 @@ export interface KindMesh {
   customDepthMaterial?: THREE.Material;
   /** False keeps the root body out of the GTAO normal prepass. See `BatchPartSpec.aoOccluder`. */
   aoOccluder?: boolean;
+  /** Cheap silhouette proxy submitted only to shadow-map passes. */
+  shadowOnly?: boolean;
   /** Default turret ring height, metres. Used by sockets that omit `pivotY`. */
   turretPivotY?: number;
 }
@@ -305,6 +310,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
     receiveShadow: mesh.receiveShadow !== false,
     customDepthMaterial: mesh.customDepthMaterial,
     aoOccluder: mesh.aoOccluder,
+    shadowOnly: mesh.shadowOnly,
     layer,
   }];
 
@@ -327,6 +333,7 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
         receiveShadow: p.receiveShadow !== false,
         customDepthMaterial: p.customDepthMaterial,
         aoOccluder: p.aoOccluder,
+        shadowOnly: p.shadowOnly,
         layer,
       });
     }
@@ -863,6 +870,8 @@ export interface RenderAudit {
    */
   hiddenByFlag: number;
   hiddenByFlagByKind: number[];
+  /** Fog-visible entities intentionally outside the shadow-safe camera volume. */
+  cameraCulled: number;
   /** Of those, how many actually reached a drawable instance slot. */
   drawn: number;
   misses: RenderMissRow[];
@@ -900,6 +909,8 @@ export class RenderBridge {
 
   /** Frame id each bound entity was last written on; drives the release sweep. */
   private readonly visitStamp = new Int32Array(MAX_ENTITIES);
+  /** Frame id an otherwise-visible entity was deliberately camera-culled. */
+  private readonly cameraCullStamp = new Int32Array(MAX_ENTITIES);
   private frameId = 0;
 
   /* -- the interpolated transform, cached for socketWorld() --------------- */
@@ -921,6 +932,8 @@ export class RenderBridge {
   /* -- diagnostics -------------------------------------------------------- */
   visibleUnits = 0;
   visibleBuildings = 0;
+  /** Fog-visible entities omitted because neither they nor a safe shadow margin reach the camera. */
+  cameraCulled = 0;
   /** Entities that could not get an instance slot (batch at MAX_ENTITIES). */
   overflow = 0;
   private overflowReported = false;
@@ -997,13 +1010,19 @@ export class RenderBridge {
    * lives. 1 is "leave every model at its authored metres", which is what the
    * screenshot harness and every test get by default.
    */
-  update(alpha: number, infantryScale = 1, cameraDistance = 0): void {
+  update(
+    alpha: number,
+    infantryScale = 1,
+    cameraDistance = 0,
+    cullVolume: RenderCullVolume | null = null,
+  ): void {
     const s = this.store;
     this.frameId++;
     this.batcher.setLodDistance(cameraDistance);
     this.batcher.beginFrame();
     this.visibleUnits = 0;
     this.visibleBuildings = 0;
+    this.cameraCulled = 0;
 
     const mask = this.visibility;
     const n = s.aliveCount;
@@ -1014,15 +1033,6 @@ export class RenderBridge {
       const flags = s.flags[i];
       if ((flags & HIDDEN_MASK) !== 0) continue;
       if (mask !== null && mask.isRenderHiddenAt(i)) continue;
-      eligible++;
-
-      const entryIndex = this.ensureBinding(i);
-      if (entryIndex < 0) continue;
-      drawn++;
-
-      const entry = entries[entryIndex];
-      const slot = this.bindSlot[i];
-      this.visitStamp[i] = this.frameId;
 
       /* -- interpolate ---------------------------------------------------- */
       // Y IS A FIRST-CLASS AXIS HERE, which is what let `Locomotor.Air` land
@@ -1041,6 +1051,45 @@ export class RenderBridge {
       const x = px + (s.posX[i] - px) * alpha;
       const y = py + (s.posY[i] - py) * alpha;
       const z = pz + (s.posZ[i] - pz) * alpha;
+
+      if (cullVolume !== null) {
+        const kind = s.kind[i] as EntityKind;
+        let cy = y;
+        let radius = Math.max(1, s.radius[i]);
+        if (kind === EntityKind.Building) {
+          const fw = Math.max(1, s.footprintW[i]) * CELL * 0.5;
+          const fh = Math.max(1, s.footprintH[i]) * CELL * 0.5;
+          cy += 8;
+          radius = Math.sqrt(fw * fw + fh * fh + 100);
+        } else if (kind === EntityKind.Vehicle) {
+          cy += 3;
+          radius = Math.max(radius, 7);
+        } else if (kind === EntityKind.Infantry) {
+          cy += UNIT_DIMENSIONS.infantry.h * infantryScale * 0.5;
+          radius = Math.max(radius, 2 * infantryScale);
+        } else if (kind === EntityKind.Wreck || kind === EntityKind.Prop) {
+          cy += 2;
+          radius = Math.max(radius, 5);
+        } else {
+          cy += 1;
+          radius = Math.max(radius, 2);
+        }
+        if (!cullVolume.intersectsSphere(x, cy, z, radius)) {
+          this.cameraCullStamp[i] = this.frameId;
+          this.cameraCulled++;
+          continue;
+        }
+      }
+      eligible++;
+
+      const entryIndex = this.ensureBinding(i);
+      if (entryIndex < 0) continue;
+      drawn++;
+
+      const entry = entries[entryIndex];
+      const slot = this.bindSlot[i];
+      this.visitStamp[i] = this.frameId;
+
       // SHORTEST ARC. A plain lerp across the +/-PI seam spins a turret the
       // long way round in a single frame.
       const yaw = lerpAngle(s.prevYaw[i], s.yaw[i], alpha);
@@ -1239,7 +1288,7 @@ export class RenderBridge {
     if (target.batch === null) {
       target.batch = this.batcher.createBatch(target.specs, target.name);
     }
-    const slot = target.batch.alloc();
+    const slot = target.batch.alloc(i);
     if (slot < 0) {
       this.overflow++;
       if (!this.overflowReported) {
@@ -1269,7 +1318,10 @@ export class RenderBridge {
     const entryIndex = this.bindEntry[i];
     if (entryIndex >= 0 && entryIndex < entries.length) {
       const batch = entries[entryIndex].batch;
-      if (batch !== null && this.bindSlot[i] >= 0) batch.free(this.bindSlot[i]);
+      if (batch !== null && this.bindSlot[i] >= 0) {
+        const movedOwner = batch.free(this.bindSlot[i]);
+        if (movedOwner >= 0) this.bindSlot[movedOwner] = this.bindSlot[i];
+      }
     }
     this.bindEntry[i] = -1;
     this.bindSlot[i] = -1;
@@ -1321,6 +1373,7 @@ export class RenderBridge {
     let drawn = 0;
     let truncated = false;
     let hiddenByFlag = 0;
+    let cameraCulled = 0;
     const hiddenByFlagByKind = new Array<number>(ENTITY_KIND_COUNT).fill(0);
 
     for (let a = 0; a < s.aliveCount; a++) {
@@ -1334,6 +1387,10 @@ export class RenderBridge {
         continue;
       }
       if (mask !== null && mask.isRenderHiddenAt(i)) continue;
+      if (this.frameId > 0 && this.cameraCullStamp[i] === this.frameId) {
+        cameraCulled++;
+        continue;
+      }
       eligible++;
 
       const fail = this.inspect(i);
@@ -1367,6 +1424,7 @@ export class RenderBridge {
       eligible,
       hiddenByFlag,
       hiddenByFlagByKind,
+      cameraCulled,
       drawn,
       misses,
       truncated,

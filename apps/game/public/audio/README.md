@@ -1,7 +1,7 @@
 # Shipped audio
 
 Everything here is a **downloaded, recorded** asset — the third declared exception to the
-"generated from code" rule, after `public/fonts/` and `public/brand/`. `CLAUDE.md`, `README.md` and
+"generated from code" rule, after shared `packages/assets/fonts/` and `packages/assets/brand/`. `CLAUDE.md`, `README.md` and
 the credits screen in `src/shell/MainMenu.ts` all name it, and `tests/credits-truthful.spec.ts`
 checks those three against what is actually in this directory.
 

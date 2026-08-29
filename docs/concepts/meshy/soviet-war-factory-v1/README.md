@@ -137,7 +137,7 @@ HD texture disabled, GLB only.
 - Consumed credits: 10
 - Raw result: 35,378 triangles, 31,206 vertices, one coherent mesh, one PBR material, 8.80 MiB.
 - Textures: 2048 base color, 2048 normal, 2048 packed metal/roughness.
-- Conditioned shipping result: `apps/game/src/assets/buildings/soviets/war-factory.glb`, 4.28 MiB. Base color
+- Conditioned shipping result: `packages/assets/game/buildings/soviets/war-factory.glb`, 4.28 MiB. Base color
   and normal remain 2048; packed metal/roughness is reduced to 1024. Geometry and visible shape
   are unchanged; Meshy removed 18 degenerate source triangles while generating tangents.
 - Runtime: front-side PBR, 38-degree crease normals, restrained ambient lift and roster-matched

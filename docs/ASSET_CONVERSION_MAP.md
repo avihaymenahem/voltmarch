@@ -33,11 +33,11 @@ Statuses: `procedural`, `briefed`, `concept`, `meshy-raw`, `production`, `integr
 6. `R1–R3`: Reclamation architecture, scrapyard machines, vessels, and character family.
 7. `N1`: neutral capturable landmarks.
 
-Current Meshy backlog: **51 gameplay units remain procedural** — 11 ground vehicles, 19 naval
-units and 21 characters/creatures. There are no remaining building conversions in the production
+Current Meshy backlog: **38 gameplay units remain procedural** — 11 ground vehicles, 19 naval
+units and 8 characters/creatures. There are no remaining building conversions in the production
 backlog; modular walls/gates intentionally remain code-native where the `MOD` route calls for
-seamless instancing rather than a unique generated mesh. The faction split is Soviet 13, Allied 13,
-Meridian 13 and Reclamation 12. The detailed rows below are the authoritative names.
+seamless instancing rather than a unique generated mesh. The faction split is Soviet 9, Allied 10,
+Meridian 10 and Reclamation 9. The detailed rows below are the authoritative names.
 
 The Tesla Reactor and Soviet Construction Yard are the two paid pilots. Construction Yard v1 was
 rejected for fused, swollen hard-surface geometry. V2 was also rejected after runtime review exposed
@@ -118,11 +118,11 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | S3 | `soviet_transport` | Hover Transport | NAV | procedural | Amphibious transport; ramp/cargo clearance |
 | S3 | `soviet_picket` | Picket Boat | NAV | procedural | Small shared naval material; bow weapon pivot |
 | S3 | `soviet_lighter` | Assault Barge | NAV | procedural | Heavy transport; ramp and cargo deck hierarchy |
-| S3 | `soviet_conscript` | Conscript | CHAR | procedural | Establish Soviet greatcoat rig/material family |
-| S3 | `soviet_flak` | Flak Trooper | CHAR | procedural | Shared rig; launcher silhouette and backpack |
-| S3 | `soviet_engineer` | Combat Engineer | CHAR | procedural | Shared rig; tool/case loadout |
+| S3 | `soviet_conscript` | Conscript | CHAR | production | Greatcoat humanoid POC: geometry `01a047c5-3b92-7b76-a835-5b28d84e1e3f`, 10k shipping remesh `01a047da-196f-7a33-af83-7f14fac5f480`, rig `01a047dc-de86-74d8-9f7d-d5d2ad426b5c`, PBR `01a047db-02b9-7a7e-9bf3-1b1709949fe9`; the 4,500-triangle/1.56 MiB textured LOD0 is integrated in gameplay. Runtime samples one trusted run/fire pose at load, discards the rig, and keeps the instanced `aGait` shader path. |
+| S3 | `soviet_flak` | Flak Trooper | CHAR | integrated-hybrid | Reuses the live canonical 4,500-triangle Conscript body with a code-native drum pack and flak weapon, each hard-capped below 200 triangles. The paid unique body (`01a048de-fe28-7167-a703-ede132190ecd`) was rejected as redundant and archived outside shipping. |
+| S3 | `soviet_engineer` | Combat Engineer | CHAR | integrated-hybrid | Reuses the live canonical Conscript body with a code-native horizontal gas bottle and cutting torch, each below the 200-triangle attachment ceiling. |
 | S3 | `soviet_commissar` | War Commissar | CHAR | procedural | Officer variant; shared rig with unique head/coat cues |
-| S3 | `soviet_dog` | Attack Dog | CHAR | procedural | Separate quadruped rig and animation set |
+| S3 | `soviet_dog` | Attack Dog | CHAR | integrated | Geometry `01a0494e-4e30-70e5-a170-007164c1d892`, PBR `01a04990-f10a-7be1-a75b-6eea4b18319c`; the 1.99M source was conditioned locally to a 5,987-triangle LOD0, 2,561-triangle geometry-only LOD1 and 720-triangle rest-pose shadow proxy, with a 0.81 MiB KTX2 runtime GLB. A deterministic 1.16 MiB review GLB adds an eight-joint quadruped skin plus Idle/Walk/Run/Bite clips and is validated in the shared-pose Animation Lab; Meshy's humanoid-only auto-rigger was not used. Gameplay LOD0/1 retain the existing instanced WebGPU/WebGL gait, so no skeleton or per-dog mixer is allocated yet. Procedural fallback and bite/VFX socket remain authoritative. |
 | S3 | `soviet_diver` | Naval Infantry | CHAR | procedural | Shared humanoid rig where possible; aquatic equipment variant |
 
 ## Allies — 18 structures
@@ -163,9 +163,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_transport` | Hover Transport | NAV | procedural | Amphibious transport and ramp/cargo clearance |
 | A3 | `allied_hydrofoil` | Hydrofoil | NAV | procedural | Lightweight fast hull; foil readability at RTS distance |
 | A3 | `allied_lighter` | Landing Craft | NAV | procedural | Transport family; ramp/cargo deck hierarchy |
-| A3 | `allied_rifle` | Peacekeeper | CHAR | procedural | Establish Allied plated humanoid rig/material family |
-| A3 | `allied_javelin` | Javelin | CHAR | procedural | Shared rig; launcher/backpack loadout |
-| A3 | `allied_engineer` | Engineer | CHAR | procedural | Shared rig; tool/case loadout |
+| A3 | `allied_rifle` | Peacekeeper | CHAR | production | The 2,888-triangle/0.58 MiB textured LOD0 is integrated in gameplay. Runtime samples one trusted run/fire pose at load, discards the rig, and keeps the instanced `aGait` shader path proven by the standalone 512-soldier WebGPU gate. |
+| A3 | `allied_javelin` | Javelin | CHAR | integrated-hybrid | Reuses the live canonical 2,888-triangle Peacekeeper body with a code-native missile pack and launcher, each hard-capped below 200 triangles. The paid unique body (`01a048df-0a39-7169-9415-df93ef821e26`) was rejected as redundant and archived outside shipping. |
+| A3 | `allied_engineer` | Engineer | CHAR | integrated-hybrid | Reuses the live canonical Peacekeeper body with a code-native compact toolcase and powered wrench, each below the 200-triangle attachment ceiling. |
 | A3 | `allied_marshal` | Field Marshal | CHAR | procedural | Officer variant on shared rig |
 | A3 | `allied_frogman` | Frogman | CHAR | procedural | Shared rig where possible; aquatic gear variant |
 
@@ -204,9 +204,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_cutter` | Sun Cutter | NAV | procedural | Compact fast naval derivative |
 | M3 | `meridian_lighter` | Sun Lighter | NAV | procedural | Transport/ramp derivative |
 | M3 | `meridian_argosy` | Argosy | NAV | procedural | Heavy transport; deck/ramp hierarchy |
-| M3 | `meridian_wayfarer` | Wayfarer | CHAR | procedural | Establish Pact robed/solar humanoid rig and material family |
-| M3 | `meridian_lancer` | Sunlancer | CHAR | procedural | Shared rig; lance/cell loadout |
-| M3 | `meridian_artificer` | Artificer | CHAR | procedural | Shared rig; tool/kit loadout |
+| M3 | `meridian_wayfarer` | Wayfarer | CHAR | production | The 5,937-triangle textured LOD0 is integrated in gameplay through the load-time pose bake and instanced shader-gait path; the rig and clips remain shared Asset Lab sources, not per-entity runtime objects. |
+| M3 | `meridian_lancer` | Sunlancer | CHAR | integrated-hybrid | Reuses the live canonical 5,937-triangle Wayfarer body with a code-native solar-cell pack and lance, each hard-capped below 200 triangles. The paid unique body (`01a048df-1613-70e0-9cb1-7e74f5185a0f`) was rejected as redundant and archived outside shipping. |
+| M3 | `meridian_artificer` | Artificer | CHAR | integrated-hybrid | Reuses the live canonical Wayfarer body with a code-native instrument case and calibrator, each below the 200-triangle attachment ceiling. |
 | M3 | `meridian_hierarch` | Hierarch | CHAR | procedural | Officer variant on shared rig |
 | M3 | `meridian_tidewalker` | Tidewalker | CHAR | procedural | Shared rig where possible; aquatic equipment |
 
@@ -244,9 +244,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R3 | `reclaim_hulk` | Reclaimed Hulk | NAV | procedural | Heavy capital salvage vessel; mandatory LODs |
 | R3 | `reclaim_skimmer` | Scrap Skimmer | NAV | procedural | Compact fast naval derivative |
 | R3 | `reclaim_hauler` | Slag Hauler | NAV | procedural | Heavy transport/ramp hierarchy |
-| R3 | `reclaim_picker` | Scrap Picker | CHAR | procedural | Establish scavenger humanoid rig/material family |
-| R3 | `reclaim_slagger` | Slagger | CHAR | procedural | Shared rig; satchel/hopper loadout |
-| R3 | `reclaim_tinker` | Tinker | CHAR | procedural | Shared rig; tool/roll loadout |
+| R3 | `reclaim_picker` | Scrap Picker | CHAR | production | The accepted 8,501-triangle textured LOD0 is integrated in gameplay through the load-time pose bake and instanced shader-gait path; the rig and clips remain shared Asset Lab sources, not per-entity runtime objects. |
+| R3 | `reclaim_slagger` | Slagger | CHAR | integrated-hybrid | Reuses the live canonical Scrap Picker body with a code-native hopper and slag projector, each hard-capped below 200 triangles. The paid unique body (`01a048df-22ce-716f-8e42-86317a535ba9`) was rejected as redundant and archived outside shipping. |
+| R3 | `reclaim_tinker` | Tinker | CHAR | integrated-hybrid | Reuses the live canonical Scrap Picker body with a code-native tool roll and salvage cutter, each below the 200-triangle attachment ceiling. |
 | R3 | `reclaim_baron` | Scrap Baron | CHAR | procedural | Officer variant on shared rig |
 | R3 | `reclaim_dredger` | Dredger | CHAR | procedural | Shared rig where possible; aquatic equipment |
 

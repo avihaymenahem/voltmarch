@@ -46,7 +46,7 @@ import { UNIT_MATERIAL } from '../core/config';
 import { ditherOutput } from '../render/dither-nodes';
 import { applyGaitNodes } from '../render/gait-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
-import type { GreebleAtlas } from './Greeble';
+import type { UnitMaterialTextures } from '../render/gpu-path';
 import { assertUnitMaterialRuling } from './UnitFactory';
 import { unitRim } from './unit-rim-nodes';
 
@@ -68,7 +68,9 @@ type Vec4N = Node<'vec4'>;
  * game. It cannot be inherited through the CLASS, because the two need different
  * vertex graphs — structures have no walk cycle and units have no radar dish.
  */
-export function configureUnitNodeBase(mat: MeshPhysicalNodeMaterial, atlas: GreebleAtlas): void {
+export function configureUnitNodeBase(
+  mat: MeshPhysicalNodeMaterial, atlas: UnitMaterialTextures,
+): void {
   mat.map = atlas.map;
   mat.normalMap = atlas.normalMap;
   mat.normalScale = new THREE.Vector2(UNIT_MATERIAL.normalScale, UNIT_MATERIAL.normalScale);
@@ -154,7 +156,7 @@ class UnitStandardNodeMaterial extends MeshPhysicalNodeMaterial {
  * material is constructed.
  */
 export function createUnitNodeMaterial(
-  atlas: GreebleAtlas, name: string,
+  atlas: UnitMaterialTextures, name: string,
 ): MeshPhysicalNodeMaterial {
   const mat = new UnitStandardNodeMaterial();
   mat.name = name;

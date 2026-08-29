@@ -55,6 +55,7 @@
  */
 
 import * as THREE from 'three';
+import { ShadowCadence, shadowCadenceModeFromSearch } from './shadow-cadence';
 
 import { RepaintGuard } from './RepaintGuard';
 import {
@@ -1191,8 +1192,16 @@ export interface RendererHandle {
    * is only safe while there is exactly one renderer. Read this instead.
    */
   frameInfo(): NormalisedFrameInfo;
-  /** Reset renderer.info.render counters — call once per rendered frame. */
-  beginFrame(): void;
+  /** Allocation-free shadow scheduling telemetry for the perf harness. */
+  readonly shadowScheduleStats: {
+    readonly mode: string;
+    readonly frames: number;
+    readonly updates: number;
+    readonly forced: number;
+    readonly lastUpdate: boolean;
+  };
+  /** Reset frame counters and schedule the one permitted shadow rebuild. */
+  beginFrame(dtSeconds?: number, forceShadowUpdate?: boolean): boolean;
   dispose(): void;
 }
 
@@ -1690,7 +1699,7 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
 
   gpuCommon.shadowMap.enabled = cfg.shadows.enabled;
   gpuCommon.shadowMap.type = cfg.shadows.type;
-  /* ONE SHADOW PASS PER FRAME, NOT TWO.
+  /* AT MOST ONE SHADOW PASS PER FRAME, NOT ONE PER SCENE SUBMISSION.
    *
    * With `autoUpdate = true` the shadow map is rebuilt on EVERY
    * `WebGLRenderer.render()` call — and the post chain makes more than one per
@@ -1699,15 +1708,10 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
    * pair, against 55 for the geometry that actually casts.
    *
    * `beginFrame()` is the single per-frame entry point (its only caller is
-   * `Bootstrap.present`), so arming `needsUpdate` there gives exactly one
-   * rebuild per frame, at the first render that needs it. `WebGLShadowMap`
-   * clears the flag itself once it has run, and its early-out requires BOTH
-   * `autoUpdate === false` and `needsUpdate === false` — which is why the two
-   * existing `needsUpdate = true` writes in the settings handlers below keep
-   * working unchanged.
-   *
-   * Pixel-identical by construction: the same pass runs, once instead of twice,
-   * and nothing between the two renders moves a caster.
+   * `Bootstrap.present`), so it can arm one rebuild or deliberately retain the
+   * preceding map. Stable 60 Hz presentation targets 30 Hz shadows; camera and
+   * projection movement force a rebuild. `WebGLShadowMap` clears its flag after
+   * a build, while WebGPU does not, so our own one-shot latch is authoritative.
    */
   gpuCommon.shadowMap.autoUpdate = false;
   /*
@@ -1725,10 +1729,22 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
    * Arming once here is the correct lifecycle invariant: the first render of a
    * shadow-enabled renderer builds a real comparison texture, whether that
    * render came from the post warm-up, a direct fallback or the game loop.
-   * `WebGLShadowMap` clears the flag after the build; `beginFrame()` continues
-   * to arm exactly one update on every later presented frame.
+   * The first normal `beginFrame()` then takes over cadence scheduling.
    */
   gpuCommon.shadowMap.needsUpdate = cfg.shadows.enabled;
+  const shadowCadence = new ShadowCadence(shadowCadenceModeFromSearch(
+    typeof location === 'undefined' ? '' : location.search,
+  ));
+  const shadowScheduleStats = {
+    mode: shadowCadence.mode,
+    frames: 0,
+    updates: 0,
+    forced: 0,
+    lastUpdate: false,
+  };
+  // Do not use Three's `needsUpdate` as this latch. WebGL clears it after a
+  // build; WebGPU r185 leaves it true, which would silently defeat cadence.
+  let shadowRefreshRequested = false;
 
   // Nice default background so frame zero is never a black void.
   gpuCommon.setClearColor(new THREE.Color(RENDER_CONFIG.sky.horizon), 1);
@@ -1999,10 +2015,12 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     }
     if (touched(changed, 'renderer.shadows.enabled')) {
       gpuCommon.shadowMap.enabled = cfg.shadows.enabled;
+      shadowRefreshRequested = true;
       gpuCommon.shadowMap.needsUpdate = true;
     }
     if (touched(changed, 'renderer.shadows.type')) {
       gpuCommon.shadowMap.type = cfg.shadows.type;
+      shadowRefreshRequested = true;
       gpuCommon.shadowMap.needsUpdate = true;
     }
   });
@@ -2028,6 +2046,7 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     size,
     capabilities,
     backend: liveBackend,
+    shadowScheduleStats,
 
     frameInfo() {
       return normaliseInfo((webglRenderer ?? nodeRenderer!).info as unknown as RendererInfoLike);
@@ -2125,6 +2144,7 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     setShadowsEnabled(v) {
       cfg.shadows.enabled = v;
       gpuCommon.shadowMap.enabled = v;
+      shadowRefreshRequested = true;
       gpuCommon.shadowMap.needsUpdate = true;
     },
 
@@ -2137,13 +2157,27 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
       };
     },
 
-    beginFrame() {
+    beginFrame(dtSeconds = 0, forceShadowUpdate = false) {
       (webglRenderer ?? nodeRenderer!).info.reset();
-      // Arm the one shadow rebuild this frame is allowed. See the
-      // `autoUpdate = false` block in `createRenderer` for why this is not the
-      // default: with autoUpdate on, GTAO's normal prepass rendered the whole
-      // shadow pass a second time.
-      if (gpuCommon.shadowMap.enabled) gpuCommon.shadowMap.needsUpdate = true;
+      // Arm at most one rebuild. A settings/context change may already have
+      // latched `needsUpdate`; never clear that request. Stable 60 Hz frames
+      // rebuild at 30 Hz, while Bootstrap forces every camera/projection move.
+      // `autoUpdate` remains off so GTAO cannot rebuild it a second time.
+      let rebuildShadows = false;
+      if (gpuCommon.shadowMap.enabled) {
+        rebuildShadows = shadowRefreshRequested || shadowCadence.shouldUpdate(
+          dtSeconds,
+          forceShadowUpdate,
+        );
+        gpuCommon.shadowMap.needsUpdate = rebuildShadows;
+        shadowRefreshRequested = false;
+      } else {
+        gpuCommon.shadowMap.needsUpdate = false;
+      }
+      shadowScheduleStats.frames++;
+      if (forceShadowUpdate) shadowScheduleStats.forced++;
+      if (rebuildShadows) shadowScheduleStats.updates++;
+      shadowScheduleStats.lastUpdate = rebuildShadows;
       /*
        * A complete frame is about to be drawn into the current buffer, so a
        * repaint scheduled by a resize earlier in this task is redundant. This is
@@ -2152,6 +2186,7 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
        * so its reallocation is absorbed by the frame it is already inside.
        */
       repaint.frameStarting();
+      return rebuildShadows;
     },
 
     dispose() {

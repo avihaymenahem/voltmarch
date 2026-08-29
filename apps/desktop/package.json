@@ -11,7 +11,7 @@
     "dev": "node dev.mjs",
     "preview": "node preview.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "cd ../.. && vitest run --config apps/game/vite.config.ts apps/game/tests/desktop-updater.spec.ts apps/game/tests/desktop-shell.spec.ts apps/game/tests/platform-storage.spec.ts apps/game/tests/cloudflare-analytics.spec.ts",
+    "test": "cd ../.. && vitest run --config apps/desktop/vitest.config.ts",
     "test:contracts": "npm test"
   },
   "devDependencies": {

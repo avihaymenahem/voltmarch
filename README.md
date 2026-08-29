@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/game/public/brand/logo-360.png" alt="VOLTMARCH" width="380" />
+  <img src="packages/assets/brand/logo-360.png" alt="VOLTMARCH" width="380" />
 </p>
 
 <p align="center">
@@ -80,7 +80,27 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.12.0
+## What's new in 3.13.0
+
+- **Large-battle performance:** camera-volume culling, instanced environment props, filtered shadow
+  cadence and pressure-aware effects substantially reduce off-screen, shadow and combat rendering
+  work while preserving the WebGPU-first visual path.
+- **Authored infantry in live play:** the first shared Meshy infantry families and the Soviet Attack
+  Dog now render in matches with bounded LODs, shared animation data and lightweight role-specific
+  attachments instead of multiplying near-identical character assets.
+- **Asset Lab application:** every owned model now has a dedicated desktop catalogue and animation
+  review surface, backed by the same canonical `@voltmarch/assets` package used by the game.
+- **Modernised shell and HUD:** the main menu, campaign, skirmish, multiplayer, profile, settings,
+  replay, credits and pause surfaces now have distinct layouts, transitions and clearer navigation;
+  HUD panels retain their user-adjusted placement and size.
+- **Better testing tools and battlefield reads:** development builds gain a safe load-test Cheat
+  Engine, garrisoned structures use polished faction occupation rails, and numerous aircraft,
+  stance, audio, objective, road and production regressions are corrected.
+
+The experimental beyond-map terrain and water extension is intentionally not part of this release;
+the original finite map presentation remains in place while edge treatment is redesigned.
+
+### Previously in 3.12.0
 
 - **Reliable WebGPU match startup:** terrain detail now begins with an immediately uploadable neutral
   texture and swaps to the full-resolution mask after decoding, preventing the production
@@ -89,6 +109,9 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Faction-authored construction and air fleets:** all four construction vehicles and aircraft now
   use optimized Meshy assets with generated LOD and shadow variants, including corrected Soviet
   dozer assembly and a rebuilt Reclamation aircraft.
+- **Cheap authored quadruped:** the Soviet Attack Dog now uses a 6k-triangle Meshy shell with KTX2,
+  plus an eight-joint shared-pose review rig with Idle, Walk, Run and Bite clips in Asset Lab;
+  distance LOD and a shared instanced GPU trot instead of a per-unit skeleton or animation mixer.
 - **Consistent build previews:** the right-side build HUD now renders the same registered imported
   models used in the world instead of retaining obsolete procedural silhouettes.
 - **Clean starting deployment:** construction vehicles are imported before their first visible
@@ -101,7 +124,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.12.0**. The
+The browser build and Windows release share the same game. The current release is **3.13.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 
@@ -122,6 +145,8 @@ Open [http://localhost:5173](http://localhost:5173) after the development server
 | `npm run desktop:dev` | Start the Windows desktop shell in development mode |
 | `npm run server` | Start the multiplayer relay locally |
 | `npm run website:dev` | Start the marketing site locally |
+| `npm run asset:lab` | Open the standalone WebGPU Asset Lab desktop app |
+| `npm run lint` | Enforce app/package ownership boundaries |
 | `npm run check:affected` | Test, typecheck and build only affected workspaces |
 | `npm run check:all` | Run the complete monorepo release gate |
 | `npm run shots` | Capture the deterministic visual review suite |
@@ -131,8 +156,10 @@ Open [http://localhost:5173](http://localhost:5173) after the development server
 ```text
 apps/game/          Browser game and complete game test corpus
 apps/desktop/       Electron shell, persistence and desktop updater
+apps/asset-lab/     Standalone WebGPU model catalog, audit and infantry stress app
 apps/relay/         Deterministic multiplayer relay
 apps/website/       Cloudflare Pages marketing site and waitlist
+packages/assets/    Canonical shared game models, brand art and fonts
 packages/protocol/  Shared validated multiplayer protocol
 packages/game-types Shared dependency-free game types
 docs/               Architecture, art direction and production guides

@@ -43,7 +43,7 @@ interface AssetManifest {
 }
 
 function familyPath(family: AssetFamily, ...parts: string[]): string {
-  return path.join(root, 'apps/game/src/assets/units', family.sourceDir, ...parts);
+  return path.join(root, 'packages/assets/game/units', family.sourceDir, ...parts);
 }
 
 function glbJson(file: string): { bytes: Buffer; json: GlbJson } {

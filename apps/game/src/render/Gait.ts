@@ -77,6 +77,13 @@ export const gaitUniforms = {
 export const GAIT_TURNS_TO_RADIANS = 6.2831853;
 
 /**
+ * The dog is fitted to a 1.70 m Z envelope; its fore/hind joints sit at 30%.
+ * Quadruped aGait.x codes use magnitude 2 for +Z and 3 for -Z while sign still
+ * carries the diagonal swing pair. Biped values remain exactly -1/0/+1.
+ */
+export const QUADRUPED_GAIT_PIVOT_Z = 0.51;
+
+/**
  * Inject the walk cycle into a unit material.
  *
  * ORDER MATTERS AND IS NOT NEGOTIABLE: this must run BEFORE `applyShroudTint`,
@@ -108,13 +115,18 @@ void main() {`,
     // aGait.x is 0 for every welded vertex, which is the overwhelming majority
     // of them and every single one on a vehicle. The multiply costs less than
     // the branch would.
-    float vmSwing = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * aGait.x;
+    float vmGaitCode = abs(aGait.x);
+    float vmGaitSign = sign(aGait.x);
+    float vmQuadruped = step(1.5, vmGaitCode);
+    float vmQuadrupedEnd = 1.0 - 2.0 * step(2.5, vmGaitCode);
+    float vmPivotZ = vmQuadruped * vmQuadrupedEnd * ${QUADRUPED_GAIT_PIVOT_Z};
+    float vmSwing = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * vmGaitSign;
     float vmC = cos(vmSwing);
     float vmS = sin(vmSwing);
     float vmY = transformed.y - aGait.y;
-    float vmZ = transformed.z;
+    float vmZ = transformed.z - vmPivotZ;
     transformed.y = aGait.y + vmC * vmY - vmS * vmZ;
-    transformed.z = vmS * vmY + vmC * vmZ;
+    transformed.z = vmPivotZ + vmS * vmY + vmC * vmZ;
   }`,
     );
 
@@ -125,7 +137,7 @@ void main() {`,
     '#include <beginnormal_vertex>',
     `#include <beginnormal_vertex>
   {
-    float vmSwingN = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * aGait.x;
+    float vmSwingN = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * sign(aGait.x);
     float vmCN = cos(vmSwingN);
     float vmSN = sin(vmSwingN);
     float vmNy = objectNormal.y;

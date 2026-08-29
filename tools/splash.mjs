@@ -4,14 +4,14 @@
  *   node tools/splash.mjs                        # tools/brand-source/splash-source.webp
  *   node tools/splash.mjs path/to/other.webp     # re-derive from a replacement
  *
- * A SIBLING OF `brand.mjs`, NOT A BRANCH OF IT. Both write into `public/brand/`, and
- * `public/brand/README.md` says nothing may be put there by hand — but they read
+ * A SIBLING OF `brand.mjs`, NOT A BRANCH OF IT. Both write into `packages/assets/brand/`, and
+ * that directory's README says nothing may be put there by hand — but they read
  * DIFFERENT sources: `brand.mjs` derives the wordmark and every app icon from the logo
  * lockup, and this derives the loading curtain's backdrop from the key art. Folding the
  * second source into the first script would mean one `process.argv[2]` selecting between
  * two unrelated pipelines, which is how a tool grows a mode nobody remembers.
  *
- * WHY WEBP. Everything else in `public/brand/` is a logo — flat colour, hard edges,
+ * WHY WEBP. Everything else in `packages/assets/brand/` is a logo — flat colour, hard edges,
  * alpha — which is what PNG is for. This is a photographic illustration supplied as
  * WebP, and keeping that codec makes the first-paint asset 64 kB instead of publishing a
  * multi-megabyte lossless source. There is no PNG fallback and none is needed — WebP has
@@ -32,7 +32,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = process.argv[2]
   ? resolve(process.argv[2])
   : join(ROOT, 'tools', 'brand-source', 'splash-source.webp');
-const OUT = join(ROOT, 'apps/game/public', 'brand');
+const OUT = join(ROOT, 'packages', 'assets', 'brand');
 
 if (!existsSync(SRC)) {
   console.error(`no source image at ${SRC}`);

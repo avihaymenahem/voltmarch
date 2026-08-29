@@ -126,7 +126,7 @@ export class MultiplayerSetup implements Screen {
     host.classList.add('vm-page');
 
     const frame = pageFrame('Multiplayer', () => { this.back(); });
-    frame.root.classList.add('vm-mp-panel');
+    frame.root.classList.add('vm-operation-panel', 'vm-mp-panel');
 
     // Identity is shared by hosting, quick match and room joins. Keeping it in
     // one calm top band avoids asking the player for the same decision in

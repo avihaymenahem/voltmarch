@@ -17,7 +17,8 @@ import { ctx } from '../game/context';
 import { PartId } from '../core/types';
 import { applyShroudTint } from '../render/FogOfWar';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
-import type { UnitModel } from './UnitFactory';
+import { unitMaterialFor, type UnitModel } from './UnitFactory';
+import type { UnitMaterialTextures } from '../render/gpu-path';
 import { applyUnitRim } from './unit-rim';
 import { acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader } from './RuntimeKTX2Loader';
 import {
@@ -45,6 +46,10 @@ export interface ImportedUnitSpec {
   sourceTurretCutY?: number;
   /** Gameplay envelope, excluding the gun overhang. */
   target: readonly [width: number, height: number, hullLength: number];
+  /** Generated vehicles use X; upright character sources conventionally use Z. */
+  sourceLongAxis?: 'x' | 'z';
+  /** Cheap per-vertex animation path; never allocates a skeleton or mixer. */
+  gait?: 'quadruped' | 'humanoid';
   yawDeg?: number;
   /** Asset-local exposure compensation for generated base-colour atlases. */
   baseColorGain?: number;
@@ -59,19 +64,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_harvester',
     label: 'Allied Chrono Miner',
-    url: new URL('../assets/units/allies/compressed/chrono-miner.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/allies/compressed/chrono-miner.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/allies/derived/chrono-miner.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/chrono-miner.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/allies/derived/chrono-miner.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/chrono-miner.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/allies/derived/chrono-miner.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/allies/derived/chrono-miner.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.0, 3.3, 8.6],
@@ -85,19 +90,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'meridian_collector',
     label: 'Meridian Sun Collector',
-    url: new URL('../assets/units/meridian/compressed/sun-collector.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/meridian/compressed/sun-collector.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/meridian/derived/sun-collector.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/sun-collector.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/meridian/derived/sun-collector.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/sun-collector.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/meridian/derived/sun-collector.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/meridian/derived/sun-collector.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [3.9, 3.25, 8.4],
@@ -111,19 +116,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'reclaim_scrapper',
     label: 'Reclamation Scrapjaw',
-    url: new URL('../assets/units/reclamation/compressed/scrapjaw.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/scrapjaw.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/reclamation/derived/scrapjaw.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/scrapjaw.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/reclamation/derived/scrapjaw.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/scrapjaw.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/reclamation/derived/scrapjaw.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/reclamation/derived/scrapjaw.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.0, 3.35, 8.6],
@@ -139,7 +144,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'soviet_rhino',
     label: 'Soviet Anvil Heavy Tank',
-    url: new URL('../assets/units/soviets/compressed/anvil-heavy-tank.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/anvil-heavy-tank.glb', import.meta.url).href,
     hullName: 'Hull',
     turretName: 'Turret',
     // V2 is split and sealed offline. Keep the authored ring centre instead of
@@ -158,10 +163,10 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'soviet_apocalypse',
     label: 'Soviet Sledge Superheavy Tank',
-    url: new URL('../assets/units/soviets/compressed/sledge-tank.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/sledge-tank.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/soviets/derived/sledge-tank.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/sledge-tank.lod1.glb', import.meta.url).href,
         minDistance: 52,
       },
     ],
@@ -180,19 +185,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'soviet_harvester',
     label: 'Soviet Ore Collector',
-    url: new URL('../assets/units/soviets/compressed/ore-collector.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/ore-collector.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/soviets/derived/ore-collector.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/ore-collector.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/soviets/derived/ore-collector.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/ore-collector.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/soviets/derived/ore-collector.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/soviets/derived/ore-collector.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.0, 3.3, 8.6],
@@ -210,19 +215,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_dozer',
     label: 'Allied Construction Dozer',
-    url: new URL('../assets/units/allies/compressed/construction-dozer.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/allies/compressed/construction-dozer.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/allies/derived/construction-dozer.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/construction-dozer.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/allies/derived/construction-dozer.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/construction-dozer.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/allies/derived/construction-dozer.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/allies/derived/construction-dozer.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.4, 3.8, 9.0],
@@ -236,19 +241,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_vindicator',
     label: 'Allied Petrel Bomber',
-    url: new URL('../assets/units/allies/compressed/petrel-bomber.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/allies/compressed/petrel-bomber.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/allies/derived/petrel-bomber.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/petrel-bomber.lod1.glb', import.meta.url).href,
         minDistance: 52,
       },
       {
-        url: new URL('../assets/units/allies/derived/petrel-bomber.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/allies/derived/petrel-bomber.lod2.glb', import.meta.url).href,
         minDistance: 84,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/allies/derived/petrel-bomber.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/allies/derived/petrel-bomber.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [12.0, 3.0, 11.0],
@@ -262,19 +267,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'soviet_dozer',
     label: 'Soviet Sputnik Dozer',
-    url: new URL('../assets/units/soviets/compressed/sputnik-dozer.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/sputnik-dozer.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/soviets/derived/sputnik-dozer.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/sputnik-dozer.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/soviets/derived/sputnik-dozer.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/sputnik-dozer.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/soviets/derived/sputnik-dozer.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/soviets/derived/sputnik-dozer.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.4, 3.8, 9.0],
@@ -290,19 +295,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'soviet_mig',
     label: 'Soviet Interceptor',
-    url: new URL('../assets/units/soviets/compressed/interceptor.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/interceptor.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/soviets/derived/interceptor.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/interceptor.lod1.glb', import.meta.url).href,
         minDistance: 52,
       },
       {
-        url: new URL('../assets/units/soviets/derived/interceptor.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/interceptor.lod2.glb', import.meta.url).href,
         minDistance: 84,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/soviets/derived/interceptor.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/soviets/derived/interceptor.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [10.5, 2.9, 10.0],
@@ -314,21 +319,44 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     emissiveIntensity: 0.010,
   },
   {
-    key: 'meridian_carryall',
-    label: 'Meridian Pactworks Carryall',
-    url: new URL('../assets/units/meridian/compressed/pactworks-carryall.glb', import.meta.url).href,
+    key: 'soviet_dog',
+    label: 'Soviet Attack Dog',
+    url: new URL('../../../../packages/assets/game/units/soviets/compressed/attack-dog.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/meridian/derived/pactworks-carryall.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/soviets/derived/attack-dog.lod1.glb', import.meta.url).href,
+        minDistance: 38,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/attack-dog.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'mesh_node',
+    target: [0.72, 1.36, 1.70],
+    sourceLongAxis: 'z',
+    gait: 'quadruped',
+    baseColorGain: 1.08,
+    roughnessGain: 1.18,
+    normalScale: 1.08,
+    envMapIntensity: 0.48,
+    emissiveIntensity: 0,
+  },
+  {
+    key: 'meridian_carryall',
+    label: 'Meridian Pactworks Carryall',
+    url: new URL('../../../../packages/assets/game/units/meridian/compressed/pactworks-carryall.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/pactworks-carryall.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/meridian/derived/pactworks-carryall.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/pactworks-carryall.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/meridian/derived/pactworks-carryall.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/meridian/derived/pactworks-carryall.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.4, 3.8, 9.0],
@@ -342,19 +370,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'meridian_kestrel',
     label: 'Meridian Kestrel Gunship',
-    url: new URL('../assets/units/meridian/compressed/kestrel-gunship.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/meridian/compressed/kestrel-gunship.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/meridian/derived/kestrel-gunship.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/kestrel-gunship.lod1.glb', import.meta.url).href,
         minDistance: 52,
       },
       {
-        url: new URL('../assets/units/meridian/derived/kestrel-gunship.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/meridian/derived/kestrel-gunship.lod2.glb', import.meta.url).href,
         minDistance: 84,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/meridian/derived/kestrel-gunship.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/meridian/derived/kestrel-gunship.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [11.0, 2.9, 10.5],
@@ -368,19 +396,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'reclaim_crawler',
     label: 'Reclamation Yardcrawler',
-    url: new URL('../assets/units/reclamation/compressed/yardcrawler.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/yardcrawler.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/reclamation/derived/yardcrawler.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/yardcrawler.lod1.glb', import.meta.url).href,
         minDistance: 46,
       },
       {
-        url: new URL('../assets/units/reclamation/derived/yardcrawler.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/yardcrawler.lod2.glb', import.meta.url).href,
         minDistance: 76,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/reclamation/derived/yardcrawler.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/reclamation/derived/yardcrawler.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [4.4, 3.85, 9.0],
@@ -394,19 +422,19 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'reclaim_hornet',
     label: 'Reclamation Swarmhornet',
-    url: new URL('../assets/units/reclamation/compressed/swarmhornet.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/swarmhornet.glb', import.meta.url).href,
     lods: [
       {
-        url: new URL('../assets/units/reclamation/derived/swarmhornet.lod1.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/swarmhornet.lod1.glb', import.meta.url).href,
         minDistance: 52,
       },
       {
-        url: new URL('../assets/units/reclamation/derived/swarmhornet.lod2.glb', import.meta.url).href,
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/swarmhornet.lod2.glb', import.meta.url).href,
         minDistance: 84,
       },
     ],
     shadowUrl: new URL(
-      '../assets/units/reclamation/derived/swarmhornet.shadow.glb', import.meta.url,
+      '../../../../packages/assets/game/units/reclamation/derived/swarmhornet.shadow.glb', import.meta.url,
     ).href,
     hullName: 'Hull',
     target: [10.6, 2.9, 10.0],
@@ -443,10 +471,63 @@ function optimizationEnabled(): boolean {
   return new URLSearchParams(location.search).get('assetopt') !== 'off';
 }
 
-function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): THREE.MeshPhysicalMaterial {
+type ImportedAnimatedMaterial = THREE.Material & {
+  color: THREE.Color;
+  normalScale: THREE.Vector2;
+  roughness: number;
+  metalness: number;
+  clearcoat: number;
+  clearcoatRoughness: number;
+  envMapIntensity: number;
+  emissiveIntensity: number;
+  emissiveMap: THREE.Texture | null;
+  aoMap: THREE.Texture | null;
+  vertexColors: boolean;
+};
+
+export function importedAnimatedUnitMaterial(
+  source: THREE.MeshStandardMaterial, spec: ImportedUnitSpec,
+): THREE.Material {
+  if (source.map === null || source.normalMap === null) {
+    throw new Error(`${spec.label}: animated import requires base-colour and normal textures`);
+  }
+  const ormMap = source.roughnessMap ?? source.metalnessMap;
+  if (ormMap === null) throw new Error(`${spec.label}: animated import requires a packed MR texture`);
+  const textures: UnitMaterialTextures = {
+    map: source.map,
+    normalMap: source.normalMap,
+    ormMap,
+    // The dog has no emissive surface. This slot is removed immediately after
+    // construction; using an existing texture avoids a one-off allocation.
+    emissiveMap: source.map,
+  };
+  const material = unitMaterialFor(textures, `${spec.key}.imported.gait`) as ImportedAnimatedMaterial;
+  material.color.copy(source.color).multiplyScalar(spec.baseColorGain ?? 1);
+  material.normalScale.setScalar(spec.normalScale ?? 1);
+  material.roughness = spec.roughnessGain ?? 1;
+  material.metalness = 1;
+  material.clearcoat = 0.02;
+  material.clearcoatRoughness = 0.88;
+  material.envMapIntensity = spec.envMapIntensity ?? 0.5;
+  material.emissiveMap = null;
+  material.emissiveIntensity = 0;
+  // Meshy's metallic/roughness image has no authored AO channel or UV1.
+  material.aoMap = null;
+  material.vertexColors = false;
+  for (const texture of [source.map, source.normalMap, ormMap]) {
+    texture.anisotropy = 8;
+    texture.needsUpdate = true;
+    runtimeTextures.add(texture);
+  }
+  runtimeMaterials.add(material);
+  return material;
+}
+
+function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): THREE.Material {
   if (!(source instanceof THREE.MeshStandardMaterial)) {
     throw new Error(`${spec.label}: expected MeshStandardMaterial, received ${source.type}`);
   }
+  if (spec.gait !== undefined) return importedAnimatedUnitMaterial(source, spec);
 
   const textured = source.map !== null;
   const material = new THREE.MeshPhysicalMaterial({
@@ -501,6 +582,50 @@ function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): T
   material.customProgramCacheKey = () => 'vm.imported-unit.rim.shroud.v1';
   runtimeMaterials.add(material);
   return material;
+}
+
+/**
+ * Mark only the four lower limbs for a diagonal quadruped trot.
+ *
+ * Each leg rotates around its own fore/hind joint in model space. The body,
+ * armour, panniers, head and tail retain zero weights and therefore remain in
+ * the approved rest silhouette. This is two tiny attributes on the existing
+ * instanced mesh, not four bones per dog or one mixer per entity.
+ */
+export function tagQuadrupedGait(geometry: THREE.BufferGeometry): void {
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox;
+  const position = geometry.getAttribute('position');
+  if (bounds === null || position === undefined) throw new Error('quadruped geometry has no bounds');
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+  const legTop = bounds.min.y + size.y * 0.58;
+  const pivotY = bounds.min.y + size.y * 0.56;
+  const gait = new Float32Array(position.count * 2);
+  let positive = 0;
+  let negative = 0;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i) - center.x;
+    const y = position.getY(i);
+    const z = position.getZ(i) - center.z;
+    const isLeg = y <= legTop
+      && Math.abs(x) >= size.x * 0.12
+      && Math.abs(z) >= size.z * 0.16;
+    if (!isLeg) continue;
+    const side = x >= 0 ? 1 : -1;
+    const end = z >= 0 ? 1 : -1;
+    const sign = side === end ? 1 : -1;
+    // Magnitude 2 = +Z pair, 3 = -Z pair. The shared shader decodes the local
+    // joint without adding a vertex attribute (and therefore without forking
+    // the WebGPU pipeline layout used by unit previews and secondary passes).
+    gait[i * 2] = sign * (end > 0 ? 2 : 3);
+    gait[i * 2 + 1] = pivotY;
+    if (sign > 0) positive++; else negative++;
+  }
+  if (positive === 0 || negative === 0) {
+    throw new Error('quadruped gait could not resolve all four legs');
+  }
+  geometry.setAttribute('aGait', new THREE.BufferAttribute(gait, 2));
 }
 
 /** Keep a proxy traversable for shadows while making its colour pass inert. */
@@ -676,17 +801,24 @@ export async function loadImportedUnitOverride(
   const fit: UnitFit = {
     sourcePivot,
     targetPivot,
-    // Source X is the hull's long axis and source Z is its width. The yaw below
-    // exchanges them after the exact gameplay dimensions have been applied.
-    scale: new THREE.Vector3(
-      spec.target[2] / hullSize.x,
-      spec.target[1] / fullSize.y,
-      spec.target[0] / hullSize.z,
-    ),
+    // Vehicles reconstruct lengthwise on X; upright character sources use Z.
+    // Fit before yaw so each family lands in the exact gameplay envelope.
+    scale: spec.sourceLongAxis === 'z'
+      ? new THREE.Vector3(
+        spec.target[0] / hullSize.x,
+        spec.target[1] / fullSize.y,
+        spec.target[2] / hullSize.z,
+      )
+      : new THREE.Vector3(
+        spec.target[2] / hullSize.x,
+        spec.target[1] / fullSize.y,
+        spec.target[0] / hullSize.z,
+      ),
     yaw: THREE.MathUtils.degToRad(spec.yawDeg ?? 0),
   };
 
   const geometry = fitGeometry(rawHull, fit, false);
+  if (spec.gait === 'quadruped') tagQuadrupedGait(geometry);
   geometry.name = `${spec.key}.imported.hull`;
   const turretGeometry = rawTurret === undefined
     ? undefined
@@ -705,6 +837,7 @@ export async function loadImportedUnitOverride(
       throw new Error(`${spec.label}: LOD${index + 1} lost its articulated mesh names`);
     }
     const hullGeometry = fitGeometry(sourceGeometry(lodHull), fit, false);
+    if (spec.gait === 'quadruped') tagQuadrupedGait(hullGeometry);
     hullGeometry.name = `${spec.key}.imported.hull.lod${index + 1}`;
     hullLods.push({ geometry: hullGeometry, minDistance: lod.minDistance });
     if (lodTurret !== undefined) {
@@ -752,6 +885,7 @@ export async function loadImportedUnitOverride(
       castShadow: true,
       receiveShadow: false,
       aoOccluder: false,
+      shadowOnly: true,
     });
   }
 

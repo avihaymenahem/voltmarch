@@ -67,6 +67,7 @@ const POST_SRC = readFileSync(join(ROOT, 'apps/game/src/render/post.ts'), 'utf8'
  */
 const ORDER_SRC = readFileSync(join(ROOT, 'apps/game/src/render/post-order.ts'), 'utf8');
 const RENDERER_SRC = readFileSync(join(ROOT, 'apps/game/src/render/renderer.ts'), 'utf8');
+const BOOTSTRAP_SRC = readFileSync(join(ROOT, 'apps/game/src/game/Bootstrap.ts'), 'utf8');
 
 /**
  * Prose must not be able to satisfy or break an assertion about code. Same
@@ -243,12 +244,12 @@ describe('post.ts wiring', () => {
     }
   });
 
-  it('renders the shadow map once a frame, not once per render() call', () => {
+  it('renders the shadow map at most once per frame and schedules stable frames', () => {
     /* GTAO renders the scene a second time for its normal prepass, and
      * `WebGLShadowMap` rebuilds on every `render()` while `autoUpdate` is true —
      * so the whole shadow pass ran twice, measured at 110 draw calls for the
-     * pair. `beginFrame()` is the single per-frame entry point, so arming
-     * `needsUpdate` there gives exactly one rebuild. Pixel-identical.
+     * pair. `beginFrame()` is the single per-frame entry point, so the cadence
+     * can arm at most one rebuild before the first scene render.
      *
      * Both halves are asserted because either alone is a bug: `autoUpdate =
      * false` without the re-arm freezes the shadow map at frame one, which is a
@@ -263,12 +264,24 @@ describe('post.ts wiring', () => {
     // `beginFrame() {`, not `beginFrame()` — the latter finds the interface
     // declaration `beginFrame(): void;` first, and an assertion that reads a
     // type signature instead of a body proves nothing.
-    const at = code.indexOf('beginFrame() {');
+    const at = code.indexOf('beginFrame(dtSeconds = 0, forceShadowUpdate = false) {');
     expect(at, 'beginFrame implementation not found').toBeGreaterThan(-1);
     expect(code.slice(0, at), 'the pre-frame warm-up must build a real shadow map')
       .toMatch(/shadowMap\.needsUpdate\s*=\s*cfg\.shadows\.enabled/);
-    expect(code.slice(at, at + 400), 'beginFrame must re-arm the one rebuild')
-      .toMatch(/shadowMap\.needsUpdate\s*=\s*true/);
+    expect(code.slice(at, at + 700), 'beginFrame must delegate to the cadence')
+      .toMatch(/shadowCadence\.shouldUpdate\(\s*dtSeconds,\s*forceShadowUpdate,?\s*\)/);
+    expect(code.slice(at, at + 850), 'backend-specific needsUpdate state must be overwritten')
+      .toMatch(/rebuildShadows\s*=\s*shadowRefreshRequested\s*\|\|/);
+    expect(code.slice(at, at + 850), 'the renderer must receive the cadence decision')
+      .toMatch(/shadowMap\.needsUpdate\s*=\s*rebuildShadows/);
+    expect(code.slice(at, at + 850), 'a pending forced refresh must be consumed once')
+      .toMatch(/shadowRefreshRequested\s*=\s*false/);
+
+    const bootstrap = stripComments(BOOTSTRAP_SRC);
+    expect(bootstrap, 'WebGPU schedules from LightShadow, so it must be manual too')
+      .toMatch(/sceneRig\.sun\.shadow\.autoUpdate\s*=\s*false/);
+    expect(bootstrap, 'the light must receive the same cross-backend decision')
+      .toMatch(/sceneRig\.sun\.shadow\.needsUpdate\s*=\s*handle\.beginFrame\(/);
   });
 });
 

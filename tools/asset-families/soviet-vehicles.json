@@ -1,8 +1,8 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "sourceDir": "apps/game/src/assets/units/soviets",
-  "outputDir": "apps/game/src/assets/units/soviets/derived",
+  "sourceDir": "packages/assets/game/units/soviets",
+  "outputDir": "packages/assets/game/units/soviets/derived",
   "profiles": {
     "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
     "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.30 },
@@ -49,6 +49,18 @@
       "movingParts": false,
       "profiles": {
         "lod2": { "maxBoundsDrift": 0.03 }
+      }
+    },
+    {
+      "key": "soviet_dog",
+      "file": "attack-dog.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.45 },
+        "lod2": { "ratio": 0.08, "error": 0.05, "maxRatio": 0.35 },
+        "shadow": { "gridLongest": 12, "maxTriangles": 1000, "maxRatio": 0.20 }
       }
     }
   ]

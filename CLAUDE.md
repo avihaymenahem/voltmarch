@@ -25,26 +25,26 @@ licence is the authority.
 
 VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
 building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
-structures, capturable civic landmarks and resource vehicles now use original Meshy generations
+structures, capturable civic landmarks, selected vehicles and the Soviet Attack Dog now use original Meshy generations
 that pass through the local VOLTMARCH asset pipeline.
 
 Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
 are built from Three.js geometry, custom shaders and procedural canvas generators. **Eight shipped
 asset groups are not generated from runtime code**, all deliberate: the first six live in
-`apps/game/public/`; the last two live in `apps/game/src/assets/` and Vite emits them into the build.
+`apps/game/public/`; the last two live in `packages/assets/game/` and Vite emits them into the build.
 
-1. **Rajdhani** (OFL-1.1) in `apps/game/public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
+1. **Rajdhani** (OFL-1.1) in `packages/assets/fonts/` — the shared UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
    nothing ever shipped it, so every menu and HUD rendered in the fourth fallback — Franklin Gothic
    Medium — and the face the UI was designed around was never on screen.
-2. **The brand lockup** in `apps/game/public/brand/` — seven PNGs derived by `tools/brand.mjs` from a
+2. **The brand lockup** in `packages/assets/brand/` — seven PNGs derived by `tools/brand.mjs` from a
    `logo.png` the user supplied, which is kept as `tools/brand-source/logo-source.png`.
    `logo-full.png` is the main-menu title; `logo-720.png` is the curtain's fallback wordmark;
-   `mark-*.png` are the favicons and app icons. See `apps/game/public/brand/README.md`. This said "eight
+   `mark-*.png` are the favicons and app icons. See `packages/assets/brand/README.md`. This said "eight
    PNGs derived by" while one of the eight was the underived SOURCE, sitting in the shipped
    directory and being published unused. It also credited `logo-full.png` as the loading curtain,
    which the markup has never used.
-3. **The loading/title key art** in `apps/game/public/brand/` — `splash-1600.webp` and `splash-640.webp`,
+3. **The loading/title key art** in `packages/assets/brand/` — `splash-1600.webp` and `splash-640.webp`,
    derived by `tools/splash.mjs` from `hero-1920.webp`, supplied by the project owner on 2026-08-26
    and kept as `tools/brand-source/splash-source.webp`. It is the boot curtain's and image-first
    title shell's full-bleed backdrop. It contains no baked lettering; the accessible DOM lockup
@@ -79,6 +79,13 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    loaders filter against `art/boot-plan.ts`, Meridian/Reclamation return before touching `ctx()`,
    and the two-army title plan retains only the one opponent it actually seats. Screenshot/harness
    boots leave the plan null, which intentionally means every pack.
+
+   **THE SHELL HAS ONE VISUAL AND IDENTITY CONTRACT.** Out-of-game routes and pause overlays extend
+   the shared command-shell treatment in `shell.css`; do not create route-local modal skins.
+   Commander identity is edited from Service Record and persists through the same
+   `settings.gameplay.commanderName` Multiplayer consumes. Browser builds hide Quit because a page
+   cannot reliably close its own tab; desktop Quit goes through the validated Electron bridge.
+   Keep `Evacuate To Main Menu` prominent on the pause surface.
 4. **Campaign character portraits** in `apps/game/public/campaign/portraits/` — nineteen authored command-cast
    portraits, original AI-assisted artwork generated with OpenAI's built-in image generation tool
    on 2026-08-21. These are campaign/interface images, not models or textures used by the procedural
@@ -154,7 +161,7 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    canvas survey if an image cannot decode. Prompts, roster mapping and delivery treatment are
    recorded in `apps/game/public/maps/previews/README.md`.
 
-7. **Universal terrain detail mask** in `apps/game/src/assets/terrain/` — an original tileable
+7. **Universal terrain detail mask** in `packages/assets/game/terrain/` — an original tileable
    8192 × 8192 grayscale master supplied by the project owner on 2026-08-27, conditioned to a
    lossless 4096 × 4096 runtime derivative. Both terrain shader paths sample it in world space as
    luminance and roughness variation. The terrain pass is multiplied by normalized natural splat
@@ -167,7 +174,7 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    exists, then crash bind-group creation while reading `mipLevelCount`, leaving a flat-orange world.
 
 8. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
-   `apps/game/src/assets/{buildings,units,wrecks}/` — original Meshy AI generations
+   `packages/assets/game/{buildings,units,wrecks}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
@@ -311,6 +318,16 @@ the build.
 - **The repository is an npm/Turborepo monorepo.** Deployable products live under
   `apps/`; dependency-ordered, environment-neutral contracts live under `packages/`.
   App code may depend on packages, never on another app's private source.
+- **Shared binary assets have one owner: `packages/assets/`.** Game models and terrain inputs live
+  under `packages/assets/game/`; shared brand art and fonts live beside them. The browser game,
+  desktop shell, website and Asset Lab consume or copy those canonical files at build time. Never
+  create a second app-local copy. `npm run lint` rejects source imports across private workspace
+  boundaries at the offending line; `npm run check:ownership` hashes app and package source trees
+  and rejects exact duplicates plus non-ESLint cross-app references.
+- **`apps/asset-lab/` is a first-class app, not a game debug page.** It discovers the canonical model
+  tree lazily, opens WebGPU by default through `npm run asset:lab`, and owns catalog, audit, infantry
+  animation and bounded stress-test UI. Shared rendering helpers used by its pages belong in the app's
+  `src/`; logic or assets needed by another app must move to a package before being consumed there.
 - **`packages/game-types` and `packages/protocol` are real boundaries.** The browser and
   relay consume the same validated wire definitions; compatibility re-exports under
   `apps/game/src/` keep stable internal imports without duplicating ownership.
@@ -1941,8 +1958,11 @@ rifleman directly beneath an aircraft is at `flat = 0`. Direct fire that crosses
 follows its actual vertical bearing, so that in-range shot can connect.
 
 An explicit attack closes to `range * APPROACH_STOP_FRAC` (0.80) and **parks** there
-(`APPROACH_PARKED`). A plain move order breaks that engagement, and new aircraft start Defensive so
-a short retreat is not reclaimed by Aggressive auto-chase.
+(`APPROACH_PARKED`). A plain Move is weapons-cold and breaks that engagement; Attack Move is the
+explicit move-and-fire order. New aircraft still start Defensive so a live Move order can pull them
+out cleanly, but once that order completes they patrol their authored sight envelope, acquire and
+sustain an engagement without another click. Use Guard, Hold Fire or Hold Ground when the aircraft
+must remain pinned rather than relying on Defensive to mean permanently inert.
 
 **Do not "fix" it by forcing an attack run.** Measured at today's damage, one 19 m pass (`2R / v`,
 2.8-3.5 s) is worth 6-14% of a Power Plant and 17-41% of a main battle tank — a Petrel Bomber's entire
@@ -1951,9 +1971,10 @@ loiter is a problem because it is the ONLY behaviour, not because loitering is w
 way OUT that the player and the AI can both issue, never a rule forbidding staying.
 
 **THE AIR MULTIPLIER AND BEHAVIOUR FIXES SOLVE DIFFERENT FAILURES.** The multiplier gives an aircraft
-roughly four times as long against massed line rifles. Defensive spawn stance makes the natural
-short-retreat gesture hold. Cross-layer direct fire uses the actual pitch and closes the old overhead
-blind cone without changing authored ground-mount limits or ballistic shell arcs.
+roughly four times as long against massed line rifles. Defensive spawn stance keeps a retreat order
+authoritative while it is live; the sight-envelope patrol restores autonomous combat afterwards.
+Cross-layer direct fire uses the actual pitch and closes the old overhead blind cone without changing
+authored ground-mount limits or ballistic shell arcs.
 
 **FIVE ANSWERS TO "AIRCRAFT DIE TOO FAST" THAT WERE COSTED AND REJECTED**, recorded so nobody
 re-derives them. Overturn one by rewriting it with an argument, not by trying it.
@@ -2344,7 +2365,7 @@ before touching it. The workspace boundary is structural, not a convention.
   privileged-scheme registration.
 - **EVERY TESTABLE DESKTOP DECISION LIVES OUTSIDE `main.ts`.**
   `apps/desktop/src/{flags,app-url,paths,display,storage}.ts` import no electron and are tested by
-  `apps/game/tests/desktop-shell.spec.ts` in the ordinary gate, including the path-traversal guard and an
+  `tests/integration/desktop-shell.spec.ts` in the desktop gate, including the path-traversal guard and an
   import-boundary check that fails if the shell ever reaches into `apps/game/src/`. Only the wiring needs a
   binary, and that is `npm run desktop:smoke`.
 
@@ -2358,7 +2379,7 @@ before touching it. The workspace boundary is structural, not a convention.
   Window mode, window size, monitor, graphics processor, unlock frame rate, and a button to the
   save folder — top of Options → Graphics, absent in a browser because the accessor returns null
   there. **That file must import NOTHING**, which a test asserts: the game may not reach into
-  `apps/desktop/`, so the IPC shapes are declared on both sides and `apps/game/tests/desktop-shell.spec.ts`
+  `apps/desktop/`, so the IPC shapes are declared on both sides and `tests/integration/desktop-shell.spec.ts`
   compares the two declarations rather than letting an import paper over the boundary.
 
 - **RELEASE MANAGEMENT HAS ITS OWN SETTINGS TAB.** `Settings → Updates` is the player-facing

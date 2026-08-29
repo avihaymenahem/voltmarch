@@ -17,7 +17,7 @@ interface AssetRow {
 }
 
 const report = JSON.parse(fs.readFileSync(
-  path.resolve('apps/game/src/assets/buildings/reclamation/derived/optimization-report.json'),
+  path.resolve('packages/assets/game/buildings/reclamation/derived/optimization-report.json'),
   'utf8',
 )) as { family: string; write: boolean; rows: AssetRow[] };
 const runtime = fs.readFileSync(path.resolve('apps/game/src/art/Faction4Buildings.ts'), 'utf8');

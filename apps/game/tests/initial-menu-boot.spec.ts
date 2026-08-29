@@ -109,12 +109,12 @@ describe('initial title-menu boot', () => {
     expect(bootstrap).toContain('[boot] battlefield');
   });
 
-  it('batches repeated WebGPU terrain and scatter objects without removing the WebGL path', () => {
+  it('batches terrain while keeping scatter on typed instancing at runtime', () => {
     expect(terrain).toContain('new THREE.BatchedMesh(');
     expect(terrain).toContain("'terrain.batch.relief'");
     expect(terrain).toContain('batch.perObjectFrustumCulled = true');
+    expect(scatter).toContain("get('scatterbatch') === 'legacy'");
     expect(scatter).toContain('if (this.batchedNodePath) this.buildNodeBatches();');
-    expect(scatter).toContain("'prop.batch.shadow'");
     expect(scatter).toContain('new THREE.InstancedMesh(');
   });
 

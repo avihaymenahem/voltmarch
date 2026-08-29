@@ -204,15 +204,17 @@ export const enum UnitState {
   /** Stationary or closing on targetId, weapon hot. */
   Attacking = 3,
   /**
-   * Holding a post, engaging anything in range, returning to the post
-   * afterwards. The post is `guardX/guardZ`.
+   * Holding a post. An explicit Guard order fires only from that post; an
+   * automatic Aggressive-stance excursion may engage nearby and return. The
+   * post is `guardX/guardZ` in both cases.
    *
    * THIS STATE WAS INERT. Its docstring described the behaviour the whole
    * stance system needed and nothing implemented it: `seeksGoal` omitted it, so
    * a unit given `OrderKind.Guard` did not even drive to the point it was told
    * to guard, and `Regen`/`AI` read it only as a synonym for `Idle`. It is now
    * a SEEKING state whose goal (`orderX/orderZ`) is owned by `sim/Targeting.ts`
-   * — the chase goal while engaging, the post while coming home.
+   * — the chase goal for an automatic excursion, the post while coming home,
+   * or the fixed destination of an explicit Guard.
    */
   Guarding = 4,
   /** Harvester: driving to an ore cell. */

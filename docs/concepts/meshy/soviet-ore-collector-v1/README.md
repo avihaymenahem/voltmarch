@@ -56,7 +56,7 @@ before integration; the higher close-range ceiling is not permission to regress 
 - Paid remesh skipped: the dense source reduced locally without losing the hopper, scoop or track silhouette.
 - Shipping geometry: 49,715 / 22,371 / 12,085 triangles for LOD0/LOD1/LOD2, plus a 1,344-triangle shadow proxy.
 - Texture delivery: required KTX2; 5,369,188-byte source reduced to 4,538,968 bytes and estimated 48 MiB RGBA residency reduced to 8 MiB at 8 bpp.
-- Runtime: `src/assets/units/soviets/compressed/ore-collector.glb`, with automatic procedural fallback.
+- Runtime: `packages/assets/game/units/soviets/compressed/ore-collector.glb`, with automatic procedural fallback.
 - Validation: asset and render gates plus WebGL/WebGPU faction-scene captures passed on 2026-08-26.
 
 Final Meshy spend: 30 credits.

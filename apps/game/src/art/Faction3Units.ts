@@ -106,6 +106,7 @@ import { GreebleFactory } from './Greeble';
 import { MassRole, type MassDef, type SocketSpec, type UnitMassList } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
 import { IMPORTED_UNIT_SPECS, loadImportedUnitOverride } from './ImportedUnitAssets';
+import { IMPORTED_INFANTRY_FAMILIES, loadImportedInfantryFamily } from './ImportedInfantryAssets';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
@@ -1588,6 +1589,18 @@ export async function buildAndRegisterMeridianUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
+  const infantryFamily = IMPORTED_INFANTRY_FAMILIES.find((family) => family.key === 'meridian_wayfarer');
+  if (infantryFamily !== undefined) {
+    try {
+      const variants = await loadImportedInfantryFamily(
+        infantryFamily, (key) => meridianUnitLibrary.get(key),
+      );
+      for (const [key, mesh] of variants) meshes.set(key, mesh);
+      console.info(`[units] imported shared ${infantryFamily.label} body for ${variants.size} roles`);
+    } catch (error) {
+      console.error(`[units] imported ${infantryFamily.label} rejected; using procedural fallbacks`, error);
+    }
+  }
   const importedKeys = [
     'meridian_collector', 'meridian_carryall', 'meridian_kestrel',
   ] as const;

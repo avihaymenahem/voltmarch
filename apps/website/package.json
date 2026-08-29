@@ -4,6 +4,9 @@
   "license": "UNLICENSED",
   "version": "1.0.0",
   "type": "module",
+  "dependencies": {
+    "@voltmarch/assets": "*"
+  },
   "scripts": {
     "build": "node build.mjs",
     "dev": "npm run build && npx wrangler pages dev dist --d1 WAITLIST=voltmarch-launch-waitlist",

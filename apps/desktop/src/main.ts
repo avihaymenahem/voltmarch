@@ -41,6 +41,7 @@ import { contentTypeFor, resolveAsset } from './paths';
 import {
   DEFAULT_DISPLAY,
   applyPatch,
+  displayForLaunch,
   displayLabel,
   normaliseDisplay,
   sizesFor,
@@ -85,7 +86,7 @@ const DIST = app.isPackaged
  */
 const WINDOW_ICON = app.isPackaged
   ? path.join(DIST, 'brand', 'mark-512.png')
-  : path.resolve(__dirname, '..', '..', 'game', 'public', 'brand', 'mark-512.png');
+  : path.resolve(__dirname, '..', '..', '..', 'packages', 'assets', 'brand', 'mark-512.png');
 
 /* -------------------------------------------------------------------------- */
 /* 2. Settings, read before ready                                              */
@@ -173,7 +174,8 @@ const launchedWith: DesktopSettings = loadSettings();
 
 /** Mutable current values. `launchedWith` deliberately does not track these. */
 let settings: DesktopSettings = { ...launchedWith };
-let display: DisplayPrefs = loadDisplay();
+const isToolWindow = process.argv.includes('--vm-tool-window');
+let display: DisplayPrefs = displayForLaunch(loadDisplay(), process.argv);
 let nativeStorage: NativeStorage | null = null;
 
 function storage(): NativeStorage {
@@ -355,6 +357,16 @@ function createWindow(): BrowserWindow {
     height: initialBounds?.height ?? display.height,
     ...(initialBounds !== null ? { x: initialBounds.x, y: initialBounds.y } : {}),
     icon: WINDOW_ICON,
+    // Developer tools need native minimize/maximize/close controls even when
+    // the game itself was last used fullscreen. `displayForLaunch` forces the
+    // windowed mode; these explicit flags make the chrome contract visible.
+    ...(isToolWindow ? {
+      title: 'VOLTMARCH Developer Tool',
+      frame: true,
+      minimizable: true,
+      maximizable: true,
+      closable: true,
+    } : {}),
     /*
      * Fullscreen is set at CONSTRUCTION rather than after `ready-to-show`.
      * Applying it later means the window is created windowed, shown, and then

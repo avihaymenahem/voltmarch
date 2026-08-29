@@ -1,0 +1,23 @@
+{
+  "name": "@voltmarch/asset-lab",
+  "private": true,
+  "license": "UNLICENSED",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "node --check src/asset-lab.mjs && node --check src/infantry.mjs && node --check src/catalog.mjs && node --check src/webgpu-safety.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@voltmarch/assets": "*",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^7.3.6"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

@@ -7,7 +7,7 @@
  *
  * "No downloaded assets, anywhere in the product" was true when it was written
  * and stopped being true on 2026-08-05, when the UI text face was self-hosted
- * into `public/fonts/` — a deliberate change, made because the stack had named
+ * into `packages/assets/fonts/` — a deliberate change, made because the stack had named
  * Rajdhani since the day it was written and never shipped it, so every menu and
  * HUD in the game had been rendering in the fourth fallback. Correct decision;
  * nobody updated the boast.
@@ -32,7 +32,8 @@ import { CREDITS } from '../src/shell/MainMenu';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const PUBLIC = join(ROOT, 'apps/game/public');
-const IMPORTED_WORLD_ASSETS = join(ROOT, 'apps/game/src', 'assets');
+const SHARED_ASSETS = join(ROOT, 'packages', 'assets');
+const IMPORTED_WORLD_ASSETS = join(SHARED_ASSETS, 'game');
 
 function rootText(file: string): string {
   return readFileSync(join(ROOT, file), 'utf8');
@@ -126,7 +127,9 @@ describe('the credits describe the product that actually ships', () => {
     for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'Rajdhani-OFL-1.1.txt']) {
       expect(vite, `the production bundle does not copy ${file}`).toContain(file);
     }
-    expect(vite).toMatch(/plugins:\s*\[releaseNoticesPlugin\(\)\]/);
+    // The notices copier must be installed, but it is not the only legal Vite
+    // plugin: the dev-only boundary guard deliberately shares this array.
+    expect(vite).toMatch(/plugins:\s*\[[^\]]*releaseNoticesPlugin\(\)/);
 
     const desktop = rootText('apps/desktop/electron-builder.yml');
     expect(desktop, 'Electron must embed the same legal-bearing dist tree as the web release')
@@ -182,8 +185,8 @@ describe('the credits describe the product that actually ships', () => {
 
   it('names the shipped interface artwork and typeface', () => {
     const assets = publicAssets();
-    const fonts = assets.filter((f) => /\.(woff2?|ttf|otf)$/i.test(f));
-    const brand = assets.filter((f) => f.startsWith('brand/') && /\.(png|jpe?g|webp|svg)$/i.test(f));
+    const fonts = importedWorldAssets(join(SHARED_ASSETS, 'fonts')).filter((f) => /\.(woff2?|ttf|otf)$/i.test(f));
+    const brand = importedWorldAssets(join(SHARED_ASSETS, 'brand')).filter((f) => /\.(png|jpe?g|webp|svg)$/i.test(f));
 
     if (fonts.length > 0) {
       // Rajdhani is OFL-1.1. Redistribution is exactly what that licence is
@@ -209,7 +212,7 @@ describe('the credits describe the product that actually ships', () => {
       // as these have shipped.
       expect(
         allText,
-        `public/brand ships ${brand.length} image(s) — the wordmark and app icons — `
+        `packages/assets/brand ships ${brand.length} image(s) — the wordmark and app icons — `
         + 'so the credits must say so',
       ).toMatch(/wordmark|logo|brand/i);
     }
@@ -219,11 +222,11 @@ describe('the credits describe the product that actually ships', () => {
     // lockup's own credit line whether or not the illustration is mentioned —
     // which is precisely how a credit goes stale without anything noticing.
     // Checked on its own filename instead.
-    const splash = assets.filter((f) => /^brand\/splash-/.test(f));
+    const splash = brand.filter((f) => /^splash-/.test(f));
     if (splash.length > 0) {
       expect(
         allText,
-        `public/brand ships ${splash.length} splash image(s) — a supplied illustration, `
+        `packages/assets/brand ships ${splash.length} splash image(s) — a supplied illustration, `
         + 'not generated art — so the credits must name it',
       ).toMatch(/key art|illustration/i);
     }
@@ -232,7 +235,7 @@ describe('the credits describe the product that actually ships', () => {
   it('names imported game-world models instead of claiming every mesh is procedural', () => {
     const models = importedWorldAssets().filter((file) => /\.(glb|gltf|fbx|obj|dae)$/i.test(file));
     if (models.length === 0) return;
-    expect(allText, `src/assets ships ${models.length} imported model(s) but the credits omit them`)
+    expect(allText, `packages/assets/game ships ${models.length} imported model(s) but the credits omit them`)
       .toMatch(/Meshy|imported .*model|landmark structure/i);
     expect(
       /every mesh generated procedurally|no downloaded models/i.test(allText),
@@ -261,7 +264,7 @@ describe('the credits describe the product that actually ships', () => {
     expect(rootText('CLAUDE.md'), 'CLAUDE.md omits the supplied terrain detail mask')
       .toMatch(/Universal terrain detail mask.*project owner/is);
     expect(
-      rootText('apps/game/src/assets/terrain/README.md'),
+      rootText('packages/assets/game/terrain/README.md'),
       'the runtime terrain asset has no local provenance record',
     ).toMatch(/8192 × 8192 grayscale master supplied by the VOLTMARCH project owner/i);
   });
@@ -285,8 +288,8 @@ describe('the credits describe the product that actually ships', () => {
 
   it('ships no undeclared binary asset from public/', () => {
     // Public asset families are declared. Imported world assets are bundled from
-    // `src/assets/` and checked independently above.
-    // `fonts/`, `brand/`, `audio/`, `campaign/` and `maps/previews/`
+    // `packages/assets/game/` and checked independently above.
+    // Shared `fonts/` and `brand/`, plus public `audio/`, `campaign/` and `maps/previews/`
     // are the DECLARED exceptions — named in the credits, README.md and
     // CLAUDE.md. Anything appearing elsewhere in public/ is a new undeclared
     // asset and fails here rather than silently making three documents wrong.

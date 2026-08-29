@@ -91,7 +91,7 @@ export interface QueueItemInfo {
  */
 export interface QueueHooks {
   /** Static content lookup. Null cancels the item as unbuildable. */
-  info(defId: number, isBuilding: boolean): QueueItemInfo | null;
+  info(player: PlayerState, defId: number, isBuilding: boolean): QueueItemInfo | null;
   /** Deduct up to `amount` credits. Returns what was actually taken. */
   charge(player: PlayerState, amount: number): number;
   /** Hand credits back (cancel, or a refused item). */
@@ -136,6 +136,14 @@ export class BuildQueues {
    */
   private readonly pool: ProductionItem[] = [];
 
+  /**
+   * Queue depth per player. Production keeps this at the authored cap in every
+   * release build; the development Cheat Engine may raise only the local
+   * player's slot so a load test can stage a very large batch without changing
+   * AI behaviour or the rules seen by another player.
+   */
+  private readonly depthLimit = new Uint16Array(MAX_PLAYERS).fill(MAX_QUEUE_DEPTH);
+
   constructor(private readonly hooks: QueueHooks) {}
 
   /* -- queries ----------------------------------------------------------- */
@@ -168,6 +176,11 @@ export class BuildQueues {
     return this.hold[slotOf(player, tab)] === HoldReason.Player;
   }
 
+  /** Development seam owned by ProductionService; normal callers never need it. */
+  setDepthLimit(player: PlayerState, limit: number): void {
+    this.depthLimit[player.id as number] = Math.max(1, Math.min(4096, limit | 0));
+  }
+
   /* -- mutation ---------------------------------------------------------- */
 
   /**
@@ -184,12 +197,12 @@ export class BuildQueues {
     isBuilding: boolean,
     count = 1,
   ): number {
-    const info = this.hooks.info(defId, isBuilding);
+    const info = this.hooks.info(player, defId, isBuilding);
     if (info === null) return 0;
     const q = player.queues[tab as number];
     let added = 0;
     for (let n = 0; n < count; n++) {
-      if (q.items.length >= MAX_QUEUE_DEPTH) break;
+      if (q.items.length >= this.depthLimit[player.id as number]) break;
       const item = this.take();
       item.defId = defId;
       item.isBuilding = isBuilding;
@@ -352,7 +365,7 @@ export class BuildQueues {
       return;
     }
 
-    const info = this.hooks.info(item.defId, item.isBuilding);
+    const info = this.hooks.info(player, item.defId, item.isBuilding);
     if (info === null || info.buildTime <= 0) {
       // Content vanished under us (a def table swap between matches). Refund
       // and drop rather than dividing by zero forever.

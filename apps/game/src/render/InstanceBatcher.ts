@@ -54,6 +54,7 @@ import {
 } from '../core/config';
 import { PartId } from '../core/types';
 import { LAYERS, RENDER_ORDER } from './scene';
+import { SHADOW_ONLY_TAG } from './shadow-only';
 
 /** Metres below a crossed threshold before zooming back restores the nearer LOD. */
 const LOD_RETURN_HYSTERESIS = 4;
@@ -125,6 +126,11 @@ export interface BatchPartSpec {
    * wall a few centimetres above the ground, and costs a second draw to say so.
    */
   aoOccluder?: boolean;
+  /**
+   * This geometry is a cheap casting proxy and must only be submitted while a
+   * shadow map is rendering. It remains scene-visible so Three can discover it.
+   */
+  shadowOnly?: boolean;
 }
 
 /** Names the batch owns on its private geometry. Everything else is shared. */
@@ -201,7 +207,13 @@ function disposeInstanceGeometry(g: THREE.BufferGeometry): void {
  * is the hot path and a setter per float would double its cost.
  */
 export class BatchPart {
-  readonly mesh: THREE.InstancedMesh;
+  /**
+   * The live draw object. Growth replaces it instead of only swapping its
+   * attributes; Three's WebGPU node pipeline captures the constructor-time
+   * instance buffers, so mutating `instanceMatrix` leaves an already-compiled
+   * pipeline reading the old (usually 32-slot) allocation.
+   */
+  mesh: THREE.InstancedMesh;
   /** `mesh.instanceMatrix.array`, cached. 16 floats per slot, column-major. */
   matrix: Float32Array;
   /** `aState` backing store, cached. 4 floats per slot. */
@@ -329,6 +341,9 @@ export class BatchPart {
     if (spec.aoOccluder === false) {
       this.mesh.userData.vmAoOccluder = false;
     }
+    if (spec.shadowOnly === true) {
+      this.mesh.userData[SHADOW_ONLY_TAG] = true;
+    }
     // The mesh sits at the world origin forever: instance matrices are already
     // world-space, and `Frustum.intersectsObject` transforms our bounding
     // sphere by `matrixWorld`, which must therefore stay identity.
@@ -344,13 +359,6 @@ export class BatchPart {
   grow(capacity: number): void {
     const nextMatrix = new Float32Array(capacity * 16);
     nextMatrix.set(this.matrix);
-    // NOTE: the previous attribute's GL buffer is only reclaimed on context
-    // loss. Growth is geometric and stops after warm-up, so the total waste is
-    // bounded by one final buffer — a few tens of KB, once, per batch.
-    this.mesh.instanceMatrix = new THREE.InstancedBufferAttribute(nextMatrix, 16).setUsage(
-      THREE.DynamicDrawUsage,
-    );
-    this.matrix = nextMatrix;
 
     const nextState = new Float32Array(capacity * 4);
     nextState.set(this.state);
@@ -369,6 +377,55 @@ export class BatchPart {
       this.geometries[i].setAttribute('aState', this.stateAttribute);
       this.geometries[i].setAttribute('aTeamColor', this.teamAttribute);
     }
+
+    /*
+     * WebGPU's instancing node closes over the exact `instanceMatrix` attribute
+     * that existed when the render object was compiled (Three Instance.js).
+     * Reassigning that attribute therefore grows the CPU side while the GPU
+     * keeps reading the old allocation: entities above slot 31 still simulate
+     * and show selection rings, but their model is absent. A fresh mesh gives
+     * Three a fresh render-object/binding key and retires the stale GPU buffer.
+     * This is deliberately generic: every dog, soldier, vehicle, structure and
+     * multipart model uses this same growth contract.
+     */
+    const previous = this.mesh;
+    const replacement = new THREE.InstancedMesh(previous.geometry, previous.material, capacity);
+    replacement.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    (replacement.instanceMatrix.array as Float32Array).set(nextMatrix);
+    replacement.count = previous.count;
+    replacement.name = previous.name;
+    replacement.position.copy(previous.position);
+    replacement.quaternion.copy(previous.quaternion);
+    replacement.scale.copy(previous.scale);
+    replacement.matrix.copy(previous.matrix);
+    replacement.matrixWorld.copy(previous.matrixWorld);
+    replacement.matrixAutoUpdate = previous.matrixAutoUpdate;
+    replacement.matrixWorldAutoUpdate = previous.matrixWorldAutoUpdate;
+    replacement.matrixWorldNeedsUpdate = previous.matrixWorldNeedsUpdate;
+    replacement.layers.mask = previous.layers.mask;
+    replacement.visible = previous.visible;
+    replacement.castShadow = previous.castShadow;
+    replacement.receiveShadow = previous.receiveShadow;
+    replacement.frustumCulled = previous.frustumCulled;
+    replacement.renderOrder = previous.renderOrder;
+    replacement.customDepthMaterial = previous.customDepthMaterial;
+    replacement.customDistanceMaterial = previous.customDistanceMaterial;
+    replacement.userData = { ...previous.userData };
+    replacement.onBeforeRender = previous.onBeforeRender;
+    replacement.onAfterRender = previous.onAfterRender;
+    replacement.onBeforeShadow = previous.onBeforeShadow;
+    replacement.onAfterShadow = previous.onAfterShadow;
+    replacement.boundingBox = previous.boundingBox?.clone() ?? null;
+    replacement.boundingSphere = previous.boundingSphere?.clone() ?? null;
+
+    const parent = previous.parent;
+    if (parent !== null) {
+      parent.add(replacement);
+      parent.remove(previous);
+    }
+    previous.dispose();
+    this.mesh = replacement;
+    this.matrix = replacement.instanceMatrix.array as Float32Array;
   }
 
   /**
@@ -464,6 +521,8 @@ export class InstanceBatch {
   private freeCount: number;
   /** 1 = slot in use. Drives the `drawCount` shrink. */
   private used: Uint8Array;
+  /** Entity-store slot owning each instance slot; -1 for direct/test users. */
+  private owner: Int32Array;
   /** Highest slot currently in use, or -1. */
   private high = -1;
   private live = 0;
@@ -483,6 +542,7 @@ export class InstanceBatch {
 
     this.freeList = new Int32Array(this.cap);
     this.used = new Uint8Array(this.cap);
+    this.owner = new Int32Array(this.cap).fill(-1);
     for (let i = 0; i < this.cap; i++) this.freeList[i] = this.cap - 1 - i;
     this.freeCount = this.cap;
 
@@ -531,10 +591,11 @@ export class InstanceBatch {
   }
 
   /** Claim a slot. Returns -1 only when the batch has hit MAX_ENTITIES. */
-  alloc(): number {
+  alloc(owner = -1): number {
     if (this.freeCount === 0 && !this.grow()) return -1;
     const slot = this.freeList[--this.freeCount];
     this.used[slot] = 1;
+    this.owner[slot] = owner;
     this.live++;
     if (slot > this.high) this.high = slot;
 
@@ -580,25 +641,44 @@ export class InstanceBatch {
    * Release a slot and blank it. An all-zero basis collapses the instance to a
    * point, so no stale pose can survive into the next frame.
    */
-  free(slot: number): void {
-    if (slot < 0 || slot >= this.cap || this.used[slot] === 0) return;
-    this.used[slot] = 0;
-    this.live--;
-    this.freeList[this.freeCount++] = slot;
+  free(slot: number): number {
+    if (slot < 0 || slot >= this.cap || this.used[slot] === 0) return -1;
 
-    const o = slot * 16;
+    // Keep live instances in a dense [0, live) prefix. InstancedMesh has one
+    // count for the whole batch; leaving a hole would still submit that slot's
+    // vertices and make camera culling save CPU only. Move the live tail into
+    // the hole and tell RenderBridge which entity's binding changed.
+    const tail = this.high;
+    let movedOwner = -1;
+    if (slot !== tail) {
+      movedOwner = this.owner[tail];
+      for (let p = 0; p < this.parts.length; p++) {
+        const part = this.parts[p];
+        part.matrix.copyWithin(slot * 16, tail * 16, tail * 16 + 16);
+        part.state.copyWithin(slot * 4, tail * 4, tail * 4 + 4);
+        part.team.copyWithin(slot * 3, tail * 3, tail * 3 + 3);
+      }
+      this.owner[slot] = movedOwner;
+      this.used[slot] = 1;
+      this.markDirty(slot);
+    }
+
+    const mo = tail * 16;
+    const so = tail * 4;
+    const to = tail * 3;
     for (let p = 0; p < this.parts.length; p++) {
-      const m = this.parts[p].matrix;
-      for (let k = 0; k < 16; k++) m[o + k] = 0;
+      const part = this.parts[p];
+      part.matrix.fill(0, mo, mo + 16);
+      part.state.fill(0, so, so + 4);
+      part.team.fill(0, to, to + 3);
     }
-    this.markDirty(slot);
-
-    // Shrink the drawn range when the tail empties out.
-    if (slot === this.high) {
-      let h = this.high;
-      while (h >= 0 && this.used[h] === 0) h--;
-      this.high = h;
-    }
+    this.used[tail] = 0;
+    this.owner[tail] = -1;
+    this.live--;
+    this.high = this.live - 1;
+    this.freeList[this.freeCount++] = tail;
+    this.markDirty(tail);
+    return movedOwner;
   }
 
   /** True if a slot currently belongs to somebody. */
@@ -709,6 +789,10 @@ export class InstanceBatch {
     const used = new Uint8Array(next);
     used.set(this.used);
     this.used = used;
+
+    const owner = new Int32Array(next).fill(-1);
+    owner.set(this.owner);
+    this.owner = owner;
 
     // Rebuild the free list: the old free slots plus everything newly added,
     // seeded in reverse so the lowest index is handed out first.

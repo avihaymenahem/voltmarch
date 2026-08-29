@@ -1630,8 +1630,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_foundry',
     label: 'Reclamation Foundry',
-    url: new URL('../assets/buildings/reclamation/compressed/foundry.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/foundry.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/foundry.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/foundry.shadow.glb', import.meta.url).href,
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.96,
     // The generated colour LOD is quarantined. It passes offline bounds/UV
     // checks but produces an invalid WebGPU submission after the live distance
@@ -1644,8 +1644,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_furnace',
     label: 'Reclamation Scrap Furnace',
-    url: new URL('../assets/buildings/reclamation/compressed/scrap-furnace.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/scrap-furnace.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/scrap-furnace.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/scrap-furnace.shadow.glb', import.meta.url).href,
     widthScale: 0.92, depthScale: 0.92, heightScale: 0.94,
     // See Foundry: both simplified colour tiers are blocked from runtime use.
     creaseAngle: 42,
@@ -1654,8 +1654,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_sorter',
     label: 'Reclamation Ore Sorter',
-    url: new URL('../assets/buildings/reclamation/compressed/ore-sorter.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/ore-sorter.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/ore-sorter.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/ore-sorter.shadow.glb', import.meta.url).href,
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.94,
     // See Foundry: the simplified colour tier is blocked from runtime use.
     creaseAngle: 42,
@@ -1664,10 +1664,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_rookery',
     label: 'Reclamation Rookery',
-    url: new URL('../assets/buildings/reclamation/compressed/rookery.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/rookery.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/rookery.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/rookery.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/rookery.lod1.glb', import.meta.url).href, minDistance: 90 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/rookery.lod1.glb', import.meta.url).href, minDistance: 90 },
     ],
     widthScale: 0.92, depthScale: 0.92, heightScale: 0.94,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1675,10 +1675,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_breakeryard',
     label: 'Reclamation Breaker Yard',
-    url: new URL('../assets/buildings/reclamation/compressed/breaker-yard.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/breaker-yard.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/breaker-yard.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/breaker-yard.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/breaker-yard.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/breaker-yard.lod1.glb', import.meta.url).href, minDistance: 82 },
     ],
     widthScale: 0.94, depthScale: 0.92, heightScale: 0.94,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1686,10 +1686,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_spotter',
     label: 'Reclamation Spotter Mast',
-    url: new URL('../assets/buildings/reclamation/compressed/spotter-mast.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/spotter-mast.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/spotter-mast.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/spotter-mast.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/spotter-mast.lod1.glb', import.meta.url).href, minDistance: 88 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/spotter-mast.lod1.glb', import.meta.url).href, minDistance: 88 },
     ],
     widthScale: 0.90, depthScale: 0.90, heightScale: 0.96,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1697,10 +1697,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_signalrig',
     label: 'Reclamation Signal Rig',
-    url: new URL('../assets/buildings/reclamation/compressed/signal-rig.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/signal-rig.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/signal-rig.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/signal-rig.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/signal-rig.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/signal-rig.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.92, depthScale: 0.92, heightScale: 0.96,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1708,10 +1708,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_crucible',
     label: 'Reclamation Crucible',
-    url: new URL('../assets/buildings/reclamation/compressed/crucible.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/crucible.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/crucible.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/crucible.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/crucible.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/crucible.lod1.glb', import.meta.url).href, minDistance: 78 },
     ],
     widthScale: 0.94, depthScale: 0.92, heightScale: 0.96,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1719,10 +1719,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_depot',
     label: 'Reclamation Patch Yard',
-    url: new URL('../assets/buildings/reclamation/compressed/patch-yard.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/patch-yard.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/patch-yard.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/patch-yard.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/patch-yard.lod1.glb', import.meta.url).href, minDistance: 84 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/patch-yard.lod1.glb', import.meta.url).href, minDistance: 84 },
     ],
     widthScale: 0.94, depthScale: 0.92, heightScale: 0.94,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1730,10 +1730,10 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_drydock',
     label: 'Reclamation Breaker Dock',
-    url: new URL('../assets/buildings/reclamation/compressed/breaker-dock.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/breaker-dock.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/breaker-dock.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/breaker-dock.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/reclamation/derived/breaker-dock.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/breaker-dock.lod1.glb', import.meta.url).href, minDistance: 82 },
     ],
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.96,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
@@ -1741,8 +1741,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_heap',
     label: 'Reclamation Slag Heap',
-    url: new URL('../assets/buildings/reclamation/compressed/slag-heap.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/slag-heap.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/slag-heap.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/slag-heap.shadow.glb', import.meta.url).href,
     // The simplifier cannot preserve the open crib below the 58% LOD ceiling.
     // Keep LOD0 rather than swapping to a dark heap-shaped blob at distance.
     widthScale: 0.92, depthScale: 0.92, heightScale: 0.94,
@@ -1751,8 +1751,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_spitpost',
     label: 'Reclamation Spitpost',
-    url: new URL('../assets/buildings/reclamation/compressed/spitpost.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/spitpost.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/spitpost.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/spitpost.shadow.glb', import.meta.url).href,
     // The fixed firing throat is the identity feature and did not survive the
     // automatic LOD ceiling, so this inexpensive defence retains LOD0.
     widthScale: 0.92, depthScale: 0.92, heightScale: 0.94,
@@ -1761,8 +1761,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_pylon',
     label: 'Reclamation Arc Pylon',
-    url: new URL('../assets/buildings/reclamation/compressed/arc-pylon.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/arc-pylon.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/arc-pylon.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/arc-pylon.shadow.glb', import.meta.url).href,
     // The broken-ring emitter and the open transformer frame are cheaper and
     // safer to retain than the simplifier's blocked 68% candidate.
     widthScale: 0.90, depthScale: 0.90, heightScale: 0.96,
@@ -1771,8 +1771,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_barricade',
     label: 'Reclamation Scrap Barricade',
-    url: new URL('../assets/buildings/reclamation/compressed/scrap-barricade.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/scrap-barricade.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/scrap-barricade.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/scrap-barricade.shadow.glb', import.meta.url).href,
     // Walls own a square gameplay cell but must remain visually thin. Unlike
     // buildings.system's default independent XYZ fit, this 0.18 depth factor
     // preserves the concept's straight modular wall proportions.
@@ -1782,8 +1782,8 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
   {
     key: 'reclaim_stormworks',
     label: 'Reclamation Stormworks',
-    url: new URL('../assets/buildings/reclamation/compressed/stormworks.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/reclamation/derived/stormworks.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/stormworks.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/stormworks.shadow.glb', import.meta.url).href,
     // The suspended chamber is the superweapon read. Automatic reductions
     // remained above the family ceiling and are not exposed to WebGPU.
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.96,

@@ -87,6 +87,22 @@ export const DEFAULT_DISPLAY: DisplayPrefs = {
 };
 
 /**
+ * Developer viewers share the hardened desktop shell, but they must not inherit
+ * the player's fullscreen/always-on-top preferences. A fullscreen Asset Lab
+ * has no native title bar, which also removes its only close affordance.
+ *
+ * Keep this as a launch-only projection: it is never persisted and therefore
+ * cannot change how the actual game opens next time.
+ */
+export function displayForLaunch(
+  prefs: DisplayPrefs,
+  argv: readonly string[],
+): DisplayPrefs {
+  if (!argv.includes('--vm-tool-window')) return prefs;
+  return { ...DEFAULT_DISPLAY };
+}
+
+/**
  * The window sizes offered, largest last.
  *
  * A fixed 16:9 ladder rather than every mode the monitor reports: this is a

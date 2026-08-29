@@ -1089,6 +1089,12 @@ export interface PropDef {
   readonly biome: Readonly<Record<BiomeName, number>>;
   /** Would stop a tank. Advisory — scatter never writes the nav grid. */
   readonly blocksNav: boolean;
+  /**
+   * False for low ground cover whose shadow is smaller than a gameplay pixel.
+   * This is deliberately authored instead of inferred from `height`: benches,
+   * drums and low rocks still need contact shadows to read as solid objects.
+   */
+  readonly castsShadow?: false;
   /** Never invent a field-side fallback: this prop only belongs on a traced kerb. */
   readonly sidewalkOnly?: boolean;
   /** Per-instance uniform scale band. Defaults to SCATTER_JITTER's. */
@@ -2226,11 +2232,13 @@ export const PROP_DEFS: readonly PropDef[] = [
   { key: 'grassTuft', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
     mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
-    urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false, build: buildGrassGold },
+    urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false,
+    castsShadow: false, build: buildGrassGold },
   { key: 'grassTuftGreen', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
     mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
-    urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false, build: buildGrassGreen },
+    urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false,
+    castsShadow: false, build: buildGrassGreen },
 
   /* --- rock --------------------------------------------------------------
    * BIOME WEIGHTS CUT 35%, and the clump sizes with them.
@@ -2345,7 +2353,7 @@ export const PROP_DEFS: readonly PropDef[] = [
   { key: 'flowerBed', family: 'civic', radius: 2.4, height: 0.8, adorn: 5.0, spacing: 6.0,
     surfaces: SURF_ANY, maxSlope: 0.12, mode: 'solo', clumpMin: 1, clumpMax: 2,
     clumpSpread: 8, urban: 0.95, biome: B(0.60, 0.30, 0.20, 1.00), blocksNav: false,
-    scaleMin: 0.90, scaleMax: 1.15, jitter: 0.6, build: buildFlowerBed },
+    scaleMin: 0.90, scaleMax: 1.15, jitter: 0.6, castsShadow: false, build: buildFlowerBed },
   { key: 'statue', family: 'civic', radius: 2.6, height: 4.6, adorn: 8.0, spacing: 26,
     surfaces: SURF_ANY, maxSlope: 0.08, mode: 'solo', clumpMin: 1, clumpMax: 1,
     clumpSpread: 0, urban: 1.00, biome: B(0.40, 0.40, 0.35, 1.00), blocksNav: true,

@@ -24,14 +24,18 @@
  *    because of (2).
  *
  * 2. ONLY THE VISIBLE INSTANCES. Props are bucketed into 32 m chunks and the
- *    chunk set is frustum tested every frame. WebGL keeps one InstancedMesh per
- *    type and repacks its visible prefixes. WebGPU packs those types into at
- *    most two BatchedMeshes (shadow/no-shadow), because Three otherwise keys
- *    every InstancedMesh pipeline by object UUID and recompiles the identical
- *    node graph per type during a cold boot.
+ *    chunk set is frustum tested every frame. Both renderers keep one
+ *    InstancedMesh per type and repack its visible prefix. An older WebGPU path
+ *    packed the types into two BatchedMeshes to reduce cold pipeline creation,
+ *    but r185 implements BatchedMesh as one draw command PER VISIBLE INSTANCE:
+ *    343 draws for one prop batch on `soviet-base`, versus at most 30 typed
+ *    instanced draws. It remains behind `?scatterbatch=legacy` for measured A/B
+ *    runs and is never the normal runtime path.
  *
  *    On WebGL that remains ONE colour draw per type, plus one shadow draw if the type clears
- *    `SCATTER_SHADOW_MIN_RADIUS` — which today every type in the roster does.
+ *    `SCATTER_SHADOW_MIN_RADIUS` and has not explicitly opted out as low ground
+ *    cover. Every type clears the radius gate; the two grass types and flower
+ *    bed are authored non-casters because their shadow contribution is sub-pixel.
  *    TWO submissions per type, not three: this said three because a scatter
  *    mesh is opaque on the DEFAULT layer and `GTAOPass` used to draw the whole
  *    scene again for its normal G-buffer. `installAoDepthGBuffer`
@@ -127,6 +131,20 @@ import {
  */
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
+/**
+ * Same-build A/B switch for the retired WebGPU BatchedMesh scatter path.
+ * Exported so a regression test can prove that an ordinary production URL
+ * always selects hardware instancing without constructing a renderer.
+ */
+export function usesLegacyScatterBatch(nodeBackend: boolean, search: string): boolean {
+  return nodeBackend && new URLSearchParams(search).get('scatterbatch') === 'legacy';
+}
+
+/** Same-build visual/performance A/B for authored low-cover shadow filtering. */
+export function usesLegacyScatterShadows(search: string): boolean {
+  return new URLSearchParams(search).get('scattershadow') === 'legacy';
+}
+
 /* ==========================================================================
  * 1. CONSTANTS AND SMALL TYPES
  * ========================================================================== */
@@ -199,8 +217,9 @@ export const SCATTER_SHADOW_MIN_RADIUS = 0.70;
  * line at the bible's 33-degree sun. Gating on the flat measure would delete
  * exactly the shadows that read best.
  */
-function typeCastsShadow(geo: PropGeometry): boolean {
-  return geo.boundSphereRadius >= SCATTER_SHADOW_MIN_RADIUS;
+function typeCastsShadow(def: PropDef, geo: PropGeometry, legacy: boolean): boolean {
+  return (legacy || def.castsShadow !== false)
+    && geo.boundSphereRadius >= SCATTER_SHADOW_MIN_RADIUS;
 }
 
 /**
@@ -562,7 +581,7 @@ interface ScatterType {
   readonly defIndex: number;
   readonly geo: PropGeometry;
   mesh: THREE.InstancedMesh | null;
-  /** WebGPU batch holding this type, null on the WebGL InstancedMesh path. */
+  /** Legacy WebGPU benchmark batch; null on the normal InstancedMesh path. */
   batch: THREE.BatchedMesh | null;
   /** Chunk-sorted instance index -> BatchedMesh instance id. */
   batchInstances: Int32Array;
@@ -749,6 +768,7 @@ export class Scatter {
   private readonly terrain: Terrain;
   private readonly opts: ScatterOptions;
   private readonly batchedNodePath: boolean;
+  private readonly legacyShadows: boolean;
 
   private types: ScatterType[] = [];
   private placements: Placement[] = [];
@@ -860,7 +880,16 @@ export class Scatter {
     this.palette = propPalette(options.biome);
     this.library = new PropLibrary({ biome: options.biome, seed: options.seed });
     const np = nodePath();
-    this.batchedNodePath = np !== null;
+    // BatchedMesh is retained only as a same-build benchmark arm. Three's
+    // WebGPU backend expands it to one draw command per visible prop instance,
+    // so the normal node path deliberately shares WebGL's typed instancing.
+    this.batchedNodePath = usesLegacyScatterBatch(
+      np !== null,
+      typeof location === 'undefined' ? '' : location.search,
+    );
+    this.legacyShadows = usesLegacyScatterShadows(
+      typeof location === 'undefined' ? '' : location.search,
+    );
     this.materials = np !== null ? np.createPropMaterials() : createPropMaterial();
     this.root.name = 'PropScatter';
     this.root.matrixAutoUpdate = false;
@@ -2311,7 +2340,7 @@ export class Scatter {
       // Per TYPE, not per instance: an InstancedMesh is one submission, so the
       // shadow pass either gets all 735 grass tufts of the stock temperate
       // layout or none of them.
-      mesh.castShadow = typeCastsShadow(type.geo);
+      mesh.castShadow = typeCastsShadow(type.def, type.geo, this.legacyShadows);
       mesh.receiveShadow = true;
       // Assigned either way. It is inert while `castShadow` is false, and
       // leaving it wired means flipping the gate back on for one type never
@@ -2767,13 +2796,12 @@ export class Scatter {
   }
 
   /**
-   * Pack the WebGPU prop carpet into at most two render objects.
+   * Legacy benchmark arm: pack the WebGPU prop carpet into two render objects.
    *
-   * Three r185 deliberately includes an InstancedMesh's UUID in its node-cache
-   * key, so one mesh per prop type rebuilds the identical prop node graph for
-   * every type during a cold boot. BatchedMesh supports different geometries
-   * and transforms in one submission; splitting only on the existing shadow
-   * gate keeps that visual rule while deleting the duplicate pipeline work.
+   * This reduces cold pipeline creation, but it does NOT reduce runtime draws:
+   * WebGPUBackend loops `_multiDrawCount` and calls `drawIndexed` once for every
+   * visible instance. Keep it executable so `tools/gpu-frame-ab.mjs
+   * --scatter-batch legacy` can prove the trade on future Three upgrades.
    */
   private buildNodeBatches(): void {
     const matrix = new THREE.Matrix4();
@@ -2781,7 +2809,8 @@ export class Scatter {
 
     for (const castsShadow of [false, true]) {
       const group = this.types.filter((type) =>
-        type.count > 0 && typeCastsShadow(type.geo) === castsShadow);
+        type.count > 0
+          && typeCastsShadow(type.def, type.geo, this.legacyShadows) === castsShadow);
       if (group.length === 0) continue;
 
       let instances = 0;

@@ -9,13 +9,13 @@
       "inputs": ["src/core/**", "src/sim/**", "src/game/**", "src/net/**", "src/data/**", "src/progression/**", "src/campaign/**", "src/input/**", "tests/**", "scripts/test-scope.mjs", "vite.config.ts"]
     },
     "test:render": {
-      "inputs": ["src/core/**", "src/render/**", "src/world/**", "src/art/**", "src/vfx/**", "src/assets/**", "tests/**", "scripts/test-scope.mjs", "vite.config.ts"]
+      "inputs": ["src/core/**", "src/render/**", "src/world/**", "src/art/**", "src/vfx/**", "tests/**", "scripts/test-scope.mjs", "vite.config.ts", "$TURBO_ROOT$/packages/assets/game/**"]
     },
     "test:ui": {
       "inputs": ["src/shell/**", "src/ui/**", "src/input/**", "src/platform/**", "src/audio/**", "src/campaign/**", "tests/**", "scripts/test-scope.mjs", "vite.config.ts"]
     },
     "test:assets": {
-      "inputs": ["src/assets/**", "src/art/**", "tests/**", "scripts/test-scope.mjs", "$TURBO_ROOT$/tools/asset-families/**"]
+      "inputs": ["src/art/**", "tests/**", "scripts/test-scope.mjs", "$TURBO_ROOT$/packages/assets/game/**", "$TURBO_ROOT$/tools/asset-families/**"]
     },
     "test:contracts": {
       "inputs": ["tests/**", "scripts/test-scope.mjs", "$TURBO_ROOT$/README.md", "$TURBO_ROOT$/CLAUDE.md", "$TURBO_ROOT$/docs/**", "$TURBO_ROOT$/wiki/**", "$TURBO_ROOT$/.github/**"]

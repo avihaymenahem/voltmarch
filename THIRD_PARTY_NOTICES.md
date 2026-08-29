@@ -9,7 +9,7 @@ replace or narrow any licence below.
 
 ## Typeface — SIL Open Font License 1.1
 
-**Rajdhani**, four Latin-subset WOFF2 weights in `public/fonts/`.
+**Rajdhani**, four Latin-subset WOFF2 weights in `packages/assets/fonts/`.
 
 Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
 
@@ -96,7 +96,7 @@ licences:
   generations made for VOLTMARCH, then retopologized, retextured,
   colour-conditioned, LODed, compressed, and integrated through the local asset
   pipeline. Asset-specific provenance and budgets live beside the models in
-  `src/assets/` and in [`docs/ASSET_CONVERSION_MAP.md`](docs/ASSET_CONVERSION_MAP.md).
+  `packages/assets/game/` and in [`docs/ASSET_CONVERSION_MAP.md`](docs/ASSET_CONVERSION_MAP.md).
 
 No third-party source artwork is represented by these disclosures as being
 licensed under VOLTMARCH's proprietary licence. Service names are trademarks of

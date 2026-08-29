@@ -141,6 +141,17 @@ function spawnTank(rig: Rig, player: PlayerId, dx: number, dz: number, stance: S
   return i;
 }
 
+/** The same combat hull promoted to the air layer for autonomy coverage. */
+function spawnAircraft(
+  rig: Rig, player: PlayerId, dx: number, dz: number, stance: Stance,
+): number {
+  const i = spawnTank(rig, player, dx, dz, stance);
+  const st = rig.world.store;
+  st.locomotor[i] = Locomotor.Air;
+  setMoveClass(st, st.handleOf(i), MoveClass.Air);
+  return i;
+}
+
 /**
  * A target that cannot move and cannot shoot. `hp` is a caller's choice because
  * every measurement here is about where the SHOOTER ends up: a dummy that dies
@@ -328,7 +339,7 @@ describe('the chase is bounded by the leash', () => {
  * 3. THE GUARD ORDER
  * ========================================================================== */
 
-describe('OrderKind.Guard holds a point, engages from it, and returns', () => {
+describe('OrderKind.Guard travels to a point and holds it', () => {
   it('drives to the guard point', () => {
     const rig = makeRig();
     const tank = spawnTank(rig, P0, 0, 0, Stance.Aggressive);
@@ -338,23 +349,46 @@ describe('OrderKind.Guard holds a point, engages from it, and returns', () => {
       .toBeLessThan(3);
   });
 
-  it('returns to the guard POINT after the fight, not to where it stopped', () => {
+  it('keeps its weapon cold until it reaches the guard point', () => {
+    const rig = makeRig();
+    const tank = spawnTank(rig, P0, 0, 0, Stance.Aggressive);
+    const foe = spawnDummy(rig, P1, 0, 18, 4000);
+    orderGuard(rig, tank, 0, 30);
+
+    rig.step(30);
+    expect(rig.world.store.hp[foe], 'Guard travel is not Attack Move').toBe(4000);
+
+    rig.step(300);
+    expect(distTo(rig, tank, 0, 30)).toBeLessThan(3);
+    expect(rig.world.store.hp[foe], 'the weapon becomes hot at the post').toBeLessThan(4000);
+  });
+
+  it('is a hard hold command even when the unit stance is Aggressive', () => {
     const rig = makeRig();
     const tank = spawnTank(rig, P0, 0, 0, Stance.Aggressive);
     const st = rig.world.store;
     orderGuard(rig, tank, 0, 0);
 
     spawnDummy(rig, P1, 0, 30, 60);
-    rig.step(150);
-    expect(distTo(rig, tank, 0, 0), 'it went out to fight').toBeGreaterThan(4);
-
     rig.step(600);
-    expect(distTo(rig, tank, 0, 0), 'and came back to the POST').toBeLessThan(3.5);
-    expect(st.orderKind[tank], 'the order outlived the excursion')
-      .toBe(OrderKind.Guard);
-    expect(st.state[tank], 'and so did the state').toBe(UnitState.Guarding);
-    expect(st.guardX[tank], 'and the post never moved').toBeCloseTo(MID, 3);
+    expect(distTo(rig, tank, 0, 0), 'Guard means hold this exact post')
+      .toBeLessThan(0.5);
+    expect(st.orderKind[tank]).toBe(OrderKind.Guard);
+    expect(st.state[tank]).toBe(UnitState.Guarding);
+    expect(st.guardX[tank]).toBeCloseTo(MID, 3);
     expect(st.guardZ[tank]).toBeCloseTo(MID, 3);
+  });
+
+  it('still fires from the guarded point when an enemy enters weapon range', () => {
+    const rig = makeRig();
+    const tank = spawnTank(rig, P0, 0, 0, Stance.Aggressive);
+    const st = rig.world.store;
+    orderGuard(rig, tank, 0, 0);
+    const foe = spawnDummy(rig, P1, 0, 18, 4000);
+
+    rig.step(300);
+    expect(distTo(rig, tank, 0, 0)).toBeLessThan(0.5);
+    expect(st.hp[foe], 'a hard hold is not HoldFire').toBeLessThan(4000);
   });
 
   it('a HoldGround unit under a guard order does not move at all', () => {
@@ -389,6 +423,56 @@ describe('OrderKind.Guard holds a point, engages from it, and returns', () => {
     st.posX[tank] = MID + 14; st.posZ[tank] = MID + 6;
     rig.step(400);
     expect(distTo(rig, tank, 14, 6), 'hold ground never walks').toBeLessThan(0.5);
+  });
+});
+
+describe('aircraft autonomous attack runs', () => {
+  it('a Defensive aircraft initiates, closes and keeps attacking on its own', () => {
+    const rig = makeRig();
+    const aircraft = spawnAircraft(rig, P0, 0, 0, Stance.Defensive);
+    const foe = spawnDummy(rig, P1, 0, 34, 4000);
+    const st = rig.world.store;
+
+    rig.step(600);
+
+    expect(distTo(rig, aircraft, 0, 0), 'the patrol found and approached the target')
+      .toBeGreaterThan(6);
+    expect(gap(rig, aircraft, foe), 'it completed an attack run without a manual Attack order')
+      .toBeLessThan(GUN_RANGE);
+    expect(st.hp[foe], 'the lock produced more than a fly-by visual').toBeLessThan(4000);
+  });
+
+  it('a Guard order also pins an aircraft instead of starting a patrol', () => {
+    const rig = makeRig();
+    const aircraft = spawnAircraft(rig, P0, 0, 0, Stance.Defensive);
+    orderGuard(rig, aircraft, 0, 0);
+    spawnDummy(rig, P1, 0, 34, 4000);
+
+    rig.step(600);
+    expect(distTo(rig, aircraft, 0, 0)).toBeLessThan(0.5);
+  });
+});
+
+describe('movement order weapon discipline', () => {
+  function run(state: UnitState, order: OrderKind): number {
+    const rig = makeRig();
+    const tank = spawnTank(rig, P0, 0, 0, Stance.Aggressive);
+    const foe = spawnDummy(rig, P1, 0, 18, 4000);
+    const st = rig.world.store;
+    st.state[tank] = state;
+    st.orderKind[tank] = order;
+    st.orderX[tank] = MID + 30;
+    st.orderZ[tank] = MID;
+    rig.step(60);
+    return st.hp[foe];
+  }
+
+  it('a plain Move stays weapons-cold', () => {
+    expect(run(UnitState.Moving, OrderKind.Move)).toBe(4000);
+  });
+
+  it('Attack Move remains the explicit move-and-fire order', () => {
+    expect(run(UnitState.AttackMoving, OrderKind.AttackMove)).toBeLessThan(4000);
   });
 });
 

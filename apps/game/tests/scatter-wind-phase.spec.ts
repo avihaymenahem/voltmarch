@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import { Terrain } from '../src/world/Terrain';
-import { Scatter } from '../src/world/Scatter';
+import { Scatter, usesLegacyScatterBatch } from '../src/world/Scatter';
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from '../src/world/prop-wind';
 
 function rig(): { scene: THREE.Scene; scatter: Scatter } {
@@ -224,5 +224,14 @@ describe('the wind phase constant lives where both bundles can reach it', () => 
      * that says why it moved.
      */
     expect(PROP_WIND_PHASE_ATTRIBUTE).toBe('aSwayPhase');
+  });
+});
+
+describe('WebGPU scatter submission strategy', () => {
+  it('uses hardware instancing by default and exposes BatchedMesh only for explicit A/B runs', () => {
+    expect(usesLegacyScatterBatch(true, '')).toBe(false);
+    expect(usesLegacyScatterBatch(true, '?gpu=webgpu')).toBe(false);
+    expect(usesLegacyScatterBatch(false, '?scatterbatch=legacy')).toBe(false);
+    expect(usesLegacyScatterBatch(true, '?gpu=webgpu&scatterbatch=legacy')).toBe(true);
   });
 });

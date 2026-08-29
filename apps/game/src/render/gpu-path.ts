@@ -62,6 +62,18 @@ import type { RoadSurfaceKind } from '../world/road-markings';
 import type { GreebleAtlas } from '../art/Greeble';
 import type { StructureCoat } from '../art/BuildingFactory';
 
+/**
+ * The four texture slots shared by generated atlases and imported animated units.
+ * Keeping this structural avoids inventing a second gait material implementation
+ * just because an approved GLB does not carry GreebleAtlas build metadata.
+ */
+export interface UnitMaterialTextures {
+  map: THREE.Texture;
+  normalMap: THREE.Texture;
+  ormMap: THREE.Texture;
+  emissiveMap: THREE.Texture;
+}
+
 /* ==========================================================================
  * 1. THE STRUCTURAL MATERIAL-SET INTERFACES
  * ========================================================================== */
@@ -218,6 +230,9 @@ export interface NodeRendererLike {
    * renderer inside `bootstrap()`.
    */
   render(scene: THREE.Object3D, camera: THREE.Camera): void;
+  /** Public draw seam used for passive per-pass accounting. */
+  renderObject: NodeRenderObjectFunction;
+  getRenderTarget(): { texture?: { name?: string } | null } | null;
   /** Resolve accumulated timestamp queries and return the latest frame's GPU ms. */
   resolveTimestampsAsync(type?: string): Promise<number | undefined>;
   /**
@@ -249,6 +264,18 @@ export interface NodeRendererLike {
   dispose(): void;
 }
 
+export type NodeRenderObjectFunction = (
+  object: THREE.Object3D,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  group: THREE.Group | null,
+  lightsNode: unknown,
+  clippingContext?: { shadowPass?: boolean } | null,
+  passId?: string | null,
+) => void;
+
 /** The post chain, reduced to what `PostChain` needs to forward. */
 export interface NodePostChainLike {
   render(dt: number): void;
@@ -260,6 +287,8 @@ export interface NodePostChainLike {
    * pipeline cannot supply the split. See `drawCallsByPass` in `post.ts`.
    */
   drawCallsByPass(): { shadow: number; colour: number; ao: number; post: number; total: number } | null;
+  /** Triangle submissions by the same exhaustive buckets. WebGPU supplies this exactly. */
+  trianglesByPass(): { shadow: number; colour: number; ao: number; post: number; total: number } | null;
   setScene(scene: THREE.Scene): void;
   setCamera(camera: THREE.Camera): void;
   dispose(): void;
@@ -294,7 +323,7 @@ export interface NodePath {
   ): { material: THREE.Material; setTime(t: number): void; dispose(): void };
 
   /* -- art -------------------------------------------------------------- */
-  createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Material;
+  createUnitMaterial(atlas: UnitMaterialTextures, name: string): THREE.Material;
   createStructureMaterial(atlas: GreebleAtlas, name: string, coat?: StructureCoat): THREE.Material;
   createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Material;
   createPropMaterials(): PropMaterialSetLike;

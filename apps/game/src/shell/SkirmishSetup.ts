@@ -330,6 +330,7 @@ export class SkirmishSetupScreen implements Screen {
     this.factions = playableFactions();
 
     const frame = pageFrame('Skirmish', () => this.shell.showMenu());
+    frame.root.classList.add('vm-operation-panel', 'vm-skirmish-panel');
 
     const grid = el('div', 'vm-setup');
     this.left = el('div', 'vm-setup-col');

@@ -421,6 +421,7 @@ function recordingStorage(): { writes: string[]; map: Map<string, string> } {
 
 /** The three members `SavePanel` and `LoadGameScreen` reach on the shell. */
 interface ShellStub {
+  settings: { get(): { gameplay: { commanderName: string } } };
   getSetup(): { map: string };
   matchSeconds(): number;
   saveGame(label: string, slotId?: string): Promise<SaveSlotMeta>;
@@ -445,6 +446,7 @@ interface ShellStub {
 
 function shellStub(over: Partial<ShellStub> = {}): Shell {
   const base: ShellStub = {
+    settings: { get: () => ({ gameplay: { commanderName: 'Commander' } }) },
     getSetup: () => ({ map: 'temperate-valley' }),
     matchSeconds: () => 754,
     saveGame: async (label, slotId) => meta({ kind: 'manual', label, id: slotId ?? 'manual.new' }),

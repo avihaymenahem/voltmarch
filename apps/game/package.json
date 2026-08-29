@@ -17,6 +17,7 @@
     "soak": "cd ../.. && vitest run --config apps/game/vite.config.ts -t determinism"
   },
   "dependencies": {
+    "@voltmarch/assets": "*",
     "@voltmarch/game-types": "*",
     "@voltmarch/protocol": "*",
     "three": "0.185.1"

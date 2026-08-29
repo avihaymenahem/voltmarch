@@ -47,7 +47,7 @@ describe('the derived splash assets', () => {
 
   for (const f of files) {
     it(`ships ${f.name} under ${f.maxKb} kB`, () => {
-      const p = join(ROOT, 'apps/game/public', 'brand', f.name);
+      const p = join(ROOT, 'packages', 'assets', 'brand', f.name);
       expect(existsSync(p), `${f.name} is missing — run \`node tools/splash.mjs\``).toBe(true);
       const kb = statSync(p).size / 1024;
       /*
@@ -60,11 +60,11 @@ describe('the derived splash assets', () => {
     });
   }
 
-  it('keeps the source out of public/ — it is an input, not a shipped file', () => {
-    // The logo source lived in public/brand/ once and 2.4 MB nothing loads was
+  it('keeps the source out of the shared package — it is an input, not a shipped file', () => {
+    // The logo source lived beside the shipped brand once and 2.4 MB nothing loads was
     // published on every deploy. Same trap, same directory, different image.
     expect(existsSync(join(ROOT, 'tools', 'brand-source', 'splash-source.webp'))).toBe(true);
-    expect(existsSync(join(ROOT, 'apps/game/public', 'brand', 'splash-source.webp'))).toBe(false);
+    expect(existsSync(join(ROOT, 'packages', 'assets', 'brand', 'splash-source.webp'))).toBe(false);
   });
 });
 

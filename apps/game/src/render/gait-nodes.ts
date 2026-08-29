@@ -40,9 +40,11 @@
  */
 
 import type { Node } from 'three/webgpu';
-import { attribute, normalLocal, positionLocal, uniform, vec3 } from 'three/tsl';
+import { attribute, normalLocal, positionLocal, step, uniform, vec3 } from 'three/tsl';
 import { UNIT_GAIT } from '../core/config';
-import { GAIT_TURNS_TO_RADIANS, gaitUniforms } from './Gait';
+import {
+  GAIT_TURNS_TO_RADIANS, gaitUniforms, QUADRUPED_GAIT_PIVOT_Z,
+} from './Gait';
 
 type FloatN = Node<'float'>;
 
@@ -96,7 +98,15 @@ const gaitPhase = attribute<'vec4'>('aState', 'vec4').w;
  * the only place this port is not line-for-line.
  */
 function swingAngle(): FloatN {
-  return gaitPhase.mul(GAIT_TURNS_TO_RADIANS).sin().mul(gaitSwingNode).mul(aGait.x);
+  return gaitPhase.mul(GAIT_TURNS_TO_RADIANS).sin().mul(gaitSwingNode).mul(aGait.x.sign());
+}
+
+/** Decode magnitude 2/3 quadruped end codes; biped magnitude 0/1 stays at Z=0. */
+function longitudinalPivot(): FloatN {
+  const code = aGait.x.abs();
+  const quadruped = step(1.5, code);
+  const end = step(2.5, code).mul(-2).add(1);
+  return quadruped.mul(end).mul(QUADRUPED_GAIT_PIVOT_Z);
 }
 
 /**
@@ -114,11 +124,12 @@ export function applyGaitNodes(): void {
   const s = a.sin().toVar('vmS');
 
   const y = positionLocal.y.sub(aGait.y).toVar('vmY');
-  const z = positionLocal.z.toVar('vmZ');
+  const pivotZ = longitudinalPivot().toVar('vmPivotZ');
+  const z = positionLocal.z.sub(pivotZ).toVar('vmZ');
   positionLocal.assign(vec3(
     positionLocal.x,
     aGait.y.add(c.mul(y)).sub(s.mul(z)),
-    s.mul(y).add(c.mul(z)),
+    pivotZ.add(s.mul(y)).add(c.mul(z)),
   ));
 
   const ny = normalLocal.y.toVar('vmNy');

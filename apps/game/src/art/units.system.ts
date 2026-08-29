@@ -52,6 +52,11 @@ import { unitLibrary, type UnitModel } from './UnitFactory';
 import {
   disposeImportedUnitAssets, IMPORTED_UNIT_SPECS, loadImportedUnitOverride,
 } from './ImportedUnitAssets';
+import {
+  disposeImportedInfantryAssets,
+  IMPORTED_INFANTRY_FAMILIES,
+  loadImportedInfantryFamily,
+} from './ImportedInfantryAssets';
 import { isArtFactionPlanned } from './boot-plan';
 
 interface BridgeGlobal { __vmUnits?: unknown; }
@@ -376,6 +381,17 @@ export default defineSystem({
     // One KindMesh per model, cached: handing the SAME object to two factions
     // is how the bridge knows they can share one batch.
     const meshes = new Map<string, KindMesh>();
+    for (const family of IMPORTED_INFANTRY_FAMILIES.slice(0, 2)) {
+      const faction = family.key.startsWith('allied_') ? Faction.Allies : Faction.Soviets;
+      if (!isArtFactionPlanned(faction)) continue;
+      try {
+        const variants = await loadImportedInfantryFamily(family, (key) => unitLibrary.get(key));
+        for (const [key, mesh] of variants) meshes.set(key, mesh);
+        console.info(`[units] imported shared ${family.label} body for ${variants.size} roles`);
+      } catch (error) {
+        console.error(`[units] imported ${family.label} rejected; using procedural fallbacks`, error);
+      }
+    }
     const importedSpecs = IMPORTED_UNIT_SPECS.filter((spec) =>
       spec.key.startsWith('allied_')
         ? isArtFactionPlanned(Faction.Allies)
@@ -567,6 +583,7 @@ export default defineSystem({
     const g = globalThis as unknown as BridgeGlobal;
     delete g.__vmUnits;
     disposeImportedUnitAssets();
+    disposeImportedInfantryAssets();
     unitLibrary.dispose();
   },
 });

@@ -287,6 +287,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
   const aoDepthPass = want.ao && cfg.msaaSamples > 0
     ? depthPass(scene, camera, { samples: 0 }) as unknown as ScenePassNode
     : null;
+  if (aoDepthPass !== null) aoDepthPass.renderTarget.texture.name = 'AoDepthPrepass';
   const depthSource = aoDepthPass ?? scenePass;
   const depthNode = depthSource.getTextureNode('depth');
 

@@ -45,6 +45,7 @@ import {
   VFX_SMOKE,
   VFX_TILE,
 } from '../core/config';
+import { vfxDensityAtPressure } from './pressure-density';
 import { presentationRng } from '../core/math';
 
 import { admitGlare } from './FlashBudget';
@@ -483,7 +484,10 @@ export function spawnExplosion(
   /* -- 6. embers: additive pinpricks flickering at 18 Hz ------------------ */
   // Same argument as the billows, and the pool pressure is worse: embers are the
   // single most numerous additive emission in the game (30-60 per detonation).
-  const embers = Math.max(6, Math.round(rng.int(X.emberMin, X.emberMax) * (0.25 + 0.75 * glare)));
+  const additiveDensity = vfxDensityAtPressure(P.additive.pressure);
+  const embers = Math.max(6, Math.round(
+    rng.int(X.emberMin, X.emberMax) * (0.25 + 0.75 * glare) * additiveDensity,
+  ));
   for (let i = 0; i < embers; i++) {
     const th = rng.range(0, Math.PI * 2);
     const ph = rng.range(0, Math.PI * 0.75);
@@ -596,7 +600,9 @@ export function spawnImpact(
   }
 
   const dustRamp = VFX_RAMP.dust;
-  const puffs = 4 + ((scale * 3) | 0);
+  const particleSystem = particles();
+  const litDensity = vfxDensityAtPressure(particleSystem?.lit.pressure ?? 0);
+  const puffs = Math.max(2, Math.round((4 + ((scale * 3) | 0)) * litDensity));
   for (let i = 0; i < puffs; i++) {
     const th = rng.range(0, Math.PI * 2);
     const e = resetEmit();
@@ -634,7 +640,7 @@ export function spawnImpact(
   emitAdditive(e);
 
   // A handful of chips, and the light.
-  const P = particles();
+  const P = particleSystem;
   if (P !== null) {
     const chips = 3 + ((scale * 4) | 0);
     for (let i = 0; i < chips; i++) {
@@ -666,7 +672,10 @@ export function sparkBurst(
   const G = VFX_GUNS;
   const rng = presentationRng;
   const mpp = metresPerPixel();
-  const n = rng.int(G.sparkMin, G.sparkMax);
+  const P = particles();
+  const n = Math.max(8, Math.round(
+    rng.int(G.sparkMin, G.sparkMax) * vfxDensityAtPressure(P?.additive.pressure ?? 0),
+  ));
   const half = (G.sparkFanDeg * 0.5) * Math.PI / 180;
   // 30-45 streaks plus a flash disc, several times a second per gun in a
   // brawl. Same locality budget as everything else additive.

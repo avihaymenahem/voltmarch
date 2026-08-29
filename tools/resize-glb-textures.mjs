@@ -21,12 +21,13 @@ const PROFILES = Object.freeze({
   vehicle: { base: 2048, normal: 2048, metalRough: 1024, other: 1024 },
   hero: { base: 2048, normal: 2048, metalRough: 1024, other: 2048 },
   infantry: { base: 1024, normal: 1024, metalRough: 512, other: 512 },
+  troop: { base: 512, normal: 512, metalRough: 256, other: 256 },
   defence: { base: 1024, normal: 1024, metalRough: 512, other: 512 },
 });
 if (!inputArg || !outputArg) {
   throw new Error(
     'usage: node tools/resize-glb-textures.mjs <input.glb> <output.glb> '
-    + '[--profile building|vehicle|hero|infantry|defence] '
+    + '[--profile building|vehicle|hero|infantry|troop|defence] '
     + '[--palette none|soviet-field] [--accent-preset none|soviet-conyard] '
     + '[--surface-profile none|soviet-family] [--seal-swatch]',
   );

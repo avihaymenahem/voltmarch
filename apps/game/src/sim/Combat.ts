@@ -1082,14 +1082,19 @@ export function weaponCanHurt(
   return armorMultiplier(w.warhead, armor) > 0.02;
 }
 
-/** True when the entity's behaviour state forbids acquiring anything at all. */
+/**
+ * True when this behaviour is allowed to acquire and fire.
+ *
+ * This is intentionally an allow-list. A plain Move is weapons-cold; the
+ * player-facing Attack Move order exists specifically for moving under fire.
+ * The same rule keeps harvesters, repairers and fleeing units from shooting
+ * merely because those newer states were not remembered in an exclusion list.
+ */
 export function stateAllowsCombat(state: UnitState): boolean {
-  return state !== UnitState.Dying
-    && state !== UnitState.Selling
-    && state !== UnitState.Deploying
-    && state !== UnitState.UnderConstruction
-    && state !== UnitState.Capturing
-    && state !== UnitState.Docked;
+  return state === UnitState.Idle
+    || state === UnitState.AttackMoving
+    || state === UnitState.Attacking
+    || state === UnitState.Guarding;
 }
 
 /** True when `stance` permits acquiring targets of opportunity. */

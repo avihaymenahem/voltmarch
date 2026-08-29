@@ -5,9 +5,12 @@ import { dirname, join } from 'node:path';
 const root = dirname(fileURLToPath(import.meta.url));
 const source = join(root, 'public');
 const target = join(root, 'dist');
+const sharedAssets = join(root, '..', '..', 'packages', 'assets');
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 cpSync(source, target, { recursive: true });
+cpSync(join(sharedAssets, 'fonts'), join(target, 'fonts'), { recursive: true });
+cpSync(join(sharedAssets, 'brand'), join(target, 'brand'), { recursive: true });
 
 const analyticsToken = process.env.CF_WEB_ANALYTICS_TOKEN?.trim() ?? '';
 if (analyticsToken && !/^[a-f0-9]{32}$/iu.test(analyticsToken)) {

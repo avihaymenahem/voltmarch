@@ -220,6 +220,7 @@ class EngineSource implements PerfSource {
     out.drawCalls = s.drawCalls;
     out.drawCallsColour = colourDrawsOf(s.drawCallsByPass);
     out.triangles = s.triangles;
+    out.trianglesColour = s.trianglesByPass?.colour ?? null;
     out.entities = s.counters.entities;
     out.simMs = s.counters.simMs;
     out.substeps = s.counters.substeps;
@@ -398,7 +399,7 @@ export default defineSystem({
     }
     console.info(
       `[perf] overlay mounted — off by default, ${perfPanelHeightUnits()}u tall ` +
-      `(${share}% of a 720p frame), colour-pass draw budget ${DRAW_BUDGET}, ` +
+      `(${share}% of a 720p frame), WebGL colour-pass draw budget ${DRAW_BUDGET}, ` +
       `backend ${live}, ` +
       `gpu timer ${hud.gpuTimerAvailable ? 'available' : 'unavailable (headroom cannot be proven)'}; ` +
       (chord === null

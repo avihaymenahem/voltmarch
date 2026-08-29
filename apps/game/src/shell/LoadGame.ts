@@ -751,7 +751,7 @@ export class LoadGameScreen implements Screen {
     host.classList.add('vm-page');
 
     const frame = pageFrame('Load Game', () => this.shell.showMenu());
-    frame.root.classList.add('vm-saves-panel');
+    frame.root.classList.add('vm-operation-panel', 'vm-archive-panel', 'vm-saves-panel');
     this.body = frame.body;
     this.body.classList.add('vm-saves-body');
 

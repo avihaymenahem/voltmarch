@@ -157,6 +157,8 @@ export class PauseMenuScreen implements Screen {
   /** The pause panel itself, hidden while an overlay is up. */
   private card: HTMLElement | null = null;
   private overlay: Overlay | null = null;
+  private overlayExit: HTMLElement | null = null;
+  private overlayExitTimer = 0;
   private musicControl: MusicControl | null = null;
 
   constructor(private readonly shell: Shell) {}
@@ -326,6 +328,7 @@ export class PauseMenuScreen implements Screen {
     this.musicControl?.dispose();
     this.musicControl = null;
     this.closeOverlay();
+    this.finishOverlayExit();
     this.card = null;
     this.host?.classList.remove('vm-pause', 'is-modal');
     this.host = null;
@@ -430,11 +433,16 @@ export class PauseMenuScreen implements Screen {
     if (this.card !== null) this.card.hidden = true;
 
     this.overlay = next;
+    const reducedMotion = this.host?.closest('.vm-shell')?.classList.contains('vm-reduced-motion') === true
+      || (typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if (!reducedMotion) next.root.classList.add('is-overlay-entering');
     host.appendChild(next.root);
     // The shell refreshes the ring on its own schedule; focusing the first
     // control of the new layer on the next frame is what makes it keyboard-
     // reachable the instant it opens.
     requestAnimationFrame(() => {
+      next.root.classList.remove('is-overlay-entering');
       next.root.querySelector<HTMLElement>('[data-vm-focus]')?.focus();
     });
   }
@@ -442,9 +450,38 @@ export class PauseMenuScreen implements Screen {
   private closeOverlay(): void {
     const open = this.overlay;
     if (open === null) return;
+    this.finishOverlayExit();
+    const reducedMotion = this.host?.closest('.vm-shell')?.classList.contains('vm-reduced-motion') === true
+      || (typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const snapshot = !reducedMotion && open.root.isConnected
+      ? open.root.cloneNode(true) as HTMLElement
+      : null;
     open.dispose();
-    open.root.remove();
+    if (snapshot !== null) {
+      snapshot.classList.remove('is-overlay-entering');
+      snapshot.classList.add('is-overlay-snapshot');
+      snapshot.setAttribute('aria-hidden', 'true');
+      snapshot.inert = true;
+      snapshot.removeAttribute('id');
+      for (const node of snapshot.querySelectorAll<HTMLElement>('[id]')) node.removeAttribute('id');
+      open.root.replaceWith(snapshot);
+      this.overlayExit = snapshot;
+      requestAnimationFrame(() => snapshot.classList.add('is-overlay-leaving'));
+      this.overlayExitTimer = window.setTimeout(() => this.finishOverlayExit(), 160);
+    } else {
+      open.root.remove();
+    }
     this.overlay = null;
     if (this.card !== null) this.card.hidden = false;
+  }
+
+  private finishOverlayExit(): void {
+    if (this.overlayExitTimer !== 0) {
+      window.clearTimeout(this.overlayExitTimer);
+      this.overlayExitTimer = 0;
+    }
+    this.overlayExit?.remove();
+    this.overlayExit = null;
   }
 }

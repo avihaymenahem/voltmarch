@@ -561,9 +561,11 @@ export function pageFrame(
   const root = panel('vm-page-panel');
   const head = el('div', 'vm-page-head');
   const back = button('Back', { iconName: 'back', onClick: onBack });
-  back.classList.add('is-icon');
+  back.classList.add('is-page-back');
   head.appendChild(back);
-  head.appendChild(el('h2', 'vm-h2', title));
+  const titleBlock = el('div', 'vm-page-title-block');
+  titleBlock.appendChild(el('h2', 'vm-h2', title));
+  head.appendChild(titleBlock);
   const body = el('div', 'vm-page-body');
   const foot = el('div', 'vm-page-foot');
   root.appendChild(head);
@@ -872,6 +874,9 @@ export class Shell {
   private readonly host: HTMLDivElement;
   private readonly updatePrompt: DesktopUpdatePrompt;
   private screen: Screen | null = null;
+  /** Inert visual snapshot retained for one short exit beat. */
+  private exitingLayer: HTMLElement | null = null;
+  private screenExitTimer = 0;
   private ring: FocusRing;
   private readonly pad = new GamepadNav();
 
@@ -2753,6 +2758,7 @@ export class Shell {
     window.removeEventListener('keydown', this.onKeyDown, { capture: true });
     window.removeEventListener('resize', this.onResize);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.finishScreenExit();
     this.screen?.unmount();
     this.screen = null;
     this.tutorial?.dispose();
@@ -2778,20 +2784,50 @@ export class Shell {
 
   /** Swap the visible screen. `null` clears it (the match owns the viewport). */
   private show(next: Screen | null, state: ShellState): void {
-    this.screen?.unmount();
-    this.host.replaceChildren();
+    this.finishScreenExit();
+
+    const previous = this.screen;
+    const previousLayer = this.host.querySelector<HTMLElement>(':scope > .vm-screen');
+    const reducedMotion = this.root.classList.contains('vm-reduced-motion')
+      || (typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    if (previous !== null && previousLayer !== null && !reducedMotion) {
+      const snapshot = previousLayer.cloneNode(true) as HTMLElement;
+      snapshot.classList.remove('is-entering', 'is-out');
+      snapshot.classList.add('is-exit-snapshot');
+      snapshot.setAttribute('aria-hidden', 'true');
+      snapshot.inert = true;
+      // The incoming route may reuse stable tab/control ids. The snapshot is
+      // decorative, so stripping ids prevents a transient duplicate-id tree.
+      snapshot.removeAttribute('id');
+      for (const node of snapshot.querySelectorAll<HTMLElement>('[id]')) node.removeAttribute('id');
+      previous.unmount();
+      previousLayer.replaceWith(snapshot);
+      this.exitingLayer = snapshot;
+      requestAnimationFrame(() => snapshot.classList.add('is-out'));
+      this.screenExitTimer = window.setTimeout(() => this.finishScreenExit(), 190);
+    } else {
+      previous?.unmount();
+      previousLayer?.remove();
+    }
+
     this.screen = next;
     this.state = state;
     this.updatePrompt.onShellState(state);
 
     if (next !== null) {
       const layer = el('div', 'vm-screen');
+      if (!reducedMotion) layer.classList.add('is-entering');
       this.host.appendChild(layer);
       next.mount(layer);
       this.ring = new FocusRing(layer);
       // Focus after layout so `offsetParent` is meaningful to the ring.
       requestAnimationFrame(() => {
-        if (this.screen === next) this.ring.focusFirst();
+        if (this.screen === next) {
+          layer.classList.remove('is-entering');
+          this.ring.focusFirst();
+        }
       });
     }
     this.root.style.pointerEvents = next === null ? 'none' : '';
@@ -2800,6 +2836,16 @@ export class Shell {
     // menu over a replay must not have a second row of controls showing
     // through it.
     this.replay?.bar?.setVisible(next === null);
+  }
+
+  /** Complete the delayed route cleanup, including during rapid navigation. */
+  private finishScreenExit(): void {
+    if (this.screenExitTimer !== 0) {
+      window.clearTimeout(this.screenExitTimer);
+      this.screenExitTimer = 0;
+    }
+    this.exitingLayer?.remove();
+    this.exitingLayer = null;
   }
 
   private setHudVisible(visible: boolean): void {

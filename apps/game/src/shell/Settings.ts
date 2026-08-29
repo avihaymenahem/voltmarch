@@ -830,6 +830,35 @@ export class SettingsScreen implements Screen {
       case 'diagnostics': this.renderDiagnostics(body); break;
       default: break;
     }
+    this.layoutSections(body);
+    // Rebuilding a tab used to cut instantly from one dense control matrix to
+    // another. Restart a transform/opacity-only content beat after the new DOM
+    // is complete; reduced-motion suppresses it in CSS and Shell.show skips
+    // the route animation entirely under the same preference.
+    body.classList.remove('is-tab-entering');
+    void body.offsetWidth;
+    body.classList.add('is-tab-entering');
+  }
+
+  /**
+   * Two real vertical stacks, not CSS multi-column flow. Multi-column may
+   * fragment one tall control section halfway through a row, which is fatal to
+   * a settings form. Moving whole sections keeps every instrument well intact
+   * while letting the shorter stack continue independently.
+   */
+  private layoutSections(body: HTMLElement): void {
+    if (this.tab === 'manual' || this.tab === 'credits') return;
+    const sections = Array.from(body.children)
+      .filter((node) => (node as HTMLElement).classList.contains('vm-section')) as HTMLElement[];
+    if (sections.length < 2) return;
+
+    const columns = el('div', 'vm-settings-columns');
+    const left = el('div', 'vm-settings-column is-left');
+    const right = el('div', 'vm-settings-column is-right');
+    columns.appendChild(left);
+    columns.appendChild(right);
+    body.insertBefore(columns, sections[0]);
+    sections.forEach((section, index) => (index % 2 === 0 ? left : right).appendChild(section));
   }
 
   /** Footer buttons that are not offered on every tab. */
@@ -854,8 +883,8 @@ export class SettingsScreen implements Screen {
    *
    * MOVED OFF THE MAIN MENU BECAUSE THE MENU GREW. It was ten entries; Campaign
    * and Replays both landed there this month, and Credits is the one nobody
-   * opens twice. It reads exactly as it did — same `CREDITS` table, same markup,
-   * same classes — so `shell.css`'s `.vm-credits*` rules are untouched.
+   * opens twice. The data remains the same truthful `CREDITS` table, presented
+   * here as a production ledger so authorship and provenance are scannable.
    *
    * `CREDITS` STAYS IN `MainMenu.ts` DELIBERATELY. It is the data, not the
    * screen, and `tests/credits-truthful.spec.ts` imports it from there to check
@@ -865,14 +894,38 @@ export class SettingsScreen implements Screen {
    */
   private renderCredits(body: HTMLElement): void {
     const wrap = el('div', 'vm-credits');
-    for (const group of CREDITS) {
-      const g = el('div', 'vm-credits-group');
-      g.appendChild(el('h3', 'vm-h3', group.title));
+    const intro = el('header', 'vm-credits-intro');
+    const introCopy = el('div', 'vm-credits-intro-copy');
+    introCopy.appendChild(el('span', 'vm-credits-kicker', 'VOLTMARCH // PRODUCTION LEDGER'));
+    introCopy.appendChild(el('h3', 'vm-credits-title', 'Built by systems, shaped by people.'));
+    introCopy.appendChild(el(
+      'p',
+      'vm-credits-lede',
+      'Technology, original work and licensed sources are separated below so every contribution is clear.',
+    ));
+    intro.appendChild(introCopy);
+    const tally = el('div', 'vm-credits-tally');
+    tally.appendChild(el('strong', 'vm-num', String(CREDITS.length).padStart(2, '0')));
+    tally.appendChild(el('span', undefined, 'credit groups'));
+    intro.appendChild(tally);
+    wrap.appendChild(intro);
+
+    const grid = el('div', 'vm-credits-grid');
+    CREDITS.forEach((group, index) => {
+      const g = el('article', 'vm-credits-group');
+      const head = el('header', 'vm-credits-group-head');
+      head.appendChild(el('span', 'vm-credits-index vm-num', String(index + 1).padStart(2, '0')));
+      const heading = el('div');
+      heading.appendChild(el('h3', 'vm-h3', group.title));
+      heading.appendChild(el('p', 'vm-credits-summary', group.summary));
+      head.appendChild(heading);
+      g.appendChild(head);
       const list = el('ul', 'vm-credits-list');
       for (const line of group.lines) list.appendChild(el('li', undefined, line));
       g.appendChild(list);
-      wrap.appendChild(g);
-    }
+      grid.appendChild(g);
+    });
+    wrap.appendChild(grid);
     body.appendChild(wrap);
   }
 

@@ -153,6 +153,7 @@ export class ReplaysScreen implements Screen {
     host.classList.add('vm-page');
 
     const frame = pageFrame('Replays', () => this.shell.showMenu());
+    frame.root.classList.add('vm-operation-panel', 'vm-archive-panel', 'vm-replays-panel');
     const wrap = el('div', 'vm-replays');
 
     wrap.appendChild(el('p', 'vm-replays-lede',

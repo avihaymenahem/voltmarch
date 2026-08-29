@@ -1,0 +1,336 @@
+{
+  "version": 1,
+  "family": "soviet-vehicles",
+  "generatedAt": "2026-08-28T18:41:45.289Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/soviet-vehicles.json",
+  "rows": [
+    {
+      "key": "soviet_rhino",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/soviets/anvil-heavy-tank.glb",
+        "triangles": 23790,
+        "fileBytes": 5870272
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.8% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/anvil-heavy-tank.lod1.glb",
+          "triangles": 23740,
+          "triangleRatio": 0.9979,
+          "boundsDriftMeters": 0.00016,
+          "boundsDriftRatio": 0.00014,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.6% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/anvil-heavy-tank.lod2.glb",
+          "triangles": 23687,
+          "triangleRatio": 0.9957,
+          "boundsDriftMeters": 0.00016,
+          "boundsDriftRatio": 0.00014,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/anvil-heavy-tank.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0726,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24996,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "soviet_apocalypse",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/soviets/sledge-tank.glb",
+        "triangles": 26718,
+        "fileBytes": 8582348
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sledge-tank.lod1.glb",
+          "triangles": 12896,
+          "triangleRatio": 0.4827,
+          "boundsDriftMeters": 0.00035,
+          "boundsDriftRatio": 0.00038,
+          "fileBytes": 599428,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 41.7% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/sledge-tank.lod2.glb",
+          "triangles": 11151,
+          "triangleRatio": 0.4174,
+          "boundsDriftMeters": 0.008,
+          "boundsDriftRatio": 0.00711,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sledge-tank.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0647,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 25028,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "soviet_harvester",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/ore-collector.glb",
+        "triangles": 49715,
+        "fileBytes": 5369188
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/ore-collector.lod1.glb",
+          "triangles": 22371,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00063,
+          "boundsDriftRatio": 0.0009,
+          "fileBytes": 895340,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/ore-collector.lod2.glb",
+          "triangles": 12085,
+          "triangleRatio": 0.2431,
+          "boundsDriftMeters": 0.00122,
+          "boundsDriftRatio": 0.00176,
+          "fileBytes": 564236,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/ore-collector.shadow.glb",
+          "triangles": 1344,
+          "triangleRatio": 0.027,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19616,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            7
+          ],
+          "occupiedCells": 112
+        }
+      ]
+    },
+    {
+      "key": "soviet_dozer",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/sputnik-dozer.glb",
+        "triangles": 35150,
+        "fileBytes": 4818796
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sputnik-dozer.lod1.glb",
+          "triangles": 20803,
+          "triangleRatio": 0.5918,
+          "boundsDriftMeters": 0.02437,
+          "boundsDriftRatio": 0.01321,
+          "fileBytes": 846108,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sputnik-dozer.lod2.glb",
+          "triangles": 14513,
+          "triangleRatio": 0.4129,
+          "boundsDriftMeters": 0.02437,
+          "boundsDriftRatio": 0.01321,
+          "fileBytes": 653804,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sputnik-dozer.shadow.glb",
+          "triangles": 2688,
+          "triangleRatio": 0.0765,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 38448,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 224
+        }
+      ]
+    },
+    {
+      "key": "soviet_mig",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/interceptor.glb",
+        "triangles": 19281,
+        "fileBytes": 3220892
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/interceptor.lod1.glb",
+          "triangles": 8676,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00155,
+          "boundsDriftRatio": 0.00208,
+          "fileBytes": 328832,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/interceptor.lod2.glb",
+          "triangles": 3522,
+          "triangleRatio": 0.1827,
+          "boundsDriftMeters": 0.01911,
+          "boundsDriftRatio": 0.0257,
+          "fileBytes": 174736,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/interceptor.shadow.glb",
+          "triangles": 1932,
+          "triangleRatio": 0.1002,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27848,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 161
+        }
+      ]
+    },
+    {
+      "key": "soviet_dog",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/attack-dog.glb",
+        "triangles": 5987,
+        "fileBytes": 1078784
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/attack-dog.lod1.glb",
+          "triangles": 2561,
+          "triangleRatio": 0.4278,
+          "boundsDriftMeters": 0.01594,
+          "boundsDriftRatio": 0.00922,
+          "fileBytes": 116268,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 41.5% exceeds 35.0% ceiling",
+            "bounds drift 5.19% exceeds 2.00% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/attack-dog.lod2.glb",
+          "triangles": 2485,
+          "triangleRatio": 0.4151,
+          "boundsDriftMeters": 0.08367,
+          "boundsDriftRatio": 0.05186,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/attack-dog.shadow.glb",
+          "triangles": 720,
+          "triangleRatio": 0.1203,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 10912,
+          "geometryOnly": true,
+          "grid": [
+            6,
+            12
+          ],
+          "occupiedCells": 60
+        }
+      ]
+    }
+  ]
+}

@@ -149,6 +149,17 @@ import {
 export const DRAW_BUDGET = 130;
 
 /**
+ * The 130 ceiling was authored and captured against WebGL's submission model.
+ * Three's common WebGPU renderer splits the same allied-base colour work into
+ * 445 submissions versus WebGL's 68 while completing the measured frame faster
+ * (7.13 ms versus 12.23 ms at 1280x720). Treating 130 as backend-neutral would
+ * make a truthful WebGPU counter produce a permanently false red warning.
+ */
+export function drawBudgetForBackend(backend: LiveBackend | null): number | null {
+  return backend === 'webgl' ? DRAW_BUDGET : null;
+}
+
+/**
  * Triangle advisory. There is no documented triangle budget, so this is not
  * presented as one: the GPU-bound capture in the header measured 1.75 M, and
  * this line marks anything within reach of that as worth looking at. It warns;
@@ -1084,8 +1095,8 @@ export interface PerfReadout {
   drawCalls: number;
   /**
    * The COLOUR PASS alone, which is what `DRAW_BUDGET` bounds — or **null when
-   * the live renderer cannot split the frame**, which is the whole node path
-   * and any WebGL boot with no post chain to meter.
+   * the live renderer cannot split the frame**, such as a WebGL boot with no
+   * post chain to meter. The WebGPU path supplies an exact renderObject split.
    *
    * NULL IS NOT ZERO AND MUST NOT BECOME ZERO. `src/render/post.ts` reports the
    * node split as zeros with a true total precisely so that a consumer which
@@ -1095,6 +1106,8 @@ export interface PerfReadout {
    */
   drawCallsColour: number | null;
   triangles: number;
+  /** Main colour-pass triangles, or null on a backend without a split. */
+  trianglesColour: number | null;
   entities: number;
   /** Milliseconds of ONE fixed sim step. */
   simMs: number;
@@ -1127,6 +1140,7 @@ export function emptyReadout(): PerfReadout {
     drawCalls: 0,
     drawCallsColour: null,
     triangles: 0,
+    trianglesColour: null,
     entities: 0,
     simMs: 0,
     substeps: 0,
@@ -1176,12 +1190,14 @@ export function perfLayerFaults(root: Element): string[] {
   const walk = (node: Element): void => {
     const tag = node.tagName.toUpperCase();
     const dragHandle = node.getAttribute('data-perf-drag-handle') === 'true';
-    if (INTERACTIVE_TAGS.has(tag) && !dragHandle) faults.push(`interactive element <${tag.toLowerCase()}>`);
-    if (node.hasAttribute('tabindex') && !dragHandle) faults.push(`tabindex on <${tag.toLowerCase()}>`);
+    const resizeHandle = node.getAttribute('data-perf-resize-handle') === 'true';
+    const panelControl = dragHandle || resizeHandle;
+    if (INTERACTIVE_TAGS.has(tag) && !panelControl) faults.push(`interactive element <${tag.toLowerCase()}>`);
+    if (node.hasAttribute('tabindex') && !panelControl) faults.push(`tabindex on <${tag.toLowerCase()}>`);
     if (node.hasAttribute('onclick')) faults.push(`onclick on <${tag.toLowerCase()}>`);
     const style = (node as HTMLElement).style as CSSStyleDeclaration | undefined;
     const pe = style?.pointerEvents;
-    if (pe !== undefined && pe !== '' && pe !== 'none' && !dragHandle) {
+    if (pe !== undefined && pe !== '' && pe !== 'none' && !panelControl) {
       faults.push(`inline pointer-events:${pe} on <${tag.toLowerCase()}>`);
     }
     const kids = node.children;
@@ -1240,15 +1256,17 @@ export function formatBackend(backend: LiveBackend | null): string {
  * second is the fingerprint `shots/_report.json` publishes. The shape is fixed,
  * so on a renderer that cannot split the frame `n/a` sits in the exact slot the
  * colour count occupies — never a `0`, which would read as a colour pass that
- * drew nothing at all.
+ * drew nothing at all. A null budget omits the ceiling while retaining both
+ * measured counts; this is the WebGPU shape because 130 is WebGL-specific.
  */
 export function formatDraws(
   total: number,
   colour: number | null,
-  budget: number = DRAW_BUDGET,
+  budget: number | null = DRAW_BUDGET,
 ): string {
   const head = colour === null ? UNAVAILABLE : String(colour);
-  return `${head} col / ${budget} · ${total} all`;
+  const ceiling = budget === null ? '' : ` / ${budget}`;
+  return `${head} col${ceiling} · ${total} all`;
 }
 
 /**
@@ -1260,8 +1278,11 @@ export function formatDraws(
  * captured (105-157 total against a 51-77 colour pass), and claiming compliance
  * asserts something nothing measured.
  */
-export function drawsOverBudget(colour: number | null, budget: number = DRAW_BUDGET): boolean {
-  return colour !== null && colour > budget;
+export function drawsOverBudget(
+  colour: number | null,
+  budget: number | null = DRAW_BUDGET,
+): boolean {
+  return colour !== null && budget !== null && colour > budget;
 }
 
 /**
@@ -1414,11 +1435,20 @@ export class PerfHud {
     // the panel no height. Which renderer produced the numbers below is a
     // property of the whole panel rather than of any one row.
     this.backendText = label(head, 'vm-perf-backend', '—');
+    const resizeHandle = el('div', 'vm-perf-resize', this.root);
     this.drag = new DraggablePanel(
       this.root,
       head,
       PERFORMANCE_PANEL_POSITION_KEY,
       'Move performance panel',
+      {
+        resizeHandle,
+        resizeLabel: 'Resize performance panel',
+        minWidth: 180,
+        minHeight: 140,
+        maxWidthShare: 0.72,
+        maxHeightShare: 0.9,
+      },
     );
 
     const primaryRow = el('div', 'vm-perf-primary', this.root);
@@ -1653,8 +1683,11 @@ export class PerfHud {
 
     this.write(2, formatGpuTime(this.timer.status, s.gpuMs, r.backend));
 
-    this.write(3, formatDraws(r.drawCalls, r.drawCallsColour));
-    this.write(4, formatCount(r.triangles));
+    const drawBudget = drawBudgetForBackend(r.backend);
+    this.write(3, formatDraws(r.drawCalls, r.drawCallsColour, drawBudget));
+    this.write(4, r.trianglesColour === null
+      ? formatCount(r.triangles)
+      : `${formatCount(r.trianglesColour)} col · ${formatCount(r.triangles)} all`);
     this.write(5, `${r.tier} · ${r.entities} ents`);
     this.write(6, r.device);
     this.write(
@@ -1687,9 +1720,14 @@ export class PerfHud {
      * that cannot check the budget must not look like one that checked it and
      * approved.
      */
-    this.root.classList.toggle('is-draws-over', drawsOverBudget(r.drawCallsColour));
+    this.root.classList.toggle('is-draws-over', drawsOverBudget(r.drawCallsColour, drawBudget));
     this.root.classList.toggle('is-draws-unknown', r.drawCallsColour === null);
-    this.root.classList.toggle('is-tris-over', r.triangles > TRIANGLE_ADVISORY);
+    // Match the draw-call ruling above: advisory geometry is the gameplay
+    // colour pass when the backend can split it. Shadow/AO resubmissions still
+    // remain visible in the `all` readout, but cannot turn the row red as if
+    // they were extra scene detail.
+    const advisoryTriangles = r.trianglesColour ?? r.triangles;
+    this.root.classList.toggle('is-tris-over', advisoryTriangles > TRIANGLE_ADVISORY);
 
     this.updateCostMs = this.now() - t0;
   }

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>VOLTMARCH Infantry Animation POC</title>
+  <style>
+    :root { font-family: "Segoe UI", system-ui, sans-serif; color: #dce8ef; background: #06090d; }
+    * { box-sizing: border-box; }
+    html, body, canvas { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    .panel {
+      position: fixed; z-index: 2; top: 18px; left: 18px;
+      width: min(370px, calc(100vw - 36px)); padding: 16px;
+      border: 1px solid rgba(72, 218, 255, .36); background: rgba(5, 10, 16, .91);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .42); backdrop-filter: blur(12px);
+    }
+    .eyebrow { color: #48d9ff; font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { margin: 4px 0 2px; font-size: 23px; font-weight: 650; }
+    .sub { margin: 0 0 14px; color: #8293a0; font-size: 12px; line-height: 1.45; }
+    .clips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    button {
+      border: 1px solid #263b48; border-radius: 2px; padding: 8px 9px;
+      color: #aebdc6; background: #0c141b; cursor: pointer; font: inherit;
+      font-size: 12px; font-weight: 650; letter-spacing: .03em; text-align: left;
+    }
+    button:hover { border-color: #48d9ff; color: #fff; }
+    button.active { border-color: #48d9ff; color: #061016; background: #48d9ff; }
+    .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .row label { min-width: 64px; color: #91a3ad; font-size: 12px; }
+    input[type="range"] { width: 100%; accent-color: #48d9ff; }
+    input[type="number"] {
+      width: 86px; min-width: 86px; padding: 7px 8px; border: 1px solid #263b48;
+      border-radius: 2px; color: #dce8ef; background: #0c141b; font: 12px ui-monospace, "Cascadia Mono", monospace;
+    }
+    select {
+      flex: 1; padding: 7px 8px; border: 1px solid #263b48; border-radius: 2px;
+      color: #dce8ef; background: #0c141b; font: 12px ui-monospace, "Cascadia Mono", monospace;
+    }
+    input[type="checkbox"] { accent-color: #48d9ff; }
+    .readout {
+      display: grid; grid-template-columns: auto 1fr; gap: 3px 10px;
+      margin-top: 14px; padding-top: 12px; border-top: 1px solid #1b2a33;
+      font: 11px/1.4 ui-monospace, "Cascadia Mono", monospace;
+    }
+    .readout dt { color: #60727d; }
+    .readout dd { margin: 0; color: #c8d6dd; }
+    .hint {
+      position: fixed; right: 18px; bottom: 16px; color: rgba(210, 226, 235, .66);
+      font-size: 11px; text-align: right; pointer-events: none;
+    }
+    .error { color: #ff7b72 !important; white-space: pre-wrap; }
+    .back-link { display:inline-block; margin-bottom:10px; color:#8bdff4; font-size:11px; font-weight:750; letter-spacing:.08em; text-decoration:none; }
+    .back-link:hover { color:#fff; }
+  </style>
+</head>
+<body>
+  <canvas id="preview"></canvas>
+  <section class="panel" aria-label="Animation controls">
+    <a class="back-link" href="./">← BACK TO ASSET LAB</a>
+    <div class="eyebrow">Standalone rig validation</div>
+    <h1 id="unit-title">Infantry POC</h1>
+    <p class="sub" id="unit-description">WebGPU-first, fail-closed shared-pose proof outside the game.</p>
+    <div class="row">
+      <label for="faction">Faction</label>
+      <select id="faction">
+        <option value="allies">Allied Forces</option>
+        <option value="soviets">Soviet Union</option>
+        <option value="meridian">Meridian Conclave</option>
+        <option value="reclamation">Reclamation Pact</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="unit">Unit</label>
+      <select id="unit" aria-label="Infantry unit"></select>
+    </div>
+    <div class="clips">
+      <button type="button" data-mode="army" class="active">Army formation</button>
+      <button type="button" data-mode="single">Single soldier</button>
+    </div>
+    <div class="clips">
+      <button type="button" data-clip="tpose">T-pose / rig</button>
+      <button type="button" data-clip="walk">Walk</button>
+      <button type="button" data-clip="run">Run</button>
+      <button type="button" data-clip="runShoot" class="active">Run + shoot</button>
+    </div>
+    <div class="row">
+      <label for="speed">Speed <span id="speed-value">1.00x</span></label>
+      <input id="speed" type="range" min="0" max="1.5" step="0.05" value="1" />
+    </div>
+    <div class="row">
+      <label for="soldier-count">Soldiers</label>
+      <input id="soldier-count" type="number" min="1" max="512" step="1" value="48" />
+      <button id="apply-count" type="button">Apply</button>
+    </div>
+    <p class="sub" style="margin:5px 0 0 74px">1–512 stress range · Apply reloads a clean WebGPU run.</p>
+    <div class="row">
+      <label><input id="skeleton" type="checkbox" /> Skeleton</label>
+      <button id="reset-camera" type="button">Reset camera</button>
+    </div>
+    <dl class="readout">
+      <dt>Status</dt><dd id="status">Loading faction assets…</dd>
+      <dt>Backend</dt><dd id="backend">initialising</dd>
+      <dt>Geometry</dt><dd id="geometry">—</dd>
+      <dt>Rig</dt><dd id="rig">—</dd>
+      <dt>Safety audit</dt><dd id="audit">pending</dd>
+      <dt>Source</dt><dd id="source">—</dd>
+      <dt>Mode</dt><dd id="mode">—</dd>
+      <dt>GPU work</dt><dd id="draw-calls">—</dd>
+      <dt>Frame</dt><dd id="frame-time">warming up</dd>
+      <dt>Active clip</dt><dd id="active-clip">Run + shoot</dd>
+    </dl>
+  </section>
+  <div class="hint">Drag to orbit · wheel to zoom · 1–4 clips · space pause</div>
+  <script type="module" src="./src/infantry.mjs"></script>
+</body>
+</html>

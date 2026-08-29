@@ -120,6 +120,6 @@ removes baked lighting and requests GLB only.
 - Shipping body: 17,420 triangles, 18,538 vertices, one mesh/primitive/material and 3.46 MiB.
 - Shipping maps: 2048 base colour, 2048 tangent-space normal and 1024 packed metal-roughness.
 - `material-review.png` records the approved front/right/back/left PBR result before runtime grading.
-- Runtime asset: `apps/game/src/assets/buildings/soviets/radar-tower.glb`.
+- Runtime asset: `packages/assets/game/buildings/soviets/radar-tower.glb`.
 - The body replaces the old procedural shell completely. Only the intentionally authored scan array
   is extracted by `STRUCTURE_FEATURE.spin`, retaining the GPU sweep and shadow contract.

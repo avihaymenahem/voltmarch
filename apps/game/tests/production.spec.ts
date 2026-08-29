@@ -118,6 +118,38 @@ describe('ProductionCatalog', () => {
   });
 });
 
+describe('development Cheat Engine seam', () => {
+  it('makes local production free and instant without mutating authored content', () => {
+    const { world, service } = makeWorld();
+    const player = world.player(0 as PlayerId);
+    const rifleman = service.catalog.byKey('gi')!;
+    expect(service.setDevCheats(player.id, {
+      freeProduction: true,
+      instantProduction: true,
+      uncappedProduction: true,
+    })).toBe(true);
+
+    const info = service.info(player, rifleman.publicId, false)!;
+    expect(info.cost).toBe(0);
+    expect(info.buildTime).toBeLessThan(SIM_DT);
+    expect(rifleman.cost).toBeGreaterThan(0);
+  });
+
+  it('bulk-spawns and retires a bounded test batch through the real unit initializer', () => {
+    const { world, service } = makeWorld();
+    const ids = service.devSpawnUnits({
+      player: 0 as PlayerId,
+      key: 'gi',
+      count: 24,
+      x: 100,
+      z: 100,
+    });
+    expect(ids).toHaveLength(24);
+    expect(world.store.aliveCount).toBe(24);
+    expect(service.devDestroyUnits(ids)).toBe(24);
+  });
+});
+
 /* ========================================================================== */
 
 describe('BuildQueues', () => {
@@ -129,7 +161,7 @@ describe('BuildQueues', () => {
     player.credits = credits;
     const log: string[] = [];
     const hooks: QueueHooks = {
-      info(defId): QueueItemInfo | null {
+      info(_player, defId): QueueItemInfo | null {
         return defId === 1 ? { cost: 100, buildTime: 1 } : null;
       },
       charge(p, amount) {
@@ -182,6 +214,14 @@ describe('BuildQueues', () => {
     const added = queues.enqueue(player, BuildTab.Vehicles, 1, false, MAX_QUEUE_DEPTH + 5);
     expect(added).toBe(MAX_QUEUE_DEPTH);
     expect(queues.depth(player, BuildTab.Vehicles)).toBe(MAX_QUEUE_DEPTH);
+  });
+
+  it('can raise one player queue depth for a development load test', () => {
+    const { player, queues } = rig();
+    queues.setDepthLimit(player, 64);
+    const added = queues.enqueue(player, BuildTab.Vehicles, 1, false, 64);
+    expect(added).toBe(64);
+    expect(queues.depth(player, BuildTab.Vehicles)).toBe(64);
   });
 
   it('crawls on partial payment and holds only after the grace window', () => {

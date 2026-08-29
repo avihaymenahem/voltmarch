@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
-const sourceDir = path.join(root, 'apps/game/src/assets/buildings/soviets');
+const sourceDir = path.join(root, 'packages/assets/game/buildings/soviets');
 const compressedDir = path.join(sourceDir, 'compressed');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'tools/asset-families/soviet-buildings.json'), 'utf8'));
 const report = JSON.parse(fs.readFileSync(path.join(compressedDir, 'texture-compression-report.json'), 'utf8'));

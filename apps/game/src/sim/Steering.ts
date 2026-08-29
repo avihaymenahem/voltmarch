@@ -502,12 +502,12 @@ export class NavAgents {
  *
  * WHY `Guarding` IS IN THIS LIST — THE SECOND HALF OF THE SAME BUG
  * ---------------------------------------------------------------
- * `UnitState.Guarding` has always been documented as "holding position,
- * engages anything in range, RETURNS TO GUARD POINT", and it was omitted here
- * too. A unit given `OrderKind.Guard` therefore did not drive to the point it
- * was told to guard, could not leave it to engage, and had nothing to come back
- * from — the state existed, three scenarios spawned units into it, and no
- * module read it for behaviour at all.
+ * `UnitState.Guarding` covers both an explicit hard post and an automatic
+ * stance excursion, and it was omitted here too. A unit given
+ * `OrderKind.Guard` therefore did not drive to the point it was told to guard,
+ * while an automatic engagement had nothing to come back from — the state
+ * existed, three scenarios spawned units into it, and no module read it for
+ * behaviour at all.
  *
  * Its goal is owned by `sim/Targeting.ts` for exactly the reason `Attacking`'s
  * is: the outbound leg has to stop at a firing position, which needs a weapon

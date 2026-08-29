@@ -10,9 +10,9 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/mark-32.png" />
 <link rel="icon" type="image/png" sizes="64x64" href="/brand/mark-64.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/brand/mark-180.png" />
-<!-- 512 is what Android uses for add-to-home-screen. It was in public/brand/ and shipping
+<!-- 512 is what Android uses for add-to-home-screen. It was in the shared brand package and shipping
      in every deploy with nothing linking it; either it gets referenced or it should not be
-     built. See public/brand/README.md. -->
+     built. See packages/assets/brand/README.md. -->
 <link rel="icon" type="image/png" sizes="512x512" href="/brand/mark-512.png" />
 
 <!-- The two weights the boot curtain and menu use. `crossorigin` is required on
@@ -200,7 +200,7 @@
    *
    * A supplied illustration, NOT generated — one of the four exceptions
    * listed in CLAUDE.md and credited on the title screen. Derived into
-   * WebP by `tools/splash.mjs`; see `public/brand/README.md`.
+   * WebP by `tools/splash.mjs`; see `packages/assets/brand/README.md`.
    *
    * It fades in on load rather than being painted immediately, and the
    * gradient underneath is what shows until then. That ordering is the
@@ -335,7 +335,7 @@
 
   /* --- Title treatment: industrial stencil, steel + volt-cyan --------- *
    * Palette tracks src/shell/shell.css (--vm-accent / --vm-text) and the
-   * logo lockup in public/brand, so the curtain and the title screen are
+   * logo lockup in packages/assets/brand, so the curtain and the title screen are
    * the same product. VOLT reads as brushed steel, MARCH as the bolt.    */
   .title {
     margin: 0;

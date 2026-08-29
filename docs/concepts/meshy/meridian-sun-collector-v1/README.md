@@ -47,7 +47,7 @@ shadow proxy, KTX2 and dense economy-fixture validation.
 - Paid remesh skipped after the local hover-gap, mandible and silhouette gates passed.
 - Shipping geometry: 49,837 / 22,425 / 8,968 triangles for LOD0/LOD1/LOD2, plus a 1,656-triangle shadow proxy.
 - Texture delivery: required KTX2; 5,357,424-byte source reduced to 4,077,580 bytes and estimated 48 MiB RGBA residency reduced to 8 MiB at 8 bpp.
-- Runtime: `src/assets/units/meridian/compressed/sun-collector.glb`, loaded by the private Meridian registry with automatic procedural fallback.
+- Runtime: `packages/assets/game/units/meridian/compressed/sun-collector.glb`, loaded by the private Meridian registry with automatic procedural fallback.
 - Validation: asset and render gates plus WebGL/WebGPU faction-scene captures passed on 2026-08-26.
 
 Final Meshy spend: 30 credits.

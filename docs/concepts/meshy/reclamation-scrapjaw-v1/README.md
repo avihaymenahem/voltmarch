@@ -48,7 +48,7 @@ shadow proxy, KTX2 and dense economy-fixture validation.
 - Paid remesh skipped; the conservative first local reduction was rejected at 72,758 triangles and the corrected pass preserved the open frame at 44,402.
 - Shipping geometry: 44,402 / 19,913 / 12,267 triangles for LOD0/LOD1/LOD2, plus a 1,104-triangle shadow proxy.
 - Texture delivery: required KTX2; 4,874,188-byte source reduced to 3,949,648 bytes and estimated 48 MiB RGBA residency reduced to 8 MiB at 8 bpp.
-- Runtime: `src/assets/units/reclamation/compressed/scrapjaw.glb`, loaded by the private Reclamation registry with automatic procedural fallback.
+- Runtime: `packages/assets/game/units/reclamation/compressed/scrapjaw.glb`, loaded by the private Reclamation registry with automatic procedural fallback.
 - Validation: asset and render gates plus WebGL/WebGPU faction-scene captures passed on 2026-08-26.
 
 Final Meshy spend: 30 credits.

@@ -78,5 +78,5 @@ Power Plant and execute the full better-quality rebuild is the approval for this
 - Final balance: 810 credits; no paid remesh or retry was used.
 - Shipping model: 15,025 triangles, 14,472 vertices, one static primitive/material, 3.44 MiB.
 - Maps: 2K base colour, 2K tangent-space normal and 1K packed metal-roughness.
-- Runtime: `apps/game/src/assets/buildings/soviets/tesla-reactor.glb`; all procedural visual parts are disabled.
+- Runtime: `packages/assets/game/buildings/soviets/tesla-reactor.glb`; all procedural visual parts are disabled.
 - Review artifacts: `geometry-gate-webgpu.png`, `textured-cardinals.png` and `final-webgpu-bright2.png`.

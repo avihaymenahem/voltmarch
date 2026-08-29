@@ -329,6 +329,14 @@ export class TargetingSystem {
 
     // --- an explicit order beats everything -------------------------------
     const order = st.orderKind[i] as OrderKind;
+    // Guard fights FROM its post, not on the journey to it. This matters most
+    // for large naval hulls whose long braking arc made a newly issued Guard
+    // look indistinguishable from Attack Move: they kept sailing and firing.
+    // Once inside the ordinary nav arrival radius the same order becomes hot.
+    if (order === OrderKind.Guard && !this.atGuardPost(i)) {
+      st.targetId[i] = 0;
+      return;
+    }
     if (order === OrderKind.Attack || order === OrderKind.ForceAttack) {
       const ot = st.index(st.orderTarget[i] as EntityId);
       if (ot >= 0 && (st.flags[ot] & EntityFlag.PendingDestroy) === 0) {
@@ -405,6 +413,14 @@ export class TargetingSystem {
     return kind === EntityKind.Infantry || kind === EntityKind.Vehicle;
   }
 
+  /** Whether the hull is close enough to its explicit Guard destination. */
+  private atGuardPost(i: number): boolean {
+    const st = this.world.store;
+    const dx = st.posX[i] - st.guardX[i], dz = st.posZ[i] - st.guardZ[i];
+    const arrive = st.radius[i] + NAV_ARRIVE_SLACK;
+    return dx * dx + dz * dz <= arrive * arrive;
+  }
+
   /**
    * Whether this module is allowed to own `orderX/orderZ` for entity `i`.
    *
@@ -476,7 +492,7 @@ export class TargetingSystem {
     const st = this.world.store;
     const s = st.state[i];
     if (s !== UnitState.Idle && s !== UnitState.Guarding) return 0;
-    const chase = STANCE_CHASE_METRES[st.stance[i]] ?? 0;
+    const chase = this.chaseOf(i, w);
     if (chase <= 0) return 0;
     if (!this.canDrive(i)) return 0;
     const stanceReach = w.range * APPROACH_STOP_FRAC + chase;
@@ -484,6 +500,33 @@ export class TargetingSystem {
     // units keep the deliberately tight stance leash; fast flyers need enough
     // warning distance to turn and make a pass before crossing the target.
     return isAirborne(st, i) ? Math.max(stanceReach, st.sight[i]) : stanceReach;
+  }
+
+  /**
+   * Opportunity-chase allowance for this unit and weapon.
+   *
+   * An explicit Guard is the player's hard "hold here" command. It may fire at
+   * anything already in reach, but it must not inherit Aggressive's excursion
+   * and sail away from the post it was told to protect.
+   *
+   * Aircraft are the inverse special case. They ship Defensive so a MOVE order
+   * can pull them out of danger, but once that order has completed they still
+   * need to start and sustain an attack run without another click. Their sight
+   * radius is already the authored patrol envelope, so derive just enough chase
+   * to let `approach()` cover that same envelope. A live Move/Attack order still
+   * wins because `reachOf` and `holdPost` only own Idle/Guarding states.
+   */
+  private chaseOf(i: number, w: WeaponDef): number {
+    const st = this.world.store;
+    if (st.orderKind[i] === OrderKind.Guard) return 0;
+
+    let chase = STANCE_CHASE_METRES[st.stance[i]] ?? 0;
+    if (isAirborne(st, i)
+        && st.stance[i] !== Stance.HoldFire
+        && st.stance[i] !== Stance.HoldGround) {
+      chase = Math.max(chase, st.sight[i] - w.range * APPROACH_STOP_FRAC);
+    }
+    return Math.max(0, chase);
   }
 
   /**
@@ -565,7 +608,7 @@ export class TargetingSystem {
     }
 
     const stance = st.stance[i] as Stance;
-    const chase = STANCE_CHASE_METRES[stance] ?? 0;
+    const chase = this.chaseOf(i, w);
     const gx = st.guardX[i], gz = st.guardZ[i];
 
     // -- 1. is there something worth leaving the post for? ------------------

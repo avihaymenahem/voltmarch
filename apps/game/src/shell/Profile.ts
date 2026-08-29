@@ -23,6 +23,7 @@ import {
 import {
   button,
   el,
+  focusable,
   icon,
   pageFrame,
   playableFactions,
@@ -32,7 +33,7 @@ import {
 } from './Shell';
 import { humaniseId } from './Missions';
 import { cosmeticKind, cosmeticMark, type CosmeticKind } from './CosmeticMarks';
-import { normalizeCommanderName } from '../net/protocol';
+import { COMMANDER_NAME_MAX, normalizeCommanderName } from '../net/protocol';
 
 export type { CosmeticKind } from './CosmeticMarks';
 
@@ -210,6 +211,7 @@ export class ProfileScreen implements Screen {
   private host: HTMLElement | null = null;
   private body: HTMLElement | null = null;
   private unsubscribe: (() => void) | null = null;
+  private identityNotice = '';
   private readonly progression: ProgressionView | null;
 
   constructor(private readonly shell: Shell, progression?: ProgressionView | null) {
@@ -266,17 +268,109 @@ export class ProfileScreen implements Screen {
     this.shell.showMenu();
   }
 
+  /** One editor over the same settings field consumed by lobby and records. */
+  private buildIdentityEditor(): HTMLFormElement {
+    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
+      ?? 'Commander';
+    const editor = el('form', 'vm-profile-editor');
+    editor.setAttribute('aria-label', 'Commander identity');
+    const editorCopy = el('div', 'vm-profile-editor-copy');
+    const label = el('label', 'vm-profile-editor-label', 'Commander identity');
+    label.htmlFor = 'vm-profile-commander-name';
+    editorCopy.appendChild(label);
+    editorCopy.appendChild(el(
+      'p',
+      'vm-profile-editor-note',
+      'Your local callsign is used in multiplayer, chat, results, replays and this service record.',
+    ));
+    editor.appendChild(editorCopy);
+
+    const field = el('div', 'vm-profile-editor-field');
+    const nameInput = el('input', 'vm-profile-name-input');
+    nameInput.id = 'vm-profile-commander-name';
+    nameInput.type = 'text';
+    nameInput.maxLength = COMMANDER_NAME_MAX;
+    nameInput.autocomplete = 'off';
+    nameInput.spellcheck = false;
+    nameInput.value = commanderName;
+    nameInput.setAttribute('aria-describedby', 'vm-profile-identity-status');
+    focusable(nameInput);
+    field.appendChild(nameInput);
+
+    const commitIdentity = (): void => {
+      const next = normalizeCommanderName(nameInput.value);
+      const invalid = next === null;
+      nameInput.classList.toggle('is-invalid', invalid);
+      nameInput.setAttribute('aria-invalid', invalid ? 'true' : 'false');
+      if (next === null) {
+        this.identityNotice = `Enter a visible callsign up to ${COMMANDER_NAME_MAX} characters.`;
+        const live = editor.querySelector<HTMLElement>('#vm-profile-identity-status');
+        if (live !== null) live.textContent = this.identityNotice;
+        nameInput.focus();
+        return;
+      }
+      this.shell.settings.patch({ gameplay: { commanderName: next } });
+      this.identityNotice = 'Commander identity updated.';
+      this.render();
+    };
+
+    field.appendChild(button('Update Identity', {
+      iconName: 'check',
+      variant: 'primary',
+      onClick: commitIdentity,
+    }));
+    editor.appendChild(field);
+    const status = el('p', 'vm-profile-editor-status', this.identityNotice);
+    status.id = 'vm-profile-identity-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    editor.appendChild(status);
+    editor.addEventListener('submit', (event) => {
+      event.preventDefault();
+      commitIdentity();
+    });
+    return editor;
+  }
+
+  /** Truthful dossier shell for sessions where progression cannot be read. */
+  private buildUnavailableDossier(title: string, detail: string, warning = false): HTMLElement {
+    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
+      ?? 'Commander';
+    const dossier = el('section', 'vm-profile-offline-dossier');
+
+    const plate = el('div', 'vm-profile-offline-plate');
+    const crest = el('div', 'vm-profile-offline-crest');
+    crest.appendChild(icon('crest', 52));
+    plate.appendChild(crest);
+    plate.appendChild(el('span', 'vm-profile-kicker', 'LOCAL COMMAND IDENTITY'));
+    plate.appendChild(el('strong', 'vm-profile-offline-name', commanderName.toLocaleUpperCase()));
+    plate.appendChild(el('span', 'vm-profile-offline-clearance', 'IDENTITY CHANNEL ACTIVE'));
+
+    const status = el('div', `vm-profile-offline-status${warning ? ' is-warning' : ''}`);
+    status.appendChild(icon(warning ? 'warning' : 'info', 28));
+    status.appendChild(el('span', 'vm-profile-offline-code', warning ? 'RECORD // READ ERROR' : 'RECORD // OFFLINE'));
+    status.appendChild(el('h3', 'vm-h3', title));
+    status.appendChild(el('p', 'vm-body', detail));
+    status.appendChild(el('p', 'vm-profile-offline-truth', 'No career totals or honours are shown while the record channel is unavailable.'));
+
+    dossier.appendChild(plate);
+    dossier.appendChild(status);
+    return dossier;
+  }
+
   private render(): void {
     const body = this.body;
     if (body === null) return;
     body.replaceChildren();
+    // Identity remains editable even if progression is temporarily offline;
+    // it belongs to settings, not to the mission tracker lifecycle.
+    body.appendChild(this.buildIdentityEditor());
     const progression = this.progression;
     if (progression === null) {
-      const empty = el('div', 'vm-profile-empty');
-      empty.appendChild(icon('info', 24));
-      empty.appendChild(el('h3', 'vm-h3', 'Service record offline'));
-      empty.appendChild(el('p', 'vm-body', 'Progression is not available in this session. Your stored profile has not been changed.'));
-      body.appendChild(empty);
+      body.appendChild(this.buildUnavailableDossier(
+        'Service record offline',
+        'Progression is not available in this session. Your stored profile has not been changed.',
+      ));
       return;
     }
 
@@ -286,11 +380,7 @@ export class ProfileScreen implements Screen {
       profile = progression.profile();
       catalogue = progression.catalogue();
     } catch (err) {
-      const empty = el('div', 'vm-profile-empty');
-      empty.appendChild(icon('warning', 24));
-      empty.appendChild(el('h3', 'vm-h3', 'Service record unreadable'));
-      empty.appendChild(el('p', 'vm-body', String(err)));
-      body.appendChild(empty);
+      body.appendChild(this.buildUnavailableDossier('Service record unreadable', String(err), true));
       return;
     }
 
@@ -328,6 +418,7 @@ export class ProfileScreen implements Screen {
       ribbons.appendChild(mark);
     }
     dossier.appendChild(ribbons);
+
     body.appendChild(dossier);
 
     const stats = el('section', 'vm-profile-stats');

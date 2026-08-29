@@ -1,0 +1,962 @@
+{
+  "version": 1,
+  "family": "reclamation-buildings",
+  "generatedAt": "2026-08-24T01:16:40.262Z",
+  "encoder": "Basis Universal 1.16.x",
+  "profiles": {
+    "color": "ETC1S q255 comp2 + sRGB mips",
+    "normal": "UASTC level2 RDO 0.50 + 1K landmark/512px small-asset ceiling + normal-renormalized linear mips",
+    "packedData": "ETC1S q255 comp2 + linear mips"
+  },
+  "rows": [
+    {
+      "key": "reclaim_foundry",
+      "source": "packages/assets/game/buildings/reclamation/foundry.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/foundry.glb",
+      "sourceFileBytes": 8033524,
+      "outputFileBytes": 7584888,
+      "transferRatio": 0.9442,
+      "sourceTextureBytes": 1295442,
+      "ktx2TextureBytes": 846638,
+      "sourceGpuBytesRGBA8": 27962024,
+      "compressedGpuBytes8bpp": 6990506,
+      "compressedGpuBytes4bpp": 3495254,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 991665,
+          "ktx2Bytes": 679261,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 303777,
+          "ktx2Bytes": 167377,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_furnace",
+      "source": "packages/assets/game/buildings/reclamation/scrap-furnace.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/scrap-furnace.glb",
+      "sourceFileBytes": 4628908,
+      "outputFileBytes": 4210572,
+      "transferRatio": 0.9096,
+      "sourceTextureBytes": 1254687,
+      "ktx2TextureBytes": 836188,
+      "sourceGpuBytesRGBA8": 27962024,
+      "compressedGpuBytes8bpp": 6990506,
+      "compressedGpuBytes4bpp": 3495254,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 936351,
+          "ktx2Bytes": 660598,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 318336,
+          "ktx2Bytes": 175590,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_sorter",
+      "source": "packages/assets/game/buildings/reclamation/ore-sorter.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/ore-sorter.glb",
+      "sourceFileBytes": 5956712,
+      "outputFileBytes": 5449308,
+      "transferRatio": 0.9148,
+      "sourceTextureBytes": 1386195,
+      "ktx2TextureBytes": 878624,
+      "sourceGpuBytesRGBA8": 27962024,
+      "compressedGpuBytes8bpp": 6990506,
+      "compressedGpuBytes4bpp": 3495254,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1046396,
+          "ktx2Bytes": 694828,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 339799,
+          "ktx2Bytes": 183796,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_rookery",
+      "source": "packages/assets/game/buildings/reclamation/rookery.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/rookery.glb",
+      "sourceFileBytes": 4709676,
+      "outputFileBytes": 3528372,
+      "transferRatio": 0.7492,
+      "sourceTextureBytes": 3224842,
+      "ktx2TextureBytes": 2043344,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1604586,
+          "ktx2Bytes": 869020,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 293851,
+          "ktx2Bytes": 191727,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1326405,
+          "ktx2Bytes": 982597,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_breakeryard",
+      "source": "packages/assets/game/buildings/reclamation/breaker-yard.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/breaker-yard.glb",
+      "sourceFileBytes": 4672668,
+      "outputFileBytes": 3925204,
+      "transferRatio": 0.84,
+      "sourceTextureBytes": 2397593,
+      "ktx2TextureBytes": 1649918,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1178840,
+          "ktx2Bytes": 742785,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 232929,
+          "ktx2Bytes": 169681,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 985824,
+          "ktx2Bytes": 737452,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_spotter",
+      "source": "packages/assets/game/buildings/reclamation/spotter-mast.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/spotter-mast.glb",
+      "sourceFileBytes": 4519920,
+      "outputFileBytes": 3209056,
+      "transferRatio": 0.71,
+      "sourceTextureBytes": 3457637,
+      "ktx2TextureBytes": 2146574,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1713990,
+          "ktx2Bytes": 904160,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 321857,
+          "ktx2Bytes": 212405,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1421790,
+          "ktx2Bytes": 1030009,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_signalrig",
+      "source": "packages/assets/game/buildings/reclamation/signal-rig.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/signal-rig.glb",
+      "sourceFileBytes": 4276608,
+      "outputFileBytes": 3364916,
+      "transferRatio": 0.7868,
+      "sourceTextureBytes": 2774940,
+      "ktx2TextureBytes": 1863047,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1378606,
+          "ktx2Bytes": 831550,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 298906,
+          "ktx2Bytes": 199488,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1097428,
+          "ktx2Bytes": 832009,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_crucible",
+      "source": "packages/assets/game/buildings/reclamation/crucible.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/crucible.glb",
+      "sourceFileBytes": 3803612,
+      "outputFileBytes": 3189616,
+      "transferRatio": 0.8386,
+      "sourceTextureBytes": 2299842,
+      "ktx2TextureBytes": 1685639,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1097689,
+          "ktx2Bytes": 751855,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 310540,
+          "ktx2Bytes": 195058,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 891613,
+          "ktx2Bytes": 738726,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_depot",
+      "source": "packages/assets/game/buildings/reclamation/patch-yard.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/patch-yard.glb",
+      "sourceFileBytes": 3419592,
+      "outputFileBytes": 2875188,
+      "transferRatio": 0.8408,
+      "sourceTextureBytes": 2103811,
+      "ktx2TextureBytes": 1559203,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1021377,
+          "ktx2Bytes": 714700,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 291290,
+          "ktx2Bytes": 197314,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 791144,
+          "ktx2Bytes": 647189,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_drydock",
+      "source": "packages/assets/game/buildings/reclamation/breaker-dock.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/breaker-dock.glb",
+      "sourceFileBytes": 5004692,
+      "outputFileBytes": 4177676,
+      "transferRatio": 0.8348,
+      "sourceTextureBytes": 2607204,
+      "ktx2TextureBytes": 1779974,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1311752,
+          "ktx2Bytes": 798898,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 219432,
+          "ktx2Bytes": 165003,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1076020,
+          "ktx2Bytes": 816073,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_heap",
+      "source": "packages/assets/game/buildings/reclamation/slag-heap.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/slag-heap.glb",
+      "sourceFileBytes": 3960832,
+      "outputFileBytes": 3286236,
+      "transferRatio": 0.8297,
+      "sourceTextureBytes": 2238791,
+      "ktx2TextureBytes": 1563986,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1123448,
+          "ktx2Bytes": 717474,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 251376,
+          "ktx2Bytes": 181988,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 863967,
+          "ktx2Bytes": 664524,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "reclaim_spitpost",
+      "source": "packages/assets/game/buildings/reclamation/spitpost.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/spitpost.glb",
+      "sourceFileBytes": 2030696,
+      "outputFileBytes": 1795860,
+      "transferRatio": 0.8844,
+      "sourceTextureBytes": 774179,
+      "ktx2TextureBytes": 539144,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 375025,
+          "ktx2Bytes": 247253,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 101931,
+          "ktx2Bytes": 84005,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 297223,
+          "ktx2Bytes": 207886,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "reclaim_pylon",
+      "source": "packages/assets/game/buildings/reclamation/arc-pylon.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/arc-pylon.glb",
+      "sourceFileBytes": 2403284,
+      "outputFileBytes": 2267048,
+      "transferRatio": 0.9433,
+      "sourceTextureBytes": 578269,
+      "ktx2TextureBytes": 441835,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 306716,
+          "ktx2Bytes": 236318,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 64078,
+          "ktx2Bytes": 60070,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 207475,
+          "ktx2Bytes": 145447,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "reclaim_barricade",
+      "source": "packages/assets/game/buildings/reclamation/scrap-barricade.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/scrap-barricade.glb",
+      "sourceFileBytes": 1230692,
+      "outputFileBytes": 1038000,
+      "transferRatio": 0.8434,
+      "sourceTextureBytes": 729038,
+      "ktx2TextureBytes": 536138,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 344876,
+          "ktx2Bytes": 245716,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 94403,
+          "ktx2Bytes": 82081,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 289759,
+          "ktx2Bytes": 208341,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "reclaim_stormworks",
+      "source": "packages/assets/game/buildings/reclamation/stormworks.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/stormworks.glb",
+      "sourceFileBytes": 6245708,
+      "outputFileBytes": 5204540,
+      "transferRatio": 0.8333,
+      "sourceTextureBytes": 2958274,
+      "ktx2TextureBytes": 1916898,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1454139,
+          "ktx2Bytes": 842371,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 359560,
+          "ktx2Bytes": 231790,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1144575,
+          "ktx2Bytes": 842737,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "sourceFileBytes": 64897124,
+    "outputFileBytes": 55106480,
+    "transferRatio": 0.8491,
+    "sourceTextureBytes": 30080744,
+    "ktx2TextureBytes": 20287150,
+    "sourceGpuBytesRGBA8": 574619592,
+    "compressedGpuBytes8bpp": 102760434,
+    "compressedGpuBytes4bpp": 51380238
+  }
+}

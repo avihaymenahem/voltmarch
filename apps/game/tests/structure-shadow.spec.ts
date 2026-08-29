@@ -16,9 +16,9 @@
  *    colour pass rasterises nothing at all — the frame shows a full, sharp
  *    shadow of a building with only a pad beneath it.
  *
- * 2. THE BATCHER IS THE ONLY HOOK. `BatchPartSpec.customDepthMaterial` and
- *    `aoOccluder` exist because the InstancedMesh belongs to `InstanceBatch`
- *    and no art module can reach it.
+ * 2. THE BATCHER IS THE ONLY HOOK. `BatchPartSpec.customDepthMaterial`,
+ *    `aoOccluder` and `shadowOnly` exist because the InstancedMesh belongs to
+ *    `InstanceBatch` and no art module can reach it.
  *
  * 3. `aoOccluder: false` IS STRICT. `userData` is empty on almost every mesh in
  *    the game; a truthiness test would take all of them out of the GTAO normal
@@ -205,7 +205,7 @@ describe('buildings.system hands the batcher what it needs', () => {
 
 /* -------------------------------------------------------------------------- */
 
-describe('InstanceBatch carries both flags onto the mesh', () => {
+describe('InstanceBatch carries render flags onto the mesh', () => {
   function spec(extra: Partial<BatchPartSpec>): BatchPartSpec {
     return { geometry: new THREE.BoxGeometry(1, 1, 1), material: new THREE.MeshBasicMaterial(), ...extra };
   }
@@ -236,6 +236,20 @@ describe('InstanceBatch carries both flags onto the mesh', () => {
       expect(on.parts[0].mesh.userData.vmAoOccluder,
         `aoOccluder: ${String(value)} must leave the mesh in the prepass`).toBeUndefined();
       on.dispose();
+    }
+  });
+
+  it('stamps vmShadowOnly ONLY for an explicit true and preserves it across growth', () => {
+    const shadow = new InstanceBatch([spec({ shadowOnly: true })], 'shadow-test');
+    expect(shadow.parts[0].mesh.userData.vmShadowOnly).toBe(true);
+    for (let i = 0; i < 33; i++) shadow.alloc();
+    expect(shadow.parts[0].mesh.userData.vmShadowOnly).toBe(true);
+    shadow.dispose();
+
+    for (const value of [undefined, false] as const) {
+      const colour = new InstanceBatch([spec({ shadowOnly: value })], 'colour-test');
+      expect(colour.parts[0].mesh.userData.vmShadowOnly).toBeUndefined();
+      colour.dispose();
     }
   });
 

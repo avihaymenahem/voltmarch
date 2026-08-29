@@ -48,6 +48,7 @@
   top: calc(10 * var(--vm-u, 1px));
   left: calc(10 * var(--vm-u, 1px));
   width: calc(150 * var(--vm-u, 1px));
+  box-sizing: border-box;
   z-index: 6;
 
   display: flex;
@@ -70,6 +71,31 @@
   letter-spacing: 0.06em;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
+
+.vm-perf.has-user-size {
+  overflow: hidden;
+}
+
+.vm-perf-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: nwse-resize;
+  outline: none;
+  background:
+    linear-gradient(135deg, transparent 0 44%, var(--vm-faint, #74818f) 45% 52%, transparent 53% 64%, var(--vm-accent, #9d5bd2) 65% 72%, transparent 73%);
+}
+
+.vm-perf-resize:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--vm-accent, #9d5bd2);
+}
+
+.vm-perf.is-resizing .vm-perf-resize { cursor: nwse-resize; }
 
 .vm-perf[hidden] { display: none; }
 
@@ -248,9 +274,8 @@
   font-weight: 700;
 }
 
-/* THE BUDGET COULD NOT BE CHECKED, which is a third state and not a pass. The
-   node renderer has no seam between the shadow pass and the colour pass to
-   meter, so the row prints `n/a col / 130` and is dimmed to the key colour —
+/* THE COLOUR SPLIT COULD NOT BE READ, which is a third state and not a pass.
+   An uninstrumented/fallback renderer prints `n/a col` and is dimmed —
    the same treatment every unmeasured thing on this panel gets, and visibly
    not the white of a number that was read. */
 .vm-perf.is-draws-unknown .vm-perf-row:nth-child(4) .vm-perf-v {

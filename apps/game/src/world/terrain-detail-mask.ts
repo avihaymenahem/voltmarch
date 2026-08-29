@@ -1,11 +1,15 @@
 import * as THREE from 'three';
-import terrainDetailUrl from '../assets/terrain/universal-terrain-mask-4k.png?url';
+import terrainDetailUrl from '../../../../packages/assets/game/terrain/universal-terrain-mask-4k.png?url';
 
 /** World-space size of one repeat of the supplied tileable terrain artwork. */
 export const TERRAIN_DETAIL_TILE_METRES = 72;
 
-/** Full peak-to-peak luminance modulation. The texture therefore moves albedo by at most +/-22%. */
-export const TERRAIN_DETAIL_STRENGTH = 0.44;
+/**
+ * Full peak-to-peak ground luminance modulation. This is a strength, not an
+ * opacity, so the requested 5% reduction is relative: 0.44 * 0.95 = 0.418.
+ * Road and pavement passes have independent settings below and are unchanged.
+ */
+export const TERRAIN_DETAIL_STRENGTH = 0.418;
 
 /** Small material response so the mask reads as surface structure, not a transparent picture. */
 export const TERRAIN_DETAIL_ROUGHNESS = 0.07;

@@ -24,6 +24,7 @@ import {
   setRenderBridge,
   type KindMesh,
 } from '../src/render/RenderBridge';
+import { CameraRenderCullVolume } from '../src/render/RenderCullVolume';
 
 const P0 = 0 as PlayerId;
 
@@ -365,13 +366,28 @@ describe('InstanceBatcher — slot lifecycle', () => {
   it('grows geometrically past the initial capacity without losing anyone', () => {
     const { store, scene, bridge } = makeRig();
     const n = INSTANCE_BATCH_INITIAL_CAPACITY * 3 + 7;
-    for (let k = 0; k < n; k++) {
+    // Render the initial allocation first. WebGPU compiles its instance node at
+    // this point, which is the production path a later Cheat Engine burst hits.
+    for (let k = 0; k < INSTANCE_BATCH_INITIAL_CAPACITY; k++) {
+      store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, k, 0, k * 2, 0);
+    }
+    store.snapshotPrev();
+    bridge.update(1);
+    const initialMesh = meshes(scene)[0];
+    expect(initialMesh.instanceMatrix.count).toBe(INSTANCE_BATCH_INITIAL_CAPACITY);
+
+    for (let k = INSTANCE_BATCH_INITIAL_CAPACITY; k < n; k++) {
       store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, k, 0, k * 2, 0);
     }
     store.snapshotPrev();
     bridge.update(1);
 
     const mesh = meshes(scene)[0];
+    // Growth must replace the draw object. Three/WebGPU's compiled instancing
+    // node captures the original attribute and cannot observe an array swap.
+    expect(mesh).not.toBe(initialMesh);
+    expect(initialMesh.parent).toBeNull();
+    expect(mesh.instanceMatrix.count).toBeGreaterThanOrEqual(n);
     expect(mesh.count).toBe(n);
     expect(bridge.instanceCount).toBe(n);
     // Growth reallocates the buffer; every earlier instance must survive it.
@@ -393,6 +409,51 @@ describe('InstanceBatcher — slot lifecycle', () => {
     // Must reach both corners plus the model's own radius.
     expect(sphere.radius).toBeGreaterThan(Math.hypot(200, 150));
     teardown(bridge);
+  });
+
+  it('compacts a camera-culled hole so drawCount and GPU vertex work shrink', () => {
+    const { store, scene, bridge } = makeRig();
+    const first = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 0, 0);
+    const middle = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 20, 0, 0, 0);
+    const last = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 30, 0, 0, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(meshes(scene)[0].count).toBe(3);
+
+    bridge.update(1, 1, 0, {
+      intersectsSphere: (x) => x !== 20,
+    });
+
+    const mesh = meshes(scene)[0];
+    expect(mesh.count).toBe(2);
+    expect(translation(mesh, 0)).toEqual([10, 0, 0]);
+    // The former tail moved into the released middle slot, including its
+    // owner binding. It must stay addressable by gameplay/VFX queries.
+    expect(translation(mesh, 1)).toEqual([30, 0, 0]);
+    expect(bridge.isRendered(first)).toBe(true);
+    expect(bridge.isRendered(middle)).toBe(false);
+    expect(bridge.isRendered(last)).toBe(true);
+    expect(bridge.cameraCulled).toBe(1);
+    expect(bridge.auditNow().misses).toHaveLength(0);
+    teardown(bridge);
+  });
+});
+
+describe('CameraRenderCullVolume', () => {
+  it('rejects distant spheres but preserves objects inside the expanded margin', () => {
+    const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 500);
+    camera.position.set(0, 30, 30);
+    camera.lookAt(0, 0, 0);
+    const volume = new CameraRenderCullVolume();
+
+    volume.update(camera, 0);
+    expect(volume.intersectsSphere(0, 0, 0, 1)).toBe(true);
+    expect(volume.intersectsSphere(200, 0, 0, 1)).toBe(false);
+
+    volume.update(camera, 40);
+    // Just outside the colour frustum remains resident for a possible shadow.
+    expect(volume.intersectsSphere(45, 0, 0, 2)).toBe(true);
+    expect(volume.intersectsSphere(200, 0, 0, 2)).toBe(false);
   });
 });
 

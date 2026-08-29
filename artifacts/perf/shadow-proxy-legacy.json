@@ -1,0 +1,97 @@
+{
+  "webgpu": {
+    "backend": "webgpu",
+    "gpu": "nvidia ampere",
+    "resolution": "1920x1080",
+    "drawCalls": 823,
+    "drawCallsByPass": {
+      "shadow": 382,
+      "colour": 412,
+      "ao": 8,
+      "post": 21,
+      "total": 823
+    },
+    "triangles": 1945590,
+    "trianglesByPass": {
+      "shadow": 753296,
+      "colour": 1192265,
+      "ao": 8,
+      "post": 21,
+      "total": 1945590
+    },
+    "programs": 245,
+    "entities": 120,
+    "units": 16,
+    "shadowOnly": [
+      {
+        "name": "model#7:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#3:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#9:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#17:root",
+        "instances": 2,
+        "visible": true
+      },
+      {
+        "name": "model#5:root",
+        "instances": 6,
+        "visible": true
+      },
+      {
+        "name": "model#13:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#11:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#1:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#26:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#27:root",
+        "instances": 2,
+        "visible": true
+      },
+      {
+        "name": "model#119:root",
+        "instances": 2,
+        "visible": true
+      },
+      {
+        "name": "model#129:root",
+        "instances": 2,
+        "visible": true
+      }
+    ],
+    "ramp": null,
+    "wallPerFrameBlocks": [
+      4.390000000099341,
+      4.256666666766008
+    ],
+    "wallPerFrameMs": 4.256666666766008,
+    "wallMedianMs": 4.323333333432674,
+    "cpuMs": 0.44999999925494194,
+    "statsFrameMs": 136.55000000074506
+  }
+}

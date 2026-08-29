@@ -1760,6 +1760,124 @@ default yet. The next honest step toward Lumen-like lighting is a sparse probe o
 for stable off-screen low-frequency bounce, with this SSGI pass reserved for local contact detail.
 That work should be accepted only against the existing 1440p scorecard and a timestamp-capable GPU.
 
+### Camera-aware instance culling — shipped with dense slot compaction
+
+**Measured 2026-08-29; enabled by default.** `RenderBridge` now rejects entity spheres outside the
+camera frustum plus a 40 m shadow-safe margin. That margin retains an aircraft whose off-screen sun
+shadow can still land in the viewport. It applies only to entity instance batches; terrain, roads,
+water, VFX and HUD keep their existing culling/lifetime rules. `?rendercull=off` is the development
+A/B escape hatch.
+
+This needed a batching change as well as a frustum test. `InstancedMesh.count` draws one prefix, so
+freeing an off-screen slot in the middle of a high-water allocation would otherwise save bridge CPU
+but submit the same vertices. `InstanceBatch.free` now moves the live tail into the hole, copies all
+matrix/state/team channels, and returns the moved entity owner so the bridge updates its binding.
+The result is a dense `[0, liveCount)` prefix and a draw count that really falls. The visibility audit
+classifies camera-culled entities separately instead of reporting them as invisible failures.
+
+The fixed 300-second four-army WebGPU match at 1920x1080, seed 7, submitted the same 497-entity world
+in both arms:
+
+| WebGPU metric | culling off | culling on | reduction |
+|---|---:|---:|---:|
+| total triangles | 1,731,800 | 1,213,129 | 29.9% |
+| shadow triangles | 921,302 | 577,164 | 37.4% |
+| colour triangles | 810,469 | 635,936 | 21.5% |
+| draw calls | 571 | 523 | 8.4% |
+
+Raw captures are `artifacts/perf/render-cull-off.json` and `render-cull-on.json`. The frame-time
+figures originally published here (4.3% median / 10.8% best-block improvement) were withdrawn on
+2026-08-29: the harness called `advanceFrames(n)`, whose contract advances all n presentation
+steps but deliberately draws only the last one, then divided that single draw and readback by n.
+The structural triangle/pass split above remains exact WebGPU node-path accounting; timing must be
+re-run with the corrected one-present-per-call harness before attaching a CPU/GPU percentage to
+camera culling. The broad affected check passed render (973), assets (532),
+contracts (296), UI and build/typecheck work; one concurrent terrain reachability test hit its
+120-second timeout and passed alone (4/4) in 71 seconds.
+
+### Shadow proxies are shadow-pass objects, not low-detail colour models
+
+**Measured 2026-08-29; enabled on WebGL and WebGPU.** Imported unit and structure shadow proxies
+used to remain ordinary visible scene objects. Their depth material made them useful in the shadow
+map, but the colour renderer still submitted them after the reviewed model, paying a second draw for
+an object whose colour contribution was intentionally invisible. Model metadata now marks these
+parts `vmShadowOnly`; each renderer filters them outside its shadow pass, and batch growth preserves
+the tag when it replaces a WebGPU `InstancedMesh`. `?shadowproxy=legacy` is the A/B escape hatch.
+
+On the fixed 1920x1080 Soviet-base WebGPU fixture, filtering removed 12 colour/total draws,
+38,880 colour triangles and 26 compiled programs. Shadow draws and shadow triangles were identical.
+Raw captures are `artifacts/perf/shadow-proxy-legacy.json` and `shadow-proxy-filtered.json`.
+
+### WebGPU scatter uses typed hardware instancing, not BatchedMesh
+
+**Measured 2026-08-29; enabled by default.** Three r185's WebGPU `BatchedMesh` is not one hardware
+draw for a heterogeneous prop carpet: `WebGPUBackend` loops `_multiDrawCount` and calls
+`drawIndexed` once per visible instance. The Soviet-base fixture's apparently single
+`prop.batch.shadow` object therefore issued 343 colour draws and 343 shadow draws for 3,682 resident
+props. Scatter now shares the typed `InstancedMesh` path with WebGL: one submission per visible prop
+type, with the same chunk culling, transforms, colour, wind phase and shadow rules. The old path is
+retained only behind `?scatterbatch=legacy` so future Three upgrades can be measured honestly.
+
+At 1920x1080 the same scene fell from 811 to 153 total draws: shadow 382 -> 53 and colour 400 -> 71,
+an 81.1% submission reduction. Total, shadow and colour triangle counts were bit-identical; this is
+not hidden geometry or reduced prop density. Compiled programs rose from 219 to 297 because Three
+keys node pipelines by `InstancedMesh` identity, which is the explicit cold-boot/memory trade for
+removing 658 recurring submissions. Do not coerce those UUIDs or monkey-patch the cache key:
+Three's cached node-builder state also owns the instance-buffer bindings, so apparent program reuse
+can make one prop type read another type's transforms. Raw paired captures are
+`artifacts/perf/scatter-legacy-paired.json` and `scatter-instanced-paired.json`.
+
+### Stable-camera shadows run at 30 Hz; camera motion remains full-rate
+
+**Measured 2026-08-29; enabled by default on WebGPU and WebGL.** A static RTS camera does not need
+to rebuild a 2048 px directional shadow map at every 60 Hz presentation. `ShadowCadence` now targets
+30 shadow updates per second while the camera and projection matrices are unchanged. Pan, orbit,
+zoom, aspect changes, camera shake, explicit captures and shadow-setting changes force the current
+frame to rebuild. At 30 fps or below every frame updates, so the scheduler never compounds an
+already-slow presentation with visible 15 Hz shadow motion.
+
+There are two backend switches and both must remain manual. WebGL consults
+`renderer.shadowMap.autoUpdate/needsUpdate`; Three r185's WebGPU `ShadowNode` ignores that cadence
+and consults `DirectionalLight.shadow.autoUpdate/needsUpdate`. `RendererHandle.beginFrame` returns
+one cross-backend decision and Bootstrap writes it to the sun's `LightShadow`. A dedicated latch
+also avoids treating WebGPU's persistent renderer-level `needsUpdate` value as a new request every
+frame. `?shadowcadence=legacy` restores full-rate shadows; `?shadowcadence=half` is the deterministic
+alternating A/B mode and intentionally overrides camera forcing for measurement only.
+
+The A/B also fixed `tools/gpu-frame-ab.mjs`: timing now calls `advanceFrames(1)` once per submitted
+frame instead of timing `advanceFrames(n)`'s single final draw and dividing by n. On the fixed
+Soviet-base WebGPU fixture at 1920x1080, seven blocks of 180 real submitted frames produced exactly
+180 scheduled shadow updates per legacy block and 90 per alternating block. Median uncapped
+wall/submit fell from 1.229 ms to 1.153 ms (6.2%); the best blocks were effectively tied at
+1.085 vs 1.078 ms. The equal screenshot readback in every block makes this a conservative
+CPU+submission result, not a promise of 6.2% more player-visible FPS. The default adaptive mode
+uses this saving only on stable high-refresh frames; movement keeps the existing visual response.
+An organic 60 Hz WebGPU boot (not the deterministic harness) then scheduled 74 shadow rebuilds
+across 121 presented frames over two seconds—39% fewer—while 31 camera/projection changes correctly
+forced immediate updates; the browser reported no page exceptions.
+
+### Low ground cover no longer submits imperceptible shadow draws
+
+**Measured 2026-08-29; enabled by default on WebGPU and WebGL.** Scatter definitions now author
+whether a prop type casts. Only the two grass-tuft types and the 0.8 m flower bed opt out; trees,
+shrubs, rocks, debris, street furniture and every unit/structure retain their existing shadows.
+This is an explicit authoring flag rather than a height heuristic because a bench, drum or low rock
+still needs a contact shadow to read as a solid object. `?scattershadow=legacy` restores the previous
+all-types behavior for same-build A/B measurements.
+
+On the fixed Soviet-base WebGPU fixture at 1920x1080, five blocks of 120 actually submitted frames
+reduced total/shadow draws from 153/54 to 150/51, shadow triangles from 710,028 to 673,692
+(-36,336, 5.1%), and compiled programs from 297 to 291. Colour draws and colour triangles were
+identical. Median uncapped wall/submit fell from 1.413 ms to 1.322 ms (6.4%); best blocks fell from
+1.358 ms to 1.227 ms (9.7%). These are small-scene submission measurements, not a promise of the
+same player-visible FPS percentage in a live match.
+
+The final acceptance pair used real Chrome/WebGPU, the same scene/seed/camera/presentation clock,
+and resident terrain-detail artwork. The filtered and legacy screenshots were byte-identical:
+0 changed pixels out of 921,600. An earlier cold first-process pair was rejected because the 4K
+terrain-detail image was still the neutral placeholder in one arm; `gpu-frame-ab.mjs --capture`
+now gives that asynchronous decode a real-time completion window before its final frame.
+
 
 ---
 

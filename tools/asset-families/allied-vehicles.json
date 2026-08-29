@@ -1,8 +1,8 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "sourceDir": "apps/game/src/assets/units/allies",
-  "outputDir": "apps/game/src/assets/units/allies/derived",
+  "sourceDir": "packages/assets/game/units/allies",
+  "outputDir": "packages/assets/game/units/allies/derived",
   "profiles": {
     "lod1": { "ratio": 0.45, "error": 0.006, "maxRatio": 0.55 },
     "lod2": { "ratio": 0.18, "error": 0.02, "maxRatio": 0.30 },

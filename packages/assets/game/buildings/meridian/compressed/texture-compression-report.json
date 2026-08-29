@@ -1,0 +1,1013 @@
+{
+  "version": 1,
+  "family": "meridian-buildings",
+  "generatedAt": "2026-08-23T22:17:56.569Z",
+  "encoder": "Basis Universal 1.16.x",
+  "profiles": {
+    "color": "ETC1S q255 comp2 + sRGB mips",
+    "normal": "UASTC level2 RDO 0.50 + 1K landmark/512px small-asset ceiling + normal-renormalized linear mips",
+    "packedData": "ETC1S q255 comp2 + linear mips"
+  },
+  "rows": [
+    {
+      "key": "meridian_conclave",
+      "source": "packages/assets/game/buildings/meridian/conclave.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/conclave.glb",
+      "sourceFileBytes": 5518176,
+      "outputFileBytes": 3827788,
+      "transferRatio": 0.6937,
+      "sourceTextureBytes": 3910181,
+      "ktx2TextureBytes": 2219594,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1985272,
+          "ktx2Bytes": 965019,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 304906,
+          "ktx2Bytes": 196470,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1620003,
+          "ktx2Bytes": 1058105,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_solararray",
+      "source": "packages/assets/game/buildings/meridian/solar-array.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/solar-array.glb",
+      "sourceFileBytes": 10717904,
+      "outputFileBytes": 4145972,
+      "transferRatio": 0.3868,
+      "sourceTextureBytes": 9207232,
+      "ktx2TextureBytes": 2635101,
+      "sourceGpuBytesRGBA8": 67108860,
+      "compressedGpuBytes8bpp": 12582911,
+      "compressedGpuBytes4bpp": 6291457,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 3825873,
+          "ktx2Bytes": 914438,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2518124,
+          "ktx2Bytes": 691798,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 2863235,
+          "ktx2Bytes": 1028865,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_cistern",
+      "source": "packages/assets/game/buildings/meridian/ore-cistern.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/ore-cistern.glb",
+      "sourceFileBytes": 11683604,
+      "outputFileBytes": 4738272,
+      "transferRatio": 0.4055,
+      "sourceTextureBytes": 9662606,
+      "ktx2TextureBytes": 2717079,
+      "sourceGpuBytesRGBA8": 67108860,
+      "compressedGpuBytes8bpp": 12582911,
+      "compressedGpuBytes4bpp": 6291457,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 3879701,
+          "ktx2Bytes": 897646,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2828382,
+          "ktx2Bytes": 762012,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 2954523,
+          "ktx2Bytes": 1057421,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_chapterhouse",
+      "source": "packages/assets/game/buildings/meridian/chapterhouse.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/chapterhouse.glb",
+      "sourceFileBytes": 10059864,
+      "outputFileBytes": 3964552,
+      "transferRatio": 0.3941,
+      "sourceTextureBytes": 8460041,
+      "ktx2TextureBytes": 2364547,
+      "sourceGpuBytesRGBA8": 67108860,
+      "compressedGpuBytes8bpp": 12582911,
+      "compressedGpuBytes4bpp": 6291457,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 3716710,
+          "ktx2Bytes": 897135,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1969746,
+          "ktx2Bytes": 448704,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 2773585,
+          "ktx2Bytes": 1018708,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_forgeyard",
+      "source": "packages/assets/game/buildings/meridian/forgeyard.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/forgeyard.glb",
+      "sourceFileBytes": 11386656,
+      "outputFileBytes": 4645996,
+      "transferRatio": 0.408,
+      "sourceTextureBytes": 9311022,
+      "ktx2TextureBytes": 2570163,
+      "sourceGpuBytesRGBA8": 67108860,
+      "compressedGpuBytes8bpp": 12582911,
+      "compressedGpuBytes4bpp": 6291457,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 4052359,
+          "ktx2Bytes": 933567,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2299566,
+          "ktx2Bytes": 605059,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 2959097,
+          "ktx2Bytes": 1031537,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_oculus",
+      "source": "packages/assets/game/buildings/meridian/oculus.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/oculus.glb",
+      "sourceFileBytes": 5121416,
+      "outputFileBytes": 3509468,
+      "transferRatio": 0.6853,
+      "sourceTextureBytes": 3944087,
+      "ktx2TextureBytes": 2331941,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2001866,
+          "ktx2Bytes": 1012914,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 362735,
+          "ktx2Bytes": 226303,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1579486,
+          "ktx2Bytes": 1092724,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_pharos",
+      "source": "packages/assets/game/buildings/meridian/pharos.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/pharos.glb",
+      "sourceFileBytes": 4555776,
+      "outputFileBytes": 3179004,
+      "transferRatio": 0.6978,
+      "sourceTextureBytes": 3647281,
+      "ktx2TextureBytes": 2270304,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1808499,
+          "ktx2Bytes": 979799,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 386534,
+          "ktx2Bytes": 229816,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1452248,
+          "ktx2Bytes": 1060689,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_reliquary",
+      "source": "packages/assets/game/buildings/meridian/reliquary.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/reliquary.glb",
+      "sourceFileBytes": 5487404,
+      "outputFileBytes": 3699064,
+      "transferRatio": 0.6741,
+      "sourceTextureBytes": 4219926,
+      "ktx2TextureBytes": 2431387,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2101519,
+          "ktx2Bytes": 1021431,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 448337,
+          "ktx2Bytes": 249199,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1670070,
+          "ktx2Bytes": 1160757,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_depot",
+      "source": "packages/assets/game/buildings/meridian/solar-infirmary.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/solar-infirmary.glb",
+      "sourceFileBytes": 4521764,
+      "outputFileBytes": 3282172,
+      "transferRatio": 0.7259,
+      "sourceTextureBytes": 3361797,
+      "ktx2TextureBytes": 2122005,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1677696,
+          "ktx2Bytes": 922346,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 338000,
+          "ktx2Bytes": 221691,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1346101,
+          "ktx2Bytes": 977968,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_slipway",
+      "source": "packages/assets/game/buildings/meridian/slipway.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/slipway.glb",
+      "sourceFileBytes": 5521188,
+      "outputFileBytes": 3958976,
+      "transferRatio": 0.7171,
+      "sourceTextureBytes": 3855573,
+      "ktx2TextureBytes": 2293154,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1981976,
+          "ktx2Bytes": 983753,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 292370,
+          "ktx2Bytes": 191359,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1581227,
+          "ktx2Bytes": 1118042,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    },
+    {
+      "key": "meridian_vault",
+      "source": "packages/assets/game/buildings/meridian/sun-vault.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/sun-vault.glb",
+      "sourceFileBytes": 1738804,
+      "outputFileBytes": 1420872,
+      "transferRatio": 0.8172,
+      "sourceTextureBytes": 911089,
+      "ktx2TextureBytes": 592951,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 444223,
+          "ktx2Bytes": 273443,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 125544,
+          "ktx2Bytes": 76779,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 341322,
+          "ktx2Bytes": 242729,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "meridian_glaive",
+      "source": "packages/assets/game/buildings/meridian/meridian-glaive-v2.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/meridian-glaive-v2.glb",
+      "sourceFileBytes": 1614552,
+      "outputFileBytes": 1228528,
+      "transferRatio": 0.7609,
+      "sourceTextureBytes": 956034,
+      "ktx2TextureBytes": 569802,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 447001,
+          "ktx2Bytes": 255605,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 104265,
+          "ktx2Bytes": 64396,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 404768,
+          "ktx2Bytes": 249801,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "meridian_helios",
+      "source": "packages/assets/game/buildings/meridian/helios-spire.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/helios-spire.glb",
+      "sourceFileBytes": 1709460,
+      "outputFileBytes": 1357416,
+      "transferRatio": 0.7941,
+      "sourceTextureBytes": 993171,
+      "ktx2TextureBytes": 640924,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 465687,
+          "ktx2Bytes": 287885,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 115888,
+          "ktx2Bytes": 83647,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 411596,
+          "ktx2Bytes": 269392,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "meridian_rampart",
+      "source": "packages/assets/game/buildings/meridian/rampart.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/rampart.glb",
+      "sourceFileBytes": 1359156,
+      "outputFileBytes": 1039416,
+      "transferRatio": 0.7648,
+      "sourceTextureBytes": 902315,
+      "ktx2TextureBytes": 582381,
+      "sourceGpuBytesRGBA8": 12582908,
+      "compressedGpuBytes8bpp": 2097151,
+      "compressedGpuBytes4bpp": 1048577,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 427707,
+          "ktx2Bytes": 266223,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 512,
+          "sourceHeight": 512,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 106585,
+          "ktx2Bytes": 68430,
+          "sourceGpuBytesRGBA8": 1398100,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 512,
+          "height": 512,
+          "opaque": true,
+          "sourceBytes": 368023,
+          "ktx2Bytes": 247728,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 349525,
+          "compressedGpuBytes4bpp": 174763
+        }
+      ]
+    },
+    {
+      "key": "meridian_heliograph",
+      "source": "packages/assets/game/buildings/meridian/heliograph.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/heliograph.glb",
+      "sourceFileBytes": 6067880,
+      "outputFileBytes": 4398000,
+      "transferRatio": 0.7248,
+      "sourceTextureBytes": 3996865,
+      "ktx2TextureBytes": 2326786,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1998021,
+          "ktx2Bytes": 996541,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 398105,
+          "ktx2Bytes": 228635,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1600739,
+          "ktx2Bytes": 1101610,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "sourceFileBytes": 87063604,
+    "outputFileBytes": 48395496,
+    "transferRatio": 0.5559,
+    "sourceTextureBytes": 67339220,
+    "ktx2TextureBytes": 28668119,
+    "sourceGpuBytesRGBA8": 671088580,
+    "compressedGpuBytes8bpp": 117440497,
+    "compressedGpuBytes4bpp": 58720271
+  }
+}

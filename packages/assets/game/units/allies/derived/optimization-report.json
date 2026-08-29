@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "family": "allied-vehicles",
+  "generatedAt": "2026-08-27T18:12:22.843Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/allied-vehicles.json",
+  "rows": [
+    {
+      "key": "allied_harvester",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/chrono-miner.glb",
+        "triangles": 49825,
+        "fileBytes": 5323820
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/chrono-miner.lod1.glb",
+          "triangles": 22416,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00164,
+          "boundsDriftRatio": 0.00148,
+          "fileBytes": 706412,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/chrono-miner.lod2.glb",
+          "triangles": 8968,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00167,
+          "boundsDriftRatio": 0.00151,
+          "fileBytes": 357928,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/chrono-miner.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0347,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24996,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "allied_dozer",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/construction-dozer.glb",
+        "triangles": 19305,
+        "fileBytes": 4098260
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/construction-dozer.lod1.glb",
+          "triangles": 10862,
+          "triangleRatio": 0.5627,
+          "boundsDriftMeters": 0.01077,
+          "boundsDriftRatio": 0.00816,
+          "fileBytes": 435724,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/construction-dozer.lod2.glb",
+          "triangles": 6711,
+          "triangleRatio": 0.3476,
+          "boundsDriftMeters": 0.01154,
+          "boundsDriftRatio": 0.00875,
+          "fileBytes": 311888,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/construction-dozer.shadow.glb",
+          "triangles": 2112,
+          "triangleRatio": 0.1094,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 30368,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 176
+        }
+      ]
+    },
+    {
+      "key": "allied_vindicator",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/petrel-bomber.glb",
+        "triangles": 18056,
+        "fileBytes": 3256752
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/petrel-bomber.lod1.glb",
+          "triangles": 8119,
+          "triangleRatio": 0.4497,
+          "boundsDriftMeters": 0.00065,
+          "boundsDriftRatio": 0.00117,
+          "fileBytes": 297740,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/petrel-bomber.lod2.glb",
+          "triangles": 3250,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00389,
+          "boundsDriftRatio": 0.00434,
+          "fileBytes": 155096,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/petrel-bomber.shadow.glb",
+          "triangles": 1416,
+          "triangleRatio": 0.0784,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 20624,
+          "geometryOnly": true,
+          "grid": [
+            13,
+            16
+          ],
+          "occupiedCells": 118
+        }
+      ]
+    }
+  ]
+}

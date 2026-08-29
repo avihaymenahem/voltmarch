@@ -80,6 +80,6 @@ Maximum planned Meshy spend: 30 credits.
 - Consumed credits: 10; account balance after the complete Proving Ground: 690.
 - Shipping body: 14,790 triangles, 17,690 vertices, one static mesh/material and 3.28 MiB.
 - Shipping maps: 2048 base colour, 2048 tangent-space normal and 1024 packed metal-roughness.
-- Runtime asset: `apps/game/src/assets/buildings/soviets/proving-ground.glb`.
+- Runtime asset: `packages/assets/game/buildings/soviets/proving-ground.glb`.
 - The imported body replaces every procedural visual mass. Existing base and coil-tip sockets,
   construction rise, instancing and shadow behaviour remain under the normal structure path.

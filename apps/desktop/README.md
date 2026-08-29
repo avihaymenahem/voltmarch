@@ -1,7 +1,7 @@
 # VOLTMARCH — desktop shell
 
 The Electron wrapper. **It contains no game code and never will** — it serves the unmodified
-`apps/game/dist/` Vite output as opaque bytes, and `apps/game/tests/desktop-shell.spec.ts` fails if a
+`apps/game/dist/` Vite output as opaque bytes, and `tests/integration/desktop-shell.spec.ts` fails if a
 file here ever imports from `apps/game/src/` or from `three`. Same boundary, same reason, as
 [`apps/relay/README.md`](../relay/README.md).
 

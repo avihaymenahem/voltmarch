@@ -58,7 +58,7 @@ Maximum spend: 30 credits.
 - PBR retexture task: `01a02d5b-549a-74d2-a6ac-10a2c15685ce` (10 credits).
 - The coherent 1,975,884-triangle source was locally reduced to 27,554 triangles, then xatlas
   unwrapped at 2048 resolution and 8 px padding with zero bounds drift.
-- Shipping body: `apps/game/src/assets/buildings/soviets/ironclad-field.glb`; 16,437 triangles, one static
+- Shipping body: `packages/assets/game/buildings/soviets/ironclad-field.glb`; 16,437 triangles, one static
   primitive/material, 4.01 MiB.
 - Material maps: 2K base colour, 2K normal and 1K packed metal-roughness. The deterministic Soviet
   field pass restores olive armour while retaining continuous crimson pylon/emitter/capacitor panels

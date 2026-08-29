@@ -5,19 +5,19 @@ import { describe, expect, it } from 'vitest';
 const ASSETS = [
   {
     name: 'Construction Yard',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/construction-yard-surface-v2.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/construction-yard-surface-v2.glb'),
     maxTriangles: 40_000,
     maxBytes: 9 * 1024 * 1024,
   },
   {
     name: 'Tesla Reactor',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/tesla-reactor.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/tesla-reactor.glb'),
     maxTriangles: 25_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Flame Tower',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/flame-tower.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/flame-tower.glb'),
     maxTriangles: 14_000,
     maxBytes: 3 * 1024 * 1024,
     textureDimensions: {
@@ -28,7 +28,7 @@ const ASSETS = [
   },
   {
     name: 'Sentry Gun',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/sentry-gun.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/sentry-gun.glb'),
     maxTriangles: 14_000,
     maxBytes: 3 * 1024 * 1024,
     maxMeshes: 2,
@@ -40,7 +40,7 @@ const ASSETS = [
   },
   {
     name: 'Tesla Coil',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/tesla-coil.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/tesla-coil.glb'),
     maxTriangles: 14_000,
     maxBytes: 3 * 1024 * 1024,
     textureDimensions: {
@@ -51,67 +51,67 @@ const ASSETS = [
   },
   {
     name: 'Barracks',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/barracks.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/barracks.glb'),
     maxTriangles: 25_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'War Factory',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/war-factory.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/war-factory.glb'),
     maxTriangles: 40_000,
     maxBytes: 9 * 1024 * 1024,
   },
   {
     name: 'Ore Refinery',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/ore-refinery.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/ore-refinery.glb'),
     maxTriangles: 40_000,
     maxBytes: 9 * 1024 * 1024,
   },
   {
     name: 'Radar Tower',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/radar-tower.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/radar-tower.glb'),
     maxTriangles: 25_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Proving Ground',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/proving-ground.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/proving-ground.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Command Bunker',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/command-bunker.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/command-bunker.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Repair Depot',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/repair-depot.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/repair-depot.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Naval Pen',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/naval-pen.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/naval-pen.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Nuclear Missile Silo',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/nuclear-silo.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/nuclear-silo.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Ironclad Field',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/ironclad-field.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/ironclad-field.glb'),
     maxTriangles: 20_000,
     maxBytes: 6 * 1024 * 1024,
   },
   {
     name: 'Ore Silo',
-    path: path.resolve('apps/game/src/assets/buildings/soviets/ore-silo.glb'),
+    path: path.resolve('packages/assets/game/buildings/soviets/ore-silo.glb'),
     maxTriangles: 14_000,
     maxBytes: 3 * 1024 * 1024,
     textureDimensions: {

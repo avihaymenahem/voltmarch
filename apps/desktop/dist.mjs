@@ -34,7 +34,7 @@ if (!existsSync(path.join(dist, 'index.html'))) {
   process.exit(1);
 }
 
-const icon = path.join(GAME, 'public', 'brand', 'mark-512.png');
+const icon = path.join(ROOT, 'packages', 'assets', 'brand', 'mark-512.png');
 
 console.log(`packaging VOLTMARCH ${version}`);
 // Invoke electron-builder's cli.js with the CURRENT node rather than going

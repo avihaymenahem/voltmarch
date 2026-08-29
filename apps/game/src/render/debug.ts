@@ -142,6 +142,7 @@ export interface FrameStats {
    * frame. All zero when there is no post chain to meter.
    */
   drawCallsByPass: DrawCallBreakdown;
+  trianglesByPass: DrawCallBreakdown | null;
   /** Last asynchronously resolved GPU milliseconds by render pass. */
   gpuPasses: Readonly<Record<GpuPassId, number | null>>;
   triangles: number;
@@ -871,6 +872,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     const gpuPasses = Object.fromEntries(
       GPU_PASS_IDS.map((id) => [id, gpu?.values[gpuPassIndex(id)] ?? null]),
     ) as Record<GpuPassId, number | null>;
+    const triangleSplit = post?.trianglesByPass ?? null;
     return {
       fps,
       frameMs,
@@ -879,6 +881,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       cpuMs,
       drawCalls: info.drawCalls,
       drawCallsByPass: readDrawCallsByPass(info.drawCalls),
+      trianglesByPass: triangleSplit === null ? null : { ...triangleSplit },
       gpuPasses,
       triangles: info.triangles,
       points: info.points,

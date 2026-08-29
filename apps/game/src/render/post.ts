@@ -203,6 +203,7 @@ import {
 } from './renderer';
 import { LAYERS } from './scene';
 import { nodePath } from './gpu-path';
+import { shouldSkipShadowOnlyObject } from './shadow-only';
 /*
  * ONE TONE-MODE TABLE FOR BOTH POST CHAINS.
  *
@@ -946,7 +947,7 @@ function lumaNormalized(hex: number, out: THREE.Vector3): THREE.Vector3 {
  * that is quietly wrong.
  */
 export interface DrawCallBreakdown {
-  /** Shadow-map submissions. Once a frame — see `beginFrame()` in renderer.ts. */
+  /** Shadow-map submissions. At most once a frame — see `beginFrame()` in renderer.ts. */
   shadow: number;
   /** The main scene submission with the shadow map taken out. THIS is what `MAX_DRAW_CALLS` bounds. */
   colour: number;
@@ -988,6 +989,8 @@ export interface PostChain {
    * the end of every `render()` — copy it before handing it anywhere.
    */
   readonly drawCallsByPass: Readonly<DrawCallBreakdown>;
+  /** Exact on WebGPU; null on WebGL where Info has no per-object triangle seam. */
+  readonly trianglesByPass: Readonly<DrawCallBreakdown> | null;
 
   /** Draw one frame. Falls back to renderer.render() when inactive. */
   render(dt: number): void;
@@ -1078,6 +1081,9 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
       if (split !== null) return split;
       zeros.total = handle.frameInfo().drawCalls;
       return zeros;
+    },
+    get trianglesByPass(): Readonly<DrawCallBreakdown> | null {
+      return chain.trianglesByPass();
     },
 
     render(dt: number): void {
@@ -1242,14 +1248,17 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    */
   const shadowMap = renderer.shadowMap;
   const baseShadowRender = shadowMap.render;
+  let shadowRenderDepth = 0;
   shadowMap.render = function meteredShadowRender(
     lights: THREE.Light[], sc: THREE.Scene, cam: THREE.Camera,
   ): void {
     const before = renderer.info.render.calls;
     beginGpuPass('shadow');
+    shadowRenderDepth++;
     try {
       baseShadowRender.call(shadowMap, lights, sc, cam);
     } finally {
+      shadowRenderDepth--;
       endGpuPass('shadow');
       shadowCalls += renderer.info.render.calls - before;
     }
@@ -1270,6 +1279,10 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     object: THREE.Object3D,
     group: THREE.GeometryGroup,
   ): void {
+    // These meshes are visible solely so WebGLShadowMap can traverse them. The
+    // colour-side material is inert, but avoiding the submission entirely also
+    // avoids its draw call, vertex work and command bookkeeping.
+    if (shouldSkipShadowOnlyObject(object, shadowRenderDepth > 0)) return;
     const tagged = object.userData.vmGpuPass;
     const id: GpuPassId | null = tagged === 'water' || tagged === 'particles' ? tagged : null;
     if (id !== null) beginGpuPass(id);
@@ -2536,6 +2549,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       return !!composer && enabled && composer.passes.length > 0;
     },
     drawCallsByPass,
+    trianglesByPass: null,
 
     render(dt: number) {
       if (disposed) return;

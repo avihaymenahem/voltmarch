@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-08-27
+Last refreshed: 2026-08-29
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.12.0**.
-- The `v3.12.0` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.13.0**.
+- The `v3.13.0` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -47,6 +47,9 @@ Verify rather than trusting that sentence after time has passed.
 | Player-visible rules and numbers | `wiki/`; guarded by wiki/manual tests |
 | Visual identity and faction language | `docs/VISUAL_DNA.md`, `docs/ART_DIRECTION_V2.md`, `docs/RA3_LOOK_BIBLE.md` |
 | Imported model roster and status | `docs/ASSET_CONVERSION_MAP.md` |
+| Canonical shared models, brand art and fonts | `packages/assets/`; boundaries guarded by `npm run lint` and `npm run check:ownership` |
+| Standalone WebGPU model catalog and infantry stress tooling | `apps/asset-lab/` |
+| In-match DEV-only load controls (Cheat Engine) | `apps/game/src/dev/CheatEngine.ts`; boundary guard in `apps/game/vite.config.ts` |
 | Model conditioning, LOD, texture and shadow budgets | `docs/ASSET_OPTIMIZATION_PIPELINE.md` |
 | Environment dirt/decals/props/atmosphere rollout | `docs/ENVIRONMENT_REALISM_PLAN.md` |
 | Audio inventory and remaining voice work | `docs/VOICEOVER_PLAN.md` and `docs/voice/` |
@@ -57,6 +60,20 @@ Verify rather than trusting that sentence after time has passed.
 
 Do not turn this handoff into another backlog. Put durable decisions in the owning document and open
 work in `TODO.md`; keep this page as the discovery layer.
+
+The Asset Lab currently indexes 87 model families / 352 GLB delivery files. Its character surface
+exposes three humanoid roles per faction while loading only four canonical faction bodies and animation sets;
+the Soviet selector additionally exposes the separately rigged Attack Dog quadruped.
+Specialist and engineer identity comes from code-native instanced weapons and packs, with a hard
+200-triangle ceiling per attachment. Redundant paid specialist bodies are archived under ignored
+`meshy_output/`, not shipped. The bounded 512-unit WebGPU / 48-unit WebGL validation sweeps remain the
+acceptance gate; do not copy GLBs or animation code back into an app-local asset directory.
+
+The game development server mounts a draggable **Cheat Engine** (`Ctrl+Shift+C`) for bulk unit load
+tests, free/instant production, 4,096-deep local queues, max-alive bypass, test-batch cleanup, ore
+grants and army healing. It is deliberately not a `*.system.ts`: Bootstrap reaches it only through
+an `__DEV__` dynamic import, the simulation mutators independently refuse calls when `__DEV__` is
+false, and the production Vite build fails if any Cheat Engine UI marker reaches emitted assets.
 
 ## Installed Codex capabilities used by this project
 
@@ -95,10 +112,14 @@ The normal successful route has been 20 Meshy credits for multi-image geometry p
 texture. Paid remesh is exceptional. The current account balance is intentionally not copied here;
 read it from Meshy immediately before spending.
 
-The current imported-unit checkpoint adds all four construction vehicles and all four aircraft as
-faction-distinct Meshy shells. Each ships through `ImportedUnitAssets.ts` with two reviewed colour
-LODs, a geometry-only shadow proxy, required KTX2 textures and its original procedural model as the
-load/deploy/socket fallback. The two paid construction-vehicle remesh attempts are recorded as
+The current imported-unit checkpoint adds all four construction vehicles, all four aircraft and the
+Soviet Attack Dog as faction-distinct Meshy shells. The dog also has a local eight-joint review rig
+with shared Idle/Walk/Run/Bite clips in Asset Lab; gameplay still uses its instanced gait. Vehicles and aircraft ship through
+`ImportedUnitAssets.ts` with reviewed colour LODs, a geometry-only shadow proxy, required KTX2
+textures and their original procedural model as the load/deploy/socket fallback. The dog uses the
+same imported boundary with a 5,987-triangle LOD0, 2,561-triangle LOD1, 720-triangle proxy and the
+shared instanced gait shader extended by a local longitudinal joint pivot; do not replace it with a
+per-entity skeleton or mixer. The two paid construction-vehicle remesh attempts are recorded as
 rejected in `docs/ASSET_CONVERSION_MAP.md`; do not revive those smoothed outputs. The first
 Swarmhornet import also failed the live art gate and was archived outside the runtime. Its V2 replacement
 uses geometry task `01a0448a-33fb-7d12-a912-52e9c04799f5` and texture task
@@ -136,6 +157,13 @@ the former all-deferred fast path visibly morphs the starting procedural dozer i
   there. Browser builds retain the supported renderer negotiation/fallback path.
 - Title/menu presentation is image-first. Show the key art and interactive menu before loading or
   compiling the game scene. Returning from a match must not block on shader preparation again.
+- Out-of-game pages, overlays and the pause menu share the command-shell chrome in `shell.css`;
+  extend that vocabulary instead of creating route-local modal skins. The Service Record owns the
+  always-available Commander Identity editor and persists the same `gameplay.commanderName` consumed
+  by Multiplayer, chat, results and replays.
+- Browser builds do not show Quit because a page cannot reliably close its own tab. Desktop keeps a
+  real Quit action through the validated Electron bridge. The pause exit is the prominent
+  `Evacuate To Main Menu` danger action, not a low-contrast generic row.
 - Do not pause loading, rendering or simulation solely because the desktop window loses focus.
 - Electron disables renderer backgrounding at the process, window-construction and live-WebContents
   layers. This is the fix for cold Skirmish initialization appearing frozen after an Alt-Tab.
@@ -145,6 +173,9 @@ the former all-deferred fast path visibly morphs the starting procedural dozer i
   explicit desktop fullscreen toggle.
 - HUD density matters. Selection, stance and formation actions must remain compact; clicking a build
   card must not double the panel height or cover the battlefield.
+- Plain Move is weapons-cold; Attack Move is the explicit move-and-fire order. An explicit Guard
+  travels to its post cold, then fires from that post without inheriting Aggressive chase. Defensive
+  aircraft keep a live Move authoritative and resume autonomous sight-envelope combat after arrival.
 - The Objective and Construction panels are vertically resizable and persist their chosen heights;
   the Performance panel is draggable and persists its position. Objective rows are non-shrinking
   scroll items, so resizing a panel must never compress wrapped titles into the next row.

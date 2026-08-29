@@ -1,0 +1,499 @@
+{
+  "webgpu": {
+    "backend": "webgpu",
+    "gpu": "nvidia ampere",
+    "resolution": "1920x1080",
+    "drawCalls": 146,
+    "drawCallsByPass": {
+      "shadow": 49,
+      "colour": 68,
+      "ao": 8,
+      "post": 21,
+      "total": 146
+    },
+    "triangles": 2604585,
+    "trianglesByPass": {
+      "shadow": 1212664,
+      "colour": 1391892,
+      "ao": 8,
+      "post": 21,
+      "total": 2604585
+    },
+    "programs": 276,
+    "entities": 131,
+    "units": 66,
+    "shadowOnly": [
+      {
+        "name": "model#119:root",
+        "instances": 3,
+        "visible": true
+      },
+      {
+        "name": "model#3:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#7:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#5:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#17:root",
+        "instances": 1,
+        "visible": true
+      },
+      {
+        "name": "model#26:root",
+        "instances": 1,
+        "visible": true
+      }
+    ],
+    "drawables": {
+      "objects": 65,
+      "estimatedColourDraws": 65,
+      "estimatedTriangles": 1859829,
+      "batched": [
+        {
+          "name": "terrain.batch.flat",
+          "draws": 1,
+          "multiDraws": 6,
+          "batchInstances": 27,
+          "triangles": 203880,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "terrain.batch.relief",
+          "draws": 1,
+          "multiDraws": 3,
+          "batchInstances": 37,
+          "triangles": 303104,
+          "instances": 1,
+          "castShadow": true,
+          "shadowOnly": false
+        }
+      ],
+      "top": [
+        {
+          "name": "terrain.batch.relief",
+          "draws": 1,
+          "multiDraws": 3,
+          "batchInstances": 37,
+          "triangles": 303104,
+          "instances": 1,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.tree",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 232704,
+          "instances": 48,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#105:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 211840,
+          "instances": 10,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "terrain.batch.flat",
+          "draws": 1,
+          "multiDraws": 6,
+          "batchInstances": 27,
+          "triangles": 203880,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#174:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 144408,
+          "instances": 33,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.treeAutumn",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 69328,
+          "instances": 14,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#102:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 63000,
+          "instances": 14,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.bush",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 61060,
+          "instances": 71,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#104:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 59092,
+          "instances": 11,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "GroundDecals",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 46080,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#101:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 43320,
+          "instances": 15,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#7:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 35046,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#3:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 34927,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#120:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 33606,
+          "instances": 3,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#175:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 31000,
+          "instances": 5,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#109:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 30840,
+          "instances": 6,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "GroundDecals",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 27648,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#105:turret",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 26060,
+          "instances": 10,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#110:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 21296,
+          "instances": 4,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#5:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 15025,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#176:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 13760,
+          "instances": 16,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.flowerBed",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 13636,
+          "instances": 7,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#17:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 13264,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.grassTuftGreen",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 12348,
+          "instances": 63,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.grassTuft",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 11172,
+          "instances": 57,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#104:turret",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 10912,
+          "instances": 11,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#119:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 7683,
+          "instances": 3,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#26:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 7449,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#109:turret",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 6000,
+          "instances": 6,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.rockCluster",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 5940,
+          "instances": 27,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "road.carriageway",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 5307,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#120:turret",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 5274,
+          "instances": 3,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#187:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 3544,
+          "instances": 1,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#188:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 3544,
+          "instances": 1,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#110:turret",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 3472,
+          "instances": 4,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.boulder",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 3344,
+          "instances": 19,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "SkyDome",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 2976,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "water.chunk.2.2",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 2882,
+          "instances": 1,
+          "castShadow": false,
+          "shadowOnly": false
+        },
+        {
+          "name": "prop.barrel",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 2592,
+          "instances": 2,
+          "castShadow": true,
+          "shadowOnly": false
+        },
+        {
+          "name": "model#3:root",
+          "draws": 1,
+          "multiDraws": null,
+          "batchInstances": null,
+          "triangles": 2580,
+          "instances": 1,
+          "castShadow": true,
+          "shadowOnly": true
+        }
+      ]
+    },
+    "ramp": null,
+    "wallPerFrameBlocks": [
+      1.6633333332836628,
+      1.8077777778108914,
+      1.7933333333167765,
+      1.6944444444444444,
+      1.6355555555886692
+    ],
+    "wallPerFrameMs": 1.6355555555886692,
+    "wallMedianMs": 1.6944444444444444,
+    "cpuMs": 0.3999999985098839,
+    "statsFrameMs": 157.39999999850988
+  }
+}

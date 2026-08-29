@@ -1,8 +1,8 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { copyFileSync, cpSync, createReadStream, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, resolve, sep } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const MONOREPO_ROOT = resolve(ROOT, '../..');
@@ -17,16 +17,72 @@ const PKG_VERSION: string = JSON.parse(
 ).version;
 
 /**
- * Copy canonical licence artefacts into the web distribution. Electron embeds
- * this same dist/ tree, so one source serves the repository, web and desktop
- * releases without a second notice file that can drift.
+ * Keep release notices and the pre-module shell assets single-sourced.
+ * Electron embeds this same dist/ tree, while the development middleware
+ * exposes only the two small shared directories the boot HTML can request.
+ */
+const SHARED_STATIC_DIRS = [
+  { prefix: '/brand/', dir: resolve(MONOREPO_ROOT, 'packages', 'assets', 'brand') },
+  { prefix: '/fonts/', dir: resolve(MONOREPO_ROOT, 'packages', 'assets', 'fonts') },
+] as const;
+
+const STATIC_CONTENT_TYPES: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
+};
+
+/**
+ * Serve the canonical shared shell assets in development and copy the same
+ * directories into the release. Keeping the URL contract (`/brand/*` and
+ * `/fonts/*`) stable matters because the boot curtain runs before the module
+ * graph and therefore cannot import package assets through JavaScript.
  */
 function releaseNoticesPlugin() {
   return {
-    name: 'voltmarch-release-notices',
-    apply: 'build' as const,
+    name: 'voltmarch-release-assets',
+    configureServer(server: { middlewares: { use(handler: (req: { url?: string }, res: import('node:http').ServerResponse, next: () => void) => void): void } }) {
+      server.middlewares.use((req, res, next) => {
+        let pathname: string;
+        try {
+          pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://voltmarch.local').pathname);
+        } catch {
+          next();
+          return;
+        }
+
+        const mount = SHARED_STATIC_DIRS.find(({ prefix }) => pathname.startsWith(prefix));
+        if (mount === undefined) {
+          next();
+          return;
+        }
+
+        const file = resolve(mount.dir, pathname.slice(mount.prefix.length));
+        const root = `${resolve(mount.dir)}${sep}`;
+        if (!file.startsWith(root)) {
+          next();
+          return;
+        }
+
+        try {
+          const stat = statSync(file);
+          if (!stat.isFile()) {
+            next();
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', STATIC_CONTENT_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream');
+          res.setHeader('Content-Length', stat.size);
+          res.setHeader('Cache-Control', 'no-cache');
+          createReadStream(file).pipe(res);
+        } catch {
+          next();
+        }
+      });
+    },
     writeBundle(output: { dir?: string }) {
-      const legal = resolve(ROOT, output.dir ?? 'dist', 'legal');
+      const dist = resolve(ROOT, output.dir ?? 'dist');
+      const legal = resolve(dist, 'legal');
       mkdirSync(legal, { recursive: true });
       copyFileSync(resolve(MONOREPO_ROOT, 'LICENSE'), resolve(legal, 'LICENSE.txt'));
       copyFileSync(resolve(MONOREPO_ROOT, 'THIRD_PARTY_NOTICES.md'), resolve(legal, 'THIRD_PARTY_NOTICES.md'));
@@ -34,6 +90,34 @@ function releaseNoticesPlugin() {
         resolve(MONOREPO_ROOT, 'licenses', 'Rajdhani-OFL-1.1.txt'),
         resolve(legal, 'Rajdhani-OFL-1.1.txt'),
       );
+      for (const { prefix, dir } of SHARED_STATIC_DIRS) {
+        cpSync(dir, resolve(dist, prefix.slice(1, -1)), { recursive: true });
+      }
+    },
+  };
+}
+
+/**
+ * Fail closed if the development Cheat Engine ever leaks into a release.
+ *
+ * Bootstrap's `__DEV__` branch should let Rollup remove the dynamic import and
+ * its chunk completely. This checks the emitted code rather than trusting that
+ * source-level intent, so a future import move cannot silently ship cheats.
+ */
+function devOnlyBoundaryPlugin() {
+  const forbidden = ['vm-cheat-launcher', 'CHEAT ENGINE', 'Unlimited build mode'];
+  return {
+    name: 'voltmarch-dev-only-boundary',
+    apply: 'build' as const,
+    generateBundle(_options: unknown, bundle: Record<string, { type: string; code?: string; source?: string | Uint8Array }>) {
+      for (const [file, asset] of Object.entries(bundle)) {
+        const body = asset.type === 'chunk' ? asset.code : asset.source;
+        if (typeof body !== 'string') continue;
+        const marker = forbidden.find((value) => body.includes(value));
+        if (marker !== undefined) {
+          throw new Error(`[dev-boundary] release asset ${file} contains DEV-only marker "${marker}"`);
+        }
+      }
     },
   };
 }
@@ -47,7 +131,7 @@ function releaseNoticesPlugin() {
  * strips types, so a stray type error in one of ~15 parallel modules must never
  * be able to stop the game from running. `tsc --noEmit` is a separate gate
  * (`npm run typecheck`), not part of `npm run build`. The one plugin below
- * copies legal notices after bundling and never observes or transforms code.
+ * serves/copies static shell assets and legal notices without transforming code.
  */
 export default defineConfig(({ command, mode }) => ({
   // Vitest's repository-contract tests deliberately resolve paths from the
@@ -63,7 +147,7 @@ export default defineConfig(({ command, mode }) => ({
     },
   },
 
-  plugins: [releaseNoticesPlugin()],
+  plugins: [releaseNoticesPlugin(), devOnlyBoundaryPlugin()],
 
   server: {
     /*

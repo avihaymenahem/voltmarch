@@ -169,6 +169,7 @@ import {
   UNAVAILABLE,
   WebGpuTimer,
   drawsOverBudget,
+  drawBudgetForBackend,
   emptyReadout,
   formatBackend,
   formatDraws,
@@ -194,13 +195,13 @@ const VSYNC_60 = 1000 / 60;
  *   WEBGL_FRAME  `01-establishing-base` after `installAoDepthGBuffer` —
  *                53 shadow + 77 colour + 0 ao + 21 quads = 151. The total is
  *                over the 130 budget; the colour pass is comfortably under it.
- *   NODE_FRAME   what `src/render/post.ts` returns on the node path: zeros with
- *                a true total, deliberately, so that a consumer reading the
- *                buckets raw gets an impossible answer rather than a plausible
- *                wrong one.
+ *   NODE_FRAME   the same fixture measured through the node renderer's public
+ *                renderObject seam. WebGPU has a different submission model,
+ *                so this is intentionally not compared to the WebGL budget.
  */
 const WEBGL_FRAME = { shadow: 53, colour: 77, ao: 0, post: 21, total: 151 };
-const NODE_FRAME = { shadow: 0, colour: 0, ao: 0, post: 0, total: 151 };
+const NODE_FRAME = { shadow: 418, colour: 445, ao: 8, post: 21, total: 892 };
+const UNSPLIT_FRAME = { shadow: 0, colour: 0, ao: 0, post: 0, total: 151 };
 
 class FakeSource implements PerfSource {
   readCalls = 0;
@@ -272,7 +273,7 @@ describe('formatDraws', () => {
   });
 
   it('never renders the unavailable case as a zero', () => {
-    const text = formatDraws(NODE_FRAME.total, null);
+    const text = formatDraws(UNSPLIT_FRAME.total, null);
     // The literal failure this whole file exists to stop.
     expect(text).not.toMatch(/\b0 col\b/);
     expect(text).toContain(UNAVAILABLE);
@@ -287,6 +288,17 @@ describe('formatDraws', () => {
     const text = formatDraws(WEBGL_FRAME.total, WEBGL_FRAME.colour);
     expect(text).toContain('77 col');
     expect(text).toContain('151 all');
+  });
+});
+
+describe('backend-specific draw budgets', () => {
+  it('applies the measured 130 ceiling only to WebGL submissions', () => {
+    expect(drawBudgetForBackend('webgl')).toBe(DRAW_BUDGET);
+    expect(drawBudgetForBackend('webgpu')).toBeNull();
+    expect(drawBudgetForBackend('webgl2-fallback')).toBeNull();
+    expect(drawBudgetForBackend(null)).toBeNull();
+    expect(formatDraws(892, 445, drawBudgetForBackend('webgpu'))).toBe('445 col · 892 all');
+    expect(drawsOverBudget(445, drawBudgetForBackend('webgpu'))).toBe(false);
   });
 });
 
@@ -315,7 +327,8 @@ describe('drawsOverBudget', () => {
 
 describe('colourDrawsOf', () => {
   it('reads the node path as unavailable rather than as zero', () => {
-    expect(colourDrawsOf(NODE_FRAME)).toBeNull();
+    expect(colourDrawsOf(UNSPLIT_FRAME)).toBeNull();
+    expect(colourDrawsOf(NODE_FRAME)).toBe(NODE_FRAME.colour);
   });
 
   it('reads a metered WebGL frame as its colour pass', () => {
@@ -502,11 +515,11 @@ describe('shortDevice', () => {
  * ========================================================================== */
 
 describe('the panel on the node path', () => {
-  it('renders every unmeasurable row as unavailable rather than as zero', () => {
+  it('renders the measured split without applying the WebGL draw budget', () => {
     const { root, step } = makeHud({
       backend: 'webgpu',
       drawCalls: NODE_FRAME.total,
-      drawCallsColour: null,
+      drawCallsColour: NODE_FRAME.colour,
       device: 'NVIDIA GeForce RTX 3080 Laptop GPU (nvidia ampere)',
       triangles: 900_000,
       tier: 'high',
@@ -517,9 +530,7 @@ describe('the panel on the node path', () => {
     const rows = rowsOf(root);
 
     const draws = rows.get('draws') ?? '';
-    expect(draws).toContain(UNAVAILABLE);
-    expect(draws).not.toMatch(/\b0 col\b/);
-    expect(draws).toContain('151');
+    expect(draws).toBe('445 col · 892 all');
 
     const gpu = rows.get('gpu') ?? '';
     expect(gpu).toContain(UNAVAILABLE);
@@ -532,15 +543,15 @@ describe('the panel on the node path', () => {
     expect(rows.get('device')).toBe('NVIDIA GeForce RTX 3080 Laptop GPU (nvidia ampere)');
   });
 
-  it('cannot claim a budget breach it did not measure, and does not claim a pass', () => {
+  it('does not apply the WebGL budget to a larger WebGPU submission count', () => {
     const { root, step } = makeHud({
       backend: 'webgpu',
       drawCalls: NODE_FRAME.total,
-      drawCallsColour: null,
+      drawCallsColour: NODE_FRAME.colour,
     });
     step(60);
     expect(root.classList.contains('is-draws-over')).toBe(false);
-    expect(root.classList.contains('is-draws-unknown')).toBe(true);
+    expect(root.classList.contains('is-draws-unknown')).toBe(false);
   });
 
   it('names the live renderer on the header', () => {

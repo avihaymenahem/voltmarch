@@ -283,7 +283,7 @@ export class CampaignScreen implements Screen {
     // and Shell.startOperation repeats it only for direct/deep-link launches.
     preloadCampaignPortraits();
     const { root, body } = pageFrame('Campaign', () => { this.shell.showMenu(); });
-    root.classList.add('vm-campaign-page');
+    root.classList.add('vm-operation-panel', 'vm-campaign-page');
     host.appendChild(root);
 
     const note = el('p', 'vm-camp-note');
@@ -777,7 +777,7 @@ export class BriefingScreen implements Screen {
     // first mounting CampaignScreen. Normal navigation already warmed these.
     preloadCampaignPortraits();
     const { root, body, foot } = pageFrame('Briefing', () => { this.shell.openCampaign(); });
-    root.classList.add('vm-camp-brief-page');
+    root.classList.add('vm-operation-panel', 'vm-camp-brief-page');
     host.appendChild(root);
     body.appendChild(el('p', 'vm-camp-loading', 'Loading…'));
 

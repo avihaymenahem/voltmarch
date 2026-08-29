@@ -74,7 +74,7 @@ kept 4K HD disabled, removed lighting and asked only for GLB.
   Meshy discarded 30 degenerate source triangles while generating normals/tangents and normalized
   the box; the approved visible geometry remains intact.
 - Textures: 2048 base colour, 2048 normal and 2048 packed metal/roughness.
-- Conditioned shipping result: `apps/game/src/assets/buildings/soviets/ore-refinery.glb`, 4.04 MiB. Base colour
+- Conditioned shipping result: `packages/assets/game/buildings/soviets/ore-refinery.glb`, 4.04 MiB. Base colour
   and normal remain 2048; packed metal/roughness is reduced to 1024. Geometry is unchanged from the
   retexture delivery.
 - Runtime fit: yaw `+90deg`, 0.94 footprint width, 0.90 footprint depth and 0.92 height, preserving

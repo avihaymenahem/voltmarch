@@ -15,8 +15,8 @@
  *   7. registry.init() (async: shaders, textures) then loop.start()
  *
  * The frame body is the integration contract published by src/render/debug.ts
- * and must stay in that order — `fitShadow` after the camera moved, before the
- * render; `handle.beginFrame()` once or draw-call counts accumulate.
+ * and must stay in that order — move the camera, fit its shadow frustum, then
+ * `handle.beginFrame()` once before render or draw-call counts accumulate.
  */
 
 import { Channels } from '../core/events';
@@ -39,6 +39,7 @@ import { createScene, type SceneRig } from '../render/scene';
 import { createCameraRig, type CameraRig } from '../render/camera';
 import { createPostChain, type PostChain } from '../render/post';
 import { initDebug, type DebugHandle } from '../render/debug';
+import { shadowCadenceModeFromSearch } from '../render/shadow-cadence';
 import {
   markBattlefieldPipelinesWarm,
   pipelineCacheStats,
@@ -145,6 +146,9 @@ function devBuild(): boolean {
 
 export function bootstrap(options: BootOptions): GameHandle {
   const shotMode = options.shot != null && options.shot !== '';
+  const shadowCadenceMode = shadowCadenceModeFromSearch(
+    typeof location === 'undefined' ? '' : location.search,
+  );
   const seed = options.seed ?? 1;
   const matchPresentation: MatchPresentation = options.matchPresentation ?? {
     mode: options.shot ? 'Showcase' : 'Skirmish',
@@ -170,6 +174,11 @@ export function bootstrap(options: BootOptions): GameHandle {
   });
 
   const sceneRig = createScene({ handle });
+  // Three's WebGPU path schedules shadows per LightShadow, while WebGL also
+  // has renderer.shadowMap controls. Keep the light itself manual so the
+  // renderer's cross-backend cadence decision below governs both paths.
+  sceneRig.sun.shadow.autoUpdate = false;
+  sceneRig.sun.shadow.needsUpdate = true;
 
   const cameraRig = createCameraRig({
     domElement: options.canvas,
@@ -267,6 +276,30 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   let disposed = false;
 
+  // Camera matrices are the authoritative input to both the view and the
+  // fitted shadow frustum. Comparing them catches pan/zoom/rotation, aspect
+  // changes and camera shake without allocating a pose object every frame.
+  const lastViewMatrix = new Float64Array(16);
+  const lastProjectionMatrix = new Float64Array(16);
+  let havePresentedCamera = false;
+
+  function cameraChangedSincePresent(): boolean {
+    const view = cameraRig.camera.matrixWorld.elements;
+    const projection = cameraRig.camera.projectionMatrix.elements;
+    if (!havePresentedCamera) return true;
+    for (let i = 0; i < 16; i++) {
+      if (Math.abs(view[i] - lastViewMatrix[i]) > 1e-7) return true;
+      if (Math.abs(projection[i] - lastProjectionMatrix[i]) > 1e-7) return true;
+    }
+    return false;
+  }
+
+  function rememberPresentedCamera(): void {
+    lastViewMatrix.set(cameraRig.camera.matrixWorld.elements);
+    lastProjectionMatrix.set(cameraRig.camera.projectionMatrix.elements);
+    havePresentedCamera = true;
+  }
+
   /**
    * Everything that must happen to put one frame on screen. Called from the
    * loop's `render` hook, and directly by `hooks.renderFrame` for capture.
@@ -290,11 +323,24 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   function present(dt: number): void {
     if (disposed) return;
-    handle.beginFrame();
     cameraRig.update(dt);
     cameraRig.setAspect(handle.size.cssWidth, handle.size.cssHeight);
     sceneRig.fitShadow(cameraRig.camera);
+    const cameraChanged = cameraChangedSincePresent();
+    // A dt-less frame is an explicit capture/debug present. Give it the newest
+    // shadows even when the normal cadence would otherwise hold the prior map.
+    const forceShadowUpdate = shadowCadenceMode === 'half'
+      // Deterministic A/B mode: deliberately ignore camera motion so every
+      // second submitted frame exercises the no-shadow path. Captures still
+      // force a fresh map before reading pixels.
+      ? dt <= 0
+      : shotMode || dt <= 0 || cameraChanged;
+    sceneRig.sun.shadow.needsUpdate = handle.beginFrame(
+      dt,
+      forceShadowUpdate,
+    );
     post.render(dt);
+    rememberPresentedCamera();
   }
 
   /** The GameLoop's per-frame render hook. */
@@ -373,10 +419,25 @@ export function bootstrap(options: BootOptions): GameHandle {
   let systemsMs = 0;
   let presentationMs = 0;
   let compileMs = 0;
+  let devCheatEngine: { dispose(): void } | null = null;
   const ready = registry
     .init()
     .then(async () => {
       systemsMs = now() - bootStarted;
+
+      // This import is the release boundary, not merely a visibility toggle.
+      // `__DEV__` is folded to false by the production Vite build, so Rollup
+      // drops the module and there is no cheat UI chunk to discover or invoke.
+      if (devBuild()) {
+        try {
+          const { mountCheatEngine } = await import('../dev/CheatEngine');
+          devCheatEngine = mountCheatEngine({ ctx, mount: options.debugRoot });
+        } catch (err) {
+          // A diagnostic tool may never prevent a match from starting.
+          console.warn('[cheat-engine] failed to mount', err);
+        }
+      }
+
       options.onStage?.('Preparing presentation');
       const presentationStarted = now();
       // Populate RenderBridge before compilation. Registry init builds the
@@ -467,6 +528,8 @@ export function bootstrap(options: BootOptions): GameHandle {
       if (disposed) return;
       disposed = true;
       loop.stop();
+      devCheatEngine?.dispose();
+      devCheatEngine = null;
       // registry.dispose() BEFORE the context is torn down. A module's own
       // dispose() legitimately reaches for ctx() — `sim/features.system.ts`
       // does, to unregister its five siblings — and clearing the context first

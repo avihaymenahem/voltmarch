@@ -21,7 +21,7 @@ import {
 export type ImportedWreckFaction = 'allies' | 'soviets' | 'neutral';
 export const IMPORTED_WRECK_CLASSES = ['light', 'medium', 'heavy'] as const;
 
-const SOURCE_URL = new URL('../assets/wrecks/vehicle-wreck.glb', import.meta.url).href;
+const SOURCE_URL = new URL('../../../../packages/assets/game/wrecks/vehicle-wreck.glb', import.meta.url).href;
 const BEAM: Readonly<Record<(typeof IMPORTED_WRECK_CLASSES)[number], number>> = {
   light: 0.60,
   medium: 0.56,

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clampPanelPosition,
+  clampPanelSize,
+  movePanelPosition,
   parseStoredPanelPosition,
+  resizePanelPosition,
 } from '../src/ui/DraggablePanel';
 import {
   clampPanelHeight,
@@ -29,5 +32,30 @@ describe('persisted HUD panel geometry', () => {
     expect(parseStoredPanelPosition('{"x":0.25,"y":0.75}')).toEqual({ x: 0.25, y: 0.75 });
     expect(parseStoredPanelPosition('{"x":-1,"y":4}')).toEqual({ x: 0, y: 1 });
     expect(parseStoredPanelPosition('broken')).toBeNull();
+  });
+
+  it('restores optional performance-panel dimensions without breaking old position records', () => {
+    expect(parseStoredPanelPosition('{"x":0.25,"y":0.75,"width":0.3,"height":0.5}')).toEqual({
+      x: 0.25, y: 0.75, width: 0.3, height: 0.5,
+    });
+    expect(parseStoredPanelPosition('{"x":0.25,"y":0.75,"width":-1,"height":"bad"}')).toEqual({
+      x: 0.25, y: 0.75,
+    });
+    expect(clampPanelSize(40, 180, 900)).toBe(180);
+    expect(clampPanelSize(1200, 180, 900)).toBe(900);
+    expect(clampPanelSize(420, 180, 900)).toBe(420);
+  });
+
+  it('preserves size through drag updates and position through resize updates', () => {
+    const resized = resizePanelPosition({ x: 0.25, y: 0.75 }, 0.3, 0.5);
+    expect(resized).toEqual({ x: 0.25, y: 0.75, width: 0.3, height: 0.5 });
+    const dragged = movePanelPosition(resized, 0.8, 0.1);
+    expect(dragged).toEqual({ x: 0.8, y: 0.1, width: 0.3, height: 0.5 });
+
+    // Viewport restore applies the saved size first and then the saved move;
+    // this pins that composition to retaining every field in the same record.
+    const restoredSize = resizePanelPosition(dragged, dragged.width!, dragged.height!);
+    const restored = movePanelPosition(restoredSize, dragged.x, dragged.y);
+    expect(restored).toEqual(dragged);
   });
 });

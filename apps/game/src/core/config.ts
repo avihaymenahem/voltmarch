@@ -8712,12 +8712,11 @@ export const ROAD_WAYPOINT_SPACING = 13;
 /**
  * VFX PointLights per quality tier [Low, Medium, High, Ultra].
  *
- * Two sources disagree and both are honoured rather than one overriding the
- * other. `QUALITY_PRESETS[t].maxDynamicLights` is 2/4/8/8; bible §8.9 asks for
- * a pool of 8–12 and scorecard #28 (the ground wash) is judged at High. So Low
- * and Medium take the foundation's numbers exactly — that is where the extra
- * per-pixel light loop actually costs frames — and High/Ultra take the bible's
- * band, which is where the frame is critiqued.
+ * `QUALITY_PRESETS[t].maxDynamicLights` is the hard renderer budget. Bible
+ * §8.9 asks for a pool of 8–12 and scorecard #28 (the ground wash) is judged at
+ * High, so High and Ultra both use the bottom of that visual band. The priority
+ * and locality-merge policy still chooses the eight most useful simultaneous
+ * washes; a larger resident pool made every lit fragment pay for idle slots.
  *
  * Every light in the pool is resident in the scene for the whole match, so this
  * number is baked into `NUM_POINT_LIGHTS` in every shader. Changing it at
@@ -8741,15 +8740,14 @@ export const ROAD_WAYPOINT_SPACING = 13;
  * 60 fps budget on this class of GPU.
  *
  * The residency itself is still right (see above: toggling recompiles), and
- * §8.9's 8–12 band still governs High and Ultra, which is where the scorecard
- * is judged. What changed is Low and Medium, the tiers the existing policy
- * already assigns to "where the extra per-pixel light loop actually costs
- * frames": Medium 4 -> 2 and Low 2 -> 1. One explosion still claims a light at
- * every tier, so scorecard #28 — the ground wash around a SINGLE blast — is
- * measuring the same thing it always did; what a Medium machine loses is the
- * third and fourth SIMULTANEOUS wash.
+ * §8.9's 8–12 band still governs High and Ultra, but twelve resident slots on
+ * Ultra contradicted the preset's explicit maximum of eight. One explosion
+ * still claims a light at every tier, so scorecard #28 — the ground wash around
+ * a SINGLE blast — is unchanged; crowded combat now evicts or merges the ninth
+ * claim instead of compiling four permanently resident idle lights into every
+ * lit material.
  */
-export const VFX_LIGHT_POOL_BY_TIER: readonly number[] = [1, 2, 10, 12];
+export const VFX_LIGHT_POOL_BY_TIER: readonly number[] = [1, 2, 8, 8];
 
 /**
  * Two junction arms closer than this in heading are treated as ONE.

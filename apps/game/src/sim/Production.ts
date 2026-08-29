@@ -46,7 +46,7 @@
 
 import {
   BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAP_CELLS, MAX_PLAYERS,
-  PLACEMENT, PRODUCTION, SELL_REFUND, placementPadWeight,
+  MAX_QUEUE_DEPTH, PLACEMENT, PRODUCTION, SELL_REFUND, placementPadWeight,
 } from '../core/config';
 import {
   BUILD_TAB_COUNT, BuildTab, CommandKind, CreditReason, EntityFlag, EntityKind, EvaLine,
@@ -122,6 +122,14 @@ import {
   type ViabilityProbes, type ViabilitySurvey,
 } from './Viability';
 
+declare const __DEV__: boolean;
+
+/** Folded to `false` by Vite in every release bundle. */
+const DEV_BUILD = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+const DEV_QUEUE_DEPTH = 4096;
+const DEV_INSTANT_BUILD_SECONDS = 1 / 120;
+const DEV_SPAWN_LIMIT_PER_CALL = 256;
+
 // The placement vocabulary lives in Placement.ts so the runtime import edge
 // only ever points Production -> Placement. Re-exported here because callers
 // think of it as part of the production api.
@@ -169,6 +177,24 @@ export const enum BuildKind {
    * `ownsCommanderPower` answers directly.
    */
   Power = 3,
+}
+
+/** Rules controlled by the development-only Cheat Engine panel. */
+export interface ProductionDevCheats {
+  readonly freeProduction: boolean;
+  readonly instantProduction: boolean;
+  readonly uncappedProduction: boolean;
+}
+
+/** Bulk-spawn request used only by the development load-test panel. */
+export interface DevSpawnRequest {
+  readonly player: PlayerId;
+  readonly key: string;
+  readonly count: number;
+  readonly x: number;
+  readonly z: number;
+  /** Keeps successive frame-sized chunks on one continuous spiral. */
+  readonly startIndex?: number;
 }
 
 /**
@@ -2087,6 +2113,11 @@ export class ProductionService implements QueueHooks {
   /** Set when a structure completes, so tech is re-derived exactly once. */
   private techDirty = true;
 
+  /** Null in normal play and physically unreachable from a release UI. */
+  private devCheats: { player: PlayerId; rules: ProductionDevCheats } | null = null;
+  /** Reused answer so an instant/free queue still allocates nothing per tick. */
+  private readonly devQueueInfo = { cost: 0, buildTime: 1 };
+
   /** Reused by the sell guard. A sell is rare; the object is still not per-call. */
   private readonly viability: ViabilitySurvey = makeViabilitySurvey();
 
@@ -2359,7 +2390,7 @@ export class ProductionService implements QueueHooks {
     // player queue five commanders while the first is still on the line, and
     // then all five walk out. `queued` includes the head that is currently
     // building, which is exactly right.
-    if (entry.maxAlive > 0) {
+    if (entry.maxAlive > 0 && !this.devUncapped(player)) {
       const inHand = this.aliveOf(player, entry.defId)
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
       if (inHand >= entry.maxAlive) {
@@ -2440,6 +2471,64 @@ export class ProductionService implements QueueHooks {
 
   setMatchPhase(phase: MatchPhase): void {
     this.snapshot.matchPhase = phase;
+  }
+
+  /** Apply local rules from the development-only Cheat Engine panel. */
+  setDevCheats(player: PlayerId, rules: ProductionDevCheats | null): boolean {
+    if (!DEV_BUILD) return false;
+    const state = this.world.players[player as number];
+    if (state === undefined) return false;
+    this.devCheats = rules === null ? null : { player, rules: { ...rules } };
+    this.queues.setDepthLimit(
+      state,
+      rules?.uncappedProduction === true ? DEV_QUEUE_DEPTH : MAX_QUEUE_DEPTH,
+    );
+    return true;
+  }
+
+  /**
+   * Spawn a bounded chunk without queue, factory, tech or ore. The DEV panel
+   * calls this once per animation frame so a large load test stays cancellable.
+   */
+  devSpawnUnits(request: DevSpawnRequest): EntityId[] {
+    if (!DEV_BUILD) return [];
+    const p = this.world.players[request.player as number];
+    const entry = this.catalog.byKey(request.key);
+    if (p === undefined || entry === null || entry.kind !== BuildKind.Unit) return [];
+
+    const remaining = Math.max(0, this.world.store.capacity - this.world.store.aliveCount);
+    const count = Math.min(
+      DEV_SPAWN_LIMIT_PER_CALL,
+      remaining,
+      Math.max(0, request.count | 0),
+    );
+    if (count <= 0) return [];
+
+    const fb = FALLBACK_UNITS[entry.key];
+    const spacing = Math.max(1.15, Math.max(fb?.width ?? 1, fb?.length ?? 1) * 1.1);
+    const start = Math.max(0, request.startIndex ?? 0);
+    const ids: EntityId[] = [];
+    for (let n = 0; n < count; n++) {
+      const ordinal = start + n;
+      const angle = ordinal * 2.399963229728653;
+      const radius = spacing * Math.sqrt(ordinal);
+      const x = request.x + Math.cos(angle) * radius;
+      const z = request.z + Math.sin(angle) * radius;
+      const id = this.spawnUnit(p, entry, x, z, angle + Math.PI);
+      if (id === NONE) break;
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  /** Retire only handles returned by the DEV spawner; stale handles are safe. */
+  devDestroyUnits(ids: readonly EntityId[]): number {
+    if (!DEV_BUILD) return 0;
+    let removed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      if (this.world.store.markDead(ids[i])) removed++;
+    }
+    return removed;
   }
 
   /** Subscribe to the placement flow. Returns an unsubscribe. */
@@ -3120,7 +3209,7 @@ export class ProductionService implements QueueHooks {
       } else if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return;
       n = 1;
     }
-    if (entry.maxAlive > 0) {
+    if (entry.maxAlive > 0 && !this.devUncapped(p.id)) {
       const inHand = this.aliveOf(p.id, entry.defId)
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
       n = Math.min(n, entry.maxAlive - inHand);
@@ -4002,8 +4091,16 @@ export class ProductionService implements QueueHooks {
    * 5h. QueueHooks
    * ====================================================================== */
 
-  info(defId: number, isBuilding: boolean): QueueItemInfo | null {
-    return this.catalog.resolve(defId, isBuilding);
+  info(player: PlayerState, defId: number, isBuilding: boolean): QueueItemInfo | null {
+    const entry = this.catalog.resolve(defId, isBuilding);
+    if (entry === null) return null;
+    const dev = this.devRules(player.id);
+    if (dev === null || (!dev.freeProduction && !dev.instantProduction)) return entry;
+    this.devQueueInfo.cost = dev.freeProduction ? 0 : entry.cost;
+    this.devQueueInfo.buildTime = dev.instantProduction
+      ? DEV_INSTANT_BUILD_SECONDS
+      : entry.buildTime;
+    return this.devQueueInfo;
   }
 
   charge(player: PlayerState, amount: number): number {
@@ -4297,6 +4394,15 @@ export class ProductionService implements QueueHooks {
   /* ======================================================================
    * 5j. small helpers
    * ====================================================================== */
+
+  private devRules(player: PlayerId): ProductionDevCheats | null {
+    const active = this.devCheats;
+    return active !== null && active.player === player ? active.rules : null;
+  }
+
+  private devUncapped(player: PlayerId): boolean {
+    return this.devRules(player)?.uncappedProduction === true;
+  }
 
   private grant(p: PlayerState, amount: number): void {
     if (amount <= 0) return;

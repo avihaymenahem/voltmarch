@@ -30,6 +30,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
@@ -611,6 +612,16 @@ describe('primary factory — the flag the button toggles', () => {
 /* ========================================================================== */
 
 describe('the new controls draw from the shipped icon set', () => {
+  it('keeps occupied-building evacuation visually prominent', () => {
+    const sidebar = readFileSync('apps/game/src/ui/Sidebar.ts', 'utf8');
+    const css = readFileSync('apps/game/src/ui/hud.css', 'utf8');
+    expect(sidebar).toContain('vm-cargo-row vm-garrison-row');
+    expect(sidebar).toContain('vm-cargo vm-garrison-evacuate');
+    expect(css).toContain('.vm-hud .vm-garrison-evacuate');
+    expect(css).toContain('min-width: calc(92 * var(--vm-u))');
+    expect(css).toContain('@keyframes vm-garrison-action-in');
+  });
+
   it('has every icon the three new selection rows ask for', () => {
     // `deploy` (Evacuate), `primary` (Set Primary), `alert` (Destruct). Named
     // as literals in `Sidebar`'s constructor, where a typo is a blank square in

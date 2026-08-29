@@ -47,7 +47,7 @@ shadow proxy, KTX2 and dense economy-fixture validation.
 - Paid remesh skipped after the local silhouette and topology gates passed.
 - Shipping geometry: 49,825 / 22,416 / 8,968 triangles for LOD0/LOD1/LOD2, plus a 1,728-triangle shadow proxy.
 - Texture delivery: required KTX2; 5,323,820-byte source reduced to 4,106,272 bytes and estimated 48 MiB RGBA residency reduced to 8 MiB at 8 bpp.
-- Runtime: `src/assets/units/allies/compressed/chrono-miner.glb`, with automatic procedural fallback.
+- Runtime: `packages/assets/game/units/allies/compressed/chrono-miner.glb`, with automatic procedural fallback.
 - Validation: asset and render gates plus WebGL/WebGPU economy-scene captures passed on 2026-08-26.
 
 Final Meshy spend: 30 credits.

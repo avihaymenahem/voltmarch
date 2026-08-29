@@ -20,12 +20,12 @@ const accentPreset = value('--accent-preset') ?? 'none';
 const ratio = Number(value('--ratio') ?? '0.60');
 const error = Number(value('--error') ?? '0.003');
 const staticMerge = args.includes('--static-merge');
-const profiles = new Set(['building', 'vehicle', 'hero', 'infantry', 'defence']);
+const profiles = new Set(['building', 'vehicle', 'hero', 'infantry', 'troop', 'defence']);
 
 if (!inputArg || !outputArg || !profiles.has(profile) || !(ratio > 0 && ratio <= 1) || !(error >= 0)) {
   throw new Error(
     'usage: npm run asset:prepare -- --input <raw.glb> --output <shipping.glb> '
-    + '[--profile building|vehicle|hero|infantry|defence] [--ratio 0.60] '
+    + '[--profile building|vehicle|hero|infantry|troop|defence] [--ratio 0.60] '
     + '[--error 0.003] [--palette none|soviet-field] '
     + '[--accent-preset none|soviet-conyard] [--static-merge]',
   );

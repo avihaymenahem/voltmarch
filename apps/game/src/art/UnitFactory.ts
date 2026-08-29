@@ -41,6 +41,7 @@ import {
 import { clamp01, lerp, smoothstep } from '../core/math';
 import { applyShroudTint } from '../render/FogOfWar';
 import { nodePath } from '../render/gpu-path';
+import type { UnitMaterialTextures } from '../render/gpu-path';
 import { applyGait, declareGaitPhase } from '../render/Gait';
 import { PartId, type ModelBuild, type ModelPart, type SocketDef } from '../core/types';
 import {
@@ -587,7 +588,7 @@ export function assertUnitMaterialRuling(
  * shipping renderer. This picks between it and `UnitNodeMaterial.ts`'s twin,
  * which the WebGL bundle never even downloads (see `render/gpu-path.ts`).
  */
-export function unitMaterialFor(atlas: GreebleAtlas, name: string): THREE.Material {
+export function unitMaterialFor(atlas: UnitMaterialTextures, name: string): THREE.Material {
   const np = nodePath();
   return np !== null ? np.createUnitMaterial(atlas, name) : createUnitMaterial(atlas, name);
 }
@@ -605,7 +606,9 @@ export function unitMaterialFor(atlas: GreebleAtlas, name: string): THREE.Materi
  * multipliers are 1.0 by design: the map carries 0.52 on paint and 0.32/0.82 on
  * bare metal, which is how one batch serves both surface classes.
  */
-export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.MeshPhysicalMaterial {
+export function createUnitMaterial(
+  atlas: UnitMaterialTextures, name: string,
+): THREE.MeshPhysicalMaterial {
   const mat = new THREE.MeshPhysicalMaterial({
     name,
     map: atlas.map,
@@ -654,7 +657,7 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
     applyUnitRim(shader);
     applyShroudTint(shader);
   };
-  mat.customProgramCacheKey = () => 'vm.unit.gait.rim.shroud.v2';
+  mat.customProgramCacheKey = () => 'vm.unit.gait.rim.shroud.v3';
 
   return mat;
 }

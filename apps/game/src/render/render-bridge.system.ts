@@ -21,9 +21,14 @@ import { infantryLegibilityScale } from '../core/config';
 import { ctx } from '../game/context';
 
 import { RenderBridge, clearKindMeshes, setRenderBridge } from './RenderBridge';
+import { CameraRenderCullVolume } from './RenderCullVolume';
 
 let bridge: RenderBridge | null = null;
 let forcedLodDistance: number | undefined;
+let renderCullEnabled = true;
+const renderCullVolume = new CameraRenderCullVolume();
+/** Off-screen aircraft at cruise altitude can cast a ground shadow ~28 m sideways. */
+const SHADOW_SAFE_CULL_MARGIN = 40;
 
 export default defineSystem({
   id: 'render.bridge',
@@ -38,6 +43,7 @@ export default defineSystem({
       const raw = new URLSearchParams(location.search).get('assetlod');
       const value = raw === null ? Number.NaN : Number(raw);
       forcedLodDistance = Number.isFinite(value) && value >= 0 ? value : undefined;
+      renderCullEnabled = new URLSearchParams(location.search).get('rendercull') !== 'off';
     }
   },
 
@@ -57,7 +63,8 @@ export default defineSystem({
       cameraRig.distance, cameraRig.camera.fov, handle.size.height, handle.size.cssHeight,
     );
     const lodDistance = forcedLodDistance ?? cameraRig.distance;
-    b.update(r.alpha, infantryScale, lodDistance);
+    if (renderCullEnabled) renderCullVolume.update(cameraRig.camera, SHADOW_SAFE_CULL_MARGIN);
+    b.update(r.alpha, infantryScale, lodDistance, renderCullEnabled ? renderCullVolume : null);
     // Quoted x100 so the F3 overlay can show it as a whole number; 100 means
     // "not scaling", which is what a close camera must always read.
     debug.counters.infScale = Math.round(infantryScale * 100);
@@ -72,6 +79,7 @@ export default defineSystem({
     counters.instBatches = b.batchCount;
     counters.instDraws = b.drawCalls;
     counters.instances = b.instanceCount;
+    counters.cameraCulled = b.cameraCulled;
   },
 
   dispose(): void {
@@ -83,5 +91,6 @@ export default defineSystem({
     bridge?.dispose();
     bridge = null;
     forcedLodDistance = undefined;
+    renderCullEnabled = true;
   },
 });

@@ -1554,6 +1554,74 @@
   white-space: nowrap;
 }
 
+/* -- occupied-building evacuation ---------------------------------------
+ *
+ * This is intentionally louder than ordinary transport unloading. The row
+ * exists only while a selected building actually contains friendly infantry,
+ * so it is a transient, high-value action rather than permanent HUD chrome.
+ * Its old neutral `vm-cargo` treatment disappeared into the selection header
+ * exactly when the player needed it. Keep the shared verb and command path,
+ * but give this one unmistakable contrast, width and an entrance beat.       */
+.vm-hud .vm-garrison-row {
+  margin-left: calc(6 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-garrison-row:not([hidden]) {
+  animation: vm-garrison-action-in 180ms cubic-bezier(0.2, 0.78, 0.2, 1) both;
+}
+
+.vm-hud .vm-garrison-evacuate {
+  width: auto;
+  min-width: calc(92 * var(--vm-u));
+  height: calc(20 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
+  padding: 0 calc(8 * var(--vm-u));
+  color: #f4fbff;
+  border-color: rgba(var(--vm-accent-rgb), 0.82);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.34), rgba(var(--vm-accent-rgb), 0.12)),
+    var(--vm-well);
+  box-shadow:
+    inset calc(3 * var(--vm-u)) 0 0 var(--vm-accent-hi),
+    0 0 calc(16 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.18);
+  font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.vm-hud .vm-garrison-evacuate > svg {
+  width: calc(12 * var(--vm-u));
+  height: calc(12 * var(--vm-u));
+  color: var(--vm-accent-hi);
+}
+
+.vm-hud .vm-garrison-evacuate .vm-num {
+  min-width: calc(17 * var(--vm-u));
+  padding: calc(1 * var(--vm-u)) calc(4 * var(--vm-u));
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.55);
+  background: rgba(1, 5, 11, 0.68);
+  color: var(--vm-accent-hi);
+  text-align: center;
+}
+
+.vm-hud .vm-garrison-evacuate:hover,
+.vm-hud .vm-garrison-evacuate:focus-visible {
+  color: #fff;
+  border-color: var(--vm-accent-hi);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.5), rgba(var(--vm-accent-rgb), 0.2)),
+    var(--vm-well);
+  box-shadow:
+    inset calc(3 * var(--vm-u)) 0 0 var(--vm-accent-hi),
+    0 0 calc(22 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.3);
+}
+
+@keyframes vm-garrison-action-in {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
 /* -- the primary-factory toggle ------------------------------------------
  *
  * Cargo's treatment plus one extra state. `is-active` is the same lit
@@ -1613,7 +1681,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vm-hud .vm-destruct.is-armed { animation: none; }
+  .vm-hud .vm-destruct.is-armed,
+  .vm-hud .vm-garrison-row:not([hidden]) { animation: none; }
 }
 
 /* --------------------------------------------------------------------------

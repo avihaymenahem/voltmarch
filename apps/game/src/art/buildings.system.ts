@@ -328,8 +328,8 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_conyard',
     label: 'Soviet Construction Yard',
-    url: new URL('../assets/buildings/soviets/compressed/construction-yard-surface-v2.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/construction-yard-surface-v2.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/construction-yard-surface-v2.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/construction-yard-surface-v2.shadow.glb', import.meta.url).href,
     widthScale: 0.92,
     depthScale: 0.90,
     heightScale: 0.86,
@@ -351,11 +351,11 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_warfactory',
     label: 'Soviet War Factory',
-    url: new URL('../assets/buildings/soviets/compressed/war-factory.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/war-factory.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/war-factory.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/war-factory.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/war-factory.lod1.glb', import.meta.url).href, minDistance: 78 },
-      { url: new URL('../assets/buildings/soviets/derived/war-factory.lod2.glb', import.meta.url).href, minDistance: 112 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/war-factory.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/war-factory.lod2.glb', import.meta.url).href, minDistance: 112 },
     ],
     widthScale: 0.94,
     depthScale: 0.90,
@@ -377,10 +377,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_barracks',
     label: 'Soviet Barracks',
-    url: new URL('../assets/buildings/soviets/compressed/barracks.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/barracks.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/barracks.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/barracks.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/barracks.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/barracks.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.92,
     depthScale: 0.92,
@@ -403,11 +403,11 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_refinery',
     label: 'Soviet Ore Refinery',
-    url: new URL('../assets/buildings/soviets/compressed/ore-refinery.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/ore-refinery.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/ore-refinery.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/ore-refinery.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/ore-refinery.lod1.glb', import.meta.url).href, minDistance: 78 },
-      { url: new URL('../assets/buildings/soviets/derived/ore-refinery.lod2.glb', import.meta.url).href, minDistance: 112 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/ore-refinery.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/ore-refinery.lod2.glb', import.meta.url).href, minDistance: 112 },
     ],
     widthScale: 0.94,
     depthScale: 0.90,
@@ -430,10 +430,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_radar',
     label: 'Soviet Radar Tower',
-    url: new URL('../assets/buildings/soviets/compressed/radar-tower.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/radar-tower.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/radar-tower.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/radar-tower.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/radar-tower.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/radar-tower.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.92,
     depthScale: 0.92,
@@ -456,8 +456,8 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_tech',
     label: 'Soviet Proving Ground',
-    url: new URL('../assets/buildings/soviets/compressed/proving-ground.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/proving-ground.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/proving-ground.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/proving-ground.shadow.glb', import.meta.url).href,
     widthScale: 0.92,
     depthScale: 0.92,
     heightScale: 0.94,
@@ -478,10 +478,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_commandpost',
     label: 'Soviet Command Bunker',
-    url: new URL('../assets/buildings/soviets/compressed/command-bunker.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/command-bunker.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/command-bunker.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/command-bunker.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/command-bunker.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/command-bunker.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.92,
     depthScale: 0.92,
@@ -503,8 +503,8 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_depot',
     label: 'Soviet Repair Depot',
-    url: new URL('../assets/buildings/soviets/compressed/repair-depot.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/repair-depot.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/repair-depot.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/repair-depot.shadow.glb', import.meta.url).href,
     widthScale: 0.92,
     depthScale: 0.92,
     heightScale: 0.94,
@@ -525,10 +525,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_subpen',
     label: 'Soviet Naval Pen',
-    url: new URL('../assets/buildings/soviets/compressed/naval-pen.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/naval-pen.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/naval-pen.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/naval-pen.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/naval-pen.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/naval-pen.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.94,
     depthScale: 0.94,
@@ -550,10 +550,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_nuke',
     label: 'Soviet Nuclear Missile Silo',
-    url: new URL('../assets/buildings/soviets/compressed/nuclear-silo.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/nuclear-silo.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/nuclear-silo.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/nuclear-silo.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/nuclear-silo.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/nuclear-silo.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.94,
     depthScale: 0.94,
@@ -575,8 +575,8 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_curtain',
     label: 'Soviet Ironclad Field',
-    url: new URL('../assets/buildings/soviets/compressed/ironclad-field.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/ironclad-field.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/ironclad-field.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/ironclad-field.shadow.glb', import.meta.url).href,
     widthScale: 0.94,
     depthScale: 0.94,
     heightScale: 0.94,
@@ -597,10 +597,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_silo',
     label: 'Soviet Ore Silo',
-    url: new URL('../assets/buildings/soviets/compressed/ore-silo.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/ore-silo.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/ore-silo.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/ore-silo.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/ore-silo.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/ore-silo.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.90,
     depthScale: 0.90,
@@ -622,11 +622,11 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_power',
     label: 'Soviet Tesla Reactor',
-    url: new URL('../assets/buildings/soviets/compressed/tesla-reactor.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/tesla-reactor.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/tesla-reactor.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/tesla-reactor.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/tesla-reactor.lod1.glb', import.meta.url).href, minDistance: 82 },
-      { url: new URL('../assets/buildings/soviets/derived/tesla-reactor.lod2.glb', import.meta.url).href, minDistance: 116 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/tesla-reactor.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/tesla-reactor.lod2.glb', import.meta.url).href, minDistance: 116 },
     ],
     widthScale: 0.92,
     depthScale: 0.70,
@@ -648,10 +648,10 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_flametower',
     label: 'Soviet Flame Tower',
-    url: new URL('../assets/buildings/soviets/compressed/flame-tower.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/flame-tower.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/flame-tower.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/flame-tower.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/soviets/derived/flame-tower.lod1.glb', import.meta.url).href, minDistance: 94 },
+      { url: new URL('../../../../packages/assets/game/buildings/soviets/derived/flame-tower.lod1.glb', import.meta.url).href, minDistance: 94 },
     ],
     widthScale: 0.90,
     depthScale: 0.90,
@@ -673,7 +673,7 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_sentry',
     label: 'Soviet Sentry Gun',
-    url: new URL('../assets/buildings/soviets/compressed/sentry-gun.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/sentry-gun.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.94,
@@ -701,8 +701,8 @@ const IMPORTED_SOVIET_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'soviet_tesla',
     label: 'Soviet Tesla Coil',
-    url: new URL('../assets/buildings/soviets/compressed/tesla-coil.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/soviets/derived/tesla-coil.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/soviets/compressed/tesla-coil.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/soviets/derived/tesla-coil.shadow.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.96,
@@ -731,10 +731,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_conyard',
     label: 'Allied Construction Yard',
-    url: new URL('../assets/buildings/allies/compressed/construction-yard.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/construction-yard.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/construction-yard.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/construction-yard.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/construction-yard.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/construction-yard.lod1.glb', import.meta.url).href, minDistance: 78 },
     ],
     widthScale: 0.92,
     depthScale: 0.92,
@@ -757,10 +757,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_power',
     label: 'Allied Power Plant',
-    url: new URL('../assets/buildings/allies/compressed/power-plant.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/power-plant.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/power-plant.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/power-plant.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/power-plant.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/power-plant.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.90,
     depthScale: 0.90,
@@ -783,11 +783,11 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_barracks',
     label: 'Allied Barracks',
-    url: new URL('../assets/buildings/allies/compressed/barracks.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/barracks.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/barracks.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/barracks.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/barracks.lod1.glb', import.meta.url).href, minDistance: 86 },
-      { url: new URL('../assets/buildings/allies/derived/barracks.lod2.glb', import.meta.url).href, minDistance: 116 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/barracks.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/barracks.lod2.glb', import.meta.url).href, minDistance: 116 },
     ],
     widthScale: 0.90,
     depthScale: 0.90,
@@ -810,10 +810,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_refinery',
     label: 'Allied Ore Refinery',
-    url: new URL('../assets/buildings/allies/compressed/ore-refinery.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/ore-refinery.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/ore-refinery.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/ore-refinery.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/ore-refinery.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/ore-refinery.lod1.glb', import.meta.url).href, minDistance: 78 },
     ],
     widthScale: 0.94,
     depthScale: 0.90,
@@ -836,10 +836,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_warfactory',
     label: 'Allied War Factory',
-    url: new URL('../assets/buildings/allies/compressed/war-factory.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/war-factory.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/war-factory.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/war-factory.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/war-factory.lod1.glb', import.meta.url).href, minDistance: 78 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/war-factory.lod1.glb', import.meta.url).href, minDistance: 78 },
     ],
     widthScale: 0.94,
     depthScale: 0.92,
@@ -862,8 +862,8 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_radar',
     label: 'Allied Radar Dome',
-    url: new URL('../assets/buildings/allies/compressed/radar-dome.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/radar-dome.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/radar-dome.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/radar-dome.shadow.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.94,
@@ -885,10 +885,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_tech',
     label: 'Allied Tech Centre',
-    url: new URL('../assets/buildings/allies/compressed/tech-centre.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/tech-centre.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/tech-centre.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/tech-centre.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/tech-centre.lod1.glb', import.meta.url).href, minDistance: 90 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/tech-centre.lod1.glb', import.meta.url).href, minDistance: 90 },
     ],
     widthScale: 0.90,
     depthScale: 0.90,
@@ -911,8 +911,8 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_commandpost',
     label: 'Allied Command Post',
-    url: new URL('../assets/buildings/allies/compressed/command-post.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/command-post.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/command-post.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/command-post.shadow.glb', import.meta.url).href,
     widthScale: 0.88,
     depthScale: 0.88,
     heightScale: 0.94,
@@ -934,10 +934,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_depot',
     label: 'Allied Repair Depot',
-    url: new URL('../assets/buildings/allies/compressed/repair-depot.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/repair-depot.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/repair-depot.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/repair-depot.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/repair-depot.lod1.glb', import.meta.url).href, minDistance: 88 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/repair-depot.lod1.glb', import.meta.url).href, minDistance: 88 },
     ],
     widthScale: 0.94,
     depthScale: 0.92,
@@ -960,10 +960,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_navalyard',
     label: 'Allied Naval Yard',
-    url: new URL('../assets/buildings/allies/compressed/naval-yard.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/naval-yard.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/naval-yard.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/naval-yard.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/naval-yard.lod1.glb', import.meta.url).href, minDistance: 82 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/naval-yard.lod1.glb', import.meta.url).href, minDistance: 82 },
     ],
     widthScale: 0.95,
     depthScale: 0.95,
@@ -986,10 +986,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_chrono',
     label: 'Allied Displacement Ring',
-    url: new URL('../assets/buildings/allies/compressed/displacement-ring.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/displacement-ring.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/displacement-ring.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/displacement-ring.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/displacement-ring.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/displacement-ring.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.94,
     depthScale: 0.94,
@@ -1012,10 +1012,10 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_weather',
     label: 'Allied Weather Control Device',
-    url: new URL('../assets/buildings/allies/compressed/weather-device.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/weather-device.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/weather-device.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/weather-device.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/allies/derived/weather-device.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/allies/derived/weather-device.lod1.glb', import.meta.url).href, minDistance: 86 },
     ],
     widthScale: 0.94,
     depthScale: 0.94,
@@ -1038,8 +1038,8 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_silo',
     label: 'Allied Ore Silo',
-    url: new URL('../assets/buildings/allies/compressed/ore-silo.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/ore-silo.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/ore-silo.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/ore-silo.shadow.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.94,
@@ -1061,8 +1061,8 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_pillbox',
     label: 'Allied Pillbox',
-    url: new URL('../assets/buildings/allies/compressed/pillbox.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/allies/derived/pillbox.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/pillbox.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/allies/derived/pillbox.shadow.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.94,
@@ -1084,7 +1084,7 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_aa',
     label: 'Allied AA Battery',
-    url: new URL('../assets/buildings/allies/compressed/aa-battery.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/aa-battery.glb', import.meta.url).href,
     widthScale: 0.90,
     depthScale: 0.90,
     heightScale: 0.94,
@@ -1112,7 +1112,7 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'allied_prismtower',
     label: 'Allied Refractor Tower',
-    url: new URL('../assets/buildings/allies/compressed/refractor-tower.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/allies/compressed/refractor-tower.glb', import.meta.url).href,
     widthScale: 0.88,
     depthScale: 0.88,
     heightScale: 0.97,
@@ -1149,8 +1149,8 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'civ_derrick',
     label: 'Civilian Oil Derrick',
-    url: new URL('../assets/buildings/civilian/compressed/oil-derrick.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/civilian/derived/oil-derrick.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/civilian/compressed/oil-derrick.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/civilian/derived/oil-derrick.shadow.glb', import.meta.url).href,
     widthScale: 0.94,
     depthScale: 0.94,
     heightScale: 0.98,
@@ -1172,8 +1172,8 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'civ_hospital',
     label: 'Civilian Hospital',
-    url: new URL('../assets/buildings/civilian/compressed/hospital.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/civilian/derived/hospital.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/civilian/compressed/hospital.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/civilian/derived/hospital.shadow.glb', import.meta.url).href,
     widthScale: 0.95,
     depthScale: 0.93,
     heightScale: 0.96,
@@ -1195,10 +1195,10 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'civ_apartments',
     label: 'Civilian Apartment Block',
-    url: new URL('../assets/buildings/civilian/compressed/apartment-block.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/civilian/derived/apartment-block.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/civilian/compressed/apartment-block.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/civilian/derived/apartment-block.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/civilian/derived/apartment-block.lod1.glb', import.meta.url).href, minDistance: 94 },
+      { url: new URL('../../../../packages/assets/game/buildings/civilian/derived/apartment-block.lod1.glb', import.meta.url).href, minDistance: 94 },
     ],
     widthScale: 0.94,
     depthScale: 0.94,
@@ -1222,10 +1222,10 @@ const IMPORTED_CIVILIAN_STRUCTURES: readonly ImportedStructureSpec[] = [
   {
     key: 'civ_mine',
     label: 'Civilian Ore Mine',
-    url: new URL('../assets/buildings/civilian/compressed/ore-mine.glb', import.meta.url).href,
-    shadowUrl: new URL('../assets/buildings/civilian/derived/ore-mine.shadow.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/buildings/civilian/compressed/ore-mine.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/civilian/derived/ore-mine.shadow.glb', import.meta.url).href,
     lods: [
-      { url: new URL('../assets/buildings/civilian/derived/ore-mine.lod1.glb', import.meta.url).href, minDistance: 94 },
+      { url: new URL('../../../../packages/assets/game/buildings/civilian/derived/ore-mine.lod1.glb', import.meta.url).href, minDistance: 94 },
     ],
     widthScale: 0.94,
     depthScale: 0.92,
@@ -1299,11 +1299,9 @@ function surfaceMask(): THREE.DataTexture {
 /**
  * A proxy has to stay visible to both renderers' scene traversal so it reaches
  * their shadow path. Camera layers failed here because WebGL tests the MAIN
- * camera's layers while WebGPU renders the shadow camera as a real pass. This
- * material is renderer-neutral: the proxy submits a cheap vertex-only draw in
- * colour, writes neither colour nor depth, and the shadow override still writes
- * its depth. The approved body therefore remains visible but casts no LOD0
- * shadow.
+ * camera's layers while WebGPU renders the shadow camera as a real pass. The
+ * renderer seams now skip `shadowOnly` batches outside a shadow pass; this
+ * inert material remains the safe fallback if either seam is unavailable.
  */
 function shadowOnlyMaterial(): THREE.MeshBasicMaterial {
   if (importedShadowOnlyMaterial !== null) return importedShadowOnlyMaterial;
@@ -1766,6 +1764,7 @@ export async function loadImportedStructureOverride(
       customDepthMaterial: depthMaterial,
       receiveShadow: false,
       aoOccluder: false,
+      shadowOnly: true,
     });
   }
   if (spec.accessory === 'soviet-radar-array') {

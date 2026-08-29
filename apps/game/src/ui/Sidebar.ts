@@ -53,7 +53,7 @@ import {
   type HudCameo,
   type HudSnapshot,
 } from '../core/types';
-import { HUD_SUPERWEAPON, MAX_QUEUE_DEPTH } from '../core/config';
+import { HUD_SUPERWEAPON } from '../core/config';
 import type * as THREE from 'three';
 import {
   BUILD_SLOT_HOTKEYS,
@@ -1510,12 +1510,13 @@ class SelectionPanel {
      * naming "the HUD's evacuate button" and no caller anywhere in `src/ui` or
      * `src/input`. Same shape as Cargo, same word on the label rail, and the
      * same D key drives both — a garrison and a transport are one verb. */
-    this.garrisonRow = el('div', 'vm-stances vm-cargo-row', head);
+    this.garrisonRow = el('div', 'vm-stances vm-cargo-row vm-garrison-row', head);
     label(this.garrisonRow, 'vm-stance-label', 'Garrison');
-    this.garrisonButton = button(this.garrisonRow, 'vm-stance vm-cargo', 'Evacuate the garrison');
-    this.garrisonButton.style.width = 'auto';
-    this.garrisonButton.style.gap = 'calc(3 * var(--vm-u))';
-    this.garrisonButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.garrisonButton = button(
+      this.garrisonRow,
+      'vm-stance vm-cargo vm-garrison-evacuate',
+      'Evacuate the garrison',
+    );
     this.garrisonButton.appendChild(makeIcon('deploy', 'vm-icon'));
     label(this.garrisonButton, '', 'Evacuate');
     this.garrisonCountNode = label(this.garrisonButton, 'vm-num', '0');
@@ -2965,7 +2966,7 @@ class BuildPanel {
       slot.sig = sig;
 
       if (c.queued > 0) {
-        slot.queueNode.nodeValue = String(Math.min(c.queued, MAX_QUEUE_DEPTH));
+        slot.queueNode.nodeValue = String(c.queued);
         slot.queueEl.hidden = false;
       } else if (!slot.queueEl.hidden) {
         slot.queueEl.hidden = true;

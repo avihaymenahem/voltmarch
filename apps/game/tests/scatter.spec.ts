@@ -23,6 +23,7 @@ import {
 } from '../src/world/PropLibrary';
 import {
   Scatter, CHUNK_COUNT, COVER_N, GROUND_STORY_CAP, SCATTER_SHADOW_MIN_RADIUS,
+  usesLegacyScatterShadows,
 } from '../src/world/Scatter';
 import { DECAL_LAYOUT, DecalField, DecalKind } from '../src/world/Decals';
 
@@ -818,7 +819,11 @@ describe('Scatter — chunk culling', () => {
       if (!m.name.startsWith('prop.')) return;
       const bs = m.geometry.boundingSphere;
       expect(bs, `${m.name} has no bounding sphere to gate on`).not.toBeNull();
-      expect(m.castShadow, m.name).toBe(bs!.radius >= SCATTER_SHADOW_MIN_RADIUS);
+      const def = PROP_DEFS.find((candidate) => `prop.${candidate.key}` === m.name);
+      expect(def, `${m.name} has no prop definition`).toBeDefined();
+      expect(m.castShadow, m.name).toBe(
+        def!.castsShadow !== false && bs!.radius >= SCATTER_SHADOW_MIN_RADIUS,
+      );
       checked++;
     });
     expect(checked).toBeGreaterThan(0);
@@ -835,6 +840,15 @@ describe('Scatter — chunk culling', () => {
       expect(Number(d[1]), 'the entity-prop gate moved; SCATTER_SHADOW_MIN_RADIUS must follow')
         .toBe(SCATTER_SHADOW_MIN_RADIUS);
     }
+  });
+
+  it('keeps the low-cover shadow policy measurable behind a same-build escape hatch', () => {
+    expect(usesLegacyScatterShadows('')).toBe(false);
+    expect(usesLegacyScatterShadows('?gpu=webgpu')).toBe(false);
+    expect(usesLegacyScatterShadows('?scattershadow=legacy')).toBe(true);
+
+    const noShadow = PROP_DEFS.filter((def) => def.castsShadow === false).map((def) => def.key);
+    expect(noShadow).toEqual(['grassTuft', 'grassTuftGreen', 'flowerBed']);
   });
 
   it('shows more of the map from higher up', () => {

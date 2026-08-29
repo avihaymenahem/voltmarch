@@ -35,6 +35,8 @@ import {
   type NodeRendererLike,
 } from './gpu-path';
 import { createNodePostChain } from './post-nodes';
+import { classifyNodeRenderPass } from './node-pass-accounting';
+import { shouldSkipShadowOnlyObject } from './shadow-only';
 import { createSkyNodeMaterial } from './sky-nodes';
 import {
   createContactShadowNodeMaterial, createDecalNodeMaterial,
@@ -170,20 +172,13 @@ async function createNodeRenderer(
 /**
  * Bind the node graph and answer `PostChain`'s questions.
  *
- * **`drawCallsByPass()` RETURNS NULL, AND THAT IS THE HONEST ANSWER RATHER THAN
- * A GAP NOBODY NOTICED.** The WebGL split is produced by wrapping
- * `WebGLRenderer.shadowMap.render` and reading `info.render.calls` on either
- * side of it — a seam that exists because the shadow pass is a distinct method
- * call on that renderer. The node `Renderer` has no such seam: shadows are drawn
- * inside `_renderScene`, `Info` publishes `render.drawCalls` as a per-frame TOTAL
- * and nothing else, and there is no per-pass counter to read. Faking a split by
- * counting `render()` invocations would produce a number that looks like the
- * WebGL one and means something different, which is precisely the class of
- * defect `normaliseInfo()` exists to stop.
- *
- * So on the node path `stats().drawCallsByPass` reports zeros with the true
- * TOTAL, `MAX_DRAW_CALLS` cannot be checked, and `tools/shot-compare.mjs draws`
- * compares totals only. **The per-pass instrument is WebGL-only.**
+ * Every common-Renderer submission delegates through its public `renderObject`
+ * method. We snapshot Info immediately around that delegate, so instancing,
+ * draw ranges and double-sided submissions are counted by three itself rather
+ * than reimplemented here. This seam is intentionally below
+ * `setRenderObjectFunction`: ShadowNode temporarily replaces that callback, so
+ * instrumenting it would silently miss every shadow draw and label the residual
+ * as post work.
  */
 function createNodePostAdapter(
   renderer: NodeRendererLike, scene: THREE.Scene, camera: THREE.Camera,
@@ -195,6 +190,52 @@ function createNodePostAdapter(
   let liveScene = scene;
   let liveCamera = camera;
   let rainIntensity = 0;
+  const draws = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  const triangles = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  const previousRenderObject = renderer.renderObject;
+  const accountingStack: Array<{ draws: number; triangles: number }> = [];
+
+  renderer.renderObject = function accountingRenderObject(
+    object, renderScene, renderCamera, geometry, material, group,
+    lightsNode, clippingContext, passId,
+  ) {
+    const bucket = classifyNodeRenderPass(
+      object, renderScene, liveScene, clippingContext ?? null,
+      renderer.getRenderTarget(),
+    );
+    // A shadow proxy is deliberately scene-visible so Three discovers it for
+    // shadow maps. Its normal-pass material writes neither colour nor depth,
+    // but the renderer still used to build/submit that useless draw.
+    if (shouldSkipShadowOnlyObject(object, bucket === 'shadow')) return;
+
+    const nested = { draws: 0, triangles: 0 };
+    accountingStack.push(nested);
+    const before = renderer.info.render.drawCalls;
+    const trianglesBefore = renderer.info.render.triangles;
+    try {
+      previousRenderObject.call(
+        renderer,
+        object, renderScene, renderCamera, geometry, material, group,
+        lightsNode, clippingContext, passId,
+      );
+    } finally {
+      const inclusiveDraws = Math.max(0, renderer.info.render.drawCalls - before);
+      const inclusiveTriangles = Math.max(0, renderer.info.render.triangles - trianglesBefore);
+      accountingStack.pop();
+      const parent = accountingStack[accountingStack.length - 1];
+      if (parent !== undefined) {
+        parent.draws += inclusiveDraws;
+        parent.triangles += inclusiveTriangles;
+      }
+      // Node updateBefore hooks can recursively render whole targets while the
+      // outer object's pipeline is being prepared. Charge those inner draws to
+      // their own targets, then only the exclusive remainder to this object.
+      const delta = Math.max(0, inclusiveDraws - nested.draws);
+      const triangleDelta = Math.max(0, inclusiveTriangles - nested.triangles);
+      draws[bucket] += delta;
+      triangles[bucket] += triangleDelta;
+    }
+  };
   let chain = createNodePostChain({
     renderer: renderer as unknown as ChainRenderer,
     scene: liveScene as unknown as ChainScene,
@@ -212,14 +253,35 @@ function createNodePostAdapter(
   }
 
   return {
-    render(dt: number): void { chain.render(dt); },
+    render(dt: number): void {
+      draws.shadow = 0;
+      draws.colour = 0;
+      draws.ao = 0;
+      draws.post = 0;
+      draws.total = 0;
+      triangles.shadow = 0;
+      triangles.colour = 0;
+      triangles.ao = 0;
+      triangles.post = 0;
+      triangles.total = 0;
+      chain.render(dt);
+      draws.total = renderer.info.render.drawCalls;
+      triangles.total = renderer.info.render.triangles;
+      // Any upstream pass shape we did not recognise remains visible as post
+      // work instead of making the exhaustive sum lie.
+      const measured = draws.shadow + draws.colour + draws.ao + draws.post;
+      if (measured < draws.total) draws.post += draws.total - measured;
+      const measuredTriangles = triangles.shadow + triangles.colour + triangles.ao + triangles.post;
+      if (measuredTriangles < triangles.total) triangles.post += triangles.total - measuredTriangles;
+    },
     syncConfig(): void { chain.syncConfig(); },
     setWeatherIntensity(intensity: number): void {
       rainIntensity = intensity;
       chain.setWeatherIntensity(intensity);
     },
     setSize(w: number, h: number): void { chain.setSize(w, h); },
-    drawCallsByPass(): null { return null; },
+    drawCallsByPass() { return draws; },
+    trianglesByPass() { return triangles; },
     setScene(next: THREE.Scene): void {
       if (next === liveScene) return;
       liveScene = next;
@@ -230,7 +292,10 @@ function createNodePostAdapter(
       liveCamera = next;
       rebuild();
     },
-    dispose(): void { chain.dispose(); },
+    dispose(): void {
+      renderer.renderObject = previousRenderObject;
+      chain.dispose();
+    },
   };
 }
 
