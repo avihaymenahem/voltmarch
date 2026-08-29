@@ -244,44 +244,17 @@ export interface FactionOption {
  * screen having to enumerate its own controls.
  * ========================================================================== */
 
-/**
- * Take the page fullscreen when a match starts. Best effort, never throws.
- *
- * Four ways this legitimately does nothing, all of them silent on purpose:
- *   - the screenshot harness (`?shot=`), where a fullscreen transition would
- *     resize the buffer mid-capture and every fixture would stop being diffable;
- *   - vitest, where there is no `document` at all;
- *   - a browser that refuses because the transient user activation from the
- *     click has already been spent — which is why the caller invokes this
- *     BEFORE its first await;
- *   - the browser user is already in HTML fullscreen.
- *
- * Desktop is deliberately different: Electron owns native fullscreen, so
- * Escape remains the pause/menu command instead of resizing the game window.
- *
- * The rejected promise MUST be swallowed. An unhandled rejection here would
- * surface as a console error on a perfectly normal "player declined" path.
- */
-export function goFullscreen(): void {
-  if (typeof document === 'undefined') return;
-  if (new URLSearchParams(location.search).has('shot')) return;
-  // Electron must use its native borderless fullscreen state. HTML fullscreen
-  // is browser page chrome: Escape owns it and exits it before the RTS can open
-  // Pause, which makes the packaged game unexpectedly resize like a website.
-  // The native window keeps Escape available to the shell and Alt+Enter remains
-  // the explicit mode toggle in the main process.
-  const desktop = desktopBridge();
-  if (desktop !== null) {
-    void desktop.setFullscreen(true);
-    return;
-  }
-  if (document.fullscreenElement !== null) return;
-  const root = document.documentElement;
-  if (typeof root.requestFullscreen !== 'function') return;
-  void root.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* declined */ });
-}
-
 const ADJUSTERS = new WeakMap<HTMLElement, (dir: number) => void>();
+
+let desktopPointerLockModule: Promise<typeof import('../platform/DesktopPointerLock')> | null = null;
+
+/** Keep the confinement implementation out of every browser's shell chunk. */
+function updateDesktopPointerLock(active: boolean): void {
+  if (desktopBridge() === null) return;
+  if (!active && desktopPointerLockModule === null) return;
+  desktopPointerLockModule ??= import('../platform/DesktopPointerLock');
+  void desktopPointerLockModule.then((module) => module.setDesktopPointerLockActive(active));
+}
 
 /** Register a left/right handler for an element (slider, chooser, toggle). */
 export function setAdjust(el: HTMLElement, fn: (dir: number) => void): void {
@@ -2081,10 +2054,6 @@ export class Shell {
     if (this.pvp === null && this.replay === null && this.operation === null) {
       suppressProgression(false);
     }
-    // BEFORE the first await, deliberately. `requestFullscreen` needs transient
-    // user activation, and every await between the click and the call spends
-    // more of that window — `bootGame` below is seconds of shader compilation.
-    goFullscreen();
     try {
       const keys = playableFactions().map((f) => f.key);
       this.setup = options.persist === false
@@ -2753,6 +2722,7 @@ export class Shell {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    updateDesktopPointerLock(false);
     this.cancelScheduledBackdrop();
     cancelAnimationFrame(this.rafHandle);
     window.removeEventListener('keydown', this.onKeyDown, { capture: true });
@@ -2814,6 +2784,10 @@ export class Shell {
 
     this.screen = next;
     this.state = state;
+    // Match launch no longer changes the window mode. Pointer confinement is
+    // likewise gameplay state: every menu/pause/result route releases it, and
+    // returning to an uncovered match re-reads the native preference.
+    updateDesktopPointerLock(state === 'playing' && next === null);
     this.updatePrompt.onShellState(state);
 
     if (next !== null) {

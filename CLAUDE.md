@@ -2426,6 +2426,17 @@ before touching it. The workspace boundary is structural, not a convention.
   window mode/size/monitor apply immediately while the GPU and frame-rate rows **cannot** — those
   are switches, appended before `app.whenReady()` — so they set `relaunchPending`, compared against
   what the process actually launched with rather than against defaults.
+
+  **STARTING A MATCH NEVER CHANGES WINDOW MODE.** Windowed launches use the native Windows frame,
+  restore the last normal bounds/maximised state inside a live work area, and keep fullscreen behind
+  the Display row or Alt+Enter. Optional desktop pointer confinement releases whenever pause/menu UI
+  covers gameplay and on focus or visibility loss. Browser builds never instantiate that adapter.
+
+  **UNSIGNED BUILDS CANNOT CODE THEIR WAY AROUND REPUTATION.** The blue SmartScreen More info / Run
+  anyway surface and McAfee's low-prevalence block are expected until a consistent trusted publisher
+  identity earns reputation (or the app ships through Microsoft Store). Release checksums and GitHub
+  attestations prove origin, not safety and not publisher reputation. The signing inputs, verification
+  gate and vendor false-positive procedure live in `docs/DESKTOP_DISTRIBUTION.md`.
 - **WHAT IS STILL WEB-ONLY PROSE.** `README.md`, `package.json`, `index.html` and two wiki pages
   describe this as a browser game; they are INCOMPLETE rather than false, and were deliberately left
   until the desktop build is actually distributed. Two claims will need real care at that point:

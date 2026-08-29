@@ -1532,7 +1532,8 @@ export class SettingsScreen implements Screen {
           d.displayIndex,
           (v) => this.patchDesktop({ displayIndex: v }),
         ),
-        'Automatic leaves the window wherever the system last put it.',
+        'Automatic restores the last safe window position. A first launch or '
+        + 'a disconnected monitor starts centred on the primary display.',
       ));
     }
 
@@ -1562,6 +1563,13 @@ export class SettingsScreen implements Screen {
       'Keeps the window in front of every other application. Off by default: it '
       + 'stops the game being pushed behind other windows, but nothing can ever '
       + 'cover it afterwards — including dialogs from other apps. Applies immediately.',
+    ));
+
+    sec.appendChild(row(
+      'Lock Mouse To Window',
+      toggle(d.lockPointer, (v) => this.patchDesktop({ lockPointer: v })),
+      'Confines the pointer during live desktop gameplay. It releases for pause, '
+      + 'menus, Alt+Tab and focus changes, then resumes after the next battlefield click.',
     ));
 
     sec.appendChild(row(

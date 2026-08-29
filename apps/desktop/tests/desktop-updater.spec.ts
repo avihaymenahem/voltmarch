@@ -64,6 +64,7 @@ describe('desktop updater shipping contract', () => {
     const builder = read('apps/desktop/electron-builder.yml');
     const packager = read('apps/desktop/dist.mjs');
     const desktopPackage = JSON.parse(read('apps/desktop/package.json')) as {
+      author?: { name?: string };
       devDependencies?: { electron?: string };
     };
     const workflow = read('.github/workflows/desktop.yml');
@@ -75,6 +76,21 @@ describe('desktop updater shipping contract', () => {
     expect(packager).toContain("'--publish', 'never'");
     expect(packager).toContain("createRequire(import.meta.url).resolve('electron-builder/cli.js')");
     expect(packager).not.toContain("path.join(HERE, 'node_modules', 'electron-builder'");
+    expect(desktopPackage.author?.name).toBe('Avihay Menahem');
     expect(desktopPackage.devDependencies?.electron).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('makes release provenance verifiable without representing unsigned builds as trusted', () => {
+    const builder = read('apps/desktop/electron-builder.yml');
+    const workflow = read('.github/workflows/desktop.yml');
+    const guidance = read('docs/DESKTOP_DISTRIBUTION.md');
+    expect(builder).toContain('requestedExecutionLevel: asInvoker');
+    expect(builder).toContain('executableName: VOLTMARCH');
+    expect(workflow).toContain('WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}');
+    expect(workflow).toContain('Get-AuthenticodeSignature');
+    expect(workflow).toContain('SHA256SUMS.txt');
+    expect(workflow).toContain('uses: actions/attest@v4');
+    expect(guidance).toContain('They do **not** create SmartScreen');
+    expect(guidance).not.toContain('disable SmartScreen');
   });
 });

@@ -40,6 +40,7 @@ import {
 } from '../../apps/desktop/src/app-url';
 import { contentTypeFor, resolveAsset } from '../../apps/desktop/src/paths';
 import { activeAdapterLabel } from '../../apps/game/src/platform/desktop';
+import { advanceLockedPointer } from '../../apps/game/src/platform/DesktopPointerLock';
 import {
   DEFAULT_DISPLAY,
   MIN_WINDOW_H,
@@ -47,6 +48,7 @@ import {
   WINDOW_SIZES,
   applyPatch,
   displayLabel,
+  launchWindowBounds,
   normaliseDisplay,
   sizesFor,
   targetDisplay,
@@ -456,6 +458,19 @@ describe('display prefs', () => {
     expect(windowBounds(DEFAULT_DISPLAY, null)).toBeNull();
   });
 
+  it('restores an automatic window on-screen and centres a stale placement', () => {
+    expect(launchWindowBounds(
+      { ...DEFAULT_DISPLAY, x: 2100, y: 200, width: 1600, height: 900 },
+      [MON_1080, MON_1440],
+    )).toEqual({ x: 2100, y: 200, width: 1600, height: 900 });
+
+    const recovered = launchWindowBounds(
+      { ...DEFAULT_DISPLAY, x: 20_000, y: 20_000 },
+      [MON_1080, MON_1440],
+    );
+    expect(recovered).toEqual({ x: 160, y: 70, width: 1600, height: 900 });
+  });
+
   it('never lets a window fall below the HUD floor', () => {
     const b = windowBounds({ ...DEFAULT_DISPLAY, width: 200, height: 200 }, MON_1080);
     expect(b?.width).toBeGreaterThanOrEqual(MIN_WINDOW_W);
@@ -685,16 +700,20 @@ describe('desktop shell import boundary', () => {
   });
 });
 
-describe('desktop fullscreen is native game state', () => {
-  it('routes match fullscreen through Electron before the browser API', () => {
+describe('desktop fullscreen is explicit native game state', () => {
+  it('does not force fullscreen when a match starts', () => {
     const shell = readFileSync(path.join(REPO, 'apps/game/src/shell/Shell.ts'), 'utf8');
-    const start = shell.indexOf('export function goFullscreen');
-    const end = shell.indexOf('const ADJUSTERS', start);
-    const goFullscreen = shell.slice(start, end);
-    expect(goFullscreen).toContain('desktopBridge()');
-    expect(goFullscreen).toContain('desktop.setFullscreen(true)');
-    expect(goFullscreen.indexOf('desktop.setFullscreen(true)'))
-      .toBeLessThan(goFullscreen.indexOf('root.requestFullscreen'));
+    const main = readFileSync(path.join(REPO, 'apps/desktop/src/main.ts'), 'utf8');
+    expect(shell).not.toContain('goFullscreen()');
+    expect(main).toContain("input.key !== 'Enter' || !input.alt");
+    expect(main).toContain('applyDisplayPrefs(win, display)');
+  });
+
+  it('bounds relative pointer movement at every edge', () => {
+    expect(advanceLockedPointer({ x: 4, y: 5 }, -20, 300, 1280, 720))
+      .toEqual({ x: 0, y: 305 });
+    expect(advanceLockedPointer({ x: 1270, y: 710 }, 40, 40, 1280, 720))
+      .toEqual({ x: 1279, y: 719 });
   });
 });
 

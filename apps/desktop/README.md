@@ -63,7 +63,10 @@ than assuming.
   "forceHighPerformanceGpu": true,
   "unlockFrameRate": false,
   "ignoreGpuBlocklist": false,
-  "display": { "mode": "windowed", "width": 1600, "height": 900, "displayIndex": -1 }
+  "display": {
+    "mode": "windowed", "width": 1600, "height": 900, "displayIndex": -1,
+    "lockPointer": false
+  }
 }
 ```
 
@@ -102,6 +105,13 @@ bounds opens the window somewhere the player cannot see, and in fullscreen there
 title bar to drag it back by. Both settings are applied before any UI exists, so both need the
 same escape hatch.
 
+Windowed launches use the normal Windows frame and its standard drag, snap, minimise, maximise and
+close controls. The shell persists the last normal bounds and maximised state, clamps a restore to
+the connected displays' work areas, and centres a first or stale launch on the primary monitor.
+Starting a match never changes window mode; fullscreen is entered only through the Display row or
+Alt+Enter. The optional **Lock Mouse To Window** row confines a live-match pointer and releases it
+for pause/menu routes, focus loss and Alt+Tab.
+
 The desktop renderer defaults to WebGPU and writes `?gpu=webgpu` on every ordinary launch. Boot
 flags still reach the renderer as an ordinary query string: `--vm-<flag>=<value>` for anything on
 the allowlist in `apps/desktop/src/app-url.ts`. `--vm-gpu=webgl` is the explicit diagnostic escape
@@ -128,6 +138,11 @@ assets with deterministic URL-safe names: installer, installer blockmap, portabl
 `latest.yml`. Do not upload only the two executables: the installed updater cannot discover or
 verify a release without the manifest and blockmap. The first updater-capable version still needs
 one manual install; updates after that are in-app.
+
+The same job publishes `SHA256SUMS.txt` and GitHub provenance attestations. They make source and
+tampering verifiable but do not replace Authenticode or manufacture SmartScreen reputation. The
+current unsigned-build limitation, optional CI signing inputs, verification commands and McAfee
+false-positive procedure are in [`docs/DESKTOP_DISTRIBUTION.md`](../../docs/DESKTOP_DISTRIBUTION.md).
 
 The Discord announcement is deliberately not owned by the Windows workflow. The tag also deploys
 the multiplayer relay, so `.github/workflows/deploy-relay.yml` waits for both the verified public

@@ -114,10 +114,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   const style = document.createElement('style');
   style.dataset.vmCheatEngine = 'styles';
   style.textContent = `
-    .vm-cheat-launcher{position:fixed;right:18px;bottom:82px;pointer-events:auto;z-index:2;
-      border:1px solid #ff456e;background:#160810;color:#ff7697;padding:7px 10px;
-      font:700 12px/1 Rajdhani,sans-serif;letter-spacing:.16em;cursor:pointer;box-shadow:0 0 18px #ff174433}
-    .vm-cheat-launcher kbd{margin-left:7px;color:#957687;font:500 9px/1 monospace}
     .vm-cheat{position:fixed;width:356px;max-height:calc(100vh - 24px);pointer-events:auto;z-index:3;
       color:#e8e1e7;background:linear-gradient(180deg,#150b17f7,#08070df7);border:1px solid #ff3f70;
       box-shadow:0 16px 48px #000b,0 0 26px #ff174425;font:500 13px/1.2 Rajdhani,sans-serif}
@@ -146,11 +142,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     .vm-cheat__status{margin-top:9px;min-height:30px;padding:7px 8px;background:#070b0d;border:1px solid #26343a;
       color:#7de1d2;font:600 10px/1.45 monospace;white-space:pre-line}
   `;
-
-  const launcher = document.createElement('button');
-  launcher.className = 'vm-cheat-launcher';
-  launcher.type = 'button';
-  launcher.append('CHEAT ENGINE', node('kbd', '', 'CTRL+SHIFT+C'));
 
   const panel = document.createElement('section');
   panel.className = 'vm-cheat';
@@ -248,7 +239,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   );
   panel.append(head, body);
 
-  options.mount.append(style, launcher, panel);
+  options.mount.append(style, panel);
 
   const close = element<HTMLButtonElement>(panel, '.vm-cheat__close');
   const headElement = element<HTMLElement>(panel, '.vm-cheat__head');
@@ -290,7 +281,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   function setOpen(open: boolean): void {
     state.open = open;
     panel.hidden = !open;
-    launcher.hidden = open;
     persist();
   }
 
@@ -494,7 +484,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   requestAnimationFrame(placePanel);
   updateStatus('ready · direct spawn is free and uncapped');
 
-  launcher.addEventListener('click', () => { setOpen(true); requestAnimationFrame(placePanel); });
   close.addEventListener('click', () => setOpen(false));
   category.addEventListener('change', () => { state.category = category.value; refreshUnits(); });
   owner.addEventListener('change', () => { state.owner = Number(owner.value); persist(); });
@@ -526,7 +515,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
       window.removeEventListener('keydown', toggleFromKey, true);
       window.removeEventListener('resize', placePanel);
       panel.remove();
-      launcher.remove();
       style.remove();
     },
   };

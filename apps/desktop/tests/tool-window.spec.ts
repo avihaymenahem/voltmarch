@@ -4,6 +4,7 @@ import { DEFAULT_DISPLAY, displayForLaunch, type DisplayPrefs } from '../src/dis
 
 describe('desktop developer-tool window policy', () => {
   const playerFullscreen: DisplayPrefs = {
+    ...DEFAULT_DISPLAY,
     mode: 'fullscreen',
     width: 2560,
     height: 1440,

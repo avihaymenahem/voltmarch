@@ -53,10 +53,17 @@ export interface DisplayPrefs {
    * An INDEX and not electron's `Display.id`, deliberately. Those ids are not
    * stable across a reboot or a cable swap on Windows, so a stored id resolves
    * to nothing on the next launch and the window silently opens on the primary
-   * with no way to tell that from a deliberate choice. -1 means "wherever the
-   * OS puts it", which is the honest default and what a fresh profile gets.
+   * with no way to tell that from a deliberate choice. -1 means automatic:
+   * restore the last safe position, or centre a first/stale launch on primary.
    */
   displayIndex: number;
+  /** Last normal (non-maximised, non-fullscreen) window position. */
+  x: number | null;
+  y: number | null;
+  /** Restore the native Windows maximised state on the next launch. */
+  maximized: boolean;
+  /** Confine the pointer to the game while a live desktop match has focus. */
+  lockPointer: boolean;
   /**
    * Keep the window above every other application.
    *
@@ -83,6 +90,10 @@ export const DEFAULT_DISPLAY: DisplayPrefs = {
   width: 1600,
   height: 900,
   displayIndex: -1,
+  x: null,
+  y: null,
+  maximized: false,
+  lockPointer: false,
   alwaysOnTop: false,
 };
 
@@ -140,12 +151,20 @@ export function normaliseDisplay(raw: unknown): DisplayPrefs {
     const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : NaN;
     return Number.isNaN(n) ? fallback : Math.min(max, Math.max(min, n));
   };
+  const coordinate = (v: unknown): number | null => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    return Math.round(Math.min(100_000, Math.max(-100_000, v)));
+  };
   return {
     mode: o.mode === 'fullscreen' ? 'fullscreen' : 'windowed',
     width: int(o.width, MIN_WINDOW_W, 16384, DEFAULT_DISPLAY.width),
     height: int(o.height, MIN_WINDOW_H, 16384, DEFAULT_DISPLAY.height),
     // -1 is meaningful, so the floor is -1 rather than 0.
     displayIndex: int(o.displayIndex, -1, 63, DEFAULT_DISPLAY.displayIndex),
+    x: coordinate(o.x),
+    y: coordinate(o.y),
+    maximized: o.maximized === true,
+    lockPointer: o.lockPointer === true,
     alwaysOnTop: typeof o.alwaysOnTop === 'boolean' ? o.alwaysOnTop : DEFAULT_DISPLAY.alwaysOnTop,
   };
 }
@@ -203,6 +222,46 @@ export function windowBounds(
   };
 }
 
+/**
+ * Recover the last native window placement without allowing a disconnected
+ * monitor to strand the game off-screen.
+ *
+ * An explicitly selected monitor still wins and centres the requested size.
+ * In Automatic mode a saved position is restored and clamped to the work area
+ * that contains it. A first run, or a stale position that intersects no live
+ * display, starts centred on the primary display. This is Windows' familiar
+ * restore behaviour made explicit; Electron does not persist it for us.
+ */
+export function launchWindowBounds(
+  prefs: DisplayPrefs,
+  displays: readonly DisplayInfo[],
+): { x: number; y: number; width: number; height: number } | null {
+  const selected = targetDisplay(prefs, displays);
+  if (selected !== null) return windowBounds(prefs, selected);
+
+  if (prefs.x !== null && prefs.y !== null) {
+    const containing = displays.find((d) => (
+      prefs.x! >= d.workX
+      && prefs.x! < d.workX + d.workWidth
+      && prefs.y! >= d.workY
+      && prefs.y! < d.workY + d.workHeight
+    ));
+    if (containing !== undefined) {
+      const width = Math.max(MIN_WINDOW_W, Math.min(prefs.width, containing.workWidth));
+      const height = Math.max(MIN_WINDOW_H, Math.min(prefs.height, containing.workHeight));
+      return {
+        x: Math.min(containing.workX + containing.workWidth - width, Math.max(containing.workX, prefs.x)),
+        y: Math.min(containing.workY + containing.workHeight - height, Math.max(containing.workY, prefs.y)),
+        width,
+        height,
+      };
+    }
+  }
+
+  const primary = displays.find((d) => d.primary) ?? displays[0] ?? null;
+  return windowBounds(prefs, primary);
+}
+
 /* -------------------------------------------------------------------------- *
  * THE WIRE SHAPES
  *
@@ -227,6 +286,8 @@ export interface DisplayState {
   readonly height: number;
   readonly displayIndex: number;
   readonly alwaysOnTop: boolean;
+  /** Confine the pointer during live desktop gameplay. */
+  readonly lockPointer: boolean;
   readonly displays: readonly DisplayInfoDto[];
   readonly sizes: ReadonlyArray<readonly [number, number]>;
   readonly forceHighPerformanceGpu: boolean;
@@ -241,6 +302,7 @@ export interface DisplayPatch {
   readonly height?: number;
   readonly displayIndex?: number;
   readonly alwaysOnTop?: boolean;
+  readonly lockPointer?: boolean;
   readonly forceHighPerformanceGpu?: boolean;
   readonly unlockFrameRate?: boolean;
 }
@@ -259,7 +321,11 @@ export function applyPatch(prefs: DisplayPrefs, patch: DisplayPatch): DisplayPre
     width: patch.width ?? prefs.width,
     height: patch.height ?? prefs.height,
     displayIndex: patch.displayIndex ?? prefs.displayIndex,
+    x: prefs.x,
+    y: prefs.y,
+    maximized: prefs.maximized,
     alwaysOnTop: patch.alwaysOnTop ?? prefs.alwaysOnTop,
+    lockPointer: patch.lockPointer ?? prefs.lockPointer,
   });
 }
 

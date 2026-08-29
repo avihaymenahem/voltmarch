@@ -39,7 +39,8 @@
 /**
  * 1 -> 2 when display methods landed; 2 -> 3 when `alwaysOnTop` joined;
  * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage;
- * 5 -> 6 added the release-update state machine.
+ * 5 -> 6 added the release-update state machine; 6 -> 7 added the desktop
+ * pointer-confinement preference.
  *
  * BUMP THIS whenever a method is added, removed or CHANGES SHAPE, and bump the
  * matching literal in `desktop/src/preload.ts`. They are checked against each
@@ -55,7 +56,7 @@
  * as off. Equality makes that degrade to web behaviour instead — no Display
  * section at all, which is visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 6;
+export const BRIDGE_VERSION = 7;
 
 export type DesktopUpdateStatus =
   | 'idle'
@@ -96,6 +97,8 @@ export interface DesktopDisplayState {
   readonly displayIndex: number;
   /** Keep the window above every other app. Default OFF — see `display.ts`. */
   readonly alwaysOnTop: boolean;
+  /** Confine the pointer while a live desktop match owns the viewport. */
+  readonly lockPointer: boolean;
   readonly displays: readonly DesktopDisplayInfo[];
   /** Window sizes that fit the chosen monitor, from `sizesFor`. */
   readonly sizes: ReadonlyArray<readonly [number, number]>;
@@ -121,6 +124,7 @@ export interface DesktopDisplayPatch {
   readonly height?: number;
   readonly displayIndex?: number;
   readonly alwaysOnTop?: boolean;
+  readonly lockPointer?: boolean;
   readonly forceHighPerformanceGpu?: boolean;
   readonly unlockFrameRate?: boolean;
 }
