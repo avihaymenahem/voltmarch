@@ -961,6 +961,11 @@ const DECLARED_GLOBS: Readonly<Record<string, { readonly eager: boolean; readonl
     why: 'eager over the wiki, but `manual-corpus.ts` is itself behind a dynamic import — '
       + 'the ~320 kB manual chunk `tests/manual.spec.ts` gates',
   },
+  'world/EnvironmentAssetLoader.ts ../../../../packages/assets/game/environment/prop-surface/**/*.glb': {
+    eager: true,
+    why: 'the prop-surface delivery URL table; eager URL imports land in the entry chunk with '
+      + '`EnvironmentAssetLoader`, while the GLB payloads remain emitted assets',
+  },
 };
 
 describe('import.meta.glob is fenced too, because the parser above is blind to it', () => {
