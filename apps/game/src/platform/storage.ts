@@ -32,7 +32,13 @@ function memoryStorage(): PersistentStorage {
 
 let memory: PersistentStorage | null = null;
 
-/** Native filesystem storage in Electron, browser storage on the web. */
+/**
+ * Native filesystem storage in Electron, browser storage on the web.
+ *
+ * The synchronous shape is load-bearing: settings/profile constructors read
+ * during boot. Desktop mutations retain that shape for callers but bridge 8
+ * mirrors them in preload and sends the durable write asynchronously.
+ */
 export function persistentStorage(): PersistentStorage {
   const bridge = desktopBridge();
   if (bridge !== null) {

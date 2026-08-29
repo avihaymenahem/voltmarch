@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BRIDGE_VERSION,
+  LEGACY_BRIDGE_VERSION,
   type DesktopBridge,
   type DesktopUpdateState,
+  desktopBridge,
 } from '../src/platform/desktop';
 import { detectBackend, detectIndexStorage } from '../src/game/SaveStore';
 import { persistentStorage } from '../src/platform/storage';
@@ -74,5 +76,10 @@ describe('platform persistence selection', () => {
     expect(detectIndexStorage().name).toBe('filesystem');
     await backend.write('manual-1', new Uint8Array([3, 1, 4]));
     expect(Array.from(await backend.read('manual-1') ?? [])).toEqual([3, 1, 4]);
+  });
+
+  it('accepts bridge 7 during an installed preload/renderer transition', () => {
+    vi.stubGlobal('voltmarch', { ...bridge(), bridge: LEGACY_BRIDGE_VERSION });
+    expect(desktopBridge()?.bridge).toBe(LEGACY_BRIDGE_VERSION);
   });
 });
