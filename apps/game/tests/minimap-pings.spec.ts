@@ -234,6 +234,28 @@ describe('Minimap — the alert ring is coloured by seat, like everything else',
     r.map.dispose();
   });
 
+  it('lets a handled right-click issue a gameplay order instead of becoming a ping', () => {
+    const r = rig(2);
+    const order = vi.fn(() => true);
+    const ping = vi.fn();
+    const jump = vi.fn();
+    const preventDefault = vi.fn();
+    r.map.onOrderRequest(order);
+    r.map.onPingRequest(ping);
+    r.map.onJumpRequest(jump);
+
+    r.canvas.dispatch('pointerdown', {
+      button: 2, clientX: MAP_CELLS / 2, clientY: MAP_CELLS / 4,
+      pointerId: 4, preventDefault,
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(order).toHaveBeenCalledWith(256, 128);
+    expect(ping, 'a successful move/attack order must not also broadcast a ping').not.toHaveBeenCalled();
+    expect(jump, 'right-click is never the left-click camera jump').not.toHaveBeenCalled();
+    r.map.dispose();
+  });
+
   it('is the only stroking painter, so the probe means what it says', () => {
     const r = rig(4);
     expect(r.redraw()).toHaveLength(0);

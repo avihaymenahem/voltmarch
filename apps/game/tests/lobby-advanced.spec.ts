@@ -37,7 +37,7 @@
  * ============================================================================
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /* ==========================================================================
  * THE DOM STUB — installed before any imported module can call it
@@ -72,6 +72,7 @@ class StubElement {
   readonly style = { setProperty: (): void => { /* faction card colour */ } };
   type = '';
   id = '';
+  value = '';
   disabled = false;
   tabIndex = 0;
   hidden = false;
@@ -183,6 +184,8 @@ g.document = stubDocument;
 /* -- imports AFTER the stub. Nothing below touches `document` at module scope. */
 
 import { SkirmishSetupScreen } from '../src/shell/SkirmishSetup';
+import { MultiplayerSetup } from '../src/shell/MultiplayerSetup';
+import { PROTOCOL_VERSION } from '../src/net/protocol';
 import { defaultSetup, type MatchSetup } from '../src/shell/settings-store';
 import { UnlockGate, setUnlockGate } from '../src/progression/UnlockGate';
 import type { Shell } from '../src/shell/Shell';
@@ -204,6 +207,76 @@ function mountLobby(setup: MatchSetup = defaultSetup()): StubElement {
   const host = new StubElement('DIV');
   new SkirmishSetupScreen(stubShell(setup)).mount(host as unknown as HTMLElement);
   return host;
+}
+
+type SocketListener = (event: { data?: string }) => void;
+
+class LobbySocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static readonly instances: LobbySocket[] = [];
+
+  readonly sent: string[] = [];
+  readyState = LobbySocket.CONNECTING;
+  private readonly listeners = new Map<string, SocketListener[]>();
+
+  constructor(readonly url: string) { LobbySocket.instances.push(this); }
+
+  addEventListener(type: string, listener: SocketListener): void {
+    const list = this.listeners.get(type) ?? [];
+    list.push(listener);
+    this.listeners.set(type, list);
+  }
+
+  send(body: string): void { this.sent.push(body); }
+
+  close(): void {
+    if (this.readyState === LobbySocket.CLOSED) return;
+    this.readyState = LobbySocket.CLOSED;
+    this.emit('close');
+  }
+
+  open(): void {
+    this.readyState = LobbySocket.OPEN;
+    this.emit('open');
+  }
+
+  receive(message: object): void {
+    this.emit('message', { data: JSON.stringify(message) });
+  }
+
+  drop(): void {
+    this.readyState = LobbySocket.CLOSED;
+    this.emit('close');
+  }
+
+  private emit(type: string, event: { data?: string } = {}): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
+function stubMultiplayerShell(setup: MatchSetup = defaultSetup()): Shell {
+  return {
+    getSetup: (): MatchSetup => setup,
+    showMenu: (): void => { /* Back */ },
+    startNetworkMatch: (): Promise<void> => Promise.resolve(),
+    settings: {
+      get: () => ({ gameplay: { commanderName: 'Commander' } }),
+      patch: (): void => { /* commander-name persistence */ },
+    },
+  } as unknown as Shell;
+}
+
+function mountMultiplayer(): {
+  host: StubElement;
+  screen: MultiplayerSetup;
+} {
+  const host = new StubElement('DIV');
+  const screen = new MultiplayerSetup(stubMultiplayerShell());
+  screen.mount(host as unknown as HTMLElement);
+  return { host, screen };
 }
 
 /** Every node carrying `className`, in document order. */
@@ -258,10 +331,14 @@ const OPEN_ROWS = ['Sides', 'Enemy Faction', 'Difficulty', 'Starting Condition']
 
 beforeEach(() => {
   setUnlockGate(new UnlockGate(() => []));
+  LobbySocket.instances.length = 0;
+  vi.stubGlobal('WebSocket', LobbySocket);
 });
 
 afterEach(() => {
   setUnlockGate(null);
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 /* ==========================================================================
@@ -449,5 +526,80 @@ describe('the open state', () => {
 
     const second = mountLobby();
     expect(one(second, 'vm-disclose-body').hidden, 'the disclosure remembered').toBe(true);
+  });
+});
+
+/* ===========================================================================
+ * 8. MULTIPLAYER IS A WORKFLOW, NOT ONE DENSE FORM
+ *
+ * This uses the same deliberately small DOM above, but mounts the real
+ * MultiplayerSetup and drives its real buttons and Session socket. The
+ * earlier source checks protect names; these checks protect what a player can
+ * actually see and what happens after a dropped lobby connection.
+ * ========================================================================== */
+
+describe('multiplayer workflow and discovery', () => {
+  it('opens on the public match browser and shows only one primary workflow', () => {
+    const { host, screen } = mountMultiplayer();
+    const workflows = all(host, 'vm-mp-workflow');
+    const controls = all(host, 'vm-mp-workflow-btn');
+
+    expect(workflows).toHaveLength(2);
+    expect(workflows.map((panel) => panel.hidden)).toEqual([false, true]);
+    expect(controls.map((button) => button.getAttribute('aria-pressed')))
+      .toEqual(['true', 'false']);
+    expect(one(host, 'vm-mp-browser').textContent).toContain('Public matches');
+    expect(one(host, 'vm-mp-rooms').getAttribute('aria-label')).toBe('Open public matches');
+    expect(one(host, 'vm-mp-empty').textContent).toContain('No public matches are open');
+
+    controls[1].click();
+    expect(workflows.map((panel) => panel.hidden)).toEqual([true, false]);
+    expect(controls.map((button) => button.getAttribute('aria-pressed')))
+      .toEqual(['false', 'true']);
+    screen.unmount();
+  });
+
+  it('turns a pushed room listing into a prominent one-click Join row', () => {
+    const { host, screen } = mountMultiplayer();
+    const socket = LobbySocket.instances[0]!;
+    socket.open();
+    socket.receive({ t: 'welcome', protocol: PROTOCOL_VERSION });
+    socket.receive({
+      t: 'rooms',
+      rooms: [{
+        id: 'ABCDEFGHIJKL', map: 'temperate-valley', faction: 1,
+        hostName: 'Rook', aiCount: 0, ageSec: 4,
+      }],
+      total: 1,
+    });
+
+    const room = one(host, 'vm-mp-room');
+    expect(room.getAttribute('aria-label')).toContain('Join');
+    expect(room.textContent).toContain('Rook');
+    expect(one(room, 'vm-mp-room-action').textContent).toBe('Join');
+    expect(one(host, 'vm-mp-count').textContent).toBe('1 of 1 shown');
+    screen.unmount();
+  });
+
+  it('reconnects a dropped pre-match socket after one second without reopening the game', async () => {
+    vi.useFakeTimers();
+    const { host, screen } = mountMultiplayer();
+    const first = LobbySocket.instances[0]!;
+    first.open();
+    first.receive({ t: 'welcome', protocol: PROTOCOL_VERSION });
+    first.drop();
+
+    expect(one(host, 'vm-mp-retry').hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(LobbySocket.instances).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(LobbySocket.instances).toHaveLength(2);
+
+    const second = LobbySocket.instances[1]!;
+    second.open();
+    expect(JSON.parse(second.sent[0]!)).toMatchObject({ t: 'hello' });
+    second.receive({ t: 'welcome', protocol: PROTOCOL_VERSION });
+    expect(one(host, 'vm-mp-retry').hidden).toBe(true);
+    screen.unmount();
   });
 });

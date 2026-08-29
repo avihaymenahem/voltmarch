@@ -751,6 +751,24 @@ describe('desktop fullscreen is explicit native game state', () => {
     expect(advanceLockedPointer({ x: 1270, y: 710 }, 40, 40, 1280, 720))
       .toEqual({ x: 1279, y: 719 });
   });
+
+  it('offers pointer confinement as an opt-in desktop setting and wires it to live gameplay', () => {
+    const settings = readFileSync(path.join(REPO, 'apps/game/src/shell/Settings.ts'), 'utf8');
+    const shell = readFileSync(path.join(REPO, 'apps/game/src/shell/Shell.ts'), 'utf8');
+    const pointer = readFileSync(
+      path.join(REPO, 'apps/game/src/platform/DesktopPointerLock.ts'), 'utf8',
+    );
+
+    expect(DEFAULT_DISPLAY.lockPointer, 'confinement must not surprise existing players').toBe(false);
+    expect(applyPatch(DEFAULT_DISPLAY, { lockPointer: true }).lockPointer).toBe(true);
+    expect(settings).toContain("'Lock Mouse To Window'");
+    expect(settings).toContain('toggle(d.lockPointer, (v) => this.patchDesktop({ lockPointer: v }))');
+    expect(shell).toContain("updateDesktopPointerLock(state === 'playing' && next === null)");
+    expect(pointer).toContain('document.documentElement.requestPointerLock()');
+    expect(pointer).toContain("window.addEventListener('blur', this.release)");
+    expect(pointer).toContain('if (document.hidden) this.release()');
+    expect(pointer).toContain('controller.setActive(true, state.lockPointer)');
+  });
 });
 
 /* ==========================================================================

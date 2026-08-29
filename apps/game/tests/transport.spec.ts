@@ -22,7 +22,7 @@
  *   - two runs of one seed unload to identical positions.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetMoveClasses } from '../src/sim/Movement';
 
 import { World } from '../src/core/world';
@@ -40,11 +40,14 @@ import { GarrisonService } from '../src/sim/Garrison';
 import {
   TransportService, carrierMayAnswerPickup, setTransportService,
 } from '../src/sim/Transport';
+import { setActiveNav, type FlowFieldCache } from '../src/sim/Flowfield';
 
 import { DEF_TABLES, UNITS } from '../src/data/Defs';
 
 const ALLIES = 0 as PlayerId;
 const SOVIETS = 1 as PlayerId;
+
+afterEach(() => { setActiveNav(null); });
 
 /**
  * A binding over the REAL def tables, not the empty one most specs use.
@@ -401,6 +404,52 @@ describe('shore pickup order arbitration', () => {
     expect(carrierMayAnswerPickup(UnitState.Attacking, OrderKind.Attack)).toBe(false);
     expect(carrierMayAnswerPickup(UnitState.Guarding, OrderKind.Guard)).toBe(false);
     expect(carrierMayAnswerPickup(UnitState.Idle, OrderKind.Unload)).toBe(false);
+  });
+
+  it('calls an idle naval hull to a tank that cannot path into the water, then boards it', () => {
+    const rig = makeRig();
+    const tank = rig.unit('grizzly', ALLIES, 100, 100);
+    const hull = rig.unit('transport', ALLIES, 300, 300);
+    const st = rig.world.store;
+    const h = st.index(hull);
+
+    // The tank cannot stand at the offshore hull, while the nav cache offers a
+    // reachable water cell beside the tank. This is the real cross-locomotor
+    // case that used to leave the Enter order alive forever with nobody moving
+    // the carrier toward it.
+    const base = rig.world.terrain;
+    rig.world.terrain = {
+      ...base,
+      heightAt: (x: number, z: number) => base.heightAt(x, z),
+      isPassable: (cx: number, cz: number, loco: Locomotor) => (
+        loco === Locomotor.Hover || (cx < 50 && cz < 50)
+      ),
+      isOccupied: () => false,
+    } as ITerrain;
+    setActiveNav({
+      mainRegion: () => 1,
+      nearestInRegion: (
+        _cx: number, _cz: number, _region: number, _move: number, out: Int32Array,
+      ) => { out[0] = 26; out[1] = 25; return true; },
+    } as unknown as FlowFieldCache);
+
+    order(rig, tank, OrderKind.Enter, hull);
+    rig.step();
+
+    expect(st.orderKind[h]).toBe(OrderKind.Move);
+    expect(st.orderX[h]).toBe(106);
+    expect(st.orderZ[h]).toBe(102);
+    expect(rig.transport.stats.pickups).toBe(1);
+    expect(st.orderKind[st.index(tank)]).toBe(OrderKind.Enter);
+
+    // Movement owns travel; put the hull at the requested pickup and prove the
+    // unchanged Enter order completes instead of becoming another shore stall.
+    st.posX[h] = 106;
+    st.posZ[h] = 102;
+    placeAgainst(rig, tank, hull);
+    rig.step();
+    expect(isAboard(rig, tank)).toBe(true);
+    expect(rig.transport.passengerCount(hull)).toBe(1);
   });
 });
 
