@@ -50,6 +50,7 @@ Verify rather than trusting that sentence after time has passed.
 | Canonical shared models, brand art and fonts | `packages/assets/`; boundaries guarded by `npm run lint` and `npm run check:ownership` |
 | Standalone WebGPU model catalog and infantry stress tooling | `apps/asset-lab/` |
 | In-match DEV-only load controls (Cheat Engine) | `apps/game/src/dev/CheatEngine.ts`; boundary guard in `apps/game/vite.config.ts` |
+| Windows signing, SmartScreen, checksums and antivirus disputes | `docs/DESKTOP_DISTRIBUTION.md` |
 | Model conditioning, LOD, texture and shadow budgets | `docs/ASSET_OPTIMIZATION_PIPELINE.md` |
 | Environment dirt/decals/props/atmosphere rollout | `docs/ENVIRONMENT_REALISM_PLAN.md` |
 | Audio inventory and remaining voice work | `docs/VOICEOVER_PLAN.md` and `docs/voice/` |
@@ -74,6 +75,8 @@ tests, free/instant production, 4,096-deep local queues, max-alive bypass, test-
 grants and army healing. It is deliberately not a `*.system.ts`: Bootstrap reaches it only through
 an `__DEV__` dynamic import, the simulation mutators independently refuse calls when `__DEV__` is
 false, and the production Vite build fails if any Cheat Engine UI marker reaches emitted assets.
+Its X removes the panel completely, the shortcut restores it, and a header double-click is the only
+compact/collapsed mode; do not restore a persistent launcher chip.
 
 ## Installed Codex capabilities used by this project
 
@@ -170,7 +173,10 @@ the former all-deferred fast path visibly morphs the starting procedural dozer i
 - Placement uses the real resolved structure silhouette, a faction-accent terrain grid and one
   unified allied build boundary. Completed structures rise from below grade.
 - Use Electron native fullscreen semantics. Escape belongs to the game/pause UI; Alt+Enter is the
-  explicit desktop fullscreen toggle.
+  explicit desktop fullscreen toggle. Starting a match never changes window mode.
+- Windowed desktop play uses native Windows chrome and restores its last safe normal bounds/maximised
+  state. Optional pointer confinement is desktop-only and releases on every menu, pause, focus-loss
+  and visibility transition.
 - HUD density matters. Selection, stance and formation actions must remain compact; clicking a build
   card must not double the panel height or cover the battlefield.
 - Plain Move is weapons-cold; Attack Move is the explicit move-and-fire order. An explicit Guard

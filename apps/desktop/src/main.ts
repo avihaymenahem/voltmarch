@@ -43,6 +43,7 @@ import {
   applyPatch,
   displayForLaunch,
   displayLabel,
+  launchWindowBounds,
   normaliseDisplay,
   sizesFor,
   targetDisplay,
@@ -334,6 +335,7 @@ function applyDisplayPrefs(win: BrowserWindow, prefs: DisplayPrefs): void {
   const target = targetDisplay(prefs, currentDisplays());
 
   if (win.isFullScreen()) win.setFullScreen(false);
+  if (win.isMaximized()) win.unmaximize();
 
   const bounds = windowBounds(prefs, target);
   // null means "no monitor chosen" — leave the OS placement alone rather than
@@ -342,6 +344,7 @@ function applyDisplayPrefs(win: BrowserWindow, prefs: DisplayPrefs): void {
   else if (prefs.mode === 'windowed') win.setSize(prefs.width, prefs.height);
 
   if (prefs.mode === 'fullscreen') win.setFullScreen(true);
+  else if (prefs.maximized) win.maximize();
 
   /*
    * Applied AFTER the mode, because `setFullScreen` re-stacks the window and
@@ -351,22 +354,23 @@ function applyDisplayPrefs(win: BrowserWindow, prefs: DisplayPrefs): void {
 }
 
 function createWindow(): BrowserWindow {
-  const initialBounds = windowBounds(display, targetDisplay(display, currentDisplays()));
+  const initialBounds = launchWindowBounds(display, currentDisplays());
   const win = new BrowserWindow({
     width: initialBounds?.width ?? display.width,
     height: initialBounds?.height ?? display.height,
     ...(initialBounds !== null ? { x: initialBounds.x, y: initialBounds.y } : {}),
     icon: WINDOW_ICON,
-    // Developer tools need native minimize/maximize/close controls even when
-    // the game itself was last used fullscreen. `displayForLaunch` forces the
-    // windowed mode; these explicit flags make the chrome contract visible.
-    ...(isToolWindow ? {
-      title: 'VOLTMARCH Developer Tool',
-      frame: true,
-      minimizable: true,
-      maximizable: true,
-      closable: true,
-    } : {}),
+    title: isToolWindow ? 'VOLTMARCH Developer Tool' : 'VOLTMARCH',
+    // Native Windows chrome in windowed mode: standard drag, snap, minimise,
+    // maximise and close affordances. Fullscreen hides the frame natively and
+    // Alt+Enter restores it; the renderer never draws a second title bar.
+    frame: true,
+    resizable: true,
+    minimizable: true,
+    maximizable: true,
+    closable: true,
+    minWidth: 1024,
+    minHeight: 640,
     /*
      * Fullscreen is set at CONSTRUCTION rather than after `ready-to-show`.
      * Applying it later means the window is created windowed, shown, and then
@@ -412,6 +416,42 @@ function createWindow(): BrowserWindow {
   win.webContents.backgroundThrottling = false;
 
   /*
+   * Electron does not restore normal window placement for us. Remember the
+   * native position, size and maximised state, but never overwrite them with
+   * fullscreen bounds or a minimised sentinel. Tool windows intentionally do
+   * not mutate the player's placement.
+   */
+  let placementTimer: ReturnType<typeof setTimeout> | null = null;
+  const rememberPlacement = (): void => {
+    if (isToolWindow || win.isDestroyed() || win.isFullScreen() || win.isMinimized()) return;
+    const bounds = win.getNormalBounds();
+    display = normaliseDisplay({
+      ...display,
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+      maximized: win.isMaximized(),
+    });
+    saveSettings(settings, display);
+  };
+  const queuePlacement = (): void => {
+    if (placementTimer !== null) clearTimeout(placementTimer);
+    placementTimer = setTimeout(() => {
+      placementTimer = null;
+      rememberPlacement();
+    }, 180);
+  };
+  win.on('move', queuePlacement);
+  win.on('resize', queuePlacement);
+  win.on('maximize', queuePlacement);
+  win.on('unmaximize', queuePlacement);
+  win.on('close', () => {
+    if (placementTimer !== null) clearTimeout(placementTimer);
+    rememberPlacement();
+  });
+
+  /*
    * ALT+ENTER TOGGLES FULLSCREEN, AND IT IS THE ESCAPE HATCH OF LAST RESORT.
    *
    * The pause menu carries a Minimize button, which is the discoverable route.
@@ -434,7 +474,9 @@ function createWindow(): BrowserWindow {
     if (input.type !== 'keyDown') return;
     if (input.key !== 'Enter' || !input.alt) return;
     event.preventDefault();
-    win.setFullScreen(!win.isFullScreen());
+    display = { ...display, mode: win.isFullScreen() ? 'windowed' : 'fullscreen' };
+    saveSettings(settings, display);
+    applyDisplayPrefs(win, display);
   });
 
   /*
@@ -458,7 +500,10 @@ function createWindow(): BrowserWindow {
     });
   }
 
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (display.mode === 'windowed' && display.maximized) win.maximize();
+    win.show();
+  });
 
   // Do not let a game session be interrupted by the display sleeping.
   if (sleepBlocker === -1) sleepBlocker = powerSaveBlocker.start('prevent-display-sleep');
@@ -491,7 +536,11 @@ function installIpc(): void {
   );
   ipcMain.handle('vm:display-frequency', () => screen.getPrimaryDisplay().displayFrequency);
   ipcMain.handle('vm:fullscreen', (e, on: unknown) => {
-    BrowserWindow.fromWebContents(e.sender)?.setFullScreen(on === true);
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win === null) return;
+    display = { ...display, mode: on === true ? 'fullscreen' : 'windowed' };
+    saveSettings(settings, display);
+    applyDisplayPrefs(win, display);
   });
   ipcMain.handle('vm:is-fullscreen', (e) => BrowserWindow.fromWebContents(e.sender)?.isFullScreen() ?? false);
   ipcMain.handle('vm:reveal-user-data', () => shell.openPath(app.getPath('userData')));
@@ -516,8 +565,8 @@ function installIpc(): void {
    *
    * Reported as "I don't have a way to minimize the game in desktop mode at
    * all". Two independent routes into a window with no minimise affordance:
-   * the Display section's `mode: 'fullscreen'`, and `Shell.goFullscreen()`,
-   * which the game calls on every match launch. Both leave a borderless window
+   * the Display section's `mode: 'fullscreen'` and the explicit Alt+Enter
+   * accelerator. Both leave a borderless window
    * with no titlebar, and `Menu.setApplicationMenu(null)` removed the only
    * other chrome — deliberately, because an RTS has no use for a File menu.
    *
@@ -560,16 +609,27 @@ function installIpc(): void {
 
     const before = display;
     display = applyPatch(display, p);
+    if (p.width !== undefined || p.height !== undefined || p.displayIndex !== undefined) {
+      // Choosing concrete window geometry is an explicit request to leave the
+      // prior maximised state and show that geometry immediately.
+      display = { ...display, maximized: false };
+    }
     saveSettings(settings, display);
 
     const win = BrowserWindow.fromWebContents(e.sender);
-    const moved =
+    const geometryChanged =
       before.mode !== display.mode ||
       before.width !== display.width ||
       before.height !== display.height ||
-      before.displayIndex !== display.displayIndex ||
-      before.alwaysOnTop !== display.alwaysOnTop;
-    if (win !== null && moved) applyDisplayPrefs(win, display);
+      before.displayIndex !== display.displayIndex;
+    if (win !== null) {
+      if (geometryChanged) applyDisplayPrefs(win, display);
+      else if (before.alwaysOnTop !== display.alwaysOnTop) {
+        // A z-order preference must not briefly restore and re-maximise an
+        // otherwise untouched native window.
+        win.setAlwaysOnTop(display.alwaysOnTop);
+      }
+    }
 
     return describeDisplay();
   });
@@ -595,6 +655,7 @@ function describeDisplay(): DisplayState {
     height: display.height,
     displayIndex: display.displayIndex,
     alwaysOnTop: display.alwaysOnTop,
+    lockPointer: display.lockPointer,
     displays: displays.map((d, i) => ({ index: i, label: displayLabel(d, i), primary: d.primary })),
     sizes: sizesFor(targetDisplay(display, displays)),
     forceHighPerformanceGpu: settings.forceHighPerformanceGpu,

@@ -10,7 +10,7 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 6` is a VERSION, not a boolean, and the accessor in
+ * `bridge: 7` is a VERSION, not a boolean, and the accessor in
  * `src/platform/desktop.ts` tests it by equality. An older packaged preload
  * running against a newer bundle therefore degrades to WEB BEHAVIOUR rather
  * than calling a method that does not exist — the same discipline as
@@ -23,7 +23,9 @@
  * other so the next bump cannot land on one side only.
  *
  * BUMP THE VERSION WHENEVER THIS OBJECT CHANGES SHAPE — 1 -> 2 was the display
- * methods below, 2 -> 3 was `alwaysOnTop` joining the display state and patch.
+ * methods below, 2 -> 3 was `alwaysOnTop` joining the display state and patch,
+ * 3 -> 4 added desktop diagnostics, 4 -> 5 updater controls, 5 -> 6 relaunch
+ * status, and 6 -> 7 added `lockPointer` to the display state and patch.
  * SHAPE, not just methods: the gate compares the two literals, so leaving both
  * behind on a field addition is consistent and passes.
  *
@@ -48,7 +50,7 @@ function sync<T>(channel: string, ...args: unknown[]): T {
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 6,
+    bridge: 7,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),

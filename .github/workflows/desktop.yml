@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -56,6 +58,49 @@ jobs:
         run: npm run desktop:dist
         env:
           VITE_RELAY_URL: wss://relay.voltmarch.com/ws
+          # Optional. Empty until the owner provisions one consistent trusted
+          # publisher identity; GitHub masks both values and neither is tracked.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Verify signing state and write checksums
+        shell: pwsh
+        env:
+          EXPECT_SIGNED: ${{ secrets.WIN_CSC_LINK != '' }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $executables = @(
+            "apps/desktop/release/VOLTMARCH-Setup-$version.exe",
+            "apps/desktop/release/VOLTMARCH-$version-portable.exe"
+          )
+          foreach ($file in $executables) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing release executable: $file" }
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($env:EXPECT_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') {
+              throw "Signing was configured but $file is $($signature.Status)"
+            }
+            Write-Host "$file Authenticode: $($signature.Status)"
+          }
+
+          $release = "apps/desktop/release"
+          $files = Get-ChildItem -LiteralPath $release -File |
+            Where-Object { $_.Name -match '^(VOLTMARCH-|latest\.yml)' } |
+            Sort-Object Name
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash *$($file.Name)"
+          }
+          $lines | Set-Content -LiteralPath "$release/SHA256SUMS.txt" -Encoding ascii
+
+      - name: Attest Windows release provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            apps/desktop/release/VOLTMARCH-Setup-*.exe
+            apps/desktop/release/VOLTMARCH-Setup-*.exe.blockmap
+            apps/desktop/release/VOLTMARCH-*-portable.exe
+            apps/desktop/release/latest.yml
+            apps/desktop/release/SHA256SUMS.txt
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6
@@ -66,6 +111,7 @@ jobs:
             apps/desktop/release/VOLTMARCH-Setup-*.exe.blockmap
             apps/desktop/release/VOLTMARCH-*-portable.exe
             apps/desktop/release/latest.yml
+            apps/desktop/release/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -80,7 +126,8 @@ jobs:
             "apps/desktop/release/VOLTMARCH-Setup-$version.exe",
             "apps/desktop/release/VOLTMARCH-Setup-$version.exe.blockmap",
             "apps/desktop/release/VOLTMARCH-$version-portable.exe",
-            "apps/desktop/release/latest.yml"
+            "apps/desktop/release/latest.yml",
+            "apps/desktop/release/SHA256SUMS.txt"
           )
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset)) { throw "Missing release asset: $asset" }

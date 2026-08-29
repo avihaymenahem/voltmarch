@@ -23,6 +23,11 @@ directories:
   output: release
   buildResources: build
 
+# Keep the application payload in the normal Electron archive. Shipping loose
+# source trees creates many more executable-looking files for endpoint scanners
+# to classify and provides no player benefit.
+asar: true
+
 # WHAT GOES IN THE ASAR.
 #
 # The default is everything under the app directory — which is `desktop/`, not
@@ -46,18 +51,22 @@ extraResources:
       - '**/*'
 
 win:
+  executableName: VOLTMARCH
+  # Per-user NSIS plus asInvoker guarantees the game never asks for elevation.
+  # This is electron-builder's default, stated because changing it would add a
+  # UAC prompt and a materially different antivirus signal.
+  requestedExecutionLevel: asInvoker
   target:
     # NSIS is the installer; portable is a single .exe that needs no install and
-    # is the right artifact for testing an UNSIGNED build, since it sidesteps
-    # the installer's SmartScreen prompt while you are still iterating.
+    # is useful for testing without installation. It does NOT bypass
+    # SmartScreen: the portable executable has its own signature/reputation.
     - target: nsis
       arch: [x64]
     - target: portable
       arch: [x64]
-  # No `certificateFile` / `sign` block: this build is deliberately unsigned for
-  # now. the Electron plan §9 — Microsoft removed EV's instant SmartScreen
-  # bypass around 2024, and the cheap option (Azure Artifact Signing, ~$10/mo)
-  # has a geographic eligibility gate that is still an open question here.
+  # No tracked certificate path or signing identity. electron-builder consumes
+  # WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD from the release job when the repository
+  # owner provisions them; until then artifacts remain honestly unsigned.
 
 nsis:
   # `latest.yml` repeats this name exactly. Keep it URL-safe so GitHub never
