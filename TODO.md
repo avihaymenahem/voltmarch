@@ -27,7 +27,11 @@ with no number is untracked, and that is itself the bug.
 
 ## Desktop
 
-- **#57 — distribution and signing.** Research only.
+- **#57 — production Windows signing and reputation.** The packaging and release workflow are
+  signing-ready and now publish checksums/provenance, but the owner still needs to provision a
+  trusted publisher certificate and CI secrets. Until consecutive releases are Authenticode-signed,
+  SmartScreen and low-prevalence antivirus warnings remain expected; follow
+  `docs/DESKTOP_DISTRIBUTION.md` for verification and false-positive submissions.
 
 ---
 
