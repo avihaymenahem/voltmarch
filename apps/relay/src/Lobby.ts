@@ -214,7 +214,7 @@ export class Lobby {
 
   /**
    * True when this peer is doing something the idle sweep must not interrupt:
-   * in a match, hosting a room, or waiting in the queue.
+   * browsing rooms, in a match, hosting a room, or waiting in the queue.
    *
    * ASKED RATHER THAN REMEMBERED. The server used to keep a `conn.engaged` flag
    * alongside this state, set on create/join/queue and cleared on cancel — so a
@@ -223,6 +223,12 @@ export class Lobby {
    * of that knowledge can only ever drift out of date.
    */
   isBusy(peer: Peer): boolean {
+    // A room subscription is a live lobby state, even when the current list is
+    // empty and therefore has nothing new to push. Omitting watchers here made
+    // the idle sweep close every player who spent `lobbyIdleMs` comparing or
+    // waiting for public games. The client could not recover the dead Session,
+    // so the only apparent remedy was leaving Multiplayer and opening it again.
+    if (this.watchers.has(peer)) return true;
     if (this.byPeer.has(peer)) return true;
     if (this.queue?.peer === peer) return true;
     for (const room of this.rooms.values()) if (room.host === peer) return true;

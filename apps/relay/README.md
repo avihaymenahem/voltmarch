@@ -212,6 +212,23 @@ and the unit-id ceiling had been wrong for as long as the relay had gone
 untouched. The first pass found things nobody had thought about; this one found
 things that used to be true.
 
+### A room browser is active lobby state
+
+The idle sweep once exempted hosts, queued players and live matches but not a
+socket subscribed to the public room list. A player calmly browsing or waiting
+for an open game therefore crossed `VM_LOBBY_IDLE_MS` without sending another
+message and was closed as idle, even though the relay still held their watcher
+subscription. On a host configured near the heartbeat window this was reported
+as a repeatable disconnect after roughly thirty seconds; the client then had no
+lobby-retry path and reopening Multiplayer was the only recovery.
+
+`Lobby.isBusy()` now treats a watcher as busy until it unsubscribes. This does
+not keep arbitrary greeted sockets alive: a client must explicitly subscribe,
+and `cancel` / `leave` removes that subscription. The client separately retries
+a dropped pre-match lobby with bounded backoff. A session that has received a
+match slot is permanently ineligible for that retry, because match rejoin still
+requires a missed-turn catch-up protocol and remains unshipped.
+
 ### `ws` is pinned, and the pin has a reason
 
 `8.21.3` exactly. The first pin here was `8.18.3` and `npm audit` refused it on

@@ -23,11 +23,25 @@ describe('UI bug round', () => {
     );
   });
 
-  it('uses a workflow layout for multiplayer instead of mixing every path', () => {
+  it('shows one multiplayer workflow at a time and makes public discovery the default', () => {
     const lobby = source('shell/MultiplayerSetup.ts');
     expect(lobby).toContain('this.buildIdentity(frame.body);');
-    expect(lobby).toContain('this.buildHost(left);');
-    expect(lobby).toContain('this.buildFind(right);');
+    expect(lobby).toContain("this.buildWorkflowNav(frame.body);");
+    expect(lobby).toContain('this.buildFind(this.findPanel);');
+    expect(lobby).toContain('this.buildHost(this.hostPanel);');
+    expect(lobby).toContain("this.showWorkflow('find');");
+    expect(lobby).toContain("'section', 'vm-mp-browser'");
+    expect(lobby).toContain("'span', 'vm-mp-room-action', 'Join'");
+    expect(lobby).toContain("'Host a Public Match'");
+  });
+
+  it('recovers a dropped lobby session without claiming match rejoin support', () => {
+    const lobby = source('shell/MultiplayerSetup.ts');
+    const session = source('net/Session.ts');
+    expect(lobby).toContain('this.scheduleReconnect();');
+    expect(lobby).toContain('this.session?.reconnectLobby()');
+    expect(session).toContain('reconnectLobby(): boolean');
+    expect(session).toContain('this.slot !== -1');
   });
 
   it('darkens native select popups and gives result actions room', () => {

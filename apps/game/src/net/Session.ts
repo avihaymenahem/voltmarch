@@ -156,6 +156,27 @@ export class Session {
     this.transport.connect();
   }
 
+  /**
+   * Re-open a dropped LOBBY socket without pretending a running match can rejoin.
+   *
+   * A lobby has no simulation state to catch up: reconnecting, greeting and
+   * subscribing to the current room list is sufficient. A match does have a
+   * missed turn stream, so `playing` is refused here and remains terminal on
+   * this client. Keeping the distinction in Session prevents a retry button or
+   * timer in a screen from accidentally widening the network protocol.
+   */
+  reconnectLobby(): boolean {
+    // `slot` is assigned exactly once, by `begin`. It remains assigned after a
+    // local disconnect, when `stopLockstep` necessarily clears the scheduler;
+    // checking only the scheduler would therefore turn a stopped match into a
+    // lobby reconnect and imply a rejoin the protocol cannot perform.
+    if (this.phase !== 'ended' || this.scheduler !== null || this.slot !== -1) return false;
+    this.slot = -1;
+    this.matchSeats = 0;
+    this.connect();
+    return true;
+  }
+
   /* -- lobby actions ------------------------------------------------------ */
 
   host(faction: number, map: string, visibility: RoomVisibility, plan: SeatPlan, name: string): void {
