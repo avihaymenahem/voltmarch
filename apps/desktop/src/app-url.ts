@@ -60,6 +60,7 @@ export const ALLOWED_FLAGS: readonly string[] = [
   'mapseed',
   'biome',
   'fog',
+  'foliage',
   'relay',
   'shot',
   'skipmenu',

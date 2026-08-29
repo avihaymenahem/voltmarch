@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Document, getBounds, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, prune, quantize, simplify, weld } from '@gltf-transform/functions';
+import { dedup, normals, prune, quantize, simplify, weld } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -70,6 +70,41 @@ function boundsDrift(a, b) {
     }
   }
   return { absolute, relative };
+}
+
+function fitIdentityGeometryToBounds(document, targetBounds) {
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  for (const node of document.getRoot().listNodes().filter((entry) => entry.getMesh() !== null)) {
+    const matrix = node.getWorldMatrix();
+    if (matrix.some((value, index) => Math.abs(value - identity[index]) > 1e-6)) {
+      throw new Error('preserveBounds requires identity mesh-node transforms');
+    }
+  }
+
+  const current = bounds(document);
+  const sourceCentre = targetBounds.min.map((value, axis) => (value + targetBounds.max[axis]) * 0.5);
+  const currentCentre = current.min.map((value, axis) => (value + current.max[axis]) * 0.5);
+  const scale = targetBounds.min.map((value, axis) => {
+    const sourceSpan = targetBounds.max[axis] - value;
+    const currentSpan = current.max[axis] - current.min[axis];
+    return sourceSpan / Math.max(1e-8, currentSpan);
+  });
+  const seen = new Set();
+  const point = [0, 0, 0];
+  for (const mesh of document.getRoot().listMeshes()) {
+    for (const primitive of mesh.listPrimitives()) {
+      const position = primitive.getAttribute('POSITION');
+      if (position === null || seen.has(position)) continue;
+      seen.add(position);
+      for (let index = 0; index < position.getCount(); index++) {
+        position.getElement(index, point);
+        for (let axis = 0; axis < 3; axis++) {
+          point[axis] = (point[axis] - currentCentre[axis]) * scale[axis] + sourceCentre[axis];
+        }
+        position.setElement(index, point);
+      }
+    }
+  }
 }
 
 function stripTextures(document) {
@@ -267,6 +302,25 @@ async function derive(input, output, profileName, profile) {
     }
   }
 
+  // Foliage far LODs are rendered by the environment engine's shared
+  // material, not by sampling the close PBR atlas. Meshy's unwrap splits
+  // almost every triangle at a UV or tangent seam, which can leave a generic
+  // simplifier above 90% of LOD0 even when the requested ratio is below 10%.
+  // Remove those presentation-only constraints before welding so the derived
+  // geometry can meet its actual silhouette budget. LOD0 remains untouched.
+  if (profile.stripTextureAttributes === true) {
+    for (const mesh of document.getRoot().listMeshes()) {
+      for (const primitive of mesh.listPrimitives()) {
+        for (const semantic of primitive.listSemantics()) {
+          if (semantic.startsWith('TEXCOORD_') || semantic.startsWith('COLOR_')) {
+            primitive.setAttribute(semantic, null);
+          }
+        }
+        if (profile.geometryOnly === true) primitive.setMaterial(null);
+      }
+    }
+  }
+
   // Keep the source material references through simplify + prune. TEXCOORD_0
   // looks unused after textures are detached, so pruning in the old order
   // deleted the UV accessor: WebGL sampled one fallback texel and WebGPU
@@ -274,14 +328,21 @@ async function derive(input, output, profileName, profile) {
   // made its reachability decision; the primitive then retains UVs/normals and
   // the derived GLB still carries no images.
   await document.transform(
-    weld({ overwrite: false }),
+    // Indexed generated meshes may still be a triangle soup whose seam-split
+    // indices share identical positions. Rebuild indices only for profiles
+    // that deliberately removed every UV/shading attribute constraining the
+    // weld; existing authored families keep their approved indexing.
+    weld({ overwrite: profile.reweld === true }),
     simplify({
       simplifier: MeshoptSimplifier,
       ratio: profile.ratio,
       error: profile.error,
-      lockBorder: false,
+      lockBorder: profile.lockBorder === true,
     }),
   );
+
+  if (profile.preserveBounds === true) fitIdentityGeometryToBounds(document, beforeBounds);
+  if (profile.rebuildNormals === true) await document.transform(normals({ overwrite: true }));
 
   await document.transform(dedup(), prune());
   await document.transform(quantize({
@@ -301,6 +362,12 @@ async function derive(input, output, profileName, profile) {
   if (ratio > profile.maxRatio) {
     blockers.push(
       `simplifier floor ${(ratio * 100).toFixed(1)}% exceeds ${(profile.maxRatio * 100).toFixed(1)}% ceiling`,
+    );
+  }
+  if (profile.maxTriangles !== undefined && afterTriangles > profile.maxTriangles) {
+    blockers.push(
+      `${afterTriangles.toLocaleString()} triangles exceeds `
+      + `${profile.maxTriangles.toLocaleString()} triangle ceiling`,
     );
   }
   const maxBoundsDrift = profile.maxBoundsDrift ?? 0.02;
@@ -357,7 +424,10 @@ for (const asset of manifest.assets) {
     outputs.push(await derive(input, path.join(outputDir, `${stem}.lod1.glb`), 'lod1', profile('lod1')));
     outputs.push(await derive(input, path.join(outputDir, `${stem}.lod2.glb`), 'lod2', profile('lod2')));
   }
-  outputs.push(await deriveShadowProxy(input, path.join(outputDir, `${stem}.shadow.glb`), profile('shadow')));
+  const shadowProfile = profile('shadow');
+  outputs.push(shadowProfile.mode === 'simplify'
+    ? await derive(input, path.join(outputDir, `${stem}.shadow.glb`), 'shadow', shadowProfile)
+    : await deriveShadowProxy(input, path.join(outputDir, `${stem}.shadow.glb`), shadowProfile));
 
   rows.push({
     key: asset.key,

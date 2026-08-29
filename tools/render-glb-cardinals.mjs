@@ -5,7 +5,11 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
-const originalMaterial = args.includes('--material=original');
+const materialArg = args.find((arg) => arg.startsWith('--material='));
+const materialMode = materialArg?.slice('--material='.length);
+if (materialMode !== undefined && !new Set(['original', 'rock', 'shrub', 'box-prop', 'prop-surface', 'extended-foliage']).has(materialMode)) {
+  throw new Error('--material must be original, rock, shrub, box-prop, prop-surface or extended-foliage');
+}
 const topdown = args.includes('--mode=top');
 const articulation = args.includes('--mode=articulation');
 const backendArg = args.find((arg) => arg.startsWith('--backend='));
@@ -15,7 +19,7 @@ if (!new Set(['webgl', 'webgpu']).has(backend)) {
 }
 const pivotArg = args.find((arg) => arg.startsWith('--pivot='));
 const turretArg = args.find((arg) => arg.startsWith('--turret='));
-const positional = args.filter((arg) => arg !== '--material=original'
+const positional = args.filter((arg) => arg !== materialArg
   && arg !== '--mode=top' && arg !== '--mode=articulation'
   && arg !== pivotArg && arg !== turretArg && arg !== backendArg);
 const [modelArg, outputArg, baseUrlArg = 'http://localhost:5173'] = positional;
@@ -54,7 +58,7 @@ try {
   const url = new URL('/tools/glb-cardinals.html', baseUrlArg);
   url.searchParams.set('model', `/${relative}`);
   url.searchParams.set('backend', backend);
-  if (originalMaterial) url.searchParams.set('material', 'original');
+  if (materialMode !== undefined) url.searchParams.set('material', materialMode);
   if (topdown) url.searchParams.set('mode', 'top');
   if (articulation) {
     if (pivotArg === undefined) throw new Error('--mode=articulation requires --pivot=x,y,z');

@@ -1,6 +1,6 @@
 # VOLTMARCH environment realism and prop renewal
 
-Status: in progress · owner: world/art pipeline · updated 2026-08-27
+Status: in progress · owner: world/art pipeline · updated 2026-08-29
 
 ## Intent
 
@@ -11,8 +11,10 @@ life.
 
 The current baseline is already strong technically: 31 procedural prop archetypes share one
 renderer-neutral material, each live type is one instanced colour draw, placement is chunk-culled,
-and static/transient ground marks are pooled into two bounded decal draws. This plan extends those
-systems. It does not replace them with thousands of independent GLBs or unique 2K textures.
+and static/transient ground marks are pooled into two bounded decal draws. The new direction keeps
+those placement, batching and budget contracts while replacing the locally generated geometry with
+the asset-driven engine specified in `docs/FOLIAGE_ENGINE_PLAN.md`. It does not replace them with
+thousands of independent GLBs or unique 2K textures.
 
 ## What remains
 
@@ -22,8 +24,9 @@ systems. It does not replace them with thousands of independent GLBs or unique 2
 - More context-specific contact variation. Continuous terrain-space dust, grit and sparse cracks are
   live without added draws; mud, leaf litter and loose gravel still need geometry or broad material
   composition that cannot read as repeated circular stamps.
-- Prop fidelity. Cars, crate stacks, umbrellas, rocks, and some civic props have good silhouettes at
-  ordinary RTS distance but lack the larger secondary forms that survive close inspection.
+- Final foliage-engine acceptance. Asset delivery now covers every stable Scatter identity; the
+  remaining work is camera-band LOD dispatch, wind/depth parity, dense-scene performance and saved
+  clearing restoration before dormant failure builders can be deleted.
 - Biome aging. The same object should collect dust in desert, damp grime in temperate maps, exposed
   rust around salt water, and dirty snow at roadsides without requiring a unique material per object.
 - Destruction continuity. Scorch, craters, tracks, and construction clearing exist; persistent small
@@ -71,6 +74,14 @@ The first static composition slice is live, with one important correction from i
 - the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
   repeated roadside cars/planters/benches were reduced so limited prop diversity is not amplified by
   uniform spacing;
+- all 32 stable Scatter identities now resolve through audited imported families. The successful
+  imported path constructs zero procedural Scatter archetypes, while scenario-spawned trees, bushes,
+  rocks, barrels and crates bind to the same loaded PBR geometry/materials;
+- the old rectangular `debrisPile` blocks are removed from imported presentation; that identity now
+  reuses the approved rounded and striated rock-cluster LOD/caster family;
+- autumn tree, conifer, palm and both grass tufts share one ImageGen-derived alpha PBR atlas. The
+  remaining yard, street and civic props share a separate neutral PBR atlas and offline static GLBs;
+  barrels, cafe umbrellas and sedan/van/pickup families have explicit WebGL/WebGPU cardinal proofs;
 - civilian apartments are six separately scattered, mirrored strongpoints hidden until scouted;
   Oil Derrick, Hospital and Ore Mine counts are unchanged.
 
@@ -113,18 +124,24 @@ materials require broad terrain composition or actual batched geometry.
 Density is measured in clusters, not specks. Rust belongs beneath metal or drainage points, oil near
 factories, depots, wrecks and parked vehicles, and physical litter must have a visible source.
 
-### 3. Instanced prop families — improve silhouettes, preserve batching
+### 3. Foliage engine families — improve silhouettes, preserve batching
 
-Every promoted prop remains one cached geometry per archetype and one `InstancedMesh` per live type.
-Imported candidates are conditioned into the shared prop material or a shared family atlas; they do
-not retain Meshy's arbitrary material stack. Per-instance hue/value variation remains available.
+Every promoted prop remains cached and instanced through the shared foliage engine. Deterministic
+placement, 32 m chunk culling and bounded clearing remain under Scatter's existing contract while
+the engine owns loading, material families, LOD buckets, shadow proxies and packaged fallback
+derivatives. Imported candidates are conditioned into a shared family atlas; they do not retain
+Meshy's arbitrary material stack. Per-instance hue/value variation remains available.
 
 | Family | Route | LOD0 target | LOD1 | Shadow proxy | Texture rule |
 | --- | --- | ---: | ---: | ---: | --- |
 | Civilian sedan/van/pickup | Meshy pilot, then local hard-surface conditioning | 1.5k–3k tris | 600–1.2k | 200–400 | one shared 1K KTX2 vehicle atlas |
 | Umbrella/table/bench | local authored kit; Meshy only if silhouette review fails | 300–900 | 120–350 | 80–200 | shared civic trim/vertex colour |
 | Crates/pallets/barrels | local modular kit | 150–700 per composition | 80–250 | 60–160 | shared yard trim/vertex colour |
-| Boulder/rock cluster | local sculpted family or one Meshy source conditioned into 3 variants | 300–1.2k | 120–450 | 80–250 | vertex colour; no unique map |
+| Crate stack/flower box pilot | deterministic local box kit; ImageGen surface/canopy | 16–60 | 14–60 | 12–24 | one shared 1K/512/512 alpha PBR atlas; forged-iron mask is metallic, timber/soil/flowers remain dielectric |
+| Autumn/conifer/palm/grass | compact authored card/trunk families | 8–170 | 4–168 | 24–40 | one shared ImageGen alpha-tested 1K/512/512 PBR atlas |
+| Remaining yard/street/civic props | offline bake of reviewed authored silhouettes | 164–2,376 | topology-safe ~30–58% far deliveries | 12 | one shared ImageGen-derived metal/wood/hay/stone 1K/512/512 PBR atlas |
+| Bush/clipped hedge | deterministic local cards; separate ImageGen branch/panel sources | 12–28 | 10–16 | 12–48 | one shared alpha-tested 1K/512/512 PBR atlas plus biome vertex tint |
+| Boulder/rock cluster | deterministic local closed family; shared ImageGen-refined surface | 450–576 | 224–240 | 144–150 | one shared 1K/512/512 PBR set plus biome vertex tint; no unique map |
 | Ore shards/field clutter | local authored gameplay kit | 150–800 per cluster | 60–250 | 40–140 | shared ore material/emissive mask |
 | Wrecks/hero roadside objects | Meshy where a distinct silhouette earns it | 2k–5k | 700–1.8k | 250–600 | shared 1K KTX2 family atlas |
 
@@ -197,19 +214,31 @@ It is approved as an integration candidate, not yet a runtime replacement. The p
 remains the fallback until the shared prop-family material, instancing, shadow proxy, LOD1, WebGL,
 WebGPU, and scene-budget gates pass.
 
+## Foliage engine pilot: one broadleaf before the environment roster
+
+The next pilot is the existing `tree` key, a 10–12 m temperate broadleaf. Its complete architecture,
+art brief, budgets, credit stops and acceptance matrix live in `docs/FOLIAGE_ENGINE_PLAN.md`.
+
+The pilot deliberately precedes bulk conversion. It must prove the asset-driven runtime while
+retaining the existing placement fingerprint, chunk culling, wind/shadow agreement, crushing,
+felling persistence and coverage gate. The procedural broadleaf remains a development fallback only
+until the approved source produces LODs, a shadow proxy and a packaged emergency derivative.
+
 ## Rollout order
 
-1. Baseline captures and metrics for temperate, desert, snow, urban, and an MCV opening.
-2. Leaf/mud/rust/gravel/litter decal atlas extension plus deterministic context stamps.
-3. Civilian sedan Meshy pilot complete; build and validate the shared vehicle-prop integration path.
-4. Local crate/pallet/barrel and umbrella/civic kit refresh.
-5. Rock and ore cluster refresh with biome variants.
-6. Wreck/debris compositions and destruction continuity.
-7. Dynamic dust/leaves, then quality scaling from measured GPU timings.
+1. Baseline the procedural temperate broadleaf and build the asset-driven foliage-engine POC.
+2. Promote the broadleaf only after the WebGL/WebGPU art, LOD, wind, clearing and scene-budget gates.
+3. Continue the foliage family after the integrated bush/hedge pair, then yard, street and civic
+   families; boulder/rock-cluster mineral anchors are already integrated.
+4. Civilian sedan pilot: integrate it through the same engine's rigid-prop path and shared vehicle atlas.
+5. Continue context-specific terrain composition and destruction continuity around approved families.
+6. Dynamic dust/leaves, then quality scaling from measured GPU timings.
 
 ## Gates
 
 - No change may raise the live prop-type ceiling above 30 or add per-instance materials.
+- Asset loading must never influence placement fingerprints, clearing masks or simulation state.
+- Every migrated family ships LOD/shadow/emergency derivatives before its local builder is removed.
 - Capture colour draws, shadow draws, visible instances, library triangles, upload bytes, decoded
   texture memory, and GPU pass time before/after.
 - Imported geometry must pass close, normal RTS, and far zoom in WebGL and WebGPU, noon and dusk.

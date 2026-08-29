@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "assetKey": "tree",
+  "displayName": "Temperate Broadleaf v1",
+  "generatedAt": "2026-08-29",
+  "source": {
+    "geometryTask": "01a04ec2-a4bb-77e8-b54f-400b74c82c33",
+    "geometryCredits": 20,
+    "rawTriangles": 1979710,
+    "remeshTask": "01a04ee5-dad8-7580-bf04-c71684f6957e",
+    "remeshCredits": 5,
+    "remeshTriangles": 3363,
+    "textureTask": "01a04f0c-bb38-7124-bc66-71452613b30b",
+    "textureCredits": 20,
+    "textureTasks": [
+      {
+        "id": "01a04ee7-71ee-7606-b7c6-8d0f2572306d",
+        "credits": 10,
+        "role": "initial-pbr"
+      },
+      {
+        "id": "01a04f0c-bb38-7124-bc66-71452613b30b",
+        "credits": 10,
+        "role": "realistic-pbr"
+      }
+    ],
+    "imageGenRefined": true,
+    "imageGenMethod": "registered high-frequency detail transfer from edited base-colour atlas",
+    "pbr": true,
+    "bakedLightingRemoved": true
+  },
+  "fit": {
+    "origin": "ground-centre",
+    "up": "+Y",
+    "dimensionsMeters": [5.629, 11.0, 4.211]
+  },
+  "deliveries": [
+    {
+      "role": "lod0",
+      "file": "temperate-broadleaf-v1.glb",
+      "bytes": 1364600,
+      "triangles": 3363,
+      "vertices": 7747,
+      "sha256": "26a2a449a750e6549eff1e8de83555639cf5f243ff44e8676a3087c48397e1ce",
+      "textures": ["base:1024x1024", "normal:1024x1024", "metallicRoughness:512x512"],
+      "singleSided": true
+    },
+    {
+      "role": "lod1",
+      "file": "derived/temperate-broadleaf-v1.lod1.glb",
+      "bytes": 39376,
+      "triangles": 802,
+      "sha256": "628e41372e33882b7a674e9eac7adda0b41b4ca3f228e7dd89f2a4b038adcfd7",
+      "geometryOnly": true
+    },
+    {
+      "role": "lod2-emergency",
+      "file": "derived/temperate-broadleaf-v1.lod2.glb",
+      "bytes": 31140,
+      "triangles": 384,
+      "vertices": 768,
+      "sha256": "2d1e767d62992088a90aeaee41d2926137ea38303366ee2632678ed83318fbf2",
+      "method": "crossed silhouette planes with vertex colour; no texture sampler"
+    },
+    {
+      "role": "shadow",
+      "file": "derived/temperate-broadleaf-v1.shadow.glb",
+      "bytes": 39376,
+      "triangles": 802,
+      "sha256": "628e41372e33882b7a674e9eac7adda0b41b4ca3f228e7dd89f2a4b038adcfd7",
+      "method": "LOD1 silhouette reuse after lower automatic caster collapsed"
+    }
+  ],
+  "shippingFamilyBytes": 1474492,
+  "shippingBudgetBytes": 1572864,
+  "rejections": [
+    {
+      "delivery": "direct simplified LOD2/shadow",
+      "reason": "Numerical triangle and bounds gates passed, but cardinal review showed collapsed slab geometry and lost trunk/crown silhouette."
+    }
+  ],
+  "review": {
+    "file": "review/temperate-broadleaf-v1.pbr-cardinals.png",
+    "sha256": "3eed25176bf170e1dcee07c87d279a0ce643c3f5858fe9df6fc88f193d2b65a6"
+  }
+}

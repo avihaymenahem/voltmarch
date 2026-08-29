@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "family": "environment-foliage-poc",
+  "generatedAt": "2026-08-29T19:15:38.984Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/foliage-poc.json",
+  "rows": [
+    {
+      "key": "tree",
+      "class": "foliage",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/environment/foliage/temperate-broadleaf-v1.glb",
+        "triangles": 3363,
+        "fileBytes": 1364600
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.lod1.glb",
+          "triangles": 802,
+          "triangleRatio": 0.2385,
+          "boundsDriftMeters": 0.16499,
+          "boundsDriftRatio": 0.02931,
+          "fileBytes": 39376,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "rejected-visual",
+          "blockers": [
+            "cardinal review: direct simplification collapsed the crown/trunk into slab geometry"
+          ],
+          "file": null,
+          "triangles": 387,
+          "triangleRatio": 0.1151,
+          "boundsDriftMeters": 0.00028,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "selected",
+          "blockers": [],
+          "file": "packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.shadow.glb",
+          "triangles": 802,
+          "triangleRatio": 0.2385,
+          "boundsDriftMeters": 0.16499,
+          "boundsDriftRatio": 0.02931,
+          "fileBytes": 39376,
+          "geometryOnly": true,
+          "selectionNote": "uses the visually accepted LOD1 silhouette; the lower direct caster was rejected"
+        }
+      ],
+      "selectedFarDelivery": {
+        "method": "crossed vertex-colour silhouette",
+        "file": "packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.lod2.glb",
+        "triangles": 384,
+        "fileBytes": 31140
+      }
+    }
+  ]
+}

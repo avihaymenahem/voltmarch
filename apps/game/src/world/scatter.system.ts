@@ -34,6 +34,9 @@
  *   ?scatterdensity=1.6   multiply the density budget
  *   ?scatterseed=1234     reseed placement without touching the terrain seed
  *   ?scatterwind=off      freeze the foliage (for pixel-diffing screenshots)
+ *   ?foliage=procedural   force the legacy geometry for exact A/B captures
+ *   ?foliage=imported     request the audited tree, falling back if unavailable
+ *   ?foliage=emergency    force the packaged emergency derivative
  * ============================================================================
  */
 
@@ -51,6 +54,12 @@ import {
 } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
+import { resolveFoliagePresentation } from './FoliageEngine';
+import { loadImportedFoliage } from './EnvironmentAssetLoader';
+import { ENVIRONMENT_ASSET_KEYS } from './EnvironmentAssetCatalog';
+import {
+  installImportedEntityProps, installProceduralEntityProps,
+} from './entity-props.system';
 import { DecalKind, groundDecals } from './Decals';
 
 declare const globalThis: { __vmScatter?: Scatter } & typeof window;
@@ -77,7 +86,7 @@ export default defineSystem({
   order: 20000,
   renderPhase: RenderPhase.Terrain,
 
-  init(): void {
+  async init(): Promise<void> {
     if (flag('scatter') === 'off') {
       console.info('%c[scatter]%c disabled by ?scatter=off', 'color:#7fd', 'color:inherit');
       return;
@@ -108,6 +117,32 @@ export default defineSystem({
             maxZ: spec.camera.z + titleView.front,
           };
 
+    const foliagePresentation = resolveFoliagePresentation(flag('foliage'));
+    let importedFoliage;
+    if (foliagePresentation !== 'procedural') {
+      try {
+        importedFoliage = await loadImportedFoliage(terrain.biomeKey);
+        console.info(
+          `%c[foliage]%c loaded ${importedFoliage.size} audited ${foliagePresentation} families`,
+          'color:#7fd', 'color:inherit',
+        );
+        const entityOverrides = installImportedEntityProps(importedFoliage);
+        if (entityOverrides > 0) {
+          console.info(
+            `%c[foliage]%c rebound ${entityOverrides} entity-prop bridge entries to imported PBR`,
+            'color:#7fd', 'color:inherit',
+          );
+        }
+      } catch (error) {
+        // The presentation switch is diagnostic/rollout state, never a reason
+        // to lose trees or delay the rest of world boot indefinitely.
+        console.warn('[foliage] imported family unavailable; using procedural tree', error);
+        installProceduralEntityProps();
+      }
+    } else {
+      installProceduralEntityProps();
+    }
+
     scatter = new Scatter({
       scene: sceneRig.scene,
       terrain,
@@ -126,6 +161,8 @@ export default defineSystem({
       focusBoost: titleBackdrop ? 0.48 : plan.start === 'mcv' ? 0.55 : 0.18,
       focusClumpGapScale: titleBackdrop ? 0.55 : plan.start === 'mcv' ? 0.55 : 1,
       openingCenters: plan.start === 'mcv' ? plannedStartPoints() : [],
+      foliagePresentation,
+      importedFoliage,
     });
 
     /* -- masks ------------------------------------------------------------ *
@@ -196,6 +233,18 @@ export default defineSystem({
     }
 
     scatter.generate();
+    for (const key of ENVIRONMENT_ASSET_KEYS) {
+      const presentation = scatter.foliage.resolution(key);
+      if (presentation === undefined || presentation.source === 'procedural') continue;
+      const material = presentation.geometry.material;
+      const pbr = material !== undefined && 'normalMap' in material && 'roughnessMap' in material;
+      console.info(
+        `%c[foliage]%c ${key} source=${presentation.source}, `
+        + `${presentation.geometry.triangles.toLocaleString()} tris, `
+        + `${material?.name ?? 'shared material'}, PBR=${pbr ? 'yes' : 'no'}`,
+        'color:#7fd', 'color:inherit',
+      );
+    }
     /*
      * Presentation follows generation instead of living inside it. Scatter's
      * placement contract promises that calling generate() twice is identical;
@@ -296,8 +345,8 @@ export default defineSystem({
     console.info(
       `%c[scatter]%c ${terrain.biome.name} — ${s.props} props of ${s.types} types ` +
       `(${s.propsPerHectare.toFixed(0)}/ha over ${(report?.walkableHectares ?? 0).toFixed(1)} ha), ` +
-      `${scatter.library.totalTriangles} tris in the library, ` +
-      `${(scatter.library.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place, ` +
+      `${scatter.foliage.totalTriangles} tris in the library, ` +
+      `${(scatter.foliage.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place, ` +
       `${scatter.groundPatches} habitat patches + ${groundStories?.total ?? 0} ground-story ` +
       `marks + ${baseWear} base-wear marks`,
       'color:#7fd', 'color:inherit',

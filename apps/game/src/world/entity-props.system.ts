@@ -67,6 +67,7 @@ import {
 } from '../art/ImportedWreckAssets';
 import { isBiomeName, type BiomeName } from './Biomes';
 import { getTerrain } from './Terrain';
+import type { EnvironmentGeometryFamily } from './FoliageEngine';
 
 /* ==========================================================================
  * CONTENT KEY -> PROP LIBRARY ARCHETYPE
@@ -105,6 +106,83 @@ let wreckSet: WreckSet | null = null;
 let importedWreckSet: ImportedWreckSet | null = null;
 let importedWreckEpoch = 0;
 
+/**
+ * Rebind scenario/pickup entities to Scatter's already-loaded asset families.
+ * Geometry and materials remain owned by FoliageEngine; these bridge entries
+ * add no texture allocation and procedural registrations stay underneath as
+ * the synchronous failure fallback.
+ */
+export function installImportedEntityProps(
+  families: ReadonlyMap<string, EnvironmentGeometryFamily>,
+): number {
+  let registrations = 0;
+  for (const [fallbackKey, assetKey] of Object.entries(LIBRARY_KEY)) {
+    const family = families.get(assetKey);
+    const fallback = FALLBACK_PROPS[fallbackKey];
+    const defId = PROP_DEF_ID[fallbackKey];
+    const material = family?.lod0.material ?? materials?.material;
+    if (family === undefined || fallback === undefined || defId === undefined || material === undefined) {
+      continue;
+    }
+    const mesh: KindMesh = {
+      geometry: family.lod0.geometry,
+      material,
+      castShadow: true,
+      receiveShadow: true,
+    };
+    registerKindMesh(fallback.kind, FACTION_ANY, mesh, defId, true);
+    registrations++;
+    if (fallbackKey === 'crate') {
+      registerKindMesh(fallback.kind, FACTION_ANY, mesh, -1, true);
+      registrations++;
+    }
+  }
+  ctx().debug.counters.entityPropImportedModels = registrations;
+  return registrations;
+}
+
+/**
+ * Build the legacy entity-prop meshes only when the imported catalogue could
+ * not be loaded (or when `?foliage=procedural` was explicitly requested).
+ * Normal imported boots therefore allocate no duplicate local prop geometry.
+ */
+export function installProceduralEntityProps(): number {
+  if (materials === null) return 0;
+  const biome = activeBiome();
+  library ??= new PropLibrary({
+    biome,
+    seed: 0x5EED_1A,
+    keys: Object.values(LIBRARY_KEY),
+  });
+
+  let registrations = 0;
+  for (const [fallbackKey, assetKey] of Object.entries(LIBRARY_KEY)) {
+    const fallback = FALLBACK_PROPS[fallbackKey];
+    const defId = PROP_DEF_ID[fallbackKey];
+    const geometry = library.get(assetKey);
+    if (fallback === undefined || defId === undefined || geometry === undefined) continue;
+    const mesh: KindMesh = {
+      geometry: geometry.geometry,
+      material: materials.material,
+      castShadow: true,
+      receiveShadow: true,
+      customDepthMaterial: materials.depthMaterial ?? undefined,
+    };
+    registerKindMesh(fallback.kind, FACTION_ANY, mesh, defId, true);
+    registrations++;
+    if (fallbackKey === 'crate') {
+      registerKindMesh(fallback.kind, FACTION_ANY, mesh, -1, true);
+      registrations++;
+    }
+  }
+  ctx().debug.counters.entityPropProceduralModels = registrations;
+  console.info(
+    `[props] ${registrations} lazy procedural entity-prop fallback(s) ready `
+    + `(${library.count} archetypes, ${library.totalTriangles} triangles)`,
+  );
+  return registrations;
+}
+
 export default defineSystem({
   id: 'art.entityProps',
   // Phase.Command / order 45: after `world.terrain` (40) publishes the biome,
@@ -121,11 +199,6 @@ export default defineSystem({
     const biome = activeBiome();
     const palette = propPalette(biome);
 
-    // Only the archetypes a scenario can actually ask for. `PropLibrary` bakes
-    // everything it is given, and baking 28 to use 7 is 20 ms of nothing.
-    const wanted = Object.values(LIBRARY_KEY);
-    library = new PropLibrary({ biome, seed: 0x5EED_1A, keys: wanted });
-
     // One parameter object, two constructors — see the same note in
     // `ore.system.ts`.
     const np = nodePath();
@@ -137,7 +210,6 @@ export default defineSystem({
     wreckSet = buildWreckSet(palette);
 
     let registered = 0;
-    const missing: string[] = [];
 
     const register = (
       key: string, geometry: THREE.BufferGeometry, defId: number,
@@ -179,37 +251,20 @@ export default defineSystem({
       register('wreck', wreckSet.ruin('neutral', size), BUILDING_RUBBLE_DEF[size]);
     }
 
-    for (const key of Object.keys(FALLBACK_PROPS)) {
-      const defId = PROP_DEF_ID[key];
-      if (defId === undefined) continue;
-
-      if (key === 'wreck') {
-        const neutral = wreckSet.hulk('neutral', 'medium');
-        register(key, neutral, defId);
-        // AND at -1 for pre-classification saves and legacy authored content.
-        register(key, neutral, -1);
-        continue;
-      }
-
-      const libKey = LIBRARY_KEY[key];
-      const geo = libKey === undefined ? undefined : library.get(libKey);
-      if (geo === undefined) { missing.push(`${key} (wanted "${libKey}")`); continue; }
-      register(key, geo.geometry, defId);
-      // Crates have exactly one archetype and nothing else spawns them, but a
-      // crate dropped by a future pickup system would carry -1; cover it.
-      if (FALLBACK_PROPS[key].kind === EntityKind.Crate) register(key, geo.geometry, -1);
+    const wreckDefId = PROP_DEF_ID.wreck;
+    if (wreckDefId !== undefined) {
+      const neutral = wreckSet.hulk('neutral', 'medium');
+      register('wreck', neutral, wreckDefId);
+      // AND at -1 for pre-classification saves and legacy authored content.
+      register('wreck', neutral, -1);
     }
 
     debug.counters.entityPropModels = registered;
     console.info(
-      `%c[props]%c ${registered} entity-prop registration(s) on the ${biome} palette ` +
-      `(${library.count} library archetypes, ${library.totalTriangles} prop tris, ` +
-      `${wreckSet.triangles} wreck tris)`,
+      `%c[props]%c ${registered} wreck registration(s) on the ${biome} palette ` +
+      `(${wreckSet.triangles} wreck tris; model props await imported catalogue)`,
       'color:#9c7', 'color:inherit',
     );
-    for (const m of missing) {
-      console.warn(`[props] no PropLibrary archetype for ${m} — it will draw the hazard box`);
-    }
 
     // Load the authored conventional tank hulk after the match is already
     // interactive. Procedural class/faction wrecks stay registered until this

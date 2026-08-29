@@ -2487,7 +2487,7 @@ export function createPropMaterial(): PropMaterialSet {
             ${PROP_LIGHT_ANIM.faultyFloor} + ${1 - PROP_LIGHT_ANIM.faultyFloor} * raFast * raSlow,
             raFaulty);
 
-          float raCycle = fract(uWindTime / ${PROP_LIGHT_ANIM.signalCycleSeconds}
+          float raCycle = fract(uWindTime / ${PROP_LIGHT_ANIM.signalCycleSeconds.toFixed(1)}
             + fract(vLifePhase * 0.0795775));
           float raRedOn = step(raCycle, ${PROP_LIGHT_ANIM.signalRedEnd});
           float raAmberOn = step(${PROP_LIGHT_ANIM.signalRedEnd}, raCycle)
@@ -2549,6 +2549,8 @@ export function createPropMaterial(): PropMaterialSet {
 export interface PropGeometry {
   readonly def: PropDef;
   readonly geometry: THREE.BufferGeometry;
+  /** Optional authored surface. Procedural props use the shared prop material. */
+  readonly material?: THREE.Material;
   readonly triangles: number;
   /** XZ bounding radius in metres — drives the instance culling sphere. */
   readonly boundRadius: number;
@@ -2587,7 +2589,11 @@ export class PropLibrary {
     this.palette = propPalette(options.biome);
     const seed = options.seed >>> 0;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-    const wanted = options.keys && options.keys.length > 0 ? new Set(options.keys) : null;
+    // `undefined` means the historical "build every biome archetype" mode.
+    // An explicit empty list is meaningful: the imported foliage path uses it
+    // to keep the procedural library dormant when every requested family was
+    // delivered successfully.
+    const wanted = options.keys === undefined ? null : new Set(options.keys);
     for (let i = 0; i < PROP_DEFS.length; i++) {
       const def = PROP_DEFS[i];
       if (wanted !== null && !wanted.has(def.key)) continue;

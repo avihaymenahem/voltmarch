@@ -130,6 +130,9 @@ import {
  * `TerrainNodeMaterial.ts`; `tests/render-backend.spec.ts` is the gate.
  */
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
+import {
+  FoliageEngine, type EnvironmentGeometryFamily, type FoliagePresentation,
+} from './FoliageEngine';
 
 /**
  * Same-build A/B switch for the retired WebGPU BatchedMesh scatter path.
@@ -143,6 +146,24 @@ export function usesLegacyScatterBatch(nodeBackend: boolean, search: string): bo
 /** Same-build visual/performance A/B for authored low-cover shadow filtering. */
 export function usesLegacyScatterShadows(search: string): boolean {
   return new URLSearchParams(search).get('scattershadow') === 'legacy';
+}
+
+/**
+ * Align a street prop to the traced kerb tangent.
+ *
+ * Most street props author their forward/long axis on local +Z. The clipped
+ * hedge is deliberately a long box on local +X, matching both its procedural
+ * fallback and imported delivery. Applying the generic yaw to it presents the
+ * narrow end to the road and makes a 3.8 m hedge read as a thin post.
+ */
+export function streetPropYaw(
+  key: string,
+  tangentX: number,
+  tangentZ: number,
+  jitter = 0,
+): number {
+  const localZAlongTangent = Math.atan2(tangentX, tangentZ);
+  return localZAlongTangent + (key === 'hedge' ? -Math.PI * 0.5 : 0) + jitter;
 }
 
 /* ==========================================================================
@@ -434,6 +455,10 @@ export interface ScatterOptions {
    * A cap it sets itself cannot stop binding.
    */
   readonly maxTypes?: number;
+  /** Geometry presentation only; placement and save identity never consult it. */
+  readonly foliagePresentation?: FoliagePresentation;
+  /** Complete, already-audited authored families. Partial loading is rejected. */
+  readonly importedFoliage?: ReadonlyMap<string, EnvironmentGeometryFamily>;
   /** The box a scenario actually photographs. Density is boosted inside it. */
   readonly focus?: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
   readonly focusBoost?: number;
@@ -760,6 +785,7 @@ function dominantTone(def: PropDef, p: PropPalette): string {
 
 export class Scatter {
   readonly library: PropLibrary;
+  readonly foliage: FoliageEngine;
   /** `PropMaterialSetLike` — `depthMaterial` is null on the node path. */
   readonly materials: PropMaterialSetLike;
   private readonly palette: PropPalette;
@@ -878,7 +904,21 @@ export class Scatter {
     this.scene = options.scene;
     this.terrain = options.terrain;
     this.palette = propPalette(options.biome);
-    this.library = new PropLibrary({ biome: options.biome, seed: options.seed });
+    const fallbackKeys = options.foliagePresentation === 'procedural'
+      ? undefined
+      : PROP_DEFS
+          .filter((def) => def.biome[options.biome] > 0 && !options.importedFoliage?.has(def.key))
+          .map((def) => def.key);
+    this.library = new PropLibrary({
+      biome: options.biome,
+      seed: options.seed,
+      keys: fallbackKeys,
+    });
+    this.foliage = new FoliageEngine({
+      fallback: this.library,
+      presentation: options.foliagePresentation,
+      importedFamilies: options.importedFoliage,
+    });
     const np = nodePath();
     // BatchedMesh is retained only as a same-build benchmark arm. Three's
     // WebGPU backend expands it to one draw command per visible prop instance,
@@ -1210,7 +1250,7 @@ export class Scatter {
               ? Math.atan2(p.z - ROAD_POINT_SCRATCH[1], ROAD_POINT_SCRATCH[0] - p.x)
               : Math.atan2(pz, -px);
           } else {
-            p.yaw = Math.atan2(ux, uz) + rng.range(-0.08, 0.08);
+            p.yaw = streetPropYaw(def.key, ux, uz, rng.range(-0.08, 0.08));
           }
           placed++;
         }
@@ -1302,7 +1342,7 @@ export class Scatter {
     const preferred = this.opts.preferred ?? [];
     for (let i = 0; i < PROP_DEFS.length; i++) {
       const def = PROP_DEFS[i];
-      const geo = this.library.get(def.key);
+      const geo = this.foliage.get(def.key);
       if (geo === undefined) continue;
       const biomeW = def.biome[this.opts.biome];
       if (biomeW <= 0) continue;
@@ -2319,7 +2359,8 @@ export class Scatter {
         continue;
       }
 
-      const mesh = new THREE.InstancedMesh(type.geo.geometry, this.materials.material, list.length);
+      const meshMaterial = type.geo.material ?? this.materials.material;
+      const mesh = new THREE.InstancedMesh(type.geo.geometry, meshMaterial, list.length);
       mesh.name = `prop.${type.def.key}`;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
@@ -2352,7 +2393,7 @@ export class Scatter {
        * swaying canopy casts a swaying shadow with no second material and no
        * extra upload. `docs/RENDER_FINDINGS.md` §7e.
        */
-      if (this.materials.depthMaterial !== null) {
+      if (type.geo.material === undefined && this.materials.depthMaterial !== null) {
         mesh.customDepthMaterial = this.materials.depthMaterial;
       }
       // We cull by chunk on the CPU; three's own test would use a bounding
@@ -3253,7 +3294,7 @@ export class Scatter {
     return {
       props: this.liveProps,
       types: this.types.length,
-      triangles: this.library.totalTriangles,
+      triangles: this.foliage.totalTriangles,
       visibleInstances: this.visibleInstances,
       visibleChunks: this.visibleChunks,
       drawCalls: this.drawCalls,
@@ -3294,6 +3335,7 @@ export class Scatter {
     this.liveProps = 0;
     this.scene.remove(this.root);
     this.materials.dispose();
+    this.foliage.dispose();
     this.library.dispose();
   }
 }
