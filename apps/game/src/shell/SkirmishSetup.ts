@@ -303,6 +303,14 @@ export class SkirmishSetupScreen implements Screen {
   private factions: FactionOption[] = [];
   private left: HTMLElement | null = null;
   private right: HTMLElement | null = null;
+  /** Live faction buttons; a side pick changes only their pressed state. */
+  private readonly playerFactionCards = new Map<string, HTMLButtonElement>();
+  /**
+   * Preview canvases are deterministic and map-owned. Keep each one for this
+   * visit so an unrelated rules/team repaint does not draw the same survey
+   * again, and switching back to a battlefield can reuse its decoded art.
+   */
+  private readonly mapPreviews = new Map<string, HTMLElement>();
   /** The opening. Persisted separately from `MatchSetup` — see the header. */
   private start: StartCondition;
   /**
@@ -370,6 +378,8 @@ export class SkirmishSetupScreen implements Screen {
     this.host = null;
     this.left = null;
     this.right = null;
+    this.playerFactionCards.clear();
+    this.mapPreviews.clear();
   }
 
   onBack(): boolean {
@@ -436,12 +446,13 @@ export class SkirmishSetupScreen implements Screen {
     /* -- your side -------------------------------------------------------- */
     const you = this.section(col, 'Your Faction');
     const cards = el('div', 'vm-cards');
+    this.playerFactionCards.clear();
     for (const f of this.factions) {
-      cards.appendChild(this.factionCard(f, this.setup.playerFaction === f.key, () => {
-        this.setup.playerFaction = f.key;
-        this.renderLeft();
-        this.renderRight();
-      }));
+      const card = this.factionCard(f, this.setup.playerFaction === f.key, () => {
+        this.selectPlayerFaction(f.key);
+      });
+      this.playerFactionCards.set(f.key, card);
+      cards.appendChild(card);
     }
     you.appendChild(cards);
 
@@ -658,12 +669,17 @@ export class SkirmishSetupScreen implements Screen {
     const col = this.right;
     if (col === null) return;
     this.reconcile();
+    // Detach cached previews before dropping their containing section. Without
+    // this, the cached child keeps the old map list alive through its parent.
+    for (const preview of this.mapPreviews.values()) {
+      preview.parentNode?.removeChild(preview);
+    }
     col.replaceChildren();
 
     /* -- map -------------------------------------------------------------- */
     const maps = this.section(col, 'Battlefield');
     const selectedMap: MapChoice = mapById(this.setup.map);
-    maps.appendChild(mapPreview(selectedMap));
+    maps.appendChild(this.previewFor(selectedMap));
     const list = el('div', 'vm-maplist');
     for (const m of MAPS) {
       // A locked map is SHOWN, disabled, with the reason on it — not hidden.
@@ -687,6 +703,7 @@ export class SkirmishSetupScreen implements Screen {
       if (open) {
         focusable(item);
         item.addEventListener('click', () => {
+          if (this.setup.map === m.id) return;
           this.setup.map = m.id;
           // The Sides row lives in the OTHER column, and picking a two-army map
           // out of a four-way has to move it. Repaint both.
@@ -859,6 +876,24 @@ export class SkirmishSetupScreen implements Screen {
 
   private seedLabel(): string {
     return this.setup.seed === 0 ? 'RANDOM' : String(this.setup.seed);
+  }
+
+  /** A faction pick has no dependent rows: update it without rebuilding DOM. */
+  private selectPlayerFaction(key: string): void {
+    if (this.setup.playerFaction === key) return;
+    this.setup.playerFaction = key;
+    for (const [candidate, card] of this.playerFactionCards) {
+      card.setAttribute('aria-pressed', candidate === key ? 'true' : 'false');
+    }
+  }
+
+  /** Return the one preview node painted for this map during this lobby visit. */
+  private previewFor(map: MapChoice): HTMLElement {
+    const cached = this.mapPreviews.get(map.id);
+    if (cached !== undefined) return cached;
+    const preview = mapPreview(map);
+    this.mapPreviews.set(map.id, preview);
+    return preview;
   }
 
   private factionCard(f: FactionOption, selected: boolean, onPick: () => void): HTMLButtonElement {

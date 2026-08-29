@@ -164,9 +164,17 @@ class StubElement {
   }
 }
 
+let createdElements = 0;
+
 const stubDocument = {
-  createElement: (tag: string): StubElement => new StubElement(tag.toUpperCase()),
-  createElementNS: (_ns: string, tag: string): StubElement => new StubElement(tag.toUpperCase()),
+  createElement: (tag: string): StubElement => {
+    createdElements++;
+    return new StubElement(tag.toUpperCase());
+  },
+  createElementNS: (_ns: string, tag: string): StubElement => {
+    createdElements++;
+    return new StubElement(tag.toUpperCase());
+  },
 };
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -386,8 +394,48 @@ describe('focus survives the press', () => {
   });
 });
 
-/* ==========================================================================
- * 6. THE OPEN STATE IS NOT PERSISTED
+/* ===========================================================================
+ * 6. CHEAP PICKS STAY CHEAP
+ *
+ * A player-side pick used to call both `renderLeft()` and `renderRight()`.
+ * That rebuilt every opponent/rule control and repainted the canvas-backed
+ * battlefield survey even though none of them depends on the player's side.
+ * Node identity plus the creation count makes this a behavioural performance
+ * test: a redraw that happens to look identical cannot pass it.
+ * ========================================================================== */
+
+describe('synchronous lobby redraws', () => {
+  it('changes player faction in place without allocating or replacing either side', () => {
+    const host = mountLobby();
+    const cards = all(host, 'vm-card');
+    const preview = one(host, 'vm-map-preview');
+    const createdBefore = createdElements;
+
+    cards[1].click();
+
+    expect(createdElements, 'a faction pick rebuilt lobby DOM').toBe(createdBefore);
+    expect(all(host, 'vm-card')).toEqual(cards);
+    expect(one(host, 'vm-map-preview'), 'the unrelated battlefield survey was replaced').toBe(preview);
+    expect(cards.map((card) => card.getAttribute('aria-pressed')))
+      .toEqual(['false', 'true', 'false', 'false']);
+  });
+
+  it('retains the map preview across a rules repaint', () => {
+    const host = mountLobby();
+    const preview = one(host, 'vm-map-preview');
+    const startingCondition = all(host, 'vm-row-label')
+      .find((label) => label.textContent === 'Starting Condition')?.parentNode;
+    expect(startingCondition).not.toBeNull();
+    const chooserValue = one(startingCondition!, 'vm-chooser-value');
+
+    chooserValue.click();
+
+    expect(one(host, 'vm-map-preview'), 'an unchanged map was painted again').toBe(preview);
+  });
+});
+
+/* ===========================================================================
+ * 7. THE OPEN STATE IS NOT PERSISTED
  *
  * A disclosure that remembers is a second piece of state to get wrong. Two
  * screens in a row, no storage between them.
