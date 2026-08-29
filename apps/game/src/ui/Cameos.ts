@@ -743,9 +743,9 @@ interface Job {
   /**
    * True once REAL PIXELS have landed on this canvas for the current subject.
    *
-   * Only the async path reads it, and only to decide whether to paint the 2D
-   * glyph as a placeholder. Painting it unconditionally would make a hovered
-   * cameo flicker between glyph and model thirty times a second.
+   * Read while either backend's async transfer is pending to decide whether to
+   * paint the 2D glyph as a placeholder. Painting it unconditionally would
+   * make a hovered cameo flicker between glyph and model thirty times a second.
    */
   painted: boolean;
   /**
@@ -808,8 +808,8 @@ const MAX_INFLIGHT_READS = 8;
 
 export class CameoRenderer {
   /**
-   * THE SYNCHRONOUS RENDERER, OR NULL ON THE NODE PATH. Non-null is the only
-   * thing that selects `readRenderTargetPixels`, which exists nowhere else.
+   * THE WEBGL RENDERER, OR NULL ON THE NODE PATH. Non-null selects the WebGL
+   * async signature, which requires a caller-owned tight pixel buffer.
    */
   private readonly webgl: THREE.WebGLRenderer | null;
   /** The node renderer, or null on the WebGL path. Exactly one of the two. */
@@ -1334,8 +1334,8 @@ export class CameoRenderer {
    *
    * SHARED BY BOTH PATHS ON PURPOSE. `blitReadback` with `stride === rw * 4`
    * and `bottom-up` performs exactly the row copy the WebGL path always did —
-   * same `subarray`, same `set`, same offsets — so the sync path's output bytes
-   * are unchanged. `tests/cameo-readback.spec.ts` asserts that against the
+   * same `subarray`, same `set`, same offsets — so WebGL's output bytes remain
+   * unchanged. `tests/cameo-readback.spec.ts` asserts that against the
    * original expression rather than trusting the reading.
    */
   private paintPixels(

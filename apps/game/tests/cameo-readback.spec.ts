@@ -375,9 +375,9 @@ interface PendingRead {
  *
  * `isWebGPURenderer` + `backend.isWebGPUBackend` are what `liveBackendOf`
  * actually probes, so a fake that omits them would be silently classified as
- * WebGL and take the SYNCHRONOUS branch — which would make every assertion
- * below pass while testing nothing. That is the shape of Stage F's AO defect
- * and it is worth naming here.
+ * WebGL and take its different async signature — which would make every
+ * assertion below pass while testing nothing. That is the shape of Stage F's
+ * AO defect and it is worth naming here.
  */
 class FakeNodeRenderer {
   readonly isWebGPURenderer = true as const;
