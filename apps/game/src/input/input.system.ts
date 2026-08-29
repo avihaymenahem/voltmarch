@@ -1520,7 +1520,8 @@ interface PlacementBridge {
   readonly active: boolean;
 }
 
-let hudLinked = false;
+/** The concrete HUD instance carrying our callbacks, not a one-shot latch. */
+let linkedHud: HudBridge | null = null;
 
 /** Resolve a minimap point through the ordinary battlefield context rules. */
 function issueMinimapOrder(x: number, z: number): boolean {
@@ -1568,7 +1569,14 @@ function placementActive(): boolean {
 function linkHud(): void {
   const h = hud();
   if (h === null || input === null) return;
-  hudLinked = true;
+  if (h === linkedHud) return;
+
+  // Matches can recreate the HUD without reloading this module. A boolean
+  // latch left every later minimap without an order callback, so right-click
+  // silently fell through to the presentation ping path (or did nothing in
+  // solo). Detach the old surface and bind the actual current HUD identity.
+  linkedHud?.minimap?.onOrderRequest?.(null);
+  linkedHud = h;
   input.setMarqueeRenderer(
     (x0, y0, x1, y1) => h.overlay.setMarquee(x0, y0, x1, y1),
     () => h.overlay.clearMarquee(),
@@ -1765,7 +1773,7 @@ export default defineSystem({
 
     // The HUD mounts one phase after us, so its overlay canvas is claimed on
     // the first frame rather than in init().
-    if (!hudLinked) linkHud();
+    linkHud();
 
     updateCamera(r.dt);
     selection.pruneDead();
@@ -1787,6 +1795,8 @@ export default defineSystem({
     unbindSettings();
     unsubscribeKilled?.();
     unsubscribeKilled = null;
+    linkedHud?.minimap?.onOrderRequest?.(null);
+    linkedHud = null;
     input?.dispose();
     input = null;
     // `Selection.dispose` gives the `Hovered` bit back; tell the overlay too, or

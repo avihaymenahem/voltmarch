@@ -319,13 +319,13 @@ export class Minimap {
     this.onJump = fn;
   }
 
-  /** Right-click callback installed only for a live multiplayer team match. */
+  /** Presentation ping callback installed only for a live multiplayer team match. */
   onPingRequest(fn: ((x: number, z: number) => void) | null): void {
     this.pingRequestHandler = fn;
     this.canvas.classList.toggle('can-ally-ping', fn !== null);
     this.canvas.title = fn === null
       ? 'Left-click to move camera'
-      : 'Left-click to move camera · Right-click to ping allies';
+      : 'Left-click camera · Right-click order · Middle-click ping allies';
   }
 
   /** Route a right-click through the battlefield contextual-order rules. */
@@ -921,6 +921,17 @@ export class Minimap {
   private attachInput(): void {
     const down = (ev: Event): void => {
       const e = ev as PointerEvent;
+      // An explicit presentation-only gesture remains available while units
+      // are selected. Right-click usually resolves to a valid Move/Attack and
+      // therefore cannot reliably serve as the old "invalid order" fallback.
+      // This callback is installed by the multiplayer session and never enters
+      // the deterministic command or WireCommand paths.
+      if (e.button === 1) {
+        e.preventDefault();
+        const point = this.worldAt(e.clientX, e.clientY);
+        if (point !== null) this.pingRequestHandler?.(point.x, point.z);
+        return;
+      }
       if (e.button === 2) {
         e.preventDefault();
         const point = this.worldAt(e.clientX, e.clientY);

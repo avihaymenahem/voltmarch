@@ -3419,6 +3419,13 @@ export const COMBAT_TARGETING = {
   retaliation: 1.5,
   /** Score multiplier for anything that can shoot back. Guns before trucks. */
   armedTarget: 1.6,
+  /**
+   * Score multiplier for an airborne target when the shooter's weapon has a
+   * full-strength anti-air answer. Dedicated AA and aircraft keep the sky as
+   * their first job; emergency line rifles (`airMultiplier < 1`) deliberately
+   * do not inherit this priority and remain ground troops with a weak AA floor.
+   */
+  airTarget: 3.0,
   /** Score multiplier for a non-defensive structure. Buildings are last. */
   softBuilding: 0.55,
   /** Score multiplier for a defensive structure. */

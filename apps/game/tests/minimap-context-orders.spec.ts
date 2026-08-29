@@ -27,4 +27,12 @@ describe('minimap contextual right-click orders', () => {
     expect(input).toContain('executeResolved(resolution, MODS.shift || waypointLatched())');
     expect(input).toContain('h.minimap?.onOrderRequest?.(issueMinimapOrder)');
   });
+
+  it('rebinds to the concrete HUD after a match recreates it', () => {
+    expect(input).toContain('let linkedHud: HudBridge | null = null');
+    expect(input).toContain('if (h === linkedHud) return');
+    expect(input).toContain('linkedHud?.minimap?.onOrderRequest?.(null)');
+    expect(input).not.toContain('let hudLinked = false');
+    expect(input).toContain('linkHud();\n\n    updateCamera(r.dt)');
+  });
 });

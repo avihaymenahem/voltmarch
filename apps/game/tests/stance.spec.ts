@@ -49,9 +49,12 @@ import { MovementIntegrator, setMoveClass } from '../src/sim/Movement';
 import { DamageSystem, setArmorMatrix } from '../src/sim/Damage';
 import { ProjectileSystem } from '../src/sim/Projectiles';
 import {
-  WeaponSystem, setContentWeaponMap, setWeaponKeyResolver, weaponIndexOf,
+  WeaponSystem, setContentWeaponMap, setWeaponKeyResolver, setWeaponTable, weaponIndexOf,
 } from '../src/sim/Combat';
 import { TargetingSystem } from '../src/sim/Targeting';
+import { ProductionCatalog, ProductionService } from '../src/sim/Production';
+import type { BuildEntry } from '../src/sim/Production';
+import { DEF_TABLES } from '../src/data/Defs';
 import { hashOnly } from '../src/game/Checksum';
 
 const P0 = 0 as PlayerId;
@@ -67,18 +70,31 @@ const GUN_RANGE = 24;
 interface Rig {
   world: World;
   targeting: TargetingSystem;
+  production: ProductionService;
   step(n?: number): void;
+  unit(key: string, player: PlayerId, dx: number, dz: number): number;
 }
 
 function makeRig(seed = 7): Rig {
   setContentWeaponMap({});
   setWeaponKeyResolver(null);
+  setWeaponTable(DEF_TABLES.weapons);
   setArmorMatrix(ARMOR_MATRIX);
 
   const world = new World();
   world.addPlayer(Faction.Allies, 'A', true, true);
   world.addPlayer(Faction.Soviets, 'B', false, false);
   const channels = new Channels();
+  const unitId: Record<string, number> = {};
+  DEF_TABLES.unitByKey.forEach((id, key) => { unitId[key] = id; });
+  const buildingId: Record<string, number> = {};
+  DEF_TABLES.buildingByKey.forEach((id, key) => { buildingId[key] = id; });
+  const production = new ProductionService(
+    world,
+    channels,
+    new ProductionCatalog({ tables: DEF_TABLES, unitId, buildingId }),
+  );
+  production.bindingTables = DEF_TABLES;
 
   const nav = new FlowFieldCache(world.terrain);
   const agents = new NavAgents();
@@ -95,6 +111,7 @@ function makeRig(seed = 7): Rig {
   return {
     world,
     targeting,
+    production,
     step(n = 1): void {
       for (let k = 0; k < n; k++) {
         tick++;
@@ -114,6 +131,14 @@ function makeRig(seed = 7): Rig {
         channels.damage.clear();
         channels.fx.clear();
       }
+    },
+    unit(key, player, dx, dz): number {
+      const entry = production.catalog.byKey(key) as BuildEntry;
+      expect(entry, `catalog is missing "${key}"`).not.toBeNull();
+      const id = production.spawnUnit(
+        world.players[player as number], entry, MID + dx, MID + dz, 0,
+      );
+      return world.store.index(id);
     },
   };
 }
@@ -427,6 +452,33 @@ describe('OrderKind.Guard travels to a point and holds it', () => {
 });
 
 describe('aircraft autonomous attack runs', () => {
+  it('a shipped Defensive aircraft automatically prioritises an enemy aircraft in sight', () => {
+    const rig = makeRig();
+    const petrel = rig.unit('vindicator', P0, 0, 0);
+    rig.unit('rhino', P1, 0, 10); // legal and closer ground distraction
+    const interceptor = rig.unit('mig', P1, 0, 18);
+    const st = rig.world.store;
+
+    expect(st.stance[petrel]).toBe(Stance.Defensive);
+    expect(st.orderKind[petrel]).toBe(OrderKind.None);
+    rig.step(8);
+
+    expect(st.targetId[petrel], 'Defensive aircraft acquires without a manual order')
+      .toBe(st.handleOf(interceptor) as number);
+  });
+
+  it('a shipped dedicated AA troop chooses aircraft over a nearer ground unit', () => {
+    const rig = makeRig();
+    const flak = rig.unit('flakTrooper', P0, 0, 0);
+    rig.unit('gi', P1, 0, 8); // closer and armed, but not the AA troop's first job
+    const interceptor = rig.unit('mig', P1, 0, 15);
+    const st = rig.world.store;
+
+    rig.step(8);
+
+    expect(st.targetId[flak]).toBe(st.handleOf(interceptor) as number);
+  });
+
   it('a Defensive aircraft initiates, closes and keeps attacking on its own', () => {
     const rig = makeRig();
     const aircraft = spawnAircraft(rig, P0, 0, 0, Stance.Defensive);

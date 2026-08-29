@@ -115,6 +115,16 @@ describe('the last resort drops captions, never verbs', () => {
   });
 });
 
+describe('a loaded transport exposes a strong bottom-right unload action', () => {
+  it('turns readiness into both semantics and an accent treatment', () => {
+    expect(TS).toContain("this.cargoButton.classList.toggle('is-ready', action.enabled)");
+    const ready = ruleBody('.vm-hud .vm-cargo.is-ready');
+    expect(ready).toMatch(/min-width:\s*calc\(86\s*\*\s*var\(--vm-u\)\)/);
+    expect(ready).toContain('var(--vm-text-scale, 1)');
+    expect(ready).toContain('var(--vm-accent-hi)');
+  });
+});
+
 describe('the cameo strip says when it continues', () => {
   it('has a fade for the overflow case', () => {
     const body = ruleBody('.vm-hud .vm-sel-cards.is-clipped');
