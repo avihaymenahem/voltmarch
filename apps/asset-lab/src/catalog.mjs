@@ -7,6 +7,12 @@ const FACTION_LABELS = {
   reclamation: 'Reclamation Pact',
   civilian: 'Civilian',
   neutral: 'Neutral',
+  'box-prop': 'Box Props',
+  'extended-foliage': 'Extended Foliage',
+  foliage: 'Foliage',
+  mineral: 'Minerals',
+  'prop-surface': 'Surface Props',
+  shrub: 'Shrubs',
 };
 
 /*
@@ -122,6 +128,7 @@ function infantryFamily(stem) {
 }
 
 function classifyCategory(kind, slug, directories) {
+  if (kind === 'Environment') return 'Environment';
   if (kind === 'Buildings') return NAVAL_STRUCTURE_SLUGS.has(slug) ? 'Naval structures' : 'Buildings';
   if (kind === 'Wrecks') return 'Wrecks';
   if (directories.includes('infantry-poc') || directories.includes('commanders') || INFANTRY_UNIT_SLUGS.has(slug)) return 'Infantry';

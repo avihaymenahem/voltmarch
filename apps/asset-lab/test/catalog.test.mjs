@@ -24,7 +24,16 @@ test('catalog groups every owned GLB without losing a delivery', async () => {
   const summary = catalogSummary(catalog);
   assert.equal(summary.files, paths.length);
   assert.ok(summary.families > 80, `expected a full roster, found ${summary.families} families`);
-  assert.deepEqual(new Set(catalog.map((asset) => asset.faction)), new Set(['allies', 'soviets', 'meridian', 'reclamation', 'civilian', 'neutral']));
+  assert.deepEqual(
+    new Set(catalog.map((asset) => asset.faction)),
+    new Set([
+      'allies', 'soviets', 'meridian', 'reclamation', 'civilian', 'neutral',
+      'box-prop', 'extended-foliage', 'foliage', 'mineral', 'prop-surface', 'shrub',
+    ]),
+  );
+  for (const asset of catalog.filter((entry) => entry.kind === 'Environment')) {
+    assert.equal(asset.category, 'Environment', asset.id);
+  }
 });
 
 test('infantry deliveries become one family with clips and gameplay LOD', async () => {
