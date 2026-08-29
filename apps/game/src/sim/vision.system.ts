@@ -43,10 +43,11 @@
  * ---------------
  * The screenshot harness photographs ART. A black rectangle is not a critique
  * of the art. Resolution order, highest wins:
- *   1. `?fog=on` / `?fog=off`   — explicit, latches immediately
- *   2. `?shot=` present         — every fixture is unfogged (FOG_REVEAL_IN_SHOT_MODE)
- *   3. `activeScenario().frozen`— a posed photograph, shot flag or not
- *   4. `FOG_ENABLED_DEFAULT`
+ *   1. Dev Cheat Engine reveal  — live override; always wins while checked
+ *   2. `?fog=on` / `?fog=off`   — explicit, latches immediately
+ *   3. `?shot=` present         — every fixture is unfogged (FOG_REVEAL_IN_SHOT_MODE)
+ *   4. `activeScenario().frozen`— a posed photograph, shot flag or not
+ *   5. `FOG_ENABLED_DEFAULT`
  *
  * A NOTE ON `ScenarioSpec.revealMap`, because it is NOT rule 2
  * ------------------------------------------------------------
@@ -113,6 +114,8 @@ let primed = false;
  */
 let urlOverride: boolean | null = null;
 let shotMode = false;
+/** Live development override owned by the Cheat Engine. */
+let devRevealMap = false;
 
 /**
  * Decide whether fog runs. Cheap, and called until it latches: the scenario
@@ -121,6 +124,7 @@ let shotMode = false;
  * read once the sim is actually running.
  */
 function resolveEnabled(): boolean {
+  if (devRevealMap) return false;
   if (urlOverride !== null) { latched = true; return urlOverride; }
   if (shotMode && FOG_REVEAL_IN_SHOT_MODE) { latched = true; return false; }
 
@@ -144,6 +148,18 @@ function applyEnabled(): void {
   f.setEnabled(want);
   // A toggle must never fade the whole board in over half a second.
   f.snapTo(v.gridFor(ctx().world.localPlayer));
+}
+
+/**
+ * Reveal or restore the whole map from the development Cheat Engine.
+ *
+ * This deliberately drives the existing Vision and FogOfWar enable switches
+ * instead of creating a second visibility path: minimap shroud, world shroud,
+ * entity masking and visibility queries therefore all agree immediately.
+ */
+export function setVisionDevRevealMap(enabled: boolean): void {
+  devRevealMap = enabled;
+  applyEnabled();
 }
 
 /**
@@ -277,5 +293,6 @@ export default defineSystem({
     primed = false;
     urlOverride = null;
     shotMode = false;
+    devRevealMap = false;
   },
 });

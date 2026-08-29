@@ -11,6 +11,7 @@ import type { GameContext } from '../game/Bootstrap';
 import {
   BuildKind, production, type BuildEntry, type ProductionDevCheats,
 } from '../sim/Production';
+import { setVisionDevRevealMap } from '../sim/vision.system';
 
 const STORAGE_KEY = 'voltmarch.dev.cheat-engine.v1';
 const SPAWN_CHUNK = 64;
@@ -27,6 +28,7 @@ interface StoredState {
   freeProduction?: boolean;
   instantProduction?: boolean;
   uncappedProduction?: boolean;
+  revealMap?: boolean;
 }
 
 export interface CheatEngineHandle {
@@ -215,6 +217,19 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     ruleControls,
   );
 
+  const revealMap = node('input');
+  revealMap.type = 'checkbox';
+  revealMap.dataset.field = 'reveal-map';
+  const revealMapCopy = node('span', '', 'Reveal entire map');
+  revealMapCopy.append(node('small', '', 'Removes unexplored shroud and live fog-of-war.'));
+  const revealMapControl = node('label', 'vm-cheat__check');
+  revealMapControl.append(revealMap, revealMapCopy);
+  const visibilitySection = node('div', 'vm-cheat__section');
+  visibilitySection.append(
+    node('span', 'vm-cheat__label', 'Map visibility'),
+    revealMapControl,
+  );
+
   const utilitySection = node('div', 'vm-cheat__section vm-cheat__grid');
   utilitySection.append(
     actionButton('+50,000 ORE', 'credits'),
@@ -227,6 +242,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     node('div', 'vm-cheat__warning', 'LOCAL TEST TOOL · direct spawning bypasses lockstep, tech, factories, ore and unit caps.'),
     spawnSection,
     ruleSection,
+    visibilitySection,
     utilitySection,
     output,
   );
@@ -247,6 +263,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   const heal = element<HTMLButtonElement>(panel, '[data-action="heal"]');
   const status = element<HTMLOutputElement>(panel, '[data-output="status"]');
   const rules = Array.from(panel.querySelectorAll<HTMLInputElement>('[data-rule]'));
+  const revealMapCheckbox = element<HTMLInputElement>(panel, '[data-field="reveal-map"]');
 
   const state: StoredState = {
     open: stored.open ?? true,
@@ -260,6 +277,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     freeProduction: stored.freeProduction ?? false,
     instantProduction: stored.instantProduction ?? false,
     uncappedProduction: stored.uncappedProduction ?? false,
+    revealMap: stored.revealMap ?? false,
   };
 
   let disposed = false;
@@ -338,6 +356,13 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     }
     service.setDevCheats(options.ctx.world.localPlayer, next);
     persist();
+  }
+
+  function applyMapVisibility(): void {
+    state.revealMap = revealMapCheckbox.checked;
+    setVisionDevRevealMap(revealMapCheckbox.checked);
+    persist();
+    updateStatus(revealMapCheckbox.checked ? 'entire map revealed' : 'fog-of-war restored');
   }
 
   function updateStatus(message = ''): void {
@@ -459,9 +484,11 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     const key = checkbox.dataset.rule as keyof ProductionDevCheats;
     checkbox.checked = state[key] === true;
   }
+  revealMapCheckbox.checked = state.revealMap === true;
   refreshOwners();
   refreshUnits();
   applyRules();
+  setVisionDevRevealMap(revealMapCheckbox.checked);
   setCollapsed(state.collapsed === true);
   setOpen(state.open === true);
   requestAnimationFrame(placePanel);
@@ -474,6 +501,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   unit.addEventListener('change', () => { state.unitKey = unit.value; persist(); });
   count.addEventListener('change', () => { state.count = clamp(Number(count.value) || 1, 1, 4096); count.value = String(state.count); persist(); });
   for (const checkbox of rules) checkbox.addEventListener('change', applyRules);
+  revealMapCheckbox.addEventListener('change', applyMapVisibility);
   spawn.addEventListener('click', beginSpawn);
   stop.addEventListener('click', () => { spawnCancelled = true; });
   clear.addEventListener('click', clearSpawned);
@@ -494,6 +522,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
       spawnCancelled = true;
       if (spawnFrame !== 0) cancelAnimationFrame(spawnFrame);
       service.setDevCheats(options.ctx.world.localPlayer, null);
+      setVisionDevRevealMap(false);
       window.removeEventListener('keydown', toggleFromKey, true);
       window.removeEventListener('resize', placePanel);
       panel.remove();
