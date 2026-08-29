@@ -33,11 +33,11 @@
  * Every build slot fell back to a flat glyph, so a player could not tell what
  * they were building — a usability defect, not a cosmetic one.
  *
- * The cause was ONE line. `readRenderTargetPixels` is synchronous and exists
- * only on `WebGLRenderer`; the node `Renderer` publishes
- * `readRenderTargetPixelsAsync` and nothing synchronous. So `Hud.ts` handed the
- * sidebar `handle.webgl`, which is null on the node path, and the sidebar kept
- * its glyphs.
+ * The cause was ONE line. The original implementation used
+ * `readRenderTargetPixels`, which exists only on `WebGLRenderer`; the node
+ * `Renderer` publishes only `readRenderTargetPixelsAsync`. So `Hud.ts` handed
+ * the sidebar `handle.webgl`, which is null on the node path, and the sidebar
+ * kept its glyphs.
  *
  * `frame()` was ALREADY incremental — it paints at most
  * `HUD_CAMEO.perFrameBudget` cameos per frame — so an async readback fits its
@@ -45,11 +45,13 @@
  * arrive. A slot shows its glyph for a frame or two and then resolves into the
  * model. That is the intended behaviour, not a degradation.
  *
- * **THE SYNCHRONOUS PATH IS UNTOUCHED.** `this.webgl` non-null means the
- * readback and the blit both still happen inside `render()`, on the same tick,
- * with the same arithmetic — `blitReadback` with a tight stride and `bottom-up`
- * is byte-for-byte the loop it replaced, and `tests/cameo-readback.spec.ts`
- * pins that.
+ * THREE 0.185 also provides `WebGLRenderer.readRenderTargetPixelsAsync`. Using
+ * it matters for the ordinary shipping path: the synchronous call waits for
+ * every queued world draw before copying a tiny portrait, so opening a sidebar
+ * tab could stop the main thread precisely while the player was operating the
+ * UI. Both backends now issue an async read and keep the 2D glyph visible until
+ * it lands. WebGL still uses a tight, bottom-up buffer and the same blitter;
+ * `tests/cameo-readback.spec.ts` pins those bytes and the deferred lifecycle.
  *
  * The two byte-layout differences that a "looks about right" fix would have
  * shipped wrong — row order and the 256-byte row alignment — live in
@@ -794,7 +796,7 @@ interface CameoDrawSurface {
 }
 
 /**
- * How many async readbacks may be outstanding at once.
+ * How many async readbacks may be outstanding at once, on either backend.
  *
  * `HUD_CAMEO.perFrameBudget` is 2 and a read normally lands within a frame or
  * two, so this is never reached in ordinary play. It exists for the case where
@@ -844,7 +846,8 @@ export class CameoRenderer {
   private rt: THREE.WebGLRenderTarget | null = null;
   private rtW = 0;
   private rtH = 0;
-  private pixels = new Uint8Array(0);
+  /** Reused after async WebGL reads retire, avoiding a 100+ kB hover allocation. */
+  private readonly glPixelPool: Uint8Array[] = [];
   private readonly scratch: HTMLCanvasElement;
   private readonly scratchCtx: CanvasRenderingContext2D;
 
@@ -1140,7 +1143,7 @@ export class CameoRenderer {
     // Nothing has retired its readback yet, so a fresh render would only add to
     // the pile. Leave the job dirty and try again next frame; the drain loop
     // still spends a budget slot, which is what keeps this from spinning.
-    if (this.node !== null && this.pendingReads >= MAX_INFLIGHT_READS) {
+    if (this.pendingReads >= MAX_INFLIGHT_READS) {
       this.markDirty(job);
       return;
     }
@@ -1264,11 +1267,10 @@ export class CameoRenderer {
     /*
      * THE ONE CALL THAT IS NOT SHARED.
      *
-     * `readRenderTargetPixels` is synchronous, fills a caller-supplied buffer,
-     * and exists only on `WebGLRenderer`. The node `Renderer` has
-     * `readRenderTargetPixelsAsync`, which allocates and resolves later. There
-     * is no signature that covers both, and pretending there is would have
-     * produced an `await` in a function the frame loop calls.
+     * Both renderer families now have an asynchronous read, but their
+     * signatures differ: WebGL requires a caller-supplied tight buffer while
+     * the node renderer allocates its aligned result. Keeping the branches
+     * explicit prevents a texture index from being mistaken for a buffer.
      *
      * The async branch issues its read HERE, inside the saved-state window,
      * because three encodes and submits the texture-to-buffer copy
@@ -1276,12 +1278,7 @@ export class CameoRenderer {
      * `mapAsync`. So the bytes are pinned against the render two lines above,
      * and everything after this point may safely change or dispose the target.
      */
-    const sync = this.webgl;
-    if (sync !== null) {
-      sync.readRenderTargetPixels(rt, 0, 0, this.rtW, this.rtH, this.pixels);
-    } else {
-      this.beginAsyncRead(job, rt, this.rtW, this.rtH);
-    }
+    this.beginAsyncRead(job, rt, this.rtW, this.rtH);
 
     this.popTarget();
     this.draw.toneMappingExposure = prevExposure;
@@ -1291,15 +1288,11 @@ export class CameoRenderer {
     this.current = null;
 
     // --- blit -------------------------------------------------------------
-    if (sync === null) {
-      // The pixels are a frame or two away. Leave a resolved cameo alone —
-      // repainting the glyph over it every hover frame is a visible flicker —
-      // and give a cell that has never resolved the 2D fallback to stand on
-      // until they land.
-      if (!job.painted) paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
-      return;
-    }
-    this.paintPixels(job, ctx, w, h, this.pixels, this.rtW, this.rtH, this.rtW * 4);
+    // The pixels are a frame or two away. Leave a resolved cameo alone —
+    // repainting the glyph over it every hover frame is a visible flicker —
+    // and give a cell that has never resolved the 2D fallback to stand on
+    // until they land.
+    if (!job.painted) paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
   }
 
   /**
@@ -1383,13 +1376,20 @@ export class CameoRenderer {
    * that could invalidate this read happens after this line.
    */
   private beginAsyncRead(job: Job, rt: THREE.WebGLRenderTarget, rw: number, rh: number): void {
-    const node = this.node;
-    if (node === null) return;
     const epoch = job.epoch;
     this.pendingReads++;
     let read: Promise<ArrayBufferView>;
+    let webglPixels: Uint8Array | null = null;
     try {
-      read = node.readRenderTargetPixelsAsync(rt, 0, 0, rw, rh);
+      const webgl = this.webgl;
+      if (webgl !== null) {
+        const bytes = rw * rh * 4;
+        const pooled = this.glPixelPool.pop();
+        webglPixels = pooled?.byteLength === bytes ? pooled : new Uint8Array(bytes);
+        read = webgl.readRenderTargetPixelsAsync(rt, 0, 0, rw, rh, webglPixels);
+      } else {
+        read = this.node!.readRenderTargetPixelsAsync(rt, 0, 0, rw, rh);
+      }
     } catch (err) {
       // A dead device throws out of the encode rather than rejecting. Same
       // outcome, different door, and an uncaught throw here would take the
@@ -1401,13 +1401,26 @@ export class CameoRenderer {
     read.then(
       (view) => {
         this.pendingReads--;
-        this.finishAsyncRead(job, epoch, rw, rh, view);
+        try {
+          this.finishAsyncRead(job, epoch, rw, rh, view);
+        } finally {
+          this.recycleGlPixels(webglPixels);
+        }
       },
       (err: unknown) => {
         this.pendingReads--;
         this.noteReadFailure(err);
+        this.recycleGlPixels(webglPixels);
       },
     );
+  }
+
+  private recycleGlPixels(pixels: Uint8Array | null): void {
+    if (pixels === null || this.disposed) return;
+    // A target resize makes old buffers the wrong size. Keeping them would
+    // retain memory only for the next read to discard them again.
+    if (pixels.byteLength !== this.rtW * this.rtH * 4) return;
+    this.glPixelPool.push(pixels);
   }
 
   /**
@@ -1511,10 +1524,6 @@ export class CameoRenderer {
     this.rt.texture.colorSpace = THREE.SRGBColorSpace;
     this.rtW = tw;
     this.rtH = th;
-    // The DESTINATION of the synchronous readback, and only of that one: the
-    // async path is handed a fresh array by three every time. Left empty on the
-    // node path rather than allocating ~160 kB nothing will ever write to.
-    this.pixels = this.webgl === null ? this.pixels : new Uint8Array(tw * th * 4);
     this.scratch.width = tw;
     this.scratch.height = th;
   }
@@ -1544,6 +1553,7 @@ export class CameoRenderer {
     this.queue.length = 0;
     this.rt?.dispose();
     this.rt = null;
+    this.glPixelPool.length = 0;
     this.backdropTex.dispose();
     (this.backdropMesh.material as THREE.Material).dispose();
     this.backdropMesh.geometry.dispose();

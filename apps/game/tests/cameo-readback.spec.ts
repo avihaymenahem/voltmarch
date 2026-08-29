@@ -6,11 +6,12 @@
  * Every build slot fell back to a flat glyph, so a player could not tell what
  * they were building.
  *
- * The cause was one line. `CameoRenderer` read its render target back with
- * `renderer.readRenderTargetPixels`, which is SYNCHRONOUS and exists only on
- * `WebGLRenderer`; the node `Renderer` publishes `readRenderTargetPixelsAsync`
- * and nothing synchronous. So `Hud.ts` handed the sidebar `handle.webgl`, which
- * is null on the node path.
+ * The cause was one line. `CameoRenderer` originally read its render target
+ * back with `renderer.readRenderTargetPixels`, which is synchronous and exists
+ * only on `WebGLRenderer`; the node `Renderer` publishes only the async form.
+ * Modern THREE also exposes an asynchronous WebGL read. The shipping path uses
+ * that now so a portrait cannot wait on the world's queued GPU work while the
+ * player is clicking through the sidebar.
  *
  * ── WHY THIS FILE IS MOSTLY ARITHMETIC ──────────────────────────────────────
  * Because the two ways a fix like this ships looking fine and being wrong are
@@ -366,6 +367,7 @@ interface PendingRead {
   reject(err: unknown): void;
   width: number;
   height: number;
+  buffer?: ArrayBufferView;
 }
 
 /**
@@ -427,6 +429,45 @@ class FakeNodeRenderer {
   }
 }
 
+/** WebGL's async read takes a caller-owned tight buffer. */
+class FakeWebGlRenderer {
+  readonly isWebGLRenderer = true as const;
+  toneMappingExposure = 1;
+  renders = 0;
+  scissorTest = true;
+  target: THREE.WebGLRenderTarget | null = null;
+  readonly reads: PendingRead[] = [];
+  readonly seenBuffers: ArrayBufferView[] = [];
+  syncReads = 0;
+
+  getScissorTest(): boolean { return this.scissorTest; }
+  setScissorTest(v: boolean): void { this.scissorTest = v; }
+  getRenderTarget(): THREE.WebGLRenderTarget | null { return this.target; }
+  setRenderTarget(t: THREE.WebGLRenderTarget | null): void { this.target = t; }
+  clear(): void { /* counted nowhere; the test is about the read */ }
+  render(): void { this.renders++; }
+  readRenderTargetPixels(): void { this.syncReads++; }
+  readRenderTargetPixelsAsync(
+    _rt: THREE.WebGLRenderTarget,
+    _x: number,
+    _y: number,
+    width: number,
+    height: number,
+    buffer: ArrayBufferView,
+  ): Promise<ArrayBufferView> {
+    this.seenBuffers.push(buffer);
+    return new Promise<ArrayBufferView>((resolve, reject) => {
+      this.reads.push({ resolve, reject, width, height, buffer });
+    });
+  }
+
+  deliver(): void {
+    const read = this.reads.shift();
+    if (read === undefined || read.buffer === undefined) throw new Error('no WebGL read pending');
+    read.resolve(read.buffer);
+  }
+}
+
 /* -- harness -------------------------------------------------------------- */
 
 /** Flush microtasks so a settled readback has actually run its `.then`. */
@@ -459,14 +500,14 @@ afterEach(() => {
  * touches the DOM inside constructors, never at import, and this keeps that
  * true by construction.
  */
-async function makeRenderer(node: FakeNodeRenderer): Promise<{
+async function makeRenderer(renderer: FakeNodeRenderer | FakeWebGlRenderer): Promise<{
   cameos: InstanceType<typeof import('../src/ui/Cameos').CameoRenderer>;
   cell: FakeCanvas;
   /** The renderer's private blit canvas — where `putImageData` actually lands. */
   scratch: FakeCanvas;
 }> {
   const { CameoRenderer } = await import('../src/ui/Cameos');
-  const cameos = new CameoRenderer(node as unknown as THREE.WebGLRenderer);
+  const cameos = new CameoRenderer(renderer as unknown as THREE.WebGLRenderer);
   // The constructor makes three canvases — backdrop, contact-shadow blob, then
   // the scratch blitter — and the scratch is the last of them. The pixels go
   // there and reach the CELL through `drawImage`, so a test that reads the
@@ -741,5 +782,34 @@ describe('CameoRenderer on the node path', () => {
     while (node.reads.length > 0) node.deliver();
     await settle();
     for (const c of cells) expect(c.fake.drawImages).toBeGreaterThan(0);
+  });
+});
+
+describe('CameoRenderer on the WebGL path', () => {
+  it('defers readback instead of blocking the frame on gl.readPixels', async () => {
+    const webgl = new FakeWebGlRenderer();
+    const { cameos, cell } = await makeRenderer(webgl);
+    cameos.bind(cell as unknown as HTMLCanvasElement, subjectFor('grizzly'));
+
+    cameos.frame(0, 1 / 60);
+
+    expect(webgl.renders).toBe(1);
+    expect(webgl.syncReads).toBe(0);
+    expect(webgl.reads).toHaveLength(1);
+    expect(cell.fake.drawImages).toBe(0);
+
+    webgl.deliver();
+    await settle();
+
+    expect(cameos.asyncReads).toBe(1);
+    expect(cell.fake.drawImages).toBe(1);
+
+    // Repainting the same-size target reuses its retired PBO destination. A
+    // hovered portrait otherwise creates several megabytes of garbage a
+    // second and trades the removed GPU stall for periodic GC stalls.
+    cameos.invalidateAll();
+    cameos.frame(1, 1 / 60);
+    expect(webgl.seenBuffers).toHaveLength(2);
+    expect(webgl.seenBuffers[1]).toBe(webgl.seenBuffers[0]);
   });
 });
