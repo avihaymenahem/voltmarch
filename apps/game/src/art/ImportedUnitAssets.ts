@@ -1094,16 +1094,48 @@ function promotePositions(geometry: THREE.BufferGeometry): void {
   geometry.setAttribute('position', new THREE.BufferAttribute(values, 3));
 }
 
-function meshesByName(scene: THREE.Object3D, label: string): Map<string, THREE.Mesh> {
-  scene.updateMatrixWorld(true);
-  const result = new Map<string, THREE.Mesh>();
+function sceneMeshes(scene: THREE.Object3D): THREE.Mesh[] {
+  const result: THREE.Mesh[] = [];
   scene.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    const key = object.name.toLowerCase();
-    if (result.has(key)) throw new Error(`${label}: duplicate mesh name ${object.name}`);
-    result.set(key, object);
+    if (object instanceof THREE.Mesh) result.push(object);
   });
   return result;
+}
+
+/**
+ * Resolve one authored glTF node to its runtime primitive meshes.
+ *
+ * GLTFLoader represents a node with multiple material primitives as a Group
+ * carrying the authored name and child meshes suffixed `_1`, `_2`, ... . The
+ * asset contract belongs to the named node, not those loader-generated child
+ * names. Treating only exact Mesh names as authored parts made the two-material
+ * Meridian Argosy fall back even though its source node is correctly `Hull`.
+ */
+export function resolveImportedPartMeshes(
+  scene: THREE.Object3D,
+  partName: string,
+  label: string,
+): readonly THREE.Mesh[] {
+  scene.updateMatrixWorld(true);
+  const matches: THREE.Object3D[] = [];
+  const key = partName.toLowerCase();
+  scene.traverse((object) => {
+    if (object.name.toLowerCase() === key) matches.push(object);
+  });
+  if (matches.length !== 1) {
+    const available = sceneMeshes(scene).map((mesh) => mesh.name).join(', ');
+    throw new Error(
+      `${label}: expected one ${partName} node, received ${matches.length}; meshes: ${available}`,
+    );
+  }
+  const meshes = sceneMeshes(matches[0]);
+  if (meshes.length === 0) throw new Error(`${label}: ${partName} node contains no mesh primitives`);
+  for (const mesh of meshes) {
+    if (Array.isArray(mesh.material)) {
+      throw new Error(`${label}: ${partName} primitive ${mesh.name} must use one material`);
+    }
+  }
+  return meshes;
 }
 
 function sourceGeometry(mesh: THREE.Mesh): THREE.BufferGeometry {
@@ -1125,6 +1157,23 @@ function sourceGeometry(mesh: THREE.Mesh): THREE.BufferGeometry {
   removeStaleTangentAttribute(geometry);
   geometry.computeBoundingBox();
   return geometry;
+}
+
+function sourcePartGeometry(meshes: readonly THREE.Mesh[], label: string): THREE.BufferGeometry {
+  const geometries = meshes.map((mesh) => sourceGeometry(mesh));
+  if (geometries.length === 1) return geometries[0];
+  const merged = mergeGeometries(geometries, true);
+  for (const geometry of geometries) geometry.dispose();
+  if (merged === null) throw new Error(`${label}: material primitives could not be merged`);
+  merged.computeBoundingBox();
+  return merged;
+}
+
+function primitiveMaterialNames(meshes: readonly THREE.Mesh[]): string[] {
+  return meshes.map((mesh) => {
+    if (Array.isArray(mesh.material)) throw new Error(`${mesh.name}: material array is unsupported`);
+    return mesh.material.name;
+  });
 }
 
 interface UnitFit {
@@ -1227,23 +1276,15 @@ export async function loadImportedUnitOverride(
     ...(shadowUrl === undefined ? [] : [loader.loadAsync(shadowUrl)]),
   ]);
 
-  const primary = meshesByName(loaded[0].scene, spec.label);
-  const hullSource = primary.get(spec.hullName.toLowerCase());
-  const turretSource = spec.turretName === undefined
+  const hullSources = resolveImportedPartMeshes(loaded[0].scene, spec.hullName, spec.label);
+  const turretSources = spec.turretName === undefined
     ? undefined
-    : primary.get(spec.turretName.toLowerCase());
-  if (hullSource === undefined || (spec.turretName !== undefined && turretSource === undefined)) {
-    throw new Error(
-      `${spec.label}: expected ${spec.hullName}/${spec.turretName ?? 'no turret'}, received `
-      + `${[...primary.values()].map((mesh) => mesh.name).join(', ')}`,
-    );
-  }
-  if (Array.isArray(hullSource.material)) {
-    throw new Error(`${spec.label}: hull must use one shared material`);
-  }
+    : resolveImportedPartMeshes(loaded[0].scene, spec.turretName, spec.label);
 
-  const rawHull = sourceGeometry(hullSource);
-  const rawTurret = turretSource === undefined ? undefined : sourceGeometry(turretSource);
+  const rawHull = sourcePartGeometry(hullSources, `${spec.label} hull`);
+  const rawTurret = turretSources === undefined
+    ? undefined
+    : sourcePartGeometry(turretSources, `${spec.label} turret`);
   const hullBounds = rawHull.boundingBox?.clone();
   const fullBounds = hullBounds?.clone();
   if (fullBounds !== undefined && rawTurret?.boundingBox !== undefined && rawTurret.boundingBox !== null) {
@@ -1295,21 +1336,34 @@ export async function loadImportedUnitOverride(
   const hullLods: { geometry: THREE.BufferGeometry; minDistance: number }[] = [];
   const turretLods: { geometry: THREE.BufferGeometry; minDistance: number }[] = [];
   lodSpecs.forEach((lod, index) => {
-    const sceneMeshes = meshesByName(loaded[index + 1].scene, `${spec.label} LOD${index + 1}`);
-    const lodHull = sceneMeshes.get(spec.hullName.toLowerCase());
-    const lodTurret = spec.turretName === undefined
+    const lodLabel = `${spec.label} LOD${index + 1}`;
+    const lodHullSources = resolveImportedPartMeshes(
+      loaded[index + 1].scene, spec.hullName, lodLabel,
+    );
+    const lodTurretSources = spec.turretName === undefined
       ? undefined
-      : sceneMeshes.get(spec.turretName.toLowerCase());
-    if (lodHull === undefined || (spec.turretName !== undefined && lodTurret === undefined)) {
-      throw new Error(`${spec.label}: LOD${index + 1} lost its articulated mesh names`);
+      : resolveImportedPartMeshes(loaded[index + 1].scene, spec.turretName, lodLabel);
+    if (
+      primitiveMaterialNames(lodHullSources).join('\0')
+      !== primitiveMaterialNames(hullSources).join('\0')
+    ) {
+      throw new Error(`${lodLabel}: hull material primitives differ from LOD0`);
     }
-    const hullGeometry = fitGeometry(sourceGeometry(lodHull), fit, false);
+    if (
+      lodTurretSources !== undefined
+      && turretSources !== undefined
+      && primitiveMaterialNames(lodTurretSources).join('\0')
+        !== primitiveMaterialNames(turretSources).join('\0')
+    ) {
+      throw new Error(`${lodLabel}: turret material primitives differ from LOD0`);
+    }
+    const hullGeometry = fitGeometry(sourcePartGeometry(lodHullSources, `${lodLabel} hull`), fit, false);
     if (spec.gait === 'quadruped') tagQuadrupedGait(hullGeometry);
     hullGeometry.name = `${spec.key}.imported.hull.lod${index + 1}`;
     hullLods.push({ geometry: hullGeometry, minDistance: lod.minDistance });
-    if (lodTurret !== undefined) {
+    if (lodTurretSources !== undefined) {
       const partGeometry = sealTurretInterface(
-        fitGeometry(sourceGeometry(lodTurret), fit, true), spec, fit,
+        fitGeometry(sourcePartGeometry(lodTurretSources, `${lodLabel} turret`), fit, true), spec, fit,
       );
       partGeometry.name = `${spec.key}.imported.turret.lod${index + 1}`;
       turretLods.push({ geometry: partGeometry, minDistance: lod.minDistance });
@@ -1318,24 +1372,41 @@ export async function loadImportedUnitOverride(
 
   let shadowGeometry: THREE.BufferGeometry | undefined;
   if (shadowUrl !== undefined) {
-    const shadowMeshes = meshesByName(
-      loaded[1 + lodSpecs.length].scene, `${spec.label} shadow proxy`,
-    );
-    const shadowSource = [...shadowMeshes.values()][0];
-    if (shadowSource === undefined || shadowMeshes.size !== 1) {
+    const shadowMeshes = sceneMeshes(loaded[1 + lodSpecs.length].scene);
+    const shadowSource = shadowMeshes[0];
+    if (shadowSource === undefined || shadowMeshes.length !== 1) {
       throw new Error(`${spec.label}: shadow proxy must contain exactly one mesh`);
     }
     shadowGeometry = fitGeometry(sourceGeometry(shadowSource), fit, false);
     shadowGeometry.name = `${spec.key}.imported.shadow`;
   }
 
-  const material = importedUnitMaterial(hullSource.material, spec);
+  const runtimeMaterialBySource = new Map<THREE.Material, THREE.Material>();
+  const materialForSource = (source: THREE.Material): THREE.Material => {
+    const existing = runtimeMaterialBySource.get(source);
+    if (existing !== undefined) return existing;
+    const material = importedUnitMaterial(source, spec);
+    runtimeMaterialBySource.set(source, material);
+    return material;
+  };
+  const materials = hullSources.map((mesh) => {
+    if (Array.isArray(mesh.material)) throw new Error(`${mesh.name}: material array is unsupported`);
+    return materialForSource(mesh.material);
+  });
+  const material: THREE.Material | THREE.Material[] = materials.length === 1 ? materials[0] : materials;
+  const turretMaterials = turretSources?.map((mesh) => {
+    if (Array.isArray(mesh.material)) throw new Error(`${mesh.name}: material array is unsupported`);
+    return materialForSource(mesh.material);
+  });
+  const turretMaterial: THREE.Material | THREE.Material[] = turretMaterials === undefined
+    ? material
+    : turretMaterials.length === 1 ? turretMaterials[0] : turretMaterials;
   const parts: KindMeshPart[] = [];
   if (turretGeometry !== undefined) {
     parts.push({
       geometry: turretGeometry,
       lods: turretLods,
-      material,
+      material: turretMaterial,
       x: targetPivot.x,
       y: targetPivot.y,
       z: targetPivot.z,

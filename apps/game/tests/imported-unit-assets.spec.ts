@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  assertImportedHorizontalEnvelope, IMPORTED_UNIT_SPECS,
+  assertImportedHorizontalEnvelope, IMPORTED_UNIT_SPECS, resolveImportedPartMeshes,
 } from '../src/art/ImportedUnitAssets';
 import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
 import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
@@ -71,6 +71,20 @@ function triangles(json: GlbJson): number {
 }
 
 describe('imported unit shipping budgets', () => {
+  it('resolves a multi-material glTF node as one logical imported part', () => {
+    const scene = new THREE.Group();
+    const hull = new THREE.Group();
+    hull.name = 'Hull';
+    const armour = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+    armour.name = 'Hull_1';
+    const teamPanels = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+    teamPanels.name = 'Hull_2';
+    hull.add(armour, teamPanels);
+    scene.add(hull);
+
+    expect(resolveImportedPartMeshes(scene, 'Hull', 'test hull')).toEqual([armour, teamPanels]);
+  });
+
   for (const family of FAMILIES) {
     describe(family.name, () => {
       it('stays inside the approved 50k hero-unit envelope', () => {
@@ -210,6 +224,8 @@ describe('imported unit shipping budgets', () => {
       expect(compressed.bytes.length, ship.key).toBeLessThanOrEqual(7 * 1024 * 1024);
       expect(compressed.json.extensionsRequired, ship.key).toContain('KHR_texture_basisu');
       expect(compressed.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
+      expect(compressed.json.meshes.map((mesh) => mesh.name).sort(), `${ship.key} runtime meshes`)
+        .toEqual([...ship.meshes].sort());
       expect(runtime).toContain(`key: '${ship.key}'`);
       expect(runtime).toContain(`${ship.faction}/compressed/${ship.file}`);
       const shadow = path.join(
