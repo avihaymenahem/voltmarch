@@ -258,7 +258,10 @@ describe('desktop app url', () => {
         }
       })
       .join('\n');
-    const known = new Set(['gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'relay', 'shot', 'skipmenu', 'unlockall']);
+    const known = new Set([
+      'gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'foliage',
+      'relay', 'shot', 'skipmenu', 'unlockall',
+    ]);
     for (const flag of ALLOWED_FLAGS) {
       expect(known.has(flag), `${flag} is not a recognised boot flag`).toBe(true);
     }
