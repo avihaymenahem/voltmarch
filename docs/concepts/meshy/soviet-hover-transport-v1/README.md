@@ -42,6 +42,6 @@ LODs where safe, KTX2 PBR, waterline/pivot verification and WebGL/WebGPU gamepla
 ## Production record
 
 - Geometry: `01a04e95-52b6-7545-8d3a-f31577350e72` (20 credits)
-- PBR retexture: `01a04e99-2dcb-75aa-9e7e-092cea1b0810` (10 credits)
-- Shipping: 24,852 triangles, 2.49 MiB KTX2 LOD0 and 1,920-triangle shadow proxy
+- PBR retexture: `01a04ec9-6430-74e4-a306-a30eeb7eff6c` (10 credits), using `material-reference-v2.png`
+- Shipping: 24,722 triangles, 2.65 MiB KTX2 LOD0 and 1,920-triangle shadow proxy
 - Colour LODs were withheld because the simplifier failed the bounds gate.

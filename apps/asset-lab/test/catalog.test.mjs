@@ -38,6 +38,22 @@ test('infantry deliveries become one family with clips and gameplay LOD', async 
   assert.equal(conscript.primary.variant, 'LOD0 · gameplay');
 });
 
+test('commanders stay in Infantry and group gameplay, walk and run files', async () => {
+  const paths = (await findGlbs(ASSETS)).filter((file) => file.includes(`${path.sep}commanders${path.sep}`));
+  const catalog = buildAssetCatalog(Object.fromEntries(paths.map((file) => [file, file])));
+  assert.equal(catalog.length, 4);
+  for (const commander of catalog) {
+    assert.equal(commander.category, 'Infantry');
+    assert.equal(commander.primary.variant, 'LOD0 · gameplay');
+    assert.equal(commander.variantCount, 3);
+    assert.equal(commander.hasAnimations, true);
+    assert.deepEqual(
+      new Set(commander.files.map((file) => file.variant)),
+      new Set(['LOD0 · gameplay', 'Animation · Walk', 'Animation · Run']),
+    );
+  }
+});
+
 test('the shipped roster uses gameplay roles rather than name substrings', async () => {
   const paths = await findGlbs(ASSETS);
   const catalog = buildAssetCatalog(Object.fromEntries(paths.map((file) => [file, file])));
@@ -84,5 +100,12 @@ test('the shipped roster uses gameplay roles rather than name substrings', async
     'Units/reclamation/scrap-skimmer',
     'Units/reclamation/slag-scow',
     'Units/reclamation/reclaimed-hulk',
+    'Units/soviets/hover-transport',
+    'Units/soviets/assault-barge',
+    'Units/allies/hover-transport',
+    'Units/allies/landing-craft',
+    'Units/meridian/sun-lighter',
+    'Units/meridian/argosy',
+    'Units/reclamation/slag-hauler',
   ]) assert.equal(category(id), 'Naval units', id);
 });

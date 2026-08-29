@@ -18,9 +18,10 @@
  * -------------------------
  *   1. `OrderKind.Deploy` lands on a unit whose def names a `deploysInto`.
  *   2. The footprint of that structure is checked WHERE THE VEHICLE STANDS.
- *   3. `UnitState.Deploying` for DEPLOY_SECONDS, immobilised, throwing dust.
- *   4. The vehicle leaves quietly, the structure arrives finished, owned by the
- *      same player, carrying `EntityFlag.Deployed`.
+ *   3. `UnitState.Deploying` for DEPLOY_SECONDS, immobilised, folding under a
+ *      hydraulic width pulse and throwing dust.
+ *   4. The vehicle converts quietly; the finished structure rises from that
+ *      same pad, owned by the same player and carrying `EntityFlag.Deployed`.
  *
  * DEPLOY HAPPENS WHERE THE VEHICLE STANDS — it is not a move order with a
  * building on the end. That is RA1/RA2 behaviour to the letter (you drive, THEN
@@ -55,10 +56,10 @@
  *
  * DETERMINISM
  * -----------
- * No wall clock and no RNG anywhere in this file. The unpack is counted in
- * TICKS, not in accumulated float seconds, so two runs of the same seed flip
- * the structure into existence on the identical tick. Dust puffs are cadenced
- * off the same tick counter.
+ * No wall clock and no RNG anywhere in this file. The unpack and its visual
+ * fold/rise are counted in TICKS, not accumulated float seconds, so two runs of
+ * the same seed flip the structure into existence on the identical tick. Dust
+ * puffs are cadenced off the same tick counter.
  *
  * QUIET REMOVAL
  * -------------
@@ -84,6 +85,9 @@ import {
   yawToFacing, type PlacementReport,
 } from './Placement';
 import { production, type BuildEntry, type ProductionService } from './Production';
+import {
+  DEPLOY_SETTLE_TICKS, DeployVisualClip, isDeployVisualClip,
+} from '../core/DeployVisual';
 
 /* ==========================================================================
  * 1. TUNABLES
@@ -421,6 +425,11 @@ export class DeployService {
       const flags = st.flags[i];
       if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
 
+      // The replacement form is already real gameplay state, but remains
+      // below the pad for a short visual settle. Fixed ticks keep pause,
+      // replays and low/high render FPS in agreement.
+      if (st.animClip[i] === DeployVisualClip.Rise) this.advanceSettle(i);
+
       const state = st.state[i];
       const deploying = state === UnitState.Deploying;
       if (!deploying && st.orderKind[i] !== OrderKind.Deploy) continue;
@@ -455,6 +464,8 @@ export class DeployService {
     }
     st.state[i] = UnitState.Deploying;
     st.flags[i] |= EntityFlag.Immobilized;
+    st.animClip[i] = DeployVisualClip.Fold;
+    st.animTime[i] = 0;
     this.arm(i, DEPLOY_TICKS, 0);
     this.dust(i, 1.0);
   }
@@ -468,6 +479,8 @@ export class DeployService {
       return;
     }
     st.state[i] = UnitState.Deploying;
+    st.animClip[i] = DeployVisualClip.Fold;
+    st.animTime[i] = 0;
     this.arm(i, UNDEPLOY_TICKS, 1);
     this.dust(i, 1.2);
   }
@@ -480,10 +493,16 @@ export class DeployService {
       // Something else parked this entity in Deploying without arming a timer.
       // Adopt it rather than leaving it frozen in that state forever.
       const down = st.kind[i] === EntityKind.Building;
-      this.arm(i, down ? UNDEPLOY_TICKS : DEPLOY_TICKS, down ? 1 : 0);
+      const total = down ? UNDEPLOY_TICKS : DEPLOY_TICKS;
+      const elapsed = Math.round(Math.max(0, Math.min(1, st.animTime[i])) * total);
+      this.arm(i, Math.max(1, total - elapsed), down ? 1 : 0);
+      st.animClip[i] = DeployVisualClip.Fold;
     }
     const left = this.ticksLeft[i] - 1;
     this.ticksLeft[i] = left;
+    const total = this.folding[i] !== 0 ? UNDEPLOY_TICKS : DEPLOY_TICKS;
+    st.animClip[i] = DeployVisualClip.Fold;
+    st.animTime[i] = Math.max(0, Math.min(1, (total - Math.max(0, left)) / total));
     if (left > 0) {
       if (left % DUST_INTERVAL_TICKS === 0) this.dust(i, 0.6);
       return;
@@ -529,8 +548,8 @@ export class DeployService {
     const y = st.posY[i];
     const z = st.posZ[i];
 
-    // The vehicle leaves FIRST, so the structure's own footprint claim never
-    // races the corpse. `Selling` is Damage.ts's quiet-removal channel: no
+    // The now-collapsed vehicle leaves FIRST, so the structure's own footprint
+    // claim never races it. `Selling` is Damage.ts's quiet-removal channel: no
     // fireball, no wreck, no "unit lost" — a deploy is a conversion, not a loss.
     st.state[i] = UnitState.Selling;
     st.orderKind[i] = OrderKind.None;
@@ -555,7 +574,11 @@ export class DeployService {
       return;
     }
     const bi = st.index(id);
-    if (bi >= 0) st.flags[bi] |= EntityFlag.Deployed;
+    if (bi >= 0) {
+      st.flags[bi] |= EntityFlag.Deployed;
+      st.animClip[bi] = DeployVisualClip.Rise;
+      st.animTime[bi] = 0;
+    }
 
     this.channels.fx.push(FxKind.BuildRise, x, y, z, 0, 1, 0, 1.4, id, faction);
     this.channels.fx.push(FxKind.DustPuff, x, y + 0.4, z, 0, 1, 0, 1.6, NONE, faction);
@@ -605,6 +628,11 @@ export class DeployService {
       this.counters.refused++;
       return;
     }
+    const ui = st.index(id);
+    if (ui >= 0) {
+      st.animClip[ui] = DeployVisualClip.Rise;
+      st.animTime[ui] = 0;
+    }
     this.channels.fx.push(FxKind.DustPuff, x, y + 0.4, z, 0, 1, 0, 1.6, NONE, faction);
     this.counters.undeployed++;
   }
@@ -637,7 +665,23 @@ export class DeployService {
     st.orderZ[i] = st.posZ[i];
     if (st.state[i] === UnitState.Deploying) st.state[i] = UnitState.Idle;
     st.flags[i] &= ~EntityFlag.Immobilized;
+    if (isDeployVisualClip(st.animClip[i])) {
+      st.animClip[i] = DeployVisualClip.None;
+      st.animTime[i] = 0;
+    }
     this.disarm(i);
+  }
+
+  /** Finish the post-swap rise without making it construction gameplay. */
+  private advanceSettle(i: number): void {
+    const st = this.world.store;
+    const next = st.animTime[i] + 1 / DEPLOY_SETTLE_TICKS;
+    if (next >= 1) {
+      st.animTime[i] = 0;
+      st.animClip[i] = DeployVisualClip.None;
+    } else {
+      st.animTime[i] = next;
+    }
   }
 
   /* -- timers -------------------------------------------------------------- */

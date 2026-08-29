@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-08-29
+Last refreshed: 2026-08-30
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -62,13 +62,22 @@ Verify rather than trusting that sentence after time has passed.
 Do not turn this handoff into another backlog. Put durable decisions in the owning document and open
 work in `TODO.md`; keep this page as the discovery layer.
 
-The Asset Lab currently indexes 87 model families / 352 GLB delivery files. Its character surface
-exposes three humanoid roles per faction while loading only four canonical faction bodies and animation sets;
+The Asset Lab currently indexes 110 model families / 434 GLB delivery files. Its character surface
+exposes four humanoid roles per faction while loading eight canonical faction bodies and animation sets;
 the Soviet selector additionally exposes the separately rigged Attack Dog quadruped.
 Specialist and engineer identity comes from code-native instanced weapons and packs, with a hard
 200-triangle ceiling per attachment. Redundant paid specialist bodies are archived under ignored
 `meshy_output/`, not shipped. The bounded 512-unit WebGPU / 48-unit WebGL validation sweeps remain the
 acceptance gate; do not copy GLBs or animation code back into an app-local asset directory.
+
+The fourth humanoid role is a unique hero commander: Allied Field Marshal, Soviet War Commissar,
+Meridian Hierarch and Reclamation Scrap Baron. Each ships below the user-approved 50,000-triangle
+ceiling with one 24-joint skin, full base/normal/metallic-roughness PBR and separate mesh-free walk/run
+clips. Gameplay samples a clip once during loading, maps the cheap instanced gait from limb skin weights
+so capes and vestments do not flap like arms, then discards the skeleton. Asset Lab groups each commander
+under the normal Infantry category. Geometry, PBR and rigging cost exactly 140 Meshy credits total;
+accepted task IDs and measured budgets are recorded in `docs/ASSET_CONVERSION_MAP.md` and the four
+commander concept READMEs.
 
 The game development server mounts a draggable **Cheat Engine** (`Ctrl+Shift+C`) for bulk unit load
 tests, free/instant production, 4,096-deep local queues, max-alive bypass, test-batch cleanup, ore
@@ -123,9 +132,15 @@ Landing Craft, Meridian Sun Lighter and Argosy, and Reclamation Slag Hauler. Eac
 reviewed colour LODs where simplification preserved the silhouette, and the procedural model as the
 load/deploy/socket fallback. The private Meridian and Reclamation registries must list every imported
 naval key before publication; their older warship imports were previously specified but omitted from
-those registry key sets. The naval wave used exactly 210 Meshy credits (seven 20-credit geometry tasks
-and seven 10-credit texture tasks); task IDs and measured budgets are recorded in
-`docs/ASSET_CONVERSION_MAP.md` and the seven concept READMEs. The dog also has a local eight-joint review rig
+those registry key sets. The original naval wave used 210 Meshy credits (seven 20-credit geometry tasks
+and seven 10-credit texture tasks). A later live Asset Lab review rejected those seven texture passes as
+material-flat; seven ImageGen-authored material references and seven 10-credit Meshy PBR retextures replaced
+them. The first corrected Slag Hauler reference also drifted into generic rust/orange, so that 10-credit pass
+was rejected and a canonical graphite/violet replacement was generated. A later user art gate rejected
+Argosy, Slag Hauler and Scrap Skimmer outright; all three were rebuilt from new ImageGen concept sheets
+with new 20-credit geometry and 10-credit PBR tasks, without reusing rejected meshes or textures. Total
+naval generation and texture spend is therefore 380 credits; accepted task IDs and measured budgets are
+recorded in `docs/ASSET_CONVERSION_MAP.md` and the concept READMEs. The dog also has a local eight-joint review rig
 with shared Idle/Walk/Run/Bite clips in Asset Lab; gameplay still uses its instanced gait. Vehicles and aircraft ship through
 `ImportedUnitAssets.ts` with reviewed colour LODs, a geometry-only shadow proxy, required KTX2
 textures and their original procedural model as the load/deploy/socket fallback. The dog uses the

@@ -550,17 +550,19 @@ class MeshBuf {
   }
 
   /**
-   * `quad`, but each half is emitted only if it really faces the sky.
+   * `quad`, but emitted only as one coherent two-triangle surface.
    *
    * A ROAD IS A HORIZONTAL SURFACE, AND A DOWNWARD-FACING TRIANGLE IN ONE IS A
    * HOLE WITH BARE TERRAIN THROUGH IT. The width-rate limiter prevents every
    * known ribbon fold-through; this remains the mesh-level fuse for exact
    * degenerates and future routing shapes the local solver did not anticipate.
    *
-   * They are dropped rather than repaired because the fold is a DOUBLING BACK:
-   * the ground an inverted triangle covers is covered again, right way up, by
-   * the part of the ribbon that folded over it. Removing it takes away the hole
-   * and leaves the tarmac.
+   * First try the regular strip diagonal, then the opposite diagonal. A quad
+   * is emitted only when BOTH halves face up. Emitting just one half creates an
+   * exposed diagonal boundary, so a run of marginal quads becomes the visible
+   * alternating saw blade from the report. If neither split is valid the whole
+   * folded cell is dropped; the doubled-back ribbon already covers that ground
+   * elsewhere.
    *
    * Negative signed area in XZ is the winding that faces +Y — the same test the
    * spec applies, deliberately, so the geometry and its gate cannot drift
@@ -568,8 +570,13 @@ class MeshBuf {
    * emits wherever two cross-section samples coincide.
    */
   quadUp(a: number, b: number, c: number, d: number): void {
-    if (this.faceUp(a, c, b)) this.idx.push(a, c, b);
-    if (this.faceUp(b, c, d)) this.idx.push(b, c, d);
+    if (this.faceUp(a, c, b) && this.faceUp(b, c, d)) {
+      this.idx.push(a, c, b, b, c, d);
+      return;
+    }
+    if (this.faceUp(a, d, b) && this.faceUp(a, c, d)) {
+      this.idx.push(a, d, b, a, c, d);
+    }
   }
 
   private faceUp(a: number, b: number, c: number): boolean {
@@ -859,6 +866,20 @@ const PARALLEL_ROUTE_JOIN_METRES = 22;
 const PARALLEL_ROUTE_MIN_METRES = 36;
 /** Only similarly-directed pieces participate; crossings remain junctions. */
 const PARALLEL_ROUTE_COS = Math.cos(25 * DEG2RAD);
+
+/**
+ * The rendered junction throat is much smaller than the router's reservation
+ * throat. Two arms only get enough shared ground to clear the widest
+ * carriageway; beyond that, even an eight-metre parallel run is visibly two
+ * roads painted on top of one another.
+ *
+ * Keep these separate from the conservative graph-edge deduplicator above.
+ * That pass must not delete a legitimate route after a brief tangent, while
+ * `coalesceSharedParallelArms` is operating on two routes that already share
+ * an endpoint and can safely give their common approach to one owner.
+ */
+const SHARED_APPROACH_JOIN_METRES = Math.ceil(corridorHalfWidth(RoadClass.Arterial));
+const SHARED_APPROACH_MIN_METRES = ROAD_SAMPLE_METRES * 4;
 
 /**
  * Minimum centreline clearance claimed by every accepted graph edge.
@@ -1785,6 +1806,17 @@ export class RoadNetwork {
    */
   readonly mask = new Uint8Array(ROAD_MASK_N * ROAD_MASK_N);
 
+  /**
+   * Maximum visible road opacity claiming each mask texel.
+   *
+   * Gameplay keeps the complete corridor mask through a road-end dissolve so
+   * pathing and scatter do not flicker with presentation. Terrain stamping is
+   * different: pale paving under translucent asphalt is visible, and was the
+   * bright gravel fan at every dead end. This parallel byte mask lets the
+   * terrain stamp stop at the last opaque section without changing gameplay.
+   */
+  private readonly stampOpacity = new Uint8Array(ROAD_MASK_N * ROAD_MASK_N);
+
   private readonly scene: THREE.Scene;
   private readonly terrain: Terrain;
   private readonly rng: Rng;
@@ -2453,9 +2485,10 @@ export class RoadNetwork {
    */
   private parallelRouteMetres(
     a: readonly number[], b: readonly number[], shared: readonly RoadNodeRec[],
+    joinMetres = PARALLEL_ROUTE_JOIN_METRES,
   ): number {
     const clear2 = PARALLEL_ROUTE_CLEARANCE_METRES * PARALLEL_ROUTE_CLEARANCE_METRES;
-    const join2 = PARALLEL_ROUTE_JOIN_METRES * PARALLEL_ROUTE_JOIN_METRES;
+    const join2 = joinMetres * joinMetres;
     let overlap = 0;
     for (let i = 2; i < a.length; i += 2) {
       const ax = a[i - 2], az = a[i - 1];
@@ -3027,7 +3060,7 @@ export class RoadNetwork {
             sampled[i * 2 + 1] - sampled[prev * 2 + 1],
           );
         }
-        if (along < PARALLEL_ROUTE_JOIN_METRES) continue;
+        if (along < SHARED_APPROACH_JOIN_METRES) continue;
         const i0 = fromStart ? Math.max(0, i - 1) : Math.min(n - 1, i + 1);
         const i1 = fromStart ? Math.min(n - 1, i + 1) : Math.max(0, i - 1);
         let tx = sampled[i1 * 2] - sampled[i0 * 2];
@@ -3051,8 +3084,8 @@ export class RoadNetwork {
         last = along;
       }
       // This pass owns a duplicated APPROACH, not a later hairpin encounter.
-      if (!Number.isFinite(first) || first > PARALLEL_ROUTE_JOIN_METRES + CELL * 2
-        || last < PARALLEL_ROUTE_MIN_METRES) return 0;
+      if (!Number.isFinite(first) || first > SHARED_APPROACH_JOIN_METRES + CELL * 2
+        || last - first < SHARED_APPROACH_MIN_METRES) return 0;
       return last + ROAD_SAMPLE_METRES;
     };
 
@@ -3090,10 +3123,12 @@ export class RoadNetwork {
         if (a.nodeB === b.nodeA || a.nodeB === b.nodeB) shared.add(a.nodeB);
         const sharedNodes = [...shared].map((id) => this.nodes[id]);
         const sustained = Math.max(
-          this.parallelRouteMetres(loser.spline, winner.spline, sharedNodes),
-          this.parallelRouteMetres(winner.spline, loser.spline, sharedNodes),
+          this.parallelRouteMetres(
+            loser.spline, winner.spline, sharedNodes, SHARED_APPROACH_JOIN_METRES),
+          this.parallelRouteMetres(
+            winner.spline, loser.spline, sharedNodes, SHARED_APPROACH_JOIN_METRES),
         );
-        if (sustained < PARALLEL_ROUTE_MIN_METRES) continue;
+        if (sustained < SHARED_APPROACH_MIN_METRES) continue;
           for (const node of shared) {
             const loserEnds: boolean[] = [];
             if (loser.nodeA === node) loserEnds.push(true);
@@ -3104,7 +3139,7 @@ export class RoadNetwork {
               // not render twice; in that fallback consume the exempt throat
               // plus the measured duplicate distance.
               const measured = cutDistance(loser.spline, fromStart, winner.spline);
-              const metres = measured > 0 ? measured : PARALLEL_ROUTE_JOIN_METRES + sustained;
+              const metres = measured > 0 ? measured : SHARED_APPROACH_JOIN_METRES + sustained;
               trimEnd(loser, fromStart, metres);
               coalesced.add(loser.sourceId);
               changed = true;
@@ -3129,10 +3164,10 @@ export class RoadNetwork {
         }
         if (shared.length === 0) continue;
         const residual = Math.max(
-          this.parallelRouteMetres(a.spline, b.spline, shared),
-          this.parallelRouteMetres(b.spline, a.spline, shared),
+          this.parallelRouteMetres(a.spline, b.spline, shared, SHARED_APPROACH_JOIN_METRES),
+          this.parallelRouteMetres(b.spline, a.spline, shared, SHARED_APPROACH_JOIN_METRES),
         );
-        if (residual < PARALLEL_ROUTE_MIN_METRES) continue;
+        if (residual < SHARED_APPROACH_MIN_METRES) continue;
         const loser = a.cls !== b.cls
           ? (a.cls === RoadClass.Street ? a : b)
           : (a.id > b.id ? a : b);
@@ -4041,10 +4076,29 @@ export class RoadNetwork {
     // handedness has not been normalised carries two conventions at once.
     const pieces: KerbRun[] = [];
     for (const r of runs) { orientRun(r); this.cutRun(r, pieces); }
-    this.furnitureRuns = pieces.map((run) => ({
-      points: [...run.pts],
-      outward: [...run.nrm],
-    }));
+    this.furnitureRuns = [];
+    for (const run of pieces) {
+      let points: number[] = [];
+      let outward: number[] = [];
+      const flushFurniture = (): void => {
+        if (points.length >= 4) this.furnitureRuns.push({ points, outward });
+        points = [];
+        outward = [];
+      };
+      for (let i = 0; i < run.fade.length; i++) {
+        // A dissolving branch has a correspondingly narrowing sidewalk. The
+        // nominal 2-3 m furniture offset no longer fits there, so exposing that
+        // segment to Scatter placed lamps in grass beside an almost invisible
+        // road. Only the fully established pavement is infrastructure.
+        if (run.fade[i] < 1 - 1e-6) {
+          flushFurniture();
+          continue;
+        }
+        points.push(run.pts[i * 2], run.pts[i * 2 + 1]);
+        outward.push(run.nrm[i * 2], run.nrm[i * 2 + 1]);
+      }
+      flushFurniture();
+    }
     for (const r of pieces) this.buildKerbRun(r, kerb, pave);
     this.shoulderMarks = pieces.length;
     // Nothing reads the cover after this point and it is the largest build-time
@@ -4323,20 +4377,25 @@ export class RoadNetwork {
             && total - along < ROAD_CORNER_RADIUS_MAX * 2);
         // Same (a, b, c, d) roles as the two-vertex version this replaces:
         // a/b are the previous row's inner and outer, c/d this row's.
+        //
+        // OWNERSHIP IS PER QUAD, NEVER PER TRIANGLE. The previous majority
+        // test removed either half independently. Along a shallow overlap that
+        // produced an alternating sequence of exposed diagonal boundaries —
+        // the literal saw blade from the report. Keep a partially covered quad
+        // intact (dark asphalt over dark asphalt is harmless), and remove both
+        // halves only when the winner covers both. Markings have already been
+        // suppressed above, so the kept safety fringe cannot double-paint.
         for (let k = 0; k < spans; k++) {
           const a = prev[k], b = prev[k + 1], cc = cur[k], d = cur[k + 1];
-          if (!seamOverlap && this.triangleFullyOutranked(road, region, a, cc, b,
-            prevAlong, along, prevAlong)) {
-            this.overlapTrianglesCulled++;
-          } else {
-            road.triUp(a, cc, b);
+          const firstCovered = !seamOverlap && this.triangleFullyOutranked(
+            road, region, a, cc, b, prevAlong, along, prevAlong);
+          const secondCovered = !seamOverlap && this.triangleFullyOutranked(
+            road, region, b, cc, d, prevAlong, along, along);
+          if (firstCovered && secondCovered) {
+            this.overlapTrianglesCulled += 2;
+            continue;
           }
-          if (!seamOverlap && this.triangleFullyOutranked(road, region, b, cc, d,
-            prevAlong, along, along)) {
-            this.overlapTrianglesCulled++;
-          } else {
-            road.triUp(b, cc, d);
-          }
+          road.quadUp(a, b, cc, d);
         }
       }
 
@@ -4865,6 +4924,8 @@ export class RoadNetwork {
               : RoadSurface.Pavement;
           const i = tz * ROAD_MASK_N + tx;
           if (v > this.mask[i]) this.mask[i] = v;
+          const opacity = Math.round(clamp01(fade) * 255);
+          if (opacity > this.stampOpacity[i]) this.stampOpacity[i] = opacity;
         }
       }
     };
@@ -4912,7 +4973,12 @@ export class RoadNetwork {
         let w = 0;
         for (let sz = 0; sz < perCell; sz++) {
           for (let sx = 0; sx < perCell; sx++) {
-            const v = this.mask[(cz * perCell + sz) * ROAD_MASK_N + cx * perCell + sx];
+            const mi = (cz * perCell + sz) * ROAD_MASK_N + cx * perCell + sx;
+            // Only opaque road owns the terrain texture. The translucent end
+            // dissolves over the biome's existing ground instead of exposing
+            // a pale cobble/paving stamp beneath it.
+            if (this.stampOpacity[mi] < 255) continue;
+            const v = this.mask[mi];
             if (v >= RoadSurface.Carriageway) d++;
             else if (v !== RoadSurface.None) w++;
           }

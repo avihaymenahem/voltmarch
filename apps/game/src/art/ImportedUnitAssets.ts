@@ -510,6 +510,14 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     url: new URL(
       '../../../../packages/assets/game/units/reclamation/compressed/scrap-skimmer.glb', import.meta.url,
     ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/reclamation/derived/scrap-skimmer.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+    ],
     shadowUrl: new URL(
       '../../../../packages/assets/game/units/reclamation/derived/scrap-skimmer.shadow.glb', import.meta.url,
     ).href,
@@ -847,12 +855,6 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
           '../../../../packages/assets/game/units/meridian/derived/argosy.lod1.glb', import.meta.url,
         ).href,
         minDistance: 56,
-      },
-      {
-        url: new URL(
-          '../../../../packages/assets/game/units/meridian/derived/argosy.lod2.glb', import.meta.url,
-        ).href,
-        minDistance: 90,
       },
     ],
     shadowUrl: new URL(

@@ -34,6 +34,7 @@ import {
 } from '../src/core/types';
 import type { EntityId, ITerrain, PlayerId, SimContext } from '../src/core/types';
 import { CELL, MAX_SELECTION, SIM_DT } from '../src/core/config';
+import { DEPLOY_SETTLE_TICKS, DeployVisualClip } from '../src/core/DeployVisual';
 
 import {
   DEPLOY_TICKS, DeployFault, DeployService, FALLBACK_DEPLOYS_INTO, UNDEPLOY_TICKS,
@@ -293,6 +294,8 @@ describe('deploying', () => {
     expect(st.state[i]).toBe(UnitState.Deploying);
     expect(st.flags[i] & EntityFlag.Immobilized).not.toBe(0);
     expect(rig.deploy.remaining(i)).toBe(DEPLOY_TICKS - 1);
+    expect(st.animClip[i]).toBe(DeployVisualClip.Fold);
+    expect(st.animTime[i]).toBeCloseTo(1 / DEPLOY_TICKS, 6);
     expect(findBuilding(rig, 'conyard')).toBe(NONE);
 
     step(rig, DEPLOY_TICKS - 1);
@@ -304,10 +307,16 @@ describe('deploying', () => {
     expect(st.buildProgress[bi]).toBe(1);
     expect(st.flags[bi] & EntityFlag.Deployed).not.toBe(0);
     expect(st.flags[bi] & EntityFlag.IsBuilder).not.toBe(0);
+    expect(st.animClip[bi]).toBe(DeployVisualClip.Rise);
+    expect(st.animTime[bi]).toBe(0);
     // The vehicle left quietly — Selling is the no-fireball, no-wreck channel.
     expect(st.state[i]).toBe(UnitState.Selling);
     expect(st.flags[i] & EntityFlag.PendingDestroy).not.toBe(0);
     expect(rig.world.player(0 as PlayerId).stats.unitsLost).toBe(0);
+
+    step(rig, DEPLOY_SETTLE_TICKS);
+    expect(st.animClip[bi]).toBe(DeployVisualClip.None);
+    expect(st.animTime[bi]).toBe(0);
   });
 
   it('lands the yard square to the grid whatever heading the MCV stopped on', () => {
@@ -430,6 +439,8 @@ describe('deploying', () => {
     expect(rig.world.store.state[i]).toBe(UnitState.Idle);
     expect(rig.world.store.orderKind[i]).toBe(OrderKind.None);
     expect(rig.world.store.flags[i] & EntityFlag.Immobilized).toBe(0);
+    expect(rig.world.store.animClip[i]).toBe(DeployVisualClip.None);
+    expect(rig.world.store.animTime[i]).toBe(0);
   });
 
   it('refuses quietly for a unit that was never a construction vehicle', () => {
@@ -473,6 +484,8 @@ describe('undeploying', () => {
     st.orderKind[bi] = OrderKind.Deploy;
     step(rig);
     expect(st.state[bi]).toBe(UnitState.Deploying);
+    expect(st.animClip[bi]).toBe(DeployVisualClip.Fold);
+    expect(st.animTime[bi]).toBeGreaterThan(0);
     step(rig, UNDEPLOY_TICKS - 1);
 
     // The structure is gone quietly and a vehicle stands where it was.
@@ -485,6 +498,14 @@ describe('undeploying', () => {
       if (contentKeyOf(rig.world, i) === 'mcv') mcvs++;
     }
     expect(mcvs).toBe(1);
+    for (let a = 0; a < st.aliveCount; a++) {
+      const i = st.alive[a];
+      if ((st.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      if (contentKeyOf(rig.world, i) === 'mcv') {
+        expect(st.animClip[i]).toBe(DeployVisualClip.Rise);
+        expect(st.animTime[i]).toBe(0);
+      }
+    }
     // The footprint was released before the vehicle appeared on it.
     expect(rig.world.terrain.isOccupied(20, 20)).toBe(false);
   });

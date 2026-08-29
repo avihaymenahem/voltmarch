@@ -55,31 +55,69 @@ try {
     'Buildings/reclamation/foundry',
     'Units/soviets/attack-dog',
     'Units/reclamation/swarmhornet',
+    'Units/allies/field-marshal',
+    'Units/soviets/war-commissar',
+    'Units/meridian/hierarch',
+    'Units/reclamation/scrap-baron',
+    'Units/meridian/argosy',
+    'Units/reclamation/slag-hauler',
+    'Units/reclamation/scrap-skimmer',
     'Wrecks/neutral/vehicle-wreck',
   ];
+  const navalExpectations = new Map([
+    ['Units/meridian/argosy', ['Argosy', 'Meridian Conclave / Naval units']],
+    ['Units/reclamation/slag-hauler', ['Slag Hauler', 'Reclamation Pact / Naval units']],
+    ['Units/reclamation/scrap-skimmer', ['Scrap Skimmer', 'Reclamation Pact / Naval units']],
+  ]);
+  const commanderExpectations = new Map([
+    ['Units/allies/field-marshal', ['Field Marshal', 'Allied Forces / Infantry']],
+    ['Units/soviets/war-commissar', ['War Commissar', 'Soviet Union / Infantry']],
+    ['Units/meridian/hierarch', ['Hierarch', 'Meridian Conclave / Infantry']],
+    ['Units/reclamation/scrap-baron', ['Scrap Baron', 'Reclamation Pact / Infantry']],
+  ]);
   const audits = [];
   for (const id of samples) {
     await page.evaluate((assetId) => document.querySelector(`[data-asset-id="${CSS.escape(assetId)}"]`)?.click(), id);
     await waitReady(page);
     await page.waitForTimeout(650);
-    audits.push(await page.evaluate(() => ({
+    const audit = await page.evaluate(() => ({
       title: document.querySelector('#asset-title')?.textContent,
+      category: document.querySelector('#asset-faction')?.textContent,
       status: document.querySelector('#status')?.textContent,
       triangles: document.querySelector('#metric-triangles')?.textContent,
       frame: document.querySelector('#metric-frame')?.textContent,
-    })));
+    }));
+    const expected = navalExpectations.get(id) ?? commanderExpectations.get(id);
+    if (expected && (audit.title !== expected[0] || audit.category !== expected[1])) {
+      throw new Error(`${id} was not visible in its normal category: ${JSON.stringify(audit)}`);
+    }
+    audits.push(audit);
   }
 
   // Exercise the compressed KTX2 path, not only the uncompressed review source.
-  await page.evaluate(() => document.querySelector('[data-asset-id="Buildings/reclamation/foundry"]')?.click());
-  await waitReady(page);
-  const runtimeValue = await page.evaluate(() => [...document.querySelectorAll('#variant-select option')]
-    .find((option) => option.textContent?.includes('Runtime · KTX2'))?.value);
-  if (!runtimeValue) throw new Error('The selected family did not expose its runtime KTX2 delivery.');
-  await page.selectOption('#variant-select', runtimeValue);
-  await waitReady(page);
+  const compressedIds = [
+    'Buildings/reclamation/foundry',
+    'Units/meridian/argosy',
+    'Units/reclamation/slag-hauler',
+    'Units/reclamation/scrap-skimmer',
+  ];
+  const compressed = [];
+  for (const id of compressedIds) {
+    await page.evaluate((assetId) => document.querySelector(`[data-asset-id="${CSS.escape(assetId)}"]`)?.click(), id);
+    await waitReady(page);
+    const expected = navalExpectations.get(id);
+    if (expected && await page.textContent('#asset-title') !== expected[0]) {
+      throw new Error(`${id} did not become the selected Asset Lab family.`);
+    }
+    const runtimeValue = await page.evaluate(() => [...document.querySelectorAll('#variant-select option')]
+      .find((option) => option.textContent?.includes('Runtime · KTX2'))?.value);
+    if (!runtimeValue) throw new Error(`${id} did not expose its runtime KTX2 delivery.`);
+    await page.selectOption('#variant-select', runtimeValue);
+    await waitReady(page);
+    compressed.push({ id, status: await page.textContent('#status') });
+  }
   if (errors.length) throw new Error(`Asset Lab emitted errors:\n${errors.join('\n')}`);
-  console.log(JSON.stringify({ summary, audits, compressed: await page.textContent('#status') }, null, 2));
+  console.log(JSON.stringify({ summary, audits, compressed }, null, 2));
 } finally {
   await app.close();
   ownedServer?.stop();

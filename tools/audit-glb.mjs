@@ -6,6 +6,11 @@ import sharp from 'sharp';
 
 const file = process.argv[2];
 if (!file) throw new Error('usage: npm run asset:audit -- <asset.glb>');
+const extractFlag = process.argv.indexOf('--extract-dir');
+const extractDir = extractFlag >= 0 ? path.resolve(process.argv[extractFlag + 1]) : null;
+if (extractFlag >= 0 && !process.argv[extractFlag + 1]) {
+  throw new Error('--extract-dir requires an output directory');
+}
 const absolute = path.resolve(file);
 const bytes = fs.readFileSync(absolute);
 if (bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(4) !== 2) {
@@ -69,6 +74,12 @@ const images = await Promise.all((document.images ?? []).map(async (image, index
   if (!view) return { index, roles: [...(uses.get(index) ?? [])], external: image.uri };
   const start = binOffset + (view.byteOffset ?? 0);
   const data = bytes.subarray(start, start + view.byteLength);
+  if (extractDir) {
+    fs.mkdirSync(extractDir, { recursive: true });
+    const role = [...(uses.get(index) ?? [])].join('-') || `image-${index}`;
+    const extension = image.mimeType === 'image/jpeg' ? 'jpg' : 'png';
+    fs.writeFileSync(path.join(extractDir, `${index}-${role}.${extension}`), data);
+  }
   const [width, height] = imageDimensions(data);
   const stats = await sharp(data).stats();
   return {

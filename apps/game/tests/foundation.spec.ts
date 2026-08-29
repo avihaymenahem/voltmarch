@@ -88,6 +88,14 @@ describe('ArtBridge — core/config.ts -> render/RENDER_CONFIG', () => {
     expect(resolveArt('not-a-mood').sun.elevationDeg).toBe(DEFAULT_ART.sun.elevationDeg);
   });
 
+  it('keeps the out-of-map lower hemisphere black in every lighting mood', () => {
+    expect(DEFAULT_ART.atmosphere.skyGround).toBe('#000000');
+    expect(artPatch(DEFAULT_ART).sky?.ground).toBe(0x000000);
+    for (const mood of Object.keys(MOODS)) {
+      expect(resolveArt(mood).atmosphere.skyGround, mood).toBe('#000000');
+    }
+  });
+
   it('turns exponential fog density into a finite linear end distance', () => {
     const patch = artPatch(DEFAULT_ART);
     expect(patch.fog?.end).toBeGreaterThan(patch.fog!.start!);

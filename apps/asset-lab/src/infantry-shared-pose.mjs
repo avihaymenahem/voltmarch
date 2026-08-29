@@ -144,6 +144,7 @@ export function bakeCpuAnimationFrames({
   formationCount = 1,
   bucketCount = 1,
   requireAttachmentSockets = true,
+  limits = INFANTRY_RUNTIME_LIMITS,
 }) {
   const audit = validateInfantryRuntimeSource({
     soldier,
@@ -152,6 +153,7 @@ export function bakeCpuAnimationFrames({
     fps,
     formationCount,
     bucketCount,
+    limits,
   });
   const skeleton = sourceMesh.skeleton;
   const socketFallback = soldier.getObjectByName('Body') ?? sourceMesh;

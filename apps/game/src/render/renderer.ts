@@ -474,7 +474,8 @@ export const RENDER_CONFIG: RenderConfig = {
   sky: {
     zenith: 0x3e6fa8,
     horizon: 0xc6d4de,
-    ground: 0x6e6252,
+    // Out-of-map lower hemisphere. ArtBridge keeps every mood black too.
+    ground: 0x000000,
     sunDiskSize: 0.6,
     sunDiskIntensity: 12.0,
     hazeWidth: 8,

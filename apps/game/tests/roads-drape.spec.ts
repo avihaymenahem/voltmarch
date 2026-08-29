@@ -432,23 +432,27 @@ describe('road ends, bounded rather than fixed', () => {
  * on `build`). Treat a move here as a routing change to explain, not a number
  * to re-baseline.
  */
-/** Re-measured 2026-08-27 after compact pads and parallel-street deduplication. */
+/**
+ * Re-measured 2026-08-30 after shared approaches received one rendered owner.
+ * Industrial Grid and Temperate Valley lose their former yellow mouth dashes
+ * because those shallow doubled approaches are no longer junction pads.
+ */
 const KERB_DASHES: Record<string, number> = {
-  'industrial-grid': 12,
+  'industrial-grid': 0,
   'foundry-line': 0,
-  'temperate-valley': 24,
+  'temperate-valley': 0,
   'contested-strait': 0,
   'frozen-sector': 0,
   'airbase-flats': 52,
 };
 
 const CENSUS: Record<string, number> = {
-  'industrial-grid': 18,
+  'industrial-grid': 19,
   'foundry-line': 17,
-  'temperate-valley': 135,
-  'contested-strait': 18,
+  'temperate-valley': 94,
+  'contested-strait': 6,
   'frozen-sector': 60,
-  'airbase-flats': 24,
+  'airbase-flats': 19,
 };
 
 describe('no chain paints markings on a carriageway another chain owns', () => {
@@ -476,10 +480,10 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
    * road; the marking suppression is only the final safety net. The generator
    * now reserves arterial corridors, reroutes independent complete chains and
    * removes a lower-priority route only when terrain leaves no second pass.
-   * That cut temperate-valley's census from 582 to 135; shared-node approach
-   * coalescing then cut industrial-grid from 296 to 18 and foundry-line from
-   * 77 to 17. This remains the final overlap safety fuse rather than the
-   * topology repair itself.
+   * That first cut temperate-valley's census from 582 to 135. Compact
+   * shared-approach ownership now takes it to 94, contested-strait from 18 to
+   * 6, and airbase-flats from 24 to 19. This remains the final overlap safety
+   * fuse rather than the topology repair itself.
    *
    * Pinned per map so a routing change announces itself in either direction,
    * the same contract `tests/terrain-lod.spec.ts` uses for its chunk counts.
@@ -644,7 +648,7 @@ describe('the carriageway paint frame matches the row it is written on', () => {
     readonly map: string; readonly seed: number; readonly clamped: number;
   }[] = [
     { map: 'coral-shore', seed: 3, clamped: 9 },
-    { map: 'temperate-valley', seed: 1, clamped: 21 },
+    { map: 'temperate-valley', seed: 1, clamped: 15 },
     { map: 'industrial-grid', seed: 1, clamped: 0 },
   ];
 

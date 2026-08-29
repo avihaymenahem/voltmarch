@@ -78,6 +78,7 @@ import { InstanceBatcher, type BatchPartSpec, type InstanceBatch } from './Insta
 import { applyShroudTint } from './FogOfWar';
 import type { RenderCullVolume } from './RenderCullVolume';
 import { LAYERS } from './scene';
+import { deployBulge, deployCollapse, deploySink } from '../core/DeployVisual';
 
 /* ==========================================================================
  * 1. REGISTRATION SURFACE — what an art module calls
@@ -1157,6 +1158,19 @@ export class RenderBridge {
           * Math.max(PLACEHOLDER_MIN_RISE, buildProgress);
       }
 
+      // MCV conversion is presentation, not ordinary construction. The old
+      // entity hydraulically folds under the pad and the replacement rises
+      // from the same point, hiding the entity swap without changing one tick
+      // of ownership, footprint, power or production gameplay.
+      const deployCollapsed = deployCollapse(s.animClip[i], s.animTime[i]);
+      const deployWidthPulse = deployBulge(s.animClip[i], s.animTime[i]);
+      if (deployCollapsed > 0 || deployWidthPulse > 0) {
+        const building = kind === EntityKind.Building;
+        sx *= 1 + (building ? 0.055 : 0.12) * deployWidthPulse;
+        sz *= 1 + (building ? 0.055 : 0.12) * deployWidthPulse;
+        sy *= 1 - (building ? 0.72 : 0.86) * deployCollapsed;
+      }
+
       // Only the uniform cases need recording: `socketWorld` is asked about
       // units, and a non-uniform scale belongs to the placeholder building,
       // which has no sockets. `sx` is the right column for every scaled kind
@@ -1197,6 +1211,10 @@ export class RenderBridge {
         let tx = x + M12[0] * ox + M12[3] * oy + M12[6] * oz;
         let ty = y + M12[1] * ox + M12[4] * oy + M12[7] * oz;
         let tz = z + M12[2] * ox + M12[5] * oy + M12[8] * oz;
+
+        if (deployCollapsed > 0) {
+          ty -= deploySink(kind, s.footprintW[i], s.footprintH[i]) * deployCollapsed;
+        }
 
         // Imported WebGPU shells cannot use the legacy GLSL construction
         // hook: Three accepts `onBeforeCompile` on the material but never runs

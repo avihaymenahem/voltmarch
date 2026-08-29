@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-29T17:42:44.531Z",
+  "generatedAt": "2026-08-29T19:22:06.204Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -341,8 +341,8 @@
       "movingParts": false,
       "source": {
         "file": "packages/assets/game/units/meridian/sun-lighter.glb",
-        "triangles": 24280,
-        "fileBytes": 2854072
+        "triangles": 24127,
+        "fileBytes": 4729332
       },
       "outputs": [
         {
@@ -350,23 +350,23 @@
           "status": "candidate",
           "blockers": [],
           "file": "packages/assets/game/units/meridian/derived/sun-lighter.lod1.glb",
-          "triangles": 11083,
-          "triangleRatio": 0.4565,
-          "boundsDriftMeters": 0.00919,
-          "boundsDriftRatio": 0.00953,
-          "fileBytes": 453848,
+          "triangles": 11164,
+          "triangleRatio": 0.4627,
+          "boundsDriftMeters": 0.00923,
+          "boundsDriftRatio": 0.00957,
+          "fileBytes": 472616,
           "geometryOnly": true
         },
         {
           "profile": "lod2",
           "status": "blocked",
           "blockers": [
-            "simplifier floor 38.0% exceeds 30.0% ceiling"
+            "simplifier floor 38.8% exceeds 30.0% ceiling"
           ],
           "file": "packages/assets/game/units/meridian/derived/sun-lighter.lod2.glb",
-          "triangles": 9219,
-          "triangleRatio": 0.3797,
-          "boundsDriftMeters": 0.02593,
+          "triangles": 9358,
+          "triangleRatio": 0.3879,
+          "boundsDriftMeters": 0.02594,
           "boundsDriftRatio": 0.01297,
           "fileBytes": 0,
           "geometryOnly": true
@@ -377,10 +377,10 @@
           "blockers": [],
           "file": "packages/assets/game/units/meridian/derived/sun-lighter.shadow.glb",
           "triangles": 1104,
-          "triangleRatio": 0.0455,
+          "triangleRatio": 0.0458,
           "boundsDriftMeters": 0,
           "boundsDriftRatio": 0,
-          "fileBytes": 16288,
+          "fileBytes": 16256,
           "geometryOnly": true,
           "grid": [
             14,
@@ -396,8 +396,8 @@
       "movingParts": false,
       "source": {
         "file": "packages/assets/game/units/meridian/argosy.glb",
-        "triangles": 24409,
-        "fileBytes": 3158000
+        "triangles": 27690,
+        "fileBytes": 11653096
       },
       "outputs": [
         {
@@ -405,23 +405,25 @@
           "status": "candidate",
           "blockers": [],
           "file": "packages/assets/game/units/meridian/derived/argosy.lod1.glb",
-          "triangles": 10966,
-          "triangleRatio": 0.4493,
-          "boundsDriftMeters": 0.00293,
-          "boundsDriftRatio": 0.00452,
-          "fileBytes": 388300,
+          "triangles": 14871,
+          "triangleRatio": 0.5371,
+          "boundsDriftMeters": 0.00116,
+          "boundsDriftRatio": 0.00058,
+          "fileBytes": 815428,
           "geometryOnly": true
         },
         {
           "profile": "lod2",
-          "status": "candidate",
-          "blockers": [],
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 52.9% exceeds 30.0% ceiling"
+          ],
           "file": "packages/assets/game/units/meridian/derived/argosy.lod2.glb",
-          "triangles": 4486,
-          "triangleRatio": 0.1838,
-          "boundsDriftMeters": 0.01361,
-          "boundsDriftRatio": 0.01535,
-          "fileBytes": 198856,
+          "triangles": 14643,
+          "triangleRatio": 0.5288,
+          "boundsDriftMeters": 0.00286,
+          "boundsDriftRatio": 0.00143,
+          "fileBytes": 0,
           "geometryOnly": true
         },
         {
@@ -429,17 +431,17 @@
           "status": "candidate",
           "blockers": [],
           "file": "packages/assets/game/units/meridian/derived/argosy.shadow.glb",
-          "triangles": 1752,
-          "triangleRatio": 0.0718,
+          "triangles": 1620,
+          "triangleRatio": 0.0585,
           "boundsDriftMeters": 0,
           "boundsDriftRatio": 0,
-          "fileBytes": 25364,
+          "fileBytes": 23480,
           "geometryOnly": true,
           "grid": [
             14,
-            11
+            12
           ],
-          "occupiedCells": 146
+          "occupiedCells": 135
         }
       ]
     }

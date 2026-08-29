@@ -20,8 +20,10 @@ const requestedFaction = factionArg?.slice('--faction='.length);
 const faction = supportedFactions.has(requestedFaction) ? requestedFaction : 'allies';
 const unitArg = process.argv.find((arg) => arg.startsWith('--unit='));
 const unit = unitArg?.slice('--unit='.length);
+const modeArg = process.argv.find((arg) => arg.startsWith('--mode='));
+const mode = modeArg?.slice('--mode='.length) === 'single' ? 'single' : 'army';
 const server = await startAssetLabDevServer(ROOT, 'infantry');
-const url = new URL(`infantry.html?count=${count}&faction=${faction}${unit ? `&unit=${unit}` : ''}`, server.origin).href;
+const url = new URL(`infantry.html?count=${count}&faction=${faction}&mode=${mode}${unit ? `&unit=${unit}` : ''}`, server.origin).href;
 
 const app = await electron.launch({
   args: ['.', `--vm-dev=${server.origin}`, '--vm-gpu=webgpu', '--vm-tool-window'],

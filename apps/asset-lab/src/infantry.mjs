@@ -13,19 +13,31 @@ import alliedRiggedUrl from '../../../packages/assets/game/units/allies/infantry
 import alliedWalkUrl from '../../../packages/assets/game/units/allies/infantry-poc/peacekeeper-walk.glb?url';
 import alliedRunUrl from '../../../packages/assets/game/units/allies/infantry-poc/peacekeeper-run.glb?url';
 import alliedRunShootUrl from '../../../packages/assets/game/units/allies/infantry-poc/peacekeeper-run-shoot.glb?url';
+import alliedCommanderUrl from '../../../packages/assets/game/units/allies/commanders/field-marshal-lod0.glb?url';
+import alliedCommanderWalkUrl from '../../../packages/assets/game/units/allies/commanders/field-marshal-walk.glb?url';
+import alliedCommanderRunUrl from '../../../packages/assets/game/units/allies/commanders/field-marshal-run.glb?url';
 import sovietLod0Url from '../../../packages/assets/game/units/soviets/infantry-poc/conscript-lod0.glb?url';
 import sovietWalkUrl from '../../../packages/assets/game/units/soviets/infantry-poc/conscript-walk.glb?url';
 import sovietRunUrl from '../../../packages/assets/game/units/soviets/infantry-poc/conscript-run.glb?url';
 import sovietRunShootUrl from '../../../packages/assets/game/units/soviets/infantry-poc/conscript-run-shoot.glb?url';
+import sovietCommanderUrl from '../../../packages/assets/game/units/soviets/commanders/war-commissar-lod0.glb?url';
+import sovietCommanderWalkUrl from '../../../packages/assets/game/units/soviets/commanders/war-commissar-walk.glb?url';
+import sovietCommanderRunUrl from '../../../packages/assets/game/units/soviets/commanders/war-commissar-run.glb?url';
 import sovietAttackDogRiggedUrl from '../../../packages/assets/game/units/soviets/animation/attack-dog-rigged.glb?url';
 import meridianLod0Url from '../../../packages/assets/game/units/meridian/infantry-poc/wayfarer-lod0.glb?url';
 import meridianWalkUrl from '../../../packages/assets/game/units/meridian/infantry-poc/wayfarer-walk.glb?url';
 import meridianRunUrl from '../../../packages/assets/game/units/meridian/infantry-poc/wayfarer-run.glb?url';
 import meridianRunShootUrl from '../../../packages/assets/game/units/meridian/infantry-poc/wayfarer-run-shoot.glb?url';
+import meridianCommanderUrl from '../../../packages/assets/game/units/meridian/commanders/hierarch-lod0.glb?url';
+import meridianCommanderWalkUrl from '../../../packages/assets/game/units/meridian/commanders/hierarch-walk.glb?url';
+import meridianCommanderRunUrl from '../../../packages/assets/game/units/meridian/commanders/hierarch-run.glb?url';
 import reclamationLod0Url from '../../../packages/assets/game/units/reclamation/infantry-poc/scrap-picker-lod0.glb?url';
 import reclamationWalkUrl from '../../../packages/assets/game/units/reclamation/infantry-poc/scrap-picker-walk.glb?url';
 import reclamationRunUrl from '../../../packages/assets/game/units/reclamation/infantry-poc/scrap-picker-run.glb?url';
 import reclamationRunShootUrl from '../../../packages/assets/game/units/reclamation/infantry-poc/scrap-picker-run-shoot.glb?url';
+import reclamationCommanderUrl from '../../../packages/assets/game/units/reclamation/commanders/scrap-baron-lod0.glb?url';
+import reclamationCommanderWalkUrl from '../../../packages/assets/game/units/reclamation/commanders/scrap-baron-walk.glb?url';
+import reclamationCommanderRunUrl from '../../../packages/assets/game/units/reclamation/commanders/scrap-baron-run.glb?url';
 
 const canvas = document.querySelector('#preview');
 const statusEl = document.querySelector('#status');
@@ -42,6 +54,7 @@ const speedInput = document.querySelector('#speed');
 const speedValue = document.querySelector('#speed-value');
 const skeletonInput = document.querySelector('#skeleton');
 const soldierCountInput = document.querySelector('#soldier-count');
+const countHelpEl = document.querySelector('#count-help');
 const factionInput = document.querySelector('#faction');
 const unitInput = document.querySelector('#unit');
 const unitTitleEl = document.querySelector('#unit-title');
@@ -53,18 +66,32 @@ const supportedFactions = new Set(['allies', 'soviets', 'meridian', 'reclamation
 const requestedFaction = query.get('faction');
 const faction = supportedFactions.has(requestedFaction) ? requestedFaction : 'allies';
 const factionUnits = {
-  allies: ['peacekeeper', 'javelin', 'engineer'],
-  soviets: ['conscript', 'flak-trooper', 'combat-engineer', 'attack-dog'],
-  meridian: ['wayfarer', 'sunlancer', 'artificer'],
-  reclamation: ['scrap-picker', 'slagger', 'tinker'],
+  allies: ['peacekeeper', 'javelin', 'engineer', 'field-marshal'],
+  soviets: ['conscript', 'flak-trooper', 'combat-engineer', 'war-commissar', 'attack-dog'],
+  meridian: ['wayfarer', 'sunlancer', 'artificer', 'hierarch'],
+  reclamation: ['scrap-picker', 'slagger', 'tinker', 'scrap-baron'],
 };
+const commanderUnits = new Set(['field-marshal', 'war-commissar', 'hierarch', 'scrap-baron']);
+const commanderRuntimeLimits = Object.freeze({
+  ...INFANTRY_RUNTIME_LIMITS,
+  maxVertices: 40_000,
+  maxTriangles: 50_000,
+  maxFormationCount: 4,
+});
 const requestedUnit = query.get('unit');
 const unit = factionUnits[faction].includes(requestedUnit) ? requestedUnit : factionUnits[faction][0];
 const requestedCount = Number(query.get('count') ?? '48');
+const formationLimit = commanderUnits.has(unit)
+  ? commanderRuntimeLimits.maxFormationCount
+  : INFANTRY_RUNTIME_LIMITS.maxFormationCount;
 const formationCount = Number.isFinite(requestedCount)
-  ? THREE.MathUtils.clamp(Math.round(requestedCount), 1, INFANTRY_RUNTIME_LIMITS.maxFormationCount)
-  : 48;
+  ? THREE.MathUtils.clamp(Math.round(requestedCount), 1, formationLimit)
+  : Math.min(48, formationLimit);
 soldierCountInput.value = String(formationCount);
+soldierCountInput.max = String(formationLimit);
+countHelpEl.textContent = commanderUnits.has(unit)
+  ? '1–4 commander review range · Apply reloads a clean WebGPU run.'
+  : '1–512 stress range · Apply reloads a clean WebGPU run.';
 const assetSets = {
   peacekeeper: {
     faction: 'allies',
@@ -107,6 +134,19 @@ const assetSets = {
     pack: { kind: 'toolcase', color: 0x355f92, emissive: 0x0b6a7d },
     actionLabel: 'Run + work',
   },
+  'field-marshal': {
+    faction: 'allies',
+    label: 'Field Marshal',
+    title: 'Allied Field Marshal · Unique Commander',
+    description: 'Faction-unique ceramic command armour and cape with its own 24-joint rig and PBR set.',
+    source: '47,618 triangles · 6.05 MiB · unique walk/run clips · one commander maximum',
+    rigged: alliedCommanderUrl,
+    walk: alliedCommanderWalkUrl,
+    run: alliedCommanderRunUrl,
+    runShoot: alliedCommanderRunUrl,
+    weapon: { kind: 'bullpup', color: 0x17313e, emissive: 0x062a34 },
+    actionLabel: 'Run · commander',
+  },
   conscript: {
     faction: 'soviets',
     label: 'Conscript',
@@ -145,6 +185,19 @@ const assetSets = {
     weapon: { kind: 'cutter', color: 0x3b332b, emissive: 0x7a1808 },
     pack: { kind: 'gas-bottle', color: 0x3b332b, emissive: 0x7a1808 },
     actionLabel: 'Run + cut',
+  },
+  'war-commissar': {
+    faction: 'soviets',
+    label: 'War Commissar',
+    title: 'Soviet War Commissar · Unique Commander',
+    description: 'Faction-unique industrial greatcoat commander with its own 24-joint rig and PBR set.',
+    source: '47,883 triangles · 5.22 MiB · unique walk/run clips · one commander maximum',
+    rigged: sovietCommanderUrl,
+    walk: sovietCommanderWalkUrl,
+    run: sovietCommanderRunUrl,
+    runShoot: sovietCommanderRunUrl,
+    weapon: { kind: 'rifle', color: 0x332b25, emissive: 0x180b08 },
+    actionLabel: 'Run · commander',
   },
   'attack-dog': {
     faction: 'soviets',
@@ -197,6 +250,19 @@ const assetSets = {
     pack: { kind: 'instrument-case', color: 0xaa914e, emissive: 0x17685f },
     actionLabel: 'Run + calibrate',
   },
+  hierarch: {
+    faction: 'meridian',
+    label: 'Hierarch',
+    title: 'Meridian Hierarch · Unique Commander',
+    description: 'Faction-unique bone, jade and gold command vestment with its own 24-joint rig and PBR set.',
+    source: '47,225 triangles · 6.26 MiB · unique walk/run clips · one commander maximum',
+    rigged: meridianCommanderUrl,
+    walk: meridianCommanderWalkUrl,
+    run: meridianCommanderRunUrl,
+    runShoot: meridianCommanderRunUrl,
+    weapon: { kind: 'lance', color: 0xaa914e, emissive: 0x174c44 },
+    actionLabel: 'Run · commander',
+  },
   'scrap-picker': {
     faction: 'reclamation',
     label: 'Scrap Picker',
@@ -235,6 +301,19 @@ const assetSets = {
     weapon: { kind: 'salvage-tool', color: 0x4a3b51, emissive: 0x551060 },
     pack: { kind: 'tool-roll', color: 0x4a3b51, emissive: 0x551060 },
     actionLabel: 'Run + repair',
+  },
+  'scrap-baron': {
+    faction: 'reclamation',
+    label: 'Scrap Baron',
+    title: 'Reclamation Scrap Baron · Unique Commander',
+    description: 'Faction-unique graphite and violet salvage boss with its own 24-joint rig and PBR set.',
+    source: '47,655 triangles · 5.92 MiB · unique walk/run clips · one commander maximum',
+    rigged: reclamationCommanderUrl,
+    walk: reclamationCommanderWalkUrl,
+    run: reclamationCommanderRunUrl,
+    runShoot: reclamationCommanderRunUrl,
+    weapon: { kind: 'prod', color: 0x3c3546, emissive: 0x35125f },
+    actionLabel: 'Run · commander',
   },
 };
 const assetSet = assetSets[unit];
@@ -335,12 +414,13 @@ async function start() {
   controls.maxPolarAngle = Math.PI * 0.49;
   const resetCamera = () => {
     if (currentMode === 'army') {
+      const closeHeroFormation = commanderUnits.has(unit);
       camera.position.set(
-        Math.max(10.5, formationSpan * 0.95),
-        Math.max(9.2, formationSpan * 0.84),
-        Math.max(13.5, formationSpan * 1.22),
+        Math.max(closeHeroFormation ? 4.8 : 10.5, formationSpan * 0.95),
+        Math.max(closeHeroFormation ? 3.8 : 9.2, formationSpan * 0.84),
+        Math.max(closeHeroFormation ? 6.2 : 13.5, formationSpan * 1.22),
       );
-      controls.target.set(0, 0.8, 0);
+      controls.target.set(0, closeHeroFormation ? 1.05 : 0.8, 0);
     } else {
       const targetHeight = assetSet.targetHeight ?? 2.2;
       camera.position.set(4.2, Math.max(2.2, targetHeight * 1.6), 5.7);
@@ -444,6 +524,7 @@ async function start() {
     formationCount,
     bucketCount: INFANTRY_RUNTIME_LIMITS.maxPoseBuckets,
     requireAttachmentSockets: assetSet.weapon !== undefined || assetSet.pack !== undefined,
+    limits: commanderUnits.has(unit) ? commanderRuntimeLimits : INFANTRY_RUNTIME_LIMITS,
   });
   const formation = createArmyFormation({
     sourceMesh: findSkinnedMesh(soldier), animation, scene, count: formationCount,

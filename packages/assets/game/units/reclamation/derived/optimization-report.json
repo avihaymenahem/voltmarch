@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-29T17:42:44.571Z",
+  "generatedAt": "2026-08-29T19:22:06.970Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
   "rows": [
@@ -170,35 +170,33 @@
       "movingParts": false,
       "source": {
         "file": "packages/assets/game/units/reclamation/scrap-skimmer.glb",
-        "triangles": 16560,
-        "fileBytes": 7262428
+        "triangles": 21888,
+        "fileBytes": 9305388
       },
       "outputs": [
         {
           "profile": "lod1",
-          "status": "blocked",
-          "blockers": [
-            "simplifier floor 62.8% exceeds 55.0% ceiling"
-          ],
+          "status": "candidate",
+          "blockers": [],
           "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.lod1.glb",
-          "triangles": 10393,
-          "triangleRatio": 0.6276,
-          "boundsDriftMeters": 0.00262,
-          "boundsDriftRatio": 0.00518,
-          "fileBytes": 0,
+          "triangles": 9849,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00031,
+          "boundsDriftRatio": 0.00015,
+          "fileBytes": 479740,
           "geometryOnly": true
         },
         {
           "profile": "lod2",
           "status": "blocked",
           "blockers": [
-            "simplifier floor 49.3% exceeds 30.0% ceiling"
+            "simplifier floor 37.0% exceeds 30.0% ceiling"
           ],
           "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.lod2.glb",
-          "triangles": 8167,
-          "triangleRatio": 0.4932,
-          "boundsDriftMeters": 0.00456,
-          "boundsDriftRatio": 0.00511,
+          "triangles": 8109,
+          "triangleRatio": 0.3705,
+          "boundsDriftMeters": 0.00105,
+          "boundsDriftRatio": 0.00249,
           "fileBytes": 0,
           "geometryOnly": true
         },
@@ -207,17 +205,17 @@
           "status": "candidate",
           "blockers": [],
           "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.shadow.glb",
-          "triangles": 1104,
-          "triangleRatio": 0.0667,
+          "triangles": 984,
+          "triangleRatio": 0.045,
           "boundsDriftMeters": 0,
           "boundsDriftRatio": 0,
-          "fileBytes": 16252,
+          "fileBytes": 14572,
           "geometryOnly": true,
           "grid": [
             16,
-            7
+            6
           ],
-          "occupiedCells": 92
+          "occupiedCells": 82
         }
       ]
     },
@@ -337,21 +335,21 @@
       "movingParts": false,
       "source": {
         "file": "packages/assets/game/units/reclamation/slag-hauler.glb",
-        "triangles": 24605,
-        "fileBytes": 3535168
+        "triangles": 27855,
+        "fileBytes": 10370892
       },
       "outputs": [
         {
           "profile": "lod1",
           "status": "blocked",
           "blockers": [
-            "simplifier floor 91.1% exceeds 55.0% ceiling"
+            "simplifier floor 71.2% exceeds 55.0% ceiling"
           ],
           "file": "packages/assets/game/units/reclamation/derived/slag-hauler.lod1.glb",
-          "triangles": 22408,
-          "triangleRatio": 0.9107,
-          "boundsDriftMeters": 0.00336,
-          "boundsDriftRatio": 0.00355,
+          "triangles": 19831,
+          "triangleRatio": 0.7119,
+          "boundsDriftMeters": 0.00175,
+          "boundsDriftRatio": 0.00187,
           "fileBytes": 0,
           "geometryOnly": true
         },
@@ -359,13 +357,13 @@
           "profile": "lod2",
           "status": "blocked",
           "blockers": [
-            "simplifier floor 83.6% exceeds 30.0% ceiling"
+            "simplifier floor 70.1% exceeds 30.0% ceiling"
           ],
           "file": "packages/assets/game/units/reclamation/derived/slag-hauler.lod2.glb",
-          "triangles": 20574,
-          "triangleRatio": 0.8362,
-          "boundsDriftMeters": 0.00502,
-          "boundsDriftRatio": 0.00531,
+          "triangles": 19518,
+          "triangleRatio": 0.7007,
+          "boundsDriftMeters": 0.00174,
+          "boundsDriftRatio": 0.00186,
           "fileBytes": 0,
           "geometryOnly": true
         },
@@ -374,17 +372,17 @@
           "status": "candidate",
           "blockers": [],
           "file": "packages/assets/game/units/reclamation/derived/slag-hauler.shadow.glb",
-          "triangles": 1512,
-          "triangleRatio": 0.0615,
+          "triangles": 1344,
+          "triangleRatio": 0.0482,
           "boundsDriftMeters": 0,
           "boundsDriftRatio": 0,
-          "fileBytes": 22004,
+          "fileBytes": 19616,
           "geometryOnly": true,
           "grid": [
             16,
-            8
+            7
           ],
-          "occupiedCells": 126
+          "occupiedCells": 112
         }
       ]
     }

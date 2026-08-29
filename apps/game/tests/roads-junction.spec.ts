@@ -45,7 +45,7 @@ import * as THREE from 'three';
 
 import { Terrain } from '../src/world/Terrain';
 import { RoadNetwork, RoadSurface, ROAD_MASK_N } from '../src/world/Roads';
-import { MAP_SIZE } from '../src/core/config';
+import { MAP_SIZE, ROAD_CONFORM_MAX_SPANS, ROAD_CONFORM_METRES } from '../src/core/config';
 
 /* --------------------------------------------------------------------------
  * Polygon clipping. Sutherland-Hodgman against a triangle, which is convex, so
@@ -203,6 +203,55 @@ function totalArea(tris: readonly Tri[]): number {
   let a = 0;
   for (const t of tris) a += Math.abs(signedArea2(t)) * 0.5;
   return a;
+}
+
+/**
+ * Count ribbon cells with exactly one triangle present.
+ *
+ * The road mesh is emitted as regular cross-section rows. A covered cell may
+ * disappear as a whole and a visible cell may choose either diagonal, but one
+ * triangle on its own leaves that diagonal exposed. Repeated along a shallow
+ * overlap, those open diagonals are the alternating road-edge saw from the
+ * tester screenshots.
+ */
+function halfRibbonQuads(mesh: THREE.Mesh): number {
+  const g = mesh.geometry;
+  const road = g.getAttribute('aRoad');
+  const idx = g.getIndex();
+  expect(idx).not.toBeNull();
+
+  const tris = new Set<string>();
+  const key = (a: number, b: number, c: number): string => [a, b, c].sort((x, y) => x - y).join(':');
+  for (let i = 0; i < idx!.count; i += 3) {
+    const a = idx!.getX(i), b = idx!.getX(i + 1), c = idx!.getX(i + 2);
+    if (road.getW(a) < 0 || road.getW(b) < 0 || road.getW(c) < 0) continue;
+    tris.add(key(a, b, c));
+  }
+
+  let half = 0;
+  let row = 0;
+  while (row < road.count && road.getW(row) >= 0) {
+    const width = road.getZ(row) * 2;
+    const spans = Math.min(ROAD_CONFORM_MAX_SPANS, Math.max(1, Math.ceil(width / ROAD_CONFORM_METRES)));
+    const rowSize = spans + 1;
+    const next = row + rowSize;
+    if (next + rowSize > road.count || road.getW(next) < 0) break;
+
+    // Arc length resets at the start of every chain. Only adjacent rows of the
+    // same chain form cells; a class change also changes the row width.
+    const sameChain = road.getY(next) > road.getY(row) + 1e-5
+      && Math.abs(road.getZ(next) - road.getZ(row)) < 1e-5;
+    if (sameChain) {
+      for (let k = 0; k < spans; k++) {
+        const a = row + k, b = a + 1, c = next + k, d = c + 1;
+        const present = [key(a, c, b), key(b, c, d), key(a, d, b), key(a, c, d)]
+          .reduce((n, t) => n + (tris.has(t) ? 1 : 0), 0);
+        if (present === 1) half++;
+      }
+    }
+    row = next;
+  }
+  return half;
 }
 
 /* --------------------------------------------------------------------------
@@ -391,6 +440,20 @@ describe('junction pavement does not lie on the carriageway', () => {
       expect(`${biome} ${seed}: ${ribbon} inverted ribbon`)
         .toBe(`${biome} ${seed}: 0 inverted ribbon`);
       net.dispose();
+    }
+  }, 120000);
+
+  it('never leaves a single triangle of a carriageway cell as a saw tooth', () => {
+    for (const [biome, seed] of CASES) {
+      const scene = new THREE.Scene();
+      const terrain = new Terrain({ scene, seed: seed ^ 0x9e37, biome });
+      const net = new RoadNetwork({ scene, terrain, seed, decals: null, stampTerrain: false });
+      net.generate();
+      let mesh: THREE.Mesh | null = null;
+      scene.traverse((o) => { if (o.name === 'road.carriageway') mesh = o as THREE.Mesh; });
+      expect(halfRibbonQuads(mesh! as THREE.Mesh), `${biome} ${seed} half-quads`).toBe(0);
+      net.dispose();
+      terrain.dispose();
     }
   }, 120000);
 

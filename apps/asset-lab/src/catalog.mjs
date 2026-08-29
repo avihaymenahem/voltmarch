@@ -18,7 +18,7 @@ const FACTION_LABELS = {
 const AIRCRAFT_PATTERN = /(?:^|-)(?:aircraft|bomber|carryall|fighter|gunship|helicopter|hornet|interceptor)(?:-|$)/i;
 const AIRCRAFT_SLUGS = new Set(['swarmhornet']);
 const VEHICLE_UNIT_SLUGS = new Set(['pactworks-carryall']);
-const NAVAL_UNIT_PATTERN = /(?:^|-)(?:boat|corvette|cruiser|cutter|destroyer|dreadnought|hulk|hydrofoil|monitor|scow|ship|skimmer|submarine|sunmonitor)(?:-|$)/i;
+const NAVAL_UNIT_PATTERN = /(?:^|-)(?:argosy|barge|boat|corvette|craft|cruiser|cutter|destroyer|dreadnought|hauler|hulk|hydrofoil|lighter|monitor|scow|ship|skimmer|submarine|sunmonitor|transport)(?:-|$)/i;
 const NAVAL_STRUCTURE_SLUGS = new Set(['naval-yard', 'naval-pen', 'slipway', 'breaker-dock']);
 const INFANTRY_UNIT_SLUGS = new Set(['attack-dog']);
 
@@ -88,6 +88,7 @@ function identifyVariant(stem, directories) {
   const derived = directories.includes('derived');
   const compressed = directories.includes('compressed');
   const infantryPoc = directories.includes('infantry-poc');
+  const commander = directories.includes('commanders');
   const animationReview = directories.includes('animation');
   const suffixes = [
     [/\.shadow$/i, 'Shadow'],
@@ -101,7 +102,7 @@ function identifyVariant(stem, directories) {
       variant: typeof variant === 'function' ? variant(...match) : variant,
     };
   }
-  if (infantryPoc) {
+  if (infantryPoc || commander) {
     const animation = stem.match(/-(walk|run-shoot|run)$/i);
     if (animation) return { familySlug: infantryFamily(stem), variant: `Animation · ${titleCase(animation[1])}` };
     if (/-rigged-textured$/i.test(stem)) return { familySlug: infantryFamily(stem), variant: 'Rigged review · textured' };
@@ -123,7 +124,7 @@ function infantryFamily(stem) {
 function classifyCategory(kind, slug, directories) {
   if (kind === 'Buildings') return NAVAL_STRUCTURE_SLUGS.has(slug) ? 'Naval structures' : 'Buildings';
   if (kind === 'Wrecks') return 'Wrecks';
-  if (directories.includes('infantry-poc') || INFANTRY_UNIT_SLUGS.has(slug)) return 'Infantry';
+  if (directories.includes('infantry-poc') || directories.includes('commanders') || INFANTRY_UNIT_SLUGS.has(slug)) return 'Infantry';
   if (VEHICLE_UNIT_SLUGS.has(slug)) return 'Vehicles';
   // Compound ship roles such as `aircraft-cruiser` are naval even though they
   // contain an aviation token. Resolve the hull role before the payload role.

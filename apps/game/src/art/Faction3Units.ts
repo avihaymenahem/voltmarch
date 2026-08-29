@@ -1595,8 +1595,9 @@ export async function buildAndRegisterMeridianUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
-  const infantryFamily = IMPORTED_INFANTRY_FAMILIES.find((family) => family.key === 'meridian_wayfarer');
-  if (infantryFamily !== undefined) {
+  const infantryFamilies = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
+    family.key === 'meridian_wayfarer' || family.key === 'meridian_hierarch');
+  for (const infantryFamily of infantryFamilies) {
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => meridianUnitLibrary.get(key),

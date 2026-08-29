@@ -6,15 +6,18 @@
  * fight. This census exercises every biome and both route directions. The
  * production detector uses absolute tangent alignment, therefore reverse-flow
  * duplicates, curved near-parallels and shallow merges are all covered while
- * perpendicular crossings remain legal. Chains sharing a graph endpoint are
- * real junction arms and are owned by the junction solver instead.
+ * perpendicular crossings remain legal. Shared-endpoint chains get only a
+ * compact junction throat; a parallel approach beyond it is one physical road
+ * and must have one rendered owner.
  */
 
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import { Terrain } from '../src/world/Terrain';
-import { RoadClass, RoadNetwork } from '../src/world/Roads';
+import { RoadClass, RoadNetwork, ROAD_MASK_N } from '../src/world/Roads';
+import { SurfaceId } from '../src/world/Biomes';
+import { CELL, ROAD_MASK_METRES } from '../src/core/config';
 
 interface ChainView {
   id: number;
@@ -34,11 +37,13 @@ interface NodeView {
 interface NetworkView {
   chains: ChainView[];
   nodes: NodeView[];
-  parallelRouteMetres(a: readonly number[], b: readonly number[], shared: readonly NodeView[]): number;
+  parallelRouteMetres(
+    a: readonly number[], b: readonly number[], shared: readonly NodeView[], joinMetres?: number,
+  ): number;
 }
 
 describe('road graph owns each sustained corridor once', () => {
-  it('has no independent parallel duplicate across biome and seed variations', () => {
+  it('has no sustained parallel duplicate across biome and seed variations', () => {
     const biomes = ['temperate', 'desert', 'snow', 'urban'] as const;
     const failures: string[] = [];
 
@@ -72,9 +77,11 @@ describe('road graph owns each sustained corridor once', () => {
             if ((a.nodeB === b.nodeA || a.nodeB === b.nodeB) && a.nodeB !== a.nodeA) {
               shared.push(view.nodes[a.nodeB]);
             }
-            const ab = view.parallelRouteMetres(a.spline, b.spline, shared);
-            const ba = view.parallelRouteMetres(b.spline, a.spline, shared);
-            if (Math.max(ab, ba) >= 36) {
+            const sharedJoin = shared.length > 0 ? 11 : undefined;
+            const duplicateMetres = shared.length > 0 ? 8 : 36;
+            const ab = view.parallelRouteMetres(a.spline, b.spline, shared, sharedJoin);
+            const ba = view.parallelRouteMetres(b.spline, a.spline, shared, sharedJoin);
+            if (Math.max(ab, ba) >= duplicateMetres) {
               const rawAB = view.parallelRouteMetres(a.way, b.way, shared);
               const rawBA = view.parallelRouteMetres(b.way, a.way, shared);
               failures.push(`${biome}:${seed} chain ${a.id}:${a.cls}/${b.id}:${b.cls} `
@@ -113,6 +120,9 @@ describe('road graph owns each sustained corridor once', () => {
       }[];
       clipUnsafeCorridors(): void;
       trimChains(): void;
+      rasteriseMask(): void;
+      applyToTerrain(): void;
+      stampOpacity: Uint8Array;
     };
     const node = (id: number, x: number): unknown => ({
       id, x, z: 256, active: true, border: false, edges: [], arms: [], trimRadius: 0,
@@ -139,6 +149,34 @@ describe('road graph owns each sustained corridor once', () => {
     expect(west!.fade[Math.max(0, west!.fade.length - 10)]).toBeGreaterThan(0.9);
     expect(east!.fade[0]).toBeCloseTo(0, 8);
     expect(east!.fade[Math.min(9, east!.fade.length - 1)]).toBeGreaterThan(0.9);
+
+    // The gameplay mask keeps the dissolving corridor, but the terrain splat
+    // must stop before it. Otherwise the transparent asphalt reveals the pale
+    // paving/cobble layer as the bright gravel fan from the report.
+    view.rasteriseMask();
+    const stampAt = (x: number, z: number): number => {
+      const tx = Math.floor(x / ROAD_MASK_METRES);
+      const tz = Math.floor(z / ROAD_MASK_METRES);
+      return view.stampOpacity[tz * ROAD_MASK_N + tx];
+    };
+    const westEnd = west!.pts.length - 2;
+    expect(stampAt(west!.pts[westEnd], west!.pts[westEnd + 1])).toBeLessThan(255);
+    expect(stampAt(west!.pts[Math.max(0, westEnd - 20)], west!.pts[Math.max(1, westEnd - 19)]))
+      .toBe(255);
+
+    const paving: string[] = [];
+    const stampSurface = mutableTerrain as unknown as {
+      stampSurface(cx: number, cz: number, layer: SurfaceId, weight: number): void;
+      commitSplat(): void;
+    };
+    stampSurface.stampSurface = (cx, cz, layer): void => {
+      if (layer === SurfaceId.Paving) paving.push(`${cx},${cz}`);
+    };
+    stampSurface.commitSplat = (): void => {};
+    view.applyToTerrain();
+    expect(paving).not.toContain(
+      `${Math.floor(west!.pts[westEnd] / CELL)},${Math.floor(west!.pts[westEnd + 1] / CELL)}`,
+    );
 
     net.dispose();
     terrain.dispose();

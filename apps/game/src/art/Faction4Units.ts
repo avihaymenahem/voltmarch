@@ -1651,8 +1651,9 @@ export async function buildAndRegisterReclaimUnits(
   }
 
   const meshes = new Map<string, KindMesh>();
-  const infantryFamily = IMPORTED_INFANTRY_FAMILIES.find((family) => family.key === 'reclaim_picker');
-  if (infantryFamily !== undefined) {
+  const infantryFamilies = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
+    family.key === 'reclaim_picker' || family.key === 'reclaim_baron');
+  for (const infantryFamily of infantryFamilies) {
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => reclaimUnitLibrary.get(key),

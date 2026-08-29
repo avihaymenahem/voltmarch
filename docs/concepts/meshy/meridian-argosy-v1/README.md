@@ -42,5 +42,5 @@ PBR, ramp/waterline verification and WebGL/WebGPU gameplay validation.
 ## Production record
 
 - Geometry: `01a04e95-5955-774c-b693-c7b054a7960e` (20 credits)
-- PBR retexture: `01a04e99-3500-72de-a29f-bd09c18479ea` (10 credits)
-- Shipping: 24,409 triangles, 2.59 MiB KTX2 LOD0, 10,966/4,486-triangle LODs and 1,752-triangle shadow proxy
+- PBR retexture: `01a04ec9-aa22-74a3-98cc-fc3eee537276` (10 credits), using `material-reference-v2.png`
+- Shipping: 24,295 triangles, 3.49 MiB KTX2 LOD0, 10,918/4,821-triangle LODs and 1,752-triangle shadow proxy

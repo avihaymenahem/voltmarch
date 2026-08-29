@@ -796,7 +796,13 @@ const ATMOSPHERE_NOON = {
    */
   skyZenith: '#1F5FB4',
   skyHorizon: '#93BEE4',
-  skyGround: '#6E6252',
+  /**
+   * The lower sky hemisphere is what the camera sees beyond the square terrain.
+   * It is the out-of-map void, not a continuation of the biome. Keeping it
+   * black gives the battlefield a clean hard boundary instead of the old beige
+   * apron, while `hemiGround` above remains the independent material bounce.
+   */
+  skyGround: '#000000',
   /** Angular size of the sun disk in degrees. */
   sunDiskDeg: 0.6,
   /** Width of the bright haze band above the horizon, in degrees. */
@@ -1683,7 +1689,7 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
     },
     atmosphere: {
       fogColor: '#14203A', fogDensity: 0.014,
-      skyZenith: '#060C1A', skyHorizon: '#1A2A44', skyGround: '#0A0E14',
+      skyZenith: '#060C1A', skyHorizon: '#1A2A44', skyGround: '#000000',
       /** Night is the one mood where a cool fill is CORRECT: the light source
        *  genuinely is a blue sky. Kept dim so it tints without smearing. */
       hemiSky: '#2A3A5E', hemiSkyIntensity: 0.30,

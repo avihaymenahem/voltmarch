@@ -68,7 +68,7 @@
  *   buildProgress               | Production              | production
  *   footprintW/H                | spawn only              | production
  *   powerDraw                   | spawn / Economy         | economy
- *   recoil / animClip / animTime| render frame            | unit-art
+ *   recoil / animClip / animTime| render frame / Command  | unit-art / deploy visual
  *   emissive                    | render frame            | building-art
  *
  *   NOTE on `state`: the behaviour FSM is written by whichever phase owns that

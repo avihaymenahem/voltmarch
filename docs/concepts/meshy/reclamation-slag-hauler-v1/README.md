@@ -42,6 +42,7 @@ PBR, ramp/waterline verification and WebGL/WebGPU gameplay validation.
 ## Production record
 
 - Geometry: `01a04e95-5aa7-763a-a1b2-bbd9807f9069` (20 credits)
-- PBR retexture: `01a04e99-3638-76e2-8ff6-a594a49546e2` (10 credits)
-- Shipping: 24,605 triangles, 2.86 MiB KTX2 LOD0 and 1,512-triangle shadow proxy
+- PBR retexture: `01a04ecd-9c0c-70aa-85d9-00b3e9fe3af9` (10 credits), using the canonical graphite/violet `material-reference-v3.png`
+- Rejected palette pass: `01a04ec9-b8dc-72a9-b86c-95c63ea34d85` (10 credits); generic rust/orange was not integrated
+- Shipping: 24,135 triangles, 3.13 MiB KTX2 LOD0 and 1,512-triangle shadow proxy
 - Colour LODs were withheld because the simplifier failed the ratio gate.

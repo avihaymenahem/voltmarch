@@ -13,6 +13,7 @@ import { EntityStore } from '../src/core/world';
 import { EntityFlag, EntityKind, Faction, PartId } from '../src/core/types';
 import type { PlayerId } from '../src/core/types';
 import { DEFAULT_ART, INSTANCE_BATCH_INITIAL_CAPACITY } from '../src/core/config';
+import { DeployVisualClip } from '../src/core/DeployVisual';
 import { hexToLinearRgb, wrapAngle } from '../src/core/math';
 import {
   FACTION_ANY,
@@ -56,6 +57,17 @@ function meshes(scene: THREE.Scene): THREE.InstancedMesh[] {
 function translation(mesh: THREE.InstancedMesh, slot: number): [number, number, number] {
   const a = mesh.instanceMatrix.array;
   return [a[slot * 16 + 12], a[slot * 16 + 13], a[slot * 16 + 14]];
+}
+
+/** Length of each basis column = instance scale on that local axis. */
+function scale(mesh: THREE.InstancedMesh, slot: number): [number, number, number] {
+  const a = mesh.instanceMatrix.array;
+  const o = slot * 16;
+  return [
+    Math.hypot(a[o], a[o + 1], a[o + 2]),
+    Math.hypot(a[o + 4], a[o + 5], a[o + 6]),
+    Math.hypot(a[o + 8], a[o + 9], a[o + 10]),
+  ];
 }
 
 /* ========================================================================== */
@@ -165,6 +177,53 @@ describe('RenderBridge — imported WebGPU construction rise', () => {
     store.buildProgress[i] = 1;
     bridge.update(1);
     expect(translation(meshes(scene)[0], 0)[1]).toBeCloseTo(10, 5);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — MCV conversion', () => {
+  it('hydraulically folds a deploying vehicle instead of leaving it static', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 30, 5, 40, 0);
+    const i = store.index(id);
+    store.animClip[i] = DeployVisualClip.Fold;
+    store.animTime[i] = 0.5;
+    store.snapshotPrev();
+
+    bridge.update(1);
+    const mesh = meshes(scene)[0];
+    const [sx, sy, sz] = scale(mesh, 0);
+    expect(sx).toBeGreaterThan(1);
+    expect(sz).toBeGreaterThan(1);
+    expect(sy).toBeLessThan(0.7);
+    expect(translation(mesh, 0)[1]).toBeLessThan(5);
+    teardown(bridge);
+  });
+
+  it('raises the finished yard from below its pad, then restores authored transform', () => {
+    const { store, scene, bridge } = makeRig();
+    registerKindMesh(EntityKind.Building, Faction.Allies, {
+      geometry: new THREE.BoxGeometry(8, 10, 8),
+      material: new THREE.MeshStandardMaterial(),
+    }, 44);
+    const id = store.alloc(EntityKind.Building, 44, P0, Faction.Allies, 30, 10, 40, 0);
+    const i = store.index(id);
+    store.footprintW[i] = 4;
+    store.footprintH[i] = 4;
+    store.animClip[i] = DeployVisualClip.Rise;
+    store.animTime[i] = 0;
+    store.snapshotPrev();
+
+    bridge.update(1);
+    let mesh = meshes(scene)[0];
+    expect(translation(mesh, 0)[1]).toBeLessThan(5);
+    expect(scale(mesh, 0)[1]).toBeLessThan(0.35);
+
+    store.animTime[i] = 1;
+    bridge.update(1);
+    mesh = meshes(scene)[0];
+    expect(translation(mesh, 0)[1]).toBeCloseTo(10, 5);
+    expect(scale(mesh, 0)).toEqual([1, 1, 1]);
     teardown(bridge);
   });
 });

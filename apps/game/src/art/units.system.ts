@@ -381,8 +381,11 @@ export default defineSystem({
     // One KindMesh per model, cached: handing the SAME object to two factions
     // is how the bridge knows they can share one batch.
     const meshes = new Map<string, KindMesh>();
-    for (const family of IMPORTED_INFANTRY_FAMILIES.slice(0, 2)) {
-      const faction = family.key.startsWith('allied_') ? Faction.Allies : Faction.Soviets;
+    const sharedArmyInfantry = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
+      family.roles.every((role) =>
+        role.modelKey.startsWith('allied_') || role.modelKey.startsWith('soviet_')));
+    for (const family of sharedArmyInfantry) {
+      const faction = family.roles[0].modelKey.startsWith('allied_') ? Faction.Allies : Faction.Soviets;
       if (!isArtFactionPlanned(faction)) continue;
       try {
         const variants = await loadImportedInfantryFamily(family, (key) => unitLibrary.get(key));

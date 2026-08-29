@@ -25,6 +25,14 @@ for (let i = 0; i < pairs.length; i += 2) {
   const outputPath = pairs[i + 1];
   const rigged = await io.read(inputPath);
   const riggedPrimitive = singlePrimitive(rigged, path.basename(inputPath));
+  const obsoleteMaterial = riggedPrimitive.getMaterial();
+  const obsoleteTextures = obsoleteMaterial === null ? [] : [
+    obsoleteMaterial.getBaseColorTexture(),
+    obsoleteMaterial.getMetallicRoughnessTexture(),
+    obsoleteMaterial.getNormalTexture(),
+    obsoleteMaterial.getOcclusionTexture(),
+    obsoleteMaterial.getEmissiveTexture(),
+  ].filter((texture, index, all) => texture !== null && all.indexOf(texture) === index);
 
   if (rigged.getRoot().listSkins().length !== 1 || rigged.getRoot().listAnimations().length < 1) {
     throw new Error(`${inputPath} is missing its skin or animation.`);
@@ -32,6 +40,8 @@ for (let i = 0; i < pairs.length; i += 2) {
 
   transplantGeometry(rigged, riggedPrimitive, texturedPrimitive);
   riggedPrimitive.setMaterial(copyMaterial(rigged, texturedMaterial));
+  obsoleteMaterial?.dispose();
+  for (const texture of obsoleteTextures) texture.dispose();
   await io.write(outputPath, rigged);
 
   const output = await io.read(outputPath);

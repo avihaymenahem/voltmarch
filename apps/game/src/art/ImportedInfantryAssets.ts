@@ -1,8 +1,9 @@
 /**
- * Four authored infantry bodies, twelve gameplay roles, zero live skeletons.
+ * Eight authored infantry bodies, sixteen gameplay roles, zero live skeletons.
  *
- * Each faction loads one Meshy body in its authored run/fire stance. The rig is
- * sampled exactly once while the loading curtain is up, then discarded. The
+ * Each faction loads its shared line body and unique commander body in an
+ * authored gait stance. Each rig is sampled once while the loading curtain is
+ * up, then discarded. The
  * resulting ordinary BufferGeometry is shared by that faction's line,
  * specialist and engineer KindMeshes; role identity comes from the <=200-tri
  * code-native parts in @voltmarch/assets. RenderBridge therefore sees and
@@ -39,6 +40,8 @@ export interface ImportedInfantryFamily {
   clipUrl: string;
   roles: readonly ImportedInfantryRole[];
   poseTime: number;
+  /** Derive the cheap gait mask from the authored skin, keeping capes rigid. */
+  skinGait?: boolean;
   baseColorGain?: number;
   roughnessGain?: number;
   normalScale?: number;
@@ -90,6 +93,34 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
     ],
     baseColorGain: 1.12, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.50,
   },
+  {
+    key: 'allied_marshal', label: 'Allied Field Marshal', poseTime: 0.12, skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/allies/commanders/field-marshal-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/allies/commanders/field-marshal-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'allied_marshal', weapon: 'bullpup' }],
+    baseColorGain: 1.04, roughnessGain: 1.08, normalScale: 1.08, envMapIntensity: 0.56,
+  },
+  {
+    key: 'soviet_commissar', label: 'Soviet War Commissar', poseTime: 0.12, skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/soviets/commanders/war-commissar-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/soviets/commanders/war-commissar-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'soviet_commissar', weapon: 'rifle' }],
+    baseColorGain: 1.06, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.48,
+  },
+  {
+    key: 'meridian_hierarch', label: 'Meridian Hierarch', poseTime: 0.12, skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/meridian/commanders/hierarch-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/meridian/commanders/hierarch-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'meridian_hierarch', weapon: 'lance' }],
+    baseColorGain: 1.05, roughnessGain: 1.08, normalScale: 1.08, envMapIntensity: 0.56,
+  },
+  {
+    key: 'reclaim_baron', label: 'Reclamation Scrap Baron', poseTime: 0.12, skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/reclamation/commanders/scrap-baron-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/reclamation/commanders/scrap-baron-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'reclaim_baron', weapon: 'prod' }],
+    baseColorGain: 1.08, roughnessGain: 1.18, normalScale: 1.12, envMapIntensity: 0.46,
+  },
 ] as const;
 
 const loader = new GLTFLoader();
@@ -107,6 +138,7 @@ function bakePose(
   mesh: THREE.SkinnedMesh,
   animations: readonly THREE.AnimationClip[],
   time: number,
+  preserveSkin: boolean,
 ): THREE.BufferGeometry {
   const clip = animations[0];
   if (clip === undefined) throw new Error('authored infantry pose has no animation clip');
@@ -129,8 +161,10 @@ function bakePose(
     baked[i * 3 + 2] = vertex.z;
   }
   geometry.setAttribute('position', new THREE.BufferAttribute(baked, 3));
-  geometry.deleteAttribute('skinIndex');
-  geometry.deleteAttribute('skinWeight');
+  if (!preserveSkin) {
+    geometry.deleteAttribute('skinIndex');
+    geometry.deleteAttribute('skinWeight');
+  }
   geometry.deleteAttribute('tangent');
   // UV seams and authored hard edges already split the indexed vertices. A
   // normal rebuild on that topology follows the baked stance without the
@@ -144,7 +178,11 @@ function bakePose(
   return geometry;
 }
 
-function fitAndTagHumanoid(geometry: THREE.BufferGeometry, height: number): void {
+function fitAndTagHumanoid(
+  geometry: THREE.BufferGeometry,
+  height: number,
+  boneNames?: readonly string[],
+): void {
   geometry.computeBoundingBox();
   const bounds = geometry.boundingBox;
   if (bounds === null) throw new Error('authored infantry pose has no bounds');
@@ -156,6 +194,8 @@ function fitAndTagHumanoid(geometry: THREE.BufferGeometry, height: number): void
   geometry.computeBoundingBox();
 
   const position = geometry.getAttribute('position');
+  const skinIndex = geometry.getAttribute('skinIndex');
+  const skinWeight = geometry.getAttribute('skinWeight');
   const gait = new Float32Array(position.count * 2);
   const hipY = height * 0.415;
   const shoulderY = height * 0.77;
@@ -168,7 +208,27 @@ function fitAndTagHumanoid(geometry: THREE.BufferGeometry, height: number): void
     const y = position.getY(i);
     let sign = 0;
     let pivot = 0;
-    if (y <= height * 0.46 && Math.abs(x) >= legSide) {
+    if (boneNames !== undefined && skinIndex !== undefined && skinWeight !== undefined) {
+      let legWeight = 0;
+      let armWeight = 0;
+      const indices = [skinIndex.getX(i), skinIndex.getY(i), skinIndex.getZ(i), skinIndex.getW(i)];
+      const weights = [skinWeight.getX(i), skinWeight.getY(i), skinWeight.getZ(i), skinWeight.getW(i)];
+      for (let component = 0; component < 4; component++) {
+        const name = (boneNames[indices[component]] ?? '').toLowerCase();
+        const weight = weights[component];
+        if (/left(?:toe|foot|leg|upleg)/.test(name)) legWeight += weight;
+        else if (/right(?:toe|foot|leg|upleg)/.test(name)) legWeight -= weight;
+        else if (/left(?:hand|forearm|arm|shoulder)/.test(name)) armWeight -= weight;
+        else if (/right(?:hand|forearm|arm|shoulder)/.test(name)) armWeight += weight;
+      }
+      if (Math.abs(legWeight) >= 0.35) {
+        sign = Math.sign(legWeight);
+        pivot = hipY;
+      } else if (Math.abs(armWeight) >= 0.35) {
+        sign = Math.sign(armWeight);
+        pivot = shoulderY;
+      }
+    } else if (y <= height * 0.46 && Math.abs(x) >= legSide) {
       sign = x >= 0 ? 1 : -1;
       pivot = hipY;
     } else if (y >= height * 0.43 && y <= height * 0.88 && Math.abs(x) >= armSide) {
@@ -181,6 +241,8 @@ function fitAndTagHumanoid(geometry: THREE.BufferGeometry, height: number): void
   }
   if (positive === 0 || negative === 0) throw new Error('authored infantry gait did not resolve both sides');
   geometry.setAttribute('aGait', new THREE.BufferAttribute(gait, 2));
+  geometry.deleteAttribute('skinIndex');
+  geometry.deleteAttribute('skinWeight');
   geometry.computeBoundingSphere();
 }
 
@@ -237,8 +299,12 @@ export async function loadImportedInfantryFamily(
   if (Array.isArray(source.material) || !(source.material instanceof THREE.MeshStandardMaterial)) {
     throw new Error(`${family.label}: body must use one MeshStandardMaterial`);
   }
-  const body = bakePose(gltf.scene, source, clipGltf.animations, family.poseTime);
-  fitAndTagHumanoid(body, fallback.bounds[1]);
+  const body = bakePose(gltf.scene, source, clipGltf.animations, family.poseTime, family.skinGait === true);
+  fitAndTagHumanoid(
+    body,
+    fallback.bounds[1],
+    family.skinGait === true ? source.skeleton.bones.map((bone) => bone.name) : undefined,
+  );
   body.name = `${family.key}.imported.body`;
   runtimeGeometries.add(body);
 

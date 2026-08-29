@@ -224,7 +224,7 @@ async function selectFamily(family, requestedVariant = null) {
   ui['asset-title'].textContent = family.name;
   ui.badges.replaceChildren(
     badge(family.kind, true),
-    badge(`${family.variantCount} delivery${family.variantCount === 1 ? '' : 'ies'}`),
+    badge(`${family.variantCount} ${family.variantCount === 1 ? 'delivery' : 'deliveries'}`),
     ...(family.hasLods ? [badge('LOD family')] : []),
     ...(family.hasShadow ? [badge('Shadow proxy')] : []),
     ...(family.hasAnimations ? [badge('Rig + clips')] : []),
@@ -438,8 +438,14 @@ function bindUi() {
   ui['previous-asset'].addEventListener('click', () => stepAsset(-1));
   ui['next-asset'].addEventListener('click', () => stepAsset(1));
   ui['open-infantry-lab'].addEventListener('click', () => {
-    const faction = currentFamily.faction === 'soviets' ? 'soviets' : 'allies';
-    location.href = `./infantry.html?faction=${faction}&count=48`;
+    const isCommander = currentFamily.files.some((file) => file.directories.includes('commanders'));
+    const params = new URLSearchParams({
+      faction: currentFamily.faction,
+      unit: currentFamily.slug,
+      count: isCommander ? '1' : '48',
+      mode: isCommander ? 'single' : 'army',
+    });
+    location.href = `./infantry.html?${params}`;
   });
   window.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
