@@ -36,7 +36,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
@@ -293,6 +293,7 @@ installDom();
 import {
   AUTOSAVE_DEFER_LIMIT_TICKS,
   AUTOSAVE_GRACE_TICKS,
+  AUTOSAVE_IDLE_BUDGET_MS,
   AUTOSAVE_INTERVAL_TICKS,
   AUTOSAVE_MIN_GAP_TICKS,
   AUTOSAVE_SLOTS,
@@ -302,6 +303,7 @@ import {
   SavePanel,
   autosaveLabel,
   autosaveSlotId,
+  deferAutosaveCapture,
   errorText,
   formatBytes,
   formatCredits,
@@ -763,7 +765,7 @@ describe('autosave — deferral off a frame that is already behind', () => {
     expect(s.evaluate(sample(due + 6, { catchingUp: false })).act).toBe('save');
   });
 
-  it('gives up deferring rather than never autosaving on a slow machine', () => {
+  it('hands a persistently slow frame to the separate browser-idle queue', () => {
     const s = new AutosaveScheduler();
     s.reset(0);
     const due = AUTOSAVE_INTERVAL_TICKS;
@@ -1359,5 +1361,63 @@ describe('a slot card', () => {
     expect(card.text()).toContain('The Timetable');
     expect(card.text()).toContain('Sounding Line');
     expect(card.text()).toContain('Temperate Valley');
+  });
+});
+
+describe('autosave — atomic capture waits behind paint and input', () => {
+  it('re-arms a timed-out idle callback instead of forcing a known hitch', () => {
+    const callbacks = new Map<number, IdleRequestCallback>();
+    let next = 1;
+    const w = window as Window & typeof globalThis;
+    w.requestIdleCallback = (callback): number => {
+      const id = next++;
+      callbacks.set(id, callback);
+      return id;
+    };
+    w.cancelIdleCallback = (id): void => { callbacks.delete(id); };
+    const work = vi.fn();
+
+    const cancel = deferAutosaveCapture(work);
+    const first = callbacks.get(1) as IdleRequestCallback;
+    callbacks.delete(1);
+    first({ didTimeout: true, timeRemaining: () => 0 });
+    expect(work).not.toHaveBeenCalled();
+    expect(callbacks.size).toBe(1);
+
+    const second = callbacks.values().next().value as IdleRequestCallback;
+    second({ didTimeout: false, timeRemaining: () => AUTOSAVE_IDLE_BUDGET_MS });
+    expect(work).toHaveBeenCalledOnce();
+    cancel(); // settled cancellation is harmless
+    delete (w as Partial<Window>).requestIdleCallback;
+    delete (w as Partial<Window>).cancelIdleCallback;
+  });
+
+  it('cancels a queued capture when its match goes away', () => {
+    const callbacks = new Map<number, IdleRequestCallback>();
+    const w = window as Window & typeof globalThis;
+    w.requestIdleCallback = (callback): number => { callbacks.set(7, callback); return 7; };
+    w.cancelIdleCallback = (id): void => { callbacks.delete(id); };
+    const work = vi.fn();
+
+    deferAutosaveCapture(work)();
+    expect(callbacks.size).toBe(0);
+    expect(work).not.toHaveBeenCalled();
+    delete (w as Partial<Window>).requestIdleCallback;
+    delete (w as Partial<Window>).cancelIdleCallback;
+  });
+
+  it('the live shell queues autosaves but keeps paused manual saves immediate', () => {
+    const src = readFileSync(join(ROOT, 'apps/game/src/shell/Shell.ts'), 'utf8');
+    const autoStart = src.indexOf('private pollAutosave(');
+    const autoEnd = src.indexOf('\n  private cancelQueuedAutosave(', autoStart);
+    const auto = src.slice(autoStart, autoEnd);
+    expect(auto.indexOf('deferAutosaveCapture(')).toBeGreaterThan(-1);
+    expect(auto.indexOf('svc.save({')).toBeGreaterThan(auto.indexOf('deferAutosaveCapture('));
+
+    const manualStart = src.indexOf('async saveGame(');
+    const manualEnd = src.indexOf('\n  /**\n   * Restore a slot', manualStart);
+    const manual = src.slice(manualStart, manualEnd);
+    expect(manual).toContain("kind: 'manual'");
+    expect(manual).not.toContain('deferAutosaveCapture(');
   });
 });

@@ -160,6 +160,7 @@ import {
   AutosaveScheduler,
   LoadGameScreen,
   autosaveLabel,
+  deferAutosaveCapture,
   errorText,
   saveService,
   unwrap,
@@ -988,6 +989,8 @@ export class Shell {
     tick: 0, catchingUp: false, paused: false, canSave: false, objectivesComplete: 0,
   };
   private autosaveAccum = 0;
+  /** Cancels a due snapshot that is waiting behind paint/input for idle time. */
+  private autosaveIdleCancel: (() => void) | null = null;
   /** True while a save is in flight, so the poll cannot start a second one. */
   private saving = false;
   /** Wall milliseconds the last snapshot took, for the perf report. 0 = none. */
@@ -2112,6 +2115,7 @@ export class Shell {
       this.matchStartMs = performance.now();
       this.outcomeAccum = 0;
       this.autosaveAccum = 0;
+      this.cancelQueuedAutosave();
       // A new match is a new schedule. The rotation cursor deliberately does
       // NOT reset — see `AutosaveScheduler.reset` — so restarting twice does
       // not keep overwriting the same slot.
@@ -2544,6 +2548,10 @@ export class Shell {
     if (svc === null) throw new Error('The save system is not available in this build.');
     if (context === null) throw new Error('There is no match to save.');
     if (this.tutorial !== null) throw new Error('A tutorial run cannot be saved.');
+    // A paused manual save is allowed to supersede an automatic snapshot that
+    // has not begun. The manual path is immediate because the simulation is
+    // already frozen behind the pause panel.
+    this.cancelQueuedAutosave();
     if (this.saving) throw new Error('A save is already in progress.');
 
     this.saving = true;
@@ -2723,6 +2731,7 @@ export class Shell {
     if (this.disposed) return;
     this.disposed = true;
     updateDesktopPointerLock(false);
+    this.cancelQueuedAutosave();
     this.cancelScheduledBackdrop();
     cancelAnimationFrame(this.rafHandle);
     window.removeEventListener('keydown', this.onKeyDown, { capture: true });
@@ -2999,6 +3008,7 @@ export class Shell {
    * ordering inside Bootstrap, which this agent does not own.
    */
   private disposeGame(game: GameHandle): void {
+    this.cancelQueuedAutosave();
     try {
       game.ctx.registry.dispose();
     } catch (err) {
@@ -3756,7 +3766,7 @@ export class Shell {
     if (game === null || this.backdrop) return;
     // A tutorial run is not a match worth restoring. See `Shell.canSave`.
     if (this.tutorial !== null) return;
-    if (this.saving) return;
+    if (this.saving || this.autosaveIdleCancel !== null) return;
 
     this.autosaveAccum += dt;
     if (this.autosaveAccum < 0.5) return;
@@ -3783,39 +3793,54 @@ export class Shell {
     const decision = this.autosave.evaluate(s);
     if (decision.act !== 'save') return;
 
-    const context = this.saveContext();
-    if (context === null) return;
+    const queuedGame = game;
+    this.autosaveIdleCancel = deferAutosaveCapture(() => {
+      this.autosaveIdleCancel = null;
 
-    const tick = s.tick;
-    const label = autosaveLabel(decision.trigger, loop.simTime);
-    this.saving = true;
-    const started = performance.now();
-    svc.save({
-      kind: 'auto',
-      label,
-      context,
-      slotId: decision.slotId,
-      // NO THUMBNAIL. A canvas readback mid-match is exactly the hitch this
-      // whole deferral mechanism exists to avoid — see the LoadGame.ts header.
-      thumbnail: false,
-    }).then((result) => {
-      // A refusal is a value here, not a throw — see `unwrap`. It must land in
-      // the rejection path or a store that is out of quota would toast
-      // "Autosaved" forever while writing nothing.
-      const meta = unwrap(result);
-      this.saving = false;
-      this.lastSaveMs = performance.now() - started;
-      this.lastSaveBytes = meta.bytes;
-      this.autosave.committed(tick);
-      this.toast(`Autosaved · ${formatSlotName(decision.slotId)}`, false);
-    }).catch((err: unknown) => {
-      this.saving = false;
-      // A save that fails must SAY so. Silence here is indistinguishable from
-      // a working autosave, and the player finds out at the worst moment.
-      this.autosave.failed(tick);
-      console.error('[shell] autosave failed', err);
-      this.toast(`Autosave failed — ${errorText(err)}`, true);
+      // Idle time may arrive after a pause, teardown or replacement boot. A
+      // callback holding the old service must never snapshot the new match.
+      if (this.disposed || this.game !== queuedGame || this.state !== 'playing') return;
+      if (queuedGame.ctx.loop.paused || saveService() !== svc) return;
+      const context = this.saveContext();
+      if (context === null) return;
+
+      const captureTick = queuedGame.ctx.loop.tick;
+      const label = autosaveLabel(decision.trigger, queuedGame.ctx.loop.simTime);
+      this.saving = true;
+      const started = performance.now();
+      svc.save({
+        kind: 'auto',
+        label,
+        context,
+        slotId: decision.slotId,
+        // NO THUMBNAIL. A canvas readback mid-match is exactly the hitch this
+        // whole deferral mechanism exists to avoid — see the LoadGame.ts header.
+        thumbnail: false,
+      }).then((result) => {
+        // A refusal is a value here, not a throw — see `unwrap`. It must land in
+        // the rejection path or a store that is out of quota would toast
+        // "Autosaved" forever while writing nothing.
+        const meta = unwrap(result);
+        this.saving = false;
+        this.lastSaveMs = performance.now() - started;
+        this.lastSaveBytes = meta.bytes;
+        this.autosave.committed(meta.tick ?? captureTick);
+        this.toast(`Autosaved · ${formatSlotName(decision.slotId)}`, false);
+      }).catch((err: unknown) => {
+        this.saving = false;
+        // A save that fails must SAY so. Silence here is indistinguishable from
+        // a working autosave, and the player finds out at the worst moment.
+        this.autosave.failed(captureTick);
+        console.error('[shell] autosave failed', err);
+        this.toast(`Autosave failed — ${errorText(err)}`, true);
+      });
     });
+  }
+
+  /** Drop only work that has not begun; an in-flight store write is untouched. */
+  private cancelQueuedAutosave(): void {
+    this.autosaveIdleCancel?.();
+    this.autosaveIdleCancel = null;
   }
 
   /**
