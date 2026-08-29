@@ -37,7 +37,9 @@ import { SIM_DT } from '../src/core/config';
 import { ProductionCatalog, ProductionService, setProduction } from '../src/sim/Production';
 import type { BuildEntry } from '../src/sim/Production';
 import { GarrisonService } from '../src/sim/Garrison';
-import { TransportService, setTransportService } from '../src/sim/Transport';
+import {
+  TransportService, carrierMayAnswerPickup, setTransportService,
+} from '../src/sim/Transport';
 
 import { DEF_TABLES, UNITS } from '../src/data/Defs';
 
@@ -384,6 +386,21 @@ describe('boarding', () => {
     const hull = rig.unit('transport', ALLIES, 300, 300);
     expect(bare.capacity(hull)).toBe(0);
     expect(rig.transport.capacity(hull)).toBe(8);
+  });
+});
+
+describe('shore pickup order arbitration', () => {
+  it('lets an idle hull answer after a completed combat order', () => {
+    // Steering intentionally leaves the completed intent in `orderKind`; live
+    // state, not that stale ledger entry, says whether boarding may call it in.
+    expect(carrierMayAnswerPickup(UnitState.Idle, OrderKind.Attack)).toBe(true);
+    expect(carrierMayAnswerPickup(UnitState.Idle, OrderKind.Guard)).toBe(true);
+  });
+
+  it('does not steal a hull from live combat or an explicit unload', () => {
+    expect(carrierMayAnswerPickup(UnitState.Attacking, OrderKind.Attack)).toBe(false);
+    expect(carrierMayAnswerPickup(UnitState.Guarding, OrderKind.Guard)).toBe(false);
+    expect(carrierMayAnswerPickup(UnitState.Idle, OrderKind.Unload)).toBe(false);
   });
 });
 

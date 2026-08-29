@@ -31,9 +31,9 @@
  *
  * SCORING, IN ONE SENTENCE
  * ------------------------
- * Prefer things that shoot back, things you can actually hurt, things that hurt
- * you recently, wounded things, and near things — in that order of weight, with
- * structures last unless they are defences.
+ * Prefer aircraft when carrying full-strength AA, things that shoot back,
+ * things you can actually hurt, things that hurt you recently, wounded things,
+ * and near things — with structures last unless they are defences.
  *
  * THE APPROACH: WHY THE TARGETING PASS MOVES UNITS
  * ------------------------------------------------
@@ -830,6 +830,14 @@ export class TargetingSystem {
 
       let score = 1;
       if ((tf & EntityFlag.CanAttack) !== 0) score *= COMBAT_TARGETING.armedTarget;
+      // Full-strength AA must actually prefer the air layer. Eligibility alone
+      // was not enough: a Flak Trooper or defensive aircraft would spend its
+      // lock on a slightly nearer ground unit while an aircraft crossed the
+      // same sight envelope. Line rifles keep their authored 0.25 emergency-AA
+      // role and therefore remain ground-first.
+      if (isAirborne(st, t) && w.canTargetAir && w.airMultiplier >= 1) {
+        score *= COMBAT_TARGETING.airTarget;
+      }
       if (kind === EntityKind.Building) {
         score *= (tf & EntityFlag.CanAttack) !== 0
           ? COMBAT_TARGETING.defenceBuilding

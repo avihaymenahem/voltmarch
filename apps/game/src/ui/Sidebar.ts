@@ -2069,6 +2069,8 @@ class SelectionPanel {
     this.cargoButton.title = action.hint;
     this.cargoButton.setAttribute('aria-label', `Unload — ${action.hint}`);
     this.cargoButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.cargoRow.classList.toggle('is-ready', action.enabled);
+    this.cargoButton.classList.toggle('is-ready', action.enabled);
     this.cargoButton.style.opacity = action.enabled ? '1' : '0.4';
   }
 

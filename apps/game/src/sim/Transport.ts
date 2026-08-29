@@ -137,6 +137,21 @@ export const TRANSPORT = {
 } as const;
 
 /**
+ * Whether boarding may divert a carrier toward a stranded passenger.
+ *
+ * `orderKind` is an intent ledger, not a live-state flag: Steering deliberately
+ * leaves the completed order recorded after a hull becomes Idle. Reading that
+ * column alone made a carrier that had ever attacked or guarded permanently
+ * refuse a later pickup. Live Attacking/Guarding/etc. states still win, and an
+ * explicit Unload is protected even though it is consumed while the hull is
+ * idle. Carrier nesting remains rejected separately by `refusalFor`.
+ */
+export function carrierMayAnswerPickup(state: UnitState, order: OrderKind): boolean {
+  if (order === OrderKind.Unload) return false;
+  return state === UnitState.Idle || state === UnitState.Moving;
+}
+
+/**
  * What one passenger costs, by `EntityKind`.
  *
  * A slot is the unit of cargo, not a seat: infantry cost one and a vehicle
@@ -473,8 +488,9 @@ export class TransportService {
    * passenger can reach it, so a beached amphibious lift is left alone and the
    * same code brings in a Sandskiff that happens to be out at sea.
    *
-   * It overrides only `None` and `Move`. A hull that is unloading, attacking or
-   * deploying is doing something the player asked for more recently.
+   * It overrides an idle hull's stale completed order, or its current Move.
+   * A hull actively attacking, guarding, deploying, repairing or unloading is
+   * doing something the player asked for more recently and keeps that work.
    */
   private callHullIn(i: number, t: number): void {
     const st = this.world.store;
@@ -486,8 +502,10 @@ export class TransportService {
     const hcz = worldToCell(st.posZ[t]);
     if (isInMap(hcx, hcz) && world.terrain.isPassable(hcx, hcz, loco)) return;
 
-    const k = st.orderKind[t] as OrderKind;
-    if (k !== OrderKind.None && k !== OrderKind.Move) return;
+    if (!carrierMayAnswerPickup(
+      st.state[t] as UnitState,
+      st.orderKind[t] as OrderKind,
+    )) return;
 
     // ONE diversion per hull per tick. Five men boarding one carrier would
     // otherwise write five destinations, and each write restarts the path.

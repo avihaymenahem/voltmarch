@@ -197,6 +197,26 @@ function rig(armies: number): Rig {
 /* ========================================================================== */
 
 describe('Minimap — the alert ring is coloured by seat, like everything else', () => {
+  it('keeps an explicit presentation-only ping gesture while orders are valid', () => {
+    const r = rig(2);
+    const ping = vi.fn();
+    const order = vi.fn(() => true);
+    const preventDefault = vi.fn();
+    r.map.onPingRequest(ping);
+    r.map.onOrderRequest(order);
+
+    r.canvas.dispatch('pointerdown', {
+      button: 1, clientX: MAP_CELLS / 2, clientY: MAP_CELLS / 4,
+      pointerId: 2, preventDefault,
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(ping).toHaveBeenCalledWith(256, 128);
+    expect(order, 'a ping is presentation, not a gameplay order').not.toHaveBeenCalled();
+    expect(r.canvas.title).toContain('Middle-click ping allies');
+    r.map.dispose();
+  });
+
   it('routes right-click through the presentation callback, not the camera jump', () => {
     const r = rig(2);
     const ping = vi.fn();
