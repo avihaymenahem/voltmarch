@@ -777,6 +777,12 @@ const RATE_NO_SAMPLE = 0;
 /** `rate` sentinel: measured, and the build is not moving. Show nothing. */
 const RATE_STALLED = -1;
 
+/** Authored build time adjusted by the live queue-rate multiplier. */
+export function effectiveBuildSeconds(baseSeconds: number, rate: number): number {
+  if (!(baseSeconds > 0)) return 0;
+  return baseSeconds / Math.max(0.05, rate);
+}
+
 /**
  * Seconds left on a build, derived from how fast it is ACTUALLY progressing.
  *
@@ -2292,6 +2298,8 @@ class BuildPanel {
   private briefKey = '';
 
   private activeTab: BuildTab = BuildTab.Structures;
+  /** Same live rate multiplier BuildQueue uses for the active tab. */
+  private currentBuildRate = 1;
   /**
    * Which tabs are on screen, in `BuildTab` order.
    *
@@ -2805,7 +2813,8 @@ class BuildPanel {
    */
   private estimateEta(slot: BuildSlot, c: HudCameo, simSec: number): number {
     // SIM TIME, NOT `performance.now()`. See the header of `estimateBuildEta`.
-    return estimateBuildEta(slot, c.progress, c.ready, slot.buildTime, simSec * 1000);
+    const effectiveTime = effectiveBuildSeconds(slot.buildTime, this.currentBuildRate);
+    return estimateBuildEta(slot, c.progress, c.ready, effectiveTime, simSec * 1000);
   }
 
   /**
@@ -2875,10 +2884,12 @@ class BuildPanel {
     // is the one that got the paragraph. See `BuildExtras.description`.
     const extra = this.extras?.(c.key)
       ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', description: '', prereq: '', unlockHint: '' };
+    const effectiveTime = effectiveBuildSeconds(extra.buildTimeSec, this.currentBuildRate);
     return {
       title: c.name,
       cost: c.cost,
-      buildTimeSec: extra.buildTimeSec,
+      buildTimeSec: effectiveTime,
+      baseBuildTimeSec: extra.buildTimeSec,
       powerDelta: extra.powerDelta,
       blurb: extra.blurb,
       prereq: extra.prereq,
@@ -2919,6 +2930,7 @@ class BuildPanel {
       // A tab swap re-points every slot; invalidate so `key` comparison fires.
       for (const slot of this.slots) { slot.key = ''; slot.sig = ''; }
     }
+    this.currentBuildRate = snap.buildRateByTab[this.activeTab as number] ?? 1;
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const alert = this.tabAlerts[t];
       const on = snap.tabAlert[t] === true;

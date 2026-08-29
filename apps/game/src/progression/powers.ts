@@ -179,7 +179,7 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
     id: CommanderPowerId.Chronoshift,
     key: 'chronoshift',
     label: 'Chronoshift',
-    hint: 'Teleports the units guarding your base to the marker.',
+    hint: 'Moves up to 8 allied units within 40 m of your base centre to the destination.',
     radius: 30,
     chargeSeconds: 240,
   },

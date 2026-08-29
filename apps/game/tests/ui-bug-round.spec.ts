@@ -38,4 +38,11 @@ describe('UI bug round', () => {
     expect(css).toContain('grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));');
     expect(css).toContain('.vm-menu-nav > .vm-btn.is-primary');
   });
+
+  it('surfaces the exact production refusal when a blocked cameo is clicked', () => {
+    const hud = source('ui/Hud.ts');
+    expect(hud).toContain("`Cannot build ${cameo.name}`");
+    expect(hud).toContain('lockedSentence(cameo.reason');
+    expect(hud).toContain("`build-blocked:${cameo.key}`");
+  });
 });

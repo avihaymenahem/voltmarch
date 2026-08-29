@@ -22,7 +22,7 @@ import {
 } from '../src/core/types';
 import type { Command, EntityId, ITerrain, PlayerId } from '../src/core/types';
 
-import { CursorKind } from '../src/input/Input';
+import { CursorKind, uiOwnsNavigation } from '../src/input/Input';
 import { CaptureService, captureService, setCaptureService } from '../src/sim/Capture';
 import {
   Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
@@ -166,6 +166,20 @@ function resolveAt(rig: Rig, hover: EntityId, x: number, z: number, mods = {
 beforeEach(() => {
   setRoleResolver(null);
   setOrderExecutionEnabled(true);
+});
+
+describe('keyboard focus ownership', () => {
+  it('keeps arrow navigation on focused interface controls and off the map', () => {
+    const button = { tagName: 'BUTTON', closest: () => null } as unknown as EventTarget;
+    const gridCell = {
+      tagName: 'DIV',
+      closest: (selector: string) => selector.includes('[role="gridcell"]') ? {} : null,
+    } as unknown as EventTarget;
+    expect(uiOwnsNavigation(button, 'ArrowRight')).toBe(true);
+    expect(uiOwnsNavigation(gridCell, 'ArrowDown')).toBe(true);
+    expect(uiOwnsNavigation(button, 'KeyQ')).toBe(false);
+    expect(uiOwnsNavigation(null, 'ArrowLeft')).toBe(false);
+  });
 });
 
 /* ==========================================================================

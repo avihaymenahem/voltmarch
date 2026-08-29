@@ -115,6 +115,19 @@ export function factorySpeed(factoryCount: number): number {
   return Math.min(FACTORY_SPEED_CAP, 1 + FACTORY_SPEED_BONUS * (factoryCount - 1));
 }
 
+/**
+ * Progress-per-second multiplier for one production tab under its live power,
+ * factory-count and upgrade state.
+ *
+ * The HUD reads this same derivation so an authored 8-second build in a total
+ * blackout is presented as the roughly 32-second build the queue will deliver.
+ */
+export function effectiveBuildRate(player: PlayerState, factoryCount: number): number {
+  return Math.max(0.05, player.buildSpeedMul)
+    * factorySpeed(factoryCount)
+    * upgradeGlobalMul(player, UpgradeLever.BuildSpeed);
+}
+
 /** Flat index into the per-(player, tab) side arrays. */
 function slotOf(player: PlayerState, tab: BuildTab): number {
   return (player.id as number) * BUILD_TAB_COUNT + (tab as number);
@@ -379,9 +392,7 @@ export class BuildQueues {
     // upgrade the player bought. The clamp stays on the POWER term alone —
     // config's "Never zero, that is a soft lock" is about a blackout, and an
     // upgrade multiplier is never below 1.
-    const speed = Math.max(0.05, player.buildSpeedMul)
-      * factorySpeed(q.factoryCount)
-      * upgradeGlobalMul(player, UpgradeLever.BuildSpeed);
+    const speed = effectiveBuildRate(player, q.factoryCount);
     let dProgress = (dt * speed) / info.buildTime;
     const remaining = 1 - item.progress;
     if (dProgress > remaining) dProgress = remaining;

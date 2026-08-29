@@ -31,6 +31,14 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
+## Maps
+
+- **Larger battlefields.** *(untracked — noted from tester feedback; explicitly deferred from the
+  current bug-fix round)* Revisit map dimensions only with terrain generation, start clearance,
+  camera limits, AI/pathfinding cost, ore density and multiplayer determinism measured together.
+
+---
+
 ## Renderer and docs
 
 No open renderer/doc implementation items remain from this round. WebGPU GPU time now comes from

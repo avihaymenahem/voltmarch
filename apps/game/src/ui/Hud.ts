@@ -103,6 +103,7 @@ import {
   SLOT_HOTKEY_CODES,
   Sidebar,
   TAB_HOTKEY_CODES,
+  lockedSentence,
   powerStateOf,
   type AbilityAction,
   type AdviceKind,
@@ -1114,6 +1115,7 @@ export class Hud {
       brownout: false,
       hasRadar: false,
       activeTab: BuildTab.Structures,
+      buildRateByTab: [1, 1, 1, 1, 1],
       cameos: [[], [], [], [], []],
       tabAlert: [false, false, false, false, false],
       // THE FALLBACK GRID NEVER SHOWS THE POWERS TAB. It runs when no
@@ -1596,6 +1598,9 @@ export class Hud {
 
     if (!cameo.available) {
       this.soundHook?.('error');
+      const extra = this.extrasFor(cameo.key);
+      const reason = lockedSentence(cameo.reason || 'Unavailable', extra.unlockHint);
+      this.toast('warn', `build-blocked:${cameo.key}`, `Cannot build ${cameo.name}`, reason);
       return;
     }
     if (p.credits < cameo.cost) {
@@ -1883,6 +1888,12 @@ export class Hud {
     snap.brownout = p.powerConsumed > p.powerProduced;
     snap.hasRadar = p.hasRadar || this.world.vision.hasRadar(this.world.localPlayer);
     snap.activeTab = this.localTab;
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      // Until the real production snapshot publishes, power is the only live
+      // rate term this fallback can know. A one-factory estimate is more
+      // truthful than always claiming full speed during a blackout.
+      snap.buildRateByTab[t] = Math.max(0.05, p.buildSpeedMul);
+    }
     snap.selectionCount = this.world.selection.count;
     snap.selectionPrimary = (this.world.selection.count > 0
       ? this.world.selection.ids[0] : 0) as EntityId;
@@ -2860,7 +2871,7 @@ export class Hud {
     superweaponSeam()?.cancelArm();
     this.armedPowerId = row.id;
     row.armed = true;
-    this.toast('info', `power:${key}`, row.label, 'Pick a target on the map');
+    this.toast('info', `power:${key}`, row.label, `${row.hint} Click the destination on the map.`);
   }
 
   /**

@@ -393,6 +393,8 @@ export interface TooltipContent {
   cost: number;
   /** Seconds. 0 hides the row. */
   buildTimeSec: number;
+  /** Authored full-power, one-factory time when buildTimeSec is a live estimate. */
+  baseBuildTimeSec?: number;
   /** Power delta. 0 hides the row. */
   powerDelta: number;
   blurb: string;
@@ -483,7 +485,14 @@ export class Tooltip {
     this.costNode.nodeValue = c.cost > 0 ? `${formatCost(c.cost)} CR` : '';
     this.costEl.hidden = c.cost <= 0;
 
-    this.timeNode.nodeValue = c.buildTimeSec > 0 ? `${c.buildTimeSec.toFixed(0)}s BUILD` : '';
+    const baseTime = c.baseBuildTimeSec ?? c.buildTimeSec;
+    const adjusted = c.buildTimeSec > 0 && baseTime > 0
+      && Math.abs(c.buildTimeSec - baseTime) >= 0.5;
+    this.timeNode.nodeValue = c.buildTimeSec > 0
+      ? adjusted
+        ? `${c.buildTimeSec.toFixed(0)}s NOW · ${baseTime.toFixed(0)}s BASE`
+        : `${c.buildTimeSec.toFixed(0)}s BUILD`
+      : '';
     this.timeEl.hidden = c.buildTimeSec <= 0;
 
     this.powerNode.nodeValue = c.powerDelta !== 0

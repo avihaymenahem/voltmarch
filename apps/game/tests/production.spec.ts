@@ -21,7 +21,7 @@ import {
   BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAX_QUEUE_DEPTH, PLACEMENT, PRODUCTION, SIM_DT,
 } from '../src/core/config';
 
-import { BuildQueues, HoldReason, factorySpeed } from '../src/sim/BuildQueue';
+import { BuildQueues, HoldReason, effectiveBuildRate, factorySpeed } from '../src/sim/BuildQueue';
 import type { QueueHooks, QueueItemInfo } from '../src/sim/BuildQueue';
 import {
   BuildKind, ProductionCatalog, ProductionService, UNIT_PUBLIC_ID_BASE,
@@ -282,6 +282,13 @@ describe('BuildQueues', () => {
     expect(factorySpeed(1)).toBe(1);
     expect(factorySpeed(2)).toBeCloseTo(1.35, 5);
     expect(factorySpeed(20)).toBe(2.0);
+  });
+
+  it('publishes the same live rate the queue uses during a blackout', () => {
+    const { player } = rig();
+    player.buildSpeedMul = 0.25;
+    expect(effectiveBuildRate(player, 1)).toBe(0.25);
+    expect(8 / effectiveBuildRate(player, 1)).toBe(32);
   });
 });
 

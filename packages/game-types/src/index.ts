@@ -1625,6 +1625,12 @@ export interface HudSnapshot {
   brownout: boolean;
   hasRadar: boolean;
   activeTab: BuildTab;
+  /**
+   * Current progress-per-second multiplier for each production tab.
+   * 1 means the authored full-power, one-factory time is exact; 0.25 means the
+   * same item currently takes four times as long.
+   */
+  buildRateByTab: number[];
   cameos: HudCameo[][];
   /** Per-tab "something finished" badge. */
   tabAlert: boolean[];

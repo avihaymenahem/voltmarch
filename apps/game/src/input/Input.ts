@@ -224,6 +224,22 @@ function isTextTarget(t: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
+/**
+ * True when an arrow key belongs to focused interface chrome rather than the
+ * battlefield camera. Build slots and menu buttons are ordinary DOM controls;
+ * after clicking one, their bubbled keydown used to enter `keys` as well as
+ * moving focus, so one ArrowRight both navigated the menu and panned the map.
+ */
+export function uiOwnsNavigation(t: EventTarget | null, code: string): boolean {
+  if (code !== 'ArrowLeft' && code !== 'ArrowRight'
+    && code !== 'ArrowUp' && code !== 'ArrowDown') return false;
+  if (t === null) return false;
+  const el = t as HTMLElement;
+  if (el.tagName === 'BUTTON' || el.tagName === 'A') return true;
+  return typeof el.closest === 'function'
+    && el.closest('[role="button"], [role="tab"], [role="gridcell"], [role="menuitem"], [role="listbox"]') !== null;
+}
+
 /* ==========================================================================
  * 3. THE INPUT MANAGER
  * ========================================================================== */
@@ -651,7 +667,10 @@ export class InputManager {
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (isTextTarget(e.target)) return;
+    // A target-level menu/grid handler may already have consumed the key by
+    // the time it bubbles to this window listener. Either way, UI navigation
+    // must never latch a simultaneous camera pan.
+    if (e.defaultPrevented || isTextTarget(e.target) || uiOwnsNavigation(e.target, e.code)) return;
     this.readModifiers(e);
     const repeat = this.keys.has(e.code) || e.repeat;
     this.keys.add(e.code);

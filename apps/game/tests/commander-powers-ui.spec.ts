@@ -230,6 +230,13 @@ describe('commander powers — the bar has a row for every power', () => {
       expect(spec.chargeSeconds, `${spec.key} has no charge`).toBeGreaterThan(0);
     }
   });
+
+  it('explains Chronoshift pickup, cap and destination instead of only naming it', () => {
+    const hint = COMMANDER_POWERS[CommanderPowerId.Chronoshift].hint;
+    expect(hint).toContain('up to 8');
+    expect(hint).toContain('within 40 m');
+    expect(hint).toContain('destination');
+  });
 });
 
 /* ========================================================================== */

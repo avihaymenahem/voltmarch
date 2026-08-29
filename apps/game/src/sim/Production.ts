@@ -104,7 +104,9 @@ import { MoveClass } from './Flowfield';
 // the header of `NavalWater.ts`, where two copies already had to be reconciled.
 import { mapSupportsNaval } from './NavalWater';
 
-import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
+import {
+  BuildQueues, HoldReason, effectiveBuildRate, type QueueHooks, type QueueItemInfo,
+} from './BuildQueue';
 import {
   PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
   normaliseFacing, placementReport, yawToFacing,
@@ -1345,7 +1347,7 @@ const CONTENT: readonly ContentSpec[] = [
   },
   {
     key: 'power.chronoshift', name: 'Chronoshift',
-    blurb: 'Teleports the units guarding your base to the marker.',
+    blurb: 'Moves up to 8 allied units near your base to a chosen destination.',
     kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
     cost: 2500, buildTime: 30, prereqs: [], sortOrder: 50,
   },
@@ -2157,6 +2159,7 @@ export class ProductionService implements QueueHooks {
       credits: 0, creditsDisplay: 0,
       powerProduced: 0, powerConsumed: 0, brownout: false, hasRadar: false,
       activeTab: BuildTab.Structures,
+      buildRateByTab: [1, 1, 1, 1, 1],
       cameos: [[], [], [], [], []],
       tabAlert: [false, false, false, false, false],
       // The four original tabs are always on screen; Powers is written every
@@ -4183,6 +4186,9 @@ export class ProductionService implements QueueHooks {
     snap.selectionPrimary = world.selection.count > 0
       ? (world.selection.ids[0] as EntityId) : NONE;
     snap.gameTimeSec = s.time;
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      snap.buildRateByTab[t] = effectiveBuildRate(p, p.queues[t].factoryCount);
+    }
     // THE TAB APPEARS AND DISAPPEARS WITH THE STRUCTURE. `factories[Powers]`
     // counts completed, POWERED Command Posts (see `census`), so this is one
     // read and it is already the exact condition the entries in the tab are

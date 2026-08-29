@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { estimateBuildEta, type EtaSampler } from '../src/ui/Sidebar';
+import { effectiveBuildSeconds, estimateBuildEta, type EtaSampler } from '../src/ui/Sidebar';
 
 function sampler(): EtaSampler {
   return { lastProgress: -1, lastAt: 0, rate: 0 };
@@ -42,6 +42,11 @@ function run(
 }
 
 describe('build countdown', () => {
+  it('quotes current blackout time instead of the full-power authoring time', () => {
+    expect(effectiveBuildSeconds(8, 0.25)).toBe(32);
+    expect(effectiveBuildSeconds(8, 1)).toBe(8);
+  });
+
   it('falls back to the nominal time before it has a sample', () => {
     // The first frame after queueing has nothing to measure, and the nominal
     // figure is right whenever nothing is throttling the build.
