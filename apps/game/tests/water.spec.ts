@@ -103,8 +103,8 @@ describe('water — scorecard #25, open-water darkness', () => {
   });
 
   it('keeps foam translucent enough for hull contrast without changing its coverage', () => {
-    expect(WATER_LOOK.foamOpacity).toBeGreaterThanOrEqual(0.65);
-    expect(WATER_LOOK.foamOpacity).toBeLessThanOrEqual(0.80);
+    expect(WATER_LOOK.foamOpacity).toBeGreaterThanOrEqual(0.40);
+    expect(WATER_LOOK.foamOpacity).toBeLessThanOrEqual(0.55);
     const material = createWaterMaterial({
       palette: WATER_PALETTES.temperate, rampDepth: 6, seed: 1, textureSize: 64,
     });
@@ -116,7 +116,7 @@ describe('water — scorecard #25, open-water darkness', () => {
 });
 
 describe('water — scorecard #26, foam is filigree', () => {
-  it('covers 4-8% calm and 12-16% choppy with 1.5-4 px filaments', () => {
+  it('keeps calm foam sparse, storm foam denser, and filaments 1.5-4 px wide', () => {
     const probe = probeFoam();
     expect(probe.calm).toBeGreaterThanOrEqual(WATER_FOAM.coverageCalm[0]);
     expect(probe.calm).toBeLessThanOrEqual(WATER_FOAM.coverageCalm[1]);

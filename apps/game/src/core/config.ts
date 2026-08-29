@@ -7374,15 +7374,14 @@ export const WATER_LOOK = {
   refractionMetres: 0.38,
   /**
    * Multiplies the whole lit result. The ramp hexes were sampled off graded
-   * RA3 frames, so they are close to FINAL pixel values, and pushing them back
-   * through exposure + AgX would otherwise land them well under the scorecard
-   * #25 floor. The former 1.40 gain lifted the broad water body enough that
-   * pale ships disappeared into it in ordinary play. 1.28 keeps every daylight
-   * palette inside the measured 45-115 band while restoring the dark-water
-   * contrast the naval silhouettes need. Raise this only against a fresh probe
-   * reading — never to make the water "pop", which is bible R5.
+   * RA3 frames, so they are close to FINAL pixel values. The former 1.40/1.28
+   * gains lifted the broad water body enough that pale ships disappeared into
+   * it in ordinary play. 0.98, paired with view-ray absorption, produces the
+   * requested darker sea while keeping every daylight palette inside the
+   * measured band. Raise this only against a fresh probe reading —
+   * never to make the water "pop", which is bible R5.
    */
-  outputGain: 1.28,
+  outputGain: 0.98,
   /** How much the sun's diffuse term modulates the body colour. Water is not chalk. */
   sunDiffuse: 0.30,
   /** How much the hemisphere fill modulates it. */
@@ -7402,14 +7401,14 @@ export const WATER_LOOK = {
    * Tune these against `probeOpenWaterLuminance`, which models foam now, and
    * re-shoot 08-naval-water. Do not raise them to make the sea "sparkle".
    */
-  foamSunDiffuse: 0.32,
-  foamFillDiffuse: 0.50,
+  foamSunDiffuse: 0.22,
+  foamFillDiffuse: 0.34,
   /**
    * Foam reveals some body colour instead of replacing it with opaque chalk.
    * Coverage and filament topology stay unchanged; this controls only optical
    * density, making the crest field read as aerated water rather than paint.
    */
-  foamOpacity: 0.74,
+  foamOpacity: 0.48,
   /** Scorecard #25 acceptance band, mean sRGB luminance of open water, 0-255. */
   luminanceBand: [45, 115] as [number, number],
 } as const;
@@ -7434,24 +7433,22 @@ export const WATER_WAVES = {
   /** Band B chop: lambda 0.10-0.22 TL of visible crinkle, 0.35 TL/s. */
   chopTileMetres: 8.0,
   chopSpeed: 0.35 * TANK_LENGTH_METRES,
-  chopStrength: 0.62,
+  chopStrength: 0.70,
 
   /** Band C micro-detail: 2-4 px, normal only, 0.9 TL/s. */
   microTileMetres: 1.05,
   microSpeed: 0.9 * TANK_LENGTH_METRES,
-  microStrength: 0.34,
+  microStrength: 0.48,
 
   /** The three sampling rotations (bible: 0/47/113 degrees). */
   rotationDeg: [0, 47, 113] as [number, number, number],
 
   /**
    * 0 = glass calm, 1 = choppy. Drives the crinkle amplitude AND the foam
-   * threshold. Measured at ~7% open-water foam coverage in a real 1280x720
-   * render, inside scorecard #26's calm band with room for wakes and the
-   * shoreline band on top. RA3's open water is calmer than memory suggests —
-   * the foam you remember is mostly wake and coastline, not sea state.
+   * threshold. The realistic pass targets only 1.5-4.5% open-water foam in a
+   * calm render, leaving dense white water to wakes, storms and the shoreline.
    */
-  seaState: 0.28,
+  seaState: 0.16,
 } as const;
 
 /**
@@ -7467,7 +7464,7 @@ export const WATER_FOAM = {
    * 1.5-4 px band. 512 texels over 12 m is 43 texels/m, so a filament is ~3.5
    * texels wide and survives bilinear filtering instead of shimmering.
    */
-  laceTileMetres: 12.0,
+  laceTileMetres: 12.5,
   /** Second, coarser rotated lookup that breaks the 12 m repeat. */
   laceDetailMetres: 27.0,
   laceDetailMix: 0.35,
@@ -7486,28 +7483,28 @@ export const WATER_FOAM = {
    * arrived at from the other direction. 0.09 puts the same coverage into
    * crisp-edged filaments. Verified by rendering, not by arithmetic.
    */
-  thresholdLo: 0.7135,
-  thresholdHi: 0.8035,
+  thresholdLo: 0.748,
+  thresholdHi: 0.838,
   crestGain: 0.324,
-  /** Threshold drop at seaState 1 — this is what takes 4-8% calm to 12-16% choppy. */
+  /** Threshold drop at seaState 1 — storms open substantially more foam. */
   choppyBias: 0.06,
   /**
    * Mip compensation: a filament field averages toward its mean under
    * minification, so without a small threshold drop with distance the far half
    * of the frame loses its foam.
    *
-   * THIS LIVED AS A BARE 0.03 INSIDE THE UNIFORM SETUP, and `probeFoam` — the
+   * THIS ONCE LIVED AS A BARE LITERAL INSIDE THE UNIFORM SETUP, and `probeFoam` — the
    * function that certifies coverage against scorecard #26 — did not model it
    * at all. So the probe measured the near field and passed, while the shader
-   * ran a threshold up to 0.03 lower everywhere else. It is a config constant
+   * ran a lower threshold everywhere else. It is a config constant
    * now precisely so both sides read the same number.
    */
-  distanceBias: 0.03,
+  distanceBias: 0.012,
   /** Metres/second the lace drifts across the swell. */
   scrollSpeed: 0.22,
   /** Target coverage bands from scorecard #26, for the boot-time probe. */
-  coverageCalm: [0.04, 0.08] as [number, number],
-  coverageChoppy: [0.12, 0.16] as [number, number],
+  coverageCalm: [0.015, 0.045] as [number, number],
+  coverageChoppy: [0.08, 0.13] as [number, number],
 } as const;
 
 /**

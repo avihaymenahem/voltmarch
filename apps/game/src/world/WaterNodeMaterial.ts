@@ -526,7 +526,16 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
       float(1.0).add(blob.mul(U.uBed.y)).add(grit.mul(U.uBed.y).mul(0.45)),
     ).toVar('seabed');
 
-    const trans = exp(bedDepth.negate().mul(U.uAbsorb)).toVar('trans');
+    /*
+     * Beer-Lambert extinction follows the VIEW RAY through the water, not the
+     * vertical depth field. The old vertical-only term made an oblique RTS
+     * camera see almost the same bright seabed as a camera looking straight
+     * down, which flattened the sea into coloured glass. Clamp the cosine so
+     * grazing pixels darken coherently without exploding at the horizon.
+     */
+    const viewCos = max(dot(N, V), 0.32).toVar('viewCos');
+    const opticalDepth = bedDepth.div(viewCos).toVar('opticalDepth');
+    const trans = exp(opticalDepth.negate().mul(U.uAbsorb)).toVar('trans');
     /*
      * THE ONE DESCENDING `smoothstep` IN THIS SHADER, INVERTED.
      *
@@ -541,7 +550,7 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
      */
     trans.mulAssign(smoothstep(U.uBed.x.mul(0.35), U.uBed.x, bedDepth).oneMinus());
 
-    const body = mix(rampSample(depth.div(U.uRampDepth)), seabed.mul(trans), trans.g)
+    const body = mix(rampSample(opticalDepth.div(U.uRampDepth)), seabed.mul(trans), trans.g)
       .toVar('body');
 
     /* ---- shoreline: distance field -> band, lightening, churn ------------ */

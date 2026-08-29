@@ -390,12 +390,16 @@ void main() {
   float grit = (bedField.a - 0.5) * 2.0;
   vec3 seabed = uSeabed * (1.0 + blob * uBed.y + grit * uBed.y * 0.45);
 
-  vec3 trans = exp(-bedDepth * uAbsorb);
+  // Beer-Lambert extinction follows the VIEW RAY, not only vertical depth.
+  // This keeps the oblique RTS camera from seeing a uniformly bright seabed.
+  float viewCos = max(dot(N, V), 0.32);
+  float opticalDepth = bedDepth / viewCos;
+  vec3 trans = exp(-opticalDepth * uAbsorb);
   // Hard cutoff: the bible is explicit that the bed is COMPLETELY invisible
   // past ~2 TL. Absorption alone leaves a faint ghost that reads as fog.
   trans *= smoothstep(uBed.x, uBed.x * 0.35, bedDepth);
 
-  vec3 body = mix(rampSample(depth / uRampDepth), seabed * trans, trans.g);
+  vec3 body = mix(rampSample(opticalDepth / uRampDepth), seabed * trans, trans.g);
 
   /* ---- shoreline: distance field -> band, lightening, churn ------------- */
   // G is SIGNED: positive offshore, negative inland. Signed is what makes the
@@ -984,9 +988,9 @@ function foamHistogram(sea: number, distanceFrac: number, bins: number):
  * field — tonemapping the average is not the average of the tonemapped.
  *
  * Two things make foam dominate at coverage far below 100%:
- *   1. `lightFoam` uses a 0.80 sun coefficient against the body's
- *      `WATER_LOOK.sunDiffuse` of 0.30 — foam is lit 2.67x harder, before its
- *      near-white albedo and an HDR sun of ~(3.1, 2.8, 2.3).
+ *   1. The original `lightFoam` used a 0.80 sun coefficient against the
+ *      body's 0.30 — 2.67x harder before its near-white albedo. The shipped
+ *      coefficients are deliberately lower and live together in WATER_LOOK.
  *   2. The mip-compensation threshold drop (`WATER_FOAM.distanceBias`) opens
  *      coverage up with distance, and `probeFoam` never modelled it.
  *
@@ -1024,10 +1028,8 @@ export function probeOpenWaterLuminance(
     (WATER_LOOK.sunDiffuse * ndl * rig.sunColor.z + WATER_LOOK.fillDiffuse * rig.hemiSky.z) / norm,
   ];
 
-  // The foam layer, lit its own way. `lightFoam` in the shader is
-  // `(0.80 * ndl * sun + 0.85 * hemi) / norm` — a 0.80 sun coefficient against
-  // the body's 0.30. That 2.67x is most of why foam dominates the frame at a
-  // coverage well under half.
+  // The foam layer is lit independently from the body. Keep the probe on the
+  // shared constants: stale hard-coded coefficients once let a white sea pass.
   const foamCol = linearVec(palette.foam);
   const fs = WATER_LOOK.foamSunDiffuse;
   const ff = WATER_LOOK.foamFillDiffuse;
@@ -1052,10 +1054,15 @@ export function probeOpenWaterLuminance(
   // "Open water" = past the shore band. Sample the ramp evenly from a quarter
   // depth to the bottom; the first quarter is shelf, not open water.
   const N = 9;
+  // Representative cosine of the shipping RTS camera against a mostly-flat
+  // surface. The shader follows the view ray through the water; the probe must
+  // do the same or it certifies the obsolete vertical-depth response.
+  const viewCos = 0.78;
   for (let i = 0; i < N; i++) {
     const t = 0.25 + (0.75 * i) / (N - 1);
     const depth = t * rampDepth;
-    const f = clamp01(t) * (ramp.length - 1);
+    const opticalDepth = depth / viewCos;
+    const f = clamp01(opticalDepth / rampDepth) * (ramp.length - 1);
     const i0 = Math.min(ramp.length - 1, Math.floor(f));
     const i1 = Math.min(ramp.length - 1, i0 + 1);
     const g = f - i0;
@@ -1066,9 +1073,9 @@ export function probeOpenWaterLuminance(
     ];
     const cutoff = smoothstepDown(fade, fade * 0.35, depth);
     const trans = [
-      Math.exp(-depth * absorb[0]) * cutoff,
-      Math.exp(-depth * absorb[1]) * cutoff,
-      Math.exp(-depth * absorb[2]) * cutoff,
+      Math.exp(-opticalDepth * absorb[0]) * cutoff,
+      Math.exp(-opticalDepth * absorb[1]) * cutoff,
+      Math.exp(-opticalDepth * absorb[2]) * cutoff,
     ];
     const bed = [seabed.x, seabed.y, seabed.z];
     for (let c = 0; c < 3; c++) {
@@ -1123,7 +1130,8 @@ export interface FoamProbe {
 }
 
 /**
- * Scorecard #26: filaments 1.5-4 px wide, coverage 4-8% calm / 12-16% choppy.
+ * Scorecard #26: filaments 1.5-4 px wide. The realistic calm-water pass keeps
+ * broad open-sea foam sparse (1.5-4.5%) and reserves dense churn for storms.
  *
  * The lace is a rank-transformed gaussian, so the coverage of
  * `smoothstep(thr, thr + w, lace + crestPush)` can be integrated exactly
@@ -1137,10 +1145,10 @@ export function probeFoam(
   // TWO CORRECTIONS, both of which made this report a number the shader never
   // produced, and both of which it certified as PASS:
   //
-  //  1. `seaStateCalm` defaulted to 0.12. The game ships `WATER_WAVES.seaState`
-  //     = 0.28. The probe was grading a sea state that does not exist in play.
-  //  2. The mip-compensation threshold drop (`WATER_FOAM.distanceBias`, up to
-  //     -0.03) was not modelled AT ALL, so this only ever described water at
+  //  1. `seaStateCalm` used to be a private literal. The probe was grading a
+  //     sea state that did not exist in play.
+  //  2. The mip-compensation threshold drop (`WATER_FOAM.distanceBias`) was
+  //     not modelled AT ALL, so this only ever described water at
   //     the camera. Most of a framed shot is not at the camera.
   //
   // It also modelled the crest as a bare `sin`, dropping both the
