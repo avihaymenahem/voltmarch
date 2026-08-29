@@ -82,40 +82,14 @@ before crisp lane, slab-edge and kerb treatments are applied.
 
 ## What's new in 3.13.0
 
-- **Large-battle performance:** camera-volume culling, instanced environment props, filtered shadow
-  cadence and pressure-aware effects substantially reduce off-screen, shadow and combat rendering
-  work while preserving the WebGPU-first visual path.
-- **Authored infantry in live play:** the first shared Meshy infantry families and the Soviet Attack
-  Dog now render in matches with bounded LODs, shared animation data and lightweight role-specific
-  attachments instead of multiplying near-identical character assets.
-- **Asset Lab application:** every owned model now has a dedicated desktop catalogue and animation
-  review surface, backed by the same canonical `@voltmarch/assets` package used by the game.
-- **Modernised shell and HUD:** the main menu, campaign, skirmish, multiplayer, profile, settings,
-  replay, credits and pause surfaces now have distinct layouts, transitions and clearer navigation;
-  HUD panels retain their user-adjusted placement and size.
-- **Better testing tools and battlefield reads:** development builds gain a safe load-test Cheat
-  Engine, garrisoned structures use polished faction occupation rails, and numerous aircraft,
-  stance, audio, objective, road and production regressions are corrected.
+- **Large-battle performance:** camera culling, instanced props, filtered shadows and pressure-aware effects.
+- **Authored infantry:** shared faction soldiers, role attachments and the Soviet Attack Dog now render in matches.
+- **Asset Lab:** every owned model has a desktop catalogue backed by the canonical shared-assets package.
+- **Modernised shell and HUD:** distinct menu layouts, transitions, clearer navigation and persistent HUD sizing.
+- **Stronger test tooling:** a dev-only load-test Cheat Engine plus fixes across combat, audio, roads and production.
 
 The experimental beyond-map terrain and water extension is intentionally not part of this release;
 the original finite map presentation remains in place while edge treatment is redesigned.
-
-### Previously in 3.12.0
-
-- **Reliable WebGPU match startup:** terrain detail now begins with an immediately uploadable neutral
-  texture and swaps to the full-resolution mask after decoding, preventing the production
-  `mipLevelCount` crash and flat-orange battlefield on cold starts.
-
-- **Faction-authored construction and air fleets:** all four construction vehicles and aircraft now
-  use optimized Meshy assets with generated LOD and shadow variants, including corrected Soviet
-  dozer assembly and a rebuilt Reclamation aircraft.
-- **Cheap authored quadruped:** the Soviet Attack Dog now uses a 6k-triangle Meshy shell with KTX2,
-  plus an eight-joint shared-pose review rig with Idle, Walk, Run and Bite clips in Asset Lab;
-  distance LOD and a shared instanced GPU trot instead of a per-unit skeleton or animation mixer.
-- **Consistent build previews:** the right-side build HUD now renders the same registered imported
-  models used in the world instead of retaining obsolete procedural silhouettes.
-- **Clean starting deployment:** construction vehicles are imported before their first visible
-  frame, removing the procedural-model flash when a match begins with an MCV.
 
 ## Play VOLTMARCH
 
