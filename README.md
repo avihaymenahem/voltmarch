@@ -80,16 +80,20 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.13.0
+## What's new in 3.14.0
 
-- **Large-battle performance:** camera culling, instanced props, filtered shadows and pressure-aware effects.
-- **Authored infantry:** shared faction soldiers, role attachments and the Soviet Attack Dog now render in matches.
-- **Asset Lab:** every owned model has a desktop catalogue backed by the canonical shared-assets package.
-- **Modernised shell and HUD:** distinct menu layouts, transitions, clearer navigation and persistent HUD sizing.
-- **Stronger test tooling:** a dev-only load-test Cheat Engine plus fixes across combat, audio, roads and production.
-
-The experimental beyond-map terrain and water extension is intentionally not part of this release;
-the original finite map presentation remains in place while edge treatment is redesigned.
+- **Authored naval fleets:** all four factions field new optimized ship models, silhouettes, LODs and
+  shadow proxies over deeper, more readable water.
+- **Reliable multiplayer:** the lobby stays connected while browsing, surfaces open games clearly and
+  recovers from transient relay failures without requiring an app restart.
+- **Sharper battlefield control:** minimap orders and pings work again, aircraft and anti-air troops
+  acquire valid targets, and tanks can board naval transports without becoming stuck.
+- **Clearer command feedback:** production shows real build times and blocked reasons, Chronoshift
+  explains its targeting flow, and transport evacuation is available directly from the command HUD.
+- **Native desktop behavior:** matches preserve the chosen window mode, windowed play uses native
+  Windows controls, optional pointer confinement is available, and the Cheat Engine closes cleanly.
+- **Smoother UI:** asynchronous asset readback and desktop storage, idle autosaves and reduced setup
+  redraws remove several sources of split-second interface stalls.
 
 ## Play VOLTMARCH
 
@@ -98,7 +102,7 @@ the original finite map presentation remains in place while edge treatment is re
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.13.0**. The
+The browser build and Windows release share the same game. The current release is **3.14.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 
