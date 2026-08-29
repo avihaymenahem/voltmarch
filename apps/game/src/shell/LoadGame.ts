@@ -355,16 +355,24 @@ export const AUTOSAVE_MIN_GAP_TICKS = SIM_HZ * 30;
 export const AUTOSAVE_GRACE_TICKS = SIM_HZ * 30;
 
 /**
- * How long a due autosave will wait for a cheap frame before giving up and
- * taking an expensive one. Ten simulated seconds.
+ * How long a due autosave remains at the cheap-frame policy gate before moving
+ * to the browser-idle queue. Ten simulated seconds.
  *
  * The deferral is the whole anti-hitch mechanism: when the loop reports it ran
  * catch-up steps this frame, the machine is already behind and adding a
- * snapshot to that frame is how one hitch becomes two. The deadline is what
- * stops a permanently overloaded machine from never autosaving at all — on that
- * machine the player is already dropping frames, and a save is worth one more.
+ * snapshot to that frame is how one hitch becomes two. The deadline no longer
+ * forces capture on that overloaded frame: it hands the due save to
+ * `deferAutosaveCapture`, which keeps waiting for paint/input to go idle.
  */
 export const AUTOSAVE_DEFER_LIMIT_TICKS = SIM_HZ * 10;
+
+/**
+ * Minimum browser-idle budget before synchronous snapshot capture may begin.
+ * Capture is atomic so every column belongs to one simulation instant; moving
+ * it into an idle task keeps that consistency without stealing the render or
+ * input task that noticed the autosave was due.
+ */
+export const AUTOSAVE_IDLE_BUDGET_MS = 8;
 
 export type AutosaveTrigger = 'interval' | 'objective';
 
@@ -479,8 +487,9 @@ export class AutosaveScheduler {
       }
     }
 
-    // Due. Take it on the first frame that is not already behind, or when the
-    // deferral deadline runs out, whichever comes first.
+    // Due. Hand it to the idle queue on the first frame that is not already
+    // behind, or after the policy deferral window. The queue itself still
+    // refuses to start capture without real browser idle budget.
     if (s.catchingUp && s.tick - this.pendingSince < AUTOSAVE_DEFER_LIMIT_TICKS) {
       return { act: 'defer', trigger: this.pendingTrigger };
     }
@@ -506,6 +515,64 @@ export class AutosaveScheduler {
     this.lastSaveTick = tick;
     this.pendingSince = -1;
   }
+}
+
+/**
+ * Queue atomic autosave capture for a browser idle opportunity.
+ *
+ * The work itself remains synchronous by design: yielding halfway through the
+ * entity columns would combine different simulation ticks into one corrupt
+ * snapshot. `requestIdleCallback` moves that one atomic read after pending
+ * paint/input work. A timed-out callback with no budget is re-armed rather than
+ * forcing a known hitch; an autosave is allowed to be late, never disruptive.
+ * Browsers without the idle API get two paints and a task boundary, which is
+ * the strongest ordering guarantee available there.
+ */
+export function deferAutosaveCapture(work: () => void): () => void {
+  const host = window as Window & typeof globalThis & {
+    requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  let idleHandle = 0;
+  let frameHandle = 0;
+  let timerHandle = 0;
+  let cancelled = false;
+
+  const run = (): void => {
+    if (cancelled) return;
+    cancelled = true;
+    work();
+  };
+
+  const requestIdle = host.requestIdleCallback?.bind(host);
+  if (requestIdle !== undefined) {
+    const arm = (): void => {
+      idleHandle = requestIdle((deadline) => {
+        idleHandle = 0;
+        if (cancelled) return;
+        if (deadline.timeRemaining() >= AUTOSAVE_IDLE_BUDGET_MS) run();
+        else arm();
+      }, { timeout: 1000 });
+    };
+    arm();
+  } else {
+    // rAF runs before paint. Two frames ensure already-visible UI is presented;
+    // the zero-delay task then runs outside either render callback.
+    frameHandle = requestAnimationFrame(() => {
+      frameHandle = requestAnimationFrame(() => {
+        frameHandle = 0;
+        timerHandle = window.setTimeout(run, 0);
+      });
+    });
+  }
+
+  return (): void => {
+    if (cancelled) return;
+    cancelled = true;
+    if (idleHandle !== 0) host.cancelIdleCallback?.(idleHandle);
+    if (frameHandle !== 0) cancelAnimationFrame(frameHandle);
+    if (timerHandle !== 0) window.clearTimeout(timerHandle);
+  };
 }
 
 /* ==========================================================================
