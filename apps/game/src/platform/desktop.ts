@@ -3,8 +3,8 @@
  * src/platform/desktop.ts — the game's half of the Electron bridge
  * ============================================================================
  * THIS FILE IS THE ONE THE PRELOAD HAS BEEN NAMING SINCE IT WAS WRITTEN.
- * `desktop/src/preload.ts` documents "the accessor in `src/platform/desktop.ts`
- * tests it by equality" as though this existed; it did not, and nothing in the
+ * `desktop/src/preload.ts` once documented an accessor here as though it
+ * existed; it did not, and nothing in the
  * renderer consumed the bridge at all — `contextBridge` was exposing seven
  * methods to nobody. That is exactly the class of claim
  * `docs/SPEC_DRIFT_AUDIT.md` catalogues, and it was in a file added the day
@@ -22,15 +22,16 @@
  * boundary is not.
  *
  * ----------------------------------------------------------------------------
- * `bridge` IS A VERSION, AND THE CHECK IS EQUALITY.
+ * `bridge` IS A VERSION, AND COMPATIBILITY IS EXPLICIT.
  * ----------------------------------------------------------------------------
  * A packaged app is one binary containing one preload and one bundle, so they
  * normally move together — but an installer that half-fails, a portable exe run
  * against an unpacked `dist/`, or a `desktop:build` that did not re-run leaves
- * them mismatched. Equality means that degrades to WEB BEHAVIOUR: no Display
- * section, no relaunch button, everything else exactly as the browser build.
- * The alternative — `>= 1` — would let a v1 preload reach `displayState()` and
- * throw `is not a function` inside the options screen.
+ * them mismatched. The current version and specifically named, shape-compatible
+ * predecessors are admitted; everything else degrades to WEB BEHAVIOUR: no
+ * Display section, no relaunch button, exactly as the browser build. A broad
+ * `>= 1` check would let a v1 preload reach `displayState()` and throw `is not
+ * a function` inside the options screen.
  *
  * Same discipline as `REPLAY_FORMAT_VERSION` refusing a v1 file.
  * ============================================================================
@@ -40,9 +41,11 @@
  * 1 -> 2 when display methods landed; 2 -> 3 when `alwaysOnTop` joined;
  * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage;
  * 5 -> 6 added the release-update state machine; 6 -> 7 added the desktop
- * pointer-confinement preference.
+ * pointer-confinement preference; 7 -> 8 moved storage mutations to one-way
+ * IPC while preserving their public void-returning shape.
  *
- * BUMP THIS whenever a method is added, removed or CHANGES SHAPE, and bump the
+ * BUMP THIS whenever a method is added, removed, changes shape, or changes IPC
+ * delivery semantics, and bump the
  * matching literal in `desktop/src/preload.ts`. They are checked against each
  * other by `tests/desktop-shell.spec.ts` — but note what that check can and
  * cannot see: it compares the two LITERALS, so leaving both at 2 across a shape
@@ -53,10 +56,12 @@
  * The hazard is narrow but real, and it is why the rule says SHAPE and not just
  * methods: a v2 preload from an older packaged build, paired with a bundle that
  * expects `alwaysOnTop`, hands back `undefined` and the toggle silently renders
- * as off. Equality makes that degrade to web behaviour instead — no Display
- * section at all, which is visibly wrong rather than quietly wrong.
+ * as off. Excluding that version makes it degrade to web behaviour instead —
+ * no Display section at all, visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 7;
+export const BRIDGE_VERSION = 8;
+/** Bridge 7 has the same public methods; only its storage writes may block. */
+export const LEGACY_BRIDGE_VERSION = 7;
 
 export type DesktopUpdateStatus =
   | 'idle'
@@ -241,7 +246,8 @@ export function desktopBridge(): DesktopBridge | null {
   const host = globalThis as { voltmarch?: unknown };
   const candidate = host.voltmarch;
   if (typeof candidate !== 'object' || candidate === null) return null;
-  if ((candidate as { bridge?: unknown }).bridge !== BRIDGE_VERSION) return null;
+  const version = (candidate as { bridge?: unknown }).bridge;
+  if (version !== BRIDGE_VERSION && version !== LEGACY_BRIDGE_VERSION) return null;
   return candidate as DesktopBridge;
 }
 

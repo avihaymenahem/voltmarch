@@ -10,11 +10,10 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 7` is a VERSION, not a boolean, and the accessor in
- * `src/platform/desktop.ts` tests it by equality. An older packaged preload
- * running against a newer bundle therefore degrades to WEB BEHAVIOUR rather
- * than calling a method that does not exist — the same discipline as
- * `REPLAY_FORMAT_VERSION` refusing a v1 file.
+ * `bridge: 8` is a VERSION, not a boolean. The game accepts bridge 7 as the
+ * one explicit compatibility predecessor because 8 keeps the public method
+ * shape and only makes key/value mutations non-blocking. Other mismatches
+ * degrade to WEB BEHAVIOUR rather than guessing at a missing capability.
  *
  * That accessor did NOT EXIST when this comment first described it, and
  * nothing in the renderer read the bridge at all: seven methods exposed to
@@ -22,12 +21,14 @@
  * `tests/desktop-shell.spec.ts` checks the two version literals against each
  * other so the next bump cannot land on one side only.
  *
- * BUMP THE VERSION WHENEVER THIS OBJECT CHANGES SHAPE — 1 -> 2 was the display
+ * BUMP THE VERSION WHENEVER THIS OBJECT CHANGES SHAPE OR DELIVERY SEMANTICS —
+ * 1 -> 2 was the display
  * methods below, 2 -> 3 was `alwaysOnTop` joining the display state and patch,
  * 3 -> 4 added desktop diagnostics, 4 -> 5 updater controls, 5 -> 6 relaunch
- * status, and 6 -> 7 added `lockPointer` to the display state and patch.
- * SHAPE, not just methods: the gate compares the two literals, so leaving both
- * behind on a field addition is consistent and passes.
+ * status, 6 -> 7 added `lockPointer` to the display state and patch, and
+ * 7 -> 8 moved key/value mutations off the renderer's synchronous IPC path.
+ * Shape, not just method names, is part of the contract. Compatibility with a
+ * predecessor must be named explicitly on the game side, never inferred.
  *
  * Never expose `ipcRenderer` itself. Electron's docs warn it "will result in an
  * empty object" and is a security risk.
@@ -47,10 +48,19 @@ function sync<T>(channel: string, ...args: unknown[]): T {
   return reply.value as T;
 }
 
+// The game exposes the synchronous localStorage shape. Cache hydration and
+// read-your-writes in preload; only the first read of a key crosses sync IPC.
+// Mutations update this map before their one-way main-process notification.
+const storageCache = new Map<string, string | null>();
+
+ipcRenderer.on('vm:storage-error', (_event, message: unknown) => {
+  console.error(typeof message === 'string' ? `[vm] ${message}` : '[vm] Native settings could not be saved.');
+});
+
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 7,
+    bridge: 8,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -73,10 +83,19 @@ contextBridge.exposeInMainWorld(
     /** Open the folder replays and screenshots are written to. */
     revealUserData: (): Promise<void> => ipcRenderer.invoke('vm:reveal-user-data'),
 
-    /** Native userData storage. Synchronous because existing stores hydrate at construction. */
-    storageGet: (key: string): string | null => sync<string | null>('vm:storage-get', key),
-    storageSet: (key: string, value: string): void => { sync('vm:storage-set', key, value); },
-    storageRemove: (key: string): void => { sync('vm:storage-remove', key); },
+    /** Native userData storage. Only first-key hydration remains synchronous. */
+    storageGet: (key: string): string | null => {
+      if (!storageCache.has(key)) storageCache.set(key, sync<string | null>('vm:storage-get', key));
+      return storageCache.get(key) ?? null;
+    },
+    storageSet: (key: string, value: string): void => {
+      storageCache.set(key, value);
+      ipcRenderer.send('vm:storage-set-async', key, value);
+    },
+    storageRemove: (key: string): void => {
+      storageCache.set(key, null);
+      ipcRenderer.send('vm:storage-remove-async', key);
+    },
 
     /** Binary snapshots live as files, never IndexedDB values. */
     saveWrite: (slot: string, bytes: Uint8Array): Promise<void> =>

@@ -180,8 +180,21 @@ let display: DisplayPrefs = displayForLaunch(loadDisplay(), process.argv);
 let nativeStorage: NativeStorage | null = null;
 
 function storage(): NativeStorage {
-  nativeStorage ??= new NativeStorage(path.join(app.getPath('userData'), 'storage'));
+  nativeStorage ??= new NativeStorage(
+    path.join(app.getPath('userData'), 'storage'),
+    reportNativeStorageError,
+  );
   return nativeStorage;
+}
+
+function reportNativeStorageError(error: unknown): void {
+  console.error(
+    '[vm] native state could not be saved:',
+    error instanceof Error ? error.message : error,
+  );
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('vm:storage-error', 'Native settings could not be saved.');
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -556,6 +569,18 @@ function installIpc(): void {
     try { storage().removeItem(key); e.returnValue = { ok: true }; }
     catch (err) { e.returnValue = { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
+  // Bridge 8 mutations are one-way: memory is updated synchronously in main,
+  // while NativeStorage coalesces the filesystem work. Keep the old channels
+  // above so a bridge-7 renderer/preload pair remains functional during an
+  // installed-update transition.
+  ipcMain.on('vm:storage-set-async', (_e, key: unknown, value: unknown) => {
+    try { storage().setItem(key, value); }
+    catch (err) { reportNativeStorageError(err); }
+  });
+  ipcMain.on('vm:storage-remove-async', (_e, key: unknown) => {
+    try { storage().removeItem(key); }
+    catch (err) { reportNativeStorageError(err); }
+  });
   ipcMain.handle('vm:save-write', (_e, slot: unknown, bytes: unknown) => storage().writeSave(slot, bytes));
   ipcMain.handle('vm:save-read', (_e, slot: unknown) => storage().readSave(slot));
   ipcMain.handle('vm:save-remove', (_e, slot: unknown) => storage().removeSave(slot));
@@ -720,6 +745,10 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null); // an RTS has no use for a File menu
     installProtocol();
+    // The game-side persistence interfaces intentionally hydrate
+    // synchronously. Prime their backing snapshot before the renderer exists,
+    // so the remaining sendSync getter never performs disk I/O mid-frame.
+    storage().hydrate();
     installIpc();
     // Register after ready so electron-updater can resolve resources/app-update.yml.
     // Register BEFORE creating the renderer: preload may ask for the retained
@@ -786,6 +815,20 @@ if (!app.requestSingleInstanceLock()) {
       sleepBlocker = -1;
     }
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  let storageReadyToQuit = false;
+  let storageQuitFlush: Promise<void> | null = null;
+  app.on('before-quit', (event) => {
+    if (storageReadyToQuit || nativeStorage === null || !nativeStorage.hasPendingWrites()) return;
+    event.preventDefault();
+    if (storageQuitFlush !== null) return;
+    storageQuitFlush = nativeStorage.flush()
+      .catch(reportNativeStorageError)
+      .finally(() => {
+        storageReadyToQuit = true;
+        app.quit();
+      });
   });
 
   // The instrument the device-loss work is missing: RENDER_FINDINGS.md §7g

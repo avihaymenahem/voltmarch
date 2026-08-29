@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -62,12 +62,22 @@ const DESKTOP_SRC = path.resolve(__dirname, '..', '..', 'apps', 'desktop', 'src'
 const REPO = path.resolve(__dirname, '..', '..');
 
 describe('native desktop storage', () => {
-  it('persists key/value state and opaque save bytes on the filesystem', () => {
+  it('keeps writes off the caller path, then persists key/value state atomically', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'voltmarch-storage-'));
     try {
       const a = new NativeStorage(root);
       a.setItem('voltmarch.settings.v1', '{"version":1}');
+      expect(a.getItem('voltmarch.settings.v1')).toBe('{"version":1}');
+      expect(a.hasPendingWrites()).toBe(true);
+      // setItem returned before state.json existed; the renderer-facing write
+      // path no longer waits on mkdir/write/rename or endpoint scanning.
+      expect(new NativeStorage(root).getItem('voltmarch.settings.v1')).toBeNull();
+      const flushing = a.flush();
+      // A mutation racing an in-flight write must trigger another serialized
+      // pass, not get lost behind the snapshot already headed to disk.
       a.setItem('voltmarch.settings.v1', '{"version":2}');
+      await flushing;
+      expect(a.hasPendingWrites()).toBe(false);
       a.writeSave('../manual-slot', new Uint8Array([7, 11, 19]));
 
       const b = new NativeStorage(root);
@@ -76,7 +86,22 @@ describe('native desktop storage', () => {
       b.removeSave('../manual-slot');
       expect(b.readSave('../manual-slot')).toBeNull();
       b.removeItem('voltmarch.settings.v1');
+      await b.flush();
       expect(new NativeStorage(root).getItem('voltmarch.settings.v1')).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reports an asynchronous flush failure without blocking setItem', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'voltmarch-storage-failure-'));
+    try {
+      const blocker = path.join(root, 'file-not-directory');
+      writeFileSync(blocker, 'x', 'utf8');
+      const store = new NativeStorage(path.join(blocker, 'storage'));
+      expect(() => store.setItem('vm.test', 'value')).not.toThrow();
+      await expect(store.flush()).rejects.toBeDefined();
+      expect(store.hasPendingWrites()).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -606,15 +631,26 @@ describe('the preload bridge and the game agree', () => {
 
   it('exposes the same bridge VERSION the game checks for', () => {
     /*
-     * `src/platform/desktop.ts` tests `bridge` by EQUALITY, so a bump on one
-     * side only means the game silently falls back to web behaviour — no
-     * Display section, no error, nothing in the console. That is the correct
-     * failure mode at runtime and a terrible one to debug, so it fails here
-     * instead.
+     * `src/platform/desktop.ts` admits the current literal plus one explicit
+     * compatibility predecessor. A bump on one side only otherwise means the
+     * game falls back to web behaviour, so the current pair is checked here.
      */
     const m = /bridge:\s*(\d+)/.exec(preload);
     expect(m, 'preload.ts must declare a numeric `bridge:` version').not.toBeNull();
     expect(Number(m?.[1])).toBe(BRIDGE_VERSION);
+  });
+
+  it('keeps only hydration on synchronous IPC and sends mutations one-way', () => {
+    const main = readFileSync(path.join(DESKTOP_SRC, 'main.ts'), 'utf8');
+    expect(preload).toContain("sync<string | null>('vm:storage-get', key)");
+    expect(preload).toContain("ipcRenderer.send('vm:storage-set-async', key, value)");
+    expect(preload).toContain("ipcRenderer.send('vm:storage-remove-async', key)");
+    expect(preload).not.toContain("sync('vm:storage-set'");
+    expect(preload).not.toContain("sync('vm:storage-remove'");
+    expect(main).toContain("ipcMain.on('vm:storage-set'");
+    expect(main).toContain("ipcMain.on('vm:storage-set-async'");
+    expect(main).toContain("app.on('before-quit'");
+    expect(main).toContain('nativeStorage.flush()');
   });
 
   it('exposes every method the game\'s DesktopBridge declares', () => {
