@@ -685,16 +685,33 @@ describe('the idle sweep asks the lobby rather than trusting a flag', () => {
     now: c.now, randomSeed: () => 3, randomCode: makeCode,
   });
 
-  it('reports a host, a queuer and a player as busy', () => {
+  it('reports a room watcher, host, queuer and player as busy', () => {
     const c = clock();
     const lobby = lobbyWith(c);
+    const watcher = new FakePeer();
     const host = new FakePeer();
     const queuer = new FakePeer();
+    lobby.watch(watcher, true);
     lobby.create(host, 0, 'crossroads', 'public');
     lobby.enqueue(queuer, 0);
+    assert.equal(lobby.isBusy(watcher), true,
+      'an unchanged public list is still an active lobby subscription');
     assert.equal(lobby.isBusy(host), true);
     assert.equal(lobby.isBusy(queuer), true);
     assert.equal(lobby.isBusy(new FakePeer()), false);
+  });
+
+  it('stops reporting a watcher as busy only after they unsubscribe', () => {
+    const c = clock();
+    const lobby = lobbyWith(c);
+    const watcher = new FakePeer();
+    lobby.watch(watcher, true);
+    c.advance(CONFIG.lobbyIdleMs * 3);
+    lobby.tick();
+    assert.equal(lobby.isBusy(watcher), true,
+      'time with no room-list changes must not turn a browser into an idle socket');
+    lobby.watch(watcher, false);
+    assert.equal(lobby.isBusy(watcher), false);
   });
 
   it('stops reporting a host as busy once their room expires', () => {

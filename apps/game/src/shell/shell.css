@@ -2548,7 +2548,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-mp-identity {
-  padding-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--vm-line);
   background:
     linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.07), transparent 56%);
@@ -2563,8 +2563,57 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   justify-content: flex-start;
 }
 
-.vm-shell .vm-mp-layout {
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+.vm-shell .vm-mp-workflow-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vm-line);
+  background: rgba(2, 7, 13, 0.58);
+}
+
+.vm-shell .vm-mp-workflow-btn {
+  min-height: 46px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: calc(14px * var(--vm-text-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vm-text-dim);
+  border: 1px solid var(--vm-line);
+  background: var(--vm-glass-soft);
+  cursor: pointer;
+}
+
+.vm-shell .vm-mp-workflow-btn:hover,
+.vm-shell .vm-mp-workflow-btn:focus-visible,
+.vm-shell .vm-mp-workflow-btn.is-focus {
+  color: var(--vm-text);
+  border-color: var(--vm-accent-dim);
+}
+
+.vm-shell .vm-mp-workflow-btn.is-on {
+  color: var(--vm-text);
+  border-color: rgba(85, 218, 160, 0.72);
+  background: linear-gradient(90deg, rgba(85, 218, 160, 0.16), rgba(85, 218, 160, 0.04));
+  box-shadow: inset 3px 0 0 #55daa0;
+}
+
+.vm-shell .vm-mp-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 14px 18px 18px;
+}
+
+.vm-shell .vm-mp-workflow {
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.19);
+  background:
+    linear-gradient(155deg, rgba(var(--vm-accent-rgb), 0.065), transparent 38%),
+    rgba(4, 10, 19, 0.62);
+}
+
+.vm-shell .vm-mp-workflow[hidden] {
+  display: none;
 }
 
 .vm-shell .vm-mp-cards {
@@ -2612,9 +2661,10 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 }
 
 .vm-shell .vm-mp-card-blurb {
-  font-size: calc(12px * var(--vm-text-scale, 1));
-  line-height: 1.35;
-  color: var(--vm-text-faint);
+  /* The full description remains in the button's accessible name. Four prose
+     blocks above every multiplayer workflow were the screen's largest density
+     cost, while the same faction descriptions live in Skirmish and Manual. */
+  display: none;
 }
 
 .vm-shell .vm-mp-input.is-name {
@@ -2764,11 +2814,75 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   color: var(--vm-text-dim);
 }
 
+.vm-shell .vm-mp-retry {
+  border-color: rgba(85, 218, 160, 0.58);
+}
+
 /* -- the room browser ------------------------------------------------------
  * A list of strangers' matches. Every string in a row is derived from a map id
  * or a faction index — never from anything a stranger typed — so there is no
  * escaping to think about here, by construction rather than by care.
  * ------------------------------------------------------------------------ */
+
+.vm-shell .vm-mp-browser {
+  margin: 14px 18px 16px;
+  padding: 0 0 12px;
+  border: 1px solid rgba(85, 218, 160, 0.44);
+  border-top: 3px solid #55daa0;
+  background:
+    linear-gradient(145deg, rgba(85, 218, 160, 0.09), transparent 40%),
+    rgba(2, 8, 14, 0.72);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.vm-shell .vm-mp-browser-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-right: 16px;
+}
+
+.vm-shell .vm-mp-browser-title {
+  min-width: 0;
+}
+
+.vm-shell .vm-mp-browser-title > .vm-mp-legend {
+  margin-bottom: 3px;
+  color: var(--vm-text);
+  font-size: calc(14px * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-mp-browser-copy {
+  max-width: 58em;
+  margin: 0 18px 12px;
+  color: var(--vm-text-dim);
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  line-height: 1.45;
+}
+
+.vm-shell .vm-mp-live-badge {
+  flex: 0 0 auto;
+  margin-top: 16px;
+  padding: 5px 8px;
+  color: #8df0bd;
+  border: 1px solid rgba(85, 218, 160, 0.38);
+  background: rgba(85, 218, 160, 0.08);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-mp-live-badge::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #55daa0;
+  box-shadow: 0 0 9px rgba(85, 218, 160, 0.78);
+}
 
 .vm-shell .vm-mp-filters {
   display: flex;
@@ -2789,8 +2903,8 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   margin: 0 18px;
   /* Bounded so the browser cannot push the rest of the column off the panel.
      The page body scrolls; this scrolls inside it. */
-  min-height: 120px;
-  max-height: 30vh;
+  min-height: 220px;
+  max-height: 42vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -2870,12 +2984,60 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   font-variant-numeric: tabular-nums;
 }
 
+.vm-shell .vm-mp-room-action {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 5px 8px;
+  color: #8df0bd;
+  border: 1px solid rgba(85, 218, 160, 0.32);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .vm-shell .vm-mp-empty {
-  padding: 18px 12px;
-  font-size: calc(13px * var(--vm-text-scale, 1));
-  line-height: 1.45;
+  min-height: 210px;
+  padding: 28px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
   color: var(--vm-text-faint);
   border: 1px dashed var(--vm-line);
+}
+
+.vm-shell .vm-mp-empty-title {
+  color: var(--vm-text);
+  font-size: calc(16px * var(--vm-text-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-mp-empty-copy {
+  max-width: 42em;
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  line-height: 1.45;
+}
+
+.vm-shell .vm-mp-empty-action {
+  margin-top: 8px;
+  width: min(280px, 100%);
+}
+
+@media (max-height: 780px) and (min-width: 901px) {
+  .vm-shell .vm-mp-rooms {
+    min-height: 160px;
+    max-height: 30vh;
+  }
+
+  .vm-shell .vm-mp-empty {
+    min-height: 150px;
+    padding-block: 18px;
+  }
 }
 
 .vm-shell .vm-mp-count {
@@ -2884,6 +3046,47 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-mp-alternates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 18px 18px;
+}
+
+.vm-shell .vm-mp-alternate {
+  min-width: 0;
+  padding-bottom: 14px;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(3, 8, 17, 0.46);
+}
+
+.vm-shell .vm-mp-alternate-copy {
+  min-height: 2.9em;
+  margin: 0 18px 10px;
+  color: var(--vm-text-faint);
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .vm-shell .vm-mp-alternates {
+    grid-template-columns: 1fr;
+  }
+
+  .vm-shell .vm-mp-browser-head {
+    display: block;
+  }
+
+  .vm-shell .vm-mp-live-badge {
+    display: inline-block;
+    margin: 0 18px 12px;
+  }
+
+  .vm-shell .vm-mp-rooms {
+    min-height: 180px;
+  }
 }
 
 /* -- segmented control (public / invite only) ----------------------------- */

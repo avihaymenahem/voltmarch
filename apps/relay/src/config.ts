@@ -220,7 +220,7 @@ export const CONFIG = {
    * real dead-peer detection window is 30 s, not 45 s.
    */
   heartbeatMs: num('VM_HEARTBEAT_MS', 15_000),
-  /** A socket that connects and then does nothing. */
+  /** A socket that connects and then does nothing. Active room-list watchers are exempt. */
   lobbyIdleMs: num('VM_LOBBY_IDLE_MS', 60_000),
   /** An unjoined invite code stops working after this. */
   codeTtlMs: num('VM_CODE_TTL_MS', 10 * 60_000),
