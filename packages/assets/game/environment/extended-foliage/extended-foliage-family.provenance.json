@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "family": "extended-foliage-v1",
+  "generatedAt": "2026-08-30",
+  "source": {
+    "geometryMethod": "deterministic card, segmented-trunk and closed-caster generator",
+    "geometryTool": "tools/build-extended-foliage-family.mjs",
+    "textureMethod": "four transparent ImageGen foliage sources conditioned into one alpha-safe PBR atlas",
+    "textureTool": "tools/build-extended-foliage-pbr.mjs",
+    "imageGenSources": [
+      {"file":"source/autumn-branch-v1-imagegen.png","dimensions":[1254,1254],"bytes":2411021,"sha256":"693e21f9c187514e8dc731e1815818001c1c0ba08e3e25c2f4fafd457f24f6f5","promptSummary":"Transparent photoreal temperate autumn branch cluster with burnt orange, ochre, muted red and olive leaves, visible twigs and irregular gaps under flat overcast light."},
+      {"file":"source/conifer-branch-v1-imagegen.png","dimensions":[1254,1254],"bytes":2109468,"sha256":"26870c9e1629f5fdda0e11a6e979a2f7d210d0db712086497cad525256c4c35a","promptSummary":"Transparent photoreal broad spruce/pine branch cluster with dark needles, visible twigs and gaps; no whole-tree or Christmas-tree symmetry."},
+      {"file":"source/palm-fronds-v1-imagegen.png","dimensions":[1254,1254],"bytes":2612918,"sha256":"604016c747a6b454fced2e361dac76966fee98a3ba1b85f6a13d2eff53e14b2d","promptSummary":"Transparent top-oblique radial date-palm fronds with realistic leaflets and gaps; no trunk, coconuts, ground or low-poly styling."},
+      {"file":"source/grass-tuft-v1-imagegen.png","dimensions":[1254,1254],"bytes":1176507,"sha256":"5b902deab0f0d58cabe2a706bf33af656e9f6a94a7acc9a86a869124b9607ce7","promptSummary":"Transparent photoreal fan clump of thin tapered grass blades with natural crossings and gaps; no soil, pot, flowers or low-poly treatment."}
+    ],
+    "meshyTasks": [],
+    "meshyCredits": 0
+  },
+  "material": {
+    "name": "extended-foliage-v1-pbr",
+    "sharedAcross": ["treeAutumn","conifer","palm","grassTuft","grassTuftGreen"],
+    "runtimeInstances": 1,
+    "alphaTest": 0.85,
+    "alphaToCoverage": false,
+    "doubleSided": true,
+    "metalness": 0,
+    "atlasLayout": "2x2: autumn branch, conifer branch, palm fronds, grass tuft; opaque bark swatch in guarded atlas corner",
+    "maps": [
+      {"role":"baseColorAlpha","file":"material/extended-foliage-v1.base.webp","dimensions":[1024,1024],"bytes":504182,"sha256":"300dc81d11f9b9e57b0d4b543b0ab3fd55f3c4013b3095f22cddf6e5167c4f56"},
+      {"role":"normal","file":"material/extended-foliage-v1.normal.jpg","dimensions":[512,512],"bytes":33283,"sha256":"b385e88ff86d9ace4de85c400b08279397e1ecd8b23e5075fa58671a2a06123b"},
+      {"role":"metallicRoughness","file":"material/extended-foliage-v1.mr.jpg","dimensions":[512,512],"bytes":35545,"sha256":"d5977ea8ae5e9bc8403273000d521af18de42b00298546f3f1aecb4018e5c93e"}
+    ]
+  },
+  "deliveries": [
+    {"key":"treeAutumn","triangles":{"lod0":54,"lod1":48,"lod2Emergency":44,"shadow":40}},
+    {"key":"conifer","triangles":{"lod0":82,"lod1":64,"lod2Emergency":52,"shadow":40}},
+    {"key":"palm","triangles":{"lod0":170,"lod1":168,"lod2Emergency":166,"shadow":36}},
+    {"key":"grassTuft","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}},
+    {"key":"grassTuftGreen","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}}
+  ],
+  "deliveryFileCount": 20,
+  "deliveryBytes": 68760,
+  "deliveryAggregateSha256": "86026fbcd35312a8c12672e3cd25c3b69d8c640c061153438623be40c20a034e",
+  "shippingFamilyBytes": 641770,
+  "reviews": [
+    {"file":"review/autumn-webgpu.png","sha256":"c0c5a87134f93486ab68758fb7111ebd93072b6a773fdf6b4b642b5d8e153513","note":"WebGPU cardinal proof of the halo-free alpha silhouette and corrected medium-brown trunk."},
+    {"file":"review/conifer-webgpu.png","sha256":"926b55006dd83a97692ed5b25b3d0ed2afc8e3740c4104972355cfc3893181de","note":"WebGPU halo-free proof after increasing LOD0 branch density from the rejected sparse first pass."},
+    {"file":"review/palm-webgpu.png","sha256":"ae878d40e9603e68018464a93ba04ed43dafc7aa9b3b35924c3c50c60ccf7e02","note":"WebGPU proof of the halo-free radial frond read and segmented grounded trunk."},
+    {"file":"review/grass-webgpu.png","sha256":"9ab789ff9b34955dbec08f680155d4b1f31d69a695232416fb2fdfadce001994","note":"WebGPU proof of halo-free realistic alpha grass at an eight-triangle LOD0."}
+  ],
+  "rejections": [
+    {"delivery":"first trunk-atlas mapping","reason":"Transparent atlas pixels made trunks render nearly black; an opaque guarded bark swatch and point UV mapping replaced it."},
+    {"delivery":"first conifer LOD0","reason":"Nine cards exposed too much pole-like trunk in cardinal review; the accepted LOD0 uses fifteen cards while remaining only 82 triangles."},
+    {"delivery":"soft alpha-to-coverage foliage edges","reason":"Partial-alpha source texels produced bright strokes around leaf and grass silhouettes in the live WebGPU scene. Production uses a strict 0.85 mask without alpha-to-coverage."}
+  ]
+}

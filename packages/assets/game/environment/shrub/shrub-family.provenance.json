@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "family": "temperate-shrub-v1",
+  "generatedAt": "2026-08-29",
+  "source": {
+    "geometryMethod": "deterministic local alpha-card and closed-proxy generator",
+    "geometryTool": "tools/build-shrub-family.mjs",
+    "textureMethod": "two ImageGen transparent foliage sources conditioned into one shared PBR atlas",
+    "textureTool": "tools/build-shrub-pbr.mjs",
+    "imageGenSources": [
+      {
+        "file": "source/temperate-shrub-v1-imagegen.png",
+        "dimensions": [1254, 1254],
+        "bytes": 1803949,
+        "sha256": "aaced7f180aa263c0846efd44b395656717e125b7091ce5d1210fff932330a10",
+        "promptSummary": "Transparent photoreal temperate shrub branch cluster under flat overcast light, with small oval leaves, visible twigs and natural gaps; no pot, ground, flowers, cartoon or low-poly styling."
+      },
+      {
+        "file": "source/temperate-hedge-v1-imagegen.png",
+        "dimensions": [1672, 940],
+        "bytes": 2740476,
+        "sha256": "12454077bc749b7182559533732b717e101e3e2bf137f206a25287185d09a8ff",
+        "promptSummary": "Transparent photoreal continuous rectangular clipped temperate hedge panel under flat overcast light, with dense small leaves and twigs; no separate bushes, pot or ground."
+      }
+    ],
+    "meshyTasks": [],
+    "meshyCredits": 0
+  },
+  "material": {
+    "name": "temperate-shrub-v1-pbr",
+    "sharedAcross": ["bush", "hedge"],
+    "runtimeInstances": 1,
+    "alphaTest": 0.85,
+    "alphaToCoverage": false,
+    "doubleSided": true,
+    "biomeTint": "normalized COLOR_0 multiplier",
+    "edgeTreatment": "semi-transparent texels decontaminated toward olive; alpha at or below 22 removed before mip delivery",
+    "maps": [
+      {
+        "role": "baseColorAlpha",
+        "file": "material/temperate-shrub-v1.base.webp",
+        "dimensions": [1024, 1024],
+        "bytes": 410886,
+        "sha256": "72649cbe407f3630785f11f13bf5763b3649fc8d67f089d990a9d2fedd73132d"
+      },
+      {
+        "role": "normal",
+        "file": "material/temperate-shrub-v1.normal.jpg",
+        "dimensions": [512, 512],
+        "bytes": 152628,
+        "sha256": "9deade77969e55a92329a459dfd3508acd11a72025142114c7a783e00e5d1661"
+      },
+      {
+        "role": "metallicRoughness",
+        "file": "material/temperate-shrub-v1.mr.jpg",
+        "dimensions": [512, 512],
+        "bytes": 12813,
+        "sha256": "3a3b9786399d56ac6b9b6af6d5a0df8d21c01e59b6119070d4cb4a9c431a0747"
+      }
+    ]
+  },
+  "deliveries": [
+    {"key":"bush","role":"lod0","file":"bush-v1.glb","bytes":3956,"triangles":28,"sha256":"75d5f4e0701950ae6f4e69e6a7274d6184e4185c8fb65438bde7a7af1d6e89cf"},
+    {"key":"bush","role":"lod1","file":"derived/bush-v1.lod1.glb","bytes":2844,"triangles":16,"sha256":"e00e7330acd1645ccafbf7d99ff7357ad4965d92dcbe02a6e61916d8b040fc0c"},
+    {"key":"bush","role":"lod2-emergency","file":"derived/bush-v1.lod2.glb","bytes":1900,"triangles":6,"sha256":"1a923d11b6d81bc2b9c6739cabdaed8050cb859e0896b4d5d67bf579276740a8"},
+    {"key":"bush","role":"shadow","file":"derived/bush-v1.shadow.glb","bytes":2412,"triangles":48,"sha256":"336e158cc89ab93dfe26a9e60883bf6ed856ad94b48608572f9c80285851ede6"},
+    {"key":"hedge","role":"lod0","file":"hedge-v1.glb","bytes":2456,"triangles":12,"sha256":"56c8da1960980f42999646f0877ddf59d60f9c485f4641b22cfc075040c44944"},
+    {"key":"hedge","role":"lod1","file":"derived/hedge-v1.lod1.glb","bytes":2280,"triangles":10,"sha256":"2e91821622c061daf3ea78d9087a87acb708f82e3a4fecf43fe3f1db4f12e932"},
+    {"key":"hedge","role":"lod2-emergency","file":"derived/hedge-v1.lod2.glb","bytes":2280,"triangles":10,"sha256":"301a699e420f5df8e1fbe58066937744c9631cdbfa25c718b8a2ffe5334c2d83"},
+    {"key":"hedge","role":"shadow","file":"derived/hedge-v1.shadow.glb","bytes":2124,"triangles":12,"sha256":"3a4ddf30502266d3ed496504b22c28712c2ade862c580fc6f9dd8758630193fe"}
+  ],
+  "shippingFamilyBytes": 596579,
+  "reviews": [
+    {"file":"review/bush-v1.pbr-cardinals.png","sha256":"d40e43b982cc3b8b102db93da95b2f2467de6b1b41f44edae1d72a021b4bf648"},
+    {"file":"review/hedge-v1.pbr-cardinals.png","sha256":"0e6c69de41bd507030e24fa212249f84d5d9a96c802221d4f06cb133f454e997"},
+    {"file":"review/live-electron-webgpu.png","sha256":"9d3f7ef2c1595bd114b6f53eec0b7cdc3750cc92807deecb10e5b4c344fa1c7b","note":"Live Electron/WebGPU roadside proof after aligning the hedge local +X long axis with the road tangent."}
+  ],
+  "rejections": [
+    {
+      "delivery": "initial bush horizontal cap cards",
+      "reason": "The shared branch image read as pale horizontal ribbons from oblique views. Production bush geometry uses only irregular upright and leaning crossed cards."
+    },
+    {
+      "delivery": "initial segmented hedge side cards",
+      "reason": "Repeated panels read as separate shrubs and exposed vertical seams. Production geometry uses a dedicated continuous side panel plus separate top/end atlas crop."
+    },
+    {
+      "delivery": "raw ImageGen alpha fringes",
+      "reason": "Semi-transparent source-edge colors produced bright mip halos. Production atlas decontaminates edge RGB toward foliage olive and removes very low alpha before WebP encoding."
+    },
+    {
+      "delivery": "soft alpha-to-coverage shrub edges",
+      "reason": "Partial-alpha texels still produced bright strokes in the live WebGPU scene. Production uses a strict 0.85 alpha mask without alpha-to-coverage."
+    },
+    {
+      "delivery": "generic local-Z street yaw applied to the hedge",
+      "reason": "The imported hedge's long axis is local +X, so the generic street transform exposed its narrow end and made it read as a post. Production placement applies a hedge-only quarter turn while preserving positions, stable keys, counts and save fingerprints."
+    }
+  ]
+}

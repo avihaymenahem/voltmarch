@@ -43,7 +43,136 @@
 
   const gltf = await new GLTFLoader().loadAsync(modelUrl);
   const model = gltf.scene;
-  if (params.get('material') !== 'original') {
+  if (params.get('material') === 'extended-foliage') {
+    const textureLoader = new THREE.TextureLoader();
+    const [base, normal, mr] = await Promise.all([
+      textureLoader.loadAsync('/packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.base.webp'),
+      textureLoader.loadAsync('/packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.normal.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.mr.jpg'),
+    ]);
+    base.colorSpace = THREE.SRGBColorSpace;
+    normal.colorSpace = THREE.NoColorSpace;
+    mr.colorSpace = THREE.NoColorSpace;
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: base,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.58, 0.58),
+      roughness: 1,
+      roughnessMap: mr,
+      metalness: 0,
+      metalnessMap: mr,
+      vertexColors: true,
+      alphaTest: 0.85,
+      transparent: false,
+      alphaToCoverage: false,
+      side: THREE.DoubleSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  } else if (params.get('material') === 'shrub') {
+    const textureLoader = new THREE.TextureLoader();
+    const [base, normal, mr] = await Promise.all([
+      textureLoader.loadAsync('/packages/assets/game/environment/shrub/material/temperate-shrub-v1.base.webp'),
+      textureLoader.loadAsync('/packages/assets/game/environment/shrub/material/temperate-shrub-v1.normal.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/shrub/material/temperate-shrub-v1.mr.jpg'),
+    ]);
+    base.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: base,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughness: 1,
+      roughnessMap: mr,
+      metalness: 0,
+      metalnessMap: mr,
+      vertexColors: true,
+      alphaTest: 0.85,
+      transparent: false,
+      alphaToCoverage: false,
+      side: THREE.DoubleSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  } else if (params.get('material') === 'box-prop') {
+    const textureLoader = new THREE.TextureLoader();
+    const [base, normal, mr] = await Promise.all([
+      textureLoader.loadAsync('/packages/assets/game/environment/box-prop/material/box-prop-v1.base.webp'),
+      textureLoader.loadAsync('/packages/assets/game/environment/box-prop/material/box-prop-v1.normal.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/box-prop/material/box-prop-v1.mr.jpg'),
+    ]);
+    base.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: base,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.58, 0.58),
+      roughness: 1,
+      roughnessMap: mr,
+      metalness: 0.82,
+      metalnessMap: mr,
+      vertexColors: true,
+      alphaTest: 0.85,
+      transparent: false,
+      alphaToCoverage: false,
+      side: THREE.FrontSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  } else if (params.get('material') === 'prop-surface') {
+    const textureLoader = new THREE.TextureLoader();
+    const [base, normal, mr] = await Promise.all([
+      textureLoader.loadAsync('/packages/assets/game/environment/prop-surface/material/prop-surface-v1.base.webp'),
+      textureLoader.loadAsync('/packages/assets/game/environment/prop-surface/material/prop-surface-v1.normal.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/prop-surface/material/prop-surface-v1.mr.jpg'),
+    ]);
+    base.colorSpace = THREE.SRGBColorSpace;
+    normal.colorSpace = THREE.NoColorSpace;
+    mr.colorSpace = THREE.NoColorSpace;
+    for (const texture of [base, normal, mr]) {
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      texture.anisotropy = 4;
+    }
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: base,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.44, 0.44),
+      roughness: 1,
+      roughnessMap: mr,
+      metalness: 0.88,
+      metalnessMap: mr,
+      vertexColors: true,
+      side: THREE.FrontSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  } else if (params.get('material') === 'rock') {
+    const textureLoader = new THREE.TextureLoader();
+    const [base, normal, mr] = await Promise.all([
+      textureLoader.loadAsync('/packages/assets/game/environment/mineral/material/mineral-rock-v1.base.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/mineral/material/mineral-rock-v1.normal.jpg'),
+      textureLoader.loadAsync('/packages/assets/game/environment/mineral/material/mineral-rock-v1.mr.jpg'),
+    ]);
+    base.colorSpace = THREE.SRGBColorSpace;
+    for (const texture of [base, normal, mr]) {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1.55, 1.35);
+      texture.anisotropy = 4;
+    }
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: base,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.68, 0.68),
+      roughness: 1,
+      roughnessMap: mr,
+      metalness: 0,
+      metalnessMap: mr,
+      vertexColors: true,
+      side: THREE.FrontSide,
+    });
+    model.traverse((node) => { if (node.isMesh) node.material = material; });
+  } else if (params.get('material') !== 'original') {
     const material = new THREE.MeshStandardMaterial({
       color: 0xb8bcc2,
       roughness: 0.72,

@@ -23,11 +23,12 @@ const PROFILES = Object.freeze({
   infantry: { base: 1024, normal: 1024, metalRough: 512, other: 512 },
   troop: { base: 512, normal: 512, metalRough: 256, other: 256 },
   defence: { base: 1024, normal: 1024, metalRough: 512, other: 512 },
+  foliage: { base: 1024, normal: 1024, metalRough: 512, other: 512 },
 });
 if (!inputArg || !outputArg) {
   throw new Error(
     'usage: node tools/resize-glb-textures.mjs <input.glb> <output.glb> '
-    + '[--profile building|vehicle|hero|infantry|troop|defence] '
+    + '[--profile building|vehicle|hero|infantry|troop|defence|foliage] '
     + '[--palette none|soviet-field|allied-ceramic|meridian-solar|reclamation-salvage] '
     + '[--accent-preset none|soviet-conyard] '
     + '[--surface-profile none|soviet-family] [--seal-swatch]',
@@ -364,7 +365,12 @@ for (let imageIndex = 0; imageIndex < (document.images?.length ?? 0); imageIndex
       pipeline = pipeline.linear(1.35, -25).sharpen(0.8);
     }
   }
-  const quality = uses.has('normal') ? 94 : uses.has('metalRough') ? 92 : 91;
+  // Dense foliage micro-normals contain far more high-frequency energy than
+  // hard-surface maps. Quality 92 keeps that response while preventing one
+  // tree atlas from consuming the complete 1.5 MiB shipping-family budget.
+  const quality = uses.has('normal')
+    ? (profileName === 'foliage' ? 92 : 94)
+    : uses.has('metalRough') ? 92 : 91;
   const encoded = await pipeline.jpeg({ quality, chromaSubsampling: '4:4:4' }).toBuffer();
   replacements.set(image.bufferView, encoded);
   image.mimeType = 'image/jpeg';

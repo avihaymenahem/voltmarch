@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "family": "box-prop-v1",
+  "generatedAt": "2026-08-30",
+  "source": {
+    "geometryMethod": "deterministic local modular box, planter and closed-proxy generator",
+    "geometryTool": "tools/build-box-prop-family.mjs",
+    "textureMethod": "ImageGen timber, forged-iron and transparent flower sources conditioned into one shared PBR atlas",
+    "textureTool": "tools/build-box-prop-pbr.mjs",
+    "imageGenSources": [
+      {
+        "file": "source/yard-crate-v1-imagegen.png",
+        "dimensions": [1254, 1254],
+        "bytes": 3567199,
+        "sha256": "9671f6d6a70907c534bd62f8dc10f9d5df1d7231602d26ad95739e5c3e2fd37d",
+        "promptSummary": "Straight-on realistic weathered timber shipping-crate face under flat neutral light, with individual boards, grain, joints and restrained wear; rejected as the final crate surface because it was wood-only."
+      },
+      {
+        "file": "source/yard-crate-v2-imagegen-iron.png",
+        "dimensions": [1254, 1254],
+        "bytes": 2733315,
+        "sha256": "12dc0cbb34cc8b9b5a8341f2ead00105e18eac7c4b111e8a2932375ea697ca84",
+        "promptSummary": "Edit of the approved square crate face adding restrained forged-iron corner straps, one narrow horizontal band, corner plates and round fasteners in dark matte gunmetal while keeping timber dominant; no chrome, heavy rust, ornament, spikes, handles or locks."
+      },
+      {
+        "file": "source/flower-bed-v1-imagegen.png",
+        "dimensions": [1672, 941],
+        "bytes": 2586936,
+        "sha256": "6f044d8ae3c587a7251af15f333295de9eff12dad4cfd57af452e3b22fe0f30c",
+        "promptSummary": "Transparent top-down dense rectangular temperate flower canopy with natural pink, yellow and white variation, visible foliage and irregular gaps; no planter, pot, soil plane, ground or stylized low-poly treatment."
+      }
+    ],
+    "meshyTasks": [],
+    "meshyCredits": 0
+  },
+  "material": {
+    "name": "box-prop-v1-pbr",
+    "sharedAcross": ["crateStack", "flowerBed", "pickup crate entities"],
+    "runtimeInstances": 1,
+    "alphaTest": 0.85,
+    "alphaToCoverage": false,
+    "doubleSided": false,
+    "metalness": 0.82,
+    "atlasLayout": "2x2: iron-reinforced crate, darker planter timber, deterministic soil, alpha flower canopy",
+    "metalMask": "packed metallic-roughness blue channel marks only detected forged-iron straps and plates; wood, soil and foliage remain dielectric",
+    "maps": [
+      {
+        "role": "baseColorAlpha",
+        "file": "material/box-prop-v1.base.webp",
+        "dimensions": [1024, 1024],
+        "bytes": 227922,
+        "sha256": "baabc1f4061283f40eef2d4705fc85ffcbf16c924be9339bc84d1d0edcd7c15b"
+      },
+      {
+        "role": "normal",
+        "file": "material/box-prop-v1.normal.jpg",
+        "dimensions": [512, 512],
+        "bytes": 87119,
+        "sha256": "ccc41e62023ca23b0d7c0ccfc52ec2a46bdfed87501b810c9ad110f2ab3da35d"
+      },
+      {
+        "role": "metallicRoughness",
+        "file": "material/box-prop-v1.mr.jpg",
+        "dimensions": [512, 512],
+        "bytes": 11056,
+        "sha256": "67238b688176cb0991b19f18bf7a92c16772ef50f8c13663de5d08d9072ba2cf"
+      }
+    ]
+  },
+  "deliveries": [
+    {"key":"crateStack","role":"lod0","file":"crate-stack-v1.glb","bytes":6920,"triangles":60,"sha256":"e974c26e6dfced4ff3f72cf4ea790b9badf2c6854d7b9aa6cec3b7c057e08ffd"},
+    {"key":"crateStack","role":"lod1","file":"derived/crate-stack-v1.lod1.glb","bytes":6932,"triangles":60,"sha256":"e504e1cb24176b60a8e428403eba1ca5f81b70f27bd17a555c5445673071073a"},
+    {"key":"crateStack","role":"lod2-emergency","file":"derived/crate-stack-v1.lod2.glb","bytes":6932,"triangles":60,"sha256":"1e6e90c72671640354c5107aaf31ddcc11aa5e8d3551c7a8d387f19094a73933"},
+    {"key":"crateStack","role":"shadow","file":"derived/crate-stack-v1.shadow.glb","bytes":3044,"triangles":24,"sha256":"8bed5416f5b108713c7fea2da8df261d185e23df85a17127d3da6e26702e6a17"},
+    {"key":"flowerBed","role":"lod0","file":"flower-bed-v1.glb","bytes":2776,"triangles":16,"sha256":"912b409d5f2e6a08500af872319d9657e9d1e575bbb98ec0efc411efe4b7a2c3"},
+    {"key":"flowerBed","role":"lod1","file":"derived/flower-bed-v1.lod1.glb","bytes":2792,"triangles":16,"sha256":"87d02501db2cdb44a9f85680cb7233cc30c5397abaaa27479917b65d695a7087"},
+    {"key":"flowerBed","role":"lod2-emergency","file":"derived/flower-bed-v1.lod2.glb","bytes":2604,"triangles":14,"sha256":"ac38be8540943c218b7fe0a1f9cdb7adadac74d3030adf3c8ca6f7aed79302e4"},
+    {"key":"flowerBed","role":"shadow","file":"derived/flower-bed-v1.shadow.glb","bytes":2104,"triangles":12,"sha256":"01a8a983188092a3f1a0f10b0f62d82122e444e0ff5791353d531e62a83bb887"}
+  ],
+  "shippingFamilyBytes": 360201,
+  "reviews": [
+    {"file":"review/crate-stack-v2.iron-webgpu-cardinals.png","sha256":"974a80a46485f627750b7f4d25cdd94dc617ecc99c6e64c342a861f14e1eb23a","note":"Accepted WebGPU cardinal review of timber-dominant crates with readable dark forged-iron straps and banding."},
+    {"file":"review/flower-bed-v2.iron-webgpu-top.png","sha256":"3cd5628e8183a7c52605bd4349c579e8e4895c63ddffbe071d53ad204662fc2d","note":"Accepted top-oblique WebGPU review of the shared iron-timber planter and alpha flower canopy."},
+    {"file":"review/live-electron-webgpu.png","sha256":"97f7a4f77a34ea7c1f283f5b276d70a4d5f8f88f1e3416d0aa405bea033c17ea","note":"Live Electron/WebGPU proof of the imported crate stack and flower box together in the seeded temperate skirmish."}
+  ],
+  "rejections": [
+    {
+      "delivery": "yard-crate-v1 wood-only surface",
+      "reason": "The realistic timber improved the original low-poly colour blocks but still read as wood-only. The accepted v2 edit adds restrained forged-iron corner straps, horizontal banding, plates and fasteners without turning the crate into a metal container."
+    },
+    {
+      "delivery": "raw flower canopy transparent padding",
+      "reason": "The useful alpha silhouette occupied only the middle of the generated frame and rendered too small. Production flower UVs use the measured alpha bounds so the canopy fills the planter without changing geometry."
+    },
+    {
+      "delivery": "raw generated flower edge matte",
+      "reason": "Transparent source padding carried non-foliage RGB. Production conditioning writes alpha-safe edge colour and relies on alphaTest plus alpha-to-coverage at runtime."
+    }
+  ]
+}

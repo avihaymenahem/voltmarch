@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "family": "environment-foliage-poc",
+  "sourceDir": "packages/assets/game/environment/foliage",
+  "outputDir": "packages/assets/game/environment/foliage/derived",
+  "profiles": {
+    "lod1": {
+      "ratio": 0.25,
+      "error": 0.035,
+      "maxRatio": 0.268,
+      "maxTriangles": 900,
+      "maxBoundsDrift": 0.04,
+      "stripShadingAttributes": true,
+      "stripTextureAttributes": true,
+      "reweld": true,
+      "rebuildNormals": true,
+      "geometryOnly": true
+    },
+    "lod2": {
+      "ratio": 0.045,
+      "error": 0.14,
+      "maxRatio": 0.12,
+      "maxTriangles": 400,
+      "maxBoundsDrift": 0.06,
+      "preserveBounds": true,
+      "stripShadingAttributes": true,
+      "stripTextureAttributes": true,
+      "reweld": true,
+      "rebuildNormals": true,
+      "geometryOnly": true
+    },
+    "shadow": {
+      "mode": "simplify",
+      "ratio": 0.25,
+      "error": 0.035,
+      "maxRatio": 0.268,
+      "maxTriangles": 900,
+      "maxBoundsDrift": 0.04,
+      "stripShadingAttributes": true,
+      "stripTextureAttributes": true,
+      "reweld": true,
+      "rebuildNormals": true,
+      "geometryOnly": true
+    }
+  },
+  "assets": [
+    {
+      "key": "tree",
+      "file": "temperate-broadleaf-v1.glb",
+      "class": "foliage",
+      "lods": true,
+      "movingParts": false
+    }
+  ]
+}

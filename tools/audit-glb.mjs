@@ -63,8 +63,10 @@ let primitives = 0;
 for (const mesh of document.meshes ?? []) {
   for (const primitive of mesh.primitives ?? []) {
     primitives++;
-    triangles += primitive.indices === undefined ? 0 : (document.accessors?.[primitive.indices]?.count ?? 0) / 3;
     const position = primitive.attributes?.POSITION;
+    triangles += primitive.indices === undefined
+      ? (position === undefined ? 0 : document.accessors?.[position]?.count ?? 0) / 3
+      : (document.accessors?.[primitive.indices]?.count ?? 0) / 3;
     vertices += position === undefined ? 0 : document.accessors?.[position]?.count ?? 0;
   }
 }

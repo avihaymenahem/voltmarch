@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "family": "mineral-rock-v1",
+  "generatedAt": "2026-08-29",
+  "source": {
+    "geometryMethod": "deterministic local closed-ring rock generator",
+    "geometryTool": "tools/build-rock-family.mjs",
+    "textureMethod": "ImageGen albedo refined locally into a seamless shared PBR set",
+    "textureTool": "tools/build-rock-pbr.mjs",
+    "imageGenSource": "source/mineral-rock-v1-imagegen.png",
+    "imageGenSourceSha256": "a1221285566c9bac49958b8bbbf24554cbba2c51d5ba04b1ecd7ee7c929a4301",
+    "imageGenPromptSummary": "Photoreal seamless warm-neutral grey fieldstone, flat diffuse capture, layered sedimentary grain, mineral flecks and shallow fissures; no baked light, moss, soil, perspective, low-poly facets or painted stylization.",
+    "meshyTasks": [],
+    "meshyCredits": 0
+  },
+  "material": {
+    "name": "mineral-rock-v1-pbr",
+    "sharedAcross": ["boulder", "rockCluster"],
+    "runtimeInstances": 1,
+    "maps": [
+      {
+        "role": "baseColor",
+        "file": "material/mineral-rock-v1.base.jpg",
+        "dimensions": [1024, 1024],
+        "bytes": 358458,
+        "sha256": "a75e8342aac001a496c9123678f972190bfdfa8f2a9d8a5d32afc2ed298b6298"
+      },
+      {
+        "role": "normal",
+        "file": "material/mineral-rock-v1.normal.jpg",
+        "dimensions": [512, 512],
+        "bytes": 260443,
+        "sha256": "19bae13ab54ecc239882b8b52b5753630a5b8722fbcc550c894e53ec3e1b7ce9"
+      },
+      {
+        "role": "metallicRoughness",
+        "file": "material/mineral-rock-v1.mr.jpg",
+        "dimensions": [512, 512],
+        "bytes": 59325,
+        "sha256": "515a5ceac202c1754b703b443c973fe11ec597c2ca802fe002474e5a3daf5bb8"
+      }
+    ],
+    "gpuDimensions": "1024/512/512",
+    "metalness": 0,
+    "singleSided": true,
+    "repeat": [1.55, 1.35],
+    "biomeTint": "normalized COLOR_0 multiplier"
+  },
+  "deliveries": [
+    {
+      "key": "boulder",
+      "role": "lod0",
+      "file": "boulder-v1.glb",
+      "bytes": 80808,
+      "triangles": 576,
+      "sha256": "0144250ee6d62c019a2749cae2676db874886c286110a1e51808672dbe644a7c"
+    },
+    {
+      "key": "boulder",
+      "role": "lod1",
+      "file": "derived/boulder-v1.lod1.glb",
+      "bytes": 32240,
+      "triangles": 224,
+      "sha256": "a8c07d4055d8770af431f66386f43a8f18649e228bc095922ed6041244485211"
+    },
+    {
+      "key": "boulder",
+      "role": "lod2-emergency",
+      "file": "derived/boulder-v1.lod2.glb",
+      "bytes": 15128,
+      "triangles": 100,
+      "sha256": "662f5d0ce4446f832b424c02416ade63b04fe4b5f372eb83c22ef5e553dacc29"
+    },
+    {
+      "key": "boulder",
+      "role": "shadow",
+      "file": "derived/boulder-v1.shadow.glb",
+      "bytes": 21204,
+      "triangles": 144,
+      "sha256": "d308d4b99ed5a02c2e1de5099e054a3ecfd4ec0612ff3eef35ddb0bd175e8bbc"
+    },
+    {
+      "key": "rockCluster",
+      "role": "lod0",
+      "file": "rock-cluster-v1.glb",
+      "bytes": 63436,
+      "triangles": 450,
+      "sha256": "81f25a93a1d2bead95bc6e39461105c6b7d5c822a2eee251a8113c7cd1e506e2"
+    },
+    {
+      "key": "rockCluster",
+      "role": "lod1",
+      "file": "derived/rock-cluster-v1.lod1.glb",
+      "bytes": 34464,
+      "triangles": 240,
+      "sha256": "fc8d38fbba8c39800c774a1fe3dfe470e89643b733e9b713d673d9cde5c5b655"
+    },
+    {
+      "key": "rockCluster",
+      "role": "lod2-emergency",
+      "file": "derived/rock-cluster-v1.lod2.glb",
+      "bytes": 17904,
+      "triangles": 120,
+      "sha256": "20154f7129452ea91056cb1bf8953e54337c5d5193fd28ec767a91f60bb9fca0"
+    },
+    {
+      "key": "rockCluster",
+      "role": "shadow",
+      "file": "derived/rock-cluster-v1.shadow.glb",
+      "bytes": 22052,
+      "triangles": 150,
+      "sha256": "23bf4650a1b07407a2f69958c5b575bc68c42932e6a6b2084442b304f29e9285"
+    }
+  ],
+  "deliveryAliases": [
+    {
+      "key": "debrisPile",
+      "reuses": "rockCluster",
+      "reason": "The imported yard identity intentionally reuses all four approved rounded rock-cluster deliveries and the shared mineral PBR material, replacing the rejected single rectangular block rocks without changing seeded placement identity."
+    }
+  ],
+  "shippingFamilyBytes": 965462,
+  "reviews": [
+    {
+      "file": "review/boulder-v1.pbr-cardinals.png",
+      "sha256": "828489eee18f8927d3ca52d2d657a58bab3be48b8871a68e94ddbbddfa17fc0b"
+    },
+    {
+      "file": "review/rock-cluster-v1.pbr-cardinals.png",
+      "sha256": "701304b13ed47ab2f8dd8103f312601d446b6b1ae23eb8c32a340a20ad323a1f"
+    }
+  ],
+  "rejections": [
+    {
+      "delivery": "initial local silhouettes",
+      "reason": "Cardinal review read as pots/mushrooms due to narrow feet and flat caps. The production generator uses planted bases, broken sloped caps and asymmetric strata."
+    },
+    {
+      "delivery": "initial textured normals",
+      "reason": "Triangle-weighted normals and per-face value noise exposed diagonal low-poly patches. Production normals are predominantly radial and triangle value noise is restrained."
+    },
+    {
+      "delivery": "procedural debrisPile rectangular blocks",
+      "reason": "The individual box-like stones failed in-game silhouette review. Imported presentation maps debrisPile to the existing approved rounded rock cluster instead of generating another mineral family."
+    }
+  ]
+}
