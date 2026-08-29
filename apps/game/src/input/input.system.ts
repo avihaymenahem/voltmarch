@@ -1568,7 +1568,15 @@ function placementActive(): boolean {
 /** Hand the marquee pixels to the HUD's overlay canvas, once it exists. */
 function linkHud(): void {
   const h = hud();
-  if (h === null || input === null) return;
+  if (input === null) return;
+  if (h === null) {
+    if (linkedHud !== null) {
+      linkedHud.minimap?.onOrderRequest?.(null);
+      linkedHud = null;
+      input.clearMarqueeRenderer();
+    }
+    return;
+  }
   if (h === linkedHud) return;
 
   // Matches can recreate the HUD without reloading this module. A boolean

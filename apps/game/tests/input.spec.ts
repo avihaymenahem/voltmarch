@@ -22,7 +22,7 @@ import {
 } from '../src/core/types';
 import type { Command, EntityId, ITerrain, PlayerId } from '../src/core/types';
 
-import { CursorKind, uiOwnsNavigation } from '../src/input/Input';
+import { CursorKind, InputManager, uiOwnsNavigation } from '../src/input/Input';
 import { CaptureService, captureService, setCaptureService } from '../src/sim/Capture';
 import {
   Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
@@ -179,6 +179,54 @@ describe('keyboard focus ownership', () => {
     expect(uiOwnsNavigation(gridCell, 'ArrowDown')).toBe(true);
     expect(uiOwnsNavigation(button, 'KeyQ')).toBe(false);
     expect(uiOwnsNavigation(null, 'ArrowLeft')).toBe(false);
+  });
+});
+
+describe('selection marquee renderer ownership', () => {
+  it('transfers a live drag when the HUD overlay is recreated', () => {
+    const element = { style: {} } as HTMLElement;
+    const input = new InputManager({
+      element,
+      ground: () => false,
+      handlers: {},
+      attach: false,
+      overlayParent: null,
+    });
+    const firstShows: number[][] = [];
+    const secondShows: number[][] = [];
+    let firstHides = 0;
+    let secondHides = 0;
+    input.setMarqueeRenderer(
+      (...rect) => firstShows.push(rect),
+      () => { firstHides++; },
+    );
+
+    const harness = input as unknown as {
+      dragging: boolean;
+      dragCommitted: boolean;
+      dragButton: number;
+      showMarquee(x0: number, y0: number, x1: number, y1: number): void;
+      hideMarquee(): void;
+    };
+    harness.dragging = true;
+    harness.dragCommitted = true;
+    harness.dragButton = 0;
+    harness.showMarquee(120, 80, 460, 300);
+    input.clearMarqueeRenderer();
+    input.setMarqueeRenderer(
+      (...rect) => secondShows.push(rect),
+      () => { secondHides++; },
+    );
+
+    expect(firstShows).toEqual([[120, 80, 460, 300]]);
+    expect(firstHides).toBe(1);
+    expect(secondShows).toEqual([[120, 80, 460, 300]]);
+    harness.hideMarquee();
+    expect(secondHides).toBe(1);
+    harness.dragging = false;
+    harness.dragCommitted = false;
+    harness.dragButton = -1;
+    input.dispose();
   });
 });
 

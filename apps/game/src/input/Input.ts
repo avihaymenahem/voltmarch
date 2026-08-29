@@ -290,6 +290,11 @@ export class InputManager {
   /** Installed by the owning system when the HUD's canvas overlay exists. */
   private marqueeShow: ((x0: number, y0: number, x1: number, y1: number) => void) | null = null;
   private marqueeHide: (() => void) | null = null;
+  /** Last live rectangle, retained so a recreated HUD can adopt an active drag. */
+  private marqueeX0 = 0;
+  private marqueeY0 = 0;
+  private marqueeX1 = 0;
+  private marqueeY1 = 0;
 
   private attached = false;
   private disposed = false;
@@ -407,17 +412,50 @@ export class InputManager {
     show: (x0: number, y0: number, x1: number, y1: number) => void,
     hide: () => void,
   ): void {
+    // A HUD can be recreated during a live match (notably after a development
+    // hot reload). The gesture still belongs to this InputManager, so move an
+    // active rectangle from the retired surface to the new one atomically.
+    // Merely replacing these callbacks leaves selection functional but makes
+    // the box disappear until another pointermove — and can strand the old box
+    // because pointerup then clears only the new surface.
+    const wasVisible = this.marqueeVisible;
+    const shouldRemainVisible = wasVisible || (
+      this.dragging && this.dragCommitted && this.dragButton === MouseButton.Left
+    );
+    if (wasVisible && this.marqueeHide !== null) this.marqueeHide();
     this.marqueeShow = show;
     this.marqueeHide = hide;
     if (this.marquee !== null) {
       this.marquee.remove();
       this.marquee = null;
-      this.marqueeVisible = false;
+    }
+    this.marqueeVisible = false;
+    if (!shouldRemainVisible) return;
+    show(this.marqueeX0, this.marqueeY0, this.marqueeX1, this.marqueeY1);
+    this.marqueeVisible = true;
+  }
+
+  /** Return an active drag to the DOM fallback while no HUD canvas exists. */
+  clearMarqueeRenderer(): void {
+    const wasVisible = this.marqueeVisible;
+    const shouldRemainVisible = wasVisible || (
+      this.dragging && this.dragCommitted && this.dragButton === MouseButton.Left
+    );
+    if (wasVisible && this.marqueeHide !== null) this.marqueeHide();
+    this.marqueeShow = null;
+    this.marqueeHide = null;
+    this.marqueeVisible = false;
+    if (shouldRemainVisible) {
+      this.showMarquee(this.marqueeX0, this.marqueeY0, this.marqueeX1, this.marqueeY1);
     }
   }
 
   /** Show/position the marquee. Coordinates are client-space pixels. */
   private showMarquee(minX: number, minY: number, maxX: number, maxY: number): void {
+    this.marqueeX0 = minX;
+    this.marqueeY0 = minY;
+    this.marqueeX1 = maxX;
+    this.marqueeY1 = maxY;
     if (this.marqueeShow !== null) {
       this.marqueeShow(minX, minY, maxX, maxY);
       this.marqueeVisible = true;
