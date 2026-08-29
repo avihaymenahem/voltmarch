@@ -94,8 +94,13 @@ import {
 import { fitMesh, shapeMesh } from '../src/art/Shapes';
 import { UnitLibrary } from '../src/art/UnitFactory';
 import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
-import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
-import { RECLAIM_UNIT_MASS_LISTS } from '../src/art/Faction4Units';
+import { IMPORTED_UNIT_SPECS } from '../src/art/ImportedUnitAssets';
+import {
+  MERIDIAN_UNIT_MASS_LISTS, MERIDIAN_UNIT_PALETTE,
+} from '../src/art/Faction3Units';
+import {
+  RECLAIM_UNIT_MASS_LISTS, RECLAIM_UNIT_PALETTE,
+} from '../src/art/Faction4Units';
 
 /** The same fixed per-faction seeds `art/units.system.ts` boots with. */
 const ATLAS_SEED: Readonly<Record<UnitMassList['faction'], number>> = {
@@ -167,6 +172,67 @@ describe('the Allied and Soviet roster is gated like the other two', () => {
     expect(factions.size).toBe(2);
     expect(library.materialCount()).toBe(factions.size);
   });
+
+  it('keeps every shared imported override backed by a valid procedural model', () => {
+    // Imported assets are cosmetic and may fail to fetch or decode. Their
+    // loader therefore refuses to publish an override whose synchronous
+    // procedural fallback did not build. If a visual validation rule rejects
+    // one of these keys, RenderBridge does not draw the imported asset: it
+    // falls through to the army's default model (normally a tank).
+    const sharedImports = IMPORTED_UNIT_SPECS
+      .filter((spec) => spec.key.startsWith('allied_') || spec.key.startsWith('soviet_'));
+    expect(sharedImports.length).toBeGreaterThan(0);
+    for (const spec of sharedImports) {
+      expect(built.has(spec.key), `${spec.key} would fall through to the faction-default tank`)
+        .toBe(true);
+    }
+  });
+});
+
+describe('naval validation does not apply the MBT turret-width rule', () => {
+  const navalRosters = [
+    {
+      name: 'allied/soviet',
+      lists: UNIT_MASS_LISTS.filter((list) => list.cls === 'naval'),
+      paletteFor: (list: UnitMassList) => RA3_UNIT_PALETTE[list.faction],
+      seed: 0x41_11,
+    },
+    {
+      name: 'meridian',
+      lists: MERIDIAN_UNIT_MASS_LISTS.filter((list) => list.cls === 'naval'),
+      paletteFor: () => MERIDIAN_UNIT_PALETTE,
+      seed: 0x4d_33,
+    },
+    {
+      name: 'reclamation',
+      lists: RECLAIM_UNIT_MASS_LISTS.filter((list) => list.cls === 'naval'),
+      paletteFor: () => RECLAIM_UNIT_PALETTE,
+      seed: 0x52_44,
+    },
+  ] as const;
+
+  it('covers all four factions and at least one articulated ship per non-scrap roster', () => {
+    expect(navalRosters.every((roster) => roster.lists.length > 0)).toBe(true);
+    expect(navalRosters[0].lists.some((list) => list.turretPivot !== undefined)).toBe(true);
+    expect(navalRosters[1].lists.some((list) => list.turretPivot !== undefined)).toBe(true);
+  });
+
+  for (const roster of navalRosters) {
+    it(`${roster.name} ships build cleanly with their authored deck-gun proportions`, () => {
+      const navalLibrary = new UnitLibrary(new GreebleFactory());
+      for (const list of roster.lists) {
+        const model = navalLibrary.build(
+          list,
+          roster.paletteFor(list),
+          256,
+          roster.seed,
+        );
+        expect(model.stats.errors, `${roster.name}/${list.key}: ${formatStats(model.stats)}`)
+          .toEqual([]);
+      }
+      navalLibrary.dispose();
+    });
+  }
 });
 
 /* ========================================================================== */

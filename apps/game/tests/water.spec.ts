@@ -101,6 +101,18 @@ describe('water — scorecard #25, open-water darkness', () => {
     );
     expect(probe.samples[0]).toBeGreaterThan(probe.samples[probe.samples.length - 1]);
   });
+
+  it('keeps foam translucent enough for hull contrast without changing its coverage', () => {
+    expect(WATER_LOOK.foamOpacity).toBeGreaterThanOrEqual(0.65);
+    expect(WATER_LOOK.foamOpacity).toBeLessThanOrEqual(0.80);
+    const material = createWaterMaterial({
+      palette: WATER_PALETTES.temperate, rampDepth: 6, seed: 1, textureSize: 64,
+    });
+    expect(material.material.fragmentShader).toContain(
+      `foam * ${WATER_LOOK.foamOpacity.toFixed(4)}`,
+    );
+    material.dispose();
+  });
 });
 
 describe('water — scorecard #26, foam is filigree', () => {

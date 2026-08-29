@@ -62,6 +62,27 @@
         "lod2": { "ratio": 0.08, "error": 0.05, "maxRatio": 0.35 },
         "shadow": { "gridLongest": 12, "maxTriangles": 1000, "maxRatio": 0.20 }
       }
+    },
+    {
+      "key": "soviet_picket",
+      "file": "picket-boat.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "soviet_sub",
+      "file": "attack-submarine.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "soviet_dreadnought",
+      "file": "dreadnought.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": true
     }
   ]
 }

@@ -1520,7 +1520,7 @@ export const RECLAIM_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   // the smallest hull the Reclamation floats on purpose — it is bought for its
   // sight radius, and a silhouette that reads as cheap is half of what stops a
   // player sending it into a fight it cannot win.
-  scrapShip({ key: 'reclaim_skimmer', name: 'Scrap Skimmer', length: 7.0, beam: 2.8, height: 2.4, armament: 'bowGun' }),
+  scrapShip({ key: 'reclaim_skimmer', name: 'Scrap Skimmer', length: 9.0, beam: 3.4, height: 2.8, armament: 'bowGun' }),
   scrapShip({ key: 'reclaim_hauler', name: 'Slag Hauler', length: 13.0, beam: 6.2, height: 3.6, armament: 'ramp', heavy: true }),
 
   scrapFlyer('reclaim_hornet', 'Swarmhornet', 10.0, 10.6, 2.9),

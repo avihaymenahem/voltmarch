@@ -35,6 +35,27 @@
       "class": "standard",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "meridian_cutter",
+      "file": "sun-cutter.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "meridian_corvette",
+      "file": "kite-corvette.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "meridian_monitor",
+      "file": "sunmonitor.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": true
     }
   ]
 }

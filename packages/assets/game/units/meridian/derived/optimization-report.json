@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-27T18:12:25.592Z",
+  "generatedAt": "2026-08-29T14:25:38.658Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -161,6 +161,177 @@
             14
           ],
           "occupiedCells": 90
+        }
+      ]
+    },
+    {
+      "key": "meridian_cutter",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/sun-cutter.glb",
+        "triangles": 18287,
+        "fileBytes": 10884784
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.9% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/sun-cutter.lod1.glb",
+          "triangles": 18268,
+          "triangleRatio": 0.999,
+          "boundsDriftMeters": 0.00005,
+          "boundsDriftRatio": 0.00008,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/sun-cutter.lod2.glb",
+          "triangles": 18225,
+          "triangleRatio": 0.9966,
+          "boundsDriftMeters": 0.00005,
+          "boundsDriftRatio": 0.00008,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/sun-cutter.shadow.glb",
+          "triangles": 1272,
+          "triangleRatio": 0.0696,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 18608,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            8
+          ],
+          "occupiedCells": 106
+        }
+      ]
+    },
+    {
+      "key": "meridian_corvette",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/kite-corvette.glb",
+        "triangles": 24650,
+        "fileBytes": 13511088
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 100.0% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/kite-corvette.lod1.glb",
+          "triangles": 24638,
+          "triangleRatio": 0.9995,
+          "boundsDriftMeters": 0.00005,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/kite-corvette.lod2.glb",
+          "triangles": 24586,
+          "triangleRatio": 0.9974,
+          "boundsDriftMeters": 0.00005,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/kite-corvette.shadow.glb",
+          "triangles": 1464,
+          "triangleRatio": 0.0594,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 21292,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            12
+          ],
+          "occupiedCells": 122
+        }
+      ]
+    },
+    {
+      "key": "meridian_monitor",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/sunmonitor.glb",
+        "triangles": 23611,
+        "fileBytes": 8115912
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/sunmonitor.lod1.glb",
+          "triangles": 23538,
+          "triangleRatio": 0.9969,
+          "boundsDriftMeters": 0.00006,
+          "boundsDriftRatio": 0.00006,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.6% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/meridian/derived/sunmonitor.lod2.glb",
+          "triangles": 23512,
+          "triangleRatio": 0.9958,
+          "boundsDriftMeters": 0.00045,
+          "boundsDriftRatio": 0.00023,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/sunmonitor.shadow.glb",
+          "triangles": 708,
+          "triangleRatio": 0.03,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 10724,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            6
+          ],
+          "occupiedCells": 59
         }
       ]
     }

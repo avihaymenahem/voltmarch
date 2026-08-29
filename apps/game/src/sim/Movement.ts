@@ -66,7 +66,10 @@ import type { EntityId, SimContext } from '../core/types';
 import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
 import { angleDelta, clamp, hashU32, isInMap, turnToward, worldToCell } from '../core/math';
-import { MoveClass, moveClassForLocomotor, movesShareSpace, type FlowFieldCache } from './Flowfield';
+import {
+  MoveClass, locomotorForMoveClass, moveClassForLocomotor, movesShareSpace,
+  type FlowFieldCache,
+} from './Flowfield';
 import { crushPassesThrough } from './Crush';
 import { upgradeMul } from './Upgrades';
 import { getTerrain } from '../world/Terrain';
@@ -155,6 +158,32 @@ export function moveClassAt(store: EntityStore, i: number): MoveClass {
 export function moveClassOf(store: EntityStore, id: EntityId): MoveClass | -1 {
   const i = store.index(id);
   return i < 0 ? -1 : moveClassAt(store, i);
+}
+
+/**
+ * True when entity slot `i` may physically occupy a world point.
+ *
+ * Relocation effects write positions without going through a flow field, so
+ * they need the same movement-class distinction the integrator enforces:
+ * ordinary ground units stay on dry passable ground, amphibious Hover units
+ * may use either surface, ships require water, and aircraft only require an
+ * in-map point. Keep this as the one relocation predicate; deriving a
+ * `Locomotor` alone loses the Naval/Hover distinction because both are stored
+ * as `Locomotor.Hover`.
+ */
+export function canRelocateTo(world: World, i: number, x: number, z: number): boolean {
+  const cx = worldToCell(x);
+  const cz = worldToCell(z);
+  if (!isInMap(cx, cz)) return false;
+
+  const cls = moveClassAt(world.store, i);
+  if (cls === MoveClass.Air) return true;
+  const terrain = world.terrain;
+  if (cls === MoveClass.Naval) {
+    return terrain.isWater(cx, cz)
+      && terrain.isPassable(cx, cz, locomotorForMoveClass(cls));
+  }
+  return terrain.isPassable(cx, cz, locomotorForMoveClass(cls));
 }
 
 /* ==========================================================================
@@ -373,16 +402,32 @@ export class MovementIntegrator {
         // direction, and it is frozen for the rest of the match with no
         // watchdog able to help it (a frozen unit is in no region at all, so
         // the pocket rescue in Steering cannot see it either).
-        if (cls !== MoveClass.Air && !this.canStand(nx, nz, cls)
-            && this.canStand(px, pz, cls)) {
-          if (this.canStand(nx, pz, cls)) {
-            nz = pz;
-          } else if (this.canStand(px, nz, cls)) {
-            nx = px;
-          } else {
+        if (cls !== MoveClass.Air && !this.canStand(nx, nz, cls)) {
+          const standing = this.canStand(px, pz, cls);
+          if (standing) {
+            if (this.canStand(nx, pz, cls)) {
+              nz = pz;
+            } else if (this.canStand(px, nz, cls)) {
+              nx = px;
+            } else {
+              nx = px; nz = pz;
+              // Fully boxed in: kill the momentum so the chassis does not keep
+              // grinding at full throttle into the obstacle.
+              speed *= 0.35;
+              st.speed[i] = speed;
+            }
+          } else if (
+            cls !== MoveClass.Hover && cls !== MoveClass.Naval
+            && terrain.isWater(worldToCell(px), worldToCell(pz))
+            && terrain.isWater(worldToCell(nx), worldToCell(nz))
+          ) {
+            // A malformed spawn or position-writing effect may leave a ground
+            // unit on water. The general closed-cell escape rule below this
+            // branch must still let a unit drive OUT of a building or a cliff,
+            // but water is different: advancing from one wet cell to another
+            // turns one bad placement into a tank that can cross the sea.
+            // Hold it here; a dry, standable next cell remains a legal escape.
             nx = px; nz = pz;
-            // Fully boxed in: kill the momentum so the chassis does not keep
-            // grinding at full throttle into the obstacle.
             speed *= 0.35;
             st.speed[i] = speed;
           }
@@ -775,4 +820,3 @@ export function forwardOf(store: EntityStore, i: number, out: Float32Array): Flo
 export function isTravelling(store: EntityStore, i: number): boolean {
   return store.speed[i] > MOVE_MIN_FX_SPEED;
 }
-

@@ -1111,6 +1111,9 @@ function pactShip(o: PactShipOpts): UnitMassList {
   const superZ = lander ? -L * 0.34 : -L * 0.10;
   const superL = lander ? L * 0.22 : L * 0.34;
   const mastZ = lander ? superZ : -L * 0.16;
+  const turreted = o.armament === 'battery';
+  const turretY = hullH + H * 0.19;
+  const turretZ = L * 0.28;
   // Replacing the cutter's deck-sized fake rail with real perimeter members
   // removes a large non-team surface. Its existing panels then land at 14.1%,
   // one tenth above R-T1; a two-percent linear trim keeps the same graphic read
@@ -1207,14 +1210,14 @@ function pactShip(o: PactShipOpts): UnitMassList {
     }
   } else if (o.armament === 'battery') {
     masses.push(
-      greeble('foreMount', 'lathe', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
-        profile: 'cyl', segments: 12, topRadius: 0.80, group: 'foreGun',
+      primary('foreMount', 'lathe', [W * 0.50, H * 0.20, W * 0.54], [0, turretY, turretZ], 'paintMed', {
+        turret: true, profile: 'cyl', segments: 12, topRadius: 0.80, group: 'foreGun',
       }),
       greeble('foreBarrel', 'lathe', [0.26, L * 0.20, 0.26], [0, hullH + H * 0.21, L * 0.36], 'bareMetal', {
-        profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
+        turret: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
       }),
       greeble('foreMuzzle', 'lathe', [0.36, L * 0.06, 0.36], [0, hullH + H * 0.21, L * 0.43], 'bareMetal', {
-        profile: 'disc', segments: 10, topRadius: 0.72, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
+        turret: true, profile: 'disc', segments: 10, topRadius: 0.72, rot: [Math.PI * 0.5, 0, 0], group: 'foreGun',
       }),
     );
   } else {
@@ -1284,6 +1287,7 @@ function pactShip(o: PactShipOpts): UnitMassList {
   return {
     key: o.key, name: o.name, faction: MERIDIAN_ART_FACTION, cls: 'naval',
     hullLength: L, masses, hullNumber: HULL_NUMBER,
+    ...(turreted ? { turretPivot: [0, turretY, turretZ] as const } : {}),
     sockets: lander
       // A lighter has no muzzle to hang a flash on and a door where the bow
       // socket would be, so it publishes what a lift publishes: the point cargo
@@ -1294,7 +1298,9 @@ function pactShip(o: PactShipOpts): UnitMassList {
         { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
       ]
       : [
-        { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
+        turreted
+          ? { part: PartId.MuzzleA, pos: [0, H * 0.02, L * 0.18], turret: true }
+          : { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
         { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
         { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
       ],
@@ -1464,7 +1470,7 @@ export const MERIDIAN_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   // the smallest hull the Pact floats on purpose — it is bought for its sight
   // radius, and a silhouette that reads as cheap is half of what stops a player
   // sending it into a fight it cannot win.
-  pactShip({ key: 'meridian_cutter', name: 'Sun Cutter', length: 7.4, beam: 2.6, height: 2.4, armament: 'battery' }),
+  pactShip({ key: 'meridian_cutter', name: 'Sun Cutter', length: 9.2, beam: 3.3, height: 2.8, armament: 'battery' }),
   pactShip({ key: 'meridian_lighter', name: 'Sun Lighter', length: 11.2, beam: 5.0, height: 3.0, armament: 'ramp' }),
   pactShip({ key: 'meridian_argosy', name: 'Argosy', length: 13.2, beam: 6.0, height: 3.6, armament: 'ramp', heavy: true }),
 

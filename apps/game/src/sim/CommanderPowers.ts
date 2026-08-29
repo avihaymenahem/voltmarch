@@ -133,10 +133,9 @@ import {
 } from '../core/types';
 import type { Channels } from '../core/events';
 import type { EntityId, PlayerId, SimContext } from '../core/types';
-import { clampWorld, isInMap, worldToCell } from '../core/math';
+import { clampWorld } from '../core/math';
 import type { World } from '../core/world';
-import { locomotorForMoveClass } from './Flowfield';
-import { moveClassAt } from './Movement';
+import { canRelocateTo } from './Movement';
 import {
   COMMANDER_POWERS, COMMANDER_POWER_FX, CommanderPowerId, isCommanderPowerId,
   ownsCommanderPower,
@@ -748,19 +747,11 @@ export class CommanderPowerService {
   /**
    * Can entity `e` stand at this world point?
    *
-   * Resolved through the unit's OWN move class, exactly as `Transport.place`
-   * does, so a hovercraft and an amphibious swimmer are judged by what they can
-   * actually cross rather than by a hardcoded foot rule. Occupancy is NOT
-   * tested: Chronoshift lands a formation on a spacing ring and the units are
-   * allowed to settle against each other, which `Movement.relax` resolves in a
-   * few ticks. Passability is the part that is permanent.
+   * Resolved through the shared relocation predicate so a hovercraft, ship and
+   * ground hull do not collapse onto the same `Locomotor.Hover` answer.
    */
   private canStandAt(e: number, x: number, z: number): boolean {
-    const cx = worldToCell(x);
-    const cz = worldToCell(z);
-    if (!isInMap(cx, cz)) return false;
-    const loco = locomotorForMoveClass(moveClassAt(this.world.store, e));
-    return this.world.terrain.isPassable(cx, cz, loco);
+    return canRelocateTo(this.world, e, x, z);
   }
 
   /** An allied, living, mobile unit — the set Chronoshift lifts. */

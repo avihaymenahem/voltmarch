@@ -88,6 +88,7 @@ def main() -> int:
     print(f"TASK_ID={task_id}", flush=True)
     streamed(
         cli, "poll", "--endpoint", "/openapi/v1/retexture", "--task-id", task_id,
+        "--timeout", "600",
         "--project-dir", str(project_dir),
     )
     task_json = project_dir / f"task_{task_id}.json"

@@ -1452,7 +1452,7 @@ export function validateUnit(
       `${pct(BOXINESS.warn)} / ${pct(BOXINESS.axisWarn)} target; "${box.worst}" is the flattest primary mass`);
   }
 
-  /* -- turret (bible 5.3: build turrets deliberately too big) ------------ */
+  /* -- turret (bible 5.3: build ground-unit turrets deliberately too big) - */
   // Hull width includes mirrored pairs (a track set spans both sides); turret
   // width is the widest single turret-riding primary mass.
   let turretWidth = 0, hullWidth = 0;
@@ -1466,10 +1466,22 @@ export function validateUnit(
     }
   }
   const turretWidthRatio = turretWidth > 0 && hullWidth > 0 ? turretWidth / hullWidth : 0;
+  // The 0.75-1.00 band is an exaggeration rule for tanks: its own failure
+  // message compares against a real MBT. Applying it to a ship makes the
+  // weapon house three quarters as wide as the entire beam, which is neither
+  // the authored naval silhouette nor a seaworthy deck layout. More
+  // importantly, a rejected procedural ship also blocks its imported override
+  // because imported units deliberately require that synchronous fallback.
+  // The result is RenderBridge's faction-default tank, exactly the opposite of
+  // what this visual gate is meant to protect. Naval turrets still have to
+  // exist when a pivot is declared; only the ground-unit width exaggeration is
+  // inapplicable.
+  const oversizedTurretApplies = list.cls !== 'naval' && list.cls !== 'air';
   if (list.turretPivot !== undefined) {
     if (turretWidth === 0) {
       errors.push('turretPivot is set but no primary mass is flagged turret:true');
-    } else if (!band(turretWidthRatio, V.turretWidthMin, V.turretWidthMax)) {
+    } else if (oversizedTurretApplies
+      && !band(turretWidthRatio, V.turretWidthMin, V.turretWidthMax)) {
       errors.push(
         `turret/hull width ${turretWidthRatio.toFixed(2)} outside ` +
         `${V.turretWidthMin}-${V.turretWidthMax} (a real MBT is 0.55; RA3 is not real)`);

@@ -18,7 +18,7 @@ const FACTION_LABELS = {
 const AIRCRAFT_PATTERN = /(?:^|-)(?:aircraft|bomber|carryall|fighter|gunship|helicopter|hornet|interceptor)(?:-|$)/i;
 const AIRCRAFT_SLUGS = new Set(['swarmhornet']);
 const VEHICLE_UNIT_SLUGS = new Set(['pactworks-carryall']);
-const NAVAL_UNIT_PATTERN = /(?:^|-)(?:boat|dreadnought|hydrofoil|ship|submarine)(?:-|$)/i;
+const NAVAL_UNIT_PATTERN = /(?:^|-)(?:boat|corvette|cruiser|cutter|destroyer|dreadnought|hulk|hydrofoil|monitor|scow|ship|skimmer|submarine|sunmonitor)(?:-|$)/i;
 const NAVAL_STRUCTURE_SLUGS = new Set(['naval-yard', 'naval-pen', 'slipway', 'breaker-dock']);
 const INFANTRY_UNIT_SLUGS = new Set(['attack-dog']);
 
@@ -125,8 +125,10 @@ function classifyCategory(kind, slug, directories) {
   if (kind === 'Wrecks') return 'Wrecks';
   if (directories.includes('infantry-poc') || INFANTRY_UNIT_SLUGS.has(slug)) return 'Infantry';
   if (VEHICLE_UNIT_SLUGS.has(slug)) return 'Vehicles';
-  if (AIRCRAFT_SLUGS.has(slug) || AIRCRAFT_PATTERN.test(slug)) return 'Aircraft';
+  // Compound ship roles such as `aircraft-cruiser` are naval even though they
+  // contain an aviation token. Resolve the hull role before the payload role.
   if (NAVAL_UNIT_PATTERN.test(slug)) return 'Naval units';
+  if (AIRCRAFT_SLUGS.has(slug) || AIRCRAFT_PATTERN.test(slug)) return 'Aircraft';
   return 'Vehicles';
 }
 

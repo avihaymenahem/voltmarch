@@ -462,7 +462,10 @@ void main() {
   vec3 lightFoam = (${WATER_LOOK.foamSunDiffuse.toFixed(4)} * ndl * uSunColor
                   + ${WATER_LOOK.foamFillDiffuse.toFixed(4)} * hemi) / uLightNorm;
 
-  vec3 col = mix(body * lightBody, foamCol * lightFoam, foam);
+  // Aerated water is not opaque paint. Preserve some of the depth colour under
+  // the filigree so pale hulls remain readable against a darker sea.
+  float foamBlend = foam * ${WATER_LOOK.foamOpacity.toFixed(4)};
+  vec3 col = mix(body * lightBody, foamCol * lightFoam, foamBlend);
 
   /* ---- grazing term — RULING #7 ---------------------------------------- */
   // No sky. No cube map. No screen-space trace. The colour of the LAND, at
@@ -1080,7 +1083,7 @@ export function probeOpenWaterLuminance(
     for (let b = 0; b < hist.f.length; b++) {
       const wt = hist.w[b];
       if (wt <= 0) continue;
-      const fr = hist.f[b];
+      const fr = hist.f[b] * WATER_LOOK.foamOpacity;
       lin[0] = lerp(body0[0], foamLin[0], fr);
       lin[1] = lerp(body0[1], foamLin[1], fr);
       lin[2] = lerp(body0[2], foamLin[2], fr);

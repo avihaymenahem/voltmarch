@@ -33,6 +33,27 @@
       "class": "standard",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "allied_hydrofoil",
+      "file": "hydrofoil.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "allied_gunboat",
+      "file": "assault-destroyer.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": true
+    },
+    {
+      "key": "allied_destroyer",
+      "file": "aircraft-cruiser.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": true
     }
   ]
 }

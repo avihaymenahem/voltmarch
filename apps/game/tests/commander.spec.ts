@@ -30,11 +30,11 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ABILITIES, ABILITY_FX, AbilityId, SIM_DT } from '../src/core/config';
+import { ABILITIES, ABILITY_FX, AbilityId, CELL, SIM_DT } from '../src/core/config';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import { EntityFlag, EntityKind, Faction, OrderKind, UnitState } from '../src/core/types';
-import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../src/core/types';
+import type { AvailabilityResult, EntityId, ITerrain, PlayerId, SimContext } from '../src/core/types';
 import { PerEntityObj, World } from '../src/core/world';
 import { UNITS } from '../src/data/Defs';
 import { ScenarioBuilder, clearScenario, resolveDefBinding } from '../src/game/Scenarios';
@@ -385,6 +385,39 @@ describe('AbilityService', () => {
     expect(st.prevZ[j]).toBe(st.posZ[j]);
     expect(st.state[j]).toBe(UnitState.Idle);
     expect(rig.abilities.stats.unitsRecalled).toBe(1);
+  });
+
+  it('ALLIES — Chrono Rally does not recall a ground unit into water', async () => {
+    const rig = await makeAbilityRig(Faction.Allies);
+    const hero = spawnCommander(rig, 'fieldMarshal', 100, 100);
+    // Fill the first dry ring so `far` is offered ring two, whose first slot
+    // is across the cell-aligned shoreline below.
+    for (let i = 0; i < 6; i++) spawnFriendly(rig, 'gi', 108 + i, 100);
+    const far = spawnFriendly(rig, 'gi', 120, 100);
+    rig.world.spatial.rebuild();
+
+    const base = rig.world.terrain;
+    rig.world.terrain = {
+      heightAt: (x: number, z: number) => base.heightAt(x, z),
+      normalAt: base.normalAt.bind(base),
+      slopeAt: base.slopeAt.bind(base),
+      isPassable: (_cx: number, cz: number) => cz * CELL < 104,
+      isBuildable: base.isBuildable.bind(base),
+      isOccupied: base.isOccupied.bind(base),
+      markOccupied: base.markOccupied.bind(base),
+      clearOccupied: base.clearOccupied.bind(base),
+      occupancyVersion: base.occupancyVersion.bind(base),
+      isWater: (_cx: number, cz: number) => cz * CELL >= 104,
+      raycastGround: base.raycastGround.bind(base),
+    } as ITerrain;
+
+    const st = rig.world.store;
+    const j = st.index(far);
+    expect(rig.abilities.fireAt(hero)).toBe(true);
+
+    expect(st.posX[j], 'Chrono Rally moved the rifleman into water').toBe(120);
+    expect(st.posZ[j], 'Chrono Rally moved the rifleman into water').toBe(100);
+    expect(rig.abilities.stats.unitsRecalled).toBe(6);
   });
 
   it('SOVIETS — Iron Will makes friendlies untouchable, then gives their hp back', async () => {

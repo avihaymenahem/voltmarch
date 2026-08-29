@@ -45,8 +45,8 @@ import { Rng } from '../src/core/math';
 import {
   CommandKind, EntityFlag, EntityKind, EvaLine, Faction, NONE, OrderKind,
 } from '../src/core/types';
-import type { Command, EntityId, PlayerId, SimContext } from '../src/core/types';
-import { HUD_SUPERWEAPON, SIM_DT } from '../src/core/config';
+import type { Command, EntityId, ITerrain, PlayerId, SimContext } from '../src/core/types';
+import { CELL, HUD_SUPERWEAPON, SIM_DT } from '../src/core/config';
 
 import { ProductionCatalog, ProductionService, setProduction } from '../src/sim/Production';
 import type { BuildEntry } from '../src/sim/Production';
@@ -512,6 +512,45 @@ describe('firing is an ordinary command, not a service call', () => {
     expect(allies.supers.stats.unitsTeleported).toBe(1);
     expect(Math.hypot(st.posX[i] - 380, st.posZ[i] - 380)).toBeLessThan(20);
     expect(allies.supers.isReady(ME, 'chronosphere')).toBe(false);
+  });
+
+  it('does not displace a ground unit into a water arrival slot', async () => {
+    const allies = await makeRig(Faction.Allies, Faction.Soviets);
+    powerUp(allies, ME);
+    allies.building('chronosphere', ME, 30, 30);
+    allies.step(SETTLE);
+    allies.supers.grantReady(ME, 'chronosphere');
+
+    const tank = allies.unit('grizzly', ME, 300, 300);
+    const st = allies.world.store;
+    const i = st.index(tank);
+
+    allies.supers.issueFire(ME, 'chronosphere', 300, 300, true);
+    allies.step(1);
+
+    // The marker is on the last dry cell; the first formation slot, 3.2 m to
+    // its +Z side, is in water. This used to write the tank there directly.
+    const base = allies.world.terrain;
+    allies.world.terrain = {
+      heightAt: (x: number, z: number) => base.heightAt(x, z),
+      normalAt: base.normalAt.bind(base),
+      slopeAt: base.slopeAt.bind(base),
+      isPassable: (_cx: number, cz: number) => cz * CELL < 404,
+      isBuildable: base.isBuildable.bind(base),
+      isOccupied: base.isOccupied.bind(base),
+      markOccupied: base.markOccupied.bind(base),
+      clearOccupied: base.clearOccupied.bind(base),
+      occupancyVersion: base.occupancyVersion.bind(base),
+      isWater: (_cx: number, cz: number) => cz * CELL >= 404,
+      raycastGround: base.raycastGround.bind(base),
+    } as ITerrain;
+
+    allies.supers.issueFire(ME, 'chronosphere', 401, 401, false);
+    allies.step(2);
+
+    expect(st.posX[i], 'Displacement Ring moved the tank into water').toBe(300);
+    expect(st.posZ[i], 'Displacement Ring moved the tank into water').toBe(300);
+    expect(allies.supers.stats.unitsTeleported).toBe(0);
   });
 
   it('never fires a two-click weapon off an abandoned source', async () => {

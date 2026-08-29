@@ -447,6 +447,259 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     envMapIntensity: 0.50,
     emissiveIntensity: 0.008,
   },
+  {
+    key: 'allied_hydrofoil',
+    label: 'Allied Hydrofoil',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/hydrofoil.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/hydrofoil.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [0.108816, 0.17, -0.000091],
+    target: [3.2, 2.8, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'soviet_picket',
+    label: 'Soviet Picket Boat',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/picket-boat.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/picket-boat.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.163565, 0.18, 0.001278],
+    target: [3.3, 2.9, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.08,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.54,
+  },
+  {
+    key: 'meridian_cutter',
+    label: 'Meridian Sun Cutter',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/sun-cutter.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/sun-cutter.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.115869, 0.16, 0.000162],
+    target: [3.3, 2.8, 9.2],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.14,
+    envMapIntensity: 0.56,
+  },
+  {
+    key: 'reclaim_skimmer',
+    label: 'Reclamation Scrap Skimmer',
+    url: new URL(
+      '../../../../packages/assets/game/units/reclamation/compressed/scrap-skimmer.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/scrap-skimmer.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [3.4, 2.8, 9.0],
+    yawDeg: 90,
+    baseColorGain: 1.18,
+    roughnessGain: 1.24,
+    normalScale: 1.14,
+    envMapIntensity: 0.50,
+  },
+  {
+    key: 'allied_gunboat',
+    label: 'Allied Assault Destroyer',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/assault-destroyer.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/assault-destroyer.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [0.230447, 0.19, 0.000166],
+    // Matches the escort rung's authored/simulation envelope. Do not shrink
+    // this independently: the old 9.6 m target made it read as a speedboat
+    // between the 7.2 m Hydrofoil and 14 m Aircraft Cruiser.
+    target: [4.0, 3.8, 12.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'soviet_sub',
+    label: 'Soviet Attack Submarine',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/attack-submarine.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/attack-submarine.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/attack-submarine.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/attack-submarine.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [2.9, 2.5, 12.4],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.24,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+  },
+  {
+    key: 'meridian_corvette',
+    label: 'Meridian Kite Corvette',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/kite-corvette.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/kite-corvette.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [0.203624, 0.19, 0.000135],
+    target: [3.6, 3.0, 10.0],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'reclaim_scow',
+    label: 'Reclamation Slag Scow',
+    url: new URL(
+      '../../../../packages/assets/game/units/reclamation/compressed/slag-scow.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/reclamation/derived/slag-scow.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 52,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/reclamation/derived/slag-scow.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 84,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/slag-scow.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [3.8, 3.0, 10.0],
+    yawDeg: 90,
+    baseColorGain: 1.20,
+    roughnessGain: 1.26,
+    normalScale: 1.14,
+    envMapIntensity: 0.48,
+  },
+  {
+    key: 'allied_destroyer',
+    label: 'Allied Aircraft Cruiser',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/aircraft-cruiser.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/aircraft-cruiser.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.69, -0.15, 0],
+    target: [4.2, 4.4, 14.0],
+    yawDeg: 90,
+    baseColorGain: 1.06,
+    roughnessGain: 1.18,
+    normalScale: 1.14,
+    envMapIntensity: 0.58,
+  },
+  {
+    key: 'soviet_dreadnought',
+    label: 'Soviet Dreadnought',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/dreadnought.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/dreadnought.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.36, -0.14, 0],
+    target: [4.8, 4.8, 16.0],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.24,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+  },
+  {
+    key: 'meridian_monitor',
+    label: 'Meridian Sunmonitor',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/sunmonitor.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/sunmonitor.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.90, -0.50, 0],
+    target: [4.6, 4.4, 15.0],
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.14,
+    envMapIntensity: 0.56,
+  },
+  {
+    key: 'reclaim_hulk',
+    label: 'Reclamation Reclaimed Hulk',
+    url: new URL(
+      '../../../../packages/assets/game/units/reclamation/compressed/reclaimed-hulk.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/reclaimed-hulk.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    turretName: 'Turret',
+    sourceTurretPivot: [-0.42, -0.03, -0.02],
+    target: [4.8, 4.4, 15.0],
+    yawDeg: 90,
+    baseColorGain: 1.20,
+    roughnessGain: 1.26,
+    normalScale: 1.14,
+    envMapIntensity: 0.48,
+  },
 ];
 
 const loader = new GLTFLoader();
@@ -709,6 +962,34 @@ function fitGeometry(geometry: THREE.BufferGeometry, fit: UnitFit, turret: boole
 }
 
 /**
+ * Reject an imported hull whose post-fit footprint no longer matches gameplay.
+ *
+ * This is intentionally measured after every source transform, non-uniform
+ * scale and yaw has been applied. A plausible `target` literal is not enough:
+ * a changed source axis or node transform can otherwise publish a visually
+ * microscopic shell while selection and collision continue using metre-scale
+ * values from the simulation.
+ */
+export function assertImportedHorizontalEnvelope(
+  geometry: THREE.BufferGeometry,
+  target: ImportedUnitSpec['target'],
+  label: string,
+): void {
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox;
+  if (bounds === null) throw new Error(`${label}: fitted hull has no bounds`);
+  const size = bounds.getSize(new THREE.Vector3());
+  const widthError = Math.abs(size.x - target[0]) / target[0];
+  const lengthError = Math.abs(size.z - target[2]) / target[2];
+  if (widthError > 0.035 || lengthError > 0.035) {
+    throw new Error(
+      `${label}: fitted hull footprint ${size.x.toFixed(2)} x ${size.z.toFixed(2)} m `
+      + `does not match ${target[0].toFixed(2)} x ${target[2].toFixed(2)} m target`,
+    );
+  }
+}
+
+/**
  * Seal Meshy's open articulation cut with one low faceted armour plate.
  *
  * The cap is merged into the turret primitive, so the fix adds zero draw calls.
@@ -818,6 +1099,7 @@ export async function loadImportedUnitOverride(
   };
 
   const geometry = fitGeometry(rawHull, fit, false);
+  assertImportedHorizontalEnvelope(geometry, spec.target, spec.label);
   if (spec.gait === 'quadruped') tagQuadrupedGait(geometry);
   geometry.name = `${spec.key}.imported.hull`;
   const turretGeometry = rawTurret === undefined

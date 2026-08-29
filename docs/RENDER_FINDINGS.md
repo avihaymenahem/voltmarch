@@ -277,6 +277,21 @@ nothing on screen.
 
 ## 6. Smaller settled facts
 
+- **The naval readability pass darkens the body, not the palette identity, and
+  makes foam translucent instead of deleting it.** On 2026-08-29 the live
+  screenshot showed pale ships merging into a lifted sea whose crest filigree
+  read as opaque chalk. `WATER_LOOK.outputGain` moved 1.40 -> 1.28 and the same
+  4-8% calm foam field now composites at 0.74 optical density on both WebGPU
+  and WebGL. It does not change shoreline coverage, wave geometry, wake masks,
+  the no-reflection ruling or the reverted beyond-map edge experiment.
+
+  A fresh genuine-WebGPU `08-naval-water` capture on NVIDIA Ampere passed all
+  eleven frame checks: median luminance 0.3967, mean HSV saturation 0.4381,
+  p1/p99 luminance 0.0510/0.9297 and weighted grade 100% for that one fixture.
+  The WebGL/ANGLE capture passed visually with the same water/foam balance.
+  `probeOpenWaterLuminance` includes the 0.74 blend, so scorecard #25 grades
+  the material that is actually drawn instead of an opaque-foam approximation.
+
 - **GTAO's prepass is DELETED — done, shipped, `ao` is 0 on all 13 fixtures.** Totals fell 38–56 per
   fixture (−639 summed); the colour pass is byte-for-byte unchanged and the grade is unchanged to
   four decimals (0.892308 / 16 failures either side).

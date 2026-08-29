@@ -99,6 +99,7 @@ def main() -> int:
             "enable_pbr": False,
             "ai_model": "latest",
             "image_enhancement": False,
+            "multi_view_thumbnails": True,
             "target_formats": ["glb"],
         },
         separators=(",", ":"),
@@ -134,6 +135,8 @@ def main() -> int:
         "/openapi/v1/multi-image-to-3d",
         "--task-id",
         task_id,
+        "--timeout",
+        "600",
         "--project-dir",
         str(project_dir),
     )

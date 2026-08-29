@@ -36,6 +36,27 @@
         "lod1": { "error": 0.025, "maxRatio": 0.57, "stripShadingAttributes": true },
         "lod2": { "error": 0.08, "maxRatio": 0.57, "stripShadingAttributes": true }
       }
+    },
+    {
+      "key": "reclaim_skimmer",
+      "file": "scrap-skimmer.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "reclaim_scow",
+      "file": "slag-scow.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "reclaim_hulk",
+      "file": "reclaimed-hulk.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-27T18:56:19.814Z",
+  "generatedAt": "2026-08-29T14:25:39.085Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
   "rows": [
@@ -161,6 +161,173 @@
             16
           ],
           "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "reclaim_skimmer",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/scrap-skimmer.glb",
+        "triangles": 16560,
+        "fileBytes": 7262428
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 62.8% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.lod1.glb",
+          "triangles": 10393,
+          "triangleRatio": 0.6276,
+          "boundsDriftMeters": 0.00262,
+          "boundsDriftRatio": 0.00518,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 49.3% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.lod2.glb",
+          "triangles": 8167,
+          "triangleRatio": 0.4932,
+          "boundsDriftMeters": 0.00456,
+          "boundsDriftRatio": 0.00511,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/scrap-skimmer.shadow.glb",
+          "triangles": 1104,
+          "triangleRatio": 0.0667,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16252,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            7
+          ],
+          "occupiedCells": 92
+        }
+      ]
+    },
+    {
+      "key": "reclaim_scow",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/slag-scow.glb",
+        "triangles": 23182,
+        "fileBytes": 9745260
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slag-scow.lod1.glb",
+          "triangles": 10423,
+          "triangleRatio": 0.4496,
+          "boundsDriftMeters": 0.00148,
+          "boundsDriftRatio": 0.00302,
+          "fileBytes": 372580,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slag-scow.lod2.glb",
+          "triangles": 4202,
+          "triangleRatio": 0.1813,
+          "boundsDriftMeters": 0.00408,
+          "boundsDriftRatio": 0.00387,
+          "fileBytes": 194940,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slag-scow.shadow.glb",
+          "triangles": 1500,
+          "triangleRatio": 0.0647,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 21804,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 125
+        }
+      ]
+    },
+    {
+      "key": "reclaim_hulk",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/reclaimed-hulk.glb",
+        "triangles": 24692,
+        "fileBytes": 6451424
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.5% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/reclaimed-hulk.lod1.glb",
+          "triangles": 24574,
+          "triangleRatio": 0.9952,
+          "boundsDriftMeters": 0.00003,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.3% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/reclamation/derived/reclaimed-hulk.lod2.glb",
+          "triangles": 24513,
+          "triangleRatio": 0.9928,
+          "boundsDriftMeters": 0.00003,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/reclaimed-hulk.shadow.glb",
+          "triangles": 1932,
+          "triangleRatio": 0.0782,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27884,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 161
         }
       ]
     }

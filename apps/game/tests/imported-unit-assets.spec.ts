@@ -1,6 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import {
+  assertImportedHorizontalEnvelope, IMPORTED_UNIT_SPECS,
+} from '../src/art/ImportedUnitAssets';
+import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
+import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
+import { RECLAIM_UNIT_MASS_LISTS } from '../src/art/Faction4Units';
+import { NAVAL_UNIT_DIMENSIONS } from '../src/core/config';
 
 const root = process.cwd();
 
@@ -164,5 +172,90 @@ describe('imported unit shipping budgets', () => {
       expect(imported, contract.file).toBeGreaterThan(key);
       expect(published, contract.file).toBeGreaterThan(imported);
     }
+  });
+
+  it('ships both naval conversion waves with their authored articulation contract', () => {
+    const ships = [
+      { key: 'allied_hydrofoil', faction: 'allies', file: 'hydrofoil.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'soviet_picket', faction: 'soviets', file: 'picket-boat.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'meridian_cutter', faction: 'meridian', file: 'sun-cutter.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'reclaim_skimmer', faction: 'reclamation', file: 'scrap-skimmer.glb', meshes: ['Hull'] },
+      { key: 'allied_gunboat', faction: 'allies', file: 'assault-destroyer.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'soviet_sub', faction: 'soviets', file: 'attack-submarine.glb', meshes: ['Hull'] },
+      { key: 'meridian_corvette', faction: 'meridian', file: 'kite-corvette.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'reclaim_scow', faction: 'reclamation', file: 'slag-scow.glb', meshes: ['Hull'] },
+      { key: 'allied_destroyer', faction: 'allies', file: 'aircraft-cruiser.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'soviet_dreadnought', faction: 'soviets', file: 'dreadnought.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'meridian_monitor', faction: 'meridian', file: 'sunmonitor.glb', meshes: ['Hull', 'Turret'] },
+      { key: 'reclaim_hulk', faction: 'reclamation', file: 'reclaimed-hulk.glb', meshes: ['Hull', 'Turret'] },
+    ] as const;
+    const runtime = fs.readFileSync(
+      path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
+    );
+    for (const ship of ships) {
+      const sourceDir = path.join(root, 'packages/assets/game/units', ship.faction);
+      const source = glbJson(path.join(sourceDir, ship.file));
+      const compressed = glbJson(path.join(sourceDir, 'compressed', ship.file));
+      expect(source.json.meshes.map((mesh) => mesh.name).sort(), ship.key)
+        .toEqual([...ship.meshes].sort());
+      expect(source.json.materials?.every((material) => material.doubleSided !== true)).toBe(true);
+      expect(triangles(source.json), ship.key).toBeLessThanOrEqual(28_000);
+      expect(compressed.bytes.length, ship.key).toBeLessThanOrEqual(7 * 1024 * 1024);
+      expect(compressed.json.extensionsRequired, ship.key).toContain('KHR_texture_basisu');
+      expect(compressed.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
+      expect(runtime).toContain(`key: '${ship.key}'`);
+      expect(runtime).toContain(`${ship.faction}/compressed/${ship.file}`);
+    }
+  });
+
+  it('keeps the fleet-wide recon and Allied combat ladders synchronized', () => {
+    const reconTargets = {
+      allied_hydrofoil: [3.2, 2.8, 9.0],
+      soviet_picket: [3.3, 2.9, 9.0],
+      meridian_cutter: [3.3, 2.8, 9.2],
+      reclaim_skimmer: [3.4, 2.8, 9.0],
+    } as const;
+    const targets = new Map(
+      IMPORTED_UNIT_SPECS
+        .filter((spec) => spec.key in reconTargets || spec.key === 'allied_gunboat')
+        .map((spec) => [spec.key, spec.target] as const),
+    );
+    const hullLengths = new Map(
+      [...UNIT_MASS_LISTS, ...MERIDIAN_UNIT_MASS_LISTS, ...RECLAIM_UNIT_MASS_LISTS]
+        .map((model) => [model.key, model.hullLength] as const),
+    );
+
+    for (const [key, envelope] of Object.entries(reconTargets)) {
+      expect(targets.get(key), key).toEqual(envelope);
+      expect(hullLengths.get(key), key).toBe(envelope[2]);
+    }
+    expect(targets.get('allied_gunboat')).toEqual([4.0, 3.8, 12.0]);
+    expect(hullLengths.get('allied_gunboat')).toBe(12.0);
+    expect(hullLengths.get('allied_destroyer')).toBe(14.0);
+
+    expect(NAVAL_UNIT_DIMENSIONS.recon).toMatchObject({ l: 9.0, w: 3.2, h: 2.8 });
+    expect(NAVAL_UNIT_DIMENSIONS.gunboat).toMatchObject({ l: 12.0, w: 4.0, h: 3.8 });
+    expect(NAVAL_UNIT_DIMENSIONS.gunboat.l)
+      .toBeGreaterThan(NAVAL_UNIT_DIMENSIONS.recon.l * 1.25);
+    expect(NAVAL_UNIT_DIMENSIONS.gunboat.l)
+      .toBeLessThan(NAVAL_UNIT_DIMENSIONS.destroyer.l);
+  });
+
+  it('rejects a microscopic post-fit Allied hull before registration', () => {
+    const assault = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'allied_gunboat');
+    expect(assault).toBeDefined();
+
+    const fitted = new THREE.BoxGeometry(assault!.target[0], 1, assault!.target[2]);
+    expect(() => assertImportedHorizontalEnvelope(fitted, assault!.target, assault!.label))
+      .not.toThrow();
+
+    const microscopic = new THREE.BoxGeometry(
+      assault!.target[0] * 0.25, 1, assault!.target[2] * 0.25,
+    );
+    expect(() => assertImportedHorizontalEnvelope(microscopic, assault!.target, assault!.label))
+      .toThrow(/fitted hull footprint/);
+
+    fitted.dispose();
+    microscopic.dispose();
   });
 });

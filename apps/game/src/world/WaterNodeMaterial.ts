@@ -88,7 +88,7 @@ import {
   smoothstep, texture, uniform, uniformArray, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 
-import { WATER_TEXTURE_SIZE } from '../core/config';
+import { WATER_LOOK, WATER_TEXTURE_SIZE } from '../core/config';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import {
   buildFoamLace, buildWaveSlopes, waterTextureKey, type WaterTextureData,
@@ -625,7 +625,9 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
     const lightFoam = U.uSunColor.mul(ndl).mul(WATER_CONSTANTS.foamSunDiffuse)
       .add(hemi.mul(WATER_CONSTANTS.foamFillDiffuse)).div(U.uLightNorm).toVar('lightFoam');
 
-    const col = mix(body.mul(lightBody), foamCol.mul(lightFoam), foam).toVar('col');
+    // Match the GLSL path: foam is aerated water, not opaque white paint.
+    const foamBlend = foam.mul(WATER_LOOK.foamOpacity).toVar('foamBlend');
+    const col = mix(body.mul(lightBody), foamCol.mul(lightFoam), foamBlend).toVar('col');
 
     /* ---- grazing term — RULING #7 ---------------------------------------- */
     // No sky. No cube map. No screen-space trace. The colour of the LAND, at

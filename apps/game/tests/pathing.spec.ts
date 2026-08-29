@@ -19,7 +19,7 @@ import {
 import { Rng, worldToCell } from '../src/core/math';
 import { FlowFieldCache, MoveClass } from '../src/sim/Flowfield';
 import { NavAgents, NavAssigner, SteeringSolver } from '../src/sim/Steering';
-import { MovementIntegrator, setMoveClass } from '../src/sim/Movement';
+import { MovementIntegrator, canRelocateTo, setMoveClass } from '../src/sim/Movement';
 
 const P0 = 0 as PlayerId;
 
@@ -439,6 +439,50 @@ describe('naval', () => {
     // Hovercraft take both.
     expect(rig.nav.isPassableClass(70, 40, MoveClass.Hover)).toBe(true);
     expect(rig.nav.isPassableClass(40, 40, MoveClass.Hover)).toBe(true);
+  });
+
+  it('applies each movement class when an effect relocates a unit', () => {
+    const rig = makeRig();
+    harbour(rig);
+    const st = rig.world.store;
+
+    const tank = spawnTank(rig, 40 * CELL, 40 * CELL, Locomotor.Track);
+    expect(canRelocateTo(rig.world, tank, 70 * CELL, 40 * CELL), 'tank accepted water')
+      .toBe(false);
+    expect(canRelocateTo(rig.world, tank, 40 * CELL, 40 * CELL), 'tank refused land')
+      .toBe(true);
+
+    const hover = spawnTank(rig, 40 * CELL, 44 * CELL, Locomotor.Hover);
+    expect(canRelocateTo(rig.world, hover, 70 * CELL, 44 * CELL), 'hovercraft refused water')
+      .toBe(true);
+    expect(canRelocateTo(rig.world, hover, 40 * CELL, 44 * CELL), 'hovercraft refused land')
+      .toBe(true);
+
+    const ship = spawnTank(rig, 70 * CELL, 48 * CELL, Locomotor.Hover);
+    setMoveClass(st, st.handleOf(ship), MoveClass.Naval);
+    expect(canRelocateTo(rig.world, ship, 70 * CELL, 48 * CELL), 'ship refused water')
+      .toBe(true);
+    expect(canRelocateTo(rig.world, ship, 40 * CELL, 48 * CELL), 'ship accepted land')
+      .toBe(false);
+  });
+
+  it('does not let a misplaced ground unit drive from one water cell to another', () => {
+    const rig = makeRig();
+    harbour(rig);
+    const st = rig.world.store;
+    const i = spawnTank(rig, 70 * CELL, 40 * CELL, Locomotor.Track);
+    const startX = st.posX[i];
+
+    // Drive the integrator directly. This is the exact safety boundary that
+    // used to skip every passability check when the CURRENT cell was invalid.
+    st.velX[i] = st.maxSpeed[i];
+    st.velZ[i] = 0;
+    st.desiredYaw[i] = Math.PI / 2;
+    st.yaw[i] = Math.PI / 2;
+    const ctx: SimContext = { dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(9) };
+    for (let n = 0; n < 30; n++) rig.movement.simTick(ctx);
+
+    expect(st.posX[i], 'tracked unit drove deeper into the sea').toBe(startX);
   });
 
   it('a ship stays on the waterline and never drives ashore', () => {

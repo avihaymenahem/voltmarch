@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-28T18:41:45.289Z",
+  "generatedAt": "2026-08-29T14:25:38.239Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -329,6 +329,173 @@
             12
           ],
           "occupiedCells": 60
+        }
+      ]
+    },
+    {
+      "key": "soviet_picket",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/soviets/picket-boat.glb",
+        "triangles": 18064,
+        "fileBytes": 10169216
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.9% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/picket-boat.lod1.glb",
+          "triangles": 18045,
+          "triangleRatio": 0.9989,
+          "boundsDriftMeters": 0.00004,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/picket-boat.lod2.glb",
+          "triangles": 18003,
+          "triangleRatio": 0.9966,
+          "boundsDriftMeters": 0.00004,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/picket-boat.shadow.glb",
+          "triangles": 1152,
+          "triangleRatio": 0.0638,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16924,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 96
+        }
+      ]
+    },
+    {
+      "key": "soviet_sub",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/attack-submarine.glb",
+        "triangles": 23794,
+        "fileBytes": 8842412
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/attack-submarine.lod1.glb",
+          "triangles": 10677,
+          "triangleRatio": 0.4487,
+          "boundsDriftMeters": 0.0008,
+          "boundsDriftRatio": 0.0004,
+          "fileBytes": 343144,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/attack-submarine.lod2.glb",
+          "triangles": 4282,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00177,
+          "boundsDriftRatio": 0.00088,
+          "fileBytes": 173536,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/attack-submarine.shadow.glb",
+          "triangles": 888,
+          "triangleRatio": 0.0373,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 13232,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 74
+        }
+      ]
+    },
+    {
+      "key": "soviet_dreadnought",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/soviets/dreadnought.glb",
+        "triangles": 23846,
+        "fileBytes": 6125964
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/dreadnought.lod1.glb",
+          "triangles": 23764,
+          "triangleRatio": 0.9966,
+          "boundsDriftMeters": 0.00007,
+          "boundsDriftRatio": 0.00007,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.5% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/soviets/derived/dreadnought.lod2.glb",
+          "triangles": 23731,
+          "triangleRatio": 0.9952,
+          "boundsDriftMeters": 0.00007,
+          "boundsDriftRatio": 0.00007,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/dreadnought.shadow.glb",
+          "triangles": 1404,
+          "triangleRatio": 0.0589,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 20488,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 117
         }
       ]
     }

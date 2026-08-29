@@ -3328,15 +3328,19 @@ export const SCENARIO_SCATTER = {
 /** Naval hulls, metres. Same contract as UNIT_DIMENSIONS. */
 export const NAVAL_UNIT_DIMENSIONS = {
   //                    length  width  height  turret ring Y
-  gunboat:     { l: 9.0,  w: 3.4, h: 2.6, turretY: 1.40 },
+  // The Assault Destroyer is the escort rung, not a second recon boat. Keep
+  // this gameplay envelope synchronized with UnitDefs and the imported GLB
+  // target so radius, turn rate, selection and art all describe one hull.
+  gunboat:     { l: 12.0, w: 4.0, h: 3.8, turretY: 1.80 },
   destroyer:   { l: 14.0, w: 4.2, h: 3.4, turretY: 1.90 },
   submarine:   { l: 12.0, w: 3.2, h: 1.8, turretY: 0 },
   dreadnought: { l: 18.0, w: 5.6, h: 4.2, turretY: 2.40 },
   transport:   { l: 13.0, w: 6.0, h: 2.4, turretY: 0 },
-  // The two rungs added when every army got a full naval line. `recon` is the
-  // smallest hull in the game on purpose - it is bought for its sight radius
-  // and its speed, and a silhouette that reads as "cheap" is part of that.
-  recon:       { l: 7.0,  w: 2.6, h: 1.6, turretY: 0.90 },
+  // The recon hull remains the fleet's smallest combat rung, but 7 m made all
+  // four authored boats read as dinghies at the naval camera scale. Nine metres
+  // preserves a clear step below 10-12 m escorts while keeping the art,
+  // selection radius and turn-rate contract synchronized for every faction.
+  recon:       { l: 9.0,  w: 3.2, h: 2.8, turretY: 1.25 },
   lighter:     { l: 11.0, w: 5.0, h: 2.0, turretY: 0 },
 } as const;
 
@@ -7372,13 +7376,13 @@ export const WATER_LOOK = {
    * Multiplies the whole lit result. The ramp hexes were sampled off graded
    * RA3 frames, so they are close to FINAL pixel values, and pushing them back
    * through exposure + AgX would otherwise land them well under the scorecard
-   * #25 floor. Solved by sweeping `probeOpenWaterLuminance` across all five
-   * palettes: at 1.40 the darkest (night) reads 48 and the brightest
-   * (temperate) 88, so every palette clears 45-115 with margin while the water
-   * stays firmly on the DARK side of the band. Raise this only against a fresh
-   * probe reading — never to make the water "pop", which is bible R5.
+   * #25 floor. The former 1.40 gain lifted the broad water body enough that
+   * pale ships disappeared into it in ordinary play. 1.28 keeps every daylight
+   * palette inside the measured 45-115 band while restoring the dark-water
+   * contrast the naval silhouettes need. Raise this only against a fresh probe
+   * reading — never to make the water "pop", which is bible R5.
    */
-  outputGain: 1.40,
+  outputGain: 1.28,
   /** How much the sun's diffuse term modulates the body colour. Water is not chalk. */
   sunDiffuse: 0.30,
   /** How much the hemisphere fill modulates it. */
@@ -7400,6 +7404,12 @@ export const WATER_LOOK = {
    */
   foamSunDiffuse: 0.32,
   foamFillDiffuse: 0.50,
+  /**
+   * Foam reveals some body colour instead of replacing it with opaque chalk.
+   * Coverage and filament topology stay unchanged; this controls only optical
+   * density, making the crest field read as aerated water rather than paint.
+   */
+  foamOpacity: 0.74,
   /** Scorecard #25 acceptance band, mean sRGB luminance of open water, 0-255. */
   luminanceBand: [45, 115] as [number, number],
 } as const;

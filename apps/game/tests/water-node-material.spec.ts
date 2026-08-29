@@ -85,6 +85,15 @@ describe('the TSL water graph compiles', () => {
     }
     set.dispose();
   });
+
+  it('applies the same restrained foam opacity on both generated backends', () => {
+    const set = nodeSet();
+    for (const which of ['wgsl', 'glsl'] as const) {
+      const { fragment } = compileNodeMaterial(set.material, which);
+      expect(fragment, `${which} lost the foam/body blend`).toContain('foamBlend');
+    }
+    set.dispose();
+  });
 });
 
 /* ==========================================================================

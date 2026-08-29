@@ -46,6 +46,7 @@
     model.traverse((node) => { if (node.isMesh) node.material = material; });
   }
   const articulation = params.get('mode') === 'articulation';
+  const topdown = params.get('mode') === 'top';
   let turret = null;
   if (articulation) {
     turret = model.getObjectByName(params.get('turret') ?? 'Turret');
@@ -76,7 +77,9 @@
     ['LEFT', new THREE.Vector3(-distance, radius * 0.55, 0)],
   ];
   const auditCamera = new THREE.Vector3(distance * 0.72, radius * 0.62, distance * 0.72);
-  const views = articulation
+  const views = topdown
+    ? [['TOP', new THREE.Vector3(0, distance, 0)]]
+    : articulation
     ? [
         ['YAW 0', auditCamera, 0],
         ['YAW 45', auditCamera, 45],
@@ -88,14 +91,17 @@
   const labelScene = document.querySelector('#status');
   labelScene.remove();
   for (let i = 0; i < views.length; i++) {
-    const x = (i % 2) * 600;
-    const y = i < 2 ? 600 : 0;
+    const singleView = views.length === 1;
+    const viewportSize = singleView ? 1200 : 600;
+    const x = singleView ? 0 : (i % 2) * 600;
+    const y = singleView ? 0 : (i < 2 ? 600 : 0);
     const camera = new THREE.OrthographicCamera(-radius, radius, radius, -radius, 0.01, distance * 3);
     camera.position.copy(views[i][1]);
+    if (topdown) camera.up.set(0, 0, -1);
     camera.lookAt(target);
     if (turret !== null) turret.rotation.y = THREE.MathUtils.degToRad(views[i][2]);
-    renderer.setViewport(x, y, 600, 600);
-    renderer.setScissor(x, y, 600, 600);
+    renderer.setViewport(x, y, viewportSize, viewportSize);
+    renderer.setScissor(x, y, viewportSize, viewportSize);
     renderer.render(scene, camera);
   }
   renderer.getContext().finish();

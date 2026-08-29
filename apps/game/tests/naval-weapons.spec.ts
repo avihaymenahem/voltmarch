@@ -27,7 +27,10 @@ function mass(list: UnitMassList, name: string): MassDef {
 function muzzleZ(list: UnitMassList): number {
   const socket = list.sockets.find((s) => s.part === PartId.MuzzleA);
   if (socket === undefined) throw new Error(`${list.key}: missing MuzzleA`);
-  return socket.pos[2];
+  // Turret sockets are authored in turret-local space so imported Turret meshes
+  // and procedural weapon effects share the same rotating transform. Convert
+  // back to hull-local space before comparing against authored mass endpoints.
+  return socket.pos[2] + (socket.turret === true ? (list.turretPivot?.[2] ?? 0) : 0);
 }
 
 describe('surface-ship bow weapons meet their effects sockets', () => {

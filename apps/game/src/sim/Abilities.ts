@@ -64,6 +64,7 @@ import type { World } from '../core/world';
 import { PerEntityI16 } from '../core/world';
 import { getEconomy } from './Economy';
 import { CreditReason } from '../core/types';
+import { canRelocateTo } from './Movement';
 
 /* ==========================================================================
  * 1. STATE
@@ -320,6 +321,13 @@ export class AbilityService {
       const r = (ring + 1) * ABILITY_FX.chronoSpacing;
       const nx = clampWorld(x + Math.sin(ang) * r, 2);
       const nz = clampWorld(z + Math.cos(ang) * r, 2);
+
+      // A self-centred recall can straddle a shoreline. Never write a tracked,
+      // wheeled or foot unit into the wet half of the ring; doing so bypasses
+      // pathfinding entirely and used to create a tank that could then exploit
+      // Movement's invalid-cell escape rule to keep driving across the sea.
+      // Hover, Naval and Air retain their own movement-class rules.
+      if (!canRelocateTo(w, e, nx, nz)) continue;
 
       this.channels.fx.push(
         FxKind.PrismBeam, st.posX[e], st.posY[e] + 2, st.posZ[e],

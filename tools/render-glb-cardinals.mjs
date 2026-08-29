@@ -6,7 +6,13 @@ import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
 const originalMaterial = args.includes('--material=original');
-const positional = args.filter((arg) => arg !== '--material=original');
+const topdown = args.includes('--mode=top');
+const articulation = args.includes('--mode=articulation');
+const pivotArg = args.find((arg) => arg.startsWith('--pivot='));
+const turretArg = args.find((arg) => arg.startsWith('--turret='));
+const positional = args.filter((arg) => arg !== '--material=original'
+  && arg !== '--mode=top' && arg !== '--mode=articulation'
+  && arg !== pivotArg && arg !== turretArg);
 const [modelArg, outputArg, baseUrlArg = 'http://localhost:5173'] = positional;
 if (!modelArg || !outputArg) {
   throw new Error('usage: node tools/render-glb-cardinals.mjs <model.glb> <output.png> [base-url]');
@@ -40,9 +46,16 @@ try {
   const url = new URL('/tools/glb-cardinals.html', baseUrlArg);
   url.searchParams.set('model', `/${relative}`);
   if (originalMaterial) url.searchParams.set('material', 'original');
-  await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  if (topdown) url.searchParams.set('mode', 'top');
+  if (articulation) {
+    if (pivotArg === undefined) throw new Error('--mode=articulation requires --pivot=x,y,z');
+    url.searchParams.set('mode', 'articulation');
+    url.searchParams.set('pivot', pivotArg.slice('--pivot='.length));
+    if (turretArg !== undefined) url.searchParams.set('turret', turretArg.slice('--turret='.length));
+  }
+  await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 120_000 });
   try {
-    await page.waitForFunction(() => document.title.startsWith('READY '), null, { timeout: 15_000 });
+    await page.waitForFunction(() => document.title.startsWith('READY '), null, { timeout: 120_000 });
   } catch (error) {
     await page.screenshot({ path: output }).catch(() => undefined);
     throw new Error(`cardinal page did not become ready: ${messages.join('\n')}`, { cause: error });

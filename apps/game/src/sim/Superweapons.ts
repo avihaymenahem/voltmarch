@@ -97,6 +97,7 @@ import { CELL, MAX_PLAYERS } from '../core/config';
 import { clampWorld } from '../core/math';
 
 import { production } from './Production';
+import { canRelocateTo } from './Movement';
 
 /* ==========================================================================
  * 1. CONTENT
@@ -1026,6 +1027,12 @@ export class SuperweaponService {
       const r = (ring + 1) * SUPERWEAPON_FX.chronoSpacing;
       const nx = clampWorld(k.x + Math.sin(ang) * r, 2);
       const nz = clampWorld(k.z + Math.cos(ang) * r, 2);
+
+      // Displacement writes the destination directly, outside the pathing
+      // pipeline. Reject only this arrival slot when the unit's own movement
+      // class cannot occupy it; amphibious hovercraft, ships and aircraft keep
+      // their distinct rules through `canRelocateTo`.
+      if (!canRelocateTo(w, e, nx, nz)) continue;
 
       this.channels.fx.push(
         FxKind.PrismBeam, st.posX[e], st.posY[e] + 2, st.posZ[e],

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "generatedAt": "2026-08-27T18:12:22.843Z",
+  "generatedAt": "2026-08-29T14:25:37.836Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-vehicles.json",
   "rows": [
@@ -161,6 +161,177 @@
             16
           ],
           "occupiedCells": 118
+        }
+      ]
+    },
+    {
+      "key": "allied_hydrofoil",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/hydrofoil.glb",
+        "triangles": 18272,
+        "fileBytes": 11699252
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.9% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/hydrofoil.lod1.glb",
+          "triangles": 18251,
+          "triangleRatio": 0.9989,
+          "boundsDriftMeters": 0.00003,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.6% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/hydrofoil.lod2.glb",
+          "triangles": 18208,
+          "triangleRatio": 0.9965,
+          "boundsDriftMeters": 0.00003,
+          "boundsDriftRatio": 0.00005,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/hydrofoil.shadow.glb",
+          "triangles": 1392,
+          "triangleRatio": 0.0762,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 20288,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 116
+        }
+      ]
+    },
+    {
+      "key": "allied_gunboat",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/assault-destroyer.glb",
+        "triangles": 23936,
+        "fileBytes": 11764156
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.9% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/assault-destroyer.lod1.glb",
+          "triangles": 23915,
+          "triangleRatio": 0.9991,
+          "boundsDriftMeters": 0.00006,
+          "boundsDriftRatio": 0.00006,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.7% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/assault-destroyer.lod2.glb",
+          "triangles": 23872,
+          "triangleRatio": 0.9973,
+          "boundsDriftMeters": 0.00006,
+          "boundsDriftRatio": 0.00006,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/assault-destroyer.shadow.glb",
+          "triangles": 1344,
+          "triangleRatio": 0.0561,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19616,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 112
+        }
+      ]
+    },
+    {
+      "key": "allied_destroyer",
+      "class": "hero",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/aircraft-cruiser.glb",
+        "triangles": 24145,
+        "fileBytes": 7000196
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.8% exceeds 55.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/aircraft-cruiser.lod1.glb",
+          "triangles": 24085,
+          "triangleRatio": 0.9975,
+          "boundsDriftMeters": 0.00001,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 99.6% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/aircraft-cruiser.lod2.glb",
+          "triangles": 24049,
+          "triangleRatio": 0.996,
+          "boundsDriftMeters": 0.00001,
+          "boundsDriftRatio": 0.00003,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/aircraft-cruiser.shadow.glb",
+          "triangles": 1128,
+          "triangleRatio": 0.0467,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 16604,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            6
+          ],
+          "occupiedCells": 94
         }
       ]
     }

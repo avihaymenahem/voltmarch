@@ -1651,6 +1651,9 @@ function ship(o: ShipOpts): UnitMassList {
   const superZ = lander ? -L * 0.34 : -L * 0.10;
   const superL = lander ? L * 0.22 : L * 0.34;
   const mastZ = lander ? superZ : -L * 0.16;
+  const turreted = o.armament === 'turret';
+  const turretY = hullH + H * 0.19;
+  const turretZ = L * 0.28;
 
   const masses: MassDef[] = [
     primary('hull', 'planPrism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
@@ -1709,14 +1712,14 @@ function ship(o: ShipOpts): UnitMassList {
     );
   } else if (o.armament === 'turret') {
     masses.push(
-      greeble('foreTurret', 'revolve', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
-        group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
+      primary('foreTurret', 'revolve', [W * 0.50, H * 0.20, W * 0.54], [0, turretY, turretZ], 'paintMed', {
+        turret: true, group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
       }),
       barrelMass('foreBarrel', 0.26, L * 0.20, [0, hullH + H * 0.21, L * 0.36], {
-        role: MassRole.Greeble, group: 'fore mount',
+        role: MassRole.Greeble, group: 'fore mount', turret: true,
       }),
       greeble('foreMuzzle', 'cone', [0.36, L * 0.06, 0.36], [0, hullH + H * 0.21, L * 0.43], 'bareMetal', {
-        rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
+        turret: true, rot: [HALF_PI, 0, 0], group: 'fore mount', shape: { segments: 10, rTop: 0.72 },
       }),
     );
   } else if (o.armament === 'escort') {
@@ -1845,6 +1848,7 @@ function ship(o: ShipOpts): UnitMassList {
   return {
     key: o.key, name: o.name, faction: o.faction, cls: 'naval',
     hullLength: L, masses, hullNumber: o.hullNumber,
+    ...(turreted ? { turretPivot: [0, turretY, turretZ] as const } : {}),
     sockets: lander
       // A lighter has no muzzle to hang a flash on and a door where the bow
       // socket would be, so it publishes the two the transport publishes: the
@@ -1855,7 +1859,9 @@ function ship(o: ShipOpts): UnitMassList {
         { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
       ]
       : [
-        { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
+        turreted
+          ? { part: PartId.MuzzleA, pos: [0, H * 0.02, L * 0.18], turret: true }
+          : { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
         { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
         { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
       ],
@@ -2327,7 +2333,12 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   }),
   ship({
     key: 'allied_gunboat', name: 'Assault Destroyer', faction: 'allies', hullNumber: 4172,
-    length: 9.6, beam: 3.1, height: 3.4, brutalist: false, armament: 'escort',
+    // Keep the escort unmistakably above the 7.2 m recon Hydrofoil and close
+    // enough to the 14 m Aircraft Cruiser to read as a destroyer rather than
+    // a launch. The former 9.6 m envelope was also smaller than the 11 m
+    // landing craft, which is why the authored replacement looked tiny beside
+    // the rest of the fleet even though the importer fitted it correctly.
+    length: 12.0, beam: 4.0, height: 3.8, brutalist: false, armament: 'escort',
   }),
   hoverTransport('allies', 4172),
   plane({
@@ -2340,7 +2351,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   // player mistaking it for a warship and sending it into a fight.
   ship({
     key: 'allied_hydrofoil', name: 'Hydrofoil', faction: 'allies', hullNumber: 4172,
-    length: 7.2, beam: 2.5, height: 2.4, brutalist: false, armament: 'turret',
+    length: 9.0, beam: 3.2, height: 2.8, brutalist: false, armament: 'turret',
   }),
   ship({
     key: 'allied_lighter', name: 'Landing Craft', faction: 'allies', hullNumber: 4172,
@@ -2404,7 +2415,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   }),
   ship({
     key: 'soviet_picket', name: 'Picket Boat', faction: 'soviets', hullNumber: 8188,
-    length: 7.0, beam: 2.7, height: 2.5, brutalist: true, armament: 'turret',
+    length: 9.0, beam: 3.3, height: 2.9, brutalist: true, armament: 'turret',
   }),
   ship({
     key: 'soviet_lighter', name: 'Assault Barge', faction: 'soviets', hullNumber: 8188,

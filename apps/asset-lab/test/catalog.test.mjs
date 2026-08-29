@@ -70,4 +70,19 @@ test('the shipped roster uses gameplay roles rather than name substrings', async
     'Units/meridian/kestrel-gunship',
     'Units/reclamation/swarmhornet',
   ]) assert.equal(category(id), 'Aircraft', id);
+
+  for (const id of [
+    'Units/allies/hydrofoil',
+    'Units/allies/assault-destroyer',
+    'Units/allies/aircraft-cruiser',
+    'Units/soviets/picket-boat',
+    'Units/soviets/attack-submarine',
+    'Units/soviets/dreadnought',
+    'Units/meridian/sun-cutter',
+    'Units/meridian/kite-corvette',
+    'Units/meridian/sunmonitor',
+    'Units/reclamation/scrap-skimmer',
+    'Units/reclamation/slag-scow',
+    'Units/reclamation/reclaimed-hulk',
+  ]) assert.equal(category(id), 'Naval units', id);
 });
