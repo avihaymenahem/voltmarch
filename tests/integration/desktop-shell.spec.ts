@@ -595,7 +595,7 @@ describe('the desktop content-security policy', () => {
   it('permits generated WebGPU worker modules to fetch their blob URL', () => {
     const main = readFileSync(path.join(process.cwd(), 'apps/desktop/src/main.ts'), 'utf8');
     expect(main).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'");
-    expect(main).toContain("connect-src 'self' blob: ws: wss:");
+    expect(main).toContain("connect-src 'self' data: blob: ws: wss:");
     expect(main).toContain("worker-src 'self' blob:");
   });
 });

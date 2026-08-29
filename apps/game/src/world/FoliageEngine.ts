@@ -35,7 +35,11 @@ export interface FoliageEngineOptions {
 
 export function resolveFoliagePresentation(value: string | null | undefined): FoliagePresentation {
   if (value === 'imported' || value === 'emergency' || value === 'procedural') return value;
-  return 'procedural';
+  // Authored PBR families are the shipped presentation. The procedural kit is
+  // retained as an explicit diagnostic/failure fallback, not as the ordinary
+  // no-flag path; otherwise every desktop and web launch silently bypasses the
+  // asset pipeline that replaced it.
+  return 'imported';
 }
 
 function assertGeometry(

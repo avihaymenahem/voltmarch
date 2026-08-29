@@ -41,6 +41,7 @@ import {
 } from '../core/workers/world-warm';
 import { Terrain, getTerrain, setActiveTerrain } from './Terrain';
 import { plannedTerrainInput } from './terrain-plan';
+import { preloadTerrainDetailMask } from './terrain-detail-mask';
 
 let terrain: Terrain | null = null;
 
@@ -65,7 +66,7 @@ export default defineSystem({
    * sees a half-built world either way.
    */
   async init(): Promise<void> {
-    const { world, sceneRig, cameraRig, registry, handle } = ctx();
+    const { world, sceneRig, cameraRig, registry, handle, debug } = ctx();
 
     /*
      * THE CLOCK STARTS BEFORE THE AWAIT, DELIBERATELY.
@@ -86,9 +87,18 @@ export default defineSystem({
      * `Promise.all` resolves when the slower of the two lands, which is exactly
      * how long the boot stopped here.
      */
-    const [fields, layerTextures] = await Promise.all([
-      prewarmedTerrain(), prewarmedTerrainTextures(),
+    const [fields, layerTextures, terrainDetail] = await Promise.all([
+      prewarmedTerrain(), prewarmedTerrainTextures(), preloadTerrainDetailMask(),
     ]);
+
+    const detailImage = terrainDetail.image as { width?: number; height?: number } | undefined;
+    debug.setCounter(
+      'terrainDetailPixels',
+      (detailImage?.width ?? 0) * (detailImage?.height ?? 0),
+    );
+    console.info(
+      `[terrain] detail mask ready — ${detailImage?.width ?? 0}x${detailImage?.height ?? 0}`,
+    );
 
     terrain = new Terrain({
       ...input,

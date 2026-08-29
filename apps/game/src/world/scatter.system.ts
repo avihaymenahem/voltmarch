@@ -142,6 +142,7 @@ export default defineSystem({
     } else {
       installProceduralEntityProps();
     }
+    debug.setCounter('importedFoliageFamilies', importedFoliage?.size ?? 0);
 
     scatter = new Scatter({
       scene: sceneRig.scene,

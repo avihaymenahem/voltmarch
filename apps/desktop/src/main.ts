@@ -265,7 +265,11 @@ protocol.registerSchemesAsPrivileged([
  *
  * `connect-src` allows ws:/wss: because the multiplayer relay is a WebSocket.
  * `blob:` is also required by the WebGPU texture worker's generated module;
- * without it Chromium creates the worker but blocks its first fetch.
+ * without it Chromium creates the worker but blocks its first fetch. `data:`
+ * is limited to locally bundled payloads here: Vite inlines sub-4K GLBs as
+ * `data:model/gltf-binary`, and GLTFLoader fetches those URLs through the same
+ * connect-src gate. Omitting it makes only the smallest authored prop LODs
+ * fail in the packaged app while dev continues to work.
  */
 const CSP = [
   "default-src 'self'",
@@ -278,7 +282,7 @@ const CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "media-src 'self' blob:",
-  "connect-src 'self' blob: ws: wss:",
+  "connect-src 'self' data: blob: ws: wss:",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",

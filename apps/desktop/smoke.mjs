@@ -89,7 +89,10 @@ check(secure.isSecureContext === true, 'renderer is a secure context', secure.or
 check(secure.hasGpu === true, 'navigator.gpu is present');
 check(new URLSearchParams(secure.search).get('gpu') === 'webgpu',
   'an ordinary desktop launch defaults to WebGPU', secure.search);
-await page.waitForSelector('.vm-menu-foot', { timeout: 60_000 });
+await page.waitForSelector('.vm-menu-foot', { timeout: 120_000 }).catch((error) => {
+  const diagnostic = messages.slice(-20).join('\n        ');
+  throw new Error(`${error.message}\n        recent renderer console:\n        ${diagnostic}`);
+});
 const menuFooter = await page.locator('.vm-menu-foot').textContent();
 check(menuFooter?.includes('WebGPU') === true && !menuFooter.includes('· WebGL2'),
   'the first-paint menu footer reports WebGPU before the backdrop boots', menuFooter?.trim() ?? '');
@@ -120,6 +123,26 @@ check(updates.mode === 'development', 'dev updater is exposed but network-disabl
 // 4. The engine actually reached a running state.
 await page.evaluate(() => window.__VM.ready());
 check(true, '__VM.ready() resolved');
+
+// The shipped scene must use the authored environment by default, and terrain
+// must not compile while its 4K detail sampler is still the neutral 1x1 guard.
+// `__VM.ready()` covers renderer readiness; the title theatre boots behind it,
+// so wait for the owning systems to publish their persistent evidence instead
+// of racing their async asset loads.
+await page.waitForFunction(() => (
+  'importedFoliageFamilies' in window.__VM.counters &&
+  'terrainDetailPixels' in window.__VM.counters
+), null, { timeout: 60_000 }).catch(() => { /* the checks below report both values */ });
+const authoredEnvironment = await page.evaluate(() => ({
+  importedFoliageFamilies: window.__VM.counters.importedFoliageFamilies ?? 0,
+  terrainDetailPixels: window.__VM.counters.terrainDetailPixels ?? 0,
+}));
+check(authoredEnvironment.importedFoliageFamilies > 0,
+  'ordinary launch loads the imported PBR foliage presentation',
+  `${authoredEnvironment.importedFoliageFamilies} audited families`);
+check(authoredEnvironment.terrainDetailPixels === 4096 * 4096,
+  'terrain material is built only after the 4K detail mask is ready',
+  `${authoredEnvironment.terrainDetailPixels} decoded pixels`);
 
 // 5. The adapter, read rather than assumed — and cross-checked against the
 //    main process's own getGPUInfo, because two independent reads agreeing is

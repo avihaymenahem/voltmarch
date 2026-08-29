@@ -72,6 +72,8 @@ describe('the browser terrain-detail texture is WebGPU-uploadable immediately', 
     class FakeImage {
       decoding = '';
       src = '';
+      width = 4096;
+      height = 4096;
       private load: (() => void) | null = null;
 
       constructor() { image = this; }
@@ -86,7 +88,8 @@ describe('the browser terrain-detail texture is WebGPU-uploadable immediately', 
     vi.stubGlobal('document', { createElement: () => canvas });
     vi.stubGlobal('Image', FakeImage);
     vi.resetModules();
-    const { createTerrainDetailMask } = await import('../src/world/terrain-detail-mask');
+    const { createTerrainDetailMask, preloadTerrainDetailMask } =
+      await import('../src/world/terrain-detail-mask');
 
     const texture = createTerrainDetailMask();
     const placeholderVersion = texture.version;
@@ -95,8 +98,10 @@ describe('the browser terrain-detail texture is WebGPU-uploadable immediately', 
     expect(canvas.height).toBe(1);
     expect(placeholderVersion).toBeGreaterThan(0);
 
+    const loaded = preloadTerrainDetailMask();
     expect(image).not.toBeNull();
     image!.finish();
+    await expect(loaded).resolves.toBe(texture);
     expect(texture.image).toBe(image);
     expect(texture.version).toBeGreaterThan(placeholderVersion);
   });

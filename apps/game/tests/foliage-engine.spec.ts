@@ -176,12 +176,12 @@ describe('environment asset catalogue', () => {
     expect(flowers?.budget.shippingBytes).toBe(65_536);
   });
 
-  it('accepts only explicit presentation modes', () => {
+  it('ships imported families by default while preserving explicit diagnostic modes', () => {
     expect(resolveFoliagePresentation('procedural')).toBe('procedural');
     expect(resolveFoliagePresentation('imported')).toBe('imported');
     expect(resolveFoliagePresentation('emergency')).toBe('emergency');
-    expect(resolveFoliagePresentation('broken')).toBe('procedural');
-    expect(resolveFoliagePresentation(null)).toBe('procedural');
+    expect(resolveFoliagePresentation('broken')).toBe('imported');
+    expect(resolveFoliagePresentation(null)).toBe('imported');
   });
 });
 

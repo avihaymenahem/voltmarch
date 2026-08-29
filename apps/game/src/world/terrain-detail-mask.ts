@@ -23,6 +23,48 @@ export const PAVEMENT_DETAIL_STRENGTH = 0.30;
 export const PAVEMENT_DETAIL_ROUGHNESS = 0.30;
 
 let sharedMask: THREE.Texture | null = null;
+let browserLoad: Promise<THREE.Texture> | null = null;
+
+function configure(mask: THREE.Texture): THREE.Texture {
+  mask.name = 'terrain.detail.universal';
+  mask.colorSpace = THREE.NoColorSpace;
+  mask.wrapS = THREE.RepeatWrapping;
+  mask.wrapT = THREE.RepeatWrapping;
+  mask.magFilter = THREE.LinearFilter;
+  mask.minFilter = THREE.LinearMipmapLinearFilter;
+  mask.generateMipmaps = true;
+  return mask;
+}
+
+/**
+ * Resolve only after the real browser image is decoded and attached.
+ *
+ * WebGPU compiles the sampler against the source that exists when the terrain
+ * node graph is built. Replacing the neutral 1x1 source after that point can
+ * leave the compiled material sampling the placeholder indefinitely. Terrain
+ * init therefore awaits this barrier before it constructs either renderer's
+ * material set.
+ */
+export function preloadTerrainDetailMask(): Promise<THREE.Texture> {
+  if (typeof Image === 'undefined') return Promise.resolve(createTerrainDetailMask());
+  if (browserLoad !== null) return browserLoad;
+
+  const mask = createTerrainDetailMask();
+  browserLoad = new Promise<THREE.Texture>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener('load', () => {
+      mask.image = image;
+      mask.needsUpdate = true;
+      resolve(mask);
+    }, { once: true });
+    image.addEventListener('error', () => {
+      reject(new Error(`Terrain detail mask failed to load: ${terrainDetailUrl}`));
+    }, { once: true });
+    image.src = terrainDetailUrl;
+  });
+  return browserLoad;
+}
 
 /**
  * Load the project-owner-supplied terrain detail mask.
@@ -62,22 +104,9 @@ export function createTerrainDetailMask(): THREE.Texture {
     }
     mask = new THREE.Texture(placeholder);
 
-    const image = new Image();
-    image.decoding = 'async';
-    image.addEventListener('load', () => {
-      mask.image = image;
-      mask.needsUpdate = true;
-    }, { once: true });
-    image.src = terrainDetailUrl;
   }
 
-  mask.name = 'terrain.detail.universal';
-  mask.colorSpace = THREE.NoColorSpace;
-  mask.wrapS = THREE.RepeatWrapping;
-  mask.wrapT = THREE.RepeatWrapping;
-  mask.magFilter = THREE.LinearFilter;
-  mask.minFilter = THREE.LinearMipmapLinearFilter;
-  mask.generateMipmaps = true;
+  configure(mask);
   // Upload the neutral stand-in immediately. The real browser image bumps the
   // version again from its load handler; Node's DataTexture uses this upload.
   mask.needsUpdate = true;
