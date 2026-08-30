@@ -705,7 +705,7 @@ export function playableFactions(): FactionOption[] {
   const blurbs: Record<string, string> = {
     allies: 'Precision, mobility and beam tech. Fewer, better units.',
     soviets: 'Armour and volume. Slower, heavier, hits like a building.',
-    meridian: 'Nothing the Pact fields touches the ground. Solar tech, hovering hulls.',
+    meridian: 'Solar tech, skimming silhouettes and fragile shields.',
     reclaim: 'Welded out of other people’s wrecks. Open frames, chained arcs, no turrets.',
   };
   // Keyed by the faction's OWN key first, then its `paletteKey`. Both resolve

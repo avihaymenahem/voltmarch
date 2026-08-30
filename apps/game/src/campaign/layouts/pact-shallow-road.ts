@@ -9,18 +9,17 @@
  * ============================================================================
  * THE ONE THING THIS FILE EXISTS TO BUILD
  * ============================================================================
- * The Meridian Pact's whole vehicle roster is `Locomotor.Hover` and its whole
- * infantry is `Locomotor.Foot`. That is not flavour and it is not a stat line —
- * it is two different answers out of `Flowfield.rebuildCost`, which blocks
- * every ground class on a wet cell EXCEPT `MoveClass.Hover`:
+ * Forgeyard vehicles are Track or Wheel and stay on land. Tidewalkers are the
+ * designated amphibious infantry, while Slipway hulls are Naval. Those are
+ * different answers out of `Flowfield.rebuildCost`:
  *
- *     Solarch / Sandskiff / Collector / Zenith / Carryall   Hover   crosses water
- *     Wayfarer / Sunlancer / ARTIFICER                      Foot    does not
- *     Tidewalker                                            Foot + `amphibious`
+ *     Solarch / Sandskiff / Collector / Zenith / Carryall   ground   land only
+ *     Wayfarer / Sunlancer / Artificer                      Foot     land only
+ *     Tidewalker                                            amphibious
+ *     Cutter / Lighter / Argosy / Corvette / Monitor        Naval    water only
  *
- * So the sea is a road for the hulls and a wall for the men, by construction,
- * on every machine, with nothing in this file or the trigger table asserting
- * it. What the layout has to supply is a REASON to use it.
+ * So the sea is a road only for swimmers and ships. The layout supplies a
+ * reason to use that route while ordinary armour takes the dry approach.
  *
  * `MAP_SEAS.tropical` is a HALF-PLANE whose normal is `START_BISECTOR` — the
  * perpendicular bisector of slots 0 and 1 — so both openings project to the
@@ -38,7 +37,7 @@
  * on open ground can, and `reclamation-held-paper` already says so about its
  * own — but it does seal the BEACH, which is the only part of the map the sea
  * is beside. Everything on foot goes round the landward end, in front of the
- * tower. Everything that hovers has a second option.
+ * tower. Tidewalkers and naval hulls have a second option.
  *
  * ============================================================================
  * WHY THE CUT IS WALKED OUT CELL BY CELL RATHER THAN AUTHORED AS A COUNT
@@ -483,8 +482,8 @@ export default layout({
      * NO FOURTH ORE FIELD, AND THE ONE THAT WAS HERE WAS A FALSE CLAIM.
      *
      * A patch was authored on the beach past the cut under the note "one patch
-     * the Pact can work and the Allies cannot" — a Collector hovers and the
-     * shared harvester does not. Measured on the built world, that is simply
+     * the Pact can work and the Allies cannot". Measured on the built world,
+     * that is simply
      * untrue: the cut is a line from the surf to 60 m inland, so the beach
      * BEYOND it is on the same side as the Allied opening and their harvesters
      * walk to it without crossing anything. There is no water-only ore on a

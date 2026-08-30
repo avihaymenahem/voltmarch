@@ -1065,10 +1065,10 @@ export const BOXINESS = {
  *
  * THIS PARAGRAPH USED TO END "If you are looking for the next piece of art work,
  * it is the top ten rows." IT IS NOT ART WORK, and that sentence sent at least
- * one author down it before anyone measured. Those ten rows are the ten TRACKED
- * vehicles — the only tracked vehicles in the game, because the Pact hovers and
- * the Reclamation walks — and every one of them holds its whole axis-aligned
- * figure in ONE mass, its `track`, at a flat share of exactly 0.420 on all ten.
+ * one author down it before anyone measured. Those ten rows are the ten models
+ * built from the procedural `tracks` primitive, and every one holds its
+ * axis-aligned figure in ONE mass, its `track`, at a flat share of exactly
+ * 0.420 on all ten.
  * That 0.420 is `case 'tracks'` below. It does not read `size`, `wheels`,
  * `skirtHeight`, `sprocketScale`, `returnRollers` or `segments`, so no field an
  * author can write in `UnitDefs.ts` moves it by any amount.

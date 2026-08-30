@@ -368,8 +368,8 @@ export interface BuildEntry {
    *
    * The old rule drew the line at `passengers`, to protect the unarmed Hover
    * Transport's ability to beach. Two hulls have seats AND a gun, and both fell
-   * through: `mrdSkiff` (intended — a Pact LAND raider gated on `mrdForgeyard`,
-   * and the whole Pact army hovers) and `rclScow`, a dock-built, naval-sortOrder
+   * through: `mrdSkiff` (a Pact ground APC gated on `mrdForgeyard`) and
+   * `rclScow`, a dock-built, naval-sortOrder
    * hull with a 68-damage HE gun that could drive to the middle of an island and
    * shell a base. `tests/naval-shore.spec.ts` asserted that roster verbatim
    * under the name "marks exactly the gunned hulls as warships", which is how it
@@ -378,9 +378,9 @@ export interface BuildEntry {
    * THE RULE NOW: a hull a SHIPYARD builds never touches dry land, carrier or
    * not. Carriers do not need to beach — `Transport.place` walks a widening ring
    * for a foot-passable cell and puts the squad on the sand from open water,
-   * which is how the AI has been landing all along. A land unit that swims
-   * (`mrdSkiff`, the Pact hover army, the new swimmer infantry) is a different
-   * thing and keeps `waterOnly: false`.
+   * which is how the AI has been landing all along. The designated swimmer
+   * infantry are different and keep `waterOnly: false`; ordinary land vehicles
+   * use Track or Wheel and cannot enter water.
    */
   readonly waterOnly: boolean;
   /**

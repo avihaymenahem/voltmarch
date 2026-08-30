@@ -472,8 +472,8 @@
  *
  * **ALL NINETEEN SCRIPTED DROPS ARE STANDABLE, WORST CLEARANCE 4.0 m.** Four
  * distinct rings are fired at `ROAD` across six calls — `mrdWayfarer` x4 at 12 m
- * (Foot), `mrdSolarch` x2 and x3 at 18 m and `mrdSkiff` x3 at 14 m (all Hover,
- * because every Pact hull is `Locomotor.Hover`) — and the Foot ring is the
+ * (Foot), `mrdSolarch` x2 and x3 at 18 m (Track), and `mrdSkiff` x3 at 14 m
+ * (Wheel) — and the Foot ring is the
  * binding one. `ROAD` was chosen by sweeping the lane frame at 2 m and 0.0025 of
  * the lane and keeping only points where every drop of every wave is open; 68
  * candidates cleared it inside 64 to 96 m of the Conclave and this is the one

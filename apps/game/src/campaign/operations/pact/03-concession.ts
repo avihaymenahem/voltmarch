@@ -787,15 +787,12 @@ const op: OperationDef = {
   /*
    * EMPTY ON BOTH SIDES, AND THE PLAYER'S HALF IS THE LOAD-BEARING ONE.
    *
-   * `unit.raider` is the Sandskiff — `cargoSlots: 2`, `Locomotor.Hover`, 9.2 m/s
+   * `unit.raider` is the Sandskiff — `cargoSlots: 2`, `Locomotor.Wheel`, 9.2 m/s
    * — and two of them carry all four bearers home at two and a half times
    * walking pace, out of reach of everything this file is built around. That is
    * a real solution to a real escort and it deletes the operation, so it is
-   * withheld. **`pact.01.shallow-road` GRANTED IT AND TAUGHT THE TRICK**
-   * ("Put the Artificer in a Sandskiff; it holds two"), which is exactly why
-   * this operation has to take it back rather than rely on nobody thinking of
-   * it. An escort you can put in a box is not an escort; the chapter has
-   * already sold that lesson once and is not selling it twice.
+   * withheld rather than relying on nobody thinking of it. An escort you can
+   * put in a fast ground APC is not an escort.
    *
    * `roster.ai` is empty because of the splash audit in the header. The one
    * Reclamation weapon that could take the whole column with a single round is

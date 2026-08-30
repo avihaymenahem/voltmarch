@@ -276,9 +276,7 @@
  *
  * `tests/campaign-spawn-ground.spec.ts` is the gate and it checks every point of
  * every wave against that wave's own locomotor — `MoveClass.Foot` for
- * `mrdWayfarer` and `mrdLancer`, `MoveClass.Hover` for `mrdSolarch`, because the
- * whole Pact army hovers and asking the grid about the wrong bit answers a
- * different question in both directions.
+ * `mrdWayfarer` and `mrdLancer`, `MoveClass.Track` for `mrdSolarch`.
  *
  * **THE ORDER IS A HEADING, NOT A LEASH.** `AiBrain.regroupSquads` files every
  * untagged hull the seat owns into a squad on its next pass, so the attack-move

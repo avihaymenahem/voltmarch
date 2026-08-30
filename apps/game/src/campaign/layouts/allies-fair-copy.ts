@@ -413,7 +413,7 @@
  *
  * `tests/campaign-spawn-ground.spec.ts` is the gate, and it checks every point
  * of every wave against that wave's own locomotor — which for `mrdSolarch` is
- * `MoveClass.Hover` and not `Track`, because the whole Pact army hovers.
+ * `MoveClass.Track`.
  *
  * ============================================================================
  * THE ROUTES, ON A NAMED INSTRUMENT

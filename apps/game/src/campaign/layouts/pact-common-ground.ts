@@ -89,7 +89,7 @@
  * nearest the start to the open cell nearest the goal, and read in COST metres
  * (`dist / COST_UNIT * CELL`), which is what the planner actually minimises. The
  * band is every one of the five `mrdWayfarer` the layout spawns (Foot) and every
- * one of the four `mrdSolarch` (Hover), each snapped to its own cell.
+ * one of the four `mrdSolarch` (Track), each snapped to its own cell.
  *
  * **A YARD CENTRE IS THE WRONG ANCHOR AND THIS ROW USED TO USE ONE.** It read
  * `210.1 m foot / 218.2 m hover/wheel`, and the two figures did not come from one

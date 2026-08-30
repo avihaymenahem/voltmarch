@@ -145,18 +145,22 @@ describe('the Meridian Pact — balance envelope', () => {
     }
   });
 
-  it('keeps the Solarch tank on land and every Pact hull unable to crush', () => {
+  it('keeps every Forgeyard vehicle on land and every Pact hull unable to crush', () => {
     const FLIES = new Set(['mrdKestrel']);
-    const TRACKS = new Set(['mrdSolarch']);
+    const TRACKS = new Set(['mrdSolarch', 'mrdZenith']);
+    const WHEELS = new Set(['mrdCollector', 'mrdSkiff', 'mrdCarryall']);
     for (const u of mrdUnits) {
       if (u.kind !== EntityKind.Vehicle) continue;
       const expected = FLIES.has(u.key)
         ? Locomotor.Air
-        : TRACKS.has(u.key) ? Locomotor.Track : Locomotor.Hover;
+        : TRACKS.has(u.key) ? Locomotor.Track
+          : WHEELS.has(u.key) ? Locomotor.Wheel : Locomotor.Hover;
       expect(u.locomotor, `${u.key} has the wrong movement contract`).toBe(expected);
       expect(u.crushLevel, `${u.key} must not crush`).toBe(0);
     }
-    expect(mrdUnits.find((u) => u.key === 'mrdSolarch')?.amphibious).toBe(false);
+    for (const key of [...TRACKS, ...WHEELS]) {
+      expect(mrdUnits.find((u) => u.key === key)?.amphibious, key).toBe(false);
+    }
   });
 
   it('trades armour class for a deeper HP pool on the main line', () => {

@@ -20,7 +20,7 @@
  *   3. `movesShareSpace` — `Steering` and `Movement` both used to ask
  *      `(jc === Naval) !== (cls === Naval)`, which is right for a world of
  *      ships and tanks and wrong the moment anything amphibious exists. A
- *      destroyer drove straight through the Pact's entire hover army.
+ *      destroyer drove straight through amphibious units.
  *
  * Every assertion here is about a RULE rather than a roster, deliberately.
  * `tests/naval-shore.spec.ts` had a list of seven keys under the name "marks
@@ -50,12 +50,12 @@ describe('waterOnly is every shipyard hull, carriers included', () => {
     for (const u of wet) expect(u.kind, `"${u.key}"`).toBe(EntityKind.Vehicle);
   });
 
-  it('covers every hull with a hold except the one land raider', () => {
+  it('covers every hull with a hold except the one ground APC', () => {
     // THE RULE THAT WAS MISSING. A hold is not a licence to walk: a carrier
     // lands its squad from open water through `Transport.place`, which walks a
     // widening ring for a cell the PASSENGER can stand on. The Sandskiff is the
-    // single exception and it earns it by being gated on `mrdForgeyard`, a LAND
-    // structure — a land unit that swims, not a ship that walks.
+    // single exception because it is a ground APC gated on `mrdForgeyard`, a
+    // LAND structure. Seats alone do not make a vehicle a ship.
     const carriers = UNITS.filter((u) => u.cargoSlots > 0);
     expect(carriers.length, 'no carriers found — the roster moved').toBeGreaterThan(5);
     for (const u of carriers) {
@@ -117,6 +117,20 @@ describe('amphibious is the four swimmers and nothing else', () => {
   });
 });
 
+describe('ordinary land vehicles cannot enter water', () => {
+  const groundVehicles = UNITS.filter((u) => u.kind === EntityKind.Vehicle
+    && !u.waterOnly && u.locomotor !== Locomotor.Air);
+
+  it('uses only track or wheel locomotion', () => {
+    expect(groundVehicles.length, 'no ground vehicles found — the roster moved').toBeGreaterThan(10);
+    for (const u of groundVehicles) {
+      expect([Locomotor.Track, Locomotor.Wheel], `"${u.key}" can still cross water`)
+        .toContain(u.locomotor);
+      expect(u.amphibious, `"${u.key}" is marked amphibious`).toBe(false);
+    }
+  });
+});
+
 /* ========================================================================== */
 /* 2. The predicate that replaced the naval-vs-everything test                 */
 /* ========================================================================== */
@@ -134,8 +148,8 @@ describe('movesShareSpace', () => {
   it('puts a ship and an amphibious hull in the same water', () => {
     // THE CASE THE OLD PREDICATE GOT WRONG. `(jc === Naval) !== (cls === Naval)`
     // made these two mutually invisible for separation AND for hard relaxation,
-    // so a destroyer drove through the Pact's hover army and would have driven
-    // through a swimming squad — silent interpenetration, not a collision.
+    // so a destroyer would drive through a swimming squad — silent
+    // interpenetration, not a collision.
     expect(movesShareSpace(MoveClass.Naval, MoveClass.Hover)).toBe(true);
     expect(movesShareSpace(MoveClass.Hover, MoveClass.Naval)).toBe(true);
   });

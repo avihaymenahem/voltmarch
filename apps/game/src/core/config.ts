@@ -8038,8 +8038,7 @@ export const NAV_COST_WALL_HUG = 1.35;
  * this reason; this is that margin, expressed as the narrowest free span a cell
  * may sit in and still be routable.
  *
- * 2 for everything with a vehicle-sized hull (Track, Wheel, and Hover — the
- * Meridian's entire army is Hover and its collector is harvester-sized). 1 for
+ * 2 for everything with a vehicle-sized hull (Track, Wheel, and Hover). 1 for
  * Foot, because infantry are ~1 m across and threading a doorway is something
  * they SHOULD do; 1 for Naval, because the narrow thing on water is a strait
  * and closing straits changes maps; 1 for Air, which ignores the grid.

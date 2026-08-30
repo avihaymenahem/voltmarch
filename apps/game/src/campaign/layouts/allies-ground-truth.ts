@@ -341,8 +341,8 @@ export const BENCH_HOLD: Area = { x: BENCH.x, z: BENCH.z, r: 24 };
  *     t.struck.b  mrdSolarch  x3 @15 m   bearings   0 120 240
  *
  * Measured on the built world through `ITerrain.isPassable`, with each wave's
- * own move class — `mrdWayfarer` is foot, `mrdSolarch` is HOVER, because the
- * Pact hovers and `spawnUnit` DECLARES that class rather than deriving it —
+ * own move class — `mrdWayfarer` is Foot and `mrdSolarch` is Track, and
+ * `spawnUnit` declares that class rather than deriving it —
  * **all fourteen are passable, and the tightest of them has 8.25 m of clear
  * ground to the nearest cell it could not enter** (the Wayfarer at bearing 180
  * on the 20 m ring, (342.2, 169.6)). Two full cells of margin on the worst

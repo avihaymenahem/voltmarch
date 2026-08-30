@@ -169,9 +169,8 @@ describe('there is something to measure', () => {
   });
 
   it('measures the ten tracked hulls, which are the whole subject', () => {
-    // Every tracked vehicle in the game is Allied or Soviet; the Pact hovers and
-    // the Reclamation walks and crawls. This is why the axis sub-metric is
-    // non-zero on exactly ten units and exactly zero on the other forty.
+    // These are the ten procedural models authored with the `tracks` primitive.
+    // This is why the axis sub-metric is non-zero on exactly these ten units.
     expect(TRACKS).toHaveLength(10);
   });
 });

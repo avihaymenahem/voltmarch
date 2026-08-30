@@ -1464,10 +1464,8 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
 
   /* -- THE MERIDIAN PACT ---------------------------------------------------
    * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
-   * number here. Most Pact hulls hover and every hull has `crushLevel: 0`.
-   * `mrdSolarch` is the main-line tank and the deliberate land-only exception;
-   * keeping this fallback row tracked ensures scenario and production spawns
-   * agree about whether it may enter water.
+   * number here. Forgeyard vehicles use ground locomotors and every Pact hull
+   * has `crushLevel: 0`; only Slipway ships may enter water.
    * ---------------------------------------------------------------------- */
   mrdWayfarer: unit('mrdWayfarer', EntityKind.Infantry, U.infantry, 110, ArmorClass.Infantry, 3.8,
     Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
@@ -1479,16 +1477,16 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Foot, 36, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
 
   mrdCollector: unit('mrdCollector', EntityKind.Vehicle, U.harvester, 800, ArmorClass.Light, 7.0,
-    Locomotor.Hover, 22, EntityFlag.IsHarvester, Faction.Meridian,
+    Locomotor.Wheel, 22, EntityFlag.IsHarvester, Faction.Meridian,
     { crushableBy: 6, cargoMax: 450 }),
   mrdSkiff: unit('mrdSkiff', EntityKind.Vehicle, U.ifv, 190, ArmorClass.Light, 9.2,
-    Locomotor.Hover, 32, TURRETED, Faction.Meridian, { crushableBy: 4, turretTurnRate: 3.4 }),
+    Locomotor.Wheel, 32, TURRETED, Faction.Meridian, { crushableBy: 4, turretTurnRate: 3.4 }),
   mrdSolarch: unit('mrdSolarch', EntityKind.Vehicle, U.lightTank, 330, ArmorClass.Light, 7.6,
     Locomotor.Track, 30, TURRETED, Faction.Meridian, { crushableBy: 5 }),
   mrdZenith: unit('mrdZenith', EntityKind.Vehicle, U.prismTank, 240, ArmorClass.Light, 6.2,
-    Locomotor.Hover, 34, TURRETED, Faction.Meridian, { crushableBy: 5 }),
+    Locomotor.Track, 34, TURRETED, Faction.Meridian, { crushableBy: 5 }),
   mrdCarryall: unit('mrdCarryall', EntityKind.Vehicle, U.mcv, 950, ArmorClass.Heavy, 5.0,
-    Locomotor.Hover, 22, 0, Faction.Meridian, { crushableBy: 0 }),
+    Locomotor.Wheel, 22, 0, Faction.Meridian, { crushableBy: 0 }),
   // `Locomotor.Air` exists now, and this row has to move with `src/data/Defs.ts`
   // or `spawnUnit` gives a Kestrel a different chassis depending on whether the
   // def table happened to be bound — the exact disagreement

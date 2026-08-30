@@ -501,7 +501,7 @@ describe('the taper reaches the geometry, not just the metric', () => {
    * geometry.
    * ---------------------------------------------------------------------- */
 
-  /** Every tracked vehicle in the game. The Pact hovers; the Reclamation walks. */
+  /** Every procedural model authored with the `tracks` silhouette primitive. */
   const TRACKED_HULLS: readonly string[] = [
     'allied_guardian', 'allied_ifv', 'allied_prism', 'allied_harvester', 'allied_dozer',
     'soviet_rhino', 'soviet_apocalypse', 'soviet_v4', 'soviet_harvester', 'soviet_dozer',

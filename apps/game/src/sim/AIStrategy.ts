@@ -518,7 +518,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
    * `mrdSkiff` USED TO BE FILED HERE TOO, as a second `BuildRole.Transport` row
    * on top of the `Skirmisher` one in the Pact's army block below — the only
    * duplicate key in this whole array — on the grounds that the Sandskiff is an
-   * amphibious raider gated on `mrdForgeyard` rather than on a slipway, so a
+   * ground APC gated on `mrdForgeyard` rather than on a slipway, so a
    * Pact brain could ferry without ever paying for a dock. IT COULD NOT. `byKey`
    * and `unitByDef` both keep the LAST row of a key, so every skiff the census
    * ever saw resolved to the Skirmisher row and `transportCount` stayed 0 — the
@@ -1068,11 +1068,9 @@ export interface ProductionOracle {
    * EntityFlag fallback correctly separates a yard from a refinery, so nothing
    * ever asked why the catalog path was not answering.
    *
-   * It stops being invisible the moment a WARSHIP exists. There is no flag that
-   * separates a Kite Corvette from a Solarch — every ship and the entire
-   * Meridian army share `Locomotor.Hover` — so a missed lookup puts a destroyer
-   * in the land strike group, which then marches on the enemy base overland and
-   * counts toward a `waveThreshold` it can never help reach.
+   * It stops being invisible the moment a WARSHIP exists. A missed catalog
+   * lookup can still put a destroyer in the land strike group, where it counts
+   * toward a `waveThreshold` it can never help reach.
    *
    * `ProductionService` already keeps this map (`entryOfEntity`, stamped at
    * spawn) and already exposes it as `entryOf`. Optional so the headless tests,

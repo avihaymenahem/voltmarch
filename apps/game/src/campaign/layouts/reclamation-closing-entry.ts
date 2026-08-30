@@ -208,12 +208,12 @@
  * calls, nineteen drops, four distinct rings, all open:
  *
  *     mrdWayfarer x4  r=12  Foot    clearances 4.0 / 12.0 / 4.0 / 5.4 m
- *     mrdSolarch  x2  r=18  Hover              20.4 / 10.5
- *     mrdSolarch  x3  r=18  Hover               4.4 / 17.9 / 4.9
- *     mrdSkiff    x3  r=14  Hover               4.4 / 13.9 / 4.3
+ *     mrdSolarch  x2  r=18  Track              20.4 / 10.5
+ *     mrdSolarch  x3  r=18  Track               4.4 / 17.9 / 4.9
+ *     mrdSkiff    x3  r=14  Wheel               4.4 / 13.9 / 4.3
  *
- * The Foot ring is the binding one — every Pact HULL is `Locomotor.Hover`, which
- * pays no slope cost — and the worst clearance anywhere is 4.0 m. `ROAD` was
+ * The Foot ring is the binding one, and the worst clearance anywhere is 4.0 m.
+ * `ROAD` was
  * chosen by sweeping the lane frame at 2 m and 0.0025 of the lane, keeping only
  * points where all nineteen drops are open, and taking the best clearance inside
  * 64 to 96 m of the Conclave: 68 candidates cleared it. **The first `ROAD`

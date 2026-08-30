@@ -185,8 +185,8 @@
  * drop against its own locomotor on the built world:
  *
  *     mrdWayfarer x4  r=12  Foot   clearances 9.0 / 16.6 / 19.9 / 16.4 m
- *     mrdSolarch  x2  r=18  Hover              4.5 / 17.1
- *     mrdSolarch  x3  r=18  Hover              4.5 / 13.7 / 25.4
+ *     mrdSolarch  x2  r=18  Track              4.5 / 17.1
+ *     mrdSolarch  x3  r=18  Track              4.5 / 13.7 / 25.4
  *
  * — thirteen drops, all open, worst clearance 4.5 m against a Solarch's 2.9 m
  * hull. `tests/campaign-spawn-ground.spec.ts` is the standing gate and **a

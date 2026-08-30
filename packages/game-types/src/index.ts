@@ -989,9 +989,9 @@ export interface UnitDef extends BuildableDef {
    * This LAND unit may enter water: `MoveClass.Hover`, which is the one ground
    * class `Flowfield.rebuildCost` does not block on a wet cell.
    *
-   * The swimmer infantry, and nothing else — the Pact's hover army gets the
-   * same answer from `Locomotor.Hover` without needing the flag. It is a bit on
-   * the def rather than a new `Locomotor` member on purpose: `passGrid` sets
+   * The swimmer infantry, and nothing else. Ordinary land vehicles stay on
+   * Track or Wheel locomotors. It is a bit on the def rather than a new
+   * `Locomotor` member on purpose: `passGrid` sets
    * bits 0-3 only, `Production.findEgressSpot` tests `isPassable(_, _, loco)`,
    * and a locomotor with no `passGrid` bit is impassable on every cell of the
    * map — so the finished unit would sit `ready: true` at the head of the

@@ -244,12 +244,11 @@
  * unit `i` of `count` lands at `angle = i / count * 2pi` and
  * `ProductionService.spawnUnit` writes the point VERBATIM. Three distinct rings,
  * thirteen drops, each checked against its own move class on the built world —
- * `mrdWayfarer` is `Locomotor.Foot` and every Meridian hull is `Locomotor.Hover`,
- * which are different bits in `passGrid` and answer differently:
+ * `mrdWayfarer` is `Locomotor.Foot` and `mrdSolarch` is `Locomotor.Track`:
  *
  *     mrdWayfarer x4  r=12  Foot    clearances 9.0 / 16.6 / 19.9 / 16.4 m
- *     mrdSolarch  x2  r=18  Hover               4.5 / 17.1
- *     mrdSolarch  x3  r=18  Hover               4.5 / 13.7 / 25.4
+ *     mrdSolarch  x2  r=18  Track               4.5 / 17.1
+ *     mrdSolarch  x3  r=18  Track               4.5 / 13.7 / 25.4
  *
  * — all thirteen open, worst clearance 4.5 m against a Solarch's 2.9 m hull.
  * `ROAD` was swept in lane space against exactly these three rings before it was

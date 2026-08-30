@@ -5527,9 +5527,9 @@ export class AiBrain {
    * does, and none of the three sets contains the others.
    *
    * READ OFF THE LOCOMOTOR, not off `moveClassAt`. That function answers
-   * `Naval` for a hover unit standing in water, so a Pact tank crossing a ford
-   * would tell this brain its army is a fleet — the same "where it IS versus
-   * what it can DO" distinction `navalRoleOfUnit` turns on.
+   * `Naval` for an amphibious unit standing in water, which would tell this
+   * brain its army is a fleet — the same "where it IS versus what it can DO"
+   * distinction `navalRoleOfUnit` turns on.
    */
   private strikeMoveClasses(): number {
     const st = this.store;

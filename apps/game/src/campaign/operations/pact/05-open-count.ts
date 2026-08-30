@@ -624,7 +624,7 @@ const STATION = { x: 304, z: 84 };
  * below author **28 drops across 20 distinct points** (waves B and C share the
  * (4, 16) and (4, 24) rings, so eight drops land where another wave has already
  * dropped), and all 28 are open to the locomotor of the unit that lands on them
- * — Hover for `mrdSolarch`, Foot for `mrdWayfarer` and `mrdLancer`, resolved
+ * — Track for `mrdSolarch`, Foot for `mrdWayfarer` and `mrdLancer`, resolved
  * through the same three tables `spawnUnit` reads.
  */
 const ROAD = { x: 204, z: 150 };

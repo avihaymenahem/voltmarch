@@ -913,8 +913,7 @@ const op: OperationDef = {
      *
      * EVERY RING POINT WAS CHECKED AGAINST ITS OWN LOCOMOTOR on the built world:
      * `mrdWayfarer` and `mrdLancer` resolve to `MoveClass.Foot`, `mrdSolarch` to
-     * `MoveClass.Hover` because the whole Pact army hovers, and asking the grid
-     * about the wrong bit answers a different question in both directions.
+     * `MoveClass.Track`.
      * `spread` is the RADIUS OF A FIXED RING and unit `i` of `count` lands at
      * `angle = i / count * 2pi` exactly; `tests/campaign-spawn-ground.spec.ts` is
      * the gate. All twenty-six drop points of the five troops and all five of

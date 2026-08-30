@@ -1265,8 +1265,9 @@ export const UNITS: readonly UnitDef[] = [
   // what the original author's 2 was saying.
   //
   // The two hulls that fill this slot for the other new armies still do not
-  // crush, and both have a reason: `mrdZenith` is a hover skirt (Pact doctrine
-  // rule 1 — `crushLevel: 0` on everything, the Pact never wins a ram) and
+  // crush, and both have a reason: `mrdZenith` is a light siege chassis (Pact
+  // doctrine rule 1 — `crushLevel: 0` on everything, the Pact never wins a
+  // ram) and
   // `rclSlaghurler` is wheeled and carries no level at all. The Sledge
   // does, because it is a heavy tank rather than an artillery piece.
   //
@@ -1427,12 +1428,11 @@ export const UNITS: readonly UnitDef[] = [
    *
    * THE TWO RULES THAT MAKE THE ARMY, and every number below is one of them:
    *
-   * 1. MOST PACT HULLS SKIM. The Collector, Sandskiff, Zenith and Carryall are
-   *    `Locomotor.Hover`; ships are water-only and the Kestrel flies. The
-   *    Solarch is the deliberate exception: it is the faction's main-line
-   *    TANK, so it uses `Locomotor.Track` and may not cross open water. The
-   *    faction still pays for light hovering hulls with `crushLevel: 0` on
-   *    everything and one armour class less than the opposing main line.
+   * 1. PACT HULLS SKIM VISUALLY, NOT THROUGH WATER. Forgeyard vehicles use
+   *    `Locomotor.Track` or `Locomotor.Wheel`; only Slipway ships are water-only
+   *    and the Kestrel flies. The faction still pays for light, non-crushing
+   *    hulls with `crushLevel: 0` on everything and one armour class less than
+   *    the opposing main line.
    *
    * 2. SHIELDS STOP SHELLS, NOT BULLETS. The main line is ArmorClass.Light
    *    with a deep HP pool instead of ArmorClass.Medium/Heavy with a shallow
@@ -1490,7 +1490,7 @@ export const UNITS: readonly UnitDef[] = [
     // more round trips through open ground. The Pact economy is not richer,
     // it is more exposed, and it recovers from losing a collector faster.
     maxHp: 800, armor: ArmorClass.Light, maxSpeed: 7.0, turnRate: 2.6 - U.harvester.l * 0.14,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.harvester), sight: 22,
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.harvester), sight: 22,
     weapons: UNARMED, hasTurret: false, cargoMax: 450, crushableBy: 6,
     flags: MRD_MOVER | EntityFlag.IsHarvester,
   }),
@@ -1501,10 +1501,9 @@ export const UNITS: readonly UnitDef[] = [
     prereqs: ['mrdForgeyard'], sortOrder: 20,
     model: 'meridian_skiff',
     maxHp: 190, armor: ArmorClass.Light, maxSpeed: 9.2, turnRate: 2.6 - U.ifv.l * 0.14,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 32,
-    // NOT `waterOnly`, and it is the case that proves the rule: the Sandskiff is
-    // gated on `mrdForgeyard`, a LAND structure, and the whole Pact army hovers.
-    // It is a land raider that can swim, not a ship that can walk.
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.ifv), sight: 32,
+    // A Forgeyard-built ground APC. Its seats do not make it a landing ship;
+    // only Slipway-built hulls may enter water.
     weapons: [w('arcRepeater')], hasTurret: true, crushableBy: 4, cargoSlots: 2,
     flags: MRD_TURRETED,
   }),
@@ -1534,7 +1533,7 @@ export const UNITS: readonly UnitDef[] = [
     prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 40,
     model: 'meridian_zenith',
     maxHp: 240, armor: ArmorClass.Light, maxSpeed: 6.2, turnRate: 2.6 - U.prismTank.l * 0.14,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.prismTank), sight: 34,
+    locomotor: Locomotor.Track, radius: hullRadius(U.prismTank), sight: 34,
     weapons: [w('zenithBeam')], hasTurret: true, crushableBy: 5,
     flags: MRD_TURRETED,
   }),
@@ -1547,7 +1546,7 @@ export const UNITS: readonly UnitDef[] = [
     prereqs: ['mrdForgeyard'], sortOrder: 50,
     model: 'meridian_carryall',
     maxHp: 950, armor: ArmorClass.Heavy, maxSpeed: 5.0, turnRate: 2.6 - U.mcv.l * 0.14,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.mcv), sight: 22,
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.mcv), sight: 22,
     weapons: UNARMED, hasTurret: false, crushableBy: 0, deploysInto: 'mrdConclave',
     flags: MRD_MOVER,
   }),

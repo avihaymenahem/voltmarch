@@ -383,7 +383,7 @@ describe('a warship leaves the yard onto water', () => {
       expect(def?.cargoSlots ?? 0, `"${e.key}" is a warship with a hold`).toBe(0);
     }
     // The Sandskiff is the one hull with a hold that is NOT water-only, because
-    // it is a land raider gated on `mrdForgeyard` and the Pact army hovers.
+    // it is a ground APC gated on `mrdForgeyard`.
     expect(wet).not.toContain('mrdSkiff');
 
     const shore = catalog.entries.filter((e) => e.needsShore).map((e) => e.key).sort();

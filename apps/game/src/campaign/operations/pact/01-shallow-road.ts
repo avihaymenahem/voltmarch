@@ -9,14 +9,14 @@
  * ============================================================================
  * THE DECISION THIS OPERATION OWNS
  * ============================================================================
- * **Every Meridian vehicle is `Locomotor.Hover` and every Meridian infantryman
- * is `Locomotor.Foot`.** That is one line of `Flowfield.rebuildCost` — a wet
- * cell is blocked for every ground class except `MoveClass.Hover` — and it is
- * the entire operation:
+ * **Forgeyard vehicles stay on land. Tidewalkers and Slipway hulls own the
+ * water.** Wet cells block Track, Wheel and Foot movement; only the designated
+ * swimmer and true naval units use the amphibious/naval move classes:
  *
- *     the hulls   Solarch, Sandskiff, Collector, Carryall     cross water
- *     the men     Wayfarer, Sunlancer, ARTIFICER              do not
- *     the exception  Tidewalker, `Foot` + `amphibious`        walks on it
+ *     Forgeyard   Solarch, Sandskiff, Collector, Carryall     land only
+ *     infantry    Wayfarer, Sunlancer, Artificer              land only
+ *     swimmer     Tidewalker, `Foot` + `amphibious`           crosses water
+ *     Slipway     Cutter, Lighter, Argosy, Corvette, Monitor  water only
  *
  * The Allies have run a cut — sixty-eight wall segments, counted on the built
  * world; this said "fifty" and that number no longer reproduces — from the surf
@@ -36,7 +36,7 @@
  * always described and only the lengths were wrong. Quote the table, not the
  * paragraph somebody remembers.
  *
- *                                        on foot        hovering
+ *                                        on foot        water-capable
  *       to the bore compound              463.9 m        373.0 m
  *       to the wade zone                  NO ROUTE       345.8 m
  *       closest it ever comes to the
@@ -59,38 +59,28 @@
  * roughly 108 m, and it is spent four metres from the tower.
  *
  * `prismTowerBeam` reaches 34 m. The Pact's `focusLance` reaches 26 and its
- * `arcRepeater` 23, so a hull that takes the gap gives away eight metres before
- * it can answer, with 22 m of `pillboxMg` on top. A hull that takes the water
- * never comes inside 192 m of either.
+ * `arcRepeater` 23, so a ground hull that takes the gap gives away eight metres
+ * before it can answer, with 22 m of `pillboxMg` on top. A swimmer or ship that
+ * takes the water never comes inside 192 m of either.
  *
- * **AND THE PATHFINDER ROUNDS THE WALL ON ITS OWN — BUT IT DOES NOT PUT TO SEA,
- * AND THIS BLOCK USED TO SAY IT DID.** Right-click the compound with a Solarch
- * and the route is 81 cells of which exactly **three are wet**: it slips round
- * the seaward end of the cut through the surf and then runs up the beach. The
- * old claim here was "30 of the 73 cells in the hover route are wet", and the
- * hover route to the COMPOUND has never looked like that. Right-click the same
- * point with a Wayfarer and he walks 91 m further, in front of the gun. That
- * divergence is the teaching and it is real; going to sea is a separate thing,
- * it is what the wade zone pays for, and THAT route is 80 cells with 37 wet.
+ * Forgeyard vehicles and ordinary infantry now take the dry road around the
+ * landward end. The shorter seaward route belongs only to Tidewalkers and real
+ * Slipway hulls; the wade objective is the explicit lesson for that split.
  *
  * **AND THE WATER CANNOT CARRY THE THING YOU CAME FOR.** The bore head is a
  * `civOreMine` on the Allied seat, so `CaptureService.isCapturable` says yes to
  * an Artificer and no to every hull in the game — no vehicle in any army
  * carries `canCapture`. The Pact's whole position is that a cut is what makes
  * the March move, so the head has to be TAKEN and capped rather than broken.
- * The Artificer is `Locomotor.Foot`. He walks the road, in front of the tower,
- * or he rides: `mrdSkiff` is `unit.raider` on `roster.player` and holds two.
+ * The Artificer is `Locomotor.Foot`. He walks the road in front of the tower,
+ * or rides a water-only Sun Lighter built from a Slipway.
  *
- * That is the shape. **The hulls can go where the men cannot, and the men can
- * do what the hulls cannot.** Nothing in the trigger table asserts either half;
- * both are properties of the shipped simulation, which is why they are the
- * right thing to build an operation out of.
+ * That is the shape: ground armour holds the road, Tidewalkers or ships go
+ * around it, and an Artificer does the capturing.
  *
- * And the player already owns both halves on the first frame. Counted on the
- * built world, the opening is **6 infantry and 8 vehicles**: five Wayfarers and
- * one Artificer who cannot enter the water, four Solarchs, two Sandskiffs and
- * two Collectors that can. Nothing has to be bought before the operation's
- * question can be asked.
+ * Counted on the built world, the opening is **6 infantry and 8 land vehicles**:
+ * five Wayfarers, one Artificer, four Solarchs, two Sandskiffs and two
+ * Collectors. The Chapterhouse can train Tidewalkers for the water route.
  *
  * ============================================================================
  * WHY THE PRIMARY IS THE MAST AND NOT THE BORE
@@ -148,8 +138,8 @@
  * and `mrdCistern` — both stand on the player's seat at t = 0 under this
  * operation's `opening: 'base'`, counted on the built world. The player also
  * OPENS with one, and half this file is about him: `bore` is a secondary only
- * he can collect, and `t.cut` tells the player in as many words to put him in
- * a Sandskiff. The operation spends its whole running time teaching capture
+ * he can collect, and `t.cut` tells the player to escort him by road or build
+ * a Sun Lighter. The operation spends its whole running time teaching capture
  * and then lost itself to the lesson.
  *
  * **THE PRICE IS FOUR OF HIM, NOT ONE, AND IT WAS MEASURED RATHER THAN
@@ -291,10 +281,9 @@
  * **The roster is asymmetric and both halves are load-bearing.**
  * `roster.ai: ['struct.defence.specialist']` is what puts the Refractor Tower
  * on the cut's gap — remove that line and `spawnBuilding` refuses it and the
- * road costs nothing. `roster.player: ['unit.raider']` is the Sandskiff, and it
- * is the ONLY way an Artificer crosses water in this army. The player therefore
- * has no tower of their own and the Allies do, which is `OperationRoster`'s own
- * stated reason for having two lists.
+ * road costs nothing. `roster.player: ['unit.raider']` keeps the Sandskiff as a
+ * fast ground option. The player has no tower of their own and the Allies do,
+ * which is `OperationRoster`'s own stated reason for having two lists.
  *
  * **`mapSeed` is the survey designation.** 12 880 is the number in the
  * briefing. `tests/campaign-maps.spec.ts` pins it as a terrain fingerprint, and
@@ -503,8 +492,8 @@ const op: OperationDef = {
   outcome: { annihilationWin: false, assetLossDefeat: false, ignoreSeats: [] },
 
   roster: {
-    // The Sandskiff. Two cargo slots, `Locomotor.Hover`, and the only way an
-    // Artificer crosses water in this army.
+    // The Sandskiff remains the optional fast ground raider. Water movement is
+    // reserved for Tidewalkers and Slipway hulls.
     player: ['unit.raider'],
     // The Refractor Tower on the cut's gap. Remove this and the road is free.
     ai: ['struct.defence.specialist'],
@@ -585,9 +574,9 @@ const op: OperationDef = {
      * this fires on tick one, revealing the objective before anybody has left
      * home.
      *
-     * **THE FOUR-MINUTE CEILING IS NOT BELT AND BRACES.** The hover route to
+     * **THE FOUR-MINUTE CEILING IS NOT BELT AND BRACES.** The water route to
      * the wade zone never comes within 192.0 m of the cut and the one to the
-     * compound never within 138.6 m, so a player who sent hulls and nothing
+     * compound never within 138.6 m, so a player who sent swimmers or ships
      * else could satisfy `wade` on a run where the trigger that reveals it had
      * never fired.
      *
@@ -619,10 +608,9 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Nael',
-          text: 'The wall stops at the water, because that is where they think walls stop. '
-            + 'Point the hulls at the bore and they go round the end of it on their own — '
-            + 'nothing we drive touches the ground. The men will walk into the gun. Put the '
-            + 'Artificer in a Sandskiff; it holds two.',
+          text: 'The wall stops at the water. Forgeyard vehicles stay on dry ground, so send '
+            + 'Tidewalkers around the end while the armour takes the road. Escort the Artificer '
+            + 'to the bore — or build a Sun Lighter if you want to carry him by water.',
         },
         { do: 'setObjective', id: 'wade' },
       ],
@@ -708,7 +696,7 @@ const op: OperationDef = {
      * Six minutes, which is late enough that the player has committed to a
      * route and early enough that it changes the answer. It comes down the
      * ROAD and attack-moves the player's opening, so a player who has taken
-     * every hull out to sea has to decide whether to bring them back.
+     * its swimmers or ships out to sea has to decide whether to bring them back.
      *
      * `grizzly` is the Allied main battle tank, literal and unremapped —
      * `EffectSink.spawnUnits` resolves through `ProductionCatalog.byKey` with

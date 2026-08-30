@@ -507,7 +507,7 @@
  *
  * **THE `home -> the cut` ROW IS A BAND BECAUSE ITS ANCHOR IS A UNIT, NOT A
  * BUILDING**, and that is the correction the engineer fork forced. The band is
- * every one of the five `mrdWayfarer` (Foot) and four `mrdSolarch` (Hover) the
+ * every one of the five `mrdWayfarer` (Foot) and four `mrdSolarch` (Track) the
  * layout spawns, each snapped to its own nearest open cell. For the record of
  * where the retired figures came from: the Conclave's centre cell (110, 374)
  * reads 200.2 foot / 210.2 hover, and the cell nearest the Chapterhouse reads
