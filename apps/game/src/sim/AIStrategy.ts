@@ -1940,7 +1940,7 @@ export const AI_UPGRADE = {
  *
  * THE LADDER IS `AI_SKILL[].discipline`, WHICH ALREADY MEANS THIS. Its own
  * declaration reads "how well it fights" and the retreat layer already rolls
- * against it. Easy sits at 0.35 and is excluded outright by `minDiscipline`, so
+ * against it. Easy sits at 0.20 and is excluded outright by `minDiscipline`, so
  * that rung is byte-identical; the other three roll `rng.chance(discipline)`
  * every re-pick, so Normal concentrates two fights in three and Brutal every
  * one. No new per-rung row, and nothing in `config.ts` had to move.
@@ -2101,7 +2101,7 @@ export function isOpeningEconomyRole(role: BuildRole): boolean {
  * scales the cadence, which is exactly the never / occasionally / routinely the
  * ladder wants:
  *
- *     Easy    0.4   below `minAggression` — never raids
+ *     Easy    0.3   below `minAggression` — never raids
  *     Normal  0.7   cooldown ~129 s
  *     Hard    1.0   ~90 s
  *     Brutal  1.3   ~69 s
@@ -2123,7 +2123,7 @@ export function isOpeningEconomyRole(role: BuildRole): boolean {
  * being the thing the player is actually setting.
  */
 export const AI_RAID = {
-  /** Aggression below which a rung never opens a second front. Easy is 0.4. */
+  /** Aggression below which a rung never opens a second front. Easy is 0.3. */
   minAggression: 0.55,
   /**
    * Hulls in a raiding party.
@@ -2181,7 +2181,7 @@ export const AI_RAID = {
  *
  * THE LADDER IS `AI_SKILL[].discipline` again, for the same reason `AI_FOCUS`
  * uses it: its declared meaning is "how well it fights" and the group retreat
- * already rolls against it. Easy is 0.35 against `minDiscipline` 0.5 and is
+ * already rolls against it. Easy is 0.20 against `minDiscipline` 0.5 and is
  * excluded before the roll, so that rung does not even consume a draw.
  */
 export const AI_RETREAT = {
@@ -2291,7 +2291,7 @@ export const AI_FOCUS = {
    */
   radiusM: 34,
   /**
-   * Discipline below which a rung never focuses. Easy is 0.35 and stays out.
+   * Discipline below which a rung never focuses. Easy is 0.20 and stays out.
    */
   minDiscipline: 0.5,
   /**
@@ -2742,6 +2742,8 @@ export interface DifficultyProfile {
   readonly resourceBonus: number;
   /** 0..1 — how well the army composition answers the observed threat. */
   readonly composition: number;
+  /** Whether the brain may execute multi-step or perfectly timed tactics. */
+  readonly advancedTactics: boolean;
   /** Credits deliberately left unspent. The beginner's handicap. */
   readonly creditFloor: number;
   /** Multiplier on how attractive teching up looks. */
@@ -2832,6 +2834,7 @@ export function difficultyProfile(index: number): DifficultyProfile {
     aggression: d.aggression,
     resourceBonus: d.resourceBonus,
     composition: s.composition,
+    advancedTactics: s.advancedTactics,
     creditFloor: s.creditFloor,
     techBias: s.techBias,
     scoutDelayMul: s.scoutDelayMul,

@@ -1212,6 +1212,10 @@ export class AiBrain {
    * would drift apart.
    */
   private commanderAbility(s: SimContext): void {
+    // Easy is intentionally legible: it may field the same commander the
+    // player can, but it does not frame-perfect the commander's active ability.
+    // That is execution skill, not a rule the beginner should have to match.
+    if (!this.diff.advancedTactics) return;
     // The SERVICE is the oracle, not a def table of our own. It already knows
     // which unit carries what and whether the cooldown has run, and a second
     // copy of either fact in here is how the two would drift apart. Null on a
@@ -5226,6 +5230,14 @@ export class AiBrain {
       return;
     }
     this.holdTheLane(s);
+    // Holding a sea lane is ordinary army behaviour. Coordinating a transport,
+    // beach, detached squad and landing objective is not; Easy does not run
+    // that expert operation even when the lobby personality says Adaptive.
+    if (!this.diff.advancedTactics) {
+      this.amphibWanted = false;
+      this.runAmphibious(s);
+      return;
+    }
     // The verdict is computed HERE and cached, not asked at each use. Two
     // callers want it — this layer, to stage an operation, and `considerNavy`
     // on the build clock, to decide whether a 900-credit hull has a job — and

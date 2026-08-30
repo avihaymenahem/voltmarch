@@ -723,11 +723,11 @@ describe('the anti-air answer is on the difficulty ladder', () => {
     }
   });
 
-  it('does not touch the economy handicap that v1.27.0 shipped', () => {
-    // Guard rail. The air work is allowed to add axes to this table; it is not
-    // allowed to walk back the ones that made Easy an actual beginner.
-    expect(AI_DIFFICULTY[0]!.resourceBonus).toBe(0.8);
-    expect(AI_SKILL[0]!.maxHarvesters).toBe(5);
+  it('preserves a material beginner handicap on the economy axes', () => {
+    // Guard rail. Air doctrine may add axes to this table; it may not flatten
+    // the throughput handicap that makes Easy an actual beginner.
+    expect(AI_DIFFICULTY[0]!.resourceBonus).toBe(0.65);
+    expect(AI_SKILL[0]!.maxHarvesters).toBe(4);
     expect(AI_SKILL[0]!.maxRefineries).toBe(2);
     expect(AI_SKILL[0]!.queueDepth).toBe(1);
   });

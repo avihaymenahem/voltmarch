@@ -17,7 +17,7 @@
  *
  * WHAT IS PINNED HERE
  * -------------------
- *   - EASY GAINS NOTHING. `AI_SKILL[0].discipline` is 0.35 against
+ *   - EASY GAINS NOTHING. `AI_SKILL[0].discipline` is 0.20 against
  *     `minDiscipline` 0.5, and the gate is the first statement in the function,
  *     ahead of the RNG roll — so Easy does not even consume a draw. Verified in
  *     a real 20-minute match as well: the whole trace is byte-identical with
@@ -50,7 +50,9 @@ import {
   ArmorClass, CommandKind, EntityFlag, EntityKind, Faction, OrderKind,
 } from '../src/core/types';
 import type { Command, EntityId, IRng, PlayerId, SimContext } from '../src/core/types';
-import { AI_SKILL, AI_SQUAD_MAX, CELL, SIM_DT, SIM_HZ } from '../src/core/config';
+import {
+  AI_DIFFICULTY, AI_MILITARY, AI_SKILL, AI_SQUAD_MAX, CELL, SIM_DT, SIM_HZ,
+} from '../src/core/config';
 import { Rng } from '../src/core/math';
 import { AiBrain } from '../src/sim/AI';
 import { AI_FOCUS, BuildCatalog } from '../src/sim/AIStrategy';
@@ -177,13 +179,17 @@ function makeHarness(difficulty: number, seed = 4242): Harness {
     /**
      * Past the opening grace gate and into `pressAttack`.
      *
-     * `AI_MILITARY.firstStrikeSeconds / aggression` is up to five minutes on
+     * `AI_MILITARY.firstStrikeSeconds / aggression` is over six minutes on
      * Easy, so this walks the clock rather than guessing — the same thing
      * `tests/ai-pacing.spec.ts` does, and the reason these cases hand the brain
      * a full army on tick zero.
      */
     runToAttack(): void {
-      for (let k = 0; k < SIM_HZ * 400; k++) {
+      const firstStrike = Math.ceil(
+        SIM_HZ * AI_MILITARY.firstStrikeSeconds
+          / Math.max(0.1, AI_DIFFICULTY[difficulty]!.aggression),
+      );
+      for (let k = 0; k < firstStrike + SIM_HZ; k++) {
         this.step(1);
         if (brain.intent().posture === 'attacking') break;
       }
@@ -335,6 +341,9 @@ describe('Easy gains nothing', () => {
     h.army(AI_SQUAD_MAX * 3);
     h.enemyUnit(BASE_X + 4, ARMY_Z + 4, 0.1);
     h.runToAttack();
+    // Easy's 28 APM budget may be empty on the exact posture-transition tick;
+    // it still sends the wave as soon as the next action accrues.
+    h.step(SIM_HZ);
 
     expect(h.brain.intent().posture).toBe('attacking');
     const moves = h.commands.filter(

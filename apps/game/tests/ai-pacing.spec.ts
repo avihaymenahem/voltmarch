@@ -6,7 +6,7 @@
  *
  * They did, and the reason is that NOTHING GATED AN ATTACK ON TIME. The
  * military layer committed the moment `strikeCount >= waveThreshold()`, and on
- * Easy against a Rusher that threshold is `AI_SQUAD_MIN * 0.6 / 1.6 = 2.25`,
+ * Easy against a Rusher that threshold is `AI_SQUAD_MIN * 0.55 / 1.6 = 2.06`,
  * clamped up to the floor of 2. Two conscripts out of the barracks and the wave
  * rolled — at whatever minute of the match that happened to be.
  *
@@ -19,10 +19,11 @@
  * ------------------------
  *   - THE LADDER IS MONOTONIC. Easy waits longest, Brutal shortest, at both
  *     gates. A table where two rows cross is a difficulty setting that lies.
- *   - EASY ACTUALLY GIVES YOU TIME. Five minutes before the first push, two
- *     between them. Asserted in seconds against the clock, not as a ratio.
+ *   - EASY ACTUALLY GIVES YOU TIME. Six minutes forty before the first push,
+ *     two minutes forty between them. Asserted in seconds against the clock,
+ *     not as a ratio.
  *   - THE GRACE PERIOD IS NOT A TRUCE. Rushing the AI cancels it on the spot.
- *     An opponent that absorbs a five-minute rush without ever hitting back
+ *     An opponent that absorbs a six-minute rush without ever hitting back
  *     because a timer said so is not easy, it is inert.
  *   - DEFENCE IS NEVER GATED. The AI answers a raid during the grace period.
  *     This is the case that stops the fix turning "too aggressive" into
@@ -188,17 +189,24 @@ describe('aggression is wired to something', () => {
       expect(difficultyProfile(i).aggression).toBe(AI_DIFFICULTY[i]!.aggression);
     }
   });
+
+  it('keeps expert tactical execution off the beginner rung', () => {
+    expect(difficultyProfile(EASY).advancedTactics).toBe(false);
+    for (const d of [NORMAL, HARD, BRUTAL]) {
+      expect(difficultyProfile(d).advancedTactics, AI_DIFFICULTY[d]!.name).toBe(true);
+    }
+  });
 });
 
 /* ========================================================================== */
 
 describe('the first push waits for the clock, not just for the headcount', () => {
-  it('holds an Easy AI for five minutes even with an army standing ready', () => {
+  it('holds an Easy AI for more than six minutes even with an army standing ready', () => {
     const h = makeHarness(EASY);
     h.army(AI_SQUAD_MAX * 3);   // far past any threshold, on tick zero
 
     const unlock = expectedUnlock(EASY);
-    expect(unlock / SIM_HZ, 'Easy must give the player five minutes').toBeCloseTo(300, 0);
+    expect(unlock / SIM_HZ, 'Easy must give the player a long beginner runway').toBeCloseTo(400, 0);
 
     // One tick short of the gate: still massing, with a full army in hand.
     h.step(unlock - 1);
@@ -246,7 +254,7 @@ describe('the grace period is a head start, not a truce', () => {
     const h = makeHarness(EASY);
     h.army(AI_SQUAD_MAX * 3);
     h.step(SIM_HZ * 5);
-    expect(h.brain.intent().posture, 'not attacking yet — the gate is 300 s')
+    expect(h.brain.intent().posture, 'not attacking yet — the gate is 400 s')
       .not.toBe('attacking');
 
     // A sustained raid. `basePressure` accumulates per reported hit and decays
@@ -262,7 +270,7 @@ describe('the grace period is a head start, not a truce', () => {
     const before = h.tick;
     const at = ticksToFirstAttack(h, SIM_HZ * 90);
     expect(at, 'a rushed Easy AI must be able to hit back').toBeGreaterThan(0);
-    expect(at - before, 'and not wait out the rest of the 300 s')
+    expect(at - before, 'and not wait out the rest of the 400 s')
       .toBeLessThan(expectedUnlock(EASY) - before);
   });
 
@@ -307,7 +315,7 @@ describe('the rearm gap between waves', () => {
   it('is ordered across the ladder and real on Easy', () => {
     const gap = (d: number): number =>
       Math.round((AI_MILITARY.rearmSeconds * SIM_HZ) / Math.max(0.1, AI_DIFFICULTY[d]!.aggression));
-    expect(gap(EASY) / SIM_HZ, 'two minutes between Easy waves').toBeCloseTo(120, 0);
+    expect(gap(EASY) / SIM_HZ, 'well over two minutes between Easy waves').toBeCloseTo(160, 0);
     for (const d of [NORMAL, HARD, BRUTAL]) expect(gap(d)).toBeLessThan(gap(d - 1));
   });
 });

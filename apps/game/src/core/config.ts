@@ -2112,14 +2112,14 @@ export const VISION_REGROW_DELAY = 2.0;
  * none of them touched throughput. An Easy AI ran the same economy as a Brutal
  * one and converted it into army through the same queues at the same rate.
  *
- * Easy is now 0.8 and NORMAL STAYS EXACTLY 1.0, deliberately: Normal is the
+ * Easy is now 0.65 and NORMAL STAYS EXACTLY 1.0, deliberately: Normal is the
  * reference rung, the one where the opponent mines at the same rate the player
  * does, and a number like 0.95 there would buy almost nothing while making the
  * whole table harder to reason about. Normal is toned down by fleet size in
  * `AI_SKILL` instead. Hard and Brutal are untouched.
  */
 export const AI_DIFFICULTY = [
-  { name: 'Easy',   reactionSec: 2.4, apmCap: 40,  waveSizeMul: 0.6, aggression: 0.4, resourceBonus: 0.8 },
+  { name: 'Easy',   reactionSec: 3.2, apmCap: 28,  waveSizeMul: 0.55, aggression: 0.3, resourceBonus: 0.65 },
   { name: 'Normal', reactionSec: 1.2, apmCap: 90,  waveSizeMul: 1.0, aggression: 0.7, resourceBonus: 1.0 },
   { name: 'Hard',   reactionSec: 0.6, apmCap: 160, waveSizeMul: 1.4, aggression: 1.0, resourceBonus: 1.15 },
   { name: 'Brutal', reactionSec: 0.3, apmCap: 260, waveSizeMul: 1.8, aggression: 1.3, resourceBonus: 1.35 },
@@ -4173,7 +4173,7 @@ export const CREDITS_TICKER_SNAP = 2;
  * `queueDepth` does not change the build RATE (`BuildQueue.advanceTab` only
  * ever advances `items[0]`); it changes whether there is a GAP between one unit
  * popping and the next one starting. At depth 1 the Easy brain has to notice
- * the empty queue on its next build tick and then win an action out of a 40 apm
+ * the empty queue on its next build tick and then win an action out of a 28 apm
  * budget it is also spending on harvesters and squads, which reads on screen as
  * a barracks that pauses between units. That is the texture of a human who is
  * not paying attention, and it is the correct one for Easy.
@@ -4187,18 +4187,18 @@ export const CREDITS_TICKER_SNAP = 2;
  * ever saw, which is exactly the flat ladder the paragraphs above are about.
  *
  * So the rungs differ on both halves of the response: HOW MANY towers, and HOW
- * LONG the AI takes to believe what it saw. Twelve seconds on Easy is roughly
- * two Kestrel passes — a beginner opponent gets hurt by the first raid and
- * answers the second, which is how a human learns it. Brutal answers the raid
- * that is still overhead. Note that these gate the DEDICATED AA branch only:
+ * LONG the AI takes to believe what it saw. Eighteen seconds on Easy lets a
+ * beginner's first air raid land cleanly before the opponent starts answering;
+ * Brutal answers the raid that is still overhead. Note that these gate the
+ * DEDICATED AA branch only:
  * `maxDefense` still caps total static defence above it, so a high `maxAntiAir`
  * can never turn into a wall of towers on its own.
  */
 export const AI_SKILL = [
-  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12,  maxRepairs: 1 },
-  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6,   maxRepairs: 3 },
-  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5, maxRepairs: 5 },
-  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0,   maxRepairs: 8 },
+  { composition: 0.05, creditFloor: 2000, techBias: 0.45, scoutDelayMul: 3.0, discipline: 0.20, advancedTactics: false, maxDefense: 2,  maxHarvesters: 4, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 18,  maxRepairs: 1 },
+  { composition: 0.55, creditFloor: 600,  techBias: 1.0,  scoutDelayMul: 1.0, discipline: 0.65, advancedTactics: true,  maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6,   maxRepairs: 3 },
+  { composition: 0.85, creditFloor: 250,  techBias: 1.2,  scoutDelayMul: 0.7, discipline: 0.85, advancedTactics: true,  maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5, maxRepairs: 5 },
+  { composition: 1.00, creditFloor: 0,    techBias: 1.4,  scoutDelayMul: 0.5, discipline: 1.00, advancedTactics: true,  maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0,   maxRepairs: 8 },
 ] as const;
 
 /**
@@ -4418,7 +4418,7 @@ export const AI_MILITARY = {
    * aggression, so the table below is what the player actually experiences:
    *
    *                 aggression   first push     gap between waves
-   *      Easy          0.4         5:00               2:00
+   *      Easy          0.3         6:40               2:40
    *      Normal        0.7         2:51               1:09
    *      Hard          1.0         2:00               0:48
    *      Brutal        1.3         1:32               0:37

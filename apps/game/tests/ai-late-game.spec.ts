@@ -396,7 +396,7 @@ describe('the late-game difficulty ladder', () => {
   it('gives Easy none of it', () => {
     // Every system here is a force multiplier and the bottom rung is where the
     // ladder should be gentlest. An Easy brain also cannot pay: creditFloor is
-    // 1400 and it runs two refineries.
+    // 2000 and it runs two refineries.
     expect(rungs[EASY].maxSuperweapons).toBe(0);
     expect(rungs[EASY].maxUpgrades).toBe(0);
     expect(rungs[EASY].powerMask).toBe(0);

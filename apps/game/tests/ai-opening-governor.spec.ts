@@ -17,8 +17,8 @@
  * `AiBrain.spendable` caps every purchase including the refinery that retires
  * the governor:
  *
- *   DEADLOCK. Easy carries the largest `creditFloor` (1400) so a bank-wide cap
- *   stacks with it: allowance 2500 - 1400 = 1100 against a 2000 refinery. Easy
+ *   DEADLOCK. Easy carried the largest `creditFloor` (1400) so a bank-wide cap
+ *   stacked with it: allowance 2500 - 1400 = 1100 against a 2000 refinery. Easy
  *   sat on 9400 credits with three buildings and zero ore for a whole match.
  *
  *   THE FLOOR THAT UNDOES THE LADDER. Flooring the allowance at the refinery
@@ -269,7 +269,7 @@ describe('the governor cannot block its own exit', () => {
   it('orders a refinery at every rung, from a bank the governor is capping', () => {
     // THE DEADLOCK CASE, and it is the reason the governor is per-candidate:
     // a bank-wide cap left Easy unable to afford the 2000 refinery behind its
-    // own 1400 credit floor, so it never mined and never recovered.
+    // own credit floor, so it never mined and never recovered.
     for (let rung = 0; rung < AI_OPENING.length; rung++) {
       const h = makeHarness(rung);
       h.step(ENOUGH);

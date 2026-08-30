@@ -25,7 +25,7 @@
  *
  * WHAT IS PINNED HERE
  * -------------------
- *   - EASY GAINS NOTHING. 0.35 discipline against `minDiscipline` 0.5, checked
+ *   - EASY GAINS NOTHING. 0.20 discipline against `minDiscipline` 0.5, checked
  *     before the RNG roll so the rung does not even consume a draw. Verified in
  *     a real 20-minute match too: the whole trace is byte-identical with the
  *     feature disabled.
