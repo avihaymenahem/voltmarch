@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "status": "rejected",
+  "measuredAt": "2026-08-31",
+  "family": "allied-chrono-miner",
+  "runtimeKey": "allied_harvester",
+  "environment": {
+    "runtime": "built game in headless Chromium",
+    "renderer": "WebGL over SwiftShader",
+    "fixture": "01-establishing-base",
+    "runsPerArm": 3,
+    "calibrated": true,
+    "limitations": [
+      "Packaged Electron was not measured",
+      "Native WebGPU was not measured",
+      "Three whole-boot samples are insufficient to attribute the ready-time difference"
+    ]
+  },
+  "measurement": {
+    "control": {
+      "familyBytes": 3651320,
+      "conditioningWarmMedianMs": 263.65,
+      "completeRequestWarmMedianMs": 249.55,
+      "readyWarmMedianMs": 28217
+    },
+    "cooked": {
+      "familyBytes": 6244672,
+      "conditioningWarmMedianMs": 0.7,
+      "completeRequestWarmMedianMs": 475.75,
+      "readyWarmMedianMs": 25158,
+      "coldReadyRegressionMs": 1825
+    },
+    "delta": {
+      "familyBytes": 2593352,
+      "familyBytesPercent": 71.03,
+      "conditioningWarmMedianMs": -262.95,
+      "completeRequestWarmMedianMs": 226.2
+    },
+    "rawSamples": {
+      "control": [
+        { "state": "cold", "readyMs": 39310.8, "conditioningMs": 241.1, "completeRequestMs": 238.8 },
+        { "state": "warm", "readyMs": 28035.6, "conditioningMs": 252.3, "completeRequestMs": 321.9 },
+        { "state": "warm", "readyMs": 28399, "conditioningMs": 275, "completeRequestMs": 177.2 }
+      ],
+      "cooked": [
+        { "state": "cold", "readyMs": 41135.8, "conditioningMs": 0.9, "completeRequestMs": 472.5 },
+        { "state": "warm", "readyMs": 25420.2, "conditioningMs": 0.5, "completeRequestMs": 525 },
+        { "state": "warm", "readyMs": 24895.8, "conditioningMs": 0.9, "completeRequestMs": 426.5 }
+      ]
+    }
+  },
+  "decision": {
+    "promoted": false,
+    "reason": "The proof removed invariant main-thread conditioning but increased transfer bytes by 71.03% and the complete request window by 226.20 ms. No attributable end-to-end readiness win was established.",
+    "rollback": "The retained Meshopt GLB family remains the only imported runtime path, and procedural sockets plus the procedural unit remain fallback authority. Reproducible cook outputs are generated only under ignored .turbo/runtime-cooks."
+  },
+  "parity": {
+    "triangles": {
+      "lod0": 49825,
+      "lod1": 22416,
+      "lod2": 8968,
+      "shadow": 1728
+    },
+    "lod0Bounds": {
+      "min": [-2, 0, -4.3],
+      "max": [2, 3.3, 4.3]
+    },
+    "lod0Material": "Allied Chrono Miner PBR",
+    "ktx2Images": 3,
+    "sourceAuthority": "packages/assets/game/units/allies/chrono-miner.glb",
+    "runtimeControl": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb"
+  },
+  "inputSha256": {
+    "authoring": "19f1c372be50db49ae1c259472b424b69e86be6f6a8312d3435ce24992306f94",
+    "runtimeControl": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+    "lod0": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+    "lod1": "c3768b9490e5b124aa8a8848ca2854e974458f8a94d2767e4dbacb20f81dd546",
+    "lod2": "b739c3af4815df43198b03dc16b3bd4f25e2f35d44ed923406175433eb7d0f18",
+    "shadow": "f6c3467a1e965a581c1e3704e2c209c96ccae0c119454b49eaa84377721cf5b6"
+  },
+  "outputs": {
+    "lod0": {
+      "sha256": "b1fd88e4fcdc5a4d34973e2d2f03d34ba35b5441f6e6095bba95be3a08b29dc1",
+      "bytes": 4376552
+    },
+    "lod1": {
+      "sha256": "fde11c9893a640281ba6c70d5cf94eb6aed2078bcfa9fa56f72271a04a18f633",
+      "bytes": 1309128
+    },
+    "lod2": {
+      "sha256": "9601c6815bc45f91657cf3a6aa2b6ce0a3b77df144e13a5a2817c8e6b2d5bffc",
+      "bytes": 546088
+    },
+    "shadow": {
+      "sha256": "a9be8d7ef26b640212b0fcbd4087a2f22e6c9d79fa95f4050b355e113bbca659",
+      "bytes": 12904
+    }
+  }
+}

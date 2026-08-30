@@ -55,6 +55,12 @@ import { logDiscovery, registerDiscoveredSystems } from './Systems';
 import { prepareWorldWorkers } from '../core/workers/world-warm';
 import { prepareTextureWorkers } from '../core/workers/texture-warm.system';
 import { markBattlefieldReady, resetBattlefieldReady } from '../core/battlefield-ready';
+import {
+  annotateBootRun,
+  beginBootSpan,
+  bootTelemetryReport,
+  markBootPhase,
+} from '../core/boot-telemetry';
 
 /* -------------------------------------------------------------------------- */
 /* Contract with main.ts                                                      */
@@ -281,6 +287,7 @@ export function bootstrap(options: BootOptions): GameHandle {
         options.menuRoot.style.visibility = v ? '' : 'hidden';
       },
       restart: (s?: number) => loop.resetMatch(s ?? seed),
+      bootReport: bootTelemetryReport,
     },
   });
 
@@ -436,11 +443,25 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   // Modules reach the world through ctx(); it must exist before any init runs.
   setGameContext(ctx);
+  markBootPhase('registry', 'context-published');
 
   // A module joins the frame by existing — see src/game/Systems.ts. Discovery
   // happens after the placeholder is registered so a real terrain system, which
   // shares its render phase, sorts deterministically behind it.
-  logDiscovery(registerDiscoveredSystems(registry));
+  const discovery = registerDiscoveredSystems(registry);
+  logDiscovery(discovery);
+  markBootPhase('registry', 'systems-published', {
+    registered: discovery.registered.length,
+    skipped: discovery.skipped.length,
+  });
+  const adapter = handle.capabilities.adapter;
+  annotateBootRun({
+    backend: handle.backend,
+    gpu: handle.capabilities.gpu,
+    adapter: adapter === null
+      ? null
+      : `${adapter.vendor} ${adapter.architecture} ${adapter.device} ${adapter.description}`.trim(),
+  });
 
   const bootStarted = now();
   options.onStage?.('Preparing battlefield');
@@ -448,9 +469,11 @@ export function bootstrap(options: BootOptions): GameHandle {
   let presentationMs = 0;
   let compileMs = 0;
   let devCheatEngine: { dispose(): void } | null = null;
+  const finishRegistryInit = beginBootSpan('registry', 'systems-init');
   const ready = registry
     .init()
     .then(async () => {
+      finishRegistryInit();
       systemsMs = now() - bootStarted;
 
       // This import is the release boundary, not merely a visibility toggle.
@@ -468,6 +491,7 @@ export function bootstrap(options: BootOptions): GameHandle {
 
       options.onStage?.('Preparing presentation');
       const presentationStarted = now();
+      const finishPresentation = beginBootSpan('registry', 'presentation-populate');
       // Populate RenderBridge before compilation. Registry init builds the
       // scenario last, while entity batches are allocated by frame systems;
       // compiling before one zero-time frame warmed terrain but omitted every
@@ -479,9 +503,13 @@ export function bootstrap(options: BootOptions): GameHandle {
         frame: 0,
         quality: loop.quality,
       });
+      finishPresentation();
       presentationMs = now() - presentationStarted;
       options.onStage?.('Compiling shaders');
       const compileStarted = now();
+      const finishCompile = beginBootSpan('gpu', 'pipeline-compile', {
+        backend: handle.backend,
+      });
       const nodeRenderer = handle.node;
       const cacheBefore = nodeRenderer === null ? null : pipelineCacheStats(nodeRenderer);
       // Three's compiler obeys Object3D.visible. That is correct for a generic
@@ -505,6 +533,10 @@ export function bootstrap(options: BootOptions): GameHandle {
         await Promise.resolve(
           (handle.webgl ?? handle.node!).compile(sceneRig.scene, cameraRig.camera),
         );
+        finishCompile();
+      } catch (err) {
+        finishCompile('error');
+        throw err;
       } finally {
         for (let i = 0; i < latentObjects.length; i++) latentObjects[i].visible = false;
       }
@@ -519,6 +551,7 @@ export function bootstrap(options: BootOptions): GameHandle {
       // into a capture.
       renderOnce(shotMode ? 0 : 1 / 60);
       markBattlefieldReady();
+      markBootPhase('app', 'game.ready', { backend: handle.backend });
       const totalMs = now() - bootStarted;
       const initRows = registry.profiler.all([])
         .filter((row) => row.id.endsWith(':init'))
@@ -536,6 +569,7 @@ export function bootstrap(options: BootOptions): GameHandle {
       );
     })
     .catch((err: unknown) => {
+      finishRegistryInit('error');
       console.error('[boot] system init failed', err);
       throw err;
     });

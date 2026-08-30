@@ -55,6 +55,7 @@
  */
 
 import * as THREE from 'three';
+import { beginBootSpan } from '../core/boot-telemetry';
 import { ShadowCadence, shadowCadenceModeFromSearch } from './shadow-cadence';
 
 import { RepaintGuard } from './RepaintGuard';
@@ -1505,13 +1506,18 @@ export async function prepareRenderer(
   canvas: HTMLCanvasElement,
   search: string = typeof location !== 'undefined' ? location.search : '',
 ): Promise<GpuBackend> {
+  const finishPrepare = beginBootSpan('gpu', 'renderer-prepare');
+  try {
   const want = await prepareGpuPath(search);
   /*
    * THE WEBGL PATH LEAVES HERE HAVING TOUCHED NOTHING. No quarantine lookup, no
    * device, no watch, no import — byte for byte the same boot it was before
    * device-loss handling existed.
    */
-  if (want !== 'webgpu') return 'webgl';
+  if (want !== 'webgpu') {
+    finishPrepare('ok', { backend: 'webgl' });
+    return 'webgl';
+  }
 
   /*
    * A DEVICE THAT HAS ALREADY DIED MUST NOT BE ASKED FOR AGAIN IN THIS PAGE.
@@ -1523,7 +1529,10 @@ export async function prepareRenderer(
   if (deviceLost !== null) throw new GpuUnavailableError(deviceLost);
 
   const target = liveCanvas(canvas);
-  if (preparedNode !== null && preparedNode.canvas === target) return 'webgpu';
+  if (preparedNode !== null && preparedNode.canvas === target) {
+    finishPrepare('ok', { backend: 'webgpu', reused: true });
+    return 'webgpu';
+  }
   const path = nodePath();
   if (path === null) throw new Error('[render] node path requested but not installed');
 
@@ -1597,7 +1606,12 @@ export async function prepareRenderer(
   });
 
   preparedNode = { canvas: target, renderer };
+  finishPrepare('ok', { backend: 'webgpu', reused: false });
   return 'webgpu';
+  } catch (err) {
+    finishPrepare('error');
+    throw err;
+  }
 }
 
 export function createRenderer(options: CreateRendererOptions = {}): RendererHandle {

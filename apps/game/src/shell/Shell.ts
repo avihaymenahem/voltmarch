@@ -10,14 +10,13 @@
  *                ^                            |         |         |
  *                +----------------------------+---------+---------+
  *
- * WHY THE MENU EVENTUALLY RUNS A REAL MATCH BEHIND IT
- * ---------------------------------------------------
- * The title UI paints immediately over the preloaded key art. Only after it is
- * interactive does the shell boot an AI-off match and crossfade to the camera
- * orbit. The battlefield therefore still shows the real current game, but a
- * decorative scene can never again hold every menu button behind terrain,
- * faction assets and GPU pipeline compilation. A player who launches during
- * the short grace period cancels the decoration and pays only for the match.
+ * WHY THE MENU DOES NOT RUN A REAL MATCH BEHIND IT
+ * ------------------------------------------------
+ * The title UI paints immediately over the preloaded key art. A decorative
+ * Bootstrap used to contend with the next real match for asset loading, global
+ * game context and GPU pipeline compilation. The static art is now the complete
+ * title surface. A future live background needs a dedicated lightweight scene
+ * that does not publish simulation context; a throwaway battlefield is not it.
  *
  * WHY A MATCH IS A FULL RE-BOOTSTRAP
  * ----------------------------------
@@ -54,6 +53,7 @@ import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS, TITLE_BACKDROP_CAMERA_DISTANCE } from '../core/config';
+import { beginBootRun } from '../core/boot-telemetry';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
 import { DEF_TABLES } from '../data/Defs';
 
@@ -778,6 +778,11 @@ export interface ShellOptions {
   skipMenu?: boolean;
   /** `?campaign=` — boot straight into one operation. See `start()`. */
   campaign?: string | null;
+  /** Product-path URL overrides for the first match; null leaves the stored setup intact. */
+  initialSetup?: {
+    readonly map?: string | null;
+    readonly seed?: number | null;
+  };
   /** Status text sink — the pre-module curtain in index.html. */
   status?: (text: string) => void;
   /** Called once the first real frame is on screen. */
@@ -1002,12 +1007,10 @@ export class Shell {
   private matchStartMs = 0;
   private disposed = false;
   private busy = false;
-  /** Delayed initial title backdrop. The menu itself never waits for it. */
-  private backdropBoot: Promise<void> | null = null;
-  /** A quiet window lets a player launching immediately skip throwaway world work. */
-  private backdropTimer = 0;
-  /** Cheap module prefetch, deliberately separate from the mutating backdrop boot. */
+  /** Cheap module prefetch; it imports code but never constructs a world. */
   private enginePreloadTimer = 0;
+  /** Invalidates timer callbacks captured by an earlier visit to the menu. */
+  private enginePreloadGeneration = 0;
   /** Set once the cold-boot fallback has fired, so it can never loop. */
   private hardLaunched = false;
 
@@ -1044,10 +1047,18 @@ export class Shell {
   private toastTimer = 0;
 
   constructor(private readonly options: ShellOptions) {
-    this.settings = new SettingsStore(undefined, playableFactions().map((f) => f.key));
+    const factionKeys = playableFactions().map((f) => f.key);
+    this.settings = new SettingsStore(undefined, factionKeys);
     // `cloneSetup`, not a spread: `MatchSetup.opponents` is an array, and a
     // shallow copy would leave the shell and the store editing one of them.
-    this.setup = cloneSetup(this.settings.setup());
+    const initialSetup = cloneSetup(this.settings.setup());
+    if (options.initialSetup?.map !== null && options.initialSetup?.map !== undefined) {
+      initialSetup.map = options.initialSetup.map;
+    }
+    if (options.initialSetup?.seed !== null && options.initialSetup?.seed !== undefined) {
+      initialSetup.seed = options.initialSetup.seed;
+    }
+    this.setup = normalizeSetup(initialSetup, factionKeys);
 
     this.root = el('div', 'vm-shell');
     this.host = el('div', 'vm-shell-host');
@@ -2164,7 +2175,7 @@ export class Shell {
       // and a paint courtesy must never become a match-start prerequisite.
       await nextFrames(2);
 
-      await this.finishOrCancelInitialBackdrop();
+      this.cancelEnginePreload();
       await this.bootGame(seed, false);
       this.verifyArmies();
       this.matchStartMs = performance.now();
@@ -2841,7 +2852,7 @@ export class Shell {
     this.disposed = true;
     updateDesktopPointerLock(false);
     this.cancelQueuedAutosave();
-    this.cancelScheduledBackdrop();
+    this.cancelEnginePreload();
     cancelAnimationFrame(this.rafHandle);
     window.removeEventListener('keydown', this.onKeyDown, { capture: true });
     window.removeEventListener('resize', this.onResize);
@@ -2948,10 +2959,10 @@ export class Shell {
   /* Match lifecycle                                                        */
   /* ---------------------------------------------------------------------- */
 
-  /** Go to the title screen, booting the backdrop match if needed. */
+  /** Go to the title screen; key art remains the complete non-gameplay surface. */
   private async openMenu(firstBoot: boolean, keepBackdrop = false): Promise<void> {
     // The single funnel back to the title, and therefore the single place a
-    // tutorial run ends. Done FIRST: the backdrop boot below re-runs
+    // tutorial run ends. Done FIRST: any later match bootstrap re-runs
     // `registry.init()`, and a director still published at that moment would
     // be handed the title screen's own match to teach over.
     this.tutorial?.dispose();
@@ -2965,8 +2976,8 @@ export class Shell {
      * The old path awaited `bootGame()` here, which means a title-screen
      * decoration loaded terrain, 51 systems, every faction asset and every GPU
      * pipeline before a single menu button existed. Put the menu over the
-     * already-preloaded key art immediately; the live theatre is optional
-     * background work and crossfades in when it is genuinely ready.
+     * already-preloaded key art immediately. Building a second battlefield is
+     * not title decoration; it competes with the next player-requested boot.
      */
     if (!keepBackdrop || this.game === null) {
       // Attach before changing the class so the listener cannot miss a fast
@@ -2991,7 +3002,7 @@ export class Shell {
         this.game = null;
         this.backdrop = false;
       }
-      this.scheduleInitialBackdrop();
+      this.scheduleEnginePreload();
       return;
     }
 
@@ -3013,22 +3024,20 @@ export class Shell {
   }
 
   /**
-   * Warm the engine code, then start the decorative title battlefield only
-   * after a real quiet window.
+   * Warm only the engine modules after the menu becomes interactive.
    *
-   * The two timers are deliberately separate. Importing modules is read-only
-   * and useful to the next match, so it can happen shortly after first paint.
-   * Booting a world mutates the global game context and cannot overlap a real
-   * match; starting that work after 750 ms made a fast click wait behind 20 s
-   * of throwaway WebGPU compilation. Twelve seconds is long enough to classify
-   * the player as genuinely idle while the key art remains a complete backdrop.
+   * Importing modules is read-only and useful to the next match, so it can
+   * happen shortly after first paint. Bootstrap is intentionally absent: it
+   * publishes global context and begins asynchronous system initialisation, so
+   * a real player-requested match must be its only owner.
    */
-  private scheduleInitialBackdrop(): void {
-    this.cancelScheduledBackdrop();
+  private scheduleEnginePreload(): void {
+    this.cancelEnginePreload();
+    const generation = this.enginePreloadGeneration;
 
     this.enginePreloadTimer = window.setTimeout(() => {
       this.enginePreloadTimer = 0;
-      if (this.disposed || this.game !== null) return;
+      if (generation !== this.enginePreloadGeneration || this.disposed || this.game !== null) return;
       void Promise.all([
         import('../game/Bootstrap'),
         import('../render/renderer'),
@@ -3039,34 +3048,10 @@ export class Shell {
       });
     }, 1_000);
 
-    this.backdropTimer = window.setTimeout(() => {
-      this.backdropTimer = 0;
-      if (this.disposed || this.game !== null || this.backdropBoot !== null) return;
-      const task = this.bootGame(rollSeed(), true)
-        .catch((err: unknown) => {
-          // The key art is a complete fallback. A decoration may fail loudly in
-          // the console, but it may never take the now-interactive menu down.
-          console.error('[shell] deferred title backdrop failed to boot', err);
-        })
-        .finally(() => {
-          if (this.backdropBoot === task) this.backdropBoot = null;
-        });
-      this.backdropBoot = task;
-    }, 12_000);
   }
 
-  /** Cancel work that has not started; wait for an active boot before replacing its world. */
-  private async finishOrCancelInitialBackdrop(): Promise<void> {
-    this.cancelScheduledBackdrop();
-    const active = this.backdropBoot;
-    if (active !== null) await active;
-  }
-
-  private cancelScheduledBackdrop(): void {
-    if (this.backdropTimer !== 0) {
-      window.clearTimeout(this.backdropTimer);
-      this.backdropTimer = 0;
-    }
+  private cancelEnginePreload(): void {
+    this.enginePreloadGeneration++;
     if (this.enginePreloadTimer !== 0) {
       window.clearTimeout(this.enginePreloadTimer);
       this.enginePreloadTimer = 0;
@@ -3194,6 +3179,15 @@ export class Shell {
     query.delete('shot');
     query.delete('skipmenu');
     history.replaceState(null, '', `${location.pathname}?${query.toString()}`);
+    beginBootRun({
+      surface: 'product',
+      scenario: this.setup.map,
+      factions: [
+        this.setup.playerFaction,
+        ...effectiveOpponents(this.setup).map((opponent) => opponent.faction),
+      ].join(','),
+      seed,
+    });
 
     /*
      * THE QUERY IS ONLY NOW TRUE, SO THE TWO PER-BOOT MEMOS THAT READ IT HAVE

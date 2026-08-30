@@ -255,22 +255,28 @@ describe('desktop app url', () => {
   it('every allowlisted flag is one the game actually parses', () => {
     // Tier 3: a flag added to the desktop vocabulary that no game code reads is
     // a flag that silently does nothing.
-    const sources = ['apps/game/src/main.ts', 'apps/game/src/render/backend.ts', 'apps/game/src/shell/net-link.ts']
+    const sources = [
+      'apps/game/src/main.ts',
+      'apps/game/src/core/boot-telemetry.ts',
+      'apps/game/src/render/backend.ts',
+      'apps/game/src/shell/net-link.ts',
+    ]
       .map((p) => {
         try {
-          return readFileSync(path.resolve(__dirname, '..', '..', '..', p), 'utf8');
+          return readFileSync(path.resolve(__dirname, '..', '..', p), 'utf8');
         } catch {
           return '';
         }
       })
       .join('\n');
     const known = new Set([
-      'gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'foliage',
-      'relay', 'shot', 'skipmenu', 'unlockall',
+      'gpu', 'map', 'art', 'seed', 'mapseed', 'biome', 'fog', 'foliage', 'bootprofile',
+        'relay', 'shot', 'skipmenu', 'start', 'unlockall',
     ]);
     for (const flag of ALLOWED_FLAGS) {
       expect(known.has(flag), `${flag} is not a recognised boot flag`).toBe(true);
     }
+    expect(sources).toContain("query.has('bootprofile')");
     expect(sources.length).toBeGreaterThan(0);
   });
 

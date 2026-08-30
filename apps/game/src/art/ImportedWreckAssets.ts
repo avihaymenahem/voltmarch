@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 
 import { WRECK_LENGTH, type WreckClass } from '../core/wrecks';
+import { beginBootSpan } from '../core/boot-telemetry';
 import { applyShroudTint } from '../render/FogOfWar';
 import type { KindMesh } from '../render/RenderBridge';
 import {
@@ -121,6 +122,9 @@ function wreckMaterial(
 /** Load and fit the shared hulk; the caller keeps procedural registrations until this resolves. */
 export async function loadImportedWreckSet(): Promise<ImportedWreckSet> {
   const gltf = await loader.loadAsync(SOURCE_URL);
+  const finishConditioning = beginBootSpan('conditioning', 'wreck-family', { asset: 'vehicle-wreck' });
+  let conditioningStatus: 'ok' | 'error' = 'error';
+  try {
   gltf.scene.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
   gltf.scene.traverse((object) => { if (object instanceof THREE.Mesh) meshes.push(object); });
@@ -152,7 +156,7 @@ export async function loadImportedWreckSet(): Promise<ImportedWreckSet> {
   const index = geometries.get('medium')!.getIndex();
   const triangles = Math.round((index?.count ?? position.count) / 3);
 
-  return {
+  const result: ImportedWreckSet = {
     triangles,
     hulk(faction, cls) {
       const model = models.get(`${faction}:${cls}`);
@@ -174,6 +178,11 @@ export async function loadImportedWreckSet(): Promise<ImportedWreckSet> {
       models.clear();
     },
   };
+  conditioningStatus = 'ok';
+  return result;
+  } finally {
+    finishConditioning(conditioningStatus);
+  }
 }
 
 /** Compile-time proof that unsupported classes cannot accidentally use the tank hulk. */

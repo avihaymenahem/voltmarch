@@ -19,6 +19,7 @@ import {
 } from '@voltmarch/assets/runtime/infantry-attachments.mjs';
 
 import { PartId } from '../core/types';
+import { beginBootSpan } from '../core/boot-telemetry';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
 import type { UnitModel } from './UnitFactory';
 import { importedAnimatedUnitMaterial, type ImportedUnitSpec } from './ImportedUnitAssets';
@@ -328,6 +329,9 @@ export async function loadImportedInfantryFamily(
     loader.loadAsync(family.url),
     loader.loadAsync(family.clipUrl),
   ]);
+  const finishConditioning = beginBootSpan('conditioning', 'infantry-family', { asset: family.key });
+  let conditioningStatus: 'ok' | 'error' = 'error';
+  try {
   const source = oneSkinnedMesh(gltf.scene, family.label);
   if (Array.isArray(source.material) || !(source.material instanceof THREE.MeshStandardMaterial)) {
     throw new Error(`${family.label}: body must use one MeshStandardMaterial`);
@@ -367,7 +371,11 @@ export async function loadImportedInfantryFamily(
       receiveShadow: true,
     });
   }
+  conditioningStatus = 'ok';
   return result;
+  } finally {
+    finishConditioning(conditioningStatus);
+  }
 }
 
 export function disposeImportedInfantryAssets(): void {

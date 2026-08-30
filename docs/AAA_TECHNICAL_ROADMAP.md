@@ -1,0 +1,324 @@
+# AAA technical roadmap
+
+Status: active implementation plan
+Baseline: `origin/main` at `871b8408`
+Research completed: 2026-08-30
+Implementation worktree: `codex/aaa-roadmap-batches-1-3`
+
+This document turns the performance, graphics, worker/WASM and package-boundary audit into one
+dependency-ordered delivery plan. Every workstream was checked against the current code and public
+primary material from Unreal, Unity, Khronos, Web standards, GPU vendors and published studio talks.
+Each audit then received one independent challenge review for validity and likely impact.
+
+The central conclusion is that VOLTMARCH should adopt AAA production disciplines, not attempt to
+copy native AAA features wholesale. The high-return path is measured startup, cooked and
+dependency-addressable content, complete LOD/fallback contracts, render-only GPU-driven work and
+narrow one-way module boundaries. Nanite, Lumen, virtual shadow maps, DirectStorage, an engine-wide
+native job system and an authoritative GPU simulation do not fit the current Three/WebGPU/Electron
+stack.
+
+## Evidence that controls the order
+
+- The image-first menu and engine dynamic boundary are already successful. Menu interactivity has
+  measured roughly 0.35-0.60 seconds on the primary desktop; package moves alone will not improve it.
+- The former decorative title battlefield was scheduled after a 12-second quiet period. Once its
+  boot began, a real match had to wait for it. That put player intent behind disposable work and is
+  removed by Batch 2.
+- Imported GLTF parse/publication after reveal produced 150-270 ms visible freezes. The diagnostic
+  streamed path is not a safe shipping shortcut.
+- Runtime import still applies invariant transformations such as matrix baking, attribute promotion,
+  normal/bounds work and delivery conditioning. Removing this work through an offline cook is more
+  valuable than moving only byte decode to another thread.
+- The current renderer is commonly pixel/fill-rate bound. One integrated-GPU sweep fit GPU time to
+  rendered megapixels with `r^2 = 0.995`; CPU and simulation did not own that frame.
+- Foliage loads and validates LOD0/1/2/shadow deliveries, but ordinary runtime resolution still
+  selects LOD0. CPU camera-band selection is the required reference before compute compaction.
+- Project workers already use coarse typed-array jobs, transfer-owned output and deterministic
+  fallback. The shared KTX2 loader already owns a bounded two-worker transcoder pool.
+- Four-army vision has measured about 2.35 ms at 30 Hz, roughly 7% of one simulation tick. That is
+  not evidence for a full simulation-worker redesign.
+- Workspace packages are ownership and build boundaries. They change boot only when the import
+  graph, side effects or lazy chunks also change.
+
+## Acceptance matrix
+
+All performance claims use the same matrix unless a narrower experiment is explicitly recorded:
+
+| Axis | Required cases |
+| --- | --- |
+| Runtime | browser WebGPU, browser WebGL fallback, packaged Electron WebGPU |
+| Match | fixed two-army and four-army fixtures |
+| Process state | five genuinely cold launches and five named warm-state launches |
+| Resolution | 1920x1080, 2560x1440 and 3840x2160 where the adapter supports them |
+| Boot | navigation, menu interactive, curtain start/end, `game.ready`, first stable submitted frame |
+| CPU | phase durations, p50/p95, maximum long task, first-playable main-thread slices |
+| GPU | pass timestamps, pipeline/program counts, upload/compile intervals, adapter and renderer |
+| Memory | fetched bytes, decoded estimates, renderer counters, process RSS where available |
+| Visual | noon and dusk/night; close, normal RTS and far; stationary and moving camera |
+
+`Cold` means a fresh process/profile/cache. A warm report must name which of HTTP cache, decoded
+assets, process-owned Three resources and WebGPU pipeline state survived. Headless Chromium is a
+development signal, not final authority for Electron WebGPU.
+
+## Ordered batches
+
+```text
+Baseline and phase telemetry
+|- cold title-boot correction
+|- cooked asset proof -> generated dependency closure -> safe deferred loading
+|- CPU foliage LOD -> WebGPU compute compaction -> temporal reconstruction
+|- GPU pass attribution -> post/shadow/environment decisions
+`- internal dependency rules -> narrow packages -> possible WASM ABI
+```
+
+| Order | Batch | Acceptance |
+| ---: | --- | --- |
+| 1 | Current baseline and phase instrumentation | Repeatable matrix and machine-readable phase/long-task evidence exist. |
+| 2 | Cold title battlefield policy | A cold process stays key-art-first and a real match cannot wait for or race disposable scene boot. |
+| 3 | Cooked runtime asset-family proof | One complete family demonstrates lower publication work with exact delivery and fallback parity. |
+| 4 | Foliage Gate 3/4 | Camera-band LOD, wind/depth parity, KTX2 family atlas and dense/save acceptance pass. |
+| 5 | Dependency architecture Stage 0 | Internal layer/cycle rules and domain config slices preserve bundles and determinism. |
+| 6 | Generated content dependency closure | All immediately reachable match content is ready before reveal; misses trip in development. |
+| 7 | Compression and pipeline gates | Terrain-mask format, Meshopt family and pipeline-variant experiments have packaged evidence. |
+| 8 | GPU-driven foliage pilot | Same LOD policy, immutable upload, indirect counts, no readback and a material dense-frame win. |
+| 9 | GPU/frame-graph optimization | Timestamp-led pass changes retain image quality and readability. |
+| 10 | AAA visual-depth pass | Environment states, contextual composition, material consistency, then measured shadow/temporal pilots. |
+| 11 | Narrow package extraction | Shared GLTF, audio and generation boundaries have real consumers and preserve lazy chunks. |
+| 12 | Conditional WASM/simulation work | A specific kernel is a top bottleneck and beats startup/marshalling end to end. |
+
+## Implementation checkpoint - 2026-08-31
+
+The first three batches are complete on `codex/aaa-roadmap-batches-1-3`:
+
+1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
+   Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
+   `window.__VM.hooks.bootReport()`. `npm run profile:boot` writes schema-3 raw samples plus an
+   explicitly named first-page/cache-warm summary. Five-run two-/four-army WebGL and native-WebGPU
+   browser cells plus five fresh Electron/WebGPU processes are recorded. Browser WebGPU cache-warm
+   ready p50 was 23.20 s (two armies) and 29.94 s (four). The pinned fresh-process Electron
+   fixture measured 27.26 s renderer-relative and 28.24 s process-to-curtain-hidden p50.
+   These are diagnostic-host baselines, not target-hardware promises. See `docs/BOOT_BASELINE.md`.
+2. **Title policy: complete.** Every title visit is key-art-first and performs only a one-second,
+   read-only module prefetch. No title path calls decorative `Bootstrap`, cold or warm, so a real
+   launch cannot wait for or race a throwaway world. A future live backdrop requires a dedicated
+   lightweight scene that never owns simulation context.
+3. **Cooked family proof: complete and rejected for promotion.** The Chrono Miner cook passed its
+   deterministic structural checks and removed
+   about 263 ms of warm conditioning but grew the family by 2,593,352 bytes (71.03%) and worsened
+   the complete request window by 226.20 ms. The runtime route and shipping outputs were rolled
+   back; source/control/procedural fallbacks remain. See `docs/RUNTIME_ASSET_COOK_POC.md`.
+
+No later batch has been started by this implementation branch. The rejection is a successful gate:
+it prevents a locally faster conditioning step from becoming a globally slower shipping format.
+
+## Batch 1 - current baseline and phase instrumentation
+
+Instrument the actual path rather than relying on decoder microbenchmarks. The first pass attributes
+the seams exposed without patching Three or browser internals:
+
+1. module and match boot;
+2. Resource Timing or desktop custom-protocol response-open timing where observable;
+3. aggregate GLTF request/parse/Meshopt/Three-scene readiness;
+4. aggregate KTX2 loader/transcode and ordinary image-source readiness;
+5. VOLTMARCH geometry/material conditioning;
+6. registry publication and initialisation;
+7. renderer/device preparation and awaited pipeline compilation;
+8. curtain dismissal, `game.ready`, first stable submitted frame and post-reveal Long Tasks.
+
+This does not claim distinct GLB JSON, Meshopt, Three-object, KTX2-worker-start or GPU-upload fences.
+Those require upstream hooks or backend timestamp/upload instrumentation and remain later attribution
+work if the aggregate phase becomes a measured limiter.
+
+Required qualities:
+
+- instrumentation is allocation-light and development/diagnostic oriented;
+- boot logging remains compatible with Electron forwarding;
+- observations carry run identity, renderer, adapter, process state, scenario and seated factions;
+- measurements can be exported as machine-readable JSON without DevTools;
+- the harness cannot divide one submitted frame by an arbitrary sample count;
+- instrumentation cannot enter authoritative simulation or change tick order.
+
+## Batch 2 - cold title battlefield policy
+
+The static key art is the complete title experience. Engine module prefetch may remain cheap and
+non-mutating, but a title path must not create a gameplay battlefield. Industry title scenes are
+purpose-built, bounded presentations; they are not hidden full matches sharing global engine state.
+
+Acceptance:
+
+- fresh and returning title visits cannot start decorative `Bootstrap` work;
+- the one-second read-only module prefetch remains cancellable and generation-guarded;
+- opening a real match cancels queued prefetch and cannot await decorative boot;
+- no title generation can publish or mutate global game context;
+- return-to-menu disposal, music, loading curtain, browser and desktop behavior remain intact;
+- focused source-contract tests lock the title/Bootstrap boundary, timer cancellation and
+  generation guards; a later DOM-level fake-timer test should exercise repeated menu transitions.
+
+## Batch 3 - cooked runtime asset-family proof
+
+Select one representative imported family already approved on the baseline. Keep its canonical
+source/control GLB and procedural fallback. Produce a deterministic, versioned runtime delivery that
+precomputes only invariant work:
+
+- coordinate and node transforms where gameplay articulation does not require the source hierarchy;
+- indexed geometry and safe vertex consolidation;
+- required float runtime attributes for WebGPU;
+- reviewed normals/tangents;
+- bounds, fit, sockets, articulation and part metadata;
+- LOD and shadow-delivery metadata;
+- material roles and KTX2/Meshopt requirements;
+- source hash, cook version and measured budgets.
+
+Runtime still owns material instances that depend on faction/biome/team state, GPU resources,
+articulation transforms and registry publication.
+
+Proof gate:
+
+- deterministic re-cook produces byte-identical delivery and manifest;
+- p95 main-thread publication is at least 50% lower on the proof family;
+- end-to-end family readiness improves at least 10%, unless the report honestly rejects the runtime
+  format as non-beneficial;
+- no structural node, articulation, socket, bounds, material role, triangle, LOD, shadow-delivery or
+  KTX2-contract drift; WebGL/WebGPU visual parity is required only if the transfer gate passes;
+- source/control and procedural fallback remain selectable;
+- no new paid generation or source overwrite occurs.
+
+If the format cannot clear the gate, the batch still completes by recording the rejected proof and
+keeping the original runtime path. A microbenchmark alone is not a promotion.
+
+## Later performance and loading work
+
+### Generated dependency closure
+
+Extend the existing occupied-faction boot plan. Include opening units/buildings, campaign and replay
+triggers, reinforcements, construction states, wrecks, neutral props, effect pools, audio, LODs and
+shadow proxies. Add a development miss tripwire and conservative packaged fallback. A manifest does
+not itself remove parse cost and must be paired with cooked delivery before post-reveal loading can
+return.
+
+### Texture and geometry compression
+
+- Inspect actual channel usage of `universal-terrain-mask-4k.png`, then test a reviewed KTX2 or
+  lower-channel linear delivery with explicit mips. Do not call it a boot fix until phase evidence
+  proves that.
+- Roll Meshopt beyond the Chrono Miner proof only after cold/warm browser and packaged family results
+  include decoder startup, scene construction, KTX2 and GPU upload.
+- Prefer the upstream Meshopt worker implementation for an A/B; do not build a second decoder pool.
+
+### WebGPU pipelines and frame graph
+
+Keep under-curtain compilation. Attribute pipeline/program variants by material family and state,
+canonicalize genuine duplicates, then soak 10-20 matches/settings changes while observing process
+RSS. Do not add arbitrary eviction before Three reference and GPU-completion behavior is understood.
+
+Use per-pass timestamps at shipping resolutions. AO, bloom, grade materialization and antialiasing
+are strong candidates because pixel scaling is proven, but draw/shadow/instancing submission still
+matters in dense RTS scenes. Optimize the measured limiter, not a generic counter.
+
+## Graphics toward AAA quality
+
+1. Finish visible geometry and LOD correctness before buying more effects.
+2. Complete foliage camera-band LOD, authored colour/depth wind parity, shared compressed atlas,
+   dense-copse timings and clearing/save restoration.
+3. Extend deterministic environmental composition with a few cause-linked templates: depot clutter,
+   wreck/scorch/debris and resource gravel/shards. Avoid another global noise/decal layer.
+4. Consolidate physical parameters and textures only inside compatible shader families. Do not merge
+   opaque props, vehicles and alpha-tested wind foliage into one mega-material.
+5. Provide bounded pre-baked noon/dusk/night/storm environment states. Runtime PMREM rebaking is
+   forbidden after a measured roughly 90 ms hitch. Spatial probe volumes are a later experiment.
+6. Treat improved shadows as a measured pilot. The current fitted, quantized, texel-snapped map is
+   already stable; a second cascade may double caster submissions.
+7. Graduate temporal reconstruction only after wind/pose/particle/water/construction motion,
+   camera-cut reset, disocclusion and reactive handling pass moving-camera readability. Keep SMAA
+   rollback.
+8. Use environment lighting plus limited short-range SSGI/contact bounce. A Lumen clone is outside
+   this roadmap.
+
+## WebGPU compute, workers and WASM
+
+The first compute candidate is render-only foliage visibility/LOD/indirect compaction. CPU owns
+placement, destruction, clearing and save identity; upload immutable data once and never read
+visibility back. The CPU Gate 3/4 path is the reference policy, not a second unrelated LOD system.
+
+Keep current coarse typed-array workers, transfer-owned results, deterministic fallback, shared KTX2
+pool and boot-worker teardown. Instrument simultaneous worker activity on 2/4/8-core targets before
+adding a global permit system.
+
+Reject for the active roadmap:
+
+- authoritative GPU compute;
+- a full simulation worker;
+- SharedArrayBuffer/WASM pthreads as the browser/desktop baseline;
+- renderer ownership in an OffscreenCanvas worker;
+- custom audio decoder workers;
+- per-entity WASM calls.
+
+A SIMD WASM proof is justified only when a flat-array kernel is a measured top cost. Keep one coarse
+call, module reuse, byte-exact JS fallback and end-to-end critical-path evidence. Vision remains
+same-thread until it materially threatens the fixed-tick budget; if it does, same-thread batched WASM
+is safer than wall-clock-dependent worker publication.
+
+## Package extraction
+
+Packages are not performance work unless they alter the emitted graph. Every proposed package needs
+named consumers, one-way dependencies, explicit subpath exports, package-local tests, compatibility
+facades and pre/post production chunk evidence.
+
+### Stage 0
+
+- Add package-cycle detection and an allowed internal game-layer graph.
+- Split the 8,500-line `core/config.ts` into domain-owned app modules behind compatibility exports.
+- Keep persisted literals, save/replay/protocol identity and bundle fingerprints unchanged.
+
+### First justified packages
+
+1. `@voltmarch/gltf-runtime`: shared GLTF/Meshopt/KTX2 lifecycle for Game and Asset Lab. Inject the
+   renderer, transcoder URL and worker limit; keep one exact Three peer. Share geometry helpers only
+   after equality fixtures prove identical semantics.
+2. `@voltmarch/audio-runtime`: WebAudio lifecycle, buses and buffer utilities shared by the game and
+   browser audio probe. First break the `AudioEngine`/`Samples` cycle. Keep game recipes, EVA, barks,
+   music policy, positional adapter and `audio.system.ts` local.
+3. `@voltmarch/procedural-kernels`: pure surface, terrain and water typed-array kernels plus data
+   protocol, shared by the worker, main-thread fallback and benchmark/visual tools. This is the
+   natural future WASM ABI host.
+
+### Conditional packages
+
+- `campaign-contracts` only when an editor/tool becomes a real consumer;
+- narrow render lifecycle/capability primitives after port inversion;
+- a game-specific runtime package only when a headless validator, worker host, replay verifier or
+  server becomes a second runtime consumer;
+- simulation last, with complete checksum/replay/desync gates.
+
+Do not create a generic `@voltmarch/core` or `@voltmarch/engine` from the current folders. That would
+formalize cycles, invite an unbounded API and provide no inherent boot or FPS improvement.
+
+## Primary industry references
+
+- Unreal asset management and async loading:
+  <https://dev.epicgames.com/documentation/en-us/unreal-engine/asset-management-in-unreal-engine>
+- Unreal PSO precaching:
+  <https://dev.epicgames.com/documentation/en-us/unreal-engine/pso-precaching-for-unreal-engine>
+- Unreal HLOD:
+  <https://dev.epicgames.com/documentation/en-us/unreal-engine/hierarchical-level-of-detail-in-unreal-engine>
+- Unreal temporal super resolution:
+  <https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine>
+- Unreal modules:
+  <https://dev.epicgames.com/documentation/unreal-engine/unreal-engine-modules>
+- Unity Job System:
+  <https://docs.unity.cn/Manual/JobSystemOverview.html>
+- Unity assembly definitions:
+  <https://docs.unity3d.com/Manual/assembly-definitions-intro.html>
+- Khronos KTX 2.0:
+  <https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html>
+- Khronos glTF Meshopt compression:
+  <https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Vendor/EXT_meshopt_compression/README.md>
+- Web Audio:
+  <https://www.w3.org/TR/webaudio-1.0/>
+
+## Universal change gates
+
+Every completed slice must run proportional focused tests, typecheck and a fresh production build.
+Cross-cutting architecture changes run the full monorepo/release-equivalent gate. Asset work also
+records before/after draw calls, triangles, transfer bytes, decoded texture memory, load/publication
+time and WebGL/WebGPU visual evidence while retaining its validated procedural fallback.

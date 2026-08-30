@@ -123,9 +123,11 @@ function fail(title: string, detail: unknown, state: 'error' | 'pending' = 'erro
 
 function dismissCurtain(): void {
   if (!curtain || curtain.dataset.state === 'error') return;
+  markBootPhase('app', 'curtain-dismiss-start');
   curtain.classList.add('is-hidden');
   window.setTimeout(() => {
     curtain.hidden = true;
+    markBootPhase('app', 'curtain-dismiss-end');
   }, 700);
 }
 
@@ -146,6 +148,7 @@ function nextPresentedFrame(): Promise<void> {
  * makes, so this file never becomes a second place where either API is defined.
  */
 import type { GameHandle } from './game/Bootstrap';
+import { beginBootRun, markBootPhase } from './core/boot-telemetry';
 import { installCloudflareAnalytics } from './platform/cloudflare-analytics';
 import type { Shell } from './shell/Shell';
 
@@ -170,6 +173,12 @@ async function main(): Promise<void> {
 
 /** `?shot=` — the pre-shell behaviour, byte for byte. */
 async function bootHarness(): Promise<void> {
+  beginBootRun({
+    surface: 'harness',
+    processState: 'fresh-page',
+    scenario: options.shot ?? options.map ?? 'default',
+    seed: options.seed ?? 1,
+  });
   status('Building world');
   /*
    * `?gpu=webgpu` ACQUIRES THE DEVICE HERE, BEFORE THE ENGINE EXISTS.
@@ -190,6 +199,7 @@ async function bootHarness(): Promise<void> {
   game.start();
 
   await nextPresentedFrame();
+  markBootPhase('app', 'first-stable-frame', { surface: 'harness-battlefield' });
   status('Ready');
   dismissCurtain();
 }
@@ -208,9 +218,14 @@ async function bootProduct(): Promise<void> {
     debugRoot: options.debugRoot,
     skipMenu,
     campaign,
+    initialSetup: {
+      map: options.map,
+      seed: options.seed,
+    },
     status,
     onError: (title, detail) => fail(title, detail),
     onReady: () => {
+      markBootPhase('app', 'menu-interactive');
       console.info(`[boot] menu interactive at ${performance.now().toFixed(0)} ms from navigation`);
       status('Ready');
       dismissCurtain();
@@ -221,6 +236,9 @@ async function bootProduct(): Promise<void> {
 
   await instance.start();
   await nextPresentedFrame();
+  markBootPhase('app', 'first-stable-frame', {
+    surface: skipMenu || campaign !== null ? 'product-battlefield' : 'product-menu',
+  });
   // `onReady` fires on the menu path; `?skipmenu=1` lands straight in a match
   // and never calls it, so drop the curtain here too. Both are idempotent.
   dismissCurtain();

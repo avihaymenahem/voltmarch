@@ -1,11 +1,11 @@
 /**
  * The title screen is the product's first interaction budget.
  *
- * A live match still decorates it, but that match must never again become a
- * prerequisite for the menu. These are wiring contracts rather than renderer
- * tests: the failure is ordering across main.ts, Shell and Bootstrap, and a
- * source-level tripwire names that ordering directly without booting 227 MB of
- * art in CI.
+ * No title visit may decorate itself with a throwaway battlefield: Bootstrap
+ * is reserved for a real match. These are wiring contracts rather than
+ * renderer tests: the failure is ordering across main.ts, Shell and Bootstrap,
+ * and a source-level tripwire names that ordering directly without booting
+ * 227 MB of art in CI.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -36,15 +36,15 @@ describe('initial title-menu boot', () => {
 
   it('publishes the interactive menu before scheduling its decorative battlefield', () => {
     const branchStart = shell.indexOf('if (!keepBackdrop || this.game === null) {');
-    const branchEnd = shell.indexOf('this.scheduleInitialBackdrop();', branchStart);
+    const branchEnd = shell.indexOf('this.scheduleEnginePreload();', branchStart);
     const imageFirst = branchStart >= 0 && branchEnd > branchStart
-      ? shell.slice(branchStart, branchEnd + 'this.scheduleInitialBackdrop();'.length)
+      ? shell.slice(branchStart, branchEnd + 'this.scheduleEnginePreload();'.length)
       : '';
     expect(imageFirst.length).toBeGreaterThan(0);
 
     const show = imageFirst.indexOf("this.show(new MainMenuScreen(this), 'menu')");
     const ready = imageFirst.indexOf('this.options.onReady?.()');
-    const schedule = imageFirst.indexOf('this.scheduleInitialBackdrop()');
+    const schedule = imageFirst.indexOf('this.scheduleEnginePreload()');
     expect(show).toBeGreaterThanOrEqual(0);
     expect(ready).toBeGreaterThan(show);
     expect(schedule).toBeGreaterThan(ready);
@@ -59,11 +59,10 @@ describe('initial title-menu boot', () => {
     expect(html).toContain('rel="preload" as="audio"');
   });
 
-  it('cancels a not-yet-started backdrop before launching a real match', () => {
+  it('cancels a queued module prefetch before launching a real match', () => {
     expect(shell).toMatch(
-      /await this\.finishOrCancelInitialBackdrop\(\);\s*\n\s*await this\.bootGame\(seed, false\)/,
+      /this\.cancelEnginePreload\(\);\s*\n\s*await this\.bootGame\(seed, false\)/,
     );
-    expect(shell).toContain('window.clearTimeout(this.backdropTimer)');
     expect(shell).toContain('window.clearTimeout(this.enginePreloadTimer)');
   });
 
@@ -77,13 +76,33 @@ describe('initial title-menu boot', () => {
     expect(shell).not.toContain('await nextFrames(6);');
   });
 
-  it('prefetches code separately and gives fast launch clicks a real quiet window', () => {
-    const schedule = /private scheduleInitialBackdrop\(\): void \{([\s\S]*?)\n\s*\}/.exec(shell)?.[1] ?? '';
+  it('prefetches code after first paint without scheduling world work', () => {
+    const methodStart = shell.indexOf('private scheduleEnginePreload(): void {');
+    const methodEnd = shell.indexOf('\n  private cancelEnginePreload()', methodStart);
+    const schedule = methodStart >= 0 && methodEnd > methodStart
+      ? shell.slice(methodStart, methodEnd)
+      : '';
     expect(schedule).toContain("import('../game/Bootstrap')");
     expect(schedule).toContain("import('../render/renderer')");
-    expect(shell).toContain('}, 1_000);');
-    expect(shell).toContain('}, 12_000);');
-    expect(shell).not.toContain('}, 750);');
+    expect(schedule).toContain('}, 1_000);');
+    expect(schedule).not.toContain('this.bootGame(');
+    expect(schedule).not.toContain('this.backdropTimer');
+  });
+
+  it('never routes a menu generation through decorative Bootstrap', () => {
+    expect(shell).not.toContain('private backdropBoot');
+    expect(shell).not.toContain('private backdropTimer');
+    expect(shell).not.toContain('private realMatchWarmed');
+    expect(shell).not.toMatch(/bootGame\([^,\n]+,\s*true\)/);
+  });
+
+  it('invalidates stale prefetch callbacks before real boot', () => {
+    expect(shell).toContain('const generation = this.enginePreloadGeneration;');
+    expect(shell.match(/generation !== this\.enginePreloadGeneration/g)?.length).toBe(1);
+    expect(shell).toContain('this.enginePreloadGeneration++;');
+    expect(shell).toMatch(
+      /this\.cancelEnginePreload\(\);\s*\n\s*await this\.bootGame\(seed, false\)/,
+    );
   });
 
   it('re-arms world workers at every real bootstrap, not during menu code prefetch', () => {
@@ -200,5 +219,14 @@ describe('initial title-menu boot', () => {
     expect(main).not.toMatch(/^import \{ bootstrap/m);
     expect(shell).toContain("import('../game/Bootstrap')");
     expect(shell).not.toMatch(/^import \{ bootstrap/m);
+  });
+
+  it('hands product-path map and seed flags to the first shell match', () => {
+    expect(main).toContain('initialSetup: {');
+    expect(main).toContain('map: options.map');
+    expect(main).toContain('seed: options.seed');
+    expect(shell).toContain('initialSetup.map');
+    expect(shell).toContain('initialSetup.seed');
+    expect(shell).toContain('this.setup = normalizeSetup(initialSetup, factionKeys)');
   });
 });

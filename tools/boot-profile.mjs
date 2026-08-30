@@ -3,10 +3,8 @@
  * BOOT PROFILER — where the loading curtain's seconds actually go.
  * ============================================================================
  * Boots the BUILT game in headless Chromium exactly as `tools/shoot.mjs` does,
- * then reads the numbers the boot log already prints and the ones `__VM` can be
- * asked for. Nothing here instruments the game: every figure below is a line
- * the game emits on its own, so a profile run and a normal run measure the same
- * code.
+ * then reads the opt-in, bounded telemetry snapshot through the existing
+ * `__VM.hooks` diagnostics seam. Normal play does not enable the recorder.
  *
  *   node tools/boot-profile.mjs                       # build, then profile
  *   node tools/boot-profile.mjs --no-build            # profile the existing dist/
@@ -40,8 +38,8 @@
 import { chromium } from 'playwright';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { existsSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -68,6 +66,8 @@ const RUNS = Number(opt('runs', '3'));
 const SHOT = opt('shot', '08-naval-water');
 const EXTRA = opt('flags', '');
 const OUT = opt('out', '');
+const RAW_OUT = opt('raw-out', '');
+const compactOutput = argv.includes('--compact');
 const LINGER = Number(opt('linger', '0'));
 const nativeWebGpu = EXTRA.split(',').some((pair) => pair.trim() === 'gpu=webgpu');
 
@@ -180,6 +180,7 @@ const PATTERNS = [
 ];
 
 const qs = new URLSearchParams();
+qs.set('bootprofile', '1');
 for (const [k, v] of Object.entries(flags)) {
   if (k === 'setup' || v === null || v === undefined) continue;
   qs.set(k, String(v));
@@ -232,7 +233,12 @@ for (let run = 0; run < RUNS; run++) {
     null, { timeout: 120_000 },
   );
   const ready = Date.now() - t0;
-
+  // Ready is the fade start. Wait for the existing transition timer only so
+  // the exported mark set also contains the curtain-dismiss end boundary.
+  await page.waitForFunction(
+    () => document.getElementById('loading')?.hidden === true,
+    null, { timeout: 2_000 },
+  );
   /*
    * A CHECKSUM OF WHAT IS ACTUALLY ON SCREEN.
    *
@@ -347,8 +353,50 @@ for (let run = 0; run < RUNS; run++) {
     };
   });
 
+  // Capture after the optional linger. Deferred GLTF/KTX2/conditioning spans
+  // are the reason linger exists; an earlier snapshot silently discarded them.
+  const instrumentation = await page.evaluate(() => ({
+    boot: window.__VM?.hooks?.bootReport?.() ?? null,
+    backend: window.__VM?.rendererHandle?.backend ?? null,
+    userAgent: navigator.userAgent,
+  }));
+  if (instrumentation.boot?.enabled !== true) {
+    throw new Error('built game did not publish enabled boot telemetry through __VM.hooks.bootReport');
+  }
+
   const text = lines.join('\n');
-  const s = { run, ready, checksum, hitches };
+  const stableFrame = instrumentation.boot.marks.find(
+    (mark) => mark.category === 'app' && mark.name === 'first-stable-frame',
+  );
+  const bootRun = instrumentation.boot.runs.at(-1) ?? null;
+  const s = {
+    run,
+    ready: stableFrame?.atMs ?? ready,
+    harnessReady: ready,
+    checksum,
+    hitches,
+    environment: {
+      backend: instrumentation.backend,
+      userAgent: instrumentation.userAgent,
+      cacheState: run === 0
+        ? 'first-page-in-fresh-browser-process'
+        : 'fresh-page-with-browser-process-and-http-cache-reused',
+      engineStateReused: false,
+      bootRun: bootRun?.context ?? null,
+      fixture: {
+        name: SHOT,
+        scenario: flags.setup?.map ?? flags.shot ?? 'default',
+        factions: flags.setup === undefined
+          ? 'fixture-authored'
+          : [
+              flags.setup.playerFaction,
+              ...flags.setup.opponents.map((opponent) => opponent.faction),
+            ].join(','),
+        seatedArmies: flags.setup === undefined ? null : flags.setup.opponents.length + 1,
+      },
+    },
+    boot: instrumentation.boot,
+  };
   for (const [key, re] of PATTERNS) {
     const m = re.exec(text);
     if (m === null) continue;
@@ -363,7 +411,7 @@ for (let run = 0; run < RUNS; run++) {
   const hitchSummary = hitches === null
     ? ''
     : `, hitches ${hitches.framesOver50Ms} (worst ${hitches.worstFrameGapMs.toFixed(1)} ms)`;
-  console.log(`  run ${run + 1}/${RUNS}: ready ${ready} ms, terrain ${s.terrain ?? '-'} ms, water ${s.water ?? '-'} ms${sum}${hitchSummary}`);
+  console.log(`  run ${run + 1}/${RUNS}: ready ${s.ready.toFixed(1)} ms, terrain ${s.terrain ?? '-'} ms, water ${s.water ?? '-'} ms${sum}${hitchSummary}`);
   await page.close();
 }
 
@@ -378,22 +426,84 @@ function median(values) {
   return v.length % 2 === 1 ? v[(v.length - 1) / 2] : Math.round((v[v.length / 2 - 1] + v[v.length / 2]) / 2);
 }
 
-const warm = samples.slice(1).length > 0 ? samples.slice(1) : samples;
+function percentileNearest(values, percentile) {
+  const sorted = values.filter((n) => typeof n === 'number').sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  return sorted[Math.max(0, Math.ceil(sorted.length * percentile) - 1)];
+}
+
+function spanTotals(sample) {
+  const result = {};
+  for (const span of sample.boot?.spans ?? []) {
+    const key = `${span.category}.${span.name}`;
+    result[key] = (result[key] ?? 0) + span.durationMs;
+  }
+  return result;
+}
+
+function resourceTotals(sample) {
+  const result = { count: 0, transferBytes: 0, decodedBytes: 0, byProtocol: {} };
+  for (const resource of sample.boot?.resources ?? []) {
+    result.count++;
+    result.transferBytes += resource.transferSize;
+    result.decodedBytes += resource.decodedBodySize;
+    result.byProtocol[resource.protocol] = (result.byProtocol[resource.protocol] ?? 0) + 1;
+  }
+  return result;
+}
+
+function compactSample(sample) {
+  return {
+    run: sample.run,
+    ready: sample.ready,
+    harnessReady: sample.harnessReady,
+    checksum: sample.checksum,
+    hitches: sample.hitches,
+    environment: sample.environment,
+    phasesMs: spanTotals(sample),
+    resources: resourceTotals(sample),
+    marks: (sample.boot?.marks ?? []).filter((mark) => mark.category === 'app'),
+    truncated: sample.boot?.truncated ?? null,
+  };
+}
+
+// Pages 2+ reuse the browser process and HTTP cache, but NOT page-owned decoded
+// assets, Three resources, renderer/device state or VOLTMARCH pipeline maps.
+// Call this state cache-warm, never engine-warm.
+const cacheWarm = samples.slice(1);
 const keys = [
   'ready', 'battlefield', 'systems', 'presentation', 'shaders',
   'terrain', 'water', 'terrainGen', 'waterBake', 'worldWorker', 'worldWorker2',
 ];
 const summary = {
+  schema: 3,
   shot: SHOT,
   flags: qs.toString(),
   runs: RUNS,
-  cold: samples[0],
+  firstPage: samples[0],
   checksum: samples[0].checksum,
-  median: {},
+  cacheWarmMedian: {},
+  cacheWarmP95: {},
+  cacheWarmMedianSpanTotalsMs: {},
+  cacheWarmMedianResources: {},
+  samples,
 };
 for (const k of keys) {
-  const m = median(warm.map((s) => s[k]));
-  if (m !== null) summary.median[k] = m;
+  const m = median(cacheWarm.map((s) => s[k]));
+  if (m !== null) summary.cacheWarmMedian[k] = m;
+  const p95 = percentileNearest(cacheWarm.map((s) => s[k]), 0.95);
+  if (p95 !== null) summary.cacheWarmP95[k] = p95;
+}
+const spanKeys = [...new Set(cacheWarm.flatMap((sample) => Object.keys(spanTotals(sample))))].sort();
+for (const key of spanKeys) {
+  summary.cacheWarmMedianSpanTotalsMs[key] = median(
+    cacheWarm.map((sample) => spanTotals(sample)[key] ?? 0),
+  );
+}
+for (const key of ['count', 'transferBytes', 'decodedBytes']) {
+  summary.cacheWarmMedianResources[key] = median(
+    cacheWarm.map((sample) => resourceTotals(sample)[key]),
+  );
 }
 
 console.log(`\n${SHOT}  (?${qs.toString()})`);
@@ -406,11 +516,27 @@ if (summary.checksum !== null && summary.checksum !== undefined) {
     console.log(`  !! ${drift.length} run(s) produced a DIFFERENT world from the same flags`);
   }
 }
-console.log(`  cold boot        ${samples[0].ready} ms`);
-for (const [k, v] of Object.entries(summary.median)) {
-  console.log(`  ${k.padEnd(16)} ${v} ms   (median of ${warm.length})`);
+console.log(`  first page       ${samples[0].ready} ms`);
+for (const [k, v] of Object.entries(summary.cacheWarmMedian)) {
+  console.log(`  ${k.padEnd(16)} ${v} ms   (cache-warm fresh-page median of ${cacheWarm.length})`);
 }
 if (OUT !== '') {
-  writeFileSync(OUT, `${JSON.stringify(summary, null, 2)}\n`);
+  const outputPath = resolve(ROOT, OUT);
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const output = compactOutput
+    ? {
+        ...summary,
+        compact: true,
+        firstPage: compactSample(samples[0]),
+        samples: samples.map(compactSample),
+      }
+    : summary;
+  writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
   console.log(`\n-> ${OUT}`);
+}
+if (RAW_OUT !== '') {
+  const rawOutputPath = resolve(ROOT, RAW_OUT);
+  mkdirSync(dirname(rawOutputPath), { recursive: true });
+  writeFileSync(rawOutputPath, `${JSON.stringify(summary, null, 2)}\n`);
+  console.log(`-> ${RAW_OUT} (raw)`);
 }

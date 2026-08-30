@@ -32,6 +32,7 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { performance as nodePerformance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 
 import { DEFAULT_SETTINGS, normaliseSettings, safeModeRequested, switchesFor } from './flags';
@@ -295,6 +296,7 @@ const CSP = [
 
 function installProtocol(): void {
   protocol.handle(SCHEME, async (request) => {
+    const protocolStarted = nodePerformance.now();
     const url = new URL(request.url);
     if (url.host !== HOST) return new Response('not found', { status: 404 });
 
@@ -305,6 +307,10 @@ function installProtocol(): void {
     if (!res.ok) return new Response('not found', { status: 404 });
 
     const headers = new Headers(res.headers);
+    headers.append(
+      'server-timing',
+      `vm_protocol_open;dur=${Math.max(0, nodePerformance.now() - protocolStarted).toFixed(2)}`,
+    );
     const type = contentTypeFor(abs);
     if (type !== null) headers.set('content-type', type);
     if (abs.endsWith('.html')) headers.set('content-security-policy', CSP);

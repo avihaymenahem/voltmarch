@@ -64,6 +64,8 @@ export const ALLOWED_FLAGS: readonly string[] = [
   'relay',
   'shot',
   'skipmenu',
+  'start',
+  'bootprofile',
   'unlockall',
 ];
 

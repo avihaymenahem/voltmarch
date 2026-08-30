@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltmarch.local/schemas/runtime-asset-cook.v1.json",
+  "title": "VOLTMARCH deterministic runtime asset cook manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "family",
+    "runtimeKey",
+    "sourceAuthority",
+    "inputs",
+    "inputSha256",
+    "outputs",
+    "contract",
+    "budgets"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "family": { "type": "string", "minLength": 1 },
+    "runtimeKey": { "type": "string", "minLength": 1 },
+    "sourceAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authoring", "runtimeControl"],
+      "properties": {
+        "authoring": { "$ref": "#/$defs/repoPath" },
+        "runtimeControl": { "$ref": "#/$defs/repoPath" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod0", "lod1", "lod2", "shadow"],
+      "properties": {
+        "lod0": { "$ref": "#/$defs/repoPath" },
+        "lod1": { "$ref": "#/$defs/repoPath" },
+        "lod2": { "$ref": "#/$defs/repoPath" },
+        "shadow": { "$ref": "#/$defs/repoPath" }
+      }
+    },
+    "inputSha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authoring", "runtimeControl", "lod0", "lod1", "lod2", "shadow"],
+      "properties": {
+        "authoring": { "$ref": "#/$defs/sha256" },
+        "runtimeControl": { "$ref": "#/$defs/sha256" },
+        "lod0": { "$ref": "#/$defs/sha256" },
+        "lod1": { "$ref": "#/$defs/sha256" },
+        "lod2": { "$ref": "#/$defs/sha256" },
+        "shadow": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod0", "lod1", "lod2", "shadow", "report"],
+      "properties": {
+        "lod0": { "$ref": "#/$defs/repoPath" },
+        "lod1": { "$ref": "#/$defs/repoPath" },
+        "lod2": { "$ref": "#/$defs/repoPath" },
+        "shadow": { "$ref": "#/$defs/repoPath" },
+        "report": { "$ref": "#/$defs/repoPath" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hullName",
+        "movingParts",
+        "target",
+        "sourceLongAxis",
+        "yawDeg",
+        "targetPivot",
+        "creaseAngleDeg",
+        "lodDistances",
+        "sockets"
+      ],
+      "properties": {
+        "hullName": { "type": "string", "minLength": 1 },
+        "movingParts": { "type": "array", "maxItems": 0 },
+        "target": { "$ref": "#/$defs/vec3Positive" },
+        "sourceLongAxis": { "enum": ["x", "z"] },
+        "yawDeg": { "type": "number" },
+        "targetPivot": { "$ref": "#/$defs/vec3" },
+        "creaseAngleDeg": { "type": "number", "exclusiveMinimum": 0, "maximum": 180 },
+        "lodDistances": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "number", "exclusiveMinimum": 0 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "sockets": { "const": "procedural-authority" }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxLod0Bytes", "maxFamilyBytes", "maxTriangles"],
+      "properties": {
+        "maxLod0Bytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "maxFamilyBytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "maxTriangles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lod0", "lod1", "lod2", "shadow"],
+          "properties": {
+            "lod0": { "type": "integer", "exclusiveMinimum": 0 },
+            "lod1": { "type": "integer", "exclusiveMinimum": 0 },
+            "lod2": { "type": "integer", "exclusiveMinimum": 0 },
+            "shadow": { "type": "integer", "exclusiveMinimum": 0 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "repoPath": {
+      "type": "string",
+      "pattern": "^(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\/]+(?:/[^\\\\/]+)*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "vec3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "vec3Positive": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "exclusiveMinimum": 0 },
+        { "type": "number", "exclusiveMinimum": 0 },
+        { "type": "number", "exclusiveMinimum": 0 }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}

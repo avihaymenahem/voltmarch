@@ -60,22 +60,22 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
 
    **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
 
-   **THE TITLE MENU DOES NOT WAIT FOR THE ENGINE, EVEN AFTER A MATCH.** `apps/game/src/main.ts` keeps
+   **THE COLD TITLE MENU DOES NOT START THE ENGINE.** `apps/game/src/main.ts` keeps
    both `Shell` and `Bootstrap` behind dynamic boundaries; `Shell.openMenu` mounts
    `MainMenuScreen`, fires `onReady`, paints the key art, and only then disposes the previous world
-   and schedules background work. One second after paint it prefetches the
-   engine modules without mutating game state. The decorative battlefield waits for a 12-second
-   quiet window, and a real launch cancels that timer before `bootGame`. Do not shorten it back to
-   the old 750 ms: on WebGPU a fast Skirmish click then waited behind the title decoration's own
-   10–14 seconds of shader compilation. Key art is the complete fallback until the live canvas is
-   ready; `vm-menu-preparing` owns the crossfade.
+   and schedules read-only module prefetch. A real match exclusively owns Bootstrap, global game
+   context and GPU pipeline compilation; title visits never create a throwaway battlefield. Menu
+   generations invalidate stale prefetch callbacks. Do not restore decorative Bootstrap: on WebGPU
+   a fast Skirmish click could wait behind the title decoration's own 10–14 seconds of shader
+   compilation. A future live background must be a dedicated lightweight scene with no simulation
+   context. Key art is the complete title surface; `vm-menu-preparing` owns the crossfade to gameplay.
 
    `Bootstrap.ready` first runs one zero-time presentation frame so lazy entity batches actually
    exist, then awaits WebGPU's asynchronous `compile()` alias. It logs the measured split as
    `[boot] battlefield ... systems ... presentation ... shaders ... pipeline cache ... slowest ...`;
    Electron forwards only `[boot]`
    renderer messages in dev. On the RTX 3080 desktop the interactive menu measured 0.35–0.60 s
-   after navigation while the optional scene completed later. The original Allied/Soviet imported
+   after navigation; no title battlefield follows it now. The original Allied/Soviet imported
    loaders filter against `art/boot-plan.ts`, Meridian/Reclamation return before touching `ctx()`,
    and the two-army title plan retains only the one opponent it actually seats. Screenshot/harness
    boots leave the plan null, which intentionally means every pack.
@@ -2239,12 +2239,12 @@ new WebGL implementation. `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` owns that roa
   before installation and pinned by tests; a Three upgrade that changes it warns and falls back to
   ordinary recompilation. This is bounded by shader/render-state variants, not match count.
   WebGPU exposes no serializable pipeline cache, so this is process-lifetime reuse, not a fake
-  promise of offline GPU binaries. On the RTX 3080, a clean native-WebGPU process measured the
-  cold title battlefield's shader phase at 15.0 s and the subsequent real gameplay battlefield at
-  7.7 s, with no validation error or backend recovery. Those are different worlds rather than an
-  artificial same-scene benchmark, so treat the 49% reduction as an observed process-level result,
-  not a universal ratio. A GPU/device loss still invalidates everything and requires the existing
-  full reload.
+  promise of offline GPU binaries. A historical RTX 3080 probe measured a cold title battlefield's
+  shader phase at 15.0 s and the subsequent real gameplay battlefield at 7.7 s, with no validation
+  error or backend recovery. Production no longer creates that decorative world in either cold or
+  warm title visits. The measured worlds also differed, so treat the 49% reduction as a historical
+  process-level result, not a universal ratio. A GPU/device loss still invalidates everything and
+  requires the existing full reload.
 - **`compile()` MUST COME AFTER ONE ZERO-TIME `registry.runFrame`.** Scenario entities are spawned
   at the end of registry init, while `RenderBridge` creates their real batches in frame systems.
   Compiling immediately after `registry.init()` warmed terrain and post effects but left unit and

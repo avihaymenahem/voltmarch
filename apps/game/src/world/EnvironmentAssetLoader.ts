@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { linearColorTriple } from '../core/assets';
+import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
 import { createRuntimeGLTFLoader } from '../art/RuntimeGLTFLoader';
 import { applyShroudTint } from '../render/FogOfWar';
 import { nodePath } from '../render/gpu-path';
@@ -16,6 +17,18 @@ import type { BiomeName } from './Biomes';
 
 const loader = createRuntimeGLTFLoader();
 const textureLoader = new THREE.TextureLoader();
+const loadTextureAsync = textureLoader.loadAsync.bind(textureLoader);
+textureLoader.loadAsync = async (url, onProgress) => {
+  const finish = beginBootSpan('texture', 'image-source-ready', { asset: bootAssetLabel(url) });
+  try {
+    const texture = await loadTextureAsync(url, onProgress);
+    finish();
+    return texture;
+  } catch (err) {
+    finish('error');
+    throw err;
+  }
+};
 export const FOLIAGE_ALPHA_TEST = 0.85;
 type EnvironmentMaterial = THREE.Material;
 
@@ -622,6 +635,9 @@ async function loadDelivery(
   propSurfaceMaterial: EnvironmentMaterial | undefined,
 ): Promise<PropGeometry> {
   const gltf = await loader.loadAsync(deliveryUrl(file));
+  const finishConditioning = beginBootSpan('conditioning', 'environment-asset', { asset: file });
+  let conditioningStatus: 'ok' | 'error' = 'error';
+  try {
   gltf.scene.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
   gltf.scene.traverse((object) => { if (object instanceof THREE.Mesh) meshes.push(object); });
@@ -661,7 +677,7 @@ async function loadDelivery(
     Math.hypot(box.min.x - centre.x, box.min.z - centre.z),
     Math.hypot(box.max.x - centre.x, box.max.z - centre.z),
   );
-  return {
+  const result: PropGeometry = {
     def,
     geometry,
     material: authoredMaterial === 'embedded'
@@ -682,6 +698,11 @@ async function loadDelivery(
     boundHeight: Math.max(0.5, size.y),
     boundSphereRadius: geometry.boundingSphere?.radius ?? Math.hypot(radius, size.y * 0.5),
   };
+  conditioningStatus = 'ok';
+  return result;
+  } finally {
+    finishConditioning(conditioningStatus);
+  }
 }
 
 function disposeDelivery(

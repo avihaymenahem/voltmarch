@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import terrainDetailUrl from '../../../../packages/assets/game/terrain/universal-terrain-mask-4k.png?url';
+import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
 
 /** World-space size of one repeat of the supplied tileable terrain artwork. */
 export const TERRAIN_DETAIL_TILE_METRES = 72;
@@ -50,15 +51,20 @@ export function preloadTerrainDetailMask(): Promise<THREE.Texture> {
   if (browserLoad !== null) return browserLoad;
 
   const mask = createTerrainDetailMask();
+  const finish = beginBootSpan('texture', 'image-source-ready', {
+    asset: bootAssetLabel(terrainDetailUrl),
+  });
   browserLoad = new Promise<THREE.Texture>((resolve, reject) => {
     const image = new Image();
     image.decoding = 'async';
     image.addEventListener('load', () => {
       mask.image = image;
       mask.needsUpdate = true;
+      finish();
       resolve(mask);
     }, { once: true });
     image.addEventListener('error', () => {
+      finish('error');
       reject(new Error(`Terrain detail mask failed to load: ${terrainDetailUrl}`));
     }, { once: true });
     image.src = terrainDetailUrl;

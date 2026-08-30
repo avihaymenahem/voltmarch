@@ -71,7 +71,10 @@ with no number is untracked, and that is itself the bug.
   ghosting pass a fixed-seed readability scorecard.
 - **Meshopt rollout decision.** *(untracked)* The Chrono Miner POC is 37.6% smaller and its shared
   SIMD decoder is fast in isolation. Measure packaged cold load including decoder startup, transfer,
-  scene construction, KTX2 and GPU upload before compressing another imported family.
+  scene construction, KTX2 and GPU upload before compressing another imported family. The separate
+  Float32 offline-cook proof is not that promotion evidence: it removed about 263 ms of conditioning
+  but grew the family 71.03% and worsened the warm request window by 226.20 ms, so it was rejected and
+  rolled back. Any next cook must retain compact transport and beat complete family readiness.
 
 ---
 

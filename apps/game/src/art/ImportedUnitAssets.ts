@@ -15,6 +15,7 @@ import {
 import { ctx } from '../game/context';
 import { PartId } from '../core/types';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
+import { beginBootSpan } from '../core/boot-telemetry';
 import { applyShroudTint } from '../render/FogOfWar';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
 import { unitMaterialFor, type UnitModel } from './UnitFactory';
@@ -1579,6 +1580,12 @@ export async function loadImportedUnitOverride(
   } else {
     loaded.push(...await Promise.all(urls.map((url) => loader.loadAsync(url))));
   }
+  const finishConditioning = beginBootSpan('conditioning', 'unit-family', {
+    asset: spec.key,
+    path: 'control',
+  });
+  let conditioningStatus: 'ok' | 'error' = 'error';
+  try {
 
   const hullSources = resolveImportedPartMeshes(loaded[0].scene, spec.hullName, spec.label);
   const turretSources = spec.turretName === undefined
@@ -1758,7 +1765,7 @@ export async function loadImportedUnitOverride(
     });
   }
 
-  return {
+  const result: KindMesh = {
     geometry,
     lods: hullLods,
     material,
@@ -1768,6 +1775,11 @@ export async function loadImportedUnitOverride(
     castShadow: shadowGeometry === undefined,
     receiveShadow: true,
   };
+  conditioningStatus = 'ok';
+  return result;
+  } finally {
+    finishConditioning(conditioningStatus);
+  }
 }
 
 export function disposeImportedUnitAssets(): void {

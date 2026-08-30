@@ -1,0 +1,52 @@
+{
+  "$schema": "../runtime-asset-cook.schema.json",
+  "version": 1,
+  "family": "allied-chrono-miner",
+  "runtimeKey": "allied_harvester",
+  "sourceAuthority": {
+    "authoring": "packages/assets/game/units/allies/chrono-miner.glb",
+    "runtimeControl": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb"
+  },
+  "inputs": {
+    "lod0": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb",
+    "lod1": "packages/assets/game/units/allies/derived/chrono-miner.lod1.glb",
+    "lod2": "packages/assets/game/units/allies/derived/chrono-miner.lod2.glb",
+    "shadow": "packages/assets/game/units/allies/derived/chrono-miner.shadow.glb"
+  },
+  "inputSha256": {
+    "authoring": "19f1c372be50db49ae1c259472b424b69e86be6f6a8312d3435ce24992306f94",
+    "runtimeControl": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+    "lod0": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+    "lod1": "c3768b9490e5b124aa8a8848ca2854e974458f8a94d2767e4dbacb20f81dd546",
+    "lod2": "b739c3af4815df43198b03dc16b3bd4f25e2f35d44ed923406175433eb7d0f18",
+    "shadow": "f6c3467a1e965a581c1e3704e2c209c96ccae0c119454b49eaa84377721cf5b6"
+  },
+  "outputs": {
+    "lod0": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.glb",
+    "lod1": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.lod1.glb",
+    "lod2": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.lod2.glb",
+    "shadow": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.shadow.glb",
+    "report": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime-cook-report.json"
+  },
+  "contract": {
+    "hullName": "Hull",
+    "movingParts": [],
+    "target": [4.0, 3.3, 8.6],
+    "sourceLongAxis": "x",
+    "yawDeg": 90,
+    "targetPivot": [0, 0, 0],
+    "creaseAngleDeg": 30,
+    "lodDistances": [46, 76],
+    "sockets": "procedural-authority"
+  },
+  "budgets": {
+    "maxLod0Bytes": 6291456,
+    "maxFamilyBytes": 8388608,
+    "maxTriangles": {
+      "lod0": 50000,
+      "lod1": 25000,
+      "lod2": 15000,
+      "shadow": 2000
+    }
+  }
+}

@@ -1,0 +1,1177 @@
+{
+  "schema": 3,
+  "shot": "00-mcv-four-army",
+  "flags": "bootprofile=1&seed=7&skipmenu=1&start=mcv&gpu=webgl",
+  "runs": 5,
+  "cacheWarmP95": { "ready": 15851 },
+  "firstPage": {
+    "run": 0,
+    "ready": 21587.89999999106,
+    "harnessReady": 21718,
+    "checksum": {
+      "chunks": 64,
+      "terrain": 2818430940,
+      "water": 3362851701
+    },
+    "hitches": {
+      "framesOver50Ms": 0,
+      "worstFrameGapMs": 0,
+      "topFrameGapsMs": [],
+      "longTasks": 1,
+      "worstLongTaskMs": 70,
+      "topLongTasks": [
+        {
+          "startTime": 21891.20000000298,
+          "duration": 70
+        }
+      ],
+      "peakSystems": [
+        {
+          "id": "ui.hud#f",
+          "phase": 80,
+          "last": 33.3999999910593,
+          "avg": 0.5566666665176551,
+          "peak": 33.3999999910593
+        },
+        {
+          "id": "render.present#f",
+          "phase": 900,
+          "last": 3.4000000059604645,
+          "avg": 0.05666666676600774,
+          "peak": 3.4000000059604645
+        },
+        {
+          "id": "render.post#f",
+          "phase": 900,
+          "last": 3.199999988079071,
+          "avg": 0.05333333313465118,
+          "peak": 3.199999988079071
+        },
+        {
+          "id": "sim.orecrisis",
+          "phase": 300,
+          "last": 0,
+          "avg": 0.04333333323399226,
+          "peak": 2.5999999940395355
+        },
+        {
+          "id": "sim.vision",
+          "phase": 1300,
+          "last": 1.4000000059604645,
+          "avg": 0.04333333348234494,
+          "peak": 1.4000000059604645
+        },
+        {
+          "id": "sim.economy",
+          "phase": 300,
+          "last": 0,
+          "avg": 0.013333333532015483,
+          "peak": 0.7000000029802322
+        },
+        {
+          "id": "sim.features.superweapons",
+          "phase": 200,
+          "last": 0.09999999403953552,
+          "avg": 0.008333333333333333,
+          "peak": 0.4000000059604645
+        },
+        {
+          "id": "audio#f",
+          "phase": 60,
+          "last": 0.3999999910593033,
+          "avg": 0.006666666517655055,
+          "peak": 0.3999999910593033
+        },
+        {
+          "id": "sim.ai",
+          "phase": 400,
+          "last": 0.20000000298023224,
+          "avg": 0.014999999602635702,
+          "peak": 0.3999999910593033
+        },
+        {
+          "id": "sim.production",
+          "phase": 200,
+          "last": 0.09999999403953552,
+          "avg": 0.009999999900658925,
+          "peak": 0.30000001192092896
+        },
+        {
+          "id": "sim.tips",
+          "phase": 300,
+          "last": 0,
+          "avg": 0.0049999999503294625,
+          "peak": 0.29999999701976776
+        },
+        {
+          "id": "world.scatter#f",
+          "phase": 10,
+          "last": 0.20000000298023224,
+          "avg": 0.0033333333830038708,
+          "peak": 0.20000000298023224
+        }
+      ]
+    },
+    "environment": {
+      "backend": "webgl",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "cacheState": "first-page-in-fresh-browser-process",
+      "engineStateReused": false,
+      "bootRun": {
+        "pageBootIndex": 1,
+        "processState": "fresh-page",
+        "surface": "product",
+        "scenario": "temperate-valley",
+        "factions": "allies,soviets,meridian,reclaim",
+        "seed": 7,
+        "backend": "webgl",
+        "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "adapter": null
+      },
+      "fixture": {
+        "name": "00-mcv-four-army",
+        "scenario": "temperate-valley",
+        "factions": "allies,soviets,meridian,reclaim",
+        "seatedArmies": 4
+      }
+    },
+    "phasesMs": {
+      "gpu.renderer-prepare": 0.09999999403953552,
+      "gltf.load-parse-decode": 274437.799999848,
+      "conditioning.infantry-family": 439.40000000596046,
+      "texture.ktx2-ready": 545828.1000001281,
+      "conditioning.structure-family": 4011.6999999433756,
+      "conditioning.unit-family": 3004.9000000059605,
+      "texture.image-source-ready": 296.5,
+      "conditioning.environment-asset": 86.70000007748604,
+      "conditioning.wreck-family": 10.899999991059303,
+      "registry.systems-init": 15587.90000000596,
+      "registry.presentation-populate": 565.8000000119209,
+      "gpu.pipeline-compile": 40.79999999701977
+    },
+    "resources": {
+      "count": 541,
+      "transferBytes": 465480644,
+      "decodedBytes": 468949865,
+      "byProtocol": {
+        "http": 541
+      }
+    },
+    "marks": [
+      {
+        "runId": null,
+        "category": "app",
+        "name": "entry-module",
+        "atMs": 28.700000002980232
+      },
+      {
+        "runId": 1,
+        "category": "app",
+        "name": "game.ready",
+        "atMs": 20827,
+        "detail": {
+          "backend": "webgl"
+        }
+      },
+      {
+        "runId": 1,
+        "category": "app",
+        "name": "first-stable-frame",
+        "atMs": 21587.89999999106,
+        "detail": {
+          "surface": "product-battlefield"
+        }
+      },
+      {
+        "runId": 1,
+        "category": "app",
+        "name": "curtain-dismiss-start",
+        "atMs": 21588
+      }
+    ],
+    "truncated": {
+      "marks": false,
+      "spans": false,
+      "longTasks": false,
+      "resources": false
+    }
+  },
+  "checksum": {
+    "chunks": 64,
+    "terrain": 2818430940,
+    "water": 3362851701
+  },
+  "cacheWarmMedian": {
+    "ready": 15053,
+    "battlefield": 14359,
+    "systems": 13626,
+    "presentation": 123,
+    "shaders": 44,
+    "terrain": 85,
+    "water": 11,
+    "worldWorker": 632,
+    "worldWorker2": 47
+  },
+  "cacheWarmMedianSpanTotalsMs": {
+    "conditioning.environment-asset": 79,
+    "conditioning.infantry-family": 329,
+    "conditioning.structure-family": 3530,
+    "conditioning.unit-family": 2634,
+    "conditioning.wreck-family": 10,
+    "gltf.load-parse-decode": 236462,
+    "gpu.pipeline-compile": 43,
+    "gpu.renderer-prepare": 0,
+    "registry.presentation-populate": 123,
+    "registry.systems-init": 13626,
+    "texture.image-source-ready": 271,
+    "texture.ktx2-ready": 484669
+  },
+  "cacheWarmMedianResources": {
+    "count": 541,
+    "transferBytes": 465608086,
+    "decodedBytes": 469077307
+  },
+  "samples": [
+    {
+      "run": 0,
+      "ready": 21587.89999999106,
+      "harnessReady": 21718,
+      "checksum": {
+        "chunks": 64,
+        "terrain": 2818430940,
+        "water": 3362851701
+      },
+      "hitches": {
+        "framesOver50Ms": 0,
+        "worstFrameGapMs": 0,
+        "topFrameGapsMs": [],
+        "longTasks": 1,
+        "worstLongTaskMs": 70,
+        "topLongTasks": [
+          {
+            "startTime": 21891.20000000298,
+            "duration": 70
+          }
+        ],
+        "peakSystems": [
+          {
+            "id": "ui.hud#f",
+            "phase": 80,
+            "last": 33.3999999910593,
+            "avg": 0.5566666665176551,
+            "peak": 33.3999999910593
+          },
+          {
+            "id": "render.present#f",
+            "phase": 900,
+            "last": 3.4000000059604645,
+            "avg": 0.05666666676600774,
+            "peak": 3.4000000059604645
+          },
+          {
+            "id": "render.post#f",
+            "phase": 900,
+            "last": 3.199999988079071,
+            "avg": 0.05333333313465118,
+            "peak": 3.199999988079071
+          },
+          {
+            "id": "sim.orecrisis",
+            "phase": 300,
+            "last": 0,
+            "avg": 0.04333333323399226,
+            "peak": 2.5999999940395355
+          },
+          {
+            "id": "sim.vision",
+            "phase": 1300,
+            "last": 1.4000000059604645,
+            "avg": 0.04333333348234494,
+            "peak": 1.4000000059604645
+          },
+          {
+            "id": "sim.economy",
+            "phase": 300,
+            "last": 0,
+            "avg": 0.013333333532015483,
+            "peak": 0.7000000029802322
+          },
+          {
+            "id": "sim.features.superweapons",
+            "phase": 200,
+            "last": 0.09999999403953552,
+            "avg": 0.008333333333333333,
+            "peak": 0.4000000059604645
+          },
+          {
+            "id": "audio#f",
+            "phase": 60,
+            "last": 0.3999999910593033,
+            "avg": 0.006666666517655055,
+            "peak": 0.3999999910593033
+          },
+          {
+            "id": "sim.ai",
+            "phase": 400,
+            "last": 0.20000000298023224,
+            "avg": 0.014999999602635702,
+            "peak": 0.3999999910593033
+          },
+          {
+            "id": "sim.production",
+            "phase": 200,
+            "last": 0.09999999403953552,
+            "avg": 0.009999999900658925,
+            "peak": 0.30000001192092896
+          },
+          {
+            "id": "sim.tips",
+            "phase": 300,
+            "last": 0,
+            "avg": 0.0049999999503294625,
+            "peak": 0.29999999701976776
+          },
+          {
+            "id": "world.scatter#f",
+            "phase": 10,
+            "last": 0.20000000298023224,
+            "avg": 0.0033333333830038708,
+            "peak": 0.20000000298023224
+          }
+        ]
+      },
+      "environment": {
+        "backend": "webgl",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "cacheState": "first-page-in-fresh-browser-process",
+        "engineStateReused": false,
+        "bootRun": {
+          "pageBootIndex": 1,
+          "processState": "fresh-page",
+          "surface": "product",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seed": 7,
+          "backend": "webgl",
+          "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "adapter": null
+        },
+        "fixture": {
+          "name": "00-mcv-four-army",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seatedArmies": 4
+        }
+      },
+      "phasesMs": {
+        "gpu.renderer-prepare": 0.09999999403953552,
+        "gltf.load-parse-decode": 274437.799999848,
+        "conditioning.infantry-family": 439.40000000596046,
+        "texture.ktx2-ready": 545828.1000001281,
+        "conditioning.structure-family": 4011.6999999433756,
+        "conditioning.unit-family": 3004.9000000059605,
+        "texture.image-source-ready": 296.5,
+        "conditioning.environment-asset": 86.70000007748604,
+        "conditioning.wreck-family": 10.899999991059303,
+        "registry.systems-init": 15587.90000000596,
+        "registry.presentation-populate": 565.8000000119209,
+        "gpu.pipeline-compile": 40.79999999701977
+      },
+      "resources": {
+        "count": 541,
+        "transferBytes": 465480644,
+        "decodedBytes": 468949865,
+        "byProtocol": {
+          "http": 541
+        }
+      },
+      "marks": [
+        {
+          "runId": null,
+          "category": "app",
+          "name": "entry-module",
+          "atMs": 28.700000002980232
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "game.ready",
+          "atMs": 20827,
+          "detail": {
+            "backend": "webgl"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "first-stable-frame",
+          "atMs": 21587.89999999106,
+          "detail": {
+            "surface": "product-battlefield"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "curtain-dismiss-start",
+          "atMs": 21588
+        }
+      ],
+      "truncated": {
+        "marks": false,
+        "spans": false,
+        "longTasks": false,
+        "resources": false
+      }
+    },
+    {
+      "run": 1,
+      "ready": 15127.40000000596,
+      "harnessReady": 15159,
+      "checksum": {
+        "chunks": 64,
+        "terrain": 2818430940,
+        "water": 3362851701
+      },
+      "hitches": {
+        "framesOver50Ms": 0,
+        "worstFrameGapMs": 0,
+        "topFrameGapsMs": [],
+        "longTasks": 0,
+        "worstLongTaskMs": 0,
+        "topLongTasks": [],
+        "peakSystems": [
+          {
+            "id": "ui.hud#f",
+            "phase": 80,
+            "last": 15.700000002980232,
+            "avg": 0.2616666667163372,
+            "peak": 15.700000002980232
+          },
+          {
+            "id": "render.present#f",
+            "phase": 900,
+            "last": 4.5,
+            "avg": 0.075,
+            "peak": 4.5
+          },
+          {
+            "id": "render.post#f",
+            "phase": 900,
+            "last": 4.199999988079071,
+            "avg": 0.06999999980131785,
+            "peak": 4.199999988079071
+          },
+          {
+            "id": "sim.vision",
+            "phase": 1300,
+            "last": 0,
+            "avg": 0.013333333283662796,
+            "peak": 0.7999999970197678
+          },
+          {
+            "id": "sim.ai",
+            "phase": 400,
+            "last": 0.09999999403953552,
+            "avg": 0.015000000099341075,
+            "peak": 0.6000000089406967
+          },
+          {
+            "id": "game.outcome#f",
+            "phase": 80,
+            "last": 0.20000000298023224,
+            "avg": 0.0033333333830038708,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "sim.production",
+            "phase": 200,
+            "last": 0.09999999403953552,
+            "avg": 0.008333333084980648,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "render.bridge#f",
+            "phase": 30,
+            "last": 0.19999998807907104,
+            "avg": 0.0033333331346511843,
+            "peak": 0.19999998807907104
+          },
+          {
+            "id": "sim.vision#f",
+            "phase": 20,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "art.garrison-markers#f",
+            "phase": 50,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.relocate",
+            "phase": 100,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.spatial",
+            "phase": 800,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          }
+        ]
+      },
+      "environment": {
+        "backend": "webgl",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "cacheState": "fresh-page-with-browser-process-and-http-cache-reused",
+        "engineStateReused": false,
+        "bootRun": {
+          "pageBootIndex": 1,
+          "processState": "fresh-page",
+          "surface": "product",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seed": 7,
+          "backend": "webgl",
+          "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "adapter": null
+        },
+        "fixture": {
+          "name": "00-mcv-four-army",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seatedArmies": 4
+        }
+      },
+      "phasesMs": {
+        "gpu.renderer-prepare": 0,
+        "gltf.load-parse-decode": 232231.80000011623,
+        "conditioning.infantry-family": 379.10000002384186,
+        "texture.ktx2-ready": 468164.9999999553,
+        "conditioning.structure-family": 3401.5999999940395,
+        "conditioning.unit-family": 2453.5,
+        "texture.image-source-ready": 295.89999997615814,
+        "conditioning.environment-asset": 89.30000005662441,
+        "conditioning.wreck-family": 13.599999994039536,
+        "registry.systems-init": 13576,
+        "registry.presentation-populate": 137.79999999701977,
+        "gpu.pipeline-compile": 49.3999999910593
+      },
+      "resources": {
+        "count": 541,
+        "transferBytes": 465081846,
+        "decodedBytes": 468551067,
+        "byProtocol": {
+          "http": 541
+        }
+      },
+      "marks": [
+        {
+          "runId": null,
+          "category": "app",
+          "name": "entry-module",
+          "atMs": 28.100000008940697
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "game.ready",
+          "atMs": 14846.70000000298,
+          "detail": {
+            "backend": "webgl"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "first-stable-frame",
+          "atMs": 15127.40000000596,
+          "detail": {
+            "surface": "product-battlefield"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "curtain-dismiss-start",
+          "atMs": 15127.60000000894
+        }
+      ],
+      "truncated": {
+        "marks": false,
+        "spans": false,
+        "longTasks": false,
+        "resources": false
+      }
+    },
+    {
+      "run": 2,
+      "ready": 15851,
+      "harnessReady": 15875,
+      "checksum": {
+        "chunks": 64,
+        "terrain": 2818430940,
+        "water": 3362851701
+      },
+      "hitches": {
+        "framesOver50Ms": 0,
+        "worstFrameGapMs": 0,
+        "topFrameGapsMs": [],
+        "longTasks": 0,
+        "worstLongTaskMs": 0,
+        "topLongTasks": [],
+        "peakSystems": [
+          {
+            "id": "ui.hud#f",
+            "phase": 80,
+            "last": 33.5,
+            "avg": 0.5583333333333333,
+            "peak": 33.5
+          },
+          {
+            "id": "render.present#f",
+            "phase": 900,
+            "last": 3.7999999970197678,
+            "avg": 0.0633333332836628,
+            "peak": 3.7999999970197678
+          },
+          {
+            "id": "render.post#f",
+            "phase": 900,
+            "last": 3.5,
+            "avg": 0.058333333333333334,
+            "peak": 3.5
+          },
+          {
+            "id": "sim.ai",
+            "phase": 400,
+            "last": 0.29999999701976776,
+            "avg": 0.02166666661699613,
+            "peak": 1
+          },
+          {
+            "id": "sim.vision",
+            "phase": 1300,
+            "last": 0,
+            "avg": 0.016666666666666666,
+            "peak": 0.9000000059604645
+          },
+          {
+            "id": "ui.objectives#f",
+            "phase": 80,
+            "last": 0.20000000298023224,
+            "avg": 0.0033333333830038708,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "sim.production",
+            "phase": 200,
+            "last": 0.10000000894069672,
+            "avg": 0.00833333358168602,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "world.water#f",
+            "phase": 10,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "vfx#f",
+            "phase": 60,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.movement",
+            "phase": 700,
+            "last": 0.10000000894069672,
+            "avg": 0.0050000004470348355,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "render.bridge#f",
+            "phase": 30,
+            "last": 0.09999999403953552,
+            "avg": 0.0016666665673255921,
+            "peak": 0.09999999403953552
+          },
+          {
+            "id": "sim.commanderPowers",
+            "phase": 100,
+            "last": 0.09999999403953552,
+            "avg": 0.0016666665673255921,
+            "peak": 0.09999999403953552
+          }
+        ]
+      },
+      "environment": {
+        "backend": "webgl",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "cacheState": "fresh-page-with-browser-process-and-http-cache-reused",
+        "engineStateReused": false,
+        "bootRun": {
+          "pageBootIndex": 1,
+          "processState": "fresh-page",
+          "surface": "product",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seed": 7,
+          "backend": "webgl",
+          "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "adapter": null
+        },
+        "fixture": {
+          "name": "00-mcv-four-army",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seatedArmies": 4
+        }
+      },
+      "phasesMs": {
+        "gpu.renderer-prepare": 0.09999999403953552,
+        "gltf.load-parse-decode": 242472.70000006258,
+        "conditioning.infantry-family": 348.90000000596046,
+        "texture.ktx2-ready": 501527.9999999851,
+        "conditioning.structure-family": 3728.800000026822,
+        "conditioning.unit-family": 2927.7000000029802,
+        "texture.image-source-ready": 316.1999999731779,
+        "conditioning.environment-asset": 80.3999999165535,
+        "conditioning.wreck-family": 10.599999994039536,
+        "registry.systems-init": 14416.59999999404,
+        "registry.presentation-populate": 132,
+        "gpu.pipeline-compile": 44.5
+      },
+      "resources": {
+        "count": 541,
+        "transferBytes": 465735528,
+        "decodedBytes": 469204749,
+        "byProtocol": {
+          "http": 541
+        }
+      },
+      "marks": [
+        {
+          "runId": null,
+          "category": "app",
+          "name": "entry-module",
+          "atMs": 27.30000001192093
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "game.ready",
+          "atMs": 15674.300000011921,
+          "detail": {
+            "backend": "webgl"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "first-stable-frame",
+          "atMs": 15851,
+          "detail": {
+            "surface": "product-battlefield"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "curtain-dismiss-start",
+          "atMs": 15851
+        }
+      ],
+      "truncated": {
+        "marks": false,
+        "spans": false,
+        "longTasks": false,
+        "resources": false
+      }
+    },
+    {
+      "run": 3,
+      "ready": 14978.5,
+      "harnessReady": 15009,
+      "checksum": {
+        "chunks": 64,
+        "terrain": 2818430940,
+        "water": 3362851701
+      },
+      "hitches": {
+        "framesOver50Ms": 0,
+        "worstFrameGapMs": 0,
+        "topFrameGapsMs": [],
+        "longTasks": 0,
+        "worstLongTaskMs": 0,
+        "topLongTasks": [],
+        "peakSystems": [
+          {
+            "id": "ui.hud#f",
+            "phase": 80,
+            "last": 15.900000005960464,
+            "avg": 0.26500000009934105,
+            "peak": 15.900000005960464
+          },
+          {
+            "id": "render.present#f",
+            "phase": 900,
+            "last": 4,
+            "avg": 0.06666666666666667,
+            "peak": 4
+          },
+          {
+            "id": "render.post#f",
+            "phase": 900,
+            "last": 3.7000000029802322,
+            "avg": 0.06166666671633721,
+            "peak": 3.7000000029802322
+          },
+          {
+            "id": "sim.ai",
+            "phase": 400,
+            "last": 0.20000000298023224,
+            "avg": 0.026666666815678277,
+            "peak": 1.4000000059604645
+          },
+          {
+            "id": "sim.vision",
+            "phase": 1300,
+            "last": 0,
+            "avg": 0.010000000149011612,
+            "peak": 0.6000000089406967
+          },
+          {
+            "id": "sim.production",
+            "phase": 200,
+            "last": 0.20000000298023224,
+            "avg": 0.0066666667660077415,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "combat.targeting",
+            "phase": 900,
+            "last": 0.20000000298023224,
+            "avg": 0.0049999999503294625,
+            "peak": 0.20000000298023224
+          },
+          {
+            "id": "world.scatter#f",
+            "phase": 10,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "world.roads#f",
+            "phase": 60,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "game.outcome#f",
+            "phase": 80,
+            "last": 0.10000000894069672,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.abilities",
+            "phase": 100,
+            "last": 0,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.crush",
+            "phase": 700,
+            "last": 0,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          }
+        ]
+      },
+      "environment": {
+        "backend": "webgl",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "cacheState": "fresh-page-with-browser-process-and-http-cache-reused",
+        "engineStateReused": false,
+        "bootRun": {
+          "pageBootIndex": 1,
+          "processState": "fresh-page",
+          "surface": "product",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seed": 7,
+          "backend": "webgl",
+          "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "adapter": null
+        },
+        "fixture": {
+          "name": "00-mcv-four-army",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seatedArmies": 4
+        }
+      },
+      "phasesMs": {
+        "gpu.renderer-prepare": 0.19999998807907104,
+        "gltf.load-parse-decode": 237330.89999994636,
+        "conditioning.infantry-family": 309.20000000298023,
+        "texture.ktx2-ready": 485666.40000000596,
+        "conditioning.structure-family": 3518.7999999821186,
+        "conditioning.unit-family": 2655.7999999970198,
+        "texture.image-source-ready": 206.90000002086163,
+        "conditioning.environment-asset": 77.60000006854534,
+        "conditioning.wreck-family": 9.899999991059303,
+        "registry.systems-init": 13675,
+        "registry.presentation-populate": 113,
+        "gpu.pipeline-compile": 40.599999994039536
+      },
+      "resources": {
+        "count": 541,
+        "transferBytes": 465735528,
+        "decodedBytes": 469204749,
+        "byProtocol": {
+          "http": 541
+        }
+      },
+      "marks": [
+        {
+          "runId": null,
+          "category": "app",
+          "name": "entry-module",
+          "atMs": 28.799999997019768
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "game.ready",
+          "atMs": 14803.10000000894,
+          "detail": {
+            "backend": "webgl"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "first-stable-frame",
+          "atMs": 14978.5,
+          "detail": {
+            "surface": "product-battlefield"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "curtain-dismiss-start",
+          "atMs": 14978.60000000894
+        }
+      ],
+      "truncated": {
+        "marks": false,
+        "spans": false,
+        "longTasks": false,
+        "resources": false
+      }
+    },
+    {
+      "run": 4,
+      "ready": 14788,
+      "harnessReady": 14820,
+      "checksum": {
+        "chunks": 64,
+        "terrain": 2818430940,
+        "water": 3362851701
+      },
+      "hitches": {
+        "framesOver50Ms": 0,
+        "worstFrameGapMs": 0,
+        "topFrameGapsMs": [],
+        "longTasks": 0,
+        "worstLongTaskMs": 0,
+        "topLongTasks": [],
+        "peakSystems": [
+          {
+            "id": "ui.hud#f",
+            "phase": 80,
+            "last": 16.100000008940697,
+            "avg": 0.26833333348234495,
+            "peak": 16.100000008940697
+          },
+          {
+            "id": "render.post#f",
+            "phase": 900,
+            "last": 3.2000000029802322,
+            "avg": 0.05333333338300387,
+            "peak": 3.2000000029802322
+          },
+          {
+            "id": "render.present#f",
+            "phase": 900,
+            "last": 3.2000000029802322,
+            "avg": 0.05333333338300387,
+            "peak": 3.2000000029802322
+          },
+          {
+            "id": "sim.ai",
+            "phase": 400,
+            "last": 0.20000000298023224,
+            "avg": 0.02166666661699613,
+            "peak": 1.0999999940395355
+          },
+          {
+            "id": "sim.vision",
+            "phase": 1300,
+            "last": 0,
+            "avg": 0.013333333283662796,
+            "peak": 0.7999999970197678
+          },
+          {
+            "id": "sim.production",
+            "phase": 200,
+            "last": 0.09999999403953552,
+            "avg": 0.006666666517655055,
+            "peak": 0.29999999701976776
+          },
+          {
+            "id": "vfx#f",
+            "phase": 60,
+            "last": 0.19999998807907104,
+            "avg": 0.0033333331346511843,
+            "peak": 0.19999998807907104
+          },
+          {
+            "id": "sim.abilities",
+            "phase": 100,
+            "last": 0,
+            "avg": 0.0016666668156782786,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "sim.movement",
+            "phase": 700,
+            "last": 0.10000000894069672,
+            "avg": 0.0033333336313565573,
+            "peak": 0.10000000894069672
+          },
+          {
+            "id": "render.bridge#f",
+            "phase": 30,
+            "last": 0.09999999403953552,
+            "avg": 0.0016666665673255921,
+            "peak": 0.09999999403953552
+          },
+          {
+            "id": "input",
+            "phase": 100,
+            "last": 0.09999999403953552,
+            "avg": 0.0033333331346511843,
+            "peak": 0.09999999403953552
+          },
+          {
+            "id": "combat.targeting",
+            "phase": 900,
+            "last": 0.09999999403953552,
+            "avg": 0.0016666665673255921,
+            "peak": 0.09999999403953552
+          }
+        ]
+      },
+      "environment": {
+        "backend": "webgl",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "cacheState": "fresh-page-with-browser-process-and-http-cache-reused",
+        "engineStateReused": false,
+        "bootRun": {
+          "pageBootIndex": 1,
+          "processState": "fresh-page",
+          "surface": "product",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seed": 7,
+          "backend": "webgl",
+          "gpu": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+          "adapter": null
+        },
+        "fixture": {
+          "name": "00-mcv-four-army",
+          "scenario": "temperate-valley",
+          "factions": "allies,soviets,meridian,reclaim",
+          "seatedArmies": 4
+        }
+      },
+      "phasesMs": {
+        "gpu.renderer-prepare": 0,
+        "gltf.load-parse-decode": 235592.9999999255,
+        "conditioning.infantry-family": 308.600000038743,
+        "texture.ktx2-ready": 483671.59999988973,
+        "conditioning.structure-family": 3541.8999999314547,
+        "conditioning.unit-family": 2612.1999999433756,
+        "texture.image-source-ready": 246.2000000178814,
+        "conditioning.environment-asset": 74.10000014305115,
+        "conditioning.wreck-family": 9.400000005960464,
+        "registry.systems-init": 13523.29999999702,
+        "registry.presentation-populate": 112,
+        "gpu.pipeline-compile": 42.3999999910593
+      },
+      "resources": {
+        "count": 541,
+        "transferBytes": 465480644,
+        "decodedBytes": 468949865,
+        "byProtocol": {
+          "http": 541
+        }
+      },
+      "marks": [
+        {
+          "runId": null,
+          "category": "app",
+          "name": "entry-module",
+          "atMs": 31.600000008940697
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "game.ready",
+          "atMs": 14615.20000000298,
+          "detail": {
+            "backend": "webgl"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "first-stable-frame",
+          "atMs": 14788,
+          "detail": {
+            "surface": "product-battlefield"
+          }
+        },
+        {
+          "runId": 1,
+          "category": "app",
+          "name": "curtain-dismiss-start",
+          "atMs": 14788
+        }
+      ],
+      "truncated": {
+        "marks": false,
+        "spans": false,
+        "longTasks": false,
+        "resources": false
+      }
+    }
+  ],
+  "compact": true
+}

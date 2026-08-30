@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-08-30
+Last refreshed: 2026-08-31
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -65,6 +65,9 @@ Verify rather than trusting that sentence after time has passed.
 | Third-party rights | root `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/` |
 | Campaign implementation contract | `docs/campaign/CAMPAIGN_BUILD_SPEC.md` and `wiki/Campaign.md` |
 | Graphics measurements and rejected approaches | `docs/RENDER_FINDINGS.md`, `docs/SPEC_DRIFT_AUDIT.md` |
+| Cross-cutting AAA technical roadmap and ordered batches | `docs/AAA_TECHNICAL_ROADMAP.md` |
+| Boot phase definitions and current browser/Electron baselines | `docs/BOOT_BASELINE.md`, compact reports in `artifacts/perf/boot-baseline-*.json` |
+| Rejected Chrono Miner offline runtime-cook proof | `docs/RUNTIME_ASSET_COOK_POC.md`, `tools/asset-cooks/` |
 
 Do not turn this handoff into another backlog. Put durable decisions in the owning document and open
 work in `TODO.md`; keep this page as the discovery layer.
@@ -293,6 +296,10 @@ This is an index, not a duplicate checklist:
   product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   POC; do not roll compression across every family until cold-load timing and image parity pass.
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-3 are implemented on the
+  dedicated roadmap branch: boot telemetry/baselines, static title policy and one honestly rejected
+  offline runtime-cook proof. Continue at Batch 4 (foliage Gate 3/4); do not promote the rejected
+  Float32 cooked delivery or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

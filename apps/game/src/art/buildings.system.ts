@@ -46,6 +46,7 @@ import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.j
 
 import { defineSystem } from '../core/loop';
 import { mapConcurrent } from '../core/async-pool';
+import { beginBootSpan } from '../core/boot-telemetry';
 import {
   liveAssetStreamingEnabled,
   scheduleBattlefieldWork,
@@ -1573,6 +1574,9 @@ export async function loadImportedStructureOverride(
   } else {
     loaded.push(...await Promise.all(urls.map((url) => importedStructureLoader.loadAsync(url))));
   }
+  const finishConditioning = beginBootSpan('conditioning', 'structure-family', { asset: spec.key });
+  let conditioningStatus: 'ok' | 'error' = 'error';
+  try {
   const gltf = loaded[0];
   gltf.scene.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
@@ -1826,7 +1830,7 @@ export async function loadImportedStructureOverride(
         pivotY: importedTurretPivotY,
       }
       : socket);
-  return {
+  const result: KindMesh = {
     ...procedural,
     geometry,
     lods,
@@ -1837,6 +1841,11 @@ export async function loadImportedStructureOverride(
     sockets,
     turretPivotY: importedTurretPivotY ?? procedural.turretPivotY,
   };
+  conditioningStatus = 'ok';
+  return result;
+  } finally {
+    finishConditioning(conditioningStatus);
+  }
 }
 
 /** 256 on Low, 512 everywhere else. */
