@@ -23,6 +23,27 @@
       "movingParts": false
     },
     {
+      "key": "meridian_solarch",
+      "file": "solarch.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
+      "key": "meridian_skiff",
+      "file": "sandskiff.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
+      "key": "meridian_zenith",
+      "file": "zenith-emitter.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
       "key": "meridian_carryall",
       "file": "pactworks-carryall.glb",
       "class": "standard",

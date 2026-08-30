@@ -226,6 +226,36 @@ describe('imported unit shipping budgets', () => {
     }
   });
 
+  it('ships the Meridian hover trio with authored articulation and private-faction registration', () => {
+    const runtime = fs.readFileSync(
+      path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
+    );
+    const registry = fs.readFileSync(path.join(root, 'apps/game/src/art/Faction3Units.ts'), 'utf8');
+    for (const contract of [
+      { key: 'meridian_solarch', file: 'solarch.glb', turret: 'Turret' },
+      { key: 'meridian_skiff', file: 'sandskiff.glb', turret: 'Turret' },
+      { key: 'meridian_zenith', file: 'zenith-emitter.glb', turret: 'Emitter' },
+    ]) {
+      const sourceDir = path.join(root, 'packages/assets/game/units/meridian');
+      const source = glbJson(path.join(sourceDir, contract.file));
+      const runtimeAsset = glbJson(path.join(sourceDir, 'compressed', contract.file));
+      const shadowName = contract.file.replace(/\.glb$/, '.shadow.glb');
+      const shadow = glbJson(path.join(sourceDir, 'derived', shadowName));
+      expect(source.json.meshes.map((mesh) => mesh.name).sort(), contract.key)
+        .toEqual(['Hull', contract.turret].sort());
+      expect(source.json.materials?.every((material) => material.doubleSided !== true)).toBe(true);
+      expect(triangles(source.json), contract.key).toBeLessThanOrEqual(30_000);
+      expect(runtimeAsset.bytes.length, contract.key).toBeLessThanOrEqual(7 * 1024 * 1024);
+      expect(runtimeAsset.json.extensionsRequired, contract.key).toContain('KHR_texture_basisu');
+      expect(runtimeAsset.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
+      expect(triangles(shadow.json), contract.key).toBeLessThanOrEqual(2_000);
+      expect(runtime).toContain(`key: '${contract.key}'`);
+      expect(runtime).toContain(`meridian/compressed/${contract.file}`);
+      expect(runtime).toContain(`meridian/derived/${shadowName}`);
+      expect(registry).toContain(`'${contract.key}'`);
+    }
+  });
+
   it('keeps the Sputnik Dozer hull on its approved runtime axis', () => {
     const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
     const dozer = runtime.slice(runtime.indexOf("key: 'soviet_dozer'"), runtime.indexOf("key: 'soviet_mig'"));

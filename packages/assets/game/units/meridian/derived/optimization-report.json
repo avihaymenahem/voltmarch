@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-29T19:22:06.204Z",
+  "generatedAt": "2026-08-30T02:02:04.017Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -55,6 +55,93 @@
             11
           ],
           "occupiedCells": 138
+        }
+      ]
+    },
+    {
+      "key": "meridian_solarch",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/solarch.glb",
+        "triangles": 26012,
+        "fileBytes": 8025032
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/solarch.shadow.glb",
+          "triangles": 1296,
+          "triangleRatio": 0.0498,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 18940,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            8
+          ],
+          "occupiedCells": 108
+        }
+      ]
+    },
+    {
+      "key": "meridian_skiff",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/sandskiff.glb",
+        "triangles": 26165,
+        "fileBytes": 7945688
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/sandskiff.shadow.glb",
+          "triangles": 1200,
+          "triangleRatio": 0.0459,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 17600,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            8
+          ],
+          "occupiedCells": 100
+        }
+      ]
+    },
+    {
+      "key": "meridian_zenith",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/meridian/zenith-emitter.glb",
+        "triangles": 24780,
+        "fileBytes": 8221280
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/zenith-emitter.shadow.glb",
+          "triangles": 1680,
+          "triangleRatio": 0.0678,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24320,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            11
+          ],
+          "occupiedCells": 140
         }
       ]
     },

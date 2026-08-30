@@ -1,5 +1,5 @@
 /**
- * Ten authored infantry bodies, eighteen gameplay roles, zero live skeletons.
+ * Eleven authored infantry bodies, nineteen gameplay roles, zero live skeletons.
  *
  * Each faction loads its shared line body and unique commander body in an
  * authored gait stance; aquatic troops may add one equipment-heavy body. Each
@@ -98,6 +98,14 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
       { modelKey: 'meridian_artificer', weapon: 'calibrator', pack: 'instrument-case' },
     ],
     baseColorGain: 1.10, roughnessGain: 1.08, normalScale: 1.08, envMapIntensity: 0.58,
+  },
+  {
+    key: 'meridian_tidewalker', label: 'Meridian Tidewalker', poseTime: 0.12,
+    skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/meridian/tidewalker/tidewalker-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/meridian/tidewalker/tidewalker-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'meridian_tidewalker', weapon: 'carbine' }],
+    baseColorGain: 1.06, roughnessGain: 1.12, normalScale: 1.10, envMapIntensity: 0.56,
   },
   {
     key: 'reclaim_picker', label: 'Reclamation Scrap Picker', poseTime: 0.12,

@@ -194,9 +194,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
-| M3 | `meridian_solarch` | Solarch | VEH | procedural | Establish elegant solar ground-hull material family |
-| M3 | `meridian_skiff` | Sandskiff | VEH | procedural | Fast skimmer derivative and hover silhouette |
-| M3 | `meridian_zenith` | Zenith Emitter | VEH | procedural | Energy weapon platform with emitter pivot |
+| M3 | `meridian_solarch` | Solarch | VEH | integrated | Geometry `01a05060-da70-7614-93bf-c5d66cb1ec32`, PBR `01a05063-3a46-70ef-9fc8-dced10fa8c53`; 26,012-triangle `Hull`/`Turret` hover source with sealed articulation, KTX2 runtime and 1,296-triangle shadow proxy. |
+| M3 | `meridian_skiff` | Sandskiff | VEH | integrated | Geometry `01a05060-dc47-73df-88f4-7ddae4968679`, PBR `01a05063-3b0b-75e2-bf23-effb82882535`; 26,165-triangle three-fan skimmer with compact twin repeater, sealed `Hull`/`Turret` articulation, KTX2 runtime and 1,200-triangle shadow proxy. |
+| M3 | `meridian_zenith` | Zenith Emitter | VEH | integrated | Geometry `01a05060-db72-72e2-ab7d-fdcb707747df`, PBR `01a05063-3bdb-7675-9ce7-fbb2b3b3bc17`; 24,780-triangle `Hull`/`Emitter` source using bounded extraction, KTX2 runtime and 1,680-triangle shadow proxy. |
 | M3 | `meridian_collector` | Sun Collector | VEH | integrated | 49,837-triangle true-hover collector, 22,425/8,968 LODs, 1,656-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
 | M3 | `meridian_carryall` | Pactworks Carryall | VEH | integrated | Geometry `01a04447-9298-7ca7-8f6a-2d247de21a7f`, texture `01a04456-b6c4-7380-ac1f-24aa47718037`; 19,594-triangle ivory/teal construction carrier with 8,817/4,943 LODs, 1,680-triangle shadow proxy and 3.03 MiB KTX2 PBR. Private-registry loading keeps its procedural deploy cues and fallback. |
 | M3 | `meridian_kestrel` | Kestrel Gunship | AIR | integrated | Geometry `01a04447-b377-7cb9-9b99-61f115d2f35f`, texture `01a04456-d97f-79eb-9780-48006a92104e`; 19,360-triangle solar gunship with 8,710/3,484 LODs, 1,080-triangle shadow proxy and 2.92 MiB KTX2 PBR. Private-registry loading retains procedural sockets and fallback. |
@@ -209,7 +209,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_lancer` | Sunlancer | CHAR | integrated-hybrid | Reuses the live canonical 5,937-triangle Wayfarer body with a code-native solar-cell pack and lance, each hard-capped below 200 triangles. The paid unique body (`01a048df-1613-70e0-9cb1-7e74f5185a0f`) was rejected as redundant and archived outside shipping. |
 | M3 | `meridian_artificer` | Artificer | CHAR | integrated-hybrid | Reuses the live canonical Wayfarer body with a code-native instrument case and calibrator, each below the 200-triangle attachment ceiling. |
 | M3 | `meridian_hierarch` | Hierarch | CHAR | production | Unique geometry `01a04f42-be77-74ad-9f39-aa31d41bc357`, PBR `01a04f47-2f7d-7386-8266-09372c438c47`, rig `01a04f4a-6ae5-7281-8724-1bdb0b8a79b4`; 47,225-triangle/6.26 MiB bone/jade/gold commander with 1024 base/normal and 512 metallic-roughness maps. The gameplay LOD0 and mesh-free 72-channel walk/run clips are grouped in Asset Lab. Runtime bakes one walk pose, derives gait only from limb skin weights so the vestment stays rigid, then discards the live skeleton. |
-| M3 | `meridian_tidewalker` | Tidewalker | CHAR | procedural | Shared rig where possible; aquatic equipment |
+| M3 | `meridian_tidewalker` | Tidewalker | CHAR | production | Geometry `01a05060-dd28-73e1-a9fd-bc9ad12b09f7`, remesh `01a05063-3bde-71f9-a966-ed3eaef33b47`, PBR `01a05064-c655-77fe-8ebf-e0b04d06da38`, rig `01a05064-c6b0-7751-ac91-b16e733f4967`; 20,592-triangle two-tank aquatic body with 512/256 px textures and animation-only walk clip. |
 
 ## The Reclamation — 15 structures
 
