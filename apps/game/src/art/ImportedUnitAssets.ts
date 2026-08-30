@@ -546,6 +546,84 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     emissiveIntensity: 0.012,
   },
   {
+    key: 'reclaim_grinder',
+    label: 'Reclamation Grinder',
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/grinder.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/grinder.lod1.glb', import.meta.url).href,
+        minDistance: 42,
+      },
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/grinder.lod2.glb', import.meta.url).href,
+        minDistance: 70,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/grinder.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [3.2, 2.55, 6.2],
+    yawDeg: 90,
+    baseColorGain: 1.22,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'reclaim_spitter',
+    label: 'Reclamation Arcspitter',
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/arcspitter.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/arcspitter.lod1.glb', import.meta.url).href,
+        minDistance: 42,
+      },
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/arcspitter.lod2.glb', import.meta.url).href,
+        minDistance: 70,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/arcspitter.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [2.8, 2.3, 5.4],
+    yawDeg: 90,
+    baseColorGain: 1.22,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'reclaim_slaghurler',
+    label: 'Reclamation Slaghurler',
+    url: new URL('../../../../packages/assets/game/units/reclamation/compressed/slaghurler.glb', import.meta.url).href,
+    lods: [
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/slaghurler.lod1.glb', import.meta.url).href,
+        minDistance: 46,
+      },
+      {
+        url: new URL('../../../../packages/assets/game/units/reclamation/derived/slaghurler.lod2.glb', import.meta.url).href,
+        minDistance: 76,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/slaghurler.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [3.1, 2.7, 6.4],
+    yawDeg: 90,
+    baseColorGain: 1.22,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.50,
+    emissiveIntensity: 0.012,
+  },
+  {
     key: 'reclaim_crawler',
     label: 'Reclamation Yardcrawler',
     url: new URL('../../../../packages/assets/game/units/reclamation/compressed/yardcrawler.glb', import.meta.url).href,

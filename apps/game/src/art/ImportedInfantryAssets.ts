@@ -1,5 +1,5 @@
 /**
- * Eleven authored infantry bodies, nineteen gameplay roles, zero live skeletons.
+ * Twelve authored infantry bodies, twenty gameplay roles, zero live skeletons.
  *
  * Each faction loads its shared line body and unique commander body in an
  * authored gait stance; aquatic troops may add one equipment-heavy body. Each
@@ -117,6 +117,14 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
       { modelKey: 'reclaim_tinker', weapon: 'salvage-tool', pack: 'tool-roll' },
     ],
     baseColorGain: 1.12, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.50,
+  },
+  {
+    key: 'reclaim_dredger', label: 'Reclamation Dredger', poseTime: 0.12,
+    skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/reclamation/dredger/dredger-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/reclamation/dredger/dredger-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'reclaim_dredger', weapon: 'prod' }],
+    baseColorGain: 1.12, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.48,
   },
   {
     key: 'allied_marshal', label: 'Allied Field Marshal', poseTime: 0.12, skinGait: true,

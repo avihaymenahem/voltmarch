@@ -64,6 +64,31 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "reclaim_grinder",
+      "file": "grinder.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "maxRatio": 0.65, "stripShadingAttributes": true },
+        "lod2": { "maxRatio": 0.50, "stripShadingAttributes": true }
+      }
+    },
+    {
+      "key": "reclaim_spitter",
+      "file": "arcspitter.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "reclaim_slaghurler",
+      "file": "slaghurler.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

@@ -35,6 +35,9 @@ const FAMILIES: readonly AssetFamily[] = [
   { name: 'Meridian Kestrel Gunship', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_kestrel', file: 'kestrel-gunship.glb', stem: 'kestrel-gunship' },
   { name: 'Reclamation Yardcrawler', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_crawler', file: 'yardcrawler.glb', stem: 'yardcrawler' },
   { name: 'Reclamation Swarmhornet', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_hornet', file: 'swarmhornet.glb', stem: 'swarmhornet' },
+  { name: 'Reclamation Grinder', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_grinder', file: 'grinder.glb', stem: 'grinder' },
+  { name: 'Reclamation Arcspitter', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_spitter', file: 'arcspitter.glb', stem: 'arcspitter' },
+  { name: 'Reclamation Slaghurler', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_slaghurler', file: 'slaghurler.glb', stem: 'slaghurler' },
 ];
 
 interface GlbJson {

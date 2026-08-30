@@ -1652,7 +1652,9 @@ export async function buildAndRegisterReclaimUnits(
 
   const meshes = new Map<string, KindMesh>();
   const infantryFamilies = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
-    family.key === 'reclaim_picker' || family.key === 'reclaim_baron');
+    family.key === 'reclaim_picker'
+    || family.key === 'reclaim_dredger'
+    || family.key === 'reclaim_baron');
   for (const infantryFamily of infantryFamilies) {
     try {
       const variants = await loadImportedInfantryFamily(
@@ -1665,6 +1667,7 @@ export async function buildAndRegisterReclaimUnits(
     }
   }
   const importedKeys = [
+    'reclaim_grinder', 'reclaim_spitter', 'reclaim_slaghurler',
     'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
     'reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler',
   ] as const;

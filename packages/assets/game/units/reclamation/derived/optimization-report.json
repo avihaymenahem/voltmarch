@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-29T19:22:06.970Z",
+  "generatedAt": "2026-08-30T02:16:46.295Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
   "rows": [
@@ -383,6 +383,165 @@
             7
           ],
           "occupiedCells": 112
+        }
+      ]
+    },
+    {
+      "key": "reclaim_grinder",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/grinder.glb",
+        "triangles": 23709,
+        "fileBytes": 4116332
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/grinder.lod1.glb",
+          "triangles": 14744,
+          "triangleRatio": 0.6219,
+          "boundsDriftMeters": 0.01117,
+          "boundsDriftRatio": 0.00817,
+          "fileBytes": 321760,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/grinder.lod2.glb",
+          "triangles": 11154,
+          "triangleRatio": 0.4705,
+          "boundsDriftMeters": 0.01388,
+          "boundsDriftRatio": 0.00813,
+          "fileBytes": 259892,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/grinder.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0729,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24996,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            10
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "reclaim_spitter",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/arcspitter.glb",
+        "triangles": 24704,
+        "fileBytes": 4134072
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/arcspitter.lod1.glb",
+          "triangles": 11099,
+          "triangleRatio": 0.4493,
+          "boundsDriftMeters": 0.00045,
+          "boundsDriftRatio": 0.00023,
+          "fileBytes": 435932,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/arcspitter.lod2.glb",
+          "triangles": 6154,
+          "triangleRatio": 0.2491,
+          "boundsDriftMeters": 0.00135,
+          "boundsDriftRatio": 0.00123,
+          "fileBytes": 288668,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/arcspitter.shadow.glb",
+          "triangles": 1944,
+          "triangleRatio": 0.0787,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 28016,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            11
+          ],
+          "occupiedCells": 162
+        }
+      ]
+    },
+    {
+      "key": "reclaim_slaghurler",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/slaghurler.glb",
+        "triangles": 24327,
+        "fileBytes": 4104416
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slaghurler.lod1.glb",
+          "triangles": 11195,
+          "triangleRatio": 0.4602,
+          "boundsDriftMeters": 0.00132,
+          "boundsDriftRatio": 0.00095,
+          "fileBytes": 443180,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slaghurler.lod2.glb",
+          "triangles": 6231,
+          "triangleRatio": 0.2561,
+          "boundsDriftMeters": 0.01561,
+          "boundsDriftRatio": 0.01122,
+          "fileBytes": 292796,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/slaghurler.shadow.glb",
+          "triangles": 1536,
+          "triangleRatio": 0.0631,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 22304,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 128
         }
       ]
     }
