@@ -46,7 +46,7 @@ immediately readable to genre veterans while pushing each army toward a distinct
 </p>
 
 <p align="center">
-  <sub>Four factions, four architectural languages. Captured from the current build.</sub>
+  <sub>Four factions, four architectural languages. Captured from the current WebGPU path.</sub>
 </p>
 
 ## Fight your way
@@ -77,7 +77,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 </p>
 
 <p align="center">
-  <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
+  <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
 ## What's new in 3.15.0
