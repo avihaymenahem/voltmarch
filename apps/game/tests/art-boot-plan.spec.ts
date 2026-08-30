@@ -74,4 +74,24 @@ describe('faction art boot plan', () => {
     expect(buildings).toMatch(/hardwareConcurrency \|\| 4\) >= 8 \? 6 : 3/);
     expect(buildings).toContain('importedStructureConcurrency(),');
   });
+
+  it('bounds imported-unit decode while overlapping independent families', () => {
+    const repo = path.resolve(__dirname, '..', '..', '..');
+    const loader = readFileSync(
+      path.join(repo, 'apps/game/src/art/ImportedUnitAssets.ts'),
+      'utf8',
+    );
+    expect(loader).toContain('export function importedUnitConcurrency(): number');
+    expect(loader).toMatch(/hardwareConcurrency \|\| 4\) >= 8 \? 3 : 2/);
+
+    for (const file of [
+      'apps/game/src/art/units.system.ts',
+      'apps/game/src/art/Faction3Units.ts',
+      'apps/game/src/art/Faction4Units.ts',
+    ]) {
+      const source = readFileSync(path.join(repo, file), 'utf8');
+      expect(source, file).toContain('mapConcurrent(');
+      expect(source, file).toContain('importedUnitConcurrency()');
+    }
+  });
 });

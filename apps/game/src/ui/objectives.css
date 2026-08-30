@@ -59,7 +59,7 @@
 
 /* hud.css lights the whole header on hover; with two controls in it that would
    light both when the pointer is over either. */
-.vm-hud .vm-objectives .vm-obj-head:hover {
+.vm-hud .vm-objectives .vm-obj-head:is(:hover, .vm-pointer-hover) {
   color: var(--vm-dim);
 }
 
@@ -79,7 +79,7 @@
   cursor: pointer;
 }
 
-.vm-hud .vm-obj-toggle:hover { color: var(--vm-text); }
+.vm-hud .vm-obj-toggle:is(:hover, .vm-pointer-hover) { color: var(--vm-text); }
 
 /* The "+2" / "LESS" chip. Same treatment as `.vm-hk`, the keyboard badge, on
    purpose: a boxed, tracked, uppercase micro-label is already the house sign
@@ -105,7 +105,7 @@
   cursor: pointer;
 }
 
-.vm-hud .vm-obj-all:hover {
+.vm-hud .vm-obj-all:is(:hover, .vm-pointer-hover) {
   color: var(--vm-text);
   border-color: var(--vm-accent);
 }

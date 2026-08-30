@@ -710,6 +710,12 @@ export function restoreTutorialMenuItem(): void {
   writeTutorialProgress(emptyProgress());
 }
 
+/** End training from the title-screen decision without inventing completed lessons. */
+export function endTutorialMenuItem(): void {
+  const progress = readTutorialProgress();
+  writeTutorialProgress({ ...progress, done: true });
+}
+
 /** The hint under the menu button, from the stored record. */
 export function tutorialMenuHint(): string {
   return progressHint(readTutorialProgress());

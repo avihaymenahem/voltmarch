@@ -237,10 +237,18 @@ class EngineSource implements PerfSource {
         (profiler.get('ui.hud#f')?.avg ?? 0) +
         (profiler.get('ui.objectives#f')?.avg ?? 0) +
         (profiler.get('ui.perf#f')?.avg ?? 0);
+      out.longFrameCount = profiler.longFrameCount;
+      out.lastLongFrameGapMs = profiler.lastLongFrameGapMs;
+      out.lastLongFrameCpuMs = profiler.lastLongFrameCpuMs;
+      out.worstLongFrameGapMs = profiler.worstLongFrameGapMs;
     } catch {
       out.waterCpuMs = 0;
       out.particlesCpuMs = 0;
       out.uiCpuMs = 0;
+      out.longFrameCount = 0;
+      out.lastLongFrameGapMs = 0;
+      out.lastLongFrameCpuMs = 0;
+      out.worstLongFrameGapMs = 0;
     }
   }
 
@@ -342,6 +350,20 @@ export default defineSystem({
       console.info('[perf] no HUD root; the performance overlay will not mount');
       return;
     }
+
+    // The overlay is intentionally off by default, but a headless hitch probe
+    // still needs attribution rather than only a wall-clock gap. Keep this on
+    // the existing debug-hook surface so diagnostics can arm the same profiler
+    // without making the player open a panel or reaching into game context.
+    const profiler = ctx().registry.profiler;
+    ctx().debug.api.registerHook('perfStart', () => {
+      profiler.reset();
+      profiler.enabled = true;
+      return true;
+    });
+    ctx().debug.api.registerHook('perfSystems', () => profiler.all([])
+      .map((row) => ({ ...row }))
+      .sort((a, b) => b.peak - a.peak));
 
     // Each backend supplies its native timer: WebGL's extension or Three's
     // WebGPU timestamp-query resolver. Neither path substitutes frame time.

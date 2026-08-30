@@ -1,6 +1,6 @@
 # VOLTMARCH environment realism and prop renewal
 
-Status: in progress · owner: world/art pipeline · updated 2026-08-29
+Status: authored catalogue and first atmosphere slice shipped; composition/aging acceptance remains · owner: world/art pipeline · updated 2026-08-30
 
 ## Intent
 
@@ -9,12 +9,11 @@ turning environmental dressing into the dominant GPU cost. The target is authore
 clean gameplay lanes surrounded by clustered evidence of traffic, industry, weather, and civilian
 life.
 
-The current baseline is already strong technically: 31 procedural prop archetypes share one
-renderer-neutral material, each live type is one instanced colour draw, placement is chunk-culled,
-and static/transient ground marks are pooled into two bounded decal draws. The new direction keeps
-those placement, batching and budget contracts while replacing the locally generated geometry with
-the asset-driven engine specified in `docs/FOLIAGE_ENGINE_PLAN.md`. It does not replace them with
-thousands of independent GLBs or unique 2K textures.
+The current baseline is asset-driven: all 32 stable Scatter identities resolve to audited authored
+LOD/caster families and shared PBR atlases, while placement is still chunk-culled and static/transient
+ground marks remain pooled into two bounded decal draws. Dormant procedural builders exist only for
+explicit diagnostics and load failure. The direction keeps those placement, batching and budget
+contracts; it does not replace them with thousands of independent runtime objects or unique 2K textures.
 
 ## What remains
 
@@ -90,12 +89,18 @@ the physical-debris stamps were visibly artificial. The corrected contract is no
 no leaf/gravel/paper decal can spawn from openings, roads, ore edges, semantic scatter stories or
 demolition rubble. The geometry replacement remains inside the existing WebGPU prop batches.
 
-Dynamic atmosphere is also live. Skirmish Advanced settings can disable it; when enabled, seeded
+Dynamic atmosphere is also live. Skirmish Advanced settings can disable weather; when enabled, seeded
 presentation state selects clear, light-rain or heavy-rain windows without entering the deterministic
 simulation. Rain uses narrow camera-projected streaks in WebGPU and WebGL, windows last 84–114 seconds
 to avoid rapid switching, and occasional lightning briefly raises the existing sun and hemisphere
 lights so the flash affects the world and its shadows. Film grain is a separate restrained post layer
 at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
+
+Desktop WebGPU additionally ships the first cinematic atmosphere slice on Medium through Ultra:
+world-locked cloud cover and capped height-aware far haze are fused into the existing HDR composite,
+preserve emissive peaks, exclude sky depth and never lift undiscovered shroud. Sparse ambient dust
+reuses the lit-particle draw, emits only over visible non-water cells, yields to combat smoke and is
+scrubbed almost completely by rain. Low and the browser fallback disable this desktop-only slice.
 
 ## The five-layer solution
 
@@ -165,10 +170,11 @@ culling. The template system only makes placements correlate.
 
 ### 5. Dynamic atmosphere — pooled and quality-scaled
 
-Add restrained pooled effects after the static pass proves itself: movement dust, a few wind-driven
-leaf groups, drifting industrial dust, and debris settling. These effects are presentation-only,
-renderer-neutral, bounded by a strict particle ceiling, and disabled or reduced by the measured
-particle pass on lower tiers.
+The first restrained slice is shipped: weather rain/lightning on both renderers plus WebGPU cloud
+cover, far haze and ambient dust on Medium–Ultra. These effects are presentation-only, deterministic
+from render state rather than simulation authority, and bounded by existing post/particle passes.
+Future wind-driven leaf groups, movement dust and debris settling must follow the same ceilings and
+yield to combat readability instead of creating another full-screen layer.
 
 ## Meshy pilot: one vehicle before a roster
 

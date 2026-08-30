@@ -2,18 +2,17 @@
  * ============================================================================
  * VOLTMARCH — src/world/world-warm.system.ts
  * ============================================================================
- * THE ONE LINE THAT STARTS THE WORLD GENERATION BEFORE THE GAME DOES.
+ * THE REPORT AND CLEANUP HALF OF WORLD WORKER PREWARM.
  *
- * Everything happens at MODULE SCOPE, and that is the whole point. `src/game/
- * Systems.ts` globs `**\/*.system.ts` eagerly, so this file is imported before
- * `registry.init()` runs a single module — which is the only window in which
- * dispatching the terrain job buys anything. Doing it inside `init()` would put
- * it after `art.buildings`, `art.faction3`, `art.faction4` and `art.units`
- * (all `Phase.Command` order 0), which is exactly the ~2.6 s of main-thread
- * work the generation is supposed to hide behind.
+ * `Bootstrap.bootstrap()` starts a fresh prewarm before it constructs the
+ * renderer or calls `registry.init()`. That is the only lifetime that works:
+ * system modules are evaluated once, while the shell builds many worlds in one
+ * page. A module-scope call served the first world and left every later match
+ * holding stale keys, so they regenerated on the main thread. It also made the
+ * title menu's read-only code prefetch start a throwaway terrain job.
  *
- * `texture-warm.system.ts` uses the identical trick for the same reason, and
- * says so in its own header.
+ * `texture-warm.system.ts` follows the same per-bootstrap lifetime for its own
+ * pool; its header records why neither pool may return to module scope.
  *
  * THE `init()` ONLY REPORTS, AND IT RUNS LAST. `Phase.Cleanup` at a very high
  * order puts it after `world.terrain` (Command 40) and `world.water`
@@ -33,14 +32,8 @@
 import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
 import {
-  disposeWorldWorkers, installWorldWorkers, worldWarmReport,
+  disposeWorldWorkers, worldWarmReport,
 } from '../core/workers/world-warm';
-
-/**
- * MODULE SCOPE ON PURPOSE — see the header. This is a `postMessage` and two
- * promises; no `ctx()`, no GL, no scene.
- */
-installWorldWorkers();
 
 /**
  * After every world module, and one below `core.textureWarm`'s

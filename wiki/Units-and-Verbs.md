@@ -321,7 +321,7 @@ leave them alone; see [Economy](/avihaymenahem/voltmarch/wiki/Economy) for the f
 ### The wrench
 
 Arm the repair tool in the sidebar, then click one of your own damaged
-structures. Click it again to stop; right-click disarms the tool.
+structures. Click it again to stop; right-click or Escape disarms the tool.
 
 - **30 HP a second**, charged at **0.25 credits per HP** in half-second paid pulses.
 - Taking damage pauses both healing and spending for **3 seconds**. The wrench remains armed and
@@ -360,6 +360,8 @@ Arm the sell tool, then click one of your own structures.
   half the cost *and* get bodies.
 - A sale is not a death: no explosion, no wreck, no "building lost", and it does
   not count against you on the scoreboard.
+- Walls and gates are valid sell targets even though ordinary selection does not pick them.
+  Right-click or Escape disarms the sell tool without selling anything.
 
 ---
 

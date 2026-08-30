@@ -6,14 +6,18 @@
  *
  * Two jobs, at two different moments, and the gap between them is the point.
  *
- * AT IMPORT TIME it installs the worker pool on the shared factory. Systems are
- * discovered (`src/game/Systems.ts` globs `**\/*.system.ts` eagerly) BEFORE
- * `registry.init()` runs, so this happens before any system has had a chance to
- * ask for a texture. Installing it inside `init()` instead would be too late:
+ * AT BOOTSTRAP TIME it installs the worker pool on the shared factory, before
+ * `registry.init()` gives any system a chance to ask for a texture. Installing
+ * it inside this system's own `init()` would be too late:
  * `world.terrain` (order 40) and `world.roads` (order 60) both build their
  * materials in theirs. `roads.system.ts` binds its scorch sink at module scope
  * for the same reason, and this is the same category of work — a function
  * reference stored on an object. No `ctx()`, no GL, no allocation.
+ *
+ * It cannot be a module-scope call: modules are evaluated once, but the shell
+ * builds many worlds per page and `settleWorkers()` disposes the pool after
+ * each one. Module scope accelerated the title theatre and silently left every
+ * later match generating uncached textures and greebles on the main thread.
  *
  * AT INIT TIME — dead last — it waits for every dispatched job to land.
  * `SystemRegistry.init()` awaits each module's `init` in `(phase, order, seq)`
@@ -39,13 +43,6 @@ import { spawnTextureWorker } from './spawn';
 import { installGreebleWorkers } from './greeble-warm';
 
 /**
- * MODULE SCOPE ON PURPOSE — see the header. Discovery imports this file before
- * the first `init()` runs, which is the only window in which installing the
- * pool does any good.
- */
-textures.useWorkers(spawnTextureWorker);
-
-/**
  * And point the art layer's greeble prewarm at that same pool, in the same
  * window and for the same reason: `art.buildings` and `art.units` build their
  * atlases inside their own `init()`, so the generator has to be installed
@@ -54,7 +51,10 @@ textures.useWorkers(spawnTextureWorker);
  * It shares the pool rather than starting a second one — see the header of
  * `greeble-warm.ts`.
  */
-installGreebleWorkers();
+export function prepareTextureWorkers(): void {
+  textures.useWorkers(spawnTextureWorker);
+  installGreebleWorkers();
+}
 
 /**
  * Last in the queue. `Phase.Cleanup` is the highest phase in the enum and this

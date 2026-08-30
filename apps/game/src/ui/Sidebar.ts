@@ -2659,6 +2659,10 @@ class BuildPanel {
     root.addEventListener('blur', () => this.tooltip.hide());
 
     root.addEventListener('click', (ev) => {
+      // Pointer-lock adapters and embedded runtimes are not all consistent
+      // about suppressing `click` after button 2. A build cameo's primary
+      // action must never run alongside its context-menu cancellation.
+      if (ev.button !== 0) { ev.preventDefault(); return; }
       if (slot.cameo === null) return;
       ev.preventDefault();
       this.cb.sound('click');

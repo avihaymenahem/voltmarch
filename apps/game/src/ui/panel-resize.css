@@ -52,7 +52,7 @@
   transition: width 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
-.vm-hud .vm-panel-height-handle:hover::before,
+.vm-hud .vm-panel-height-handle:is(:hover, .vm-pointer-hover)::before,
 .vm-hud .vm-panel-height-handle:focus-visible::before,
 .vm-hud .is-height-resizing > .vm-panel-height-handle::before {
   width: calc(56 * var(--vm-u, 1px));

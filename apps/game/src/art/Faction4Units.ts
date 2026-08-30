@@ -81,13 +81,17 @@
 
 import { UNIT_LADDER, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId } from '../core/types';
+import { mapConcurrent } from '../core/async-pool';
+import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import { GreebleFactory } from './Greeble';
 import {
   MassRole, taperOutline,
   type MassDef, type SocketSpec, type UnitMassList,
 } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
-import { IMPORTED_UNIT_SPECS, loadImportedUnitOverride } from './ImportedUnitAssets';
+import {
+  importedUnitConcurrency, IMPORTED_UNIT_SPECS, loadImportedUnitOverride,
+} from './ImportedUnitAssets';
 import { IMPORTED_INFANTRY_FAMILIES, loadImportedInfantryFamily } from './ImportedInfantryAssets';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
@@ -109,12 +113,12 @@ import {
  * hull.
  */
 export const RECLAIM_UNIT_PALETTE: UnitPalette = {
-  /** Oxide graphite, lifted enough to preserve the open frame in cast shadow. */
-  base: '#56515D',
-  shadow: '#24202A',
+  /** Oxide graphite, with a real midtone so the open frame survives cast shadow. */
+  base: '#68616F',
+  shadow: '#35303A',
   /** Arc violet. 72 degrees clear of cobalt AND of crimson — see RECLAIM_LOOK. */
-  team: '#9B18D8',
-  teamSecondary: '#5E0E86',
+  team: '#B53DE3',
+  teamSecondary: '#77249B',
   /**
    * The eagle, in hazard amber rather than Allied white. `Greeble.ts` offers two
    * glyphs and both are spoken for, so the separation has to come from COLOUR
@@ -125,14 +129,14 @@ export const RECLAIM_UNIT_PALETTE: UnitPalette = {
   insigniaColor: '#E8B33C',
   hullNumber: 3312,
   /** Arc conduit. Not cyan, not furnace orange, not gold. */
-  emissive: '#E27BFF',
+  emissive: '#EE99FF',
   /** Warm grey-brown, per bible 5.4 (S <= 0.26). Never blue steel. */
-  bareMetal: '#756D62',
+  bareMetal: '#918779',
   /** Reads as the shadow inside the open frame rather than as track links. */
-  trackLink: '#2D2832',
-  glass: '#382642',
+  trackLink: '#3D3742',
+  glass: '#4A3653',
   stencil: '#D8CFC0',
-  hazard: '#E5CB43',
+  hazard: '#EFCF4C',
   /** Welded, not bolted. The Soviets keep the rivet ring. */
   rivets: false,
 };
@@ -1607,6 +1611,8 @@ export interface ReclaimBuildReport {
   failed: string[];
   registrations: number;
   bound: number;
+  /** Promote non-opening authored units after Bootstrap presents frame zero. */
+  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
 }
 
 /**
@@ -1630,6 +1636,7 @@ export interface ReclaimBuildReport {
 export async function buildAndRegisterReclaimUnits(
   atlasSize: number,
   unitId: Readonly<Record<string, number>>,
+  immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<ReclaimBuildReport> {
   const models: UnitModel[] = [];
   const failed: string[] = [];
@@ -1655,32 +1662,58 @@ export async function buildAndRegisterReclaimUnits(
     family.key === 'reclaim_picker'
     || family.key === 'reclaim_dredger'
     || family.key === 'reclaim_baron');
-  for (const infantryFamily of infantryFamilies) {
+  const loadInfantry = (progressive = false) => mapConcurrent(
+    infantryFamilies, progressive ? 1 : importedUnitConcurrency(), async (infantryFamily) => {
+    if (progressive) await waitForBattlefieldIdle();
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => reclaimUnitLibrary.get(key),
       );
-      for (const [key, mesh] of variants) meshes.set(key, mesh);
       console.info(`[units] imported shared ${infantryFamily.label} body for ${variants.size} roles`);
+      return variants;
     } catch (error) {
       console.error(`[units] imported ${infantryFamily.label} rejected; using procedural fallbacks`, error);
+      return null;
     }
+    },
+  );
+  const infantryResults = immediateImportedKeys === undefined ? await loadInfantry() : [];
+  for (const variants of infantryResults) {
+    if (variants === null) continue;
+    for (const [key, mesh] of variants) meshes.set(key, mesh);
   }
   const importedKeys = [
     'reclaim_grinder', 'reclaim_spitter', 'reclaim_slaghurler',
     'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
     'reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler',
   ] as const;
-  for (const key of importedKeys) {
+  const loadImportedKeys = (keys: readonly string[], progressive = false) => mapConcurrent(
+    keys, progressive ? 1 : importedUnitConcurrency(), async (key) => {
+    if (progressive) await waitForBattlefieldIdle();
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
     const model = reclaimUnitLibrary.get(key);
-    if (spec === undefined || model === undefined) continue;
+    if (spec === undefined || model === undefined) return null;
     try {
-      meshes.set(key, await loadImportedUnitOverride(model, spec));
+      const mesh = progressive
+        ? await loadImportedUnitOverride(model, spec, true)
+        : await loadImportedUnitOverride(model, spec);
       console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
+      return [key, mesh] as const;
     } catch (error) {
       console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
+      return null;
     }
+    },
+  );
+  const immediateKeys = immediateImportedKeys === undefined
+    ? importedKeys
+    : importedKeys.filter((key) => immediateImportedKeys.has(key));
+  const deferredKeys = immediateImportedKeys === undefined
+    ? []
+    : importedKeys.filter((key) => !immediateImportedKeys.has(key));
+  const importedResults = await loadImportedKeys(immediateKeys);
+  for (const result of importedResults) {
+    if (result !== null) meshes.set(result[0], result[1]);
   }
   const meshFor = (key: string): KindMesh | null => {
     const model = reclaimUnitLibrary.get(key);
@@ -1692,6 +1725,12 @@ export async function buildAndRegisterReclaimUnits(
 
   let registrations = 0;
   let bound = 0;
+  const registrationTargets: Array<{
+    key: string;
+    kind: EntityKind;
+    faction: Faction | typeof FACTION_ANY;
+    defId: number;
+  }> = [];
   for (const [contentKey, modelKey] of Object.entries(RECLAIM_UNIT_MODELS)) {
     const mesh = meshFor(modelKey);
     const model = reclaimUnitLibrary.get(modelKey);
@@ -1700,6 +1739,7 @@ export async function buildAndRegisterReclaimUnits(
     const defId = unitId[contentKey];
     if (defId !== undefined && defId >= 0) {
       registerKindMesh(kind, FACTION_ANY, mesh, defId);
+      registrationTargets.push({ key: modelKey, kind, faction: FACTION_ANY, defId });
       registrations++;
       bound++;
     }
@@ -1712,14 +1752,46 @@ export async function buildAndRegisterReclaimUnits(
   const grinder = meshFor('reclaim_grinder');
   if (picker !== null) {
     registerKindMesh(EntityKind.Infantry, Faction.Reclaim, picker, -1);
+    registrationTargets.push({
+      key: 'reclaim_picker', kind: EntityKind.Infantry, faction: Faction.Reclaim, defId: -1,
+    });
     registrations++;
   }
   if (grinder !== null) {
     registerKindMesh(EntityKind.Vehicle, Faction.Reclaim, grinder, -1);
+    registrationTargets.push({
+      key: 'reclaim_grinder', kind: EntityKind.Vehicle, faction: Faction.Reclaim, defId: -1,
+    });
     registrations++;
   }
 
-  return { models, failed, registrations, bound };
+  const streamRemaining = immediateImportedKeys === undefined ? undefined : async (
+    isCurrent: () => boolean = () => true,
+  ): Promise<number> => {
+    const lateInfantry = await loadInfantry(true);
+    if (!isCurrent()) return 0;
+    const lateVehicles = await loadImportedKeys(deferredKeys, true);
+    if (!isCurrent()) return 0;
+    const promoted = new Map<string, KindMesh>();
+    for (const variants of lateInfantry) {
+      if (variants === null) continue;
+      for (const [key, mesh] of variants) promoted.set(key, mesh);
+    }
+    for (const result of lateVehicles) {
+      if (result !== null) promoted.set(result[0], result[1]);
+    }
+    for (const [key, mesh] of promoted) {
+      meshes.set(key, mesh);
+      for (const target of registrationTargets) {
+        if (target.key !== key) continue;
+        registerKindMesh(target.kind, target.faction, mesh, target.defId, true);
+      }
+    }
+    console.info(`[reclaim] streamed ${promoted.size} authored unit models`);
+    return promoted.size;
+  };
+
+  return { models, failed, registrations, bound, streamRemaining };
 }
 
 /** Release every Reclamation geometry, material and atlas. */

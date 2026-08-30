@@ -50,6 +50,7 @@ import {
   MAX_ENTITIES, VFX_BUILDING_LIFE, VFX_EXPLOSION, VFX_GROUND, VFX_LIGHT_POOL, VFX_LIGHT_POOL_BY_TIER,
   VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE, WATER_LEVEL,
 } from '../core/config';
+import { worldToCell } from '../core/math';
 import {
   DecalKind, EntityFlag, EntityKind, Faction, FxKind, NONE, PartId, RenderPhase,
 } from '../core/types';
@@ -65,6 +66,7 @@ import { LightPool, setLightPool } from './LightPool';
 import { ParticleSystem, resetEmit, setParticleSystem } from './Particles';
 import { BeamSystem, setBeamSystem } from './Beams';
 import { TracerSystem, setTracerSystem, spawnMuzzleFlash, spawnTrail } from './Tracers';
+import { ambientDustRateForTier, ambientDustSample } from './AmbientDust';
 import {
   clearExplosions, hasScorchSink, setGroundHeightFn, setMetresPerPixel,
   setShakeSink, spawnCollectorMote, spawnDamageFire, spawnDamageWisp, spawnDust,
@@ -79,6 +81,9 @@ import {
 let lights: LightPool | null = null;
 let sprites: ParticleSystem | null = null;
 let beams: BeamSystem | null = null;
+let ambientDustEnabled = false;
+let ambientDustAccumulator = 0;
+let ambientDustSequence = 0;
 
 /**
  * `core/types.ts` DecalKind -> `world/Decals.ts` DecalKind.
@@ -379,6 +384,59 @@ function buildingLifeInterval(faction: Faction): number {
 }
 
 /**
+ * Sparse airborne motes around the current view, sharing the existing lit
+ * particle draw. Samples are admitted only on cells visible right now so the
+ * effect cannot outline undiscovered terrain through the shroud.
+ */
+function emitAmbientDust(P: ParticleSystem, dtMs: number, tier: number): void {
+  if (!ambientDustEnabled || dtMs <= 0) return;
+  const weather = globalThis.__vmWeatherHud;
+  const rate = ambientDustRateForTier(tier, weather?.intensity ?? 0);
+  if (rate <= 0) {
+    ambientDustAccumulator = 0;
+    return;
+  }
+
+  // Combat smoke owns this pool. Ambient detail yields early and never repays
+  // the missed particles as a later burst.
+  if (P.lit.pressure >= 0.62) {
+    ambientDustAccumulator = 0;
+    return;
+  }
+
+  ambientDustAccumulator += dtMs * rate / 1000;
+  const { world, cameraRig } = ctx();
+  let attempts = 0;
+  while (ambientDustAccumulator >= 1 && attempts++ < 4) {
+    ambientDustAccumulator -= 1;
+    const sample = ambientDustSample(ambientDustSequence++);
+    const x = cameraRig.focus.x + Math.cos(sample.angle) * sample.radius;
+    const z = cameraRig.focus.z + Math.sin(sample.angle) * sample.radius;
+    const cx = worldToCell(x);
+    const cz = worldToCell(z);
+    if (!world.vision.isVisibleAt(world.localPlayer, cx, cz)) continue;
+    if (world.terrain.isWater(cx, cz)) continue;
+
+    const ground = world.terrain.heightAt(x, z);
+    const e = resetEmit();
+    e.x = x; e.y = ground + sample.height; e.z = z;
+    e.vx = sample.driftX; e.vy = sample.driftY; e.vz = sample.driftZ;
+    e.lifeMs = sample.lifeMs;
+    e.size0 = sample.size0; e.size1 = sample.size1; e.sizeEase = 0.82;
+    e.aspect = 0.78;
+    e.ramp = VFX_RAMP.dust; e.tA = 0.08; e.tB = 1; e.radial = 0;
+    e.tile = VFX_TILE.soft; e.orient = 0;
+    e.rot = sample.rotation; e.rotVel = sample.rotationVelocity;
+    e.i0 = 0.82; e.i1 = 0.48; e.alpha = sample.alpha;
+    e.drag = 0.035; e.gravity = 0; e.flickerHz = 0;
+    P.lit.emit(e);
+  }
+  // A scripted multi-second advance may leave debt after the bounded loop.
+  // Discard it: an atmosphere layer should never explode into view.
+  ambientDustAccumulator = Math.min(ambientDustAccumulator, 1);
+}
+
+/**
  * Low-frequency, healthy building activity. Damage smoke owns unhealthy
  * structures; this path explicitly excludes them and never emits a column.
  */
@@ -642,6 +700,11 @@ export default defineSystem({
     // the scene forever, so the count is compiled into every shader in the
     // world and cannot be changed later without a global recompile hitch.
     const tier = ctx().loop.quality as number;
+    // Desktop WebGPU is the shipping path for this layer. The legacy renderer
+    // is being retired and does not pay for cinematic ambient particles.
+    ambientDustEnabled = ctx().handle.node !== null;
+    ambientDustAccumulator = 0;
+    ambientDustSequence = 0;
     lights = new LightPool(VFX_LIGHT_POOL_BY_TIER[tier] ?? VFX_LIGHT_POOL);
     lights.attach(sceneRig.scene);
     setLightPool(lights);
@@ -863,6 +926,7 @@ export default defineSystem({
     const mpp = B.metresPerPixel;
     setMetresPerPixel(mpp);
     T.step(dtMs, mpp);
+    emitAmbientDust(P, dtMs, ctx().loop.quality as number);
     // 22 TL/s^2 from bible §8.2, in metres.
     P.step(dtMs, camera, 154);
 
@@ -912,6 +976,9 @@ export default defineSystem({
     // `timeScale(0)` would silently freeze every effect in the next match.
     timeScale = 1;
     pendingAdvanceMs = 0;
+    ambientDustEnabled = false;
+    ambientDustAccumulator = 0;
+    ambientDustSequence = 0;
     setTracerSystem(null);
     setBeamSystem(null);
     setParticleSystem(null);

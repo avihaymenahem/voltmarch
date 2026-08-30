@@ -53,12 +53,33 @@ describe('command shell navigation contracts', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
-  it('offers process Quit only through the validated desktop bridge', () => {
+  it('gates process Quit behind an explicit desktop-only confirmation', () => {
     const menu = source('MainMenu.ts');
+    const shell = source('Shell.ts');
+    const decision = source('MenuDecision.ts');
     expect(menu).toContain('const desktop = desktopBridge()');
     expect(menu).toContain('if (desktop !== null)');
-    expect(menu).toContain('onClick: () => desktop.quit()');
+    expect(menu).toContain('onClick: () => this.shell.openQuitConfirmation()');
+    expect(menu).not.toContain('onClick: () => desktop.quit()');
+    expect(shell).toContain('openQuitConfirmation(): void');
+    expect(shell).toContain("title: 'Quit Voltmarch?'");
+    expect(shell).toContain('run: () => desktop.quit()');
+    expect(decision).toContain("card.setAttribute('role', 'dialog')");
+    expect(decision).toContain("card.setAttribute('aria-modal', 'true')");
     expect(menu).not.toContain('window.close()');
+  });
+
+  it('asks whether training should continue, reset, or end before entering it', () => {
+    const menu = source('MainMenu.ts');
+    const shell = source('Shell.ts');
+    expect(menu).toContain('onClick: () => this.shell.openTutorialConfirmation()');
+    expect(menu).not.toContain('void this.shell.startTutorial()');
+    expect(shell).toContain('openTutorialConfirmation(): void');
+    expect(shell).toContain("label: 'Continue'");
+    expect(shell).toContain("label: 'Reset'");
+    expect(shell).toContain("label: 'End'");
+    expect(shell).toContain('restoreTutorialMenuItem();');
+    expect(shell).toContain('endTutorialMenuItem();');
   });
 
   it('keeps the main-menu utility actions readable instead of squeezing them into tiny cells', () => {
@@ -77,6 +98,24 @@ describe('command shell navigation contracts', () => {
     expect(css).toContain('row-gap: 2px;');
   });
 
+  it('keeps the main-menu status rail on one vertically aligned line', () => {
+    const css = source('shell.css');
+    const footerMetaRules = [...css.matchAll(
+      /\.vm-shell \.vm-menu-foot > \.vm-load-meta\s*\{(?<body>[^}]*)\}/g,
+    )].map((match) => match.groups?.body ?? '');
+    expect(footerMetaRules.some((rule) => (
+      rule.includes('flex-wrap: nowrap;')
+      && rule.includes('align-items: center;')
+      && rule.includes('margin-top: 0;')
+    ))).toBe(true);
+  });
+
+  it('keeps the campaign lead copy clear of the modal header divider', () => {
+    const css = source('shell.css');
+    const note = css.match(/\.vm-shell \.vm-camp-note\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? '';
+    expect(note).toContain('margin: 18px;');
+  });
+
   it('keeps leaving the match distinct from garrison evacuation', () => {
     const pause = source('PauseMenu.ts');
     expect(pause).toContain("button('Quit To Menu'");
@@ -84,6 +123,16 @@ describe('command shell navigation contracts', () => {
     expect(pause).not.toContain('vm-pause-evacuate');
     expect(pause).toContain("next.root.classList.add('is-overlay-entering')");
     expect(pause).toContain("snapshot.classList.add('is-overlay-snapshot')");
+  });
+
+  it('lets battlefield tools consume Escape before opening the pause menu', () => {
+    const shell = source('Shell.ts');
+    const input = readFileSync(join(ROOT, 'apps/game/src/input/input.system.ts'), 'utf8');
+    expect(shell).toContain('if (cancelBattlefieldModal()) return;');
+    expect(shell.indexOf('if (cancelBattlefieldModal()) return;'))
+      .toBeLessThan(shell.indexOf('this.pause();', shell.indexOf('if (cancelBattlefieldModal()) return;')));
+    expect(input).toContain('cancel: cancelBattlefieldMode');
+    expect(input).toContain('else if (clearArmedTool()) cancelled = true;');
   });
 });
 

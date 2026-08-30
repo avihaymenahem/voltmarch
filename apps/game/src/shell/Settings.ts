@@ -116,7 +116,7 @@ import {
   focusable,
   icon,
   pageFrame,
-  row,
+  row as shellRow,
   setAdjust,
   slider,
   toggle,
@@ -190,8 +190,12 @@ export function applySettings(
     setAdaptiveResolution(settings.graphics.adaptiveResolution);
   }
 
-  if (game !== null && want('graphics.shadows')) {
-    game.ctx.handle.setShadowsEnabled(settings.graphics.shadows);
+  if (want('graphics.shadows')) {
+    // Stage this before renderer creation as well as applying it live. Otherwise
+    // a shadows-off player compiles every shadow pipeline during boot and only
+    // disables the pass after the loading curtain has already paid for it.
+    configureRender({ renderer: { shadows: { enabled: settings.graphics.shadows } } });
+    if (game !== null) game.ctx.handle.setShadowsEnabled(settings.graphics.shadows);
   }
 
   if (want('graphics.shadowQuality')) {
@@ -210,13 +214,11 @@ export function applySettings(
         ao: { enabled: g.ao },
         bloom: { enabled: g.bloom },
         smaa: { enabled: g.smaa },
-        // Takes effect on the next frame. A sample count still cannot be
-        // changed on a live framebuffer, but the multisampled target is now the
-        // post chain's OWN — one target for the scene pass, not the composer's
-        // cloned pair — so switching it is an allocate-or-free rather than a
-        // rebuild of the whole chain. `PostChain#syncConfig` does it, and the
-        // next frame is warmed up before it is presented. This comment and the
-        // settings row both used to say a restart was needed.
+        // Takes effect without a restart. A sample count cannot be changed on a
+        // live target: the legacy chain allocates/frees its one scene target,
+        // while the WebGPU chain rebuilds its graph because `PassNode` bakes
+        // `samples` into that graph. `postGraphSignature` MUST carry this value;
+        // omitting it once left the toggle on while the live target stayed 0x.
         msaaSamples: g.msaa ? 4 : 0,
         // The enabled arm uses the deliberately restrained 2026-08-27 grain
         // ceiling. Chromatic aberration stays zero in both arms.
@@ -227,8 +229,12 @@ export function applySettings(
     });
   }
 
-  if (game !== null && want('graphics.postFx')) {
-    game.ctx.post.setEnabled(settings.graphics.postFx);
+  if (want('graphics.postFx')) {
+    // The node post graph is constructed during bootstrap. Persist the desired
+    // state first so the cold path never builds defaults and then recompiles a
+    // different graph during Shell's hidden settle frames.
+    configureRender({ post: { enabled: settings.graphics.postFx } });
+    if (game !== null) game.ctx.post.setEnabled(settings.graphics.postFx);
   }
 
   // Deliberately NOT guarded on `game !== null`: the gate is a class on
@@ -334,6 +340,46 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
   return isPanelBlurActive()
     ? `${base} On for this display.`
     : `${base} Off on this display.`;
+}
+
+/** Keep ordinary one-line guidance visible; fold explanations that dominate a settings row. */
+export const SETTINGS_NOTE_COLLAPSE_CHARS = 96;
+
+export function shouldCollapseSettingsNote(note: string): boolean {
+  return note.trim().length > SETTINGS_NOTE_COLLAPSE_CHARS;
+}
+
+let settingsNoteId = 0;
+
+/** Settings-only row wrapper: long guidance is available on demand instead of always expanded. */
+function row(label: string, control: HTMLElement, note?: string): HTMLDivElement {
+  const result = shellRow(label, control, note);
+  if (note === undefined || !shouldCollapseSettingsNote(note)) return result;
+
+  const labelNode = result.querySelector<HTMLElement>('.vm-row-label');
+  const noteNode = result.querySelector<HTMLElement>('.vm-row-note');
+  if (labelNode === null || noteNode === null) return result;
+
+  const id = `vm-settings-note-${++settingsNoteId}`;
+  noteNode.id = id;
+  noteNode.hidden = true;
+
+  const details = el('button', 'vm-row-details', 'Details');
+  details.type = 'button';
+  details.setAttribute('aria-controls', id);
+  details.setAttribute('aria-expanded', 'false');
+  details.setAttribute('aria-label', `Show details for ${label}`);
+  focusable(details);
+  details.addEventListener('click', () => {
+    const expanded = details.getAttribute('aria-expanded') === 'true';
+    details.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    details.setAttribute('aria-label', `${expanded ? 'Show' : 'Hide'} details for ${label}`);
+    noteNode.hidden = expanded;
+    result.classList.toggle('is-details-open', !expanded);
+  });
+  labelNode.appendChild(details);
+  result.classList.add('has-collapsible-note');
+  return result;
 }
 
 /* ==========================================================================
@@ -1618,15 +1664,6 @@ export class SettingsScreen implements Screen {
         + 'saved but not yet in force.',
       ));
     }
-
-    sec.appendChild(row(
-      'Game Files',
-      button('Open Folder', {
-        iconName: 'info',
-        onClick: () => void desktopBridge()?.revealUserData(),
-      }),
-      'Native profile, settings and save files stored under Electron userData.',
-    ));
   }
 
   /* -- graphics ---------------------------------------------------------- */
@@ -1997,6 +2034,7 @@ export class SettingsScreen implements Screen {
     const profile = readProgression();
     if (profile === null) {
       section.appendChild(el('p', 'vm-body', 'Profile management is unavailable in this session.'));
+      this.renderGameFiles(section);
       return;
     }
 
@@ -2032,6 +2070,20 @@ export class SettingsScreen implements Screen {
     const status = el('p', 'vm-diag-status', 'No profile operation has been performed.');
     this.profileStatus = status;
     section.appendChild(status);
+    this.renderGameFiles(section);
+  }
+
+  /** Native saves/settings live with profile management, never graphics quality. */
+  private renderGameFiles(section: HTMLElement): void {
+    if (desktopBridge() === null) return;
+    section.appendChild(row(
+      'Game Files',
+      button('Open Folder', {
+        iconName: 'info',
+        onClick: () => void desktopBridge()?.revealUserData(),
+      }),
+      'Native profile, settings and save files stored under Electron userData.',
+    ));
   }
 
   private sayProfile(text: string, bad = false): void {
@@ -2245,8 +2297,8 @@ export class SettingsScreen implements Screen {
     how.textContent =
       'Trackpad: two fingers zoom, Shift + two fingers pans, pinch zooms. ' +
       'Mouse: the wheel zooms toward the cursor. ' +
-      'Drag to pan with the middle button, with Space held, or with the right button — a right-click ' +
-      'that does not move is still an order. H centres on your base.';
+      'Drag to pan with the middle button or with Space held. ' +
+      'Right-click stays reserved for orders. H centres on your base.';
     body.appendChild(how);
 
     const nav = this.section(body, 'Pointer & Camera');

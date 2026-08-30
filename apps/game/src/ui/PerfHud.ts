@@ -1133,6 +1133,11 @@ export interface PerfReadout {
   waterCpuMs: number;
   particlesCpuMs: number;
   uiCpuMs: number;
+  /** Visible frame gaps retained for the whole match, not only the 240-frame ring. */
+  longFrameCount: number;
+  lastLongFrameGapMs: number;
+  lastLongFrameCpuMs: number;
+  worstLongFrameGapMs: number;
 }
 
 export function emptyReadout(): PerfReadout {
@@ -1152,6 +1157,10 @@ export function emptyReadout(): PerfReadout {
     waterCpuMs: 0,
     particlesCpuMs: 0,
     uiCpuMs: 0,
+    longFrameCount: 0,
+    lastLongFrameGapMs: 0,
+    lastLongFrameCpuMs: 0,
+    worstLongFrameGapMs: 0,
   };
 }
 
@@ -1461,14 +1470,14 @@ export class PerfHud {
     this.reasonText = label(this.verdictNode, 'vm-perf-reason', '');
 
     const rows = el('div', 'vm-perf-rows', this.root);
-    this.addRow(rows, 'p95 / min');
+    this.addRow(rows, 'p95 / max');
     this.addRow(rows, 'cpu');
     this.addRow(rows, 'gpu');
     this.addRow(rows, 'draws');
     this.addRow(rows, 'tris');
     this.addRow(rows, 'tier');
     this.addRow(rows, 'device');
-    this.addRow(rows, 'self');
+    this.addRow(rows, 'hitches');
     this.addRow(rows, 'gpu scene / sh');
     this.addRow(rows, 'gpu ao / gi / blm');
     this.addRow(rows, 'gpu grade / smaa / ui');
@@ -1675,7 +1684,7 @@ export class PerfHud {
     }
 
     /* -- the rows ------------------------------------------------------- */
-    this.write(0, `${s.frameP95Ms.toFixed(1)} / ${frames.min.toFixed(1)} ms`);
+    this.write(0, `${s.frameP95Ms.toFixed(1)} / ${frames.max.toFixed(1)} ms`);
 
     const simTotal = r.simMs * Math.max(1, r.substeps);
     const gfx = Math.max(0, s.cpuMedianMs - simTotal);
@@ -1690,10 +1699,10 @@ export class PerfHud {
       : `${formatCount(r.trianglesColour)} col · ${formatCount(r.triangles)} all`);
     this.write(5, `${r.tier} · ${r.entities} ents`);
     this.write(6, r.device);
-    this.write(
-      7,
-      `${formatSmallMs(this.sampleCostMs)}/f · ${formatSmallMs(this.updateCostMs)}/upd`,
-    );
+    this.write(7, r.longFrameCount === 0
+      ? '0'
+      : `${r.longFrameCount} · last ${r.lastLongFrameGapMs.toFixed(0)} wall / ` +
+        `${r.lastLongFrameCpuMs.toFixed(0)} cpu · worst ${r.worstLongFrameGapMs.toFixed(0)} ms`);
 
     const pass = this.timer.passSnapshot?.values;
     const passMs = (id: GpuPassId): string => {

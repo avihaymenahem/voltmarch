@@ -51,7 +51,8 @@ import * as THREE from 'three';
 import { nodePath } from '../render/gpu-path';
 import {
   DECAL_ATLAS_SIZE, DECAL_DARKEN_FLOOR, DECAL_GRID, DECAL_LIFT, DECAL_POOL,
-  DECAL_SWEEP_PER_FRAME,
+  DECAL_SWEEP_PER_FRAME, GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+  GROUND_OVERLAY_DEPTH_BIAS_UNITS,
   CRATER_DARKEN, CRATER_HALF_SIZE, LIGHT_POOL_HALF_SIZE, MANHOLE_HALF_SIZE,
   MAP_SIZE, OIL_DARKEN, OIL_HALF_SIZE, SCORCH_DARKEN, SCORCH_HALF_SIZE,
   SQUISH_DARKEN, SQUISH_HALF_SIZE, SQUISH_LIFE_SECONDS,
@@ -791,8 +792,8 @@ export class DecalField {
       // lift clears terrain/roads; polygon offset is the remaining raster-depth
       // guard at grazing angles.
       polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
+      polygonOffsetFactor: GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+      polygonOffsetUnits: GROUND_OVERLAY_DEPTH_BIAS_UNITS,
     });
 
     if (glsl !== null) {

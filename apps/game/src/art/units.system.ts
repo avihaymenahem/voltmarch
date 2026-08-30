@@ -43,6 +43,12 @@ import { defineSystem } from '../core/loop';
 import { QUALITY_PRESETS, RA3_UNIT_PALETTE, UNIT_GREEBLE, MAP_SIZE, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId, type QualityTier } from '../core/types';
 import { ctx } from '../game/context';
+import { mapConcurrent } from '../core/async-pool';
+import {
+  liveAssetStreamingEnabled,
+  scheduleBattlefieldWork,
+  waitForBattlefieldIdle,
+} from '../core/battlefield-ready';
 import { plannedScenario, resolveDefBinding, type DefBinding } from '../game/Scenarios';
 import { FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec } from '../render/RenderBridge';
 import { ARMY_ORDER, GAIA_SLOT, type PerArmy } from './faction-models';
@@ -50,7 +56,8 @@ import { formatStats } from './MassList';
 import { UNIT_MASS_LISTS } from './UnitDefs';
 import { unitLibrary, type UnitModel } from './UnitFactory';
 import {
-  disposeImportedUnitAssets, IMPORTED_UNIT_SPECS, loadImportedUnitOverride,
+  disposeImportedUnitAssets, importedUnitConcurrency, IMPORTED_UNIT_SPECS,
+  loadImportedUnitOverride,
 } from './ImportedUnitAssets';
 import {
   disposeImportedInfantryAssets,
@@ -71,6 +78,30 @@ interface BridgeGlobal { __vmUnits?: unknown; }
 const MCV_IMPORT_KEYS: ReadonlySet<string> = new Set([
   'allied_dozer',
   'soviet_dozer',
+]);
+
+/**
+ * Authored hulls whose production chain requires a real shoreline.
+ *
+ * `plannedScenario().sea` is the same declaration terrain generation and the
+ * production availability gate consume. When it is null, the sidebar removes
+ * the complete dock-dependent chain, so parsing these GLBs can never improve a
+ * frame in that match. Procedural registrations remain as a defensive fallback
+ * for replay/legacy data that violates the production contract.
+ */
+const SEA_ONLY_IMPORT_KEYS: ReadonlySet<string> = new Set([
+  'allied_destroyer',
+  'allied_gunboat',
+  'allied_transport',
+  'allied_hydrofoil',
+  'allied_lighter',
+  'allied_frogman',
+  'soviet_dreadnought',
+  'soviet_sub',
+  'soviet_transport',
+  'soviet_picket',
+  'soviet_lighter',
+  'soviet_diver',
 ]);
 
 /**
@@ -301,8 +332,8 @@ function paradeRequested(): boolean {
 }
 
 let paradeRoot: THREE.Group | null = null;
-let deferredImportTimer = 0;
 let importedAssetEpoch = 0;
+let cancelDeferredWork: (() => void) | null = null;
 
 /**
  * A deterministic display rack: every unit, one per slot, facing the camera's
@@ -339,6 +370,7 @@ function buildParade(scene: THREE.Scene, models: UnitModel[]): THREE.Group {
 
 export default defineSystem({
   id: 'art.units',
+  initGroup: 'faction-art',
 
   async init(): Promise<void> {
     const { sceneRig, loop } = ctx();
@@ -381,50 +413,77 @@ export default defineSystem({
     // One KindMesh per model, cached: handing the SAME object to two factions
     // is how the bridge knows they can share one batch.
     const meshes = new Map<string, KindMesh>();
-    const sharedArmyInfantry = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
-      family.roles.every((role) =>
-        role.modelKey.startsWith('allied_') || role.modelKey.startsWith('soviet_')));
-    for (const family of sharedArmyInfantry) {
+    const plannedSea = plannedScenario().sea !== null;
+    const sharedArmyInfantry = IMPORTED_INFANTRY_FAMILIES.filter((family) => {
+      if (!family.roles.every((role) =>
+        role.modelKey.startsWith('allied_') || role.modelKey.startsWith('soviet_'))) return false;
       const faction = family.roles[0].modelKey.startsWith('allied_') ? Faction.Allies : Faction.Soviets;
-      if (!isArtFactionPlanned(faction)) continue;
+      return isArtFactionPlanned(faction)
+        && (plannedSea || family.roles.every((role) => !SEA_ONLY_IMPORT_KEYS.has(role.modelKey)));
+    });
+    const infantryResults = await mapConcurrent(
+      sharedArmyInfantry,
+      importedUnitConcurrency(),
+      async (family) => {
       try {
         const variants = await loadImportedInfantryFamily(family, (key) => unitLibrary.get(key));
-        for (const [key, mesh] of variants) meshes.set(key, mesh);
         console.info(`[units] imported shared ${family.label} body for ${variants.size} roles`);
+        return variants;
       } catch (error) {
         console.error(`[units] imported ${family.label} rejected; using procedural fallbacks`, error);
+        return null;
       }
+      },
+    );
+    for (const variants of infantryResults) {
+      if (variants === null) continue;
+      for (const [key, mesh] of variants) meshes.set(key, mesh);
     }
-    const importedSpecs = IMPORTED_UNIT_SPECS.filter((spec) =>
-      spec.key.startsWith('allied_')
+    const importedSpecs = IMPORTED_UNIT_SPECS.filter((spec) => {
+      if (!plannedSea && SEA_ONLY_IMPORT_KEYS.has(spec.key)) return false;
+      return spec.key.startsWith('allied_')
         ? isArtFactionPlanned(Faction.Allies)
         : spec.key.startsWith('soviet_')
           ? isArtFactionPlanned(Faction.Soviets)
-          : false,
-    );
-    const loadSpecs = async (specs: typeof importedSpecs): Promise<Array<{
+          : false;
+    });
+    const loadSpecs = async (
+      specs: typeof importedSpecs,
+      progressive = false,
+    ): Promise<Array<{
       key: string;
       mesh: KindMesh;
     }>> => {
-      const loaded: Array<{ key: string; mesh: KindMesh }> = [];
-      for (const spec of specs) {
+      const results = await mapConcurrent(
+        specs,
+        progressive ? 1 : importedUnitConcurrency(),
+        async (spec) => {
+        if (progressive) await waitForBattlefieldIdle();
         const model = unitLibrary.get(spec.key);
         if (model === undefined) {
           console.error(`[units] imported override ${spec.key} has no procedural fallback`);
-          continue;
+          return null;
         }
         try {
-          loaded.push({ key: spec.key, mesh: await loadImportedUnitOverride(model, spec) });
+          const result = {
+            key: spec.key,
+            mesh: await loadImportedUnitOverride(model, spec, progressive),
+          };
           console.info(`[units] imported ${spec.label} with articulated LOD/shadow path`);
+          return result;
         } catch (error) {
           // The generated model is cosmetic. A bad binary, unsupported texture
           // format or pivot regression must never make the gameplay unit vanish.
           console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
+          return null;
         }
-      }
-      return loaded;
+        },
+      );
+      return results.filter((result): result is { key: string; mesh: KindMesh } => result !== null);
     };
-    const fastMcvBoot = plannedScenario().start === 'mcv' && !paradeRequested();
+    const fastMcvBoot = plannedScenario().start === 'mcv'
+      && !paradeRequested()
+      && liveAssetStreamingEnabled();
     // Never publish a procedural construction vehicle that will be replaced on
     // screen moments later. The MCV GLBs are awaited before the registry sees
     // the opening entities; only units that cannot exist at match start retain
@@ -519,26 +578,25 @@ export default defineSystem({
     assertNoSharedDefs(binding);
     if (deferredSpecs.length > 0) {
       const epoch = ++importedAssetEpoch;
-      deferredImportTimer = window.setTimeout(() => {
-        deferredImportTimer = 0;
-        void loadSpecs(deferredSpecs).then((results) => {
-          if (epoch !== importedAssetEpoch) return;
-          for (const result of results) {
-            meshes.set(result.key, result.mesh);
-            for (const registration of registrations) {
-              if (registration.key !== result.key) continue;
-              registerKindMesh(
-                registration.kind,
-                registration.faction,
-                result.mesh,
-                registration.defId,
-                true,
-              );
-            }
+      cancelDeferredWork = scheduleBattlefieldWork(20, async () => {
+        cancelDeferredWork = null;
+        const results = await loadSpecs(deferredSpecs, true);
+        if (epoch !== importedAssetEpoch) return;
+        for (const result of results) {
+          meshes.set(result.key, result.mesh);
+          for (const registration of registrations) {
+            if (registration.key !== result.key) continue;
+            registerKindMesh(
+              registration.kind,
+              registration.faction,
+              result.mesh,
+              registration.defId,
+              true,
+            );
           }
-          console.info(`[units] streamed ${results.length} authored models`);
-        });
-      }, 12_000);
+        }
+        console.info(`[units] streamed ${results.length} authored models`);
+      });
     }
     if (bound === 0) {
       console.warn(
@@ -575,10 +633,8 @@ export default defineSystem({
 
   dispose(): void {
     importedAssetEpoch++;
-    if (deferredImportTimer !== 0) {
-      window.clearTimeout(deferredImportTimer);
-      deferredImportTimer = 0;
-    }
+    cancelDeferredWork?.();
+    cancelDeferredWork = null;
     if (paradeRoot !== null) {
       paradeRoot.removeFromParent();
       paradeRoot = null;

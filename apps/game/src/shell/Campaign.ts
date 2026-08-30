@@ -492,7 +492,6 @@ export class CampaignScreen implements Screen {
     card.type = 'button';
     card.id = `vm-camp-card-${index}`;
     card.setAttribute('aria-pressed', 'false');
-    card.appendChild(el('div', 'vm-card-stripe'));
 
     // The chapter selector is the player's first faction read. Reuse the
     // opening operation's authored commander rather than adding a second
@@ -510,9 +509,16 @@ export class CampaignScreen implements Screen {
       card.appendChild(portrait);
     }
 
-    card.appendChild(el('div', 'vm-card-name', ch.title));
-    card.appendChild(el('div', 'vm-camp-card-command',
+    // One heading lockup: the faction rule spans title + command instead of
+    // sitting above the title as a disconnected bar. Keeping all three in one
+    // grid also gives every campaign title the same baseline regardless of
+    // portrait or title length.
+    const heading = el('div', 'vm-camp-card-heading');
+    heading.appendChild(el('div', 'vm-card-stripe'));
+    heading.appendChild(el('div', 'vm-card-name', ch.title));
+    heading.appendChild(el('div', 'vm-camp-card-command',
       CHAPTER_COMMAND[ch.id] ?? 'Campaign command'));
+    card.appendChild(heading);
     card.appendChild(el('div', 'vm-card-blurb', ch.blurb));
 
     const complete = ch.operations.filter((o) => this.done.has(o.id)).length;

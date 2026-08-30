@@ -466,6 +466,32 @@ describe('fallback', () => {
     expect(factory.workerStats().adopted).toBe(1);
     expect(workers.length).toBeGreaterThan(0);
   });
+
+  it('reinstalls a fresh pool with fresh diagnostics for the next world boot', async () => {
+    const factory = new TextureFactory();
+    const firstWorkers: FakeWorker[] = [];
+    factory.useWorkers(() => {
+      const worker = makeFakeWorker({ mode: 'work' });
+      firstWorkers.push(worker);
+      return worker;
+    }, { size: 1 });
+    factory.textureSet(requestFor('flatPaint', { colour: '#111111' }), ['albedo']);
+    await factory.settleWorkers();
+    expect(factory.workerStats()).toMatchObject({ dispatched: 1, adopted: 1, fellBack: 0 });
+
+    const secondWorkers: FakeWorker[] = [];
+    factory.useWorkers(() => {
+      const worker = makeFakeWorker({ mode: 'work' });
+      secondWorkers.push(worker);
+      return worker;
+    }, { size: 1 });
+    factory.textureSet(requestFor('flatPaint', { colour: '#222222' }), ['albedo']);
+    await factory.settleWorkers();
+
+    expect(firstWorkers.length).toBe(1);
+    expect(secondWorkers.length).toBe(1);
+    expect(factory.workerStats()).toMatchObject({ dispatched: 1, adopted: 1, fellBack: 0 });
+  });
 });
 
 /* ==========================================================================
@@ -762,12 +788,11 @@ describe('the browser edge', () => {
     expect(spawnTextureWorker()).toBeNull();
   });
 
-  it('registers a warm system that sorts last and installs the pool on import', async () => {
-    // Importing it is the whole mechanism: discovery is an eager glob, so this
-    // module's side effect lands before any system's `init` runs. If importing
-    // it threw, the game would not boot at all.
+  it('registers a warm system that sorts last and exposes bootstrap preparation', async () => {
     const mod = await import('../src/core/workers/texture-warm.system');
     expect(mod.default.id).toBe('core.textureWarm');
+    expect(typeof mod.prepareTextureWorkers).toBe('function');
+    mod.prepareTextureWorkers();
     // `SystemRegistry.init` awaits modules in (phase, order, seq) order, so a
     // top phase and a top order is what makes "after every other init" true.
     expect(mod.default.phase).toBe(Phase.Cleanup);

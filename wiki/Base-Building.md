@@ -429,6 +429,8 @@ instantaneous and irreversible on the click, and the armed sell cursor is delibe
 - The structure coughs up a **crew**: one to four line infantry, scaled by footprint area, who
   appear ringed around the site and run
 - EVA says *"Structure sold."*
+- Walls and gates can be sold even though they are not selected by ordinary clicks. Right-click or
+  Escape disarms the sell tool without touching the structure.
 
 **Selling a damaged building before it dies is how you keep half the cost.** A structure at 5%
 health is worth exactly as much sold as one at 100%.
@@ -441,6 +443,12 @@ refuses with a toast titled *"Cannot sell"* reading *"<Name> is your last way to
 would end the match."*
 
 The classic play — sell the yard because you already have an MCV parked next to it — still works.
+
+If the Construction Yard and vehicle factory are both gone, a surviving army is no longer silently
+stranded. With at least one owned structure, infantry or vehicle on the map and the full **3,000
+credits**, the Vehicles tab exposes the faction's construction vehicle as a normal **32-second
+off-map recovery requisition**. It arrives beside a safe owned rendezvous asset. This grants no
+credits and cannot revive a completely erased army.
 
 ---
 

@@ -41,7 +41,8 @@ import {
   createTerrainMaterials, type TerrainMaterialSet, type TerrainTextureData,
 } from './TerrainMaterial';
 import {
-  SPLAT_N, TerrainFields, buildTerrainChunks, chunkCastsShadow, terrainGenKey,
+  CHUNK_N, CHUNK_QUADS, GRID, SPLAT_N, TerrainFields, buildTerrainChunks, chunkCastsShadow,
+  drawnTerrainHeightAt, terrainGenKey,
   type TerrainFieldData, type TerrainGenOptions,
 } from './terrain-gen';
 
@@ -111,6 +112,8 @@ export class Terrain extends TerrainFields {
   private readonly scene: THREE.Scene;
   private readonly root = new THREE.Group();
   private readonly batches: THREE.BatchedMesh[] = [];
+  /** Which chunk index the colour renderer selected during the last mesh build. */
+  private readonly drawnLod = new Uint8Array(CHUNK_N * CHUNK_N);
   private terrainTriangles = 0;
   /**
    * `TerrainMaterialSetLike`, not `TerrainMaterialSet` — the GLSL set and
@@ -208,6 +211,10 @@ export class Terrain extends TerrainFields {
     const chunks = this.adoptedChunks
       ?? buildTerrainChunks(this.height, this.wallUp, this.wallTop);
     this.adoptedChunks = null;
+    this.drawnLod.fill(0);
+    for (const chunk of chunks) {
+      if (chunk.lodIndex !== null) this.drawnLod[chunk.cz * CHUNK_N + chunk.cx] = 1;
+    }
 
     /*
      * A BatchedMesh still keeps every chunk as an independently transformed,
@@ -284,6 +291,18 @@ export class Terrain extends TerrainFields {
       this.root.add(batch);
       this.batches.push(batch);
     }
+  }
+
+  /**
+   * Presentation height of the triangle mesh currently submitted for colour.
+   * Gameplay continues to use `heightAt`; close ground overlays use the higher
+   * of the two so neither the authoritative field nor its optimized draw mesh
+   * can pass through them.
+   */
+  drawnHeightAt(x: number, z: number): number {
+    const cx = Math.min(Math.max(Math.floor(x / (CHUNK_QUADS * GRID)), 0), CHUNK_N - 1);
+    const cz = Math.min(Math.max(Math.floor(z / (CHUNK_QUADS * GRID)), 0), CHUNK_N - 1);
+    return drawnTerrainHeightAt(this.height, x, z, this.drawnLod[cz * CHUNK_N + cx] !== 0);
   }
 
   /** Upload the control textures after a batch of `stampSurface` calls. */

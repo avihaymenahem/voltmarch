@@ -312,9 +312,25 @@ export interface GradeConfig {
   sharpen: number;
 }
 
+/** WebGPU-only atmosphere fused into the HDR post expression. */
+export interface CinematicAtmosphereConfig {
+  enabled: boolean;
+  /** Maximum multiplicative daylight reduction under broad cloud coverage. */
+  cloudShadowStrength: number;
+  /** World metres per broad cloud-noise repeat. */
+  cloudScale: number;
+  /** Maximum far-field blend toward the horizon atmosphere. */
+  hazeStrength: number;
+  /** View-space metres before the cinematic haze begins. */
+  hazeStart: number;
+  /** View-space metres at which `hazeStrength` is reached. */
+  hazeEnd: number;
+}
+
 export interface PostConfig {
   enabled: boolean;
   ao: AoConfig;
+  atmosphere: CinematicAtmosphereConfig;
   bloom: BloomConfig;
   grade: GradeConfig;
   smaa: { enabled: boolean };
@@ -504,6 +520,19 @@ export const RENDER_CONFIG: RenderConfig = {
       samples: 12,
       halfRes: true,
     },
+    atmosphere: {
+      enabled: true,
+      // This layer must read during ordinary play, not only in an A/B capture.
+      // A tighter world scale gives the camera a visible light/dark boundary;
+      // the old 260 m repeat commonly looked like a uniform exposure change.
+      cloudShadowStrength: 0.34,
+      cloudScale: 135,
+      // Haze is supporting depth only. Higher values turn the whole frame into
+      // a pale veil as the camera pulls back, which is not atmosphere.
+      hazeStrength: 0.04,
+      hazeStart: 90,
+      hazeEnd: 280,
+    },
     // Fallback only: `ArtBridge.artPatch` overwrites all four from
     // `DEFAULT_ART.bloom` at boot. Kept in step with it anyway, because a
     // fallback that disagrees with the shipped look is how you get a "why does
@@ -651,19 +680,39 @@ const RENDER_QUALITY_PRESETS: Record<RenderQualityTier, DeepPartial<RenderConfig
     // five mips whatever it is; radius only reweights them. It was 0.5, which
     // flattened the weighting toward the veily wide mip on exactly the machines
     // least able to hide it. Held at the bible's 0.34 with everyone else.
-    post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.34 }, smaa: { enabled: false } },
+    post: {
+      ao: { enabled: false },
+      atmosphere: { enabled: false },
+      bloom: { enabled: true, radius: 0.34 },
+      smaa: { enabled: false },
+    },
   },
   medium: {
     renderer: { resolutionScale: 0.9, maxPixelRatio: 1.5, shadows: { enabled: true, mapSize: 1536 } },
-    post: { ao: { enabled: true, samples: 8, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 8, halfRes: true },
+      atmosphere: { enabled: true, cloudShadowStrength: 0.28, hazeStrength: 0.03 },
+      bloom: { enabled: true },
+      smaa: { enabled: true },
+    },
   },
   high: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 2048 } },
-    post: { ao: { enabled: true, samples: 12, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 12, halfRes: true },
+      atmosphere: { enabled: true, cloudShadowStrength: 0.34, hazeStrength: 0.04 },
+      bloom: { enabled: true },
+      smaa: { enabled: true },
+    },
   },
   ultra: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 4096 } },
-    post: { ao: { enabled: true, samples: 16, halfRes: false }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 16, halfRes: false },
+      atmosphere: { enabled: true, cloudShadowStrength: 0.35, hazeStrength: 0.045 },
+      bloom: { enabled: true },
+      smaa: { enabled: true },
+    },
   },
 };
 

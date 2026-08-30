@@ -87,6 +87,7 @@ import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
 import { mapConcurrent } from '../core/async-pool';
+import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import {
   configureImportedStructureTextureLoader,
   loadImportedStructureOverride,
@@ -104,7 +105,7 @@ type V3 = readonly [number, number, number];
 /**
  * RECLAMATION ARCHITECTURE.
  *
- * One step lighter than `RECLAIM_UNIT_PALETTE.base` (#3D3A44) for the same
+ * One step lighter than `RECLAIM_UNIT_PALETTE.base` for the same
  * reason the Allied and Pact structure palettes are lighter than their hulls:
  * buildings catch the key light and want to sit above the units standing in
  * front of them. It is still, by a clear margin, the darkest architecture in
@@ -116,22 +117,22 @@ type V3 = readonly [number, number, number];
  * structure.
  */
 export const RECLAIM_STRUCTURE_PALETTE: UnitPalette = {
-  base: '#686270',
-  shadow: '#29242F',
+  base: '#7A7382',
+  shadow: '#3B3541',
   /** Arc violet, straight off the hull palette. The armies must match. */
-  team: '#9B18D8',
-  teamSecondary: '#5E0E86',
+  team: '#B53DE3',
+  teamSecondary: '#77249B',
   /** Amber bird on a violet disc — see `RECLAIM_UNIT_PALETTE.insignia`. */
   insignia: 'eagle',
   insigniaColor: '#E8B33C',
   hullNumber: 3312,
-  emissive: '#E27BFF',
+  emissive: '#EE99FF',
   /** Warm grey-brown, per bible 5.4 (S <= 0.26). Never blue steel. */
-  bareMetal: '#80776A',
-  trackLink: '#332D38',
-  glass: '#382642',
+  bareMetal: '#9A8E7F',
+  trackLink: '#433B48',
+  glass: '#4A3653',
   stencil: '#D8CFC0',
-  hazard: '#E5CB43',
+  hazard: '#EFCF4C',
   /** Welded and torch-cut, not bolted. The Soviets keep the rivet ring. */
   rivets: false,
 };
@@ -145,19 +146,19 @@ export const RECLAIM_STRUCTURE_PALETTE: UnitPalette = {
  * keeping a dark building on dark ground readable at RTS distance.
  */
 export const RECLAIM_PAD_PALETTE: UnitPalette = {
-  base: '#645E6E',
-  shadow: '#201C26',
-  team: '#9B18D8',
-  teamSecondary: '#4E4858',
+  base: '#756E7E',
+  shadow: '#302A36',
+  team: '#B53DE3',
+  teamSecondary: '#615A6B',
   insignia: 'eagle',
   insigniaColor: '#E8B33C',
   hullNumber: 3312,
-  emissive: '#E27BFF',
-  bareMetal: '#6E6A66',
-  trackLink: '#241F2A',
-  glass: '#2A1E34',
+  emissive: '#EE99FF',
+  bareMetal: '#89827A',
+  trackLink: '#39323E',
+  glass: '#403049',
   stencil: '#CFC8BC',
-  hazard: '#E5CB43',
+  hazard: '#EFCF4C',
   rivets: false,
 };
 
@@ -1613,15 +1614,18 @@ export const RECLAIM_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
 };
 
 const RECLAIM_IMPORTED_STYLE: ImportedStructureStyle = {
-  color: [1.00, 0.98, 1.02],
-  metalness: 0.18,
-  roughness: 0.86,
-  normalScale: 0.68,
-  ambient: [0.46, 0.34, 0.54],
-  ambientIntensity: 0.065,
+  // The atlas is intentionally graphite-dark. A slightly violet-neutral
+  // radiance lift restores its three material bands without bleaching the
+  // amber hardware or moving global exposure on bright snow.
+  color: [1.60, 1.52, 1.68],
+  metalness: 0.12,
+  roughness: 0.78,
+  normalScale: 1.00,
+  ambient: [0.52, 0.42, 0.60],
+  ambientIntensity: 0.22,
   clearcoat: 0.00,
   clearcoatRoughness: 1.00,
-  envMapIntensity: 0.74,
+  envMapIntensity: 0.90,
   useRoughnessMap: false,
 };
 
@@ -1866,6 +1870,8 @@ export interface ReclaimStructureReport {
   registrations: number;
   bound: number;
   imported: number;
+  /** Promote non-opening authored shells after Bootstrap presents frame zero. */
+  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
 }
 
 /**
@@ -1888,6 +1894,7 @@ export interface ReclaimStructureReport {
 export async function buildAndRegisterReclaimStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
+  immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<ReclaimStructureReport> {
   const palettes: StructurePalettes = {
     structure: RECLAIM_STRUCTURE_PALETTE,
@@ -1931,18 +1938,30 @@ export async function buildAndRegisterReclaimStructures(
 
   configureImportedStructureTextureLoader();
   const importedMeshes = new Map<string, KindMesh>();
-  const importedResults = await mapConcurrent(RECLAIM_IMPORTED_STRUCTURE_SPECS, 3, async (spec) => {
+  const loadSpecs = (
+    specs: readonly ImportedStructureSpec[],
+    progressive = false,
+  ) => mapConcurrent(specs, progressive ? 1 : 3, async (spec) => {
+    if (progressive) await waitForBattlefieldIdle();
     const model = reclaimBuildingLibrary.get(spec.key);
     if (model === undefined) return null;
     try {
       return [spec.key, await loadImportedStructureOverride(
         model, spec, reclaimBuildingLibrary.depthMaterial(),
+        progressive,
       )] as const;
     } catch (error) {
       failed.push(`${spec.key} imported override: ${String(error)}`);
       return null;
     }
   });
+  const immediateSpecs = immediateImportedKeys === undefined
+    ? RECLAIM_IMPORTED_STRUCTURE_SPECS
+    : RECLAIM_IMPORTED_STRUCTURE_SPECS.filter((spec) => immediateImportedKeys.has(spec.key));
+  const deferredSpecs = immediateImportedKeys === undefined
+    ? []
+    : RECLAIM_IMPORTED_STRUCTURE_SPECS.filter((spec) => !immediateImportedKeys.has(spec.key));
+  const importedResults = await loadSpecs(immediateSpecs);
   for (const result of importedResults) {
     if (result !== null) importedMeshes.set(result[0], result[1]);
   }
@@ -1960,12 +1979,18 @@ export async function buildAndRegisterReclaimStructures(
 
   let registrations = 0;
   let bound = 0;
+  const registrationTargets: Array<{
+    key: string;
+    faction: Faction | typeof FACTION_ANY;
+    defId: number;
+  }> = [];
   for (const [contentKey, modelKey] of Object.entries(RECLAIM_STRUCTURE_MODELS)) {
     const mesh = meshFor(modelKey);
     if (mesh === null) continue;
     const defId = buildingId[contentKey];
     if (defId === undefined || defId < 0) continue;
     registerKindMesh(EntityKind.Building, FACTION_ANY, mesh, defId);
+    registrationTargets.push({ key: modelKey, faction: FACTION_ANY, defId });
     registrations++;
     bound++;
   }
@@ -1980,10 +2005,33 @@ export async function buildAndRegisterReclaimStructures(
   const fallback = meshFor('reclaim_rookery');
   if (fallback !== null) {
     registerKindMesh(EntityKind.Building, Faction.Reclaim, fallback, -1);
+    registrationTargets.push({ key: 'reclaim_rookery', faction: Faction.Reclaim, defId: -1 });
     registrations++;
   }
 
-  return { models, failed, registrations, bound, imported: importedMeshes.size };
+  const streamRemaining = deferredSpecs.length === 0 ? undefined : async (
+    isCurrent: () => boolean = () => true,
+  ): Promise<number> => {
+    const results = await loadSpecs(deferredSpecs, true);
+    if (!isCurrent()) return 0;
+    let promoted = 0;
+    for (const result of results) {
+      if (result === null) continue;
+      const [key, mesh] = result;
+      importedMeshes.set(key, mesh);
+      promoted++;
+      for (const target of registrationTargets) {
+        if (target.key !== key) continue;
+        registerKindMesh(EntityKind.Building, target.faction, mesh, target.defId, true);
+      }
+    }
+    console.info(`[reclaim] streamed ${promoted} authored structure models`);
+    return promoted;
+  };
+
+  return {
+    models, failed, registrations, bound, imported: importedMeshes.size, streamRemaining,
+  };
 }
 
 /** Release every Reclamation geometry, material and atlas. */

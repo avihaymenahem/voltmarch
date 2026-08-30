@@ -70,7 +70,8 @@ import { payDerricks } from '../src/sim/civilian.system';
 import { CursorKind } from '../src/input/Input';
 import { Selection, SelectMode } from '../src/input/Selection';
 import {
-  CommandMode, createCapabilities, readCapabilities, resolveContextOrder,
+  CommandMode, OrderExecutor, createCapabilities, issueOrder, readCapabilities,
+  resolveContextOrder,
   type OrderResolution,
 } from '../src/input/Commands';
 
@@ -533,6 +534,60 @@ describe('the cursor can express both verbs against a neutral structure', () => 
     expect(r.order).toBe(OrderKind.Enter);
     expect(r.cursor).toBe(CursorKind.Enter);
     expect(r.target).toBe(b);
+  });
+
+  it('garrisons soldiers from a mixed engineer squad instead of resolving to Move', () => {
+    const rig = makeRig();
+    const sel = new Selection(rig.world, rig.channels);
+    const b = rig.spawn('civApartments', ALLIES, 120, 120);
+    const gi = foot(rig, ALLIES, 100, 100, 'gi');
+    const engineer = foot(rig, ALLIES, 101, 100, 'engineer');
+    sel.select(gi, SelectMode.Replace);
+    sel.select(engineer, SelectMode.Add);
+
+    const r = resolveAt(rig, b);
+    expect(r.order).toBe(OrderKind.Enter);
+
+    const ids = new Int32Array([gi as number, engineer as number]);
+    expect(issueOrder(
+      rig.world, rig.channels, ALLIES, r.order, ids, ids.length, r.x, r.z, r.target,
+    )).toBe(true);
+    new OrderExecutor(rig.world, rig.channels).tick();
+
+    const st = rig.world.store;
+    expect(st.orderKind[st.index(gi)]).toBe(OrderKind.Enter);
+    expect(st.orderKind[st.index(engineer)]).not.toBe(OrderKind.Enter);
+
+    placeAgainst(rig, gi, b);
+    rig.garrison.simTick(SIM);
+    expect(rig.garrison.occupantCount(b)).toBe(1);
+  });
+
+  it('splits a neutral-block click into engineer Capture and soldier Enter', () => {
+    const rig = makeRig();
+    const sel = new Selection(rig.world, rig.channels);
+    const b = rig.spawn('civApartments', GAIA, 120, 120);
+    const gi = foot(rig, ALLIES, 100, 100, 'gi');
+    const engineer = foot(rig, ALLIES, 101, 100, 'engineer');
+    sel.select(gi, SelectMode.Replace);
+    sel.select(engineer, SelectMode.Add);
+
+    const r = resolveAt(rig, b);
+    expect(r.order).toBe(OrderKind.Capture);
+    const ids = new Int32Array([gi as number, engineer as number]);
+    issueOrder(rig.world, rig.channels, ALLIES, r.order, ids, ids.length, r.x, r.z, r.target);
+    new OrderExecutor(rig.world, rig.channels).tick();
+
+    const st = rig.world.store;
+    expect(st.orderKind[st.index(gi)]).toBe(OrderKind.Enter);
+    expect(st.orderKind[st.index(engineer)]).toBe(OrderKind.Capture);
+
+    placeAgainst(rig, gi, b);
+    placeAgainst(rig, engineer, b);
+    rig.capture.simTick(SIM);
+    rig.garrison.simTick(SIM);
+    expect(st.owner[st.index(b)]).toBe(ALLIES as number);
+    expect(rig.garrison.occupantCount(b)).toBe(1);
   });
 
   it('refuses Enter once the structure is full, rather than promising it', () => {

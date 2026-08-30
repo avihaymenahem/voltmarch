@@ -1,11 +1,13 @@
 # RA3 LOOK BIBLE — VOLTMARCH
-### The single authoritative visual spec for VOLTMARCH's Three.js renderer
+### Historical measurement bible and readability benchmark for VOLTMARCH's Three.js renderer
 
 > **On the title.** This document is named for its *reference*, not for the product. VOLTMARCH is
 > an original game; Command & Conquer: Red Alert 3 is the shipped title whose frames we measure
 > ourselves against, because "make it look good" is not a spec and "match this histogram" is.
 > Every RA3 citation below is a measurement target. None of them describe what VOLTMARCH *is*.
-**Status: AUTHORITATIVE. Where this document contradicts an analyst report, this document wins.**
+**Status: MEASUREMENT AUTHORITY. `docs/VISUAL_DNA.md` is the current 2026 modernisation direction;
+where its art direction conflicts with this document's RA3 imitation target, VISUAL_DNA wins. Camera,
+readability and numeric acceptance gates here remain authoritative until explicitly replaced.**
 **Version 1.0 — Art Director's cut**
 
 ---

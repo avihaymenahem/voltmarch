@@ -6,8 +6,8 @@
  *
  * Two callers need that answer and they run at different moments:
  *
- *   `src/core/workers/world-warm.ts`  at module-discovery time, so it can hand
- *                                     the generation to a worker before any
+ *   `src/core/workers/world-warm.ts`  at bootstrap time, so it can hand the
+ *                                     generation to a worker before any
  *                                     system's `init()` has run.
  *   `src/world/terrain.system.ts`     at `Phase.Command` order 40, when it
  *                                     actually constructs the `Terrain`.

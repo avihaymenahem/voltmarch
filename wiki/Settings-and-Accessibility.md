@@ -25,6 +25,9 @@ The tab also controls:
 - field of view, closest zoom and furthest zoom;
 - desktop display selection when more than one monitor is available.
 
+Rows keep their essential explanation visible. Longer technical notes are collapsed behind a
+**Details** toggle so the Graphics tab stays scannable without deleting the reason a setting exists.
+
 MSAA is valuable for thin pipes, rails and panel lines, but it is one of the expensive choices on an
 integrated GPU. The Performance Overlay and Diagnostics report are better judges than the preset
 name.
@@ -75,6 +78,8 @@ and screen shake. Pointer, camera and keyboard navigation belong on Controls ins
 
 The Profile section exports, imports or resets progression. Installed desktop builds use the app-data
 folder; browser data is not imported automatically. Export before resetting if the record matters.
+The desktop-only **Game Files** action lives here with profile/save management and opens that native
+app-data folder; it is deliberately not a graphics setting.
 
 ---
 
@@ -84,6 +89,9 @@ Controls contains pointer and camera behaviour followed by every keyboard action
 and press a key or chord; Backspace clears it and Escape cancels capture. Fixed actions are shown as
 flat chips rather than pretend rebind buttons. The full gesture and order reference is in
 [Controls](/avihaymenahem/voltmarch/wiki/Controls).
+
+On Windows, **Lock Mouse To Window** defaults on for live gameplay. It releases for menu and pause
+surfaces, on focus loss and when the window is hidden; an explicit saved Off choice stays off.
 
 ---
 

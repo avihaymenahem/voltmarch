@@ -27,6 +27,19 @@ describe('WebGPU node pass accounting', () => {
     )).toBe('ao');
   });
 
+  it('counts the temporal velocity override as reconstruction work rather than AO', () => {
+    expect(classifyNodeRenderPass(
+      child,
+      { overrideMaterial: { name: 'TemporalVelocityOverride' } },
+      liveScene,
+      { shadowPass: false },
+      {
+        texture: { name: 'output' },
+        textures: [{ name: 'output' }, { name: 'velocity' }],
+      },
+    )).toBe('post');
+  });
+
   it.each(['AoNormalFromDepth', 'GTAONode.AO', 'AoDenoised'])(
     'classifies the %s fullscreen target as AO',
     (name) => {

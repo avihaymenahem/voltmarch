@@ -23,7 +23,11 @@ import { Channels } from '../core/events';
 import { GameLoop, Profiler, SystemRegistry, devAsserts, now } from '../core/loop';
 import { World } from '../core/world';
 import { DEFAULT_QUALITY_TIER, GAME_SPEEDS, MAP_SIZE, SIM_HZ } from '../core/config';
-import { Faction, type QualityTier as CoreQualityTier, type RenderContext } from '../core/types';
+import type { Object3D } from 'three';
+
+import {
+  Faction, RenderPhase, type QualityTier as CoreQualityTier, type RenderContext,
+} from '../core/types';
 
 import {
   RENDER_CONFIG,
@@ -48,6 +52,9 @@ import {
 import { pushArt, pushCamera, resolveArt } from './ArtBridge';
 import { setGameContext } from './context';
 import { logDiscovery, registerDiscoveredSystems } from './Systems';
+import { prepareWorldWorkers } from '../core/workers/world-warm';
+import { prepareTextureWorkers } from '../core/workers/texture-warm.system';
+import { markBattlefieldReady, resetBattlefieldReady } from '../core/battlefield-ready';
 
 /* -------------------------------------------------------------------------- */
 /* Contract with main.ts                                                      */
@@ -145,6 +152,15 @@ function devBuild(): boolean {
 /* -------------------------------------------------------------------------- */
 
 export function bootstrap(options: BootOptions): GameHandle {
+  resetBattlefieldReady();
+  // One page can build a title theatre, a match, a replay and another match.
+  // System modules are evaluated only once, so module-scope worker warmup
+  // cannot describe those later worlds. Re-arm against the settled scenario
+  // plan before renderer construction gives terrain/water the entire render +
+  // art initialisation window to finish off-thread.
+  prepareWorldWorkers();
+  prepareTextureWorkers();
+
   const shotMode = options.shot != null && options.shot !== '';
   const shadowCadenceMode = shadowCadenceModeFromSearch(
     typeof location === 'undefined' ? '' : location.search,
@@ -323,9 +339,14 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   function present(dt: number): void {
     if (disposed) return;
+    let partStarted = profiler.enabled ? now() : 0;
     cameraRig.update(dt);
     cameraRig.setAspect(handle.size.cssWidth, handle.size.cssHeight);
     sceneRig.fitShadow(cameraRig.camera);
+    if (profiler.enabled) {
+      profiler.record('render.camera#f', RenderPhase.Present, now() - partStarted);
+      partStarted = now();
+    }
     const cameraChanged = cameraChangedSincePresent();
     // A dt-less frame is an explicit capture/debug present. Give it the newest
     // shadows even when the normal cadence would otherwise hold the prior map.
@@ -339,7 +360,14 @@ export function bootstrap(options: BootOptions): GameHandle {
       dt,
       forceShadowUpdate,
     );
+    if (profiler.enabled) {
+      profiler.record('render.prepare#f', RenderPhase.Present, now() - partStarted);
+      partStarted = now();
+    }
     post.render(dt);
+    if (profiler.enabled) {
+      profiler.record('render.post#f', RenderPhase.Present, now() - partStarted);
+    }
     rememberPresentedCamera();
   }
 
@@ -456,12 +484,30 @@ export function bootstrap(options: BootOptions): GameHandle {
       const compileStarted = now();
       const nodeRenderer = handle.node;
       const cacheBefore = nodeRenderer === null ? null : pipelineCacheStats(nodeRenderer);
+      // Three's compiler obeys Object3D.visible. That is correct for a generic
+      // scene and wrong for a game warm-up: pooled explosions, muzzle flashes,
+      // construction overlays, alternate LODs and shadow proxies begin hidden,
+      // then their first real use compiles inside a visible frame. The symptom
+      // is a 150-250 ms freeze while the rolling FPS headline remains 60.
+      // Temporarily expose every latent branch to compile(), never to render(),
+      // and put the exact visibility mask back before the curtain is lifted.
+      const latentObjects: Object3D[] = [];
+      sceneRig.scene.traverse((object) => {
+        if (!object.visible) {
+          latentObjects.push(object);
+          object.visible = true;
+        }
+      });
       // WebGL compile() is synchronous. WebGPU aliases compile() to
       // compileAsync(), so the return MUST be awaited or the first presented
       // frame still pays for pipelines while the curtain claims they finished.
-      await Promise.resolve(
-        (handle.webgl ?? handle.node!).compile(sceneRig.scene, cameraRig.camera),
-      );
+      try {
+        await Promise.resolve(
+          (handle.webgl ?? handle.node!).compile(sceneRig.scene, cameraRig.camera),
+        );
+      } finally {
+        for (let i = 0; i < latentObjects.length; i++) latentObjects[i].visible = false;
+      }
       if (nodeRenderer !== null) markBattlefieldPipelinesWarm(nodeRenderer);
       compileMs = now() - compileStarted;
       const cacheAfter = nodeRenderer === null ? null : pipelineCacheStats(nodeRenderer);
@@ -472,6 +518,7 @@ export function bootstrap(options: BootOptions): GameHandle {
       // — this paint must not be the one thing that smuggles wall-clock time
       // into a capture.
       renderOnce(shotMode ? 0 : 1 / 60);
+      markBattlefieldReady();
       const totalMs = now() - bootStarted;
       const initRows = registry.profiler.all([])
         .filter((row) => row.id.endsWith(':init'))

@@ -132,7 +132,9 @@ export default defineSystem({
     // Decals work with or without terrain: without it they sit on y=0, which
     // is exactly right for the placeholder scene.
     const heightAt = terrain !== null
-      ? (x: number, z: number): number => terrain.heightAt(x, z)
+      ? (x: number, z: number): number => Math.max(
+        terrain.heightAt(x, z), terrain.drawnHeightAt(x, z),
+      )
       : undefined;
 
     staticDecals = new DecalField({

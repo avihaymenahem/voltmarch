@@ -91,7 +91,8 @@ import {
   type DragInfo, type KeyInfo, type PointerInfo,
 } from './Input';
 import {
-  Selection, SelectMode, canInteractWith, pickEntity, type ScreenProjector,
+  Selection, SelectMode, canInteractWith, pickEntity, pickStructureToolTarget,
+  type ScreenProjector,
 } from './Selection';
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
@@ -198,7 +199,11 @@ function invokeHudFormation(shape: FormationShape): boolean {
   return true;
 }
 
-const HUD_COMMAND_SERVICE = { invoke: invokeHudCommand, formation: invokeHudFormation };
+const HUD_COMMAND_SERVICE = {
+  invoke: invokeHudCommand,
+  formation: invokeHudFormation,
+  cancel: cancelBattlefieldMode,
+};
 
 /** Last digit pressed and when, for the double-tap-to-centre rule. */
 let lastGroupKey = -1;
@@ -971,8 +976,11 @@ const handlers = {
         if (!p.shift) setCommandMode(CommandMode.None);
         return;
       }
+      const armedTool = hud()?.armedMode ?? 'none';
       const id = p.worldValid
-        ? pickEntity(world, projector, p.x, p.y, p.worldX, p.worldZ)
+        ? armedTool === 'none'
+          ? pickEntity(world, projector, p.x, p.y, p.worldX, p.worldZ)
+          : pickStructureToolTarget(world, projector, p.x, p.y, p.worldX, p.worldZ)
         : NONE;
       // The sidebar's repair/sell tool outranks selection while it is armed.
       if (applyArmedTool(id)) return;
@@ -1219,11 +1227,10 @@ const handlers = {
       case 'Escape':
         // Innermost armed thing first, outward: power, then tool, then command
         // mode, then the selection itself. One Escape undoes one thing.
-        if (clearArmedPower()) { /* the power reticle goes first */ }
-        else if (clearArmedTool()) { /* then the sidebar tool */ }
-        else if (mode !== CommandMode.None) setCommandMode(CommandMode.None);
-        else selection.clear();
-        refreshResolution();
+        if (!cancelBattlefieldMode()) {
+          selection.clear();
+          refreshResolution();
+        }
         return true;
 
       case 'ArrowLeft':
@@ -1660,6 +1667,23 @@ function clearArmedPower(): boolean {
   const h = hud();
   if (h === null || (h.armedPower ?? 0) === 0) return false;
   return h.cancelArmedPower?.() ?? false;
+}
+
+/**
+ * Cancel exactly one modal battlefield interaction, innermost first. The shell
+ * calls this before opening Pause because its capture-phase listener otherwise
+ * intercepts Escape before InputManager can receive it.
+ */
+function cancelBattlefieldMode(): boolean {
+  let cancelled = false;
+  if (clearArmedPower()) cancelled = true;
+  else if (clearArmedTool()) cancelled = true;
+  else if (mode !== CommandMode.None) {
+    setCommandMode(CommandMode.None);
+    cancelled = true;
+  }
+  if (cancelled) refreshResolution();
+  return cancelled;
 }
 
 /* ==========================================================================

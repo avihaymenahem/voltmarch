@@ -87,7 +87,15 @@ import {
   capabilityGatedSsgiPreset,
   requestedSsgiPreset,
 } from '../src/render/nodes/ssgi-node';
-import { buildPostGraph, demoteSmaaMaskTargets, enabledPasses } from '../src/render/post-nodes';
+import {
+  buildPostGraph,
+  demoteSmaaMaskTargets,
+  enabledPasses,
+  postGraphSignature,
+  requestedTemporalAa,
+  requestedTemporalScale,
+  taauSharpen,
+} from '../src/render/post-nodes';
 import { RENDER_CONFIG, type GradeConfig, type PostConfig } from '../src/render/renderer';
 
 /* ========================================================================== */
@@ -626,6 +634,18 @@ describe('bloom', () => {
 /* ========================================================================== */
 
 describe('the assembled node chain', () => {
+  it('rebuilds when MSAA changes because PassNode bakes samples at construction', () => {
+    const off = postConfigCopy();
+    const on = postConfigCopy();
+    off.msaaSamples = 0;
+    on.msaaSamples = 4;
+
+    expect(postGraphSignature(on)).not.toBe(postGraphSignature(off));
+    // Equivalent effective sample counts do not trigger redundant rebuilds.
+    on.msaaSamples = 4.9;
+    expect(postGraphSignature(on)).toBe(postGraphSignature({ ...on, msaaSamples: 4 }));
+  });
+
   function graphFor(cfg: PostConfig) {
     return buildPostGraph({
       scene: new Scene(),
@@ -667,6 +687,69 @@ describe('the assembled node chain', () => {
     expect(graph.ao).toBeNull();
     expect(graph.ssgi?.march.useTemporalFiltering).toBe(false);
     expect(graph.ssgi?.denoisedGi.renderTarget.texture.name).toBe('SsgiDenoisedGI');
+    graph.dispose();
+  });
+
+  it('keeps temporal AA URL-gated and mutually exclusive with SMAA/MSAA', () => {
+    expect(requestedTemporalAa('')).toBeNull();
+    expect(requestedTemporalAa('?aa=smaa')).toBeNull();
+    expect(requestedTemporalAa('?aa=TRAA')).toBe('traa');
+    expect(requestedTemporalAa('?gpu=webgpu&aa=taau')).toBe('taau');
+
+    const cfg = postConfigCopy();
+    cfg.msaaSamples = 4;
+    const graph = buildPostGraph({
+      scene: new Scene(),
+      camera: new PerspectiveCamera(),
+      cfg,
+      width: 2560,
+      height: 1440,
+      temporalAa: 'traa',
+    });
+
+    expect(graph.antialiasing).toBe('traa');
+    expect(graph.temporalAa?.isTRAANode).toBe(true);
+    expect(graph.temporalAa?.maxVelocityLength).toBe(64);
+    expect(graph.built.smaa).toBeUndefined();
+    expect(graph.aoDepthPass, 'TRAA forces the scene to single-sample').toBeNull();
+    expect(graph.ao?.march.useTemporalFiltering).toBe(true);
+    expect(graph.velocityPass).not.toBeNull();
+    expect((graph.velocityPass as unknown as { getMRT(): unknown }).getMRT()).toBeTruthy();
+    expect(graph.velocityPass?.overrideMaterial?.name).toBe('TemporalVelocityOverride');
+    expect(graph.velocityPass?.renderTarget.texture.name).toBe('output');
+    expect((graph.scenePass as unknown as { getMRT(): unknown }).getMRT()).toBeNull();
+    graph.dispose();
+  });
+
+  it('builds TAAU from matched lower-resolution colour, depth and velocity inputs', () => {
+    expect(requestedTemporalScale('')).toBe(0.75);
+    expect(requestedTemporalScale('?taauScale=0.67')).toBe(0.67);
+    expect(requestedTemporalScale('?taauScale=0.1')).toBe(0.5);
+    expect(requestedTemporalScale('?taauScale=4')).toBe(1);
+    expect(requestedTemporalScale('?taauScale=nope')).toBe(0.75);
+    expect(taauSharpen(0.22, 0.75)).toBeCloseTo(0.72);
+    expect(taauSharpen(0.22, 0.85)).toBeCloseTo(0.52);
+    expect(taauSharpen(0.9, 0.5)).toBe(1);
+
+    const graph = buildPostGraph({
+      scene: new Scene(),
+      camera: new PerspectiveCamera(),
+      cfg: postConfigCopy(),
+      width: 2560,
+      height: 1440,
+      temporalAa: 'taau',
+      temporalScale: 0.75,
+    });
+
+    expect(graph.antialiasing).toBe('taau');
+    expect(graph.temporalAa?.isTAAUNode).toBe(true);
+    expect(graph.temporalAa?.currentFrameWeight).toBe(0.05);
+    expect(graph.temporalInput?.renderTarget.texture.name).toBe('TAAU.input');
+    expect(graph.gradeUniforms?.sharpen.value).toBeCloseTo(0.72);
+    expect((graph.scenePass as unknown as { getResolutionScale(): number }).getResolutionScale()).toBe(0.75);
+    expect((graph.velocityPass as unknown as { getResolutionScale(): number }).getResolutionScale()).toBe(0.75);
+    expect((graph.temporalInput as unknown as { getResolutionScale(): number }).getResolutionScale()).toBe(0.75);
+    expect(graph.built.smaa).toBeUndefined();
     graph.dispose();
   });
 
@@ -784,6 +867,7 @@ describe('the assembled node chain', () => {
     const cfg = postConfigCopy();
     cfg.msaaSamples = 4;
     const g = graphFor(cfg);
+    expect(g.scenePass.renderTarget.samples).toBe(4);
     expect(g.aoDepthPass).not.toBeNull();
     expect(g.aoDepthPass!.renderTarget.depthTexture)
       .not.toBe(g.scenePass.renderTarget.depthTexture);
@@ -876,7 +960,10 @@ describe('the assembled node chain', () => {
     const g = graphFor(cfg);
     const src = compileFragmentNode(g.output).fragment;
 
-    expect(src.match(/textureSample\(/g)?.length, 'scene colour, AO, bloom').toBe(3);
+    // Scene colour + AO + bloom, then exactly two reads from the tiny cloud
+    // coverage texture. Atmosphere stays fused here: five samples, one shader,
+    // no atmosphere render target or draw.
+    expect(src.match(/textureSample\(/g)?.length, 'scene, AO, bloom, two cloud reads').toBe(5);
     expect(src, 'GTAOBlendShader semantics').toMatch(/mix\(\s*1\.0,/);
     expect(src, "bloom's additive composite").toMatch(/\)\s*\+\s*nodeVar\d+\s*\)/);
     g.dispose();

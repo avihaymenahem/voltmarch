@@ -1,6 +1,6 @@
 # VOLTMARCH foliage engine and environment-asset migration
 
-Status: all 32 Scatter identities integrated behind `?foliage=imported`; runtime LOD dispatch and final performance/save acceptance remain · owner: world/art pipeline · opened 2026-08-29
+Status: all 32 Scatter identities are the production default; runtime LOD dispatch and final performance/save acceptance remain · owner: world/art pipeline · opened 2026-08-29
 
 ## Decision
 
@@ -276,10 +276,11 @@ The first integration must prove:
 - saved felling masks apply to the same placement fingerprint;
 - shroud/fog tinting remains correct.
 
-Integration checkpoint, 2026-08-29: the complete family is registered atomically through
-`EnvironmentAssetCatalog` and `FoliageEngine`; `Scatter` remains placement and save authority. The
-explicit `?foliage=imported` switch loads the audited family, chooses the real Meshy PBR material for
-the existing `tree` instances and fails closed to procedural presentation on any load or audit error.
+Integration checkpoint, updated 2026-08-30: the complete family is registered atomically through
+`EnvironmentAssetCatalog` and `FoliageEngine`; `Scatter` remains placement and save authority. Normal
+boots load the audited family and its PBR materials. `?foliage=imported` remains an explicit diagnostic
+alias for that production route, while `?foliage=procedural` and any load/audit error instantiate the
+dormant procedural presentation.
 A live WebGL match reports `tree source=imported, 3,363 tris, ... PBR=yes` with no new console errors.
 The first loader fault found during browser validation—interleaved quantized LOD attributes passed to
 the index weld—was corrected by promoting them to writable Float32 attributes before indexing.

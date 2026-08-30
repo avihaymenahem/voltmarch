@@ -1,0 +1,47 @@
+{
+  "shot": "00-mcv-four-army",
+  "flags": "seed=7&skipmenu=1&start=mcv",
+  "runs": 1,
+  "cold": {
+    "run": 0,
+    "ready": 27820,
+    "checksum": {
+      "chunks": 64,
+      "terrain": 2818430940,
+      "water": 3362851701
+    },
+    "hitches": {
+      "framesOver50Ms": 10,
+      "worstFrameGapMs": 233.20000000000073,
+      "topFrameGapsMs": [
+        233.20000000000073,
+        133.3000000000029,
+        100,
+        100,
+        66.70000000000437,
+        50,
+        50,
+        50
+      ],
+      "longTasks": 2,
+      "worstLongTaskMs": 240
+    },
+    "terrain": 105,
+    "water": 14,
+    "worldWorker": 678,
+    "worldWorker2": 92,
+    "landlocked": false
+  },
+  "checksum": {
+    "chunks": 64,
+    "terrain": 2818430940,
+    "water": 3362851701
+  },
+  "median": {
+    "ready": 27820,
+    "terrain": 105,
+    "water": 14,
+    "worldWorker": 678,
+    "worldWorker2": 92
+  }
+}

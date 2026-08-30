@@ -102,10 +102,14 @@
 
 import { UNIT_LADDER, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId } from '../core/types';
+import { mapConcurrent } from '../core/async-pool';
+import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import { GreebleFactory } from './Greeble';
 import { MassRole, type MassDef, type SocketSpec, type UnitMassList } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
-import { IMPORTED_UNIT_SPECS, loadImportedUnitOverride } from './ImportedUnitAssets';
+import {
+  importedUnitConcurrency, IMPORTED_UNIT_SPECS, loadImportedUnitOverride,
+} from './ImportedUnitAssets';
 import { IMPORTED_INFANTRY_FAMILIES, loadImportedInfantryFamily } from './ImportedInfantryAssets';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
@@ -1556,6 +1560,8 @@ export interface MeridianBuildReport {
   failed: string[];
   registrations: number;
   bound: number;
+  /** Promote non-opening authored units after Bootstrap presents frame zero. */
+  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
 }
 
 /**
@@ -1576,6 +1582,7 @@ export interface MeridianBuildReport {
 export async function buildAndRegisterMeridianUnits(
   atlasSize: number,
   unitId: Readonly<Record<string, number>>,
+  immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<MeridianBuildReport> {
   const models: UnitModel[] = [];
   const failed: string[] = [];
@@ -1599,16 +1606,25 @@ export async function buildAndRegisterMeridianUnits(
     family.key === 'meridian_wayfarer'
       || family.key === 'meridian_hierarch'
       || family.key === 'meridian_tidewalker');
-  for (const infantryFamily of infantryFamilies) {
+  const loadInfantry = (progressive = false) => mapConcurrent(
+    infantryFamilies, progressive ? 1 : importedUnitConcurrency(), async (infantryFamily) => {
+    if (progressive) await waitForBattlefieldIdle();
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => meridianUnitLibrary.get(key),
       );
-      for (const [key, mesh] of variants) meshes.set(key, mesh);
       console.info(`[units] imported shared ${infantryFamily.label} body for ${variants.size} roles`);
+      return variants;
     } catch (error) {
       console.error(`[units] imported ${infantryFamily.label} rejected; using procedural fallbacks`, error);
+      return null;
     }
+    },
+  );
+  const infantryResults = immediateImportedKeys === undefined ? await loadInfantry() : [];
+  for (const variants of infantryResults) {
+    if (variants === null) continue;
+    for (const [key, mesh] of variants) meshes.set(key, mesh);
   }
   const importedKeys = [
     'meridian_solarch', 'meridian_skiff', 'meridian_zenith',
@@ -1616,16 +1632,33 @@ export async function buildAndRegisterMeridianUnits(
     'meridian_cutter', 'meridian_corvette', 'meridian_monitor',
     'meridian_lighter', 'meridian_argosy',
   ] as const;
-  for (const key of importedKeys) {
+  const loadImportedKeys = (keys: readonly string[], progressive = false) => mapConcurrent(
+    keys, progressive ? 1 : importedUnitConcurrency(), async (key) => {
+    if (progressive) await waitForBattlefieldIdle();
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
     const model = meridianUnitLibrary.get(key);
-    if (spec === undefined || model === undefined) continue;
+    if (spec === undefined || model === undefined) return null;
     try {
-      meshes.set(key, await loadImportedUnitOverride(model, spec));
+      const mesh = progressive
+        ? await loadImportedUnitOverride(model, spec, true)
+        : await loadImportedUnitOverride(model, spec);
       console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
+      return [key, mesh] as const;
     } catch (error) {
       console.error(`[units] imported ${spec.label} rejected; using procedural fallback`, error);
+      return null;
     }
+    },
+  );
+  const immediateKeys = immediateImportedKeys === undefined
+    ? importedKeys
+    : importedKeys.filter((key) => immediateImportedKeys.has(key));
+  const deferredKeys = immediateImportedKeys === undefined
+    ? []
+    : importedKeys.filter((key) => !immediateImportedKeys.has(key));
+  const importedResults = await loadImportedKeys(immediateKeys);
+  for (const result of importedResults) {
+    if (result !== null) meshes.set(result[0], result[1]);
   }
   const meshFor = (key: string): KindMesh | null => {
     const model = meridianUnitLibrary.get(key);
@@ -1637,6 +1670,12 @@ export async function buildAndRegisterMeridianUnits(
 
   let registrations = 0;
   let bound = 0;
+  const registrationTargets: Array<{
+    key: string;
+    kind: EntityKind;
+    faction: Faction | typeof FACTION_ANY;
+    defId: number;
+  }> = [];
   for (const [contentKey, modelKey] of Object.entries(MERIDIAN_UNIT_MODELS)) {
     const mesh = meshFor(modelKey);
     const model = meridianUnitLibrary.get(modelKey);
@@ -1645,6 +1684,7 @@ export async function buildAndRegisterMeridianUnits(
     const defId = unitId[contentKey];
     if (defId !== undefined && defId >= 0) {
       registerKindMesh(kind, FACTION_ANY, mesh, defId);
+      registrationTargets.push({ key: modelKey, kind, faction: FACTION_ANY, defId });
       registrations++;
       bound++;
     }
@@ -1665,14 +1705,46 @@ export async function buildAndRegisterMeridianUnits(
   const solarch = meshFor('meridian_solarch');
   if (wayfarer !== null) {
     registerKindMesh(EntityKind.Infantry, 3 as Faction, wayfarer, -1);
+    registrationTargets.push({
+      key: 'meridian_wayfarer', kind: EntityKind.Infantry, faction: 3 as Faction, defId: -1,
+    });
     registrations++;
   }
   if (solarch !== null) {
     registerKindMesh(EntityKind.Vehicle, 3 as Faction, solarch, -1);
+    registrationTargets.push({
+      key: 'meridian_solarch', kind: EntityKind.Vehicle, faction: 3 as Faction, defId: -1,
+    });
     registrations++;
   }
 
-  return { models, failed, registrations, bound };
+  const streamRemaining = immediateImportedKeys === undefined ? undefined : async (
+    isCurrent: () => boolean = () => true,
+  ): Promise<number> => {
+    const lateInfantry = await loadInfantry(true);
+    if (!isCurrent()) return 0;
+    const lateVehicles = await loadImportedKeys(deferredKeys, true);
+    if (!isCurrent()) return 0;
+    const promoted = new Map<string, KindMesh>();
+    for (const variants of lateInfantry) {
+      if (variants === null) continue;
+      for (const [key, mesh] of variants) promoted.set(key, mesh);
+    }
+    for (const result of lateVehicles) {
+      if (result !== null) promoted.set(result[0], result[1]);
+    }
+    for (const [key, mesh] of promoted) {
+      meshes.set(key, mesh);
+      for (const target of registrationTargets) {
+        if (target.key !== key) continue;
+        registerKindMesh(target.kind, target.faction, mesh, target.defId, true);
+      }
+    }
+    console.info(`[meridian] streamed ${promoted.size} authored unit models`);
+    return promoted.size;
+  };
+
+  return { models, failed, registrations, bound, streamRemaining };
 }
 
 /** Release every Pact geometry, material and atlas. */

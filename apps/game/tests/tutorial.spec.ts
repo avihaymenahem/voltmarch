@@ -969,7 +969,10 @@ describe('tutorial — the shell launches and tears it down correctly', () => {
     expect(menu).toMatch(/if \(!tutorialCompleted\(\)\)/);
     expect(menu).toMatch(/variant: fresh \? 'primary' : 'default'/);
     expect(menu).toMatch(/hint: tutorialMenuHint\(\)/);
-    expect(menu).toMatch(/void this\.shell\.startTutorial\(\)/);
+    expect(menu).toContain('this.shell.openTutorialConfirmation()');
+    const tutorialSource = readFileSync(join(ROOT, 'apps/game/src/shell/Tutorial.ts'), 'utf8');
+    expect(tutorialSource).toMatch(/export function endTutorialMenuItem\(\): void/);
+    expect(tutorialSource).toMatch(/writeTutorialProgress\(\{ \.\.\.progress, done: true \}\)/);
     const settings = readFileSync(join(ROOT, 'apps/game/src/shell/Settings.ts'), 'utf8');
     expect(settings).toContain("button(tutorialCompleted() ? 'Restore Tutorial'");
     expect(settings).toContain('restoreTutorialMenuItem();');

@@ -299,6 +299,37 @@ describe('formations', () => {
     // And every one of them is somewhere near the order point.
     for (const i of units) expect(dist(rig, i, 300, 300)).toBeLessThan(24);
   });
+
+  it('projects blocked formation slots onto distinct reachable cells', () => {
+    const rig = makeRig();
+    const st = rig.world.store;
+    const units: number[] = [];
+    for (let k = 0; k < 5; k++) {
+      const i = spawnTank(rig, 180 + k * 6, 200);
+      st.yaw[i] = 0;
+      units.push(i);
+    }
+
+    // The ordered centre and the middle slots of the preserved line land
+    // inside this footprint. Formation assignment must move those slots to
+    // reachable cells instead of letting the units grind against the building.
+    const goalX = 320, goalZ = 200;
+    const goalCx = worldToCell(goalX), goalCz = worldToCell(goalZ);
+    rig.world.terrain.markOccupied(goalCx - 1, goalCz - 3, 3, 7, 1 as EntityId);
+    rig.world.spatial.rebuild();
+    for (const i of units) orderTo(rig, i, goalX, goalZ);
+    rig.step(2);
+
+    const projectedCells = new Set<string>();
+    for (const i of units) {
+      const tx = rig.agents.goalX[i] + rig.agents.slotX[i];
+      const tz = rig.agents.goalZ[i] + rig.agents.slotZ[i];
+      const cx = worldToCell(tx), cz = worldToCell(tz);
+      expect(rig.nav.regionOf(cx, cz, MoveClass.Track)).not.toBe(0);
+      projectedCells.add(`${cx},${cz}`);
+    }
+    expect(projectedCells.size).toBeGreaterThanOrEqual(4);
+  });
 });
 
 /* ========================================================================== */

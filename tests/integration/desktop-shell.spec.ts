@@ -40,7 +40,13 @@ import {
 } from '../../apps/desktop/src/app-url';
 import { contentTypeFor, resolveAsset } from '../../apps/desktop/src/paths';
 import { activeAdapterLabel } from '../../apps/game/src/platform/desktop';
-import { advanceLockedPointer } from '../../apps/game/src/platform/DesktopPointerLock';
+import {
+  advanceLockedPointer,
+  lockedCursorVisual,
+  lockedHoverChanges,
+  lockedMouseEventDisposition,
+  lockedWheelPixels,
+} from '../../apps/game/src/platform/DesktopPointerLock';
 import {
   DEFAULT_DISPLAY,
   MIN_WINDOW_H,
@@ -755,15 +761,60 @@ describe('desktop fullscreen is explicit native game state', () => {
       .toEqual({ x: 1279, y: 719 });
   });
 
-  it('offers pointer confinement as an opt-in desktop setting and wires it to live gameplay', () => {
+  it('never turns a locked right-button sequence into a primary UI click', () => {
+    expect(lockedMouseEventDisposition('click', 2, 2, 1)).toBe('consume');
+    // Chromium/Electron has reported the generated click as button 0 in this
+    // path; the preceding pointerup remains the authoritative button.
+    expect(lockedMouseEventDisposition('click', 0, 2, 1)).toBe('consume');
+    expect(lockedMouseEventDisposition('contextmenu', 2, 2, 1)).toBe('forward');
+    expect(lockedMouseEventDisposition('click', 0, 0, 1)).toBe('forward');
+    expect(lockedMouseEventDisposition('click', 0, 2, 0)).toBe('passthrough');
+  });
+
+  it('preserves contextual cursor art and browser wheel units while locked', () => {
+    expect(lockedCursorVisual('url("data:image/png;base64,abc") 16 7, crosshair'))
+      .toEqual({ image: 'data:image/png;base64,abc', hotspotX: 16, hotspotY: 7 });
+    expect(lockedCursorVisual('pointer')).toBeNull();
+    expect(lockedWheelPixels(3, 0, 900)).toBe(3);
+    expect(lockedWheelPixels(3, 1, 900)).toBe(48);
+    expect(lockedWheelPixels(3, 2, 900)).toBe(2700);
+  });
+
+  it('recreates nested hover boundaries for the locked virtual pointer', () => {
+    expect(lockedHoverChanges(
+      ['old-leaf', 'shared-parent', 'root'],
+      ['new-leaf', 'shared-parent', 'root'],
+    )).toEqual({ leave: ['old-leaf'], enter: ['new-leaf'] });
+    expect(lockedHoverChanges([], ['leaf', 'parent', 'root']))
+      .toEqual({ leave: [], enter: ['root', 'parent', 'leaf'] });
+    expect(lockedHoverChanges(['leaf', 'parent', 'root'], []))
+      .toEqual({ leave: ['leaf', 'parent', 'root'], enter: [] });
+  });
+
+  it('completes locked hover, context menus, and overflow scrolling explicitly', () => {
+    const pointer = readFileSync(
+      path.join(REPO, 'apps/game/src/platform/DesktopPointerLock.ts'), 'utf8',
+    );
+    const hud = readFileSync(path.join(REPO, 'apps/game/src/ui/hud.css'), 'utf8');
+    expect(pointer).toContain("classList.add('vm-pointer-hover')");
+    expect(pointer).toContain("this.pointerBoundaryEvent('pointerenter'");
+    expect(pointer).toContain("this.pointerBoundaryEvent('pointerleave'");
+    expect(hud).toContain('.vm-slot:is(:hover, .vm-pointer-hover)');
+    expect(pointer).toContain('this.forwardContextMenu(hit, event)');
+    expect(pointer).toContain('if (hit.dispatchEvent(forwarded)) this.scrollWheelTarget(hit, event)');
+    expect(pointer).toContain("overflow === 'auto' || overflow === 'scroll'");
+  });
+
+  it('enables pointer confinement by default and wires its desktop setting to live gameplay', () => {
     const settings = readFileSync(path.join(REPO, 'apps/game/src/shell/Settings.ts'), 'utf8');
     const shell = readFileSync(path.join(REPO, 'apps/game/src/shell/Shell.ts'), 'utf8');
     const pointer = readFileSync(
       path.join(REPO, 'apps/game/src/platform/DesktopPointerLock.ts'), 'utf8',
     );
 
-    expect(DEFAULT_DISPLAY.lockPointer, 'confinement must not surprise existing players').toBe(false);
-    expect(applyPatch(DEFAULT_DISPLAY, { lockPointer: true }).lockPointer).toBe(true);
+    expect(DEFAULT_DISPLAY.lockPointer).toBe(true);
+    expect(normaliseDisplay({ lockPointer: false }).lockPointer).toBe(false);
+    expect(applyPatch(DEFAULT_DISPLAY, { lockPointer: false }).lockPointer).toBe(false);
     expect(settings).toContain("'Lock Mouse To Window'");
     expect(settings).toContain('toggle(d.lockPointer, (v) => this.patchDesktop({ lockPointer: v }))');
     expect(shell).toContain("updateDesktopPointerLock(state === 'playing' && next === null)");

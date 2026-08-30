@@ -52,6 +52,10 @@
 // runtime import back would close a cycle; the two helpers it would buy are
 // four lines, and four lines is cheaper than a load-order hazard.
 import type { BakeKit } from './AudioEngine';
+import { mapConcurrent } from '../core/async-pool';
+
+/** Fetch/decode enough recordings to keep the audio thread busy without a 140-job completion burst. */
+const SAMPLE_DECODE_CONCURRENCY = 6;
 
 /* ==========================================================================
  * 1. THE MANIFEST
@@ -372,21 +376,24 @@ export class SampleBank {
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     const ids = Object.keys(this.manifest);
 
-    const jobs: Array<Promise<{ id: string; take: number; buf: AudioBuffer | null }>> = [];
+    const jobs: Array<{ id: string; take: number; url: string }> = [];
     for (const id of ids) {
       const n = this.manifest[id];
       this.stats.requested += n;
       for (let take = 0; take < n; take++) {
-        jobs.push(this.loadOne(ctx, baseUrl + this.pathOf(id, take), id, take));
+        jobs.push({ id, take, url: baseUrl + this.pathOf(id, take) });
       }
     }
 
     // Order matters: take 0 must stay take 0 so a bake is reproducible across
-    // reloads. `Promise.all` preserves it; the results are then slotted by
-    // index rather than pushed in completion order.
+    // reloads. The bounded pool preserves input order while avoiding the old
+    // all-at-once decode completion burst, which could monopolise a visible
+    // frame even though WebAudio did the heavy decode away from the main thread.
     const slots = new Map<string, Array<AudioBuffer | null>>();
     for (const id of ids) slots.set(id, new Array<AudioBuffer | null>(this.manifest[id]).fill(null));
-    for (const r of await Promise.all(jobs)) {
+    const loaded = await mapConcurrent(jobs, SAMPLE_DECODE_CONCURRENCY, (job) =>
+      this.loadOne(ctx, job.url, job.id, job.take));
+    for (const r of loaded) {
       if (r.buf !== null) slots.get(r.id)![r.take] = r.buf;
     }
 

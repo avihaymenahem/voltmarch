@@ -416,6 +416,8 @@ export interface SelectionCapabilities {
   hasHarvester: boolean;
   /** Infantry that could board a transport. */
   hasPassengers: boolean;
+  /** Non-engineer infantry that can occupy a structure. */
+  garrisonCount: number;
   /** Own factories (rally-flag owners) in the selection. */
   factoryCount: number;
   /**
@@ -448,6 +450,7 @@ export function readCapabilities(
   out.moveClassMask = 0;
   out.hasHarvester = false;
   out.hasPassengers = false;
+  out.garrisonCount = 0;
   out.factoryCount = 0;
   out.deployCount = 0;
 
@@ -480,6 +483,7 @@ export function readCapabilities(
     if (s.kind[i] === EntityKind.Infantry || s.kind[i] === EntityKind.Vehicle) {
       out.hasPassengers = true;
     }
+    if (isGarrisonInfantry(world, i)) out.garrisonCount++;
     if (isDeployable(world, i)) out.deployCount++;
   }
   return out;
@@ -491,8 +495,21 @@ export function createCapabilities(): SelectionCapabilities {
     ownCount: 0, mobileCount: 0, buildingCount: 0,
     canAttack: false, canCapture: false, canRepair: false, airCount: 0,
     moveClassMask: 0,
-    hasHarvester: false, hasPassengers: false, factoryCount: 0, deployCount: 0,
+    hasHarvester: false, hasPassengers: false, garrisonCount: 0,
+    factoryCount: 0, deployCount: 0,
   };
+}
+
+/**
+ * A building occupant, as distinct from generic transport cargo. Vehicles can
+ * ride amphibious transports but cannot man windows; engineers keep their
+ * capture/repair verb and must not silently turn into zero-fire occupants.
+ */
+function isGarrisonInfantry(world: World, i: number): boolean {
+  const s = world.store;
+  return s.kind[i] === EntityKind.Infantry
+    && (s.flags[i] & EntityFlag.CanMove) !== 0
+    && !roles.canCapture(world, i);
 }
 
 /**
@@ -860,7 +877,7 @@ export function resolveContextOrder(
       out.valid = true;
       return out;
     }
-    if (isBuilding && caps.hasPassengers && !caps.canCapture) {
+    if (isBuilding && caps.garrisonCount > 0) {
       // ONE call, and the REASON is kept rather than thrown away. This asked
       // `canGarrison` — the boolean convenience wrapper over the same
       // function — and dropped the sentence on the floor, so a refused click
@@ -1252,6 +1269,16 @@ export class OrderExecutor {
       // the check that makes a forged command inert.
       if (s.owner[i] !== (cmd.player as number)) continue;
 
+      // `Enter` has two meanings: infantry occupy buildings, while infantry
+      // and vehicles may board transports. Resolve the building form per unit
+      // before touching its waypoint queue so an engineer or vehicle dragged
+      // into the same selection genuinely keeps the order it already had.
+      if (cmd.order === OrderKind.Enter) {
+        const t = s.index(cmd.target);
+        if (t >= 0 && s.kind[t] === EntityKind.Building
+          && !isGarrisonInfantry(this.world, i)) continue;
+      }
+
       // A STANDING `Stop` IS NOT A STANDING ORDER. It is how a parked harvester
       // is recorded (see `write`), and queueing a waypoint behind it would put
       // a shift-click on a stopped miner into a queue nothing will ever drain.
@@ -1364,12 +1391,25 @@ export class OrderExecutor {
     if ((order === OrderKind.Capture || order === OrderKind.Repair)
       && !roles.canCapture(this.world, i)) {
       const t = s.index(target as EntityId);
-      const hostile = order === OrderKind.Capture
+      // A mixed engineer + rifle squad aimed at a neutral block carries one
+      // group command over the wire. The engineer keeps Capture; actual
+      // soldiers receive Enter from that same intent and can occupy the block
+      // immediately after Capture flips its owner later in this tick.
+      const entersGarrison = order === OrderKind.Capture
         && t >= 0
-        && (s.flags[t] & EntityFlag.NotATarget) === 0
-        && !this.world.areAllied(s.owner[i] as PlayerId, s.owner[t] as PlayerId);
-      order = hostile ? OrderKind.Attack : OrderKind.Move;
-      if (!hostile) target = NONE;
+        && s.kind[t] === EntityKind.Building
+        && isGarrisonInfantry(this.world, i)
+        && garrisonService()?.refusalFor(target, s.owner[i] as PlayerId) === '';
+      if (entersGarrison) {
+        order = OrderKind.Enter;
+      } else {
+        const hostile = order === OrderKind.Capture
+          && t >= 0
+          && (s.flags[t] & EntityFlag.NotATarget) === 0
+          && !this.world.areAllied(s.owner[i] as PlayerId, s.owner[t] as PlayerId);
+        order = hostile ? OrderKind.Attack : OrderKind.Move;
+        if (!hostile) target = NONE;
+      }
     }
 
     if (!armed && (order === OrderKind.Attack || order === OrderKind.ForceAttack)) {

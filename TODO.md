@@ -58,11 +58,20 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
-## Renderer and docs
+## WebGPU visual performance
 
-No open renderer/doc implementation items remain from this round. WebGPU GPU time now comes from
-Three's real `timestamp-query` path; the intentionally unavailable colour-pass split still reads
-`n/a`, because total draws are not a substitute for colour draws.
+- **Compute-driven foliage visibility and LOD compaction.** *(untracked — implementation order is
+  owned by `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md`)* Prove immutable instance upload, GPU visibility,
+  hysteretic LOD selection and indirect counts on trees/shrubs before expanding to neutral props.
+  Placement, clearing and save identity stay authoritative on CPU and the current path remains the
+  rollback arm.
+- **Temporal reconstruction quality gate.** *(untracked)* TRAA and 75%/85% TAAU are lab-only URL
+  paths. The short TAAU run saved 5.8–11.1% wall time but both scales lost infantry and panel-line
+  definition. Do not promote either until edge-aware reconstruction/sharpening and moving-camera
+  ghosting pass a fixed-seed readability scorecard.
+- **Meshopt rollout decision.** *(untracked)* The Chrono Miner POC is 37.6% smaller and its shared
+  SIMD decoder is fast in isolation. Measure packaged cold load including decoder startup, transfer,
+  scene construction, KTX2 and GPU upload before compressing another imported family.
 
 ---
 

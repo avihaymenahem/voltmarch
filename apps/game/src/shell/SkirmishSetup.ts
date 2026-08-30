@@ -704,10 +704,16 @@ export class SkirmishSetupScreen implements Screen {
         focusable(item);
         item.addEventListener('click', () => {
           if (this.setup.map === m.id) return;
+          const previousPlayers = mapById(this.setup.map).players;
           this.setup.map = m.id;
-          // The Sides row lives in the OTHER column, and picking a two-army map
-          // out of a four-way has to move it. Repaint both.
-          if (this.reconcile()) this.renderLeft();
+          // The Sides row lives in the OTHER column. Its option list depends on
+          // the map ceiling even when the current two-army setup remains legal:
+          // moving from a 2P map to a 4P map adds choices without making
+          // `reconcile()` move any stored value. Repaint when either the data or
+          // the ceiling changed, otherwise a section omitted on the 2P map stays
+          // absent on the 4P map (and the inverse can stay visible).
+          const moved = this.reconcile();
+          if (moved || previousPlayers !== m.players) this.renderLeft();
           this.renderRight();
           // The chosen row may have been near the bottom of the scrolling
           // roster. Repainting replaces that focused button, so keeping the

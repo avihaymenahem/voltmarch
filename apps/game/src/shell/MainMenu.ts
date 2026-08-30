@@ -189,7 +189,7 @@ export class MainMenuScreen implements Screen {
       topActions.appendChild(topAction(button('Quit', {
         iconName: 'power',
         variant: 'danger',
-        onClick: () => desktop.quit(),
+        onClick: () => this.shell.openQuitConfirmation(),
       })));
     }
     inner.appendChild(top);
@@ -251,7 +251,7 @@ export class MainMenuScreen implements Screen {
         iconName: 'info',
         hint: tutorialMenuHint(),
         variant: fresh ? 'primary' : 'default',
-        onClick: () => { void this.shell.startTutorial(); },
+        onClick: () => this.shell.openTutorialConfirmation(),
       }), fresh ? 'feature' : 'standard', 'COMMAND SCHOOL'));
     }
 

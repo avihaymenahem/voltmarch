@@ -910,7 +910,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
           ? (post.composer.passes as Array<{ constructor: { name: string } }>)
               .map((p) => p.constructor.name.replace(/^_|Pass$/g, ''))
               .join('+')
-          : PASS_ORDER.filter((id) => post.isPassEnabled(id)).join('+'),
+          : post.postLabel ?? PASS_ORDER.filter((id) => post.isPassEnabled(id)).join('+'),
       counters: { ...counters },
     };
   }

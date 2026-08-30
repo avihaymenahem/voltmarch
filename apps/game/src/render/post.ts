@@ -991,6 +991,8 @@ export interface PostChain {
   readonly drawCallsByPass: Readonly<DrawCallBreakdown>;
   /** Exact on WebGPU; null on WebGL where Info has no per-object triangle seam. */
   readonly trianglesByPass: Readonly<DrawCallBreakdown> | null;
+  /** Exact node-graph order; null on the legacy composer path. */
+  readonly postLabel: string | null;
 
   /** Draw one frame. Falls back to renderer.render() when inactive. */
   render(dt: number): void;
@@ -1064,7 +1066,14 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
   chain.setSize(Math.max(2, handle.size.width), Math.max(2, handle.size.height));
   const offResize = handle.onResize((size) => chain.setSize(size.width, size.height));
   const offConfig = onConfigChanged((changed) => {
-    if (!touched(changed, 'post')) return;
+    // The fused atmosphere lives under `post`, but derives its restrained haze
+    // tint from the active fog/horizon mood. A time-of-day switch must update
+    // those uniforms without requiring a graph rebuild.
+    if (
+      !touched(changed, 'post')
+      && !touched(changed, 'fog')
+      && !touched(changed, 'sky')
+    ) return;
     chain.syncConfig();
     applyToneMapping();
   });
@@ -1085,6 +1094,7 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
     get trianglesByPass(): Readonly<DrawCallBreakdown> | null {
       return chain.trianglesByPass();
     },
+    get postLabel(): string { return chain.postLabel(); },
 
     render(dt: number): void {
       if (disposed) return;
@@ -2550,6 +2560,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     },
     drawCallsByPass,
     trianglesByPass: null,
+    postLabel: null,
 
     render(dt: number) {
       if (disposed) return;

@@ -50,10 +50,12 @@
  * ----------
  * A group order does NOT funnel everyone to one point. When several units of
  * one player receive the same order point on the same tick, their offsets from
- * the group centroid are frozen as formation slots. All of them still share
- * ONE flow field — that comes from the field being requested at `goalX/goalZ`,
- * never at the slot, and it is what keeps the goal bucketing working. The slot
- * is what makes a line of tanks arrive as a line.
+ * the group centroid become formation slots and are matched to the nearest
+ * units so clamping or reshaping does not braid the group through itself.
+ * Blocked slots are projected onto the member's reachable navigation region.
+ * All members still share ONE flow field — it is requested at `goalX/goalZ`,
+ * never at the slot, which keeps goal bucketing working. The slot is what makes
+ * a line of tanks arrive as a line.
  *
  * ONE DEFINITION OF "WHERE THIS UNIT IS GOING"
  * --------------------------------------------
@@ -89,6 +91,7 @@ import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import { clampCell, hash2f, isInMap, worldToCell, wrapAngle } from '../core/math';
 import { sliceForEntity } from '../core/loop';
+import { assignNearestSlots } from '../core/formation-assignment';
 import {
   MoveClass, NAV_POCKET_MAX_CELLS, NAV_REGION_SEARCH_CELLS, movesShareSpace,
   type FlowFieldCache,
@@ -549,6 +552,20 @@ const NEW_ORDERS = new Int32Array(MAX_ENTITIES);
 const GROUPED = new Uint8Array(MAX_ENTITIES);
 /** Scratch: one group's members. */
 const GROUP = new Int32Array(MAX_ENTITIES);
+/** Formation matching scratch, indexed by member order rather than entity. */
+const FORMATION_UNIT_X = new Float32Array(MAX_ENTITIES);
+const FORMATION_UNIT_Z = new Float32Array(MAX_ENTITIES);
+const FORMATION_SLOT_X = new Float32Array(MAX_ENTITIES);
+const FORMATION_SLOT_Z = new Float32Array(MAX_ENTITIES);
+const FORMATION_KEYS = new Int32Array(MAX_ENTITIES);
+const FORMATION_ASSIGNMENT = new Int32Array(MAX_ENTITIES);
+const FORMATION_ORDER = new Int32Array(MAX_ENTITIES);
+const FORMATION_TAKEN = new Uint8Array(MAX_ENTITIES);
+/** Cells claimed by slots that had to be projected out of blocked terrain. */
+const FORMATION_PROJECTED_X = new Int16Array(MAX_ENTITIES);
+const FORMATION_PROJECTED_Z = new Int16Array(MAX_ENTITIES);
+/** A projection may cross a normal building footprint, but not half the map. */
+const FORMATION_SLOT_SEARCH_CELLS = 12;
 /**
  * Scratch for `agentTarget`. One buffer for both phases: every caller reads it
  * on the next two lines and never retains it, and the two phases do not run at
@@ -1368,9 +1385,9 @@ export class NavAssigner {
   }
 
   /**
-   * Freeze each newly-ordered group's shape. Units that got the same order
-   * point from the same player on the same tick keep their relative positions
-   * instead of collapsing onto one spot.
+   * Shape each newly-ordered group. Units that got the same order point from
+   * the same player on the same tick retain their relative layout, turned to
+   * face the journey, instead of collapsing onto one spot.
    *
    * The offsets are clamped to a disc sized by the group's own count, so one
    * straggler 200 m behind the pack does not end up with a 200 m slot offset
@@ -1430,7 +1447,10 @@ export class NavAssigner {
        * against the 4.42 they had, so the control case barely moves.
        */
       let rSum = 0;
-      for (let m = 0; m < members; m++) rSum += st.radius[GROUP[m]];
+      for (let m = 0; m < members; m++) {
+        const e = GROUP[m];
+        rSum += st.radius[e];
+      }
       const meanR = rSum / members;
       const spacing = Math.max(
         NAV_FORMATION_MIN_SPACING, meanR * 2 + NAV_FORMATION_GAP,
@@ -1451,12 +1471,107 @@ export class NavAssigner {
         if (d > maxD) maxD = d;
       }
       const scale = maxD > allowed && maxD > 1e-3 ? allowed / maxD : 1;
+
+      /*
+       * MATCH NEAREST AFTER RESHAPING.
+       *
+       * Keep automatic group orders in world orientation. Blindly turning a
+       * convoy broadside toward its travel heading looks tidy on open ground
+       * but makes both flanks fan into a chokepoint, and turns a move into a
+       * parked crowd into an avoidable traffic jam. Explicit line/box/wedge
+       * commands own orientation; an ordinary move owns preservation.
+       *
+       * Uniform clamping still moves the slots inward. Match the resulting slot
+       * set edge-first by distance so handles allocated in a different order do
+       * not make units exchange sides while the shape contracts.
+       */
       for (let m = 0; m < members; m++) {
         const e = GROUP[m];
-        ag.slotX[e] = (st.posX[e] - cx) * scale;
-        ag.slotZ[e] = (st.posZ[e] - cz) * scale;
+        const dx = st.posX[e] - cx;
+        const dz = st.posZ[e] - cz;
+        FORMATION_UNIT_X[m] = dx;
+        FORMATION_UNIT_Z[m] = dz;
+        FORMATION_SLOT_X[m] = dx * scale;
+        FORMATION_SLOT_Z[m] = dz * scale;
+        FORMATION_KEYS[m] = e;
+      }
+      assignNearestSlots(
+        members,
+        FORMATION_UNIT_X, FORMATION_UNIT_Z,
+        FORMATION_SLOT_X, FORMATION_SLOT_Z,
+        FORMATION_KEYS, FORMATION_ASSIGNMENT, FORMATION_ORDER, FORMATION_TAKEN,
+      );
+      let projected = 0;
+      for (let m = 0; m < members; m++) {
+        const e = GROUP[m];
+        const slot = FORMATION_ASSIGNMENT[m];
+        let sx = FORMATION_SLOT_X[slot];
+        let sz = FORMATION_SLOT_Z[slot];
+        const cls = moveClassAt(st, e);
+
+        /*
+         * A mathematically tidy slot can be physically impossible: inside a
+         * structure, across a cliff seam, or on the wrong side of a shoreline.
+         * The common field cannot fix that because it routes the CENTRE goal;
+         * `agentTarget` still sends this member to goal + slot. Keep an exact
+         * slot when it belongs to the member's connected region. Otherwise
+         * move only that slot to the nearest routable cell in the same region.
+         *
+         * We claim projected cells because two neighbouring blocked slots tend
+         * to discover the same doorway first. Exact valid slots remain metric
+         * positions (several infantry may legitimately fit in one 4 m nav
+         * cell), while fallbacks get one cell each and cannot collapse.
+         */
+        if (cls !== MoveClass.Air) {
+          const fromX = clampCell(worldToCell(st.posX[e]));
+          const fromZ = clampCell(worldToCell(st.posZ[e]));
+          let region = this.nav.regionOf(fromX, fromZ, cls);
+          if (region === 0) region = this.nav.mainRegion(cls);
+          const targetX = clampCell(worldToCell(gx + sx));
+          const targetZ = clampCell(worldToCell(gz + sz));
+          if (region !== 0 && this.nav.regionOf(targetX, targetZ, cls) !== region
+              && this.projectFormationSlot(targetX, targetZ, cls, region, projected)) {
+            sx = (RESCUE_CELL[0] + 0.5) * CELL - gx;
+            sz = (RESCUE_CELL[1] + 0.5) * CELL - gz;
+            FORMATION_PROJECTED_X[projected] = RESCUE_CELL[0];
+            FORMATION_PROJECTED_Z[projected] = RESCUE_CELL[1];
+            projected++;
+          }
+        }
+        ag.slotX[e] = sx;
+        ag.slotZ[e] = sz;
       }
     }
+  }
+
+  /** Deterministic nearest reachable, not-already-projected formation cell. */
+  private projectFormationSlot(
+    cx: number, cz: number, cls: MoveClass, region: number, claimed: number,
+  ): boolean {
+    if (this.formationCellAvailable(cx, cz, cls, region, claimed)) return true;
+    for (let r = 1; r <= FORMATION_SLOT_SEARCH_CELLS; r++) {
+      for (let d = -r; d <= r; d++) {
+        if (this.formationCellAvailable(cx + d, cz - r, cls, region, claimed)) return true;
+        if (this.formationCellAvailable(cx + d, cz + r, cls, region, claimed)) return true;
+      }
+      for (let d = -r + 1; d <= r - 1; d++) {
+        if (this.formationCellAvailable(cx - r, cz + d, cls, region, claimed)) return true;
+        if (this.formationCellAvailable(cx + r, cz + d, cls, region, claimed)) return true;
+      }
+    }
+    return false;
+  }
+
+  private formationCellAvailable(
+    cx: number, cz: number, cls: MoveClass, region: number, claimed: number,
+  ): boolean {
+    if (!isInMap(cx, cz) || this.nav.regionOf(cx, cz, cls) !== region) return false;
+    for (let i = 0; i < claimed; i++) {
+      if (FORMATION_PROJECTED_X[i] === cx && FORMATION_PROJECTED_Z[i] === cz) return false;
+    }
+    RESCUE_CELL[0] = cx;
+    RESCUE_CELL[1] = cz;
+    return true;
   }
 
   /** Release every field this assigner handed out. Between matches. */

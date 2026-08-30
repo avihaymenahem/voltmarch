@@ -536,6 +536,27 @@ export class InputManager {
     this.pointerY = e.clientY;
     this.pointerInside = true;
 
+    /*
+     * AN EARLIER OWNER MAY HAVE CLAIMED THIS PRESS ON THE SAME CANVAS.
+     *
+     * Placement listens in capture phase and calls `preventDefault()` before
+     * committing or cancelling its ghost. `stopPropagation()` is not enough
+     * here: DOM propagation stops between targets, but sibling listeners on
+     * the current target may still run. Without this guard the one physical
+     * press planted the building, then started our selection/order drag after
+     * Placement had already set `active = false`; pointerup consequently
+     * selected underneath a new structure or fired a right-click order after
+     * cancelling placement. To the player the mouse appeared stuck between
+     * two modes.
+     *
+     * `defaultPrevented` is the ownership hand-off. Also unwind any older raw
+     * gesture so a modal owner can never inherit a stale capture.
+     */
+    if (e.defaultPrevented) {
+      if (this.dragging) this.cancelDrag();
+      return;
+    }
+
     this.handlers.onPointerDown?.(this.fillPointer(e.clientX, e.clientY, e.button, 1));
 
     // The middle button runs through the same drag machinery as the others —

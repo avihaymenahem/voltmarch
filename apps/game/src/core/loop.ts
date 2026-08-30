@@ -156,6 +156,8 @@ const cancelFrame: FrameCanceller =
 
 /** Rolling window length for the per-system average. */
 const PROFILE_WINDOW = 60;
+/** Three missed 60 Hz presents is a visible hitch, not ordinary frame jitter. */
+const LONG_FRAME_MS = 50;
 
 export interface SystemTiming {
   id: string;
@@ -184,6 +186,12 @@ export class Profiler {
   private frameCursor = 0;
   private frameFilled = 0;
 
+  /** Persistent long-frame evidence; rolling medians deliberately cannot show this. */
+  longFrameCount = 0;
+  lastLongFrameGapMs = 0;
+  lastLongFrameCpuMs = 0;
+  worstLongFrameGapMs = 0;
+
   /** Heap canary. Flat over a 60 s soak means we are not allocating per frame. */
   heapBytes = 0;
   heapStartBytes = 0;
@@ -210,7 +218,7 @@ export class Profiler {
     t.avg = sum / PROFILE_WINDOW;
   }
 
-  recordFrame(ms: number): void {
+  recordFrame(ms: number, wallGapMs = 0): void {
     this.frameMs = ms;
     this.frameSamples[this.frameCursor] = ms;
     this.frameCursor = (this.frameCursor + 1) % PROFILE_WINDOW;
@@ -218,6 +226,12 @@ export class Profiler {
     let sum = 0;
     for (let i = 0; i < this.frameFilled; i++) sum += this.frameSamples[i];
     this.avgFrameMs = sum / this.frameFilled;
+    if (wallGapMs >= LONG_FRAME_MS) {
+      this.longFrameCount++;
+      this.lastLongFrameGapMs = wallGapMs;
+      this.lastLongFrameCpuMs = ms;
+      if (wallGapMs > this.worstLongFrameGapMs) this.worstLongFrameGapMs = wallGapMs;
+    }
   }
 
   /** Sample the JS heap where the browser exposes it (Chromium only). */
@@ -252,6 +266,10 @@ export class Profiler {
     this.cursor.clear();
     this.frameFilled = 0;
     this.frameCursor = 0;
+    this.longFrameCount = 0;
+    this.lastLongFrameGapMs = 0;
+    this.lastLongFrameCpuMs = 0;
+    this.worstLongFrameGapMs = 0;
     this.heapStartBytes = 0;
   }
 }
@@ -342,21 +360,45 @@ export class SystemRegistry {
   }
 
   /**
-   * Run every module's `init` in phase order. Async inits are awaited in
-   * sequence, so a module can rely on everything in an earlier phase being
-   * ready (materials before models, models before the render bridge).
+   * Run every module's `init` in phase order. Initialisers are sequential by
+   * default, so manifest ordering remains a dependency boundary. Modules may
+   * opt into an `initGroup`; members of the same group and phase are started
+   * together at the first member, and the complete group is awaited as one
+   * barrier before boot advances.
    */
   async init(): Promise<void> {
     this.rebuild();
     const ordered = this.all
       .slice()
       .sort((a, b) => (a.phase - b.phase) || (a.order - b.order) || (a.seq - b.seq));
-    for (let i = 0; i < ordered.length; i++) {
-      const m = ordered[i].module;
-      if (m.init === undefined) continue;
+    const completedGroups = new Set<string>();
+
+    const initialise = async (registered: Registered): Promise<void> => {
+      const m = registered.module;
+      if (m.init === undefined) return;
       const t0 = now();
       await m.init();
-      this.profiler.record(`${m.id}:init`, ordered[i].phase, now() - t0);
+      this.profiler.record(`${m.id}:init`, registered.phase, now() - t0);
+    };
+
+    for (let i = 0; i < ordered.length; i++) {
+      const registered = ordered[i];
+      const group = registered.module.initGroup;
+      if (group === undefined) {
+        await initialise(registered);
+        continue;
+      }
+
+      const groupKey = `${registered.phase}:${group}`;
+      if (completedGroups.has(groupKey)) continue;
+      completedGroups.add(groupKey);
+
+      const members = ordered.filter((candidate) =>
+        candidate.phase === registered.phase
+        && candidate.module.initGroup === group
+        && candidate.module.init !== undefined,
+      );
+      await Promise.all(members.map(initialise));
     }
     this.initialised = true;
   }
@@ -691,7 +733,8 @@ export class GameLoop {
     const frameStart = now();
 
     // --- accumulate ------------------------------------------------------
-    let realDt = (t - this.lastTime) / 1000;
+    const wallGapMs = Math.max(0, t - this.lastTime);
+    let realDt = wallGapMs / 1000;
     this.lastTime = t;
     // Clamp: a tab-switch or a breakpoint must not queue 40 seconds of sim.
     if (!(realDt > 0)) realDt = 0;
@@ -744,7 +787,10 @@ export class GameLoop {
     // --- render ----------------------------------------------------------
     this.renderPass(realDt, this.alpha, true);
 
-    profiler.recordFrame(now() - frameStart);
+    profiler.recordFrame(
+      now() - frameStart,
+      this.captureClock ? 0 : wallGapMs,
+    );
     if ((this.frame & 63) === 0) profiler.sampleHeap();
   }
 
@@ -774,8 +820,17 @@ export class GameLoop {
     rc.quality = this.quality;
 
     this.registry.runFrame(rc);
-    if (present) this.hooks.render?.(rc);
-    else this.hooks.hostFrame?.(rc);
+    const profiler = this.registry.profiler;
+    if (profiler.enabled) {
+      const t0 = now();
+      if (present) this.hooks.render?.(rc);
+      else this.hooks.hostFrame?.(rc);
+      profiler.record(present ? 'render.present#f' : 'render.host#f', RenderPhase.Present, now() - t0);
+    } else if (present) {
+      this.hooks.render?.(rc);
+    } else {
+      this.hooks.hostFrame?.(rc);
+    }
 
     // The presentation queue accumulates across every substep and is drained
     // exactly once here, so a 5-step catch-up frame does not emit five muzzle

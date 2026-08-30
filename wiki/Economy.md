@@ -248,7 +248,7 @@ only** — never a refund, never a sale, never a crate:
 
 | Difficulty | Income multiplier |
 | --- | --- |
-| Easy | ×0.8 |
+| Easy | ×0.65 |
 | Normal | ×1.0 |
 | Hard | ×1.15 |
 | Brutal | ×1.35 |

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
   createInfantryPackGeometry,
@@ -463,7 +464,7 @@ async function start() {
   ring.position.y = 0.006;
   scene.add(ring);
 
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const rigged = await loader.loadAsync(paths.rigged);
   const [walking, running, shooting] = assetSet.embeddedClips
     ? [rigged, rigged, rigged]

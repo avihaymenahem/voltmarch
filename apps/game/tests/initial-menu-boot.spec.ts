@@ -25,7 +25,14 @@ describe('initial title-menu boot', () => {
   const scatterSystem = read('apps/game/src/world/scatter.system.ts');
   const buildings = read('apps/game/src/art/buildings.system.ts');
   const units = read('apps/game/src/art/units.system.ts');
+  const faction3 = read('apps/game/src/art/faction3.system.ts');
+  const faction4 = read('apps/game/src/art/faction4.system.ts');
   const audio = read('apps/game/src/audio/audio.system.ts');
+  const audioEngine = read('apps/game/src/audio/AudioEngine.ts');
+  const audioSamples = read('apps/game/src/audio/Samples.ts');
+  const worldWarm = read('apps/game/src/core/workers/world-warm.ts');
+  const worldWarmSystem = read('apps/game/src/world/world-warm.system.ts');
+  const textureWarmSystem = read('apps/game/src/core/workers/texture-warm.system.ts');
 
   it('publishes the interactive menu before scheduling its decorative battlefield', () => {
     const branchStart = shell.indexOf('if (!keepBackdrop || this.game === null) {');
@@ -79,11 +86,29 @@ describe('initial title-menu boot', () => {
     expect(shell).not.toContain('}, 750);');
   });
 
+  it('re-arms world workers at every real bootstrap, not during menu code prefetch', () => {
+    const prepare = bootstrap.indexOf('prepareWorldWorkers();');
+    const prepareTextures = bootstrap.indexOf('prepareTextureWorkers();');
+    const renderer = bootstrap.indexOf('const handle = createRenderer({');
+    expect(prepare).toBeGreaterThanOrEqual(0);
+    expect(prepareTextures).toBeGreaterThan(prepare);
+    expect(renderer).toBeGreaterThan(prepare);
+    expect(renderer).toBeGreaterThan(prepareTextures);
+    expect(worldWarm).toContain('export function prepareWorldWorkers(): void');
+    expect(worldWarm).toContain('generation++');
+    expect(worldWarmSystem).not.toContain('installWorldWorkers();');
+    expect(textureWarmSystem).toContain('export function prepareTextureWorkers(): void');
+  });
+
   it('keeps key art behind the menu until the live canvas is ready', () => {
     expect(html).toContain("url('/brand/splash-1600.webp')");
     expect(html).toContain('html.vm-menu-preparing #gl { opacity: 0; }');
+    expect(html).toContain('html.vm-menu-preparing #app::before { opacity: 1; }');
+    expect(html).toContain('transition: opacity 640ms');
     expect(shell).toContain("classList.add('vm-menu-preparing')");
     expect(shell).toContain("classList.remove('vm-menu-preparing')");
+    expect(shell).toContain('waitForOpacityTransition(this.options.canvas)');
+    expect(shell).toContain('if (outgoingGameFade !== null) await outgoingGameFade;');
   });
 
   it('composes scatter for the wider title camera without changing real matches', () => {
@@ -109,6 +134,24 @@ describe('initial title-menu boot', () => {
     expect(bootstrap).toContain('[boot] battlefield');
   });
 
+  it('warms latent effect and alternate-model pipelines before revealing the battlefield', () => {
+    const expose = bootstrap.indexOf('const latentObjects: Object3D[] = []');
+    const compile = bootstrap.indexOf('.compile(sceneRig.scene');
+    const restore = bootstrap.indexOf('latentObjects[i].visible = false');
+    const reveal = bootstrap.indexOf('markBattlefieldReady();');
+    expect(expose).toBeGreaterThanOrEqual(0);
+    expect(compile).toBeGreaterThan(expose);
+    expect(restore).toBeGreaterThan(compile);
+    expect(reveal).toBeGreaterThan(restore);
+  });
+
+  it('keeps background audio work below one frame and bounds simultaneous decodes', () => {
+    expect(audioEngine).toContain('async bakeAll(sliceMs = 12)');
+    expect(audioSamples).toContain('const SAMPLE_DECODE_CONCURRENCY = 6');
+    expect(audioSamples).toContain('mapConcurrent(jobs, SAMPLE_DECODE_CONCURRENCY');
+    expect(audioSamples).not.toContain('await Promise.all(jobs)');
+  });
+
   it('batches terrain while keeping scatter on typed instancing at runtime', () => {
     expect(terrain).toContain('new THREE.BatchedMesh(');
     expect(terrain).toContain("'terrain.batch.relief'");
@@ -121,9 +164,9 @@ describe('initial title-menu boot', () => {
   it('keeps only MCV-critical authored art on the cold-start path', () => {
     for (const source of [buildings, units]) {
       expect(source).toContain("plannedScenario().start === 'mcv'");
-      expect(source).toContain('deferredImportTimer = window.setTimeout');
+      expect(source).toContain('scheduleBattlefieldWork');
       expect(source).toContain('registerKindMesh(');
-      expect(source).toContain('12_000');
+      expect(source).not.toContain('}, 12_000);');
     }
     expect(buildings).toContain("spec.key.endsWith('_conyard')");
     expect(units).toContain("'allied_dozer'");
@@ -131,6 +174,19 @@ describe('initial title-menu boot', () => {
     expect(units).toContain('importedSpecs.filter((spec) => MCV_IMPORT_KEYS.has(spec.key))');
     expect(units).toContain('importedSpecs.filter((spec) => !MCV_IMPORT_KEYS.has(spec.key))');
     expect(units).not.toContain('const immediateSpecs = fastMcvBoot ? [] : importedSpecs;');
+    expect(faction3).toContain("new Set(['meridian_carryall'])");
+    expect(faction3).toContain("new Set(['meridian_conclave'])");
+    expect(faction4).toContain("new Set(['reclaim_crawler'])");
+    expect(faction4).toContain("new Set(['reclaim_foundry'])");
+    for (const source of [faction3, faction4]) {
+      expect(source).toContain("plannedScenario().start === 'mcv'");
+      expect(source).toContain('scheduleBattlefieldWork');
+      expect(source).toContain('streamRemaining');
+    }
+    expect(bootstrap).toContain('markBattlefieldReady();');
+    expect(bootstrap.indexOf('renderOnce(shotMode ? 0 : 1 / 60);')).toBeLessThan(
+      bootstrap.indexOf('markBattlefieldReady();'),
+    );
   });
 
   it('prepares the first battlefield audio bank after gameplay becomes ready', () => {

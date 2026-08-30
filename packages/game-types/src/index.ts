@@ -1926,6 +1926,12 @@ export interface RenderContext {
 export interface SystemModule {
   /** Unique, stable, used by the profiler and the write-ownership assert. */
   readonly id: string;
+  /**
+   * Explicit boot-time concurrency group. Initialisers in the same phase and
+   * group are started together, then treated as a barrier before later boot
+   * work. Omit for the default manifest-ordered, sequential initialisation.
+   */
+  readonly initGroup?: string;
   /** Sim phase. Omit if this module has no simTick. */
   readonly phase?: Phase;
   /** Render phase. Omit if this module has no frame. */

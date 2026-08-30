@@ -116,6 +116,14 @@ export interface ScreenProjector {
 export const SELECT_REJECT_MASK =
   EntityFlag.PendingDestroy | EntityFlag.NotSelectable | EntityFlag.Garrisoned;
 
+/**
+ * A repair/sell cursor is not a selection cursor. Walls deliberately carry
+ * `NotSelectable` so a normal battlefield click passes through them, but they
+ * are still owned, sellable structures and therefore must be visible to those
+ * two explicit structure tools.
+ */
+const STRUCTURE_TOOL_REJECT_MASK = EntityFlag.PendingDestroy | EntityFlag.Garrisoned;
+
 /** True for the kinds a player can give orders to or inspect. */
 function isSelectableKind(kind: number): boolean {
   return kind === EntityKind.Infantry || kind === EntityKind.Vehicle || kind === EntityKind.Building;
@@ -210,13 +218,15 @@ function appendAirborne(world: World, count: number): number {
  * not filtered: an aircraft low enough to fall inside the circle as well would
  * simply be scored twice with the same numbers, and the scoring is idempotent.
  */
-export function pickEntity(
+function pickEntityFiltered(
   world: World,
   projector: ScreenProjector,
   screenX: number,
   screenY: number,
   groundX: number,
   groundZ: number,
+  rejectMask: number,
+  structuresOnly: boolean,
 ): EntityId {
   const s = world.store;
   const viewer = world.localPlayer;
@@ -237,8 +247,8 @@ export function pickEntity(
     const i = CANDIDATES[c];
     const flags = s.flags[i];
     if ((flags & EntityFlag.Alive) === 0) continue;
-    if ((flags & SELECT_REJECT_MASK) !== 0) continue;
-    if (!isSelectableKind(s.kind[i])) continue;
+    if ((flags & rejectMask) !== 0) continue;
+    if (structuresOnly ? s.kind[i] !== EntityKind.Building : !isSelectableKind(s.kind[i])) continue;
     // Cheapest rejection last of the three because it is the only one that
     // touches another module: kind and flags are one array read each.
     if (!canInteractWith(world, viewer, i)) continue;
@@ -304,6 +314,37 @@ export function pickEntity(
   }
 
   return best < 0 ? NONE : s.handleOf(best);
+}
+
+export function pickEntity(
+  world: World,
+  projector: ScreenProjector,
+  screenX: number,
+  screenY: number,
+  groundX: number,
+  groundZ: number,
+): EntityId {
+  return pickEntityFiltered(
+    world, projector, screenX, screenY, groundX, groundZ, SELECT_REJECT_MASK, false,
+  );
+}
+
+/**
+ * Pick a structure for the sidebar repair/sell tools without making walls
+ * selectable during ordinary play. Restricting the candidate kind here also
+ * prevents an infantryman standing over a wall from stealing the tool click.
+ */
+export function pickStructureToolTarget(
+  world: World,
+  projector: ScreenProjector,
+  screenX: number,
+  screenY: number,
+  groundX: number,
+  groundZ: number,
+): EntityId {
+  return pickEntityFiltered(
+    world, projector, screenX, screenY, groundX, groundZ, STRUCTURE_TOOL_REJECT_MASK, true,
+  );
 }
 
 /* ==========================================================================

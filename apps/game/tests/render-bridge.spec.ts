@@ -538,6 +538,28 @@ describe('RenderBridge — per-instance state', () => {
 });
 
 describe('RenderBridge — sockets', () => {
+  it('publishes the rendered hull centre without moving the gameplay origin', () => {
+    const { store, bridge } = makeRig();
+    const hull = new THREE.BoxGeometry(4, 2, 10);
+    hull.translate(0, 1, 6); // source articulation origin is 6 m aft of centre
+    registerKindMesh(EntityKind.Vehicle, FACTION_ANY, {
+      geometry: hull,
+      material: new THREE.MeshStandardMaterial(),
+    });
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 100, 0, 100, Math.PI / 2);
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const gameplay = new Float32Array(6);
+    const visual = new Float32Array(6);
+    expect(bridge.entityWorld(id, gameplay)).toBe(true);
+    expect(bridge.entityVisualWorld(id, visual)).toBe(true);
+    expect([gameplay[0], gameplay[2]]).toEqual([100, 100]);
+    expect(visual[0]).toBeCloseTo(106, 5);
+    expect(visual[2]).toBeCloseTo(100, 5);
+    teardown(bridge);
+  });
+
   it('places a turret muzzle in world space, following the turret not the hull', () => {
     const { store, scene, bridge } = makeRig();
     registerKindMesh(EntityKind.Vehicle, FACTION_ANY, {

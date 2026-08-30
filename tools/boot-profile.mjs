@@ -11,6 +11,8 @@
  *   node tools/boot-profile.mjs                       # build, then profile
  *   node tools/boot-profile.mjs --no-build            # profile the existing dist/
  *   node tools/boot-profile.mjs --runs 5              # more samples
+ *   node tools/boot-profile.mjs --shot 00-mcv-four-army
+ *   node tools/boot-profile.mjs --linger 20000          # observe deferred work
  *   node tools/boot-profile.mjs --shot 08-naval-water # a different fixture
  *   node tools/boot-profile.mjs --flags "terrainworkers=off,waterworkers=off"
  *
@@ -60,13 +62,59 @@ function opt(name, fallback) {
 const noBuild = argv.includes('--no-build');
 /** Echo the whole boot log, timestamped from navigation start. */
 const verbose = argv.includes('--verbose');
+/** Skip the genuinely-fresh-profile calibration so gameplay hitches can be isolated. */
+const calibrated = argv.includes('--calibrated');
 const RUNS = Number(opt('runs', '3'));
 const SHOT = opt('shot', '08-naval-water');
 const EXTRA = opt('flags', '');
 const OUT = opt('out', '');
+const LINGER = Number(opt('linger', '0'));
+const nativeWebGpu = EXTRA.split(',').some((pair) => pair.trim() === 'gpu=webgpu');
 
 /** The fixtures worth profiling, and the boot flags each one needs. */
 const FIXTURES = {
+  '02-base-two-army': {
+    shot: null,
+    seed: 7,
+    skipmenu: '1',
+    start: 'base',
+    setup: {
+      playerFaction: 'allies',
+      aiFaction: 'soviets',
+      map: 'temperate-valley',
+      difficulty: 1,
+      personality: -1,
+      startingCredits: 10_000,
+      speed: 1,
+      seed: 7,
+      weather: true,
+      opponents: [
+        { faction: 'soviets', difficulty: 1, personality: -1, team: 2 },
+      ],
+    },
+  },
+  '00-mcv-four-army': {
+    shot: null,
+    seed: 7,
+    skipmenu: '1',
+    start: 'mcv',
+    setup: {
+      playerFaction: 'allies',
+      aiFaction: 'soviets',
+      map: 'temperate-valley',
+      difficulty: 1,
+      personality: -1,
+      startingCredits: 10_000,
+      speed: 1,
+      seed: 7,
+      weather: true,
+      opponents: [
+        { faction: 'soviets', difficulty: 1, personality: -1, team: 2 },
+        { faction: 'meridian', difficulty: 1, personality: -1, team: 3 },
+        { faction: 'reclaim', difficulty: 1, personality: -1, team: 4 },
+      ],
+    },
+  },
   '01-establishing-base': { shot: 'allied-base', seed: 7 },
   '03-terrain-closeup': { shot: 'terrain-showcase', seed: 3 },
   // The one map with a declared sea, so the only one where water does real work.
@@ -101,9 +149,15 @@ const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: true,
+  // Playwright's bundled Chromium cannot load Dawn's DXIL dependency on this
+  // Windows host. System Chrome is the same path used by gpu-boot-probe and is
+  // required for a real WebGPU boot measurement instead of an instant device
+  // creation failure.
+  ...(nativeWebGpu ? { channel: 'chrome' } : {}),
   args: [
     '--use-angle=default', '--enable-gpu', '--ignore-gpu-blocklist',
-    '--enable-unsafe-swiftshader', '--disable-gpu-sandbox',
+    ...(nativeWebGpu ? [] : ['--enable-unsafe-swiftshader']),
+    '--disable-gpu-sandbox',
     '--hide-scrollbars', '--mute-audio', '--force-device-scale-factor=1',
   ],
 });
@@ -114,6 +168,10 @@ const browser = await chromium.launch({
 
 /** `... 34567 tris in 1234 ms · ...` and `... tris in 1234 ms` alike. */
 const PATTERNS = [
+  ['battlefield', /\[boot\] battlefield (\d+) ms/],
+  ['systems', /\[boot\][^\n]*?systems (\d+) ms/],
+  ['presentation', /\[boot\][^\n]*?presentation (\d+) ms/],
+  ['shaders', /\[boot\][^\n]*?shaders (\d+) ms/],
   ['terrain', /\[terrain\][^\n]*? in (\d+) ms/],
   ['water', /\[water\][^\n]*?in (\d+) ms/],
   ['terrainGen', /\[terrain\][^\n]*?generated in (\d+) ms/],
@@ -122,7 +180,10 @@ const PATTERNS = [
 ];
 
 const qs = new URLSearchParams();
-for (const [k, v] of Object.entries(flags)) qs.set(k, String(v));
+for (const [k, v] of Object.entries(flags)) {
+  if (k === 'setup' || v === null || v === undefined) continue;
+  qs.set(k, String(v));
+}
 for (const pair of EXTRA.split(',')) {
   if (pair.trim() === '') continue;
   const [k, v = ''] = pair.split('=');
@@ -135,6 +196,18 @@ for (let run = 0; run < RUNS; run++) {
   // server that died between two of them would silently mix two bundles.
   server.assertAlive(`run ${run + 1}`);
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  if (calibrated) {
+    await page.addInitScript(() => {
+      localStorage.setItem('voltmarch.settings.v1', JSON.stringify({
+        graphics: { calibrated: true },
+      }));
+    });
+  }
+  if (flags.setup !== undefined) {
+    await page.addInitScript((setup) => {
+      localStorage.setItem('voltmarch.setup.v1', JSON.stringify(setup));
+    }, flags.setup);
+  }
   const lines = [];
   const t0 = Date.now();
   page.on('console', (m) => {
@@ -227,8 +300,55 @@ for (let run = 0; run < RUNS; run++) {
     return { chunks, terrain: h, water };
   });
 
+  // A rolling FPS headline hides one dropped frame in hundreds. Begin only
+  // AFTER the synchronous checksum above: an instrument that records its own
+  // scene traversal as a gameplay hitch poisons the comparison it exists for.
+  await page.evaluate(() => {
+    const probe = { gaps: [], longTasks: [], handle: 0, last: performance.now(), observer: null };
+    const frame = (now) => {
+      const gap = now - probe.last;
+      if (gap >= 50) probe.gaps.push(gap);
+      probe.last = now;
+      probe.handle = requestAnimationFrame(frame);
+    };
+    probe.handle = requestAnimationFrame(frame);
+    if (typeof PerformanceObserver === 'function') {
+      try {
+        probe.observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            probe.longTasks.push({ startTime: entry.startTime, duration: entry.duration });
+          }
+        });
+        probe.observer.observe({ entryTypes: ['longtask'] });
+      } catch { /* Long Task timing is optional; raw rAF gaps remain authoritative. */ }
+    }
+    window.__vmHitchProbe = probe;
+    window.__VM?.hooks?.perfStart?.();
+  });
+
+  if (LINGER > 0) await page.waitForTimeout(LINGER);
+
+  const hitches = await page.evaluate(() => {
+    const probe = window.__vmHitchProbe;
+    if (!probe) return null;
+    cancelAnimationFrame(probe.handle);
+    probe.observer?.disconnect();
+    const gaps = [...probe.gaps].sort((a, b) => b - a);
+    const longTasks = [...probe.longTasks].sort((a, b) => b.duration - a.duration);
+    delete window.__vmHitchProbe;
+    return {
+      framesOver50Ms: gaps.length,
+      worstFrameGapMs: gaps[0] ?? 0,
+      topFrameGapsMs: gaps.slice(0, 8),
+      longTasks: longTasks.length,
+      worstLongTaskMs: longTasks[0]?.duration ?? 0,
+      topLongTasks: longTasks.slice(0, 8),
+      peakSystems: (window.__VM?.hooks?.perfSystems?.() ?? []).slice(0, 12),
+    };
+  });
+
   const text = lines.join('\n');
-  const s = { run, ready, checksum };
+  const s = { run, ready, checksum, hitches };
   for (const [key, re] of PATTERNS) {
     const m = re.exec(text);
     if (m === null) continue;
@@ -240,7 +360,10 @@ for (let run = 0; run < RUNS; run++) {
   const sum = checksum === null
     ? ''
     : `, world ${checksum.chunks} chunks ${checksum.terrain.toString(16)}/${checksum.water.toString(16)}`;
-  console.log(`  run ${run + 1}/${RUNS}: ready ${ready} ms, terrain ${s.terrain ?? '-'} ms, water ${s.water ?? '-'} ms${sum}`);
+  const hitchSummary = hitches === null
+    ? ''
+    : `, hitches ${hitches.framesOver50Ms} (worst ${hitches.worstFrameGapMs.toFixed(1)} ms)`;
+  console.log(`  run ${run + 1}/${RUNS}: ready ${ready} ms, terrain ${s.terrain ?? '-'} ms, water ${s.water ?? '-'} ms${sum}${hitchSummary}`);
   await page.close();
 }
 
@@ -256,7 +379,10 @@ function median(values) {
 }
 
 const warm = samples.slice(1).length > 0 ? samples.slice(1) : samples;
-const keys = ['ready', 'terrain', 'water', 'terrainGen', 'waterBake', 'worldWorker', 'worldWorker2'];
+const keys = [
+  'ready', 'battlefield', 'systems', 'presentation', 'shaders',
+  'terrain', 'water', 'terrainGen', 'waterBake', 'worldWorker', 'worldWorker2',
+];
 const summary = {
   shot: SHOT,
   flags: qs.toString(),

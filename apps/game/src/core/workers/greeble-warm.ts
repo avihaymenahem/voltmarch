@@ -44,6 +44,7 @@ export function installGreebleWorkers(): void {
     // the two runs are directly comparable and the fallback path stays exercised
     // rather than becoming code nobody ever runs.
     console.info('[greeble] worker offload disabled by ?greebleworkers=off');
+    setGreebleGenerator(null);
     return;
   }
   setGreebleGenerator((spec) => textures.submitGreeble(spec));

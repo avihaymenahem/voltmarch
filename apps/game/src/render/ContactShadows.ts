@@ -45,7 +45,8 @@ import * as THREE from 'three';
 import {
   CONTACT_DARKEN_CAPACITY, CONTACT_DARKEN_COLOR, CONTACT_DARKEN_CORE,
   CONTACT_DARKEN_LIFT, CONTACT_DARKEN_MIN_FOOTPRINT, CONTACT_DARKEN_PEAK_ALPHA,
-  CONTACT_DARKEN_RADIUS_SCALE, DECAL_DARKEN_FLOOR,
+  CONTACT_DARKEN_RADIUS_SCALE, DECAL_DARKEN_FLOOR, GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+  GROUND_OVERLAY_DEPTH_BIAS_UNITS,
 } from '../core/config';
 import { EntityFlag, EntityKind } from '../core/types';
 import type { World } from '../core/world';
@@ -168,8 +169,8 @@ export class ContactShadowField {
       blendSrcAlpha: THREE.ZeroFactor,
       blendDstAlpha: THREE.OneFactor,
       polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
+      polygonOffsetFactor: GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+      polygonOffsetUnits: GROUND_OVERLAY_DEPTH_BIAS_UNITS,
     });
     if (glsl !== null) {
       // This shader emits a MULTIPLY FACTOR, whose neutral fog value is white.

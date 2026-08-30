@@ -281,6 +281,7 @@ export interface NodePostChainLike {
   render(dt: number): void;
   syncConfig(): void;
   setWeatherIntensity(intensity: number): void;
+  postLabel(): string;
   setSize(width: number, height: number): void;
   /**
    * Draw calls, split by pass, for the LAST frame — or null when the node

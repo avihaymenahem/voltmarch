@@ -21,13 +21,19 @@ import { defineSystem } from '../core/loop';
 import { BUILDING_GREEBLE, QUALITY_PRESETS, UNIT_GREEBLE } from '../core/config';
 import type { QualityTier } from '../core/types';
 import { ctx } from '../game/context';
-import { resolveDefBinding } from '../game/Scenarios';
+import { plannedScenario, resolveDefBinding } from '../game/Scenarios';
 import { formatStats } from './MassList';
 import { formatStructureStats } from './BuildingFactory';
 import { buildAndRegisterReclaimUnits, disposeReclaimUnits } from './Faction4Units';
 import { buildAndRegisterReclaimStructures, disposeReclaimBuildings } from './Faction4Buildings';
 import { isArtFactionPlanned } from './boot-plan';
 import { Faction } from '../core/types';
+import { liveAssetStreamingEnabled, scheduleBattlefieldWork } from '../core/battlefield-ready';
+
+const MCV_UNIT_IMPORTS: ReadonlySet<string> = new Set(['reclaim_crawler']);
+const MCV_STRUCTURE_IMPORTS: ReadonlySet<string> = new Set(['reclaim_foundry']);
+let deferredEpoch = 0;
+let cancelDeferredWork: (() => void) | null = null;
 
 /** 256 on Low, 512 everywhere else: 1024 buys nothing at RTS unit size. */
 function atlasSizeFor(tier: QualityTier, ceiling: number): number {
@@ -37,6 +43,7 @@ function atlasSizeFor(tier: QualityTier, ceiling: number): number {
 
 export default defineSystem({
   id: 'art.faction4',
+  initGroup: 'faction-art',
 
   async init(): Promise<void> {
     if (!isArtFactionPlanned(Faction.Reclaim)) {
@@ -49,6 +56,10 @@ export default defineSystem({
     // One binding resolve for both halves. `resolveDefBinding` is memoised, so
     // this is the same promise the other callers already share.
     const binding = await resolveDefBinding();
+    const fastMcvBoot = plannedScenario().start === 'mcv'
+      && liveAssetStreamingEnabled()
+      && (typeof location === 'undefined'
+        || new URLSearchParams(location.search).get('privateassetstream') !== 'off');
 
     // BOTH AT ONCE. Each half now prewarms its own atlas on a worker before it
     // builds anything, and those two waits are independent — the unit atlas and
@@ -57,10 +68,26 @@ export default defineSystem({
     // pool is perfectly happy to serve in parallel.
     const [units, structures] = await Promise.all([
       buildAndRegisterReclaimUnits(
-        atlasSizeFor(loop.quality, UNIT_GREEBLE.atlasSize), binding.unitId),
+        atlasSizeFor(loop.quality, UNIT_GREEBLE.atlasSize), binding.unitId,
+        fastMcvBoot ? MCV_UNIT_IMPORTS : undefined),
       buildAndRegisterReclaimStructures(
-        atlasSizeFor(loop.quality, BUILDING_GREEBLE.atlasSize), binding.buildingId),
+        atlasSizeFor(loop.quality, BUILDING_GREEBLE.atlasSize), binding.buildingId,
+        fastMcvBoot ? MCV_STRUCTURE_IMPORTS : undefined),
     ]);
+
+    const streamers = [structures.streamRemaining, units.streamRemaining].filter(
+      (stream): stream is NonNullable<typeof stream> => stream !== undefined,
+    );
+    if (streamers.length > 0) {
+      const epoch = ++deferredEpoch;
+      cancelDeferredWork = scheduleBattlefieldWork(40, async () => {
+        cancelDeferredWork = null;
+        for (const stream of streamers) {
+          if (epoch !== deferredEpoch) return;
+          await stream(() => epoch === deferredEpoch);
+        }
+      });
+    }
 
     let unitTris = 0;
     for (const m of units.models) unitTris += m.stats.triangles;
@@ -87,6 +114,9 @@ export default defineSystem({
   },
 
   dispose(): void {
+    deferredEpoch++;
+    cancelDeferredWork?.();
+    cancelDeferredWork = null;
     disposeReclaimUnits();
     disposeReclaimBuildings();
   },

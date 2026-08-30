@@ -7,7 +7,6 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import {
   mergeGeometries, toCreasedNormals,
@@ -15,12 +14,14 @@ import {
 
 import { ctx } from '../game/context';
 import { PartId } from '../core/types';
+import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import { applyShroudTint } from '../render/FogOfWar';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
 import { unitMaterialFor, type UnitModel } from './UnitFactory';
 import type { UnitMaterialTextures } from '../render/gpu-path';
 import { applyUnitRim } from './unit-rim';
 import { acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader } from './RuntimeKTX2Loader';
+import { createRuntimeGLTFLoader } from './RuntimeGLTFLoader';
 import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
@@ -60,11 +61,44 @@ export interface ImportedUnitSpec {
   emissiveIntensity?: number;
 }
 
+/**
+ * Reclamation atlases deliberately use near-black graphite. At RTS distance
+ * that art direction only survives if painted plate remains a dielectric and
+ * the atlas gets a small albedo-shaped fill on faces turned away from the key.
+ *
+ * Keep this as one family contract instead of copying stronger exposure values
+ * into every vehicle and infantry spec. The fill reuses the existing base map,
+ * so it preserves panel variation and allocates no additional texture.
+ */
+export const RECLAIM_IMPORTED_UNIT_READABILITY = {
+  baseColorGainMin: 1.82,
+  paintedMetalness: 0.12,
+  ambient: [0.48, 0.36, 0.56] as const,
+  ambientIntensity: 0.28,
+  envMapIntensityMin: 0.68,
+} as const;
+
+function reclaimReadability(spec: ImportedUnitSpec) {
+  return spec.key.startsWith('reclaim_') ? RECLAIM_IMPORTED_UNIT_READABILITY : null;
+}
+
+/**
+ * Imported unit loads fan out again inside `loadImportedUnitOverride` for LODs
+ * and shadow proxies. Keep the outer pool narrower than the structure pool so
+ * capable clients overlap network/parse work without decoding a whole faction
+ * into memory at once. KTX2 transcoding remains capped by the shared two-worker
+ * runtime loader.
+ */
+export function importedUnitConcurrency(): number {
+  if (typeof navigator === 'undefined') return 2;
+  return (navigator.hardwareConcurrency || 4) >= 8 ? 3 : 2;
+}
+
 export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_harvester',
     label: 'Allied Chrono Miner',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/chrono-miner.glb', import.meta.url).href,
+    url: new URL('../../../../packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb', import.meta.url).href,
     lods: [
       {
         url: new URL('../../../../packages/assets/game/units/allies/derived/chrono-miner.lod1.glb', import.meta.url).href,
@@ -1117,7 +1151,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   },
 ];
 
-const loader = new GLTFLoader();
+const loader = createRuntimeGLTFLoader();
 let ktx2Loader: KTX2Loader | null = null;
 const runtimeMaterials = new Set<THREE.Material>();
 const runtimeTextures = new Set<THREE.Texture>();
@@ -1141,6 +1175,7 @@ function optimizationEnabled(): boolean {
 
 type ImportedAnimatedMaterial = THREE.Material & {
   color: THREE.Color;
+  emissive: THREE.Color;
   normalScale: THREE.Vector2;
   roughness: number;
   metalness: number;
@@ -1169,16 +1204,32 @@ export function importedAnimatedUnitMaterial(
     // construction; using an existing texture avoids a one-off allocation.
     emissiveMap: source.map,
   };
+  const readability = reclaimReadability(spec);
   const material = unitMaterialFor(textures, `${spec.key}.imported.gait`) as ImportedAnimatedMaterial;
-  material.color.copy(source.color).multiplyScalar(spec.baseColorGain ?? 1);
+  material.color.copy(source.color).multiplyScalar(Math.max(
+    spec.baseColorGain ?? 1,
+    readability?.baseColorGainMin ?? 1,
+  ));
   material.normalScale.setScalar(spec.normalScale ?? 1);
   material.roughness = spec.roughnessGain ?? 1;
-  material.metalness = 1;
+  // Painted cloth/armour is not a solid metal slab. Reclamation's dark atlas
+  // made the old 1.0 factor especially destructive because it removed almost
+  // all diffuse response under snow/noon lighting.
+  material.metalness = readability?.paintedMetalness ?? 1;
   material.clearcoat = 0.02;
   material.clearcoatRoughness = 0.88;
-  material.envMapIntensity = spec.envMapIntensity ?? 0.5;
-  material.emissiveMap = null;
-  material.emissiveIntensity = 0;
+  material.envMapIntensity = Math.max(
+    spec.envMapIntensity ?? 0.5,
+    readability?.envMapIntensityMin ?? 0,
+  );
+  if (readability === null) {
+    material.emissiveMap = null;
+    material.emissiveIntensity = 0;
+  } else {
+    material.emissiveMap = source.map;
+    material.emissive.setRGB(...readability.ambient);
+    material.emissiveIntensity = readability.ambientIntensity;
+  }
   // Meshy's metallic/roughness image has no authored AO channel or UV1.
   material.aoMap = null;
   material.vertexColors = false;
@@ -1198,10 +1249,11 @@ function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): T
   if (spec.gait !== undefined) return importedAnimatedUnitMaterial(source, spec);
 
   const textured = source.map !== null;
+  const readability = reclaimReadability(spec);
   const material = new THREE.MeshPhysicalMaterial({
     color: textured ? source.color : new THREE.Color(0x596044),
     map: source.map,
-    metalness: textured ? 0.72 : 0.16,
+    metalness: textured ? (readability?.paintedMetalness ?? 0.72) : 0.16,
     metalnessMap: source.metalnessMap,
     // Meshy's packed map averages roughly 0.52 roughness. That is a polished
     // showroom coat in our bright battlefield environment, not Soviet armour.
@@ -1214,12 +1266,20 @@ function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): T
     ),
     emissiveMap: textured ? source.map : null,
     emissive: textured
-      ? new THREE.Color().setRGB(0.08, 0.075, 0.05)
+      ? new THREE.Color().setRGB(
+        readability?.ambient[0] ?? 0.08,
+        readability?.ambient[1] ?? 0.075,
+        readability?.ambient[2] ?? 0.05,
+      )
       : new THREE.Color(0x000000),
-    emissiveIntensity: textured ? (spec.emissiveIntensity ?? 0.035) : 0,
+    emissiveIntensity: textured
+      ? (readability?.ambientIntensity ?? spec.emissiveIntensity ?? 0.035)
+      : 0,
     clearcoat: textured ? 0.035 : 0,
     clearcoatRoughness: 0.82,
-    envMapIntensity: textured ? (spec.envMapIntensity ?? 0.72) : 0.55,
+    envMapIntensity: textured
+      ? Math.max(spec.envMapIntensity ?? 0.72, readability?.envMapIntensityMin ?? 0)
+      : 0.55,
     alphaMap: source.alphaMap,
     alphaTest: source.alphaTest,
     opacity: source.opacity,
@@ -1232,7 +1292,10 @@ function importedUnitMaterial(source: THREE.Material, spec: ImportedUnitSpec): T
   // Meshy's studio preview is brighter than the battlefield key. A small
   // family-local radiance lift preserves olive/red separation without moving
   // the global grade or clipping brass hardware.
-  if (textured) material.color.multiplyScalar(spec.baseColorGain ?? 1.025);
+  if (textured) material.color.multiplyScalar(Math.max(
+    spec.baseColorGain ?? 1.025,
+    readability?.baseColorGainMin ?? 1,
+  ));
 
   for (const texture of [
     material.map, material.normalMap, material.metalnessMap, material.roughnessMap,
@@ -1496,15 +1559,26 @@ function sealTurretInterface(
 export async function loadImportedUnitOverride(
   model: UnitModel,
   spec: ImportedUnitSpec,
+  progressive = false,
 ): Promise<KindMesh> {
   configureTextureLoader();
   const lodSpecs = optimizationEnabled() ? spec.lods ?? [] : [];
   const shadowUrl = optimizationEnabled() ? spec.shadowUrl : undefined;
-  const loaded = await Promise.all([
-    loader.loadAsync(spec.url),
-    ...lodSpecs.map((lod) => loader.loadAsync(lod.url)),
-    ...(shadowUrl === undefined ? [] : [loader.loadAsync(shadowUrl)]),
-  ]);
+  const urls = [
+    spec.url,
+    ...lodSpecs.map((lod) => lod.url),
+    ...(shadowUrl === undefined ? [] : [shadowUrl]),
+  ];
+  const loaded: Awaited<ReturnType<typeof loader.loadAsync>>[] = [];
+  if (progressive) {
+    for (const url of urls) {
+      await waitForBattlefieldIdle();
+      loaded.push(await loader.loadAsync(url));
+    }
+    await waitForBattlefieldIdle();
+  } else {
+    loaded.push(...await Promise.all(urls.map((url) => loader.loadAsync(url))));
+  }
 
   const hullSources = resolveImportedPartMeshes(loaded[0].scene, spec.hullName, spec.label);
   const turretSources = spec.turretName === undefined
@@ -1565,7 +1639,9 @@ export async function loadImportedUnitOverride(
 
   const hullLods: { geometry: THREE.BufferGeometry; minDistance: number }[] = [];
   const turretLods: { geometry: THREE.BufferGeometry; minDistance: number }[] = [];
-  lodSpecs.forEach((lod, index) => {
+  for (let index = 0; index < lodSpecs.length; index++) {
+    const lod = lodSpecs[index];
+    if (progressive) await waitForBattlefieldIdle();
     const lodLabel = `${spec.label} LOD${index + 1}`;
     const lodHullSources = resolveImportedPartMeshes(
       loaded[index + 1].scene, spec.hullName, lodLabel,
@@ -1598,10 +1674,11 @@ export async function loadImportedUnitOverride(
       partGeometry.name = `${spec.key}.imported.turret.lod${index + 1}`;
       turretLods.push({ geometry: partGeometry, minDistance: lod.minDistance });
     }
-  });
+  }
 
   let shadowGeometry: THREE.BufferGeometry | undefined;
   if (shadowUrl !== undefined) {
+    if (progressive) await waitForBattlefieldIdle();
     const shadowMeshes = sceneMeshes(loaded[1 + lodSpecs.length].scene);
     const shadowSource = shadowMeshes[0];
     if (shadowSource === undefined || shadowMeshes.length !== 1) {

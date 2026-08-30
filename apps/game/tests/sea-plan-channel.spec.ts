@@ -7,7 +7,7 @@
  * routes, and nothing checked that they say the same thing:
  *
  *   `world/terrain-plan.plannedTerrainInput()`  reads `plannedScenario().sea`
- *       directly, because it runs at MODULE SCOPE to prewarm the worker and
+ *       directly, because it runs at BOOTSTRAP TIME to prewarm the worker and
  *       `world.sea`'s `init()` has not happened yet.
  *
  *   `Terrain`'s constructor                     reads `plannedSea()`, the

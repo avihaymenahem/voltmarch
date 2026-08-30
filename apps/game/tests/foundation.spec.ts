@@ -177,6 +177,50 @@ describe('core/loop — headless determinism', () => {
     expect(registry.frameOrder()).toEqual(['early', 'late']);
   });
 
+  it('starts an explicit init group concurrently and keeps it as a boot barrier', async () => {
+    const registry = new SystemRegistry(new Profiler());
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstDone = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondDone = new Promise<void>((resolve) => { releaseSecond = resolve; });
+
+    registry.add({
+      id: 'group.first',
+      initGroup: 'catalogues',
+      async init() {
+        events.push('first:start');
+        await firstDone;
+        events.push('first:end');
+      },
+    });
+    registry.add({
+      id: 'barrier.after',
+      init() { events.push('barrier'); },
+    });
+    registry.add({
+      id: 'group.second',
+      initGroup: 'catalogues',
+      async init() {
+        events.push('second:start');
+        await secondDone;
+        events.push('second:end');
+      },
+    });
+
+    const boot = registry.init();
+    await Promise.resolve();
+    expect(events).toEqual(['first:start', 'second:start']);
+
+    releaseFirst();
+    await Promise.resolve();
+    expect(events).not.toContain('barrier');
+
+    releaseSecond();
+    await boot;
+    expect(events.at(-1)).toBe('barrier');
+  });
+
   it('seats two players with opposing factions', () => {
     const world = new World();
     const a = world.addPlayer(Faction.Allies, 'A', true, true);

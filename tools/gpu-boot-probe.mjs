@@ -1,7 +1,7 @@
 /**
  * GPU BOOT PROBE — does the REAL GAME boot and draw on a given backend?
  *
- *   node tools/gpu-boot-probe.mjs --gpu=webgpu [--shot=01-establishing-base] [--headed]
+ *   node tools/gpu-boot-probe.mjs --gpu=webgpu [--aa=traa|taau] [--taau-scale=.75] [--shot=01-establishing-base] [--headed]
  *
  * `tools/shoot.mjs` is the capture harness and reports one line when a page
  * fails to reach `window.__VM.ready`. This is the diagnostic underneath it: one
@@ -35,13 +35,17 @@ const arg = (name, dflt) => {
 };
 const GPU = (arg('gpu', 'webgl') || 'webgl').toLowerCase();
 const SHOT = arg('shot', '01-establishing-base');
+const TIER = arg('tier', 'medium');
 const OUTPNG = arg('png', '');
 const SEED = Number(arg('seed', '7'));
 /** Sim ticks to advance before the shutter — the fixtures' `settleTicks`. */
 const TICKS = Number(arg('ticks', '0'));
 const DIST = Number(arg('dist', '62'));
+const AA = (arg('aa', '') || '').toLowerCase();
+const TAAU_SCALE = arg('taau-scale', '');
 const NOPOST = argv.includes('--nopost');
 const OFF = (arg('off','') || '').split(',').filter(Boolean);
+const ATMOSPHERE_AB = arg('atmosphere-ab', '');
 const headed = argv.includes('--headed');
 
 const server = await serve({ root: ROOT, mode: 'preview', portHint: 4361, log: console.log });
@@ -65,8 +69,10 @@ try {
   page.on('console', (m) => log.push(`[${m.type()}] ${m.text()}`));
   page.on('pageerror', (e) => log.push(`[pageerror] ${e.stack ?? e.message}`));
 
-  const qs = new URLSearchParams({ shot: SHOT, tier: 'medium', seed: String(SEED) });
+  const qs = new URLSearchParams({ shot: SHOT, tier: TIER, seed: String(SEED) });
   if (GPU === 'webgpu') qs.set('gpu', 'webgpu');
+  if (AA) qs.set('aa', AA);
+  if (TAAU_SCALE) qs.set('taauScale', TAAU_SCALE);
   const url = `${server.origin}?${qs}`;
   console.log(`> ${url}`);
   await page.goto(url, { waitUntil: 'load' });
@@ -102,7 +108,13 @@ try {
       vm.setUiVisible(false);
       vm.focusOn(256, 256, dist);
       if (noPost) vm.post.setEnabled(false);
-      for (const id of off) vm.post.setPassEnabled(id, false);
+      for (const id of off) {
+        // Atmosphere is fused into the HDR expression rather than represented
+        // by an independent post pass. Keep it available to the same A/B probe
+        // without inventing a draw-call-sized pass solely for diagnostics.
+        if (id === 'atmosphere') vm.configure({ post: { atmosphere: { enabled: false } } });
+        else vm.post.setPassEnabled(id, false);
+      }
       if (ticks > 0) await vm.advanceTicks(ticks);
       await vm.waitFrames(4);
       const s = vm.stats();
@@ -127,6 +139,22 @@ try {
     if (GPU === 'webgpu' && info.backend !== 'webgpu') {
       console.error(`\n!! asked for webgpu, live backend is '${info.backend}'`);
       code = 3;
+    }
+    if (ATMOSPHERE_AB) {
+      const captures = await page.evaluate(async () => {
+        const vm = window.__VM;
+        vm.setUiVisible(false);
+        await vm.waitFrames(2);
+        const on = await vm.screenshot();
+        vm.configure({ post: { atmosphere: { enabled: false } } });
+        // The fused expression changes graph shape and compiles once here.
+        await vm.waitFrames(6);
+        const off = await vm.screenshot();
+        return { on, off };
+      });
+      writeFileSync(`${ATMOSPHERE_AB}-on.png`, Buffer.from(captures.on.split(',')[1], 'base64'));
+      writeFileSync(`${ATMOSPHERE_AB}-off.png`, Buffer.from(captures.off.split(',')[1], 'base64'));
+      console.log(`> wrote ${ATMOSPHERE_AB}-{on,off}.png`);
     }
     if (OUTPNG) {
       // THROUGH `__VM.screenshot()`, not `page.screenshot()`: the loading

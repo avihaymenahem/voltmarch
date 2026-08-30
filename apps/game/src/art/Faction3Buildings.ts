@@ -63,6 +63,7 @@ import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
 import { mapConcurrent } from '../core/async-pool';
+import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import {
   configureImportedStructureTextureLoader,
   loadImportedStructureOverride,
@@ -1514,6 +1515,8 @@ export interface MeridianStructureReport {
   registrations: number;
   bound: number;
   imported: number;
+  /** Promote non-opening authored shells after Bootstrap presents frame zero. */
+  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
 }
 
 /**
@@ -1529,6 +1532,7 @@ export interface MeridianStructureReport {
 export async function buildAndRegisterMeridianStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
+  immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<MeridianStructureReport> {
   const palettes: StructurePalettes = {
     structure: MERIDIAN_STRUCTURE_PALETTE,
@@ -1565,18 +1569,30 @@ export async function buildAndRegisterMeridianStructures(
 
   configureImportedStructureTextureLoader();
   const importedMeshes = new Map<string, KindMesh>();
-  const importedResults = await mapConcurrent(MERIDIAN_IMPORTED_STRUCTURE_SPECS, 3, async (spec) => {
+  const loadSpecs = (
+    specs: readonly ImportedStructureSpec[],
+    progressive = false,
+  ) => mapConcurrent(specs, progressive ? 1 : 3, async (spec) => {
+    if (progressive) await waitForBattlefieldIdle();
     const model = meridianBuildingLibrary.get(spec.key);
     if (model === undefined) return null;
     try {
       return [spec.key, await loadImportedStructureOverride(
         model, spec, meridianBuildingLibrary.depthMaterial(),
+        progressive,
       )] as const;
     } catch (error) {
       failed.push(`${spec.key} imported override: ${String(error)}`);
       return null;
     }
   });
+  const immediateSpecs = immediateImportedKeys === undefined
+    ? MERIDIAN_IMPORTED_STRUCTURE_SPECS
+    : MERIDIAN_IMPORTED_STRUCTURE_SPECS.filter((spec) => immediateImportedKeys.has(spec.key));
+  const deferredSpecs = immediateImportedKeys === undefined
+    ? []
+    : MERIDIAN_IMPORTED_STRUCTURE_SPECS.filter((spec) => !immediateImportedKeys.has(spec.key));
+  const importedResults = await loadSpecs(immediateSpecs);
   for (const result of importedResults) {
     if (result !== null) importedMeshes.set(result[0], result[1]);
   }
@@ -1594,12 +1610,18 @@ export async function buildAndRegisterMeridianStructures(
 
   let registrations = 0;
   let bound = 0;
+  const registrationTargets: Array<{
+    key: string;
+    faction: Faction | typeof FACTION_ANY;
+    defId: number;
+  }> = [];
   for (const [contentKey, modelKey] of Object.entries(MERIDIAN_STRUCTURE_MODELS)) {
     const mesh = meshFor(modelKey);
     if (mesh === null) continue;
     const defId = buildingId[contentKey];
     if (defId === undefined || defId < 0) continue;
     registerKindMesh(EntityKind.Building, FACTION_ANY, mesh, defId);
+    registrationTargets.push({ key: modelKey, faction: FACTION_ANY, defId });
     registrations++;
     bound++;
   }
@@ -1615,10 +1637,33 @@ export async function buildAndRegisterMeridianStructures(
   const fallback = meshFor('meridian_chapterhouse');
   if (fallback !== null) {
     registerKindMesh(EntityKind.Building, 3 as Faction, fallback, -1);
+    registrationTargets.push({ key: 'meridian_chapterhouse', faction: 3 as Faction, defId: -1 });
     registrations++;
   }
 
-  return { models, failed, registrations, bound, imported: importedMeshes.size };
+  const streamRemaining = deferredSpecs.length === 0 ? undefined : async (
+    isCurrent: () => boolean = () => true,
+  ): Promise<number> => {
+    const results = await loadSpecs(deferredSpecs, true);
+    if (!isCurrent()) return 0;
+    let promoted = 0;
+    for (const result of results) {
+      if (result === null) continue;
+      const [key, mesh] = result;
+      importedMeshes.set(key, mesh);
+      promoted++;
+      for (const target of registrationTargets) {
+        if (target.key !== key) continue;
+        registerKindMesh(EntityKind.Building, target.faction, mesh, target.defId, true);
+      }
+    }
+    console.info(`[meridian] streamed ${promoted} authored structure models`);
+    return promoted;
+  };
+
+  return {
+    models, failed, registrations, bound, imported: importedMeshes.size, streamRemaining,
+  };
 }
 
 /** Release every Pact geometry, material and atlas. */

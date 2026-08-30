@@ -53,10 +53,10 @@ export default defineSystem({
   /**
    * ASYNC, AND THE AWAIT IS THE WHOLE POINT.
    *
-   * `src/world/world-warm.system.ts` dispatched this map to a worker at
-   * module-discovery time, i.e. before `art.buildings` and friends spent ~2.6 s
-   * on this thread. So by the time this init runs, the fields are usually
-   * already sitting there and the await resolves in a microtask.
+   * `Bootstrap.bootstrap()` dispatched this map to a worker before renderer
+   * construction and before `art.buildings` and friends spend ~2.6 s on this
+   * thread. So by the time this init runs, the fields are usually already
+   * sitting there and the await resolves in a microtask.
    *
    * When they are not — no `Worker`, `?terrainworkers=off`, a job that timed
    * out, a key that does not match — `prewarmedTerrain()` resolves with `null`

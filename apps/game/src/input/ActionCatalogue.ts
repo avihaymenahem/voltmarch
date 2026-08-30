@@ -516,14 +516,13 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'cam.dragPan',
     label: 'Drag The World',
     description:
-      'Grab the ground and pull it. Three ways in: the middle button, Space held with ' +
-      'the left button, or the right button once it has travelled a few pixels — a ' +
-      'right-click that never moves is still an order.',
+      'Grab the ground and pull it with the middle button, or hold Space while ' +
+      'dragging with the left button. Right-click remains reserved for orders.',
     category: 'camera',
     surface: 'pointer',
     binding: 'gesture',
     defaultChord: null,
-    gesture: 'Middle-drag · Space + left-drag · right-drag',
+    gesture: 'Middle-drag · Space + left-drag',
   },
   {
     id: 'cam.edgeScroll',

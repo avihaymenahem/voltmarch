@@ -114,7 +114,7 @@ The AI's first attack is gated on the clock, divided by its aggression:
 
 | Difficulty | First attack | Gap between waves | Wave size (Turtle / Rusher / Boomer) |
 | --- | --- | --- | --- |
-| Easy | 5:00 | 2:00 | 7 / 2 / 5 |
+| Easy | **6:40** | **2:40** | 7 / 2 / 4 |
 | Normal | 2:51 | 1:09 | 12 / 4 / 8 |
 | Hard | 2:00 | 0:48 | 17 / 5 / 11 |
 | Brutal | **1:32** | 0:37 | 22 / 7 / 14 |
@@ -196,7 +196,7 @@ What to look for, in order:
 5. Static defence. The AI's own target scoring values enemy defences *above everything else*, and so
    should yours — see §7.
 
-The AI scouts you on a timer: first sweep at about 8 seconds scaled by difficulty (Easy ~18 s,
+The AI scouts you on a timer: first sweep at about 8 seconds scaled by difficulty (Easy ~24 s,
 Brutal ~4 s), repeating every 40 seconds. It remembers enemy structures for two minutes after losing
 sight of them.
 
@@ -651,19 +651,19 @@ What difficulty changes:
 
 | | Easy | Normal | Hard | Brutal |
 | --- | --- | --- | --- | --- |
-| Reaction time | 2.4 s | 1.2 s | 0.6 s | 0.3 s |
-| Actions per minute | 40 | 90 | 160 | 260 |
-| Harvest income | **×0.8** | ×1.0 | ×1.15 | ×1.35 |
-| Harvesters it will field | 5 | 7 | 9 | 9 |
+| Reaction time | 3.2 s | 1.2 s | 0.6 s | 0.3 s |
+| Actions per minute | 28 | 90 | 160 | 260 |
+| Harvest income | **×0.65** | ×1.0 | ×1.15 | ×1.35 |
+| Harvesters it will field | 4 | 7 | 9 | 9 |
 | Refineries | 2 | 3 | 3 | 3 |
-| Credits it leaves idle | 1,400 | 600 | 250 | 0 |
-| Composition quality | 0.15 | 0.55 | 0.85 | 1.00 |
-| Static defences | 3 | 6 | 8 | 10 |
-| Seconds before it answers aircraft | 12 | 6 | 2.5 | 0 |
-| Retreat discipline | 0.35 | 0.65 | 0.85 | 1.00 |
+| Credits it leaves idle | 2,000 | 600 | 250 | 0 |
+| Composition quality | 0.05 | 0.55 | 0.85 | 1.00 |
+| Static defences | 2 | 6 | 8 | 10 |
+| Seconds before it answers aircraft | 18 | 6 | 2.5 | 0 |
+| Retreat discipline | 0.20 | 0.65 | 0.85 | 1.00 |
 
 The **economy** is the difficulty. Everything downstream is paced by income, and the composition
-figure is the honest skill axis: at 0.15 an Easy AI rolls a flat army and loses to its own decisions;
+figure is the honest skill axis: at 0.05 an Easy AI rolls a flat army and loses to its own decisions;
 at 1.00 every unit is picked to answer the threat mix it has actually observed.
 
 Personality biases the scoring rather than the rules. **Turtle** builds defences and masses a large
@@ -679,7 +679,9 @@ Behaviours worth knowing:
 - Its wave threshold grows by 2 every time a wave is wiped out, up to a ceiling of ten times its
   difficulty's wave-size multiplier (6 on Easy, 10 on Normal, 14 on Hard, 18 on Brutal). **Beating it
   repeatedly makes the next push bigger.**
-- With no Construction Yard it goes all-in with everything, immediately.
+- With no Construction Yard it saves toward a replacement MCV while retaining some defensive spend.
+  If its factory is also gone, the same full-price off-map recovery requisition available to a human
+  can deliver beside a surviving owned asset.
 - It **mirrors your unlocks**. Anything you have earned, it can build.
 - From Normal upward, if it can currently see a legal capturable structure and has four escorts
   available without leaving its base under pressure, it may buy one engineer, escort it with
@@ -694,7 +696,7 @@ Behaviours worth knowing:
   upward it will raise a Command Post and buy the powers its difficulty allows — Normal gets Ore
   Boost and Emergency Repair, Hard adds the Airstrike and the Orbital Scan, Brutal gets all five —
   and then call them off live measurements. Easy builds no Post and buys nothing.
-- **It runs amphibious operations.** On a map where the sea is the only road it surveys the water,
+- **From Normal upward it runs amphibious operations.** On a map where the sea is the only road it surveys the water,
   puts a dock on a shore it can walk to, holds a lane with warships and then boards, crosses and
   lands a squad — the same Enter, Move and Unload orders you would issue. It still does not garrison
   a building.

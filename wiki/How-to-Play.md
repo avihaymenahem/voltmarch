@@ -198,8 +198,8 @@ stacking up. Spoken EVA and unit responses also have a dedicated bottom-centre s
 | Your whole army | Ctrl+A. Structures are never included |
 | Nothing | Left-click bare ground |
 
-**Escape does not clear the selection.** During a match Escape opens the pause menu, and it takes
-the key before the battlefield ever sees it. Click empty ground instead.
+**Escape does not clear the selection.** It first cancels a live placement, repair/sell tool or armed
+order; with no modal battlefield action active it opens pause. Click empty ground to clear selection.
 
 Control groups work the way you expect: **Ctrl + a digit** stores the current selection as that
 group, the **digit alone** recalls it, and **tapping the same digit twice quickly** centres the
@@ -235,8 +235,8 @@ The rules, in priority order:
 
 Two things worth internalising early:
 
-- **A right-click that never moves is an order. A right-click that travels a few pixels is a
-  camera drag.** Both are on the same button on purpose.
+- **Right-click is always an order during a match.** Camera drag uses middle-drag or
+  `Space`+left-drag, so a small hand movement cannot turn a command into a camera pan.
 - **A right-click cancels an armed mode** instead of firing it. Attack-move, force-fire and rally
   are therefore safe to press speculatively — if you change your mind, right-click.
 

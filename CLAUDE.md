@@ -23,15 +23,15 @@ licence is the authority.
 
 ## What this project is
 
-VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
+VOLTMARCH — an original browser and Windows RTS in Three.js. Four playable factions, ore economy, base
 building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
 structures, capturable civic landmarks, selected vehicles and the Soviet Attack Dog now use original Meshy generations
 that pass through the local VOLTMARCH asset pipeline.
 
-Units, the full procedural structure roster and its fallbacks, materials, cameos and in-game icons
-are built from Three.js geometry, custom shaders and procedural canvas generators. **Eight shipped
-asset groups are not generated from runtime code**, all deliberate: the first six live in
-`apps/game/public/`; the last two live in `packages/assets/game/` and Vite emits them into the build.
+Units, the procedural fallback roster, materials, cameos and in-game icons still use Three.js
+geometry, custom shaders and procedural canvas generators where an authored delivery does not own
+the presentation. **Nine shipped asset groups are not generated from runtime code**, all deliberate;
+one additional docs-only image is listed so it cannot be mistaken for shipped game content.
 
 1. **Rajdhani** (OFL-1.1) in `packages/assets/fonts/` — the shared UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -173,21 +173,29 @@ asset groups are not generated from runtime code**, all deliberate: the first si
    `HTMLImageElement` is not sufficient: WebGPU can create its sampler binding before a GPU texture
    exists, then crash bind-group creation while reading `mipLevelCount`, leaving a flat-orange world.
 
-8. **Imported faction/civilian structures, selected units and conventional vehicle wreckage** in
+8. **Imported faction/civilian structures, units and conventional vehicle wreckage** in
    `packages/assets/game/{buildings,units,wrecks}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
    source views and shipping budgets are recorded beside the GLBs and in
-   `docs/ASSET_CONVERSION_MAP.md`. The selected unit slice currently comprises the Soviet Ore Collector,
-   Allied Chrono Miner, Meridian Sun Collector and Reclamation Scrapjaw. The neutral slice currently
+   `docs/ASSET_CONVERSION_MAP.md`. The current unit roster includes faction construction vehicles,
+   harvesters, combat vehicles, infantry bodies, aircraft, commanders and naval hulls; that conversion
+   map is the exact key-by-key authority rather than this architectural summary. The neutral slice currently
    replaces the Oil Derrick, Civilian Hospital, Apartment Block and Ore Mine while retaining their
    faction-agnostic capture registration and procedural fallbacks. The Allied Ore Silo also has its
    own conditioned imported model; the old modular shell is fallback/socket authority only. A
    conditioned neutral tank hulk supplies deferred Allied/Soviet combat-vehicle wrecks, while the
-   rest of the roster retains procedural wreck art. These are the only non-procedural game-world
-   models currently shipped.
+   rest of the roster retains procedural wreck art.
 
-9. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+9. **Authored foliage and neutral environment props** in `packages/assets/game/environment/` — the
+   complete 32-key Scatter catalogue: trees, shrubs, grasses, rocks, crates, flower boxes, yard and
+   street furniture, civilian cars, umbrellas and tents. Runtime presentation defaults to these
+   audited LOD/caster families and shared PBR atlases. Stable placement, crushing, biome choice and
+   save identity remain owned by Scatter; dormant procedural builders exist only for an explicit
+   `?foliage=procedural` diagnostic request or an asset-load failure. The rollout and remaining
+   runtime acceptance work live in `docs/FOLIAGE_ENGINE_PLAN.md`.
+
+10. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `apps/game/public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `apps/game/tests/credits-truthful.spec.ts` checks that screen against
@@ -1319,7 +1327,7 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
   the smallest bank that can reach a refinery — so 5000 is the FLOOR, not a safe midpoint.
 
   The two REAL asymmetries are both documented and neither is a structure:
-  `AI_DIFFICULTY[].resourceBonus` (0.8 / 1.0 / 1.15 / 1.35 on harvested income) and
+  `AI_DIFFICULTY[].resourceBonus` (0.65 / 1.0 / 1.15 / 1.35 on harvested income) and
   `aiMirrorsUnlocks`, which is on by default and, when a player turns it off, genuinely does give a
   prebuilt AI base the gated tech the human's is missing.
 - **`CommandKind.RepairToggle` HAD NO CALLER IN `apps/game/src/sim/AI.ts`**, so an AI base never healed —
@@ -1334,21 +1342,22 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
   switches that repair OFF. `isRepairing` is therefore consulted per candidate, not counted once.
   This is not theoretical: the first probe run read **954 toggles against `hpRestored: 0`**, because
   a parked-and-reissued command passes `CommandBus.drain` TWICE and the harness applied both.
-- **A LOST CONSTRUCTION YARD WAS PERMANENT.** `census` refills `roleCount` every pass, so a bombed
+- **A LOST CONSTRUCTION YARD USED TO BE PERMANENT.** `census` refills `roleCount` every pass, so a bombed
   refinery or war factory is already re-proposed by the adaptive scorer — that half of the report
   was wrong. But `conyard` carries `producesTab: BuildTab.Structures`, so with it gone NO structure
-  can be built by anyone, and the only route back is an MCV off a surviving war factory. Nothing
-  ever called `forRole(BuildRole.Mcv, ...)`; the yard-less branch spent the whole bank on units, so
-  the 3000 was never reached even with a live economy. `mcv` carries no unlock tag precisely so a
-  fresh profile can replace one — its own def says so.
+  can be built by anyone. The normal route back is an MCV off a surviving war factory. If the factory
+  is gone too but credits and any owned rendezvous asset remain, `ProductionService` now exposes the
+  same 3,000-credit, 32-second MCV as one virtual off-map recovery queue and delivers it beside that
+  survivor. It grants no money, ignores no prerequisite while a yard/factory route exists, and a
+  queued recovery counts as a live comeback route. `mcv` carries no unlock tag precisely so a fresh
+  profile can replace one — its own def says so.
 
   **`AI_REBUILD.bankFraction` is the half that makes it work.** Ordering the vehicle is the obvious
   line; holding its price back from `buildUnits` is the one without which the brain converts the
   money into riflemen 200 credits at a time and never buys anything.
-- **Kill the war factory AND the yard and the position is unrecoverable BY DESIGN** — the
-  `OreCrisis` dead end in another costume. A probe that bombs a base flat measures the rules, not
-  the brain; `apps/game/tests/ai-rebuild-repair.spec.ts` deliberately leaves one refinery and the factory
-  standing, and says why.
+- **A completely erased army is still unrecoverable.** Off-map recovery requires the full price and
+  at least one owned structure, infantry or vehicle as a safe rendezvous; it is a comeback path, not
+  a respawn or credit grant. `apps/game/tests/production.spec.ts` pins the exact boundary.
 - **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
   that never heals is a broken opponent rather than a gentle one. Easy patches one building while
   the next two burn; Brutal answers the salvo.
@@ -2192,11 +2201,13 @@ argument for why draping rather than grading the heightfield.
   pavement. Props use the narrower `isCarriageway` rule because benches and lamps belong on the
   sidewalk; buildings do not.
 
-## There are two renderers now, and a WebGL player downloads exactly one of them
+## There are two renderers now; desktop ships WebGPU and browser retains fallback
 
-`?gpu=webgpu` used to throw. It boots the real game (shipped in v3.0.0): every shader in the project
-exists twice, once as GLSL and once as a TSL node graph, and `apps/game/src/render/gpu-path.ts` is the seam
-that picks. **The default is still WebGL** and nothing in the product selects the other one.
+`?gpu=webgpu` used to throw. It boots the real game (shipped in v3.0.0): every shared shader in the
+project exists once as GLSL and once as a TSL node graph, and `apps/game/src/render/gpu-path.ts` is the
+seam that picks. **Desktop normal play is WebGPU-locked.** Browser builds retain negotiated WebGPU /
+WebGL fallback while the desktop-only visual roadmap may spend WebGPU capabilities without adding a
+new WebGL implementation. `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` owns that roadmap.
 
 - **`gpu-path.ts` IMPORTS NO THREE AT ALL, and that is the constraint the whole design is built
   around.** `three/webgpu` is the entire node system — both backends, both builders, the node
@@ -2429,8 +2440,9 @@ before touching it. The workspace boundary is structural, not a convention.
 
   **STARTING A MATCH NEVER CHANGES WINDOW MODE.** Windowed launches use the native Windows frame,
   restore the last normal bounds/maximised state inside a live work area, and keep fullscreen behind
-  the Display row or Alt+Enter. Optional desktop pointer confinement releases whenever pause/menu UI
-  covers gameplay and on focus or visibility loss. Browser builds never instantiate that adapter.
+  the Display row or Alt+Enter. Desktop pointer confinement is **on by default**, preserves contextual
+  cursors, HUD hover, internal scrolling and right-button orders while active, and releases whenever
+  pause/menu UI covers gameplay or on focus/visibility loss. Browser builds never instantiate that adapter.
 
   **UNSIGNED BUILDS CANNOT CODE THEIR WAY AROUND REPUTATION.** The blue SmartScreen More info / Run
   anyway surface and McAfee's low-prevalence block are expected until a consistent trusted publisher
@@ -2690,9 +2702,10 @@ selection, and a second flag that has to agree with the first is how two of them
 
 ## The look is measured, not judged
 
-[`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) is the visual law: camera, lighting, palette,
-materials, prop density, and a weighted scorecard with explicit pass conditions. It wins over
-instinct and over Three.js defaults.
+[`docs/VISUAL_DNA.md`](docs/VISUAL_DNA.md) is the current visual direction. The measured camera,
+readability and scorecard contracts in [`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) remain useful
+engineering gates, but its old toy-diorama imitation target is historical where the two documents
+conflict. Both win over instinct and over unmeasured Three.js defaults.
 
 Before claiming a visual change worked:
 
@@ -2706,9 +2719,11 @@ edge density and aerial-perspective delta against measured targets. **Luminance 
 not linear** — the bible's numbers are perceptual, and mixing the two frames makes the scene look 3×
 darker than it is. This bit me once already.
 
-Things that are explicitly banned because they read as "generic engine" and lose points: fog on
-daylight maps, chromatic aberration, depth of field, motion blur, and reflective water.
-If a change would add one of those, it is wrong even if it looks fine in isolation.
+Things that remain explicitly banned because they read as "generic engine": a flat daylight fog
+wash, chromatic aberration, gameplay depth of field and motion blur. The capped WebGPU far-haze/cloud
+node is not that wash: it is depth-aware, shroud-safe, quality-scaled and fused into the HDR graph.
+Water may carry physically readable reflection and foam so long as navigation and unit silhouettes
+stay clear. Record every accepted exception in `docs/RENDER_FINDINGS.md`.
 
 Film grain is the one deliberate exception, explicitly requested on 2026-08-27: it is capped at
 0.008 (shipping at 0.006), updates at 12 Hz, and must exist in both WebGPU and WebGL. Do not restore

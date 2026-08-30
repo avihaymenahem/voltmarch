@@ -1,10 +1,10 @@
 /** Runtime loader and conditioning gate for authored environment families. */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { linearColorTriple } from '../core/assets';
+import { createRuntimeGLTFLoader } from '../art/RuntimeGLTFLoader';
 import { applyShroudTint } from '../render/FogOfWar';
 import { nodePath } from '../render/gpu-path';
 import {
@@ -14,7 +14,7 @@ import type { EnvironmentGeometryFamily } from './FoliageEngine';
 import { propDef, propPalette, type PropDef, type PropGeometry } from './PropLibrary';
 import type { BiomeName } from './Biomes';
 
-const loader = new GLTFLoader();
+const loader = createRuntimeGLTFLoader();
 const textureLoader = new THREE.TextureLoader();
 export const FOLIAGE_ALPHA_TEST = 0.85;
 type EnvironmentMaterial = THREE.Material;

@@ -3,7 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  assertImportedHorizontalEnvelope, IMPORTED_UNIT_SPECS, resolveImportedPartMeshes,
+  assertImportedHorizontalEnvelope, IMPORTED_UNIT_SPECS, RECLAIM_IMPORTED_UNIT_READABILITY,
+  resolveImportedPartMeshes,
 } from '../src/art/ImportedUnitAssets';
 import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
 import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
@@ -18,13 +19,14 @@ interface AssetFamily {
   sourceDir: string;
   key: string;
   file: string;
+  runtimeFile?: string;
   stem: string;
 }
 
 const FAMILIES: readonly AssetFamily[] = [
   { name: 'Soviet Sickle', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_sickle', file: 'sickle.glb', stem: 'sickle' },
   { name: 'Soviet Ore Collector', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_harvester', file: 'ore-collector.glb', stem: 'ore-collector' },
-  { name: 'Allied Chrono Miner', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_harvester', file: 'chrono-miner.glb', stem: 'chrono-miner' },
+  { name: 'Allied Chrono Miner', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_harvester', file: 'chrono-miner.glb', runtimeFile: 'chrono-miner.meshopt.glb', stem: 'chrono-miner' },
   { name: 'Meridian Sun Collector', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_collector', file: 'sun-collector.glb', stem: 'sun-collector' },
   { name: 'Reclamation Scrapjaw', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_scrapper', file: 'scrapjaw.glb', stem: 'scrapjaw' },
   { name: 'Allied Construction Dozer', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_dozer', file: 'construction-dozer.glb', stem: 'construction-dozer' },
@@ -75,6 +77,23 @@ function triangles(json: GlbJson): number {
 }
 
 describe('imported unit shipping budgets', () => {
+  it('keeps dark Reclamation paint diffuse and readable at RTS distance', () => {
+    expect(RECLAIM_IMPORTED_UNIT_READABILITY).toEqual({
+      baseColorGainMin: 1.82,
+      paintedMetalness: 0.12,
+      ambient: [0.48, 0.36, 0.56],
+      ambientIntensity: 0.28,
+      envMapIntensityMin: 0.68,
+    });
+
+    const runtime = fs.readFileSync(
+      path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
+    );
+    expect(runtime).toContain("spec.key.startsWith('reclaim_')");
+    expect(runtime).toContain('readability?.paintedMetalness ?? 0.72');
+    expect(runtime).toContain('material.emissiveMap = source.map');
+  });
+
   it('resolves a multi-material glTF node as one logical imported part', () => {
     const scene = new THREE.Group();
     const hull = new THREE.Group();
@@ -135,7 +154,7 @@ describe('imported unit shipping budgets', () => {
       it('remains wired to the imported-unit runtime and its faction registry', () => {
         const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
         expect(runtime).toContain(`key: '${family.key}'`);
-        expect(runtime).toContain(`${family.sourceDir}/compressed/${family.file}`);
+        expect(runtime).toContain(`${family.sourceDir}/compressed/${family.runtimeFile ?? family.file}`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod1.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod2.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.shadow.glb`);
@@ -273,11 +292,15 @@ describe('imported unit shipping budgets', () => {
     ]) {
       const source = fs.readFileSync(path.join(root, 'apps/game/src/art', contract.file), 'utf8');
       const key = source.indexOf(`'${contract.key}'`);
-      const imported = source.indexOf('meshes.set(key, await loadImportedUnitOverride');
+      const filtered = source.indexOf('const immediateKeys = immediateImportedKeys === undefined');
+      const imported = source.indexOf('const importedResults = await loadImportedKeys(immediateKeys)');
+      const applied = source.indexOf('for (const result of importedResults)', imported);
       const published = source.indexOf('for (const [contentKey, modelKey] of Object.entries(');
       expect(key, contract.file).toBeGreaterThanOrEqual(0);
-      expect(imported, contract.file).toBeGreaterThan(key);
-      expect(published, contract.file).toBeGreaterThan(imported);
+      expect(filtered, contract.file).toBeGreaterThan(key);
+      expect(imported, contract.file).toBeGreaterThan(filtered);
+      expect(applied, contract.file).toBeGreaterThan(imported);
+      expect(published, contract.file).toBeGreaterThan(applied);
     }
   });
 

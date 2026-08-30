@@ -185,10 +185,16 @@ export class TextureFactory {
    *
    * Safe to call with a spawn function that cannot produce a worker: the pool
    * disables itself on the first submit and every request generates inline.
-   * Calling it twice is a no-op — the first pool wins.
+   * Calling it twice while a pool is live is a no-op — the first pool wins.
+   * Calling it after `settleWorkers()` begins a new world boot and resets the
+   * per-boot counters; the texture cache itself deliberately survives.
    */
   useWorkers(spawn: SpawnWorker, options: WorkerOptions = {}): void {
     if (this.pool !== null) return;
+    this.dispatched = 0;
+    this.adopted = 0;
+    this.fellBack = 0;
+    this.poolReason = '';
     this.pool = new TexturePool({
       spawn,
       ...(options.size !== undefined ? { size: options.size } : {}),

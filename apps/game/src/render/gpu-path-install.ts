@@ -279,6 +279,7 @@ function createNodePostAdapter(
       rainIntensity = intensity;
       chain.setWeatherIntensity(intensity);
     },
+    postLabel(): string { return chain.postLabel(); },
     setSize(w: number, h: number): void { chain.setSize(w, h); },
     drawCallsByPass() { return draws; },
     trianglesByPass() { return triangles; },

@@ -1,0 +1,138 @@
+# WebGPU visual performance plan
+
+**Status:** active desktop direction, 2026-08-30.
+
+VOLTMARCH desktop now treats WebGPU as the product renderer. New visual systems are designed and
+accepted on the WebGPU desktop path first; WebGL compatibility work is maintenance for the existing
+browser fallback while that fallback still ships, not a gate on the modern desktop image.
+
+## What WebAssembly is for
+
+WASM is a CPU tool. It can shorten loading and enlarge deterministic CPU budgets, but it cannot make
+a fragment shader cheaper or replace WebGPU compute without copying GPU-owned data back through CPU
+memory. The project should use it for coarse, typed-array-heavy jobs with few JS/WASM crossings.
+
+1. **Already shipping — Basis/KTX2 transcode.** Imported texture decode runs through a bounded
+   two-worker Emscripten/WASM pool. Keep this shared rather than starting a pool per asset family.
+2. **Active POC — Meshopt geometry decode.** The nine compressed imported-art families carry about
+   200.9 MiB after subtracting KTX2 payloads. A representative Chrono Miner fell from 4,106,272 to
+   2,561,984 bytes with `EXT_meshopt_compression`, a 37.6% reduction, while retaining KTX2 and the
+   same GPU geometry. The POC installs Three's shared Meshopt decoder and routes only that asset to
+   the compressed file. On the current host, the SIMD decoder initialized in 0.315 ms, first decode
+   took 1.904 ms and the 100-sample hot median was 0.849 ms. That microbenchmark excludes transfer,
+   KTX2, scene construction and GPU upload; the production WebGPU capture and packaged desktop asset
+   checks pass, while the original GLB remains beside it as the visual/byte control.
+3. **Candidate — boot-time procedural kernels.** Terrain, water and procedural texture generation
+   already run in workers and operate on typed arrays. A SIMD WASM port is worthwhile only after a
+   measured kernel beats the current worker including module compile, copies and startup. Current
+   boot evidence puts the world worker around 0.64 s while full readiness is roughly 8 s with private
+   asset streaming, so geometry/texture I/O remains the larger first target.
+4. **Later scale valve — authoritative vision.** Four-army `Vision.update()` measured about 2.35 ms
+   at 30 Hz. Its age/stamp/compose loops fit SIMD, but it is only about 7% of one simulation tick and
+   does not own frame time. Revisit when unit caps or visibility fidelity grow; keep one batched call
+   over shared linear memory rather than calling WASM once per entity.
+5. **Deterministic math.** A small WASM math kernel can provide bit-identical transcendental results
+   if lockstep ever needs richer `sin`/`cos` terrain or simulation rules. This is a correctness tool,
+   not a graphics feature.
+
+Do not port UI, Three.js scene traversal, small object-oriented systems, or per-entity callbacks.
+Boundary traffic and duplicate memory would erase the gain. Do not move authoritative simulation or
+world generation onto GPU compute: cross-vendor floating point differences can desynchronise a
+lockstep match.
+
+## What belongs on WebGPU compute instead
+
+Render-only parallel work should stay in GPU memory:
+
+- foliage visibility, LOD selection, wind state and compacted instance lists;
+- particles, debris, weather and decal lifecycle;
+- temporal history rejection, exposure histograms and future upscaling support;
+- render-only terrain masks, distant surface detail and optional Ultra-tier GI probes.
+
+These are allowed to differ by a pixel across devices because they never feed gameplay state.
+
+## Visual implementation order
+
+1. **Temporal stability and reconstruction.** Add motion vectors and a conservative TAA/upscaling
+   experiment behind an Ultra flag. This attacks foliage shimmer, subpixel troops, thin geometry and
+   resolution cost together. Keep a sharpness/readability control and retain SMAA as rollback.
+2. **GPU-driven foliage.** Move render-only culling/LOD compaction to compute, then spend the saved
+   submission and overdraw budget on denser authored canopies, better wind hierarchy and longer
+   transitions.
+3. **Material and atmosphere upgrade.** Use restrained aerial perspective, physically coherent
+   roughness/normal response, contact darkening and weather continuity. Do not hide weak assets under
+   bloom or saturation.
+4. **Lighting depth.** Graduate the existing SSGI/SSR experiments through WebGPU timestamp gates;
+   favour stable indirect light and reflections before adding more direct lights.
+
+### Temporal reconstruction checkpoint
+
+The first real-device TRAA slice is available behind `?gpu=webgpu&aa=traa`; normal desktop boots
+still use SMAA. It supplies per-object and per-instance motion through a dedicated velocity pass,
+temporally rotates GTAO/SSGI samples, and resolves HDR before bloom and grading. A combined beauty
+MRT was rejected because custom fragment and shadow materials do not all emit a velocity target;
+the isolated override pass is valid on the NVIDIA Ampere WebGPU device and keeps those pipelines
+independent.
+
+At 1280×720 on the fixed Allied-base capture, three 30-frame blocks submitted 217 draws and about
+2.78 million triangles with TRAA versus 147 draws and about 1.60 million with SMAA. Minimum observed
+wall time rose from 1.867 ms to 2.063 ms while the medians were effectively tied at 2.177 ms and
+2.163 ms; that short run is enough to expose the submission cost, not to claim a frame-time win.
+The static TRAA capture is also visibly softer. Do not promote this configuration as the shipped
+default.
+
+The second lab arm, `?gpu=webgpu&aa=taau&taauScale=.75`, now renders scene colour, depth, velocity
+and the pre-resolve HDR composite at the same reduced size, then resolves at the native drawing
+buffer. It also reuses the grade's luma-only unsharp mask rather than adding another RGB sharpen
+pass. The real-device gate passes. Against a fresh SMAA control at 1280×720, its three 30-frame
+blocks measured 1.797 ms best / 1.910 ms median versus 2.020 ms best / 2.027 ms median for SMAA.
+That is a promising 5.8–11.1% wall-time saving in this short run, despite the velocity submission,
+but not enough samples to promote as a performance claim.
+
+Image quality still fails the gate: 75% loses too much infantry and panel-line definition, and 85%
+with scale-aware luma sharpening remains visibly softer than SMAA in the fixed Allied-base capture.
+Both temporal modes therefore remain URL-gated lab paths. A production temporal mode needs a better
+edge-aware reconstruction/sharpen stage and moving-camera ghosting scorecard; do not trade RTS
+readability for a small frame-time gain.
+
+### Cinematic atmosphere checkpoint
+
+The first material/atmosphere slice now ships on Medium through Ultra desktop WebGPU. Depth is
+reconstructed inside the existing HDR composite to apply slow world-locked cloud cover and a capped,
+height-aware far-field haze. The cloud field is one deterministic 128x128 RGBA texture (64 KiB), uses
+exactly two filtered reads, preserves HDR emissive peaks, excludes the sky depth, and refuses to lift
+the black fog-of-war shroud. It creates no pass, render target or draw call; Low disables it.
+
+Sparse airborne dust reuses the existing lit-particle draw and deterministic render-only sampling.
+It emits only over currently visible, non-water cells around the camera focus, yields when the combat
+smoke pool reaches 62%, is almost completely scrubbed by rain, and is disabled on Low and the legacy
+renderer. At Ultra the steady-state budget is roughly 50-75 motes rather than a screen-space overlay.
+This is deliberately depth/motion atmosphere, not a bloom or saturation disguise for weak assets.
+
+The production build and a real NVIDIA Ampere WebGPU boot compiled and presented the default graph at
+640x360 with 147 total draws; the atmosphere remained fused into the existing post accounting. That
+short smoke run is a correctness gate, not a performance claim. Fixed-seed visual review at player
+resolution remains the acceptance step for tuning cloud strength and haze distance.
+
+The next mainline visual-performance slice is **compute-driven foliage visibility and LOD
+compaction**. Scatter already stores instances chunk-sorted, performs 256 CPU AABB tests, then
+repacks and uploads each visible type prefix when the chunk set changes. The WebGPU slice should:
+
+1. upload the immutable chunk-sorted transforms, colours, phases, live flags and chunk ranges once;
+2. compute chunk/instance visibility and LOD with hysteresis entirely in GPU storage buffers;
+3. compact LOD0/1/2 instance streams and write indirect instance counts without CPU readback;
+4. keep authoritative placement, destruction and save identity on the CPU; and
+5. prove the result first on trees and shrubs before expanding to neutral props.
+
+Three r185 exposes storage-instanced and indirect-storage buffer attributes plus indexed indirect
+draws, so the required primitives exist without dropping below the renderer. The current CPU path
+remains the deterministic rollback arm while this is measured.
+
+## Acceptance gates
+
+- WebGPU is asserted; a fallback capture cannot be labelled as a desktop result.
+- POC load time includes WASM initialization and decode, not just smaller file bytes.
+- No tracked asset changes appearance, bounds, hierarchy, sockets, triangle count or texture roles.
+- GPU timestamp results decide graphics work; CPU/WASM results use wall-clock worker and main-thread
+  measurements.
+- Meaningful visual milestones get fixed-seed screenshots and live desktop review.

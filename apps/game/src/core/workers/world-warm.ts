@@ -11,23 +11,23 @@
  * `Phase.Command` order 0 — had already spent ~2.6 s on this same thread. The
  * two never overlapped, because there was nothing to overlap them with.
  *
- * There is now. `installWorldWorkers()` is called from the module scope of
- * `src/world/world-warm.system.ts`, which the system glob imports before
- * `registry.init()` runs a single module. So the terrain job is dispatched at
- * roughly the same moment the art systems start building models, and by the
- * time `world.terrain` asks for its fields they are usually already there.
+ * There is now. `Bootstrap.bootstrap()` calls `prepareWorldWorkers()` before it
+ * constructs the renderer or starts `registry.init()`. So the terrain job is
+ * dispatched before the art systems start building models, and by the time
+ * `world.terrain` asks for its fields they are usually already there. Doing it
+ * at the bootstrap boundary also re-arms the pool for every in-page match.
  *
  * WATER IS CHAINED, NOT PARALLEL, and it has to be: the bake resamples the
  * terrain's finished heightfield, so it cannot start until the terrain job is
  * done. Chaining it the instant the terrain reply lands — rather than waiting
  * for `world.water`'s init at order 60 — is what buys the overlap.
  *
- * ONE WORKER, NOT THE TEXTURE POOL. The texture pool has up to four workers and
+ * A SMALL DEDICATED POOL, NOT THE TEXTURE POOL. The texture pool has up to four workers and
  * a queue full of atlases at exactly this moment. A 600 ms terrain job dropped
  * into that round robin would sit behind them, or park one of them for the
- * whole boot and starve the atlases. A dedicated single worker keeps the two
- * kinds of work from fighting, and the two prewarms are strictly sequential
- * anyway, so a second world worker would have nothing to do.
+ * whole boot and starve the atlases. The world pool is capped at two because
+ * terrain fields and terrain tiles can overlap; the water field remains chained
+ * behind terrain because it needs the finished heightfield.
  *
  * EVERY FAILURE ENDS IN THE OLD BEHAVIOUR. No `Worker`, a script that will not
  * load, a job that timed out, a reply this build does not understand, a key
@@ -78,6 +78,8 @@ let terrainPromise: Promise<TerrainFieldData | null> | null = null;
 let waterPromise: Promise<WaterFieldData | null> | null = null;
 let terrainTexPromise: Promise<TerrainTextureData | null> | null = null;
 let waterTexPromise: Promise<WaterTextureData | null> | null = null;
+/** Invalidates continuations from a prewarm superseded by a newer world boot. */
+let generation = 0;
 
 /** What actually happened, for the one line the system prints at init. */
 const report = {
@@ -111,6 +113,7 @@ export function worldWarmReport(): Readonly<typeof report> {
 export function installWorldWorkers(): void {
   if (report.installed) return;
   report.installed = true;
+  const ownGeneration = generation;
 
   report.terrainOff = flagOff('terrainworkers');
   report.waterOff = flagOff('waterworkers');
@@ -165,6 +168,7 @@ export function installWorldWorkers(): void {
   const tKey = terrainGenKey(input);
 
   terrainPromise = pool.submitTerrain(input).then((data) => {
+    if (ownGeneration !== generation) return null;
     if (data !== null) report.terrainMs = data.generateMs;
     return data;
   });
@@ -186,6 +190,7 @@ export function installWorldWorkers(): void {
   terrainTexPromise = pool.submitTerrainTextures(
     input.biome, TERRAIN_LAYER_TEXTURE_SIZE, input.seed,
   ).then((data) => {
+    if (ownGeneration !== generation) return null;
     if (data !== null) report.terrainTexMs = data.generateMs;
     return data;
   });
@@ -198,11 +203,13 @@ export function installWorldWorkers(): void {
   waterTexPromise = report.waterOff
     ? Promise.resolve(null)
     : pool.submitWaterTextures(WATER_TEXTURE_SIZE, WATER_SEED).then((data) => {
+      if (ownGeneration !== generation) return null;
       if (data !== null) report.waterTexMs = data.generateMs;
       return data;
     });
 
   waterPromise = terrainPromise.then((terrain) => {
+    if (ownGeneration !== generation) return null;
     // No terrain means no bed. Not an error — the terrain will be generated on
     // the main thread and the water will be baked there too, which is the
     // behaviour that shipped before this file existed.
@@ -221,10 +228,47 @@ export function installWorldWorkers(): void {
     return pool.submitWater(
       waterGenKey(tKey, WATER_LEVEL, WATER_SEED), terrain.height, WATER_LEVEL, WATER_SEED,
     ).then((data) => {
+      if (ownGeneration !== generation) return null;
       if (data !== null) report.waterMs = data.bakeMs;
       return data;
     });
   });
+}
+
+/**
+ * Start one correctly keyed prewarm for the world `bootstrap()` is about to
+ * build.
+ *
+ * The engine module is cached for the page lifetime while the shell can build
+ * many matches. A module-scope prewarm therefore serves only the first boot;
+ * every later map sees an old key and falls back to synchronous generation.
+ * Re-arm at the actual bootstrap boundary instead. Incrementing the generation
+ * before disposal also makes already-resolved promise continuations from the
+ * old pool harmless: they may run, but they cannot publish bytes or timings
+ * into the new boot.
+ */
+export function prepareWorldWorkers(): void {
+  generation++;
+  disposeWorldWorkers();
+  terrainPromise = null;
+  waterPromise = null;
+  terrainTexPromise = null;
+  waterTexPromise = null;
+  Object.assign(report, {
+    installed: false,
+    terrainOff: false,
+    waterOff: false,
+    terrainMs: 0,
+    waterMs: 0,
+    terrainTexMs: 0,
+    waterTexMs: 0,
+    terrainAdopted: false,
+    waterAdopted: false,
+    terrainTexAdopted: false,
+    waterTexAdopted: false,
+    reason: '',
+  });
+  installWorldWorkers();
 }
 
 /**

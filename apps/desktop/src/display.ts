@@ -93,7 +93,7 @@ export const DEFAULT_DISPLAY: DisplayPrefs = {
   x: null,
   y: null,
   maximized: false,
-  lockPointer: false,
+  lockPointer: true,
   alwaysOnTop: false,
 };
 
@@ -164,7 +164,9 @@ export function normaliseDisplay(raw: unknown): DisplayPrefs {
     x: coordinate(o.x),
     y: coordinate(o.y),
     maximized: o.maximized === true,
-    lockPointer: o.lockPointer === true,
+    lockPointer: typeof o.lockPointer === 'boolean'
+      ? o.lockPointer
+      : DEFAULT_DISPLAY.lockPointer,
     alwaysOnTop: typeof o.alwaysOnTop === 'boolean' ? o.alwaysOnTop : DEFAULT_DISPLAY.alwaysOnTop,
   };
 }

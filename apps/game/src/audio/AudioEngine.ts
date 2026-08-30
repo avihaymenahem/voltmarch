@@ -1088,11 +1088,13 @@ export class AudioEngine {
   /**
    * Render every registered recipe into buffers.
    *
-   * Yields to the event loop every `sliceMs` so a 380 ms bake is four rAF
-   * frames of a loading line rather than one long jank. Offline rendering runs
-   * far faster than realtime, so this is dominated by promise scheduling.
+   * Yields to the event loop every `sliceMs`. The default stays below one
+   * 60 Hz frame budget because this preparation may overlap a live battlefield;
+   * a 90 ms slice made a nominally-60-fps match visibly freeze for one beat.
+   * Offline rendering runs far faster than realtime, so this is dominated by
+   * promise scheduling.
    */
-  async bakeAll(sliceMs = 90): Promise<void> {
+  async bakeAll(sliceMs = 12): Promise<void> {
     if (this.pending.length === 0) return;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     this.ensureNoiseBeds();

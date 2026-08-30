@@ -204,6 +204,9 @@ interface ModelEntry {
   batch: InstanceBatch | null;
   /** True for the generated hazard box, so the bridge applies footprint scale. */
   placeholder: boolean;
+  /** Root-hull centre relative to the gameplay/articulation origin. */
+  visualCenterX: number;
+  visualCenterZ: number;
   kind: EntityKind;
   name: string;
 }
@@ -374,9 +377,22 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
     socketByPart,
     batch: null,
     placeholder: false,
+    visualCenterX: 0,
+    visualCenterZ: 0,
     kind,
     name,
   };
+  // Imported articulated assets may keep their gameplay origin at an
+  // off-centre turret/ramp pivot. The simulation, sockets and collision must
+  // retain that origin, but selection UI belongs under the visible hull. Derive
+  // the presentation anchor from the fitted root geometry once at registration
+  // instead of adding a per-ship magic offset.
+  if (mesh.geometry.boundingBox === null) mesh.geometry.computeBoundingBox();
+  const bounds = mesh.geometry.boundingBox;
+  if (bounds !== null) {
+    entry.visualCenterX = (bounds.min.x + bounds.max.x) * 0.5;
+    entry.visualCenterZ = (bounds.min.z + bounds.max.z) * 0.5;
+  }
   entries.push(entry);
   return entry;
 }
@@ -1669,6 +1685,36 @@ export class RenderBridge {
   }
 
   /**
+   * Interpolated presentation anchor at the centre of the rendered root hull.
+   *
+   * Gameplay coordinates deliberately remain unchanged: an imported ship may
+   * articulate around a source pivot that is nowhere near its hull centre.
+   * Rings and health bars need the hull centre; pathing, collision, sockets and
+   * positional simulation still need the authoritative entity origin.
+   */
+  entityVisualWorld(id: EntityId, out: Float32Array): boolean {
+    const i = this.slotOf(id);
+    if (i < 0 || this.visitStamp[i] !== this.frameId) return false;
+    const entryIndex = this.bindEntry[i];
+    if (entryIndex < 0) return false;
+    const entry = entries[entryIndex];
+    const yaw = this.lerpYaw[i];
+    const scale = this.lerpScale[i] || 1;
+    const ox = entry.visualCenterX * scale;
+    const oz = entry.visualCenterZ * scale;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+
+    out[0] = this.lerpX[i] + c * ox + s * oz;
+    out[1] = this.lerpY[i];
+    out[2] = this.lerpZ[i] - s * ox + c * oz;
+    out[3] = yaw;
+    out[4] = this.lerpTurretYaw[i];
+    out[5] = this.lerpBarrelPitch[i];
+    return true;
+  }
+
+  /**
    * World-space position AND orientation of a named socket — the muzzle of a
    * slewing turret, an exhaust, a dock point.
    *
@@ -1837,4 +1883,9 @@ export function socketWorld(id: EntityId, part: PartId, out: Float32Array): bool
 /** @see RenderBridge.entityWorld */
 export function entityWorld(id: EntityId, out: Float32Array): boolean {
   return bridgeInstance !== null && bridgeInstance.entityWorld(id, out);
+}
+
+/** @see RenderBridge.entityVisualWorld */
+export function entityVisualWorld(id: EntityId, out: Float32Array): boolean {
+  return bridgeInstance !== null && bridgeInstance.entityVisualWorld(id, out);
 }

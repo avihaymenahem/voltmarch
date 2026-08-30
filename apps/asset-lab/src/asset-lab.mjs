@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildAssetCatalog, catalogSummary } from './catalog.mjs';
@@ -278,7 +279,7 @@ async function loadFile(file) {
 }
 
 function createLoader() {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   loader.setKTX2Loader(ktx2Loader);
   return loader;
 }

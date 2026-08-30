@@ -6,6 +6,7 @@
  *
  *   node tools/gpu-frame-ab.mjs [--scene allied-base] [--size 2560x1440]
  *                               [--frames 60] [--blocks 5] [--no-build]
+ *                               [--backend webgpu] [--aa traa|taau] [--taau-scale .75]
  *                               [--capture .codex-artifacts/frame]
  *   node tools/gpu-frame-ab.mjs --match --units 200 --sim 900
  *
@@ -90,9 +91,14 @@ const SCATTER_BATCH = flag('scatter-batch', 'instanced');
 const SCATTER_SHADOW = flag('scatter-shadow', 'filtered');
 const SHADOW_CADENCE = flag('shadow-cadence', 'adaptive');
 const BACKEND = flag('backend', 'both');
+const AA = flag('aa', '').toLowerCase();
+const TAAU_SCALE = flag('taau-scale', '');
 const BACKENDS = BACKEND === 'both' ? ['webgl', 'webgpu'] : [BACKEND];
 if (BACKENDS.some((gpu) => gpu !== 'webgl' && gpu !== 'webgpu')) {
   throw new Error(`--backend must be webgl, webgpu or both; received "${BACKEND}"`);
+}
+if (AA && BACKENDS.some((gpu) => gpu !== 'webgpu')) {
+  throw new Error('--aa is a WebGPU experiment; pair it with --backend webgpu');
 }
 if (!['adaptive', 'legacy', 'half'].includes(SHADOW_CADENCE)) {
   throw new Error(`--shadow-cadence must be adaptive, legacy or half; received "${SHADOW_CADENCE}"`);
@@ -162,6 +168,8 @@ async function measure(gpu) {
       ? new URLSearchParams({ skipmenu: '1', start: 'base', seed: String(SEED), fog: 'off', tier: 'high' })
       : new URLSearchParams({ shot: SCENE, tier: 'high', seed: String(SEED) });
     if (gpu === 'webgpu') qs.set('gpu', 'webgpu');
+    if (AA) qs.set('aa', AA);
+    if (TAAU_SCALE) qs.set('taauScale', TAAU_SCALE);
     if (!RENDER_CULL) qs.set('rendercull', 'off');
     if (SHADOW_PROXY === 'legacy') qs.set('shadowproxy', 'legacy');
     if (SCATTER_BATCH === 'legacy') qs.set('scatterbatch', 'legacy');

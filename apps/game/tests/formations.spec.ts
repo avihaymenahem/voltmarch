@@ -44,4 +44,40 @@ describe('explicit formation plans', () => {
         .toBeLessThanOrEqual(NAV_FORMATION_MAX_OFFSET + 1e-4);
     }
   });
+
+  it('assigns the nearest slots instead of making handle order cross the squad', () => {
+    const store = new EntityStore();
+    const ids = new Int32Array(5);
+    const xByHandle = [8, -8, 4, -4, 0];
+    for (let i = 0; i < ids.length; i++) {
+      const id = store.alloc(
+        EntityKind.Infantry, 0, 0 as PlayerId, Faction.Allies, xByHandle[i], 0, 40, 0,
+      );
+      const slot = store.index(id as EntityId);
+      store.radius[slot] = 0.5;
+      ids[i] = id as number;
+    }
+    const out = planFormation(store, ids, ids.length, 'line');
+    const bySource = Array.from(ids, (id, order) => ({
+      source: store.posX[store.index(id as EntityId)],
+      target: out[order * 2],
+    })).sort((a, b) => a.source - b.source);
+    for (let i = 1; i < bySource.length; i++) {
+      expect(bySource[i].target).toBeGreaterThan(bySource[i - 1].target);
+    }
+  });
+
+  it('uses the group heading rather than whichever entity was allocated first', () => {
+    const { store, ids } = group(5);
+    store.yaw[store.index(ids[0] as EntityId)] = 0;
+    for (let i = 1; i < ids.length; i++) {
+      store.yaw[store.index(ids[i] as EntityId)] = Math.PI * 0.5;
+    }
+    const out = planFormation(store, ids, ids.length, 'line');
+    const xs = Array.from(ids, (_id, i) => out[i * 2]);
+    const zs = Array.from(ids, (_id, i) => out[i * 2 + 1]);
+    const xSpan = Math.max(...xs) - Math.min(...xs);
+    const zSpan = Math.max(...zs) - Math.min(...zs);
+    expect(zSpan).toBeGreaterThan(xSpan * 2);
+  });
 });

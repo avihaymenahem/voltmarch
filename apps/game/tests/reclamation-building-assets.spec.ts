@@ -78,7 +78,9 @@ describe('Reclamation hard-surface asset chain', () => {
 
   it('keeps the dry hard-surface material contract for the family', () => {
     expect(runtime).toContain('useRoughnessMap: false');
-    expect(runtime).toContain('normalScale: 0.68');
+    expect(runtime).toContain('normalScale: 1.00');
+    expect(runtime).toContain('metalness: 0.12');
+    expect(runtime).toContain('ambientIntensity: 0.22');
     expect(runtime).toContain('clearcoat: 0.00');
     expect(runtime).toContain('creaseAngle: 42');
   });

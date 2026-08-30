@@ -13,7 +13,6 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   createInfantryPackGeometry,
   createInfantryWeaponGeometry,
@@ -23,6 +22,7 @@ import { PartId } from '../core/types';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
 import type { UnitModel } from './UnitFactory';
 import { importedAnimatedUnitMaterial, type ImportedUnitSpec } from './ImportedUnitAssets';
+import { createRuntimeGLTFLoader } from './RuntimeGLTFLoader';
 import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
@@ -156,7 +156,7 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
   },
 ] as const;
 
-const loader = new GLTFLoader();
+const loader = createRuntimeGLTFLoader();
 const runtimeGeometries = new Set<THREE.BufferGeometry>();
 
 function oneSkinnedMesh(root: THREE.Object3D, label: string): THREE.SkinnedMesh {

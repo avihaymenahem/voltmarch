@@ -17,6 +17,7 @@ const AO_TARGET_NAMES = new Set([
 
 export interface NodeRenderTargetLike {
   texture?: { name?: string } | null;
+  textures?: readonly { name?: string }[];
 }
 
 /**
@@ -36,6 +37,7 @@ export function classifyNodeRenderPass(
   renderTarget: NodeRenderTargetLike | null = null,
 ): NodeRenderPassBucket {
   const targetName = renderTarget?.texture?.name ?? '';
+  const targetNames = renderTarget?.textures?.map((texture) => texture.name ?? '') ?? [];
   const override = scene.overrideMaterial as { isShadowPassMaterial?: boolean } | null | undefined;
   if (
     clippingContext?.shadowPass === true
@@ -43,6 +45,12 @@ export function classifyNodeRenderPass(
     || SHADOW_TARGET_NAMES.has(targetName)
   ) return 'shadow';
   if (AO_TARGET_NAMES.has(targetName)) return 'ao';
+  // The temporal experiment renders the live scene again with an unlit
+  // velocity override. Count that submission as post/reconstruction work, not
+  // AO merely because it uses Scene.overrideMaterial. MRT attachment zero must
+  // retain Three's `output` name, so the velocity attachment is the reliable
+  // discriminator.
+  if (targetNames.includes('velocity')) return 'post';
   // PassNode supplies reference wrappers for scene and camera, so neither has
   // stable identity. Render objects keep their real parent chain: gameplay
   // meshes end at liveScene, while graph-owned fullscreen triangles do not.

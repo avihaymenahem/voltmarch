@@ -41,12 +41,16 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { defineSystem } from '../core/loop';
 import { mapConcurrent } from '../core/async-pool';
+import {
+  liveAssetStreamingEnabled,
+  scheduleBattlefieldWork,
+  waitForBattlefieldIdle,
+} from '../core/battlefield-ready';
 import {
   BUILDING_GREEBLE,
   BUILDING_PAD,
@@ -69,6 +73,7 @@ import {
 } from '../render/RenderBridge';
 import { STRUCTURE_MASS_LISTS } from './BuildingDefs';
 import { acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader } from './RuntimeKTX2Loader';
+import { createRuntimeGLTFLoader } from './RuntimeGLTFLoader';
 import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
@@ -1254,14 +1259,20 @@ const IMPORTED_STRUCTURES: readonly ImportedStructureSpec[] = [
   ...IMPORTED_CIVILIAN_STRUCTURES,
 ];
 
+/** Dock structures cannot be placed when the scenario declares no sea. */
+const SEA_ONLY_STRUCTURE_KEYS: ReadonlySet<string> = new Set([
+  'allied_navalyard',
+  'soviet_subpen',
+]);
+
 let importedSurfaceMask: THREE.DataTexture | null = null;
 let importedShadowOnlyMaterial: THREE.MeshBasicMaterial | null = null;
 const importedRuntimeMaterials = new Set<THREE.Material>();
 const importedRuntimeTextures = new Set<THREE.Texture>();
-const importedStructureLoader = new GLTFLoader();
+const importedStructureLoader = createRuntimeGLTFLoader();
 let importedKTX2Loader: KTX2Loader | null = null;
-let deferredImportTimer = 0;
 let importedAssetEpoch = 0;
+let cancelDeferredWork: (() => void) | null = null;
 /** Per-family linear radiance compensation; deliberately not a global grade change. */
 const IMPORTED_STRUCTURE_EXPOSURE = 1.10;
 
@@ -1542,16 +1553,26 @@ export async function loadImportedStructureOverride(
   model: StructureModel,
   spec: ImportedStructureSpec,
   depthMaterial: THREE.Material | undefined = buildingLibrary.depthMaterial(),
+  progressive = false,
 ): Promise<KindMesh> {
   const optimize = importedOptimizationEnabled();
   const lodSpecs = optimize ? spec.lods ?? [] : [];
   const shadowUrl = optimize ? spec.shadowUrl : undefined;
-  const loads = [
-    importedStructureLoader.loadAsync(spec.url),
-    ...lodSpecs.map((lod) => importedStructureLoader.loadAsync(lod.url)),
-    ...(shadowUrl === undefined ? [] : [importedStructureLoader.loadAsync(shadowUrl)]),
+  const urls = [
+    spec.url,
+    ...lodSpecs.map((lod) => lod.url),
+    ...(shadowUrl === undefined ? [] : [shadowUrl]),
   ];
-  const loaded = await Promise.all(loads);
+  const loaded: Awaited<ReturnType<typeof importedStructureLoader.loadAsync>>[] = [];
+  if (progressive) {
+    for (const url of urls) {
+      await waitForBattlefieldIdle();
+      loaded.push(await importedStructureLoader.loadAsync(url));
+    }
+    await waitForBattlefieldIdle();
+  } else {
+    loaded.push(...await Promise.all(urls.map((url) => importedStructureLoader.loadAsync(url))));
+  }
   const gltf = loaded[0];
   gltf.scene.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
@@ -1695,10 +1716,15 @@ export async function loadImportedStructureOverride(
   // a static body; Y is the distance it must sink while construction is at 0%.
   addStructureFeature(geometry, targetHeight);
 
-  const lods = lodSpecs.map((lod, index) => ({
-    geometry: fitDerivedGeometry(loaded[index + 1].scene, `lod${index + 1}`, true),
-    minDistance: lod.minDistance,
-  }));
+  const lods: { geometry: THREE.BufferGeometry; minDistance: number }[] = [];
+  for (let index = 0; index < lodSpecs.length; index++) {
+    if (progressive) await waitForBattlefieldIdle();
+    lods.push({
+      geometry: fitDerivedGeometry(loaded[index + 1].scene, `lod${index + 1}`, true),
+      minDistance: lodSpecs[index].minDistance,
+    });
+  }
+  if (progressive && shadowUrl !== undefined) await waitForBattlefieldIdle();
   const shadowGeometry = shadowUrl === undefined
     ? undefined
     : fitDerivedGeometry(loaded[1 + lodSpecs.length].scene, 'shadow_proxy', false);
@@ -1936,6 +1962,7 @@ let paradeRoot: THREE.Group | null = null;
 
 export default defineSystem({
   id: 'art.buildings',
+  initGroup: 'faction-art',
   renderPhase: RenderPhase.BuildingAnim,
   order: 0,
 
@@ -1982,21 +2009,29 @@ export default defineSystem({
     // The title backdrop is the game's front window, not a reduced art mode.
     // Load the same authored structures there as in a match so a player never
     // sees the retired procedural family while deciding whether to play.
-    const importedSpecs = IMPORTED_STRUCTURES.filter((spec) =>
-      spec.key.startsWith('allied_')
+    const plannedSea = plannedScenario().sea !== null;
+    const importedSpecs = IMPORTED_STRUCTURES.filter((spec) => {
+      if (!plannedSea && SEA_ONLY_STRUCTURE_KEYS.has(spec.key)) return false;
+      return spec.key.startsWith('allied_')
         ? isArtFactionPlanned(Faction.Allies)
         : spec.key.startsWith('soviet_')
           ? isArtFactionPlanned(Faction.Soviets)
-          : true,
-    );
-    const loadSpecs = (specs: readonly ImportedStructureSpec[]) => mapConcurrent(
+          : true;
+    });
+    const loadSpecs = (
+      specs: readonly ImportedStructureSpec[],
+      progressive = false,
+    ) => mapConcurrent(
       specs,
-      importedStructureConcurrency(),
+      progressive ? 1 : importedStructureConcurrency(),
       async (spec) => {
+        if (progressive) await waitForBattlefieldIdle();
         const model = buildingLibrary.get(spec.key);
         if (model === undefined) return null;
         try {
-          return [spec.key, await loadImportedStructureOverride(model, spec)] as const;
+          return [spec.key, await loadImportedStructureOverride(
+            model, spec, undefined, progressive,
+          )] as const;
         } catch (error) {
           // An optional art asset must never make the match unbootable. The
           // validated procedural structure remains the exact fallback.
@@ -2014,7 +2049,9 @@ export default defineSystem({
      * RegisterKindMesh's versioned rebinding upgrades any procedural fallback
      * that appeared in the meantime on the next render frame.
      */
-    const fastMcvBoot = plannedScenario().start === 'mcv' && !paradeRequested();
+    const fastMcvBoot = plannedScenario().start === 'mcv'
+      && !paradeRequested()
+      && liveAssetStreamingEnabled();
     const immediateSpecs = fastMcvBoot
       ? importedSpecs.filter((spec) => spec.key.endsWith('_conyard'))
       : importedSpecs;
@@ -2096,33 +2133,32 @@ export default defineSystem({
 
     if (deferredSpecs.length > 0) {
       const epoch = ++importedAssetEpoch;
-      deferredImportTimer = window.setTimeout(() => {
-        deferredImportTimer = 0;
-        void loadSpecs(deferredSpecs).then((results) => {
-          if (epoch !== importedAssetEpoch) {
-            return;
+      cancelDeferredWork = scheduleBattlefieldWork(10, async () => {
+        cancelDeferredWork = null;
+        const results = await loadSpecs(deferredSpecs, true);
+        if (epoch !== importedAssetEpoch) return;
+        let loaded = importedMeshes.size;
+        for (const result of results) {
+          if (result === null) continue;
+          const [key, mesh] = result;
+          importedMeshes.set(key, mesh);
+          loaded++;
+          for (const registration of registrations) {
+            if (registration.key !== key) continue;
+            registerKindMesh(
+              EntityKind.Building,
+              registration.faction,
+              mesh,
+              registration.defId,
+              true,
+            );
           }
-          let loaded = importedMeshes.size;
-          for (const result of results) {
-            if (result === null) continue;
-            const [key, mesh] = result;
-            importedMeshes.set(key, mesh);
-            loaded++;
-            for (const registration of registrations) {
-              if (registration.key !== key) continue;
-              registerKindMesh(
-                EntityKind.Building,
-                registration.faction,
-                mesh,
-                registration.defId,
-                true,
-              );
-            }
-          }
-          debug.setCounter('importedBuildings', loaded);
-          console.info(`[buildings] streamed ${results.filter((r) => r !== null).length} authored models`);
-        });
-      }, 12_000);
+        }
+        debug.setCounter('importedBuildings', loaded);
+        console.info(
+          `[buildings] streamed ${results.filter((r) => r !== null).length} authored models`,
+        );
+      });
     }
 
     /* -- prove the pads meet the ground ------------------------------------ */
@@ -2191,10 +2227,8 @@ export default defineSystem({
 
   dispose(): void {
     importedAssetEpoch++;
-    if (deferredImportTimer !== 0) {
-      window.clearTimeout(deferredImportTimer);
-      deferredImportTimer = 0;
-    }
+    cancelDeferredWork?.();
+    cancelDeferredWork = null;
     if (paradeRoot !== null) {
       paradeRoot.removeFromParent();
       paradeRoot = null;

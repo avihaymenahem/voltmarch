@@ -325,6 +325,7 @@ import {
 } from '../src/shell/LoadGame';
 
 import { loadHint, MainMenuScreen, menuBackendLabel } from '../src/shell/MainMenu';
+import { MenuDecisionScreen } from '../src/shell/MenuDecision';
 import { formatSlotName } from '../src/shell/Shell';
 import type { Shell } from '../src/shell/Shell';
 import { PROFILE_STORAGE_KEY } from '../src/progression/profile-store';
@@ -432,6 +433,8 @@ interface ShellStub {
   openLoadGame(): void;
   canSave(): boolean;
   startTutorial(): Promise<void>;
+  openQuitConfirmation(): void;
+  openTutorialConfirmation(): void;
   openSetup(): void;
   openMissions(): void;
   openSettings(): void;
@@ -457,6 +460,8 @@ function shellStub(over: Partial<ShellStub> = {}): Shell {
     openLoadGame: () => { /* no-op */ },
     canSave: () => true,
     startTutorial: async () => { /* no-op */ },
+    openQuitConfirmation: () => { /* no-op */ },
+    openTutorialConfirmation: () => { /* no-op */ },
     openSetup: () => { /* no-op */ },
     openMissions: () => { /* no-op */ },
     openSettings: () => { /* no-op */ },
@@ -785,6 +790,22 @@ describe('autosave — deferral off a frame that is already behind', () => {
  * ========================================================================== */
 
 describe('main menu — Load Game is enabled only when there is something to load', () => {
+  it('opens the tutorial decision gate instead of immediately starting training', () => {
+    recordingStorage();
+    publish(null);
+    const h = host();
+    let opened = 0;
+    let started = 0;
+    new MainMenuScreen(shellStub({
+      openTutorialConfirmation: () => { opened++; },
+      startTutorial: async () => { started++; },
+    })).mount(h as unknown as HTMLElement);
+
+    buttonsByLabel(h).get('Tutorial')?.click();
+    expect(opened).toBe(1);
+    expect(started).toBe(0);
+  });
+
   it('reports the requested backend before the deferred title renderer exists', () => {
     expect(menuBackendLabel(undefined, '?gpu=webgpu')).toBe('WebGPU');
     expect(menuBackendLabel(undefined, '')).toBe('WebGL2');
@@ -1361,6 +1382,34 @@ describe('a slot card', () => {
     expect(card.text()).toContain('The Timetable');
     expect(card.text()).toContain('Sounding Line');
     expect(card.text()).toContain('Temperate Valley');
+  });
+});
+
+describe('title-screen decision modal', () => {
+  it('exposes only its declared choices and routes Back through cancel', () => {
+    const h = host();
+    const ran: string[] = [];
+    let cancelled = 0;
+    const screen = new MenuDecisionScreen({
+      eyebrow: 'Training record',
+      title: 'Tutorial',
+      body: 'Choose how to proceed.',
+      actions: [
+        { label: 'Continue', iconName: 'play', run: () => { ran.push('continue'); } },
+        { label: 'Reset', iconName: 'restart_alt', run: () => { ran.push('reset'); } },
+        { label: 'End', iconName: 'stop_circle', variant: 'danger', run: () => { ran.push('end'); } },
+      ],
+      cancel: () => { cancelled++; },
+    });
+
+    screen.mount(h as unknown as HTMLElement);
+    expect([...buttonsByLabel(h).keys()]).toEqual(['Continue', 'Reset', 'End']);
+    buttonsByLabel(h).get('Reset')?.click();
+    expect(ran).toEqual(['reset']);
+    expect(screen.onBack()).toBe(true);
+    expect(cancelled).toBe(1);
+    expect(h.querySelector('.vm-menu-decision-panel')?.getAttribute('role')).toBe('dialog');
+    expect(h.querySelector('.vm-menu-decision-panel')?.getAttribute('aria-modal')).toBe('true');
   });
 });
 

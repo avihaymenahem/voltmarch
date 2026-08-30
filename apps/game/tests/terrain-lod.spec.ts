@@ -41,7 +41,7 @@ import { DEFAULT_SEED, TERRAIN_CHUNK_METRES, TERRAIN_LOD_MAX_ERROR, TERRAIN_SEED
 import {
   CHUNK_INDICES, CHUNK_LOD_INDICES, CHUNK_LOD_QUADS, CHUNK_N, CHUNK_QUADS,
   CHUNK_VERTS, GRID, GRID_STRIDE, INV_GRID, TERRAIN_CHUNKS, TerrainFields,
-  buildTerrainChunks, chunkCastsShadow,
+  buildTerrainChunks, chunkCastsShadow, drawnTerrainHeightAt,
   type TerrainChunkData,
 } from '../src/world/terrain-gen';
 import { MAP_SEAS, startPointsFor } from '../src/game/Scenarios';
@@ -53,6 +53,7 @@ import { MAPS } from '../src/shell/settings-store';
 
 interface Case {
   readonly label: string;
+  readonly fields: TerrainFields;
   readonly chunks: readonly TerrainChunkData[];
 }
 
@@ -79,6 +80,7 @@ function cases(): readonly Case[] {
     fields.generate();
     cached.push({
       label: m.id,
+      fields,
       chunks: buildTerrainChunks(fields.height, fields.wallUp, fields.wallTop),
     });
   }
@@ -89,6 +91,7 @@ function cases(): readonly Case[] {
   shotFields.generate();
   cached.push({
     label: 'shot-default',
+    fields: shotFields,
     chunks: buildTerrainChunks(shotFields.height, shotFields.wallUp, shotFields.wallTop),
   });
   return cached;
@@ -294,7 +297,7 @@ describe('half-resolution terrain index — cannot crack', () => {
  * copies of one mistake agree.
  */
 function meshHeightAt(c: TerrainChunkData, x: number, z: number): number {
-  const idx = c.lodIndex as Uint16Array;
+  const idx = c.lodIndex ?? c.index;
   const pos = c.position;
   for (let t = 0; t < idx.length; t += 3) {
     const a = idx[t]; const b = idx[t + 1]; const d = idx[t + 2];
@@ -314,6 +317,43 @@ function meshHeightAt(c: TerrainChunkData, x: number, z: number): number {
 }
 
 describe('half-resolution terrain index — the surface', () => {
+  it('reports the exact fine and decimated surface used by the colour renderer', () => {
+    const points = [0.25, 0.75, 1.25, 1.75, 2.25, 31.25, 32.75, 61.25, 62.75, 63.75];
+    const decimatedProbe = decimated().slice(0, 3);
+    const fineProbe = cases().flatMap((entry) => entry.chunks
+      .filter((chunk) => chunk.lodIndex === null)
+      .map((chunk) => ({ label: entry.label, chunk }))).slice(0, 1);
+    expect(decimatedProbe.length).toBe(3);
+    expect(fineProbe.length).toBe(1);
+
+    for (const { label, c } of decimatedProbe) {
+      for (const z of points) for (const x of points) {
+        const want = meshHeightAt(c, x, z);
+        const got = drawnTerrainHeightAt(
+          cases().find((entry) => entry.label === label)!.fields.height,
+          c.cx * CHUNK_QUADS * GRID + x,
+          c.cz * CHUNK_QUADS * GRID + z,
+          true,
+        );
+        expect(got, `${label} lod ${c.cx},${c.cz} at ${x},${z}`).toBeCloseTo(want, 5);
+      }
+    }
+
+    for (const { label, chunk: c } of fineProbe) {
+      const fields = cases().find((entry) => entry.label === label)!.fields;
+      for (const z of points) for (const x of points) {
+        const want = meshHeightAt(c, x, z);
+        const got = drawnTerrainHeightAt(
+          fields.height,
+          c.cx * CHUNK_QUADS * GRID + x,
+          c.cz * CHUNK_QUADS * GRID + z,
+          false,
+        );
+        expect(got, `${label} fine ${c.cx},${c.cz} at ${x},${z}`).toBeCloseTo(want, 5);
+      }
+    }
+  });
+
   /**
    * `lodError` is the generator's own claim about how far the coarse surface
    * can be from the heightfield. This measures it against the mesh that is

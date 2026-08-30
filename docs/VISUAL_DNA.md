@@ -1,7 +1,28 @@
 # VISUAL DNA — VOLTMARCH
 ### The single authoritative art/audio spec. Art Director's cut.
-**Status:** LOCKED v1.0 · Supersedes the four analyst reports where they disagree (see §0.3).
+**Status:** MODERNISATION IN PROGRESS · The 2026-08-30 direction below supersedes the classic
+RA2/RA3 imitation constraints where they conflict. Historic measurements remain useful as
+regression evidence, not as a ceiling on lighting, materials, geometry or post-processing.
 **Audience:** (a) art/engine agents who build it, (b) critics who score it against the reference screenshots.
+
+---
+
+## 2026-08-30 MODERN VOLTMARCH DIRECTION
+
+VOLTMARCH now targets a contemporary high-fidelity RTS image that should look materially newer than
+RA2 and RA3. Preserve tactical readability, faction recognition, stable camera control and restrained
+screen-space effects, but do not preserve an old rendering limitation merely because the references
+had it. In particular, physically based materials, image-based lighting, indirect lighting, reflective
+water, atmospheric depth, modern anti-aliasing experiments, full-detail terrain near the camera and
+high-quality self-shadowing are allowed when they pass WebGPU desktop performance and clarity gates.
+WebGL is a temporary compatibility path and no longer defines the ceiling for new desktop visuals.
+
+The current implementation order is: remove visible geometry/LOD artifacts; improve shadows and
+material response; complete foliage depth/wind parity; integrate weathered terrain and destruction;
+then graduate WebGPU-only GI and temporal techniques through measured Ultra-tier experiments.
+
+The old scorecard remains a reproducible historical comparison. It must not veto an improvement solely
+because the result no longer resembles RA3's saturation, fog, reflection or terrain-frequency limits.
 
 ---
 

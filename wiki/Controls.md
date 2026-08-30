@@ -30,7 +30,7 @@ than printing the defaults.
 | Pinch · `Ctrl`+wheel · `Alt`+wheel | Zoom | Gesture |
 | Mouse wheel | Zoom toward the cursor | Gesture |
 | `Shift` + wheel | Pan sideways | Gesture |
-| Middle-drag · `Space`+left-drag · right-drag | Drag the world | Gesture |
+| Middle-drag · `Space`+left-drag | Drag the world | Gesture |
 | Push into a screen edge | Edge scrolling | Gesture, **off by default** |
 | Click the tactical map | Jump the camera there | Gesture |
 | Drag on the tactical map | Scrub the camera | Gesture |
@@ -50,8 +50,11 @@ Notes that matter:
 - **`Shift` + wheel pans instead of zooming.** On a mouse that means sideways, which is the only
   horizontal pan a wheel with no tilt can reach.
 - **Pan speed scales with zoom.** The further out you are, the faster a keypress moves you.
-- **Right-drag is both a camera drag and an order.** The button becomes a drag only once it has
-  travelled a few pixels; a right-click that never moves is still an order.
+- **Right-click belongs to battlefield orders.** It never becomes a camera drag during a match;
+  use middle-drag or `Space`+left-drag to move the camera without stealing a command.
+- **Lock Mouse To Window is on by default in the Windows desktop build.** It confines the pointer only
+  during live gameplay, keeps contextual cursors, HUD hover and internal panel scrolling intact, and
+  releases for menus, pause, focus loss and visibility changes. Browser builds do not use it.
 - **Edge scrolling ships off**, because on a laptop the cursor reaches an edge every time you
   touch the sidebar. Turned on, it scrolls only while the pointer is *moving* into the edge, never
   while it is parked there.
@@ -148,6 +151,7 @@ and it is why A, F and Y are safe to press speculatively.
 | `,` | Rotate the ghost anticlockwise | Fixed |
 | `.` | Rotate the ghost clockwise | Fixed |
 | Right-click | Cancel placement | Gesture |
+| `Escape` | Cancel placement, sell/repair tool or armed order before opening pause | Fixed |
 | Repair tool, then a structure | Toggle repair on that building | Gesture |
 | Sell tool, then a structure | Sell it | Gesture |
 
@@ -161,6 +165,8 @@ and it is why A, F and Y are safe to press speculatively.
   indefinitely. Clicking that cameo is what picks it up, and nothing is lost by leaving it there.
 - Cancelling placement with right-click puts the structure back in the queue still finished. It
   costs nothing to place again.
+- Walls and gates are valid sell targets even though ordinary selection treats them as terrain-like
+  perimeter pieces. Right-click or Escape disarms sell without selling anything.
 - **Rotation is quarter turns only.** At 90° and 270° the footprint swaps, so a 3×2 War Factory
   takes 2×3 cells and the green carpet changes shape with it. The facing sticks for the next
   structure you place, which is how a line of walls all ends up pointing the same way.

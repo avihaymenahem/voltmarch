@@ -156,7 +156,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_guardian` | Guardian Tank | VEH | integrated | Meshy geometry `01a05050-7dc3-73bc-ac85-9b35b656236f`, PBR `01a05055-8ab1-7049-937b-c87396a926de`; 25,348-triangle `Hull`/`Turret` source with a sealed graphite articulation ring, KTX2 runtime and shadow proxy. |
 | A3 | `allied_ifv` | Sabre IFV | VEH | integrated | Meshy geometry `01a05050-7e66-70fb-952b-cde9a97ae34d`, PBR `01a05055-8c1a-749f-85a9-800eb4fd2e86`; 23,353-triangle `Hull`/`Turret` source with bounded compact weapon-station articulation, KTX2 runtime and shadow proxy. |
 | A3 | `allied_prism` | Refractor Tank | VEH | integrated | Meshy geometry `01a05050-7f21-776f-b91e-6d101791eb45`, PBR `01a05055-8c53-73f5-b926-9f195e96afcf`; 25,231-triangle `Hull`/`Emitter` source with a sealed graphite articulation ring, KTX2 runtime and shadow proxy. Procedural emitter VFX and sockets remain authoritative. |
-| A3 | `allied_harvester` | Chrono Miner | VEH | integrated | 49,825-triangle precision-shell miner, 22,416/8,968 LODs, 1,728-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
+| A3 | `allied_harvester` | Chrono Miner | VEH | integrated | 49,825-triangle precision-shell miner, 22,416/8,968 LODs, 1,728-triangle shadow proxy and KTX2 PBR; live LOD0 is the bounded Meshopt/WASM POC (4,106,272 → 2,561,984 bytes, 37.6% smaller) with the KTX2-only source retained as control; procedural fallback retained. |
 | A3 | `allied_dozer` | Construction Dozer | VEH | integrated | Geometry `01a04447-7acc-7897-98f1-c91c8e32646f`, texture `01a04456-9e61-736f-a71c-50fe79999c08`; 19,305-triangle ceramic tracked construction chassis with 10,862/6,711 LODs, 2,112-triangle shadow proxy and 2.85 MiB KTX2 PBR. Deployment behavior and sockets remain procedural authority. |
 | A3 | `allied_vindicator` | Petrel Bomber | AIR | integrated | Geometry `01a04441-a0bb-7eff-9e1d-baecf3410869`, texture `01a04456-934c-7875-9573-ca754895ce72`; 18,056-triangle Allied strike aircraft with 8,119/3,250 LODs, 1,416-triangle shadow proxy and 2.24 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
 | A3 | `allied_destroyer` | Aircraft Cruiser | NAV | integrated | Geometry `01a04dbb-ccab-734d-97c5-db4a61931754`, retexture `01a04dbd-ad27-7670-94db-6b97b00ea3bf`; 24,145-triangle ceramic aviation cruiser split into `Hull`/`Turret`, a 1,128-triangle shadow proxy and 5.42 MiB KTX2 PBR. It is fitted to a 14.0 × 4.2 × 4.4 m envelope above the 12 m Assault Destroyer. Procedural aircraft-support behavior, sockets and fallback remain authoritative; unsafe generated colour LODs are withheld. |
@@ -250,6 +250,16 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R3 | `reclaim_tinker` | Tinker | CHAR | integrated-hybrid | Reuses the live canonical Scrap Picker body with a code-native tool roll and salvage cutter, each below the 200-triangle attachment ceiling. |
 | R3 | `reclaim_baron` | Scrap Baron | CHAR | production | Unique geometry `01a04f42-c016-7652-a767-d705aa76fa29`, PBR `01a04f47-30e3-7774-8b5e-441ef17e0a15`, rig `01a04f4a-6bf7-7084-a4f5-20d5185ee4ca`; 47,655-triangle/5.92 MiB graphite/violet salvage commander with 1024 base/normal and 512 metallic-roughness maps. The gameplay LOD0 and mesh-free 72-channel walk/run clips are grouped in Asset Lab. Runtime bakes one walk pose, derives gait only from limb skin weights so the hide cape stays rigid, then discards the live skeleton. |
 | R3 | `reclaim_dredger` | Dredger | CHAR | production | Geometry `01a0506d-4681-77a6-b43c-927cff1bcbbe`, remesh `01a0506e-dd83-72f5-95d5-06ff83f9bce7`, PBR `01a05070-abf9-7683-8e85-f0bd5f41b346`, rig `01a05070-ac44-747e-b47f-297d81359e4f`; 20,916-triangle asymmetric armored aquatic body with exactly two back bottles, 512 px PBR maps and an animation-only walk clip. Runtime bakes one pose, derives skin-weight gait and discards the rig. |
+
+**Reclamation material presentation — 2026-08-30.** The approved authored geometry and KTX2
+atlases remain unchanged. A faction-local runtime readability contract now treats the graphite shell
+as painted dielectric armour (`metalness 0.12`) instead of the previous vehicle `0.72` / animated
+infantry `1.0`, applies a `1.82` minimum base-colour gain, a restrained albedo-shaped violet fill and
+a `0.68` environment-response floor. Imported structures use the matching dry-plate response with a
+stronger neutral-violet midtone and normal response; procedural palettes were lifted in parallel so a
+load failure does not return to the crushed-black look. A real NVIDIA WebGPU capture of the complete
+Reclamation base was accepted on the snow biome at normal RTS distance. No new texture, material,
+draw call, Meshy task or paid credit was added.
 
 ## Neutral capturable structures — 4 structures
 

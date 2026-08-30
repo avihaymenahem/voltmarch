@@ -42,7 +42,8 @@ import {
 
 import {
   CONTACT_DARKEN_COLOR, CONTACT_DARKEN_CORE, CONTACT_DARKEN_PEAK_ALPHA,
-  DECAL_DARKEN_FLOOR,
+  DECAL_DARKEN_FLOOR, GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+  GROUND_OVERLAY_DEPTH_BIAS_UNITS,
 } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
 import { shroudFactor, shroudVertexUv } from './shroud-nodes';
@@ -230,6 +231,6 @@ function applyMultiplyBlend(material: NodeMaterial): void {
   material.blendSrcAlpha = THREE.ZeroFactor;
   material.blendDstAlpha = THREE.OneFactor;
   material.polygonOffset = true;
-  material.polygonOffsetFactor = -3;
-  material.polygonOffsetUnits = -3;
+  material.polygonOffsetFactor = GROUND_OVERLAY_DEPTH_BIAS_FACTOR;
+  material.polygonOffsetUnits = GROUND_OVERLAY_DEPTH_BIAS_UNITS;
 }

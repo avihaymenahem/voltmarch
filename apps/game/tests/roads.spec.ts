@@ -18,7 +18,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import {
-  DECAL_GRID, DECAL_LIFT, MAP_SIZE, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
+  DECAL_GRID, DECAL_LIFT, GROUND_OVERLAY_DEPTH_BIAS_FACTOR,
+  GROUND_OVERLAY_DEPTH_BIAS_UNITS, MAP_SIZE, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
   ROAD_SURFACE_LIFT,
   ROAD_KERB_HEIGHT, ROAD_LANE_WIDTH, ROAD_MIN_AXIS_DEGREES, ROAD_MOVE_COST, SCORCH_DARKEN,
   SQUISH_DARKEN, SQUISH_LIFE_SECONDS, TREAD_DARKEN,
@@ -416,6 +417,17 @@ describe('DecalField — the pool', () => {
   it('keeps ground marks physically above terrain and road depth noise', () => {
     expect(DECAL_LIFT).toBeGreaterThan(ROAD_SURFACE_LIFT);
     expect(DECAL_LIFT - ROAD_SURFACE_LIFT).toBeGreaterThanOrEqual(0.019);
+  });
+
+  it('pulls ground overlays forward by a WebGPU-scale depth bias', () => {
+    const f = flat();
+    const material = f.mesh.material as THREE.Material;
+    expect(material.polygonOffset).toBe(true);
+    expect(material.polygonOffsetFactor).toBe(GROUND_OVERLAY_DEPTH_BIAS_FACTOR);
+    expect(material.polygonOffsetUnits).toBe(GROUND_OVERLAY_DEPTH_BIAS_UNITS);
+    expect(GROUND_OVERLAY_DEPTH_BIAS_FACTOR).toBeLessThanOrEqual(-4);
+    expect(GROUND_OVERLAY_DEPTH_BIAS_UNITS).toBeLessThanOrEqual(-64);
+    f.dispose();
   });
 
   it('sizes a slot from the configured terrain-conformance grid', () => {

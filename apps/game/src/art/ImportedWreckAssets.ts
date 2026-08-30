@@ -8,7 +8,6 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import { WRECK_LENGTH, type WreckClass } from '../core/wrecks';
 import { applyShroudTint } from '../render/FogOfWar';
@@ -17,6 +16,7 @@ import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
 } from './geometry-attributes';
+import { createRuntimeGLTFLoader } from './RuntimeGLTFLoader';
 
 export type ImportedWreckFaction = 'allies' | 'soviets' | 'neutral';
 export const IMPORTED_WRECK_CLASSES = ['light', 'medium', 'heavy'] as const;
@@ -28,7 +28,7 @@ const BEAM: Readonly<Record<(typeof IMPORTED_WRECK_CLASSES)[number], number>> = 
   heavy: 0.54,
 };
 
-const loader = new GLTFLoader();
+const loader = createRuntimeGLTFLoader();
 
 export interface ImportedWreckSet {
   hulk(faction: ImportedWreckFaction, cls: (typeof IMPORTED_WRECK_CLASSES)[number]): KindMesh;

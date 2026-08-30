@@ -2864,6 +2864,104 @@ export function chunkCastsShadow(cliffTris: number): boolean {
   return cliffTris >= CHUNK_QUADS * CHUNK_QUADS * 2 * TERRAIN_SHADOW_CLIFF_FRACTION;
 }
 
+/** Height of one triangle in the XZ plane, sampled in heightfield-grid units. */
+function triangleHeightAt(
+  height: Float32Array,
+  x: number, z: number,
+  ax: number, az: number, bx: number, bz: number, cx: number, cz: number,
+): number {
+  const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+  const wa = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / den;
+  const wb = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den;
+  const wc = 1 - wa - wb;
+  return wa * height[az * GRID_STRIDE + ax]
+    + wb * height[bz * GRID_STRIDE + bx]
+    + wc * height[cz * GRID_STRIDE + cx];
+}
+
+/**
+ * Height of the terrain surface the renderer actually submits at a world point.
+ *
+ * `heightAtGrid` is bilinear gameplay ground. The colour mesh is triangular,
+ * and qualifying chunks draw `buildChunkLodIndex()` instead of the fine index.
+ * Those surfaces can differ by `TERRAIN_LOD_MAX_ERROR`; sampling the gameplay
+ * field for a close overlay can therefore put it below the drawn terrain. This
+ * routine mirrors both emitted index topologies without allocating or touching
+ * THREE, so decals and other depth-sensitive presentation can follow the real
+ * surface while simulation remains on the authoritative bilinear heightfield.
+ */
+export function drawnTerrainHeightAt(
+  height: Float32Array, worldX: number, worldZ: number, decimated: boolean,
+): number {
+  const x = clamp(worldX * INV_GRID, 0, GRID_N);
+  const z = clamp(worldZ * INV_GRID, 0, GRID_N);
+
+  if (!decimated) {
+    const x0 = Math.min(Math.floor(x), GRID_N - 1);
+    const z0 = Math.min(Math.floor(z), GRID_N - 1);
+    const x1 = x0 + 1;
+    const z1 = z0 + 1;
+    const fx = x - x0;
+    const fz = z - z0;
+    return fx + fz <= 1
+      ? triangleHeightAt(height, x, z, x0, z0, x0, z1, x1, z0)
+      : triangleHeightAt(height, x, z, x1, z0, x0, z1, x1, z1);
+  }
+
+  const chunkX = Math.min(Math.floor(x / CHUNK_QUADS), CHUNK_N - 1);
+  const chunkZ = Math.min(Math.floor(z / CHUNK_QUADS), CHUNK_N - 1);
+  const localX = x - chunkX * CHUNK_QUADS;
+  const localZ = z - chunkZ * CHUNK_QUADS;
+  const cellX = Math.min(Math.floor(localX * 0.5), CHUNK_LOD_QUADS - 1);
+  const cellZ = Math.min(Math.floor(localZ * 0.5), CHUNK_LOD_QUADS - 1);
+  const x0 = chunkX * CHUNK_QUADS + cellX * 2;
+  const z0 = chunkZ * CHUNK_QUADS + cellZ * 2;
+  const x1 = x0 + 1; const z1 = z0 + 1;
+  const x2 = x0 + 2; const z2 = z0 + 2;
+
+  const west = cellX === 0;
+  const east = cellX === CHUNK_LOD_QUADS - 1;
+  const south = cellZ === 0;
+  const north = cellZ === CHUNK_LOD_QUADS - 1;
+  if (!west && !east && !south && !north) {
+    return (x - x0) + (z - z0) <= 2
+      ? triangleHeightAt(height, x, z, x0, z0, x0, z2, x2, z0)
+      : triangleHeightAt(height, x, z, x2, z0, x0, z2, x2, z2);
+  }
+
+  // Edge cells are the fan emitted by `buildChunkLodIndex`. Select the side
+  // hit by a ray from its retained centre, then the appropriate half when that
+  // side carries a stitched midpoint.
+  const dx = x - x1;
+  const dz = z - z1;
+  if (Math.abs(dx) > Math.abs(dz)) {
+    if (dx < 0) {
+      return west && z < z1
+        ? triangleHeightAt(height, x, z, x1, z1, x0, z0, x0, z1)
+        : west
+          ? triangleHeightAt(height, x, z, x1, z1, x0, z1, x0, z2)
+          : triangleHeightAt(height, x, z, x1, z1, x0, z0, x0, z2);
+    }
+    return east && z > z1
+      ? triangleHeightAt(height, x, z, x1, z1, x2, z2, x2, z1)
+      : east
+        ? triangleHeightAt(height, x, z, x1, z1, x2, z1, x2, z0)
+        : triangleHeightAt(height, x, z, x1, z1, x2, z2, x2, z0);
+  }
+  if (dz > 0) {
+    return north && x < x1
+      ? triangleHeightAt(height, x, z, x1, z1, x0, z2, x1, z2)
+      : north
+        ? triangleHeightAt(height, x, z, x1, z1, x1, z2, x2, z2)
+        : triangleHeightAt(height, x, z, x1, z1, x0, z2, x2, z2);
+  }
+  return south && x > x1
+    ? triangleHeightAt(height, x, z, x1, z1, x2, z0, x1, z0)
+    : south
+      ? triangleHeightAt(height, x, z, x1, z1, x1, z0, x0, z0)
+      : triangleHeightAt(height, x, z, x1, z1, x2, z0, x0, z0);
+}
+
 /**
  * Metres of height error `buildChunkLodIndex` would introduce on this chunk.
  *

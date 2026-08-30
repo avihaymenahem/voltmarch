@@ -122,6 +122,32 @@ import { suppressProgression } from '../progression/suppress';
 import { outcomePolicy, seatIgnored } from '../campaign/policy';
 import { configureHostedAi, enableAiTakeover } from '../sim/ai.system';
 
+interface BattlefieldPlacementCancel {
+  readonly active?: boolean;
+  cancel?(): void;
+}
+
+interface BattlefieldInputCancel {
+  cancel?(): boolean;
+}
+
+/**
+ * Give an active battlefield interaction first refusal on the pause chord.
+ * Shell listens in capture phase, so without this bridge Escape never reaches
+ * placement or input's ordinary bubbling listeners.
+ */
+export function cancelBattlefieldModal(): boolean {
+  const g = globalThis as unknown as {
+    __vmPlacement?: BattlefieldPlacementCancel;
+    __vmInputCommands?: BattlefieldInputCancel;
+  };
+  if (g.__vmPlacement?.active === true && typeof g.__vmPlacement.cancel === 'function') {
+    g.__vmPlacement.cancel();
+    return true;
+  }
+  return g.__vmInputCommands?.cancel?.() === true;
+}
+
 /**
  * The subset of `OperationDef.map` this file needs.
  *
@@ -155,7 +181,13 @@ import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
 import { MissionsScreen } from './Missions';
 import { ProfileScreen } from './Profile';
-import { TutorialDirector, tutorialSetup } from './Tutorial';
+import {
+  TutorialDirector,
+  endTutorialMenuItem,
+  restoreTutorialMenuItem,
+  tutorialMenuHint,
+  tutorialSetup,
+} from './Tutorial';
 import {
   AutosaveScheduler,
   LoadGameScreen,
@@ -171,6 +203,8 @@ import {
 import * as progression from './progression-link';
 import { DesktopUpdatePrompt } from './DesktopUpdatePrompt';
 import { setPlannedArtFactions } from '../art/boot-plan';
+import { loadingFactionTheme } from './loading-theme';
+import { MenuDecisionScreen } from './MenuDecision';
 
 /* ==========================================================================
  * 1. THE STATE MACHINE
@@ -2092,12 +2126,33 @@ export class Shell {
         directive: operationBrief.directive,
         theme: operationTheme,
       };
+      const loadMode = this.operation !== null
+        ? 'Campaign operation'
+        : this.pvp !== null
+          ? 'Multiplayer deployment'
+          : this.replay !== null
+            ? 'Replay reconstruction'
+            : 'Skirmish deployment';
+      const loadBiome: Readonly<Record<typeof map.biome, string>> = {
+        temperate: 'Temperate',
+        desert: 'Arid',
+        snow: 'Polar',
+        urban: 'Urban',
+      };
 
       this.show(
         new LoadingScreen(
           curtain.heading,
           factionByKey(this.setup.playerFaction)?.name ?? '',
           this.settings.get().controls.bindings,
+          {
+            preview: `/maps/previews/${map.id}.webp`,
+            blurb: map.blurb,
+            biome: loadBiome[map.biome],
+            armies: this.setup.opponents.length + 1,
+            mode: loadMode,
+            factionTheme: this.setup.playerFaction,
+          },
           curtain.kicker,
           loadingCommand,
         ),
@@ -2429,6 +2484,60 @@ export class Shell {
    */
   showMenu(): void {
     void this.openMenu(false, true);
+  }
+
+  /** Ask once before closing the native desktop process. */
+  openQuitConfirmation(): void {
+    const desktop = desktopBridge();
+    if (desktop === null) return;
+    const cancel = (): void => this.showMenu();
+    this.show(new MenuDecisionScreen({
+      eyebrow: 'Exit application',
+      title: 'Quit Voltmarch?',
+      body: 'Close the desktop application and return to your operating system?',
+      cancel,
+      actions: [
+        {
+          label: 'Cancel', iconName: 'back', hint: 'Return to command', run: cancel,
+        },
+        {
+          label: 'Quit', iconName: 'power', hint: 'Close application', variant: 'danger',
+          run: () => desktop.quit(),
+        },
+      ],
+    }), 'menu');
+  }
+
+  /** Choose how the stored training record should be handled before launch. */
+  openTutorialConfirmation(): void {
+    const cancel = (): void => this.showMenu();
+    const start = (): void => { void this.startTutorial(); };
+    this.show(new MenuDecisionScreen({
+      eyebrow: 'Command school',
+      title: 'Tutorial Record',
+      body: `Current progress: ${tutorialMenuHint()}. Continue from your record, reset training, or end it.`,
+      cancel,
+      actions: [
+        {
+          label: 'Continue', iconName: 'play', hint: 'Resume training', variant: 'primary',
+          run: start,
+        },
+        {
+          label: 'Reset', iconName: 'refresh', hint: 'Start from lesson one',
+          run: () => {
+            restoreTutorialMenuItem();
+            start();
+          },
+        },
+        {
+          label: 'End', iconName: 'cross', hint: 'Mark training complete', variant: 'danger',
+          run: () => {
+            endTutorialMenuItem();
+            this.showMenu();
+          },
+        },
+      ],
+    }), 'menu');
   }
 
   /** Open the skirmish lobby. */
@@ -2860,6 +2969,12 @@ export class Shell {
      * background work and crossfades in when it is genuinely ready.
      */
     if (!keepBackdrop || this.game === null) {
+      // Attach before changing the class so the listener cannot miss a fast
+      // transition. The live renderer stays underneath the key art until this
+      // resolves; disposing after an arbitrary two frames was the visible cut.
+      const outgoingGameFade = this.game !== null && !firstBoot
+        ? waitForOpacityTransition(this.options.canvas)
+        : null;
       document.documentElement.classList.add('vm-menu-preparing');
       this.show(new MainMenuScreen(this), 'menu');
       this.options.onReady?.();
@@ -2871,6 +2986,7 @@ export class Shell {
       // retained WebGPU device/pipeline cache survives this disposal.
       if (this.game !== null) {
         if (!firstBoot) await nextFrames(2);
+        if (outgoingGameFade !== null) await outgoingGameFade;
         this.disposeGame(this.game);
         this.game = null;
         this.backdrop = false;
@@ -3084,10 +3200,11 @@ export class Shell {
      * TO BE DROPPED HERE.
      *
      * `plannedScenario()` and `plannedTerrainInput()` both cache the first
-     * answer they give, and both are asked long before this line —
-     * `world-warm.system.ts` calls `installWorldWorkers()` at MODULE SCOPE,
-     * which calls `plannedTerrainInput()` during import, while the query still
-     * holds whatever the page was opened with rather than what the lobby chose.
+     * answer they give. The engine modules may already be prefetched and shell
+     * routes can inspect scenario data while the URL still describes the menu
+     * rather than the lobby choice, so neither memo may cross this boundary.
+     * Worker preparation now happens inside `bootstrap()` after these resets;
+     * that fixes its lifetime, but it does not make stale memo state safe.
      *
      * THE BUG THAT WAS, measured on a real match: `MAP_SEAS` is keyed on the
      * map PRESET and reached only through `plannedScenario().sea`, so a stale
@@ -3106,11 +3223,10 @@ export class Shell {
      * `?shot=` fixtures are untouched: they never come through `bootGame`, and
      * they carry their sea on `plan.sea` rather than through `?map=`.
      *
-     * Cost when it changes nothing: none. Cost when it does: the prewarm's
-     * dispatched job stops matching `terrainGenKey`, `prewarmedTerrain()`
-     * resolves `null` by its own documented contract, and the map generates on
-     * the main thread — the slow path, which is the right trade against
-     * generating the wrong map quickly.
+     * Cost when it changes nothing: none. After the reset, bootstrap dispatches
+     * the correctly keyed prewarm for the settled query. A key mismatch still
+     * refuses adoption and falls back to the main thread; generating the right
+     * map slowly remains preferable to generating the wrong map quickly.
      */
     resetScenarioPlan();
     resetTerrainPlan();
@@ -3143,11 +3259,11 @@ export class Shell {
      * still leave the feature disconnected.
      *
      * HERE AND NOT IN THE LOBBY. The count has to be standing before
-     * `bootstrap()` runs, because `world-warm` asks `plannedTerrainInput()` at
-     * MODULE SCOPE to prewarm the generator; and it has to be after the two
-     * resets above, because those are what let the plan be re-derived at all —
-     * the plan is memoised and does not move once read. This is the only line
-     * in the boot where both are true.
+     * `bootstrap()` runs, because its first action is to ask
+     * `plannedTerrainInput()` and prewarm the generator; and it has to be after
+     * the two resets above, because those are what let the plan be re-derived
+     * at all — the plan is memoised and does not move once read. This is the
+     * only line in the boot where both are true.
      *
      * `armyCount(this.setup)` is right for all three launch paths without a
      * branch: the lobby writes `opponents` through `withArmyCount`, PvP seats
@@ -3180,6 +3296,32 @@ export class Shell {
     // Empty is more dangerous than broad: malformed legacy setup should fall
     // back to all packs rather than render hazard boxes.
     setPlannedArtFactions(artFactions.size === 0 ? null : [...artFactions]);
+
+    /*
+     * GRAPH-SHAPING SETTINGS MUST EXIST BEFORE `bootstrap()`.
+     *
+     * Applying these only after `await game.ready` made WebGPU compile the
+     * default post/shadow graph behind the loading curtain, then rebuild and
+     * compile the player's actual graph during the five hidden settle frames.
+     * On the two-army/base probe that second, unreported compile cost about four
+     * seconds. Handle-owned values are still re-applied below once a handle
+     * exists; this pass stages only the renderer configuration they are built
+     * from, so one cold boot produces one graph.
+     */
+    applySettings(settings, null, [
+      'graphics.tier',
+      'graphics.shadows',
+      'graphics.shadowQuality',
+      'graphics.ao',
+      'graphics.bloom',
+      'graphics.smaa',
+      'graphics.msaa',
+      'graphics.filmGrain',
+      'graphics.postFx',
+      'graphics.fov',
+      'graphics.minZoom',
+      'graphics.maxZoom',
+    ]);
 
     const boot: BootOptions = {
       canvas: this.options.canvas,
@@ -3973,6 +4115,7 @@ export class Shell {
     if (!typing && this.state === 'playing' && matchesChord(e, this.settings.get().controls.bindings['sys.menu'])) {
       e.preventDefault();
       e.stopPropagation();
+      if (cancelBattlefieldModal()) return;
       this.pause();
       return;
     }
@@ -4178,6 +4321,14 @@ export class LoadingScreen implements Screen {
     private readonly mapName: string,
     private readonly factionName: string,
     private readonly bindings: StoredBindings,
+    private readonly battlefield: {
+      readonly preview: string;
+      readonly blurb: string;
+      readonly biome: string;
+      readonly armies: number;
+      readonly mode: string;
+      readonly factionTheme: string;
+    },
     /**
      * The kicker above the heading. 'Loading' for a skirmish; the CHAPTER for
      * a campaign operation, so the curtain reads the way the briefing screen
@@ -4198,12 +4349,67 @@ export class LoadingScreen implements Screen {
   ) {}
 
   mount(host: HTMLElement): void {
-    host.classList.add('vm-load');
+    host.classList.add('vm-load', `is-${this.battlefield.factionTheme}`);
+    // Campaign continuity owns the curtain when present; skirmish, multiplayer
+    // and replay loads use the selected battlefield faction directly.
+    const factionTheme = loadingFactionTheme(
+      this.command?.theme ?? this.battlefield.factionTheme,
+    );
+    if (factionTheme !== null) {
+      host.style.setProperty('--vm-load-rgb', factionTheme.rgb);
+      host.style.setProperty('--vm-load-accent', factionTheme.accent);
+    }
     this.root = host;
 
+    const backdrop = document.createElement('img');
+    backdrop.className = 'vm-load-backdrop';
+    backdrop.src = this.battlefield.preview;
+    backdrop.alt = '';
+    backdrop.decoding = 'async';
+    backdrop.loading = 'eager';
+    backdrop.setAttribute('aria-hidden', 'true');
+    host.appendChild(backdrop);
+    host.appendChild(el('div', 'vm-load-atmosphere'));
+    host.appendChild(el('div', 'vm-load-grid'));
+
     const inner = el('div', 'vm-load-inner');
-    inner.appendChild(el('p', 'vm-subtitle', this.kicker));
-    inner.appendChild(el('h1', 'vm-h2', this.mapName));
+    const masthead = el('header', 'vm-load-masthead');
+    const brand = el('div', 'vm-load-brand');
+    const mark = document.createElement('img');
+    mark.className = 'vm-load-mark';
+    mark.src = '/brand/mark-64.png';
+    mark.alt = '';
+    mark.width = 32;
+    mark.height = 32;
+    brand.appendChild(mark);
+    const brandCopy = el('div', 'vm-load-brand-copy');
+    brandCopy.appendChild(el('strong', undefined, 'VOLTMARCH'));
+    brandCopy.appendChild(el('span', undefined, 'Theatre deployment network'));
+    brand.appendChild(brandCopy);
+    masthead.appendChild(brand);
+    masthead.appendChild(el('span', 'vm-load-mode', this.battlefield.mode));
+    inner.appendChild(masthead);
+
+    const briefing = el('main', 'vm-load-briefing');
+    const copy = el('section', 'vm-load-copy');
+    copy.appendChild(el('p', 'vm-load-kicker', `${this.battlefield.mode} // ${this.kicker}`));
+    copy.appendChild(el('h1', 'vm-load-title', this.mapName));
+    copy.appendChild(el('p', 'vm-load-blurb', this.battlefield.blurb));
+
+    const meta = el('div', 'vm-load-meta');
+    const metaChip = (key: string, value: string, withFlag = false): HTMLElement => {
+      const chip = el('div', 'vm-load-chip');
+      if (withFlag) chip.appendChild(icon('flag', 14));
+      const chipCopy = el('div');
+      chipCopy.appendChild(el('span', 'vm-load-chip-key', key));
+      chipCopy.appendChild(el('strong', 'vm-load-chip-value', value));
+      chip.appendChild(chipCopy);
+      return chip;
+    };
+    if (this.factionName !== '') meta.appendChild(metaChip('Command', this.factionName, true));
+    meta.appendChild(metaChip('Terrain', this.battlefield.biome));
+    meta.appendChild(metaChip('Combatants', `${this.battlefield.armies} armies`));
+    copy.appendChild(meta);
 
     if (this.command !== null) {
       host.classList.add('vm-load-campaign', `is-${this.command.theme}`);
@@ -4223,24 +4429,30 @@ export class LoadingScreen implements Screen {
       copy.appendChild(identity);
       copy.appendChild(el('p', 'vm-load-command-directive', this.command.directive));
       card.appendChild(copy);
-      inner.appendChild(card);
+      const commandSlot = el('div', 'vm-load-command-slot');
+      commandSlot.appendChild(card);
+      briefing.appendChild(commandSlot);
     }
+    briefing.prepend(copy);
+    inner.appendChild(briefing);
 
-    const meta = el('div', 'vm-load-meta');
-    if (this.factionName !== '') {
-      const chip = el('div', 'vm-chip');
-      chip.appendChild(icon('flag', 14));
-      chip.appendChild(el('span', undefined, this.factionName));
-      meta.appendChild(chip);
-    }
-    inner.appendChild(meta);
+    const footer = el('footer', 'vm-load-footer');
+    const sequence = el('div', 'vm-load-sequence');
+    const sequenceHead = el('div', 'vm-load-sequence-head');
+    sequenceHead.appendChild(el('span', undefined, 'Deployment sequence'));
+    sequenceHead.appendChild(el('strong', 'vm-load-status', 'Initialising'));
+    sequence.appendChild(sequenceHead);
+    sequence.appendChild(el('div', 'vm-load-bar'));
+    footer.appendChild(sequence);
 
-    inner.appendChild(el('div', 'vm-load-bar'));
-    inner.appendChild(el('div', 'vm-load-status', 'Initialising'));
     const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
-    inner.appendChild(
-      el('p', 'vm-load-tip', resolveTip(tip, this.bindings, isApplePlatform(), codeLabel)),
-    );
+    const intel = el('aside', 'vm-load-intel');
+    intel.appendChild(el('span', 'vm-load-intel-label', 'Field intelligence'));
+    intel.appendChild(el(
+      'p', 'vm-load-tip', resolveTip(tip, this.bindings, isApplePlatform(), codeLabel),
+    ));
+    footer.appendChild(intel);
+    inner.appendChild(footer);
 
     host.appendChild(inner);
   }
@@ -4248,8 +4460,11 @@ export class LoadingScreen implements Screen {
   unmount(): void {
     this.root?.classList.remove('vm-load');
     this.root?.classList.remove(
-      'vm-load-campaign', 'is-allies', 'is-pact', 'is-reclamation', 'is-soviets',
+      'vm-load-campaign', 'is-allies', 'is-meridian', 'is-pact', 'is-reclaim',
+      'is-reclamation', 'is-soviets',
     );
+    this.root?.style.removeProperty('--vm-load-rgb');
+    this.root?.style.removeProperty('--vm-load-accent');
     this.root = null;
   }
 }
@@ -4314,6 +4529,37 @@ export function nextFrames(n: number, maxWaitMs = 250): Promise<void> {
     };
     const deadline = window.setTimeout(finish, Math.max(0, maxWaitMs));
     frame = requestAnimationFrame(step);
+  });
+}
+
+/**
+ * Wait for the title canvas' opacity handoff without making an animation a
+ * correctness dependency. Reduced-motion resolves immediately, and a deadline
+ * covers a hidden/throttled Electron window where `transitionend` may not fire.
+ */
+export function waitForOpacityTransition(
+  element: HTMLElement,
+  maxWaitMs = 900,
+): Promise<void> {
+  const reducedMotion = document.documentElement.classList.contains('vm-reduced-motion')
+    || (typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (reducedMotion) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(deadline);
+      element.removeEventListener('transitionend', onEnd);
+      resolve();
+    };
+    const onEnd = (event: TransitionEvent): void => {
+      if (event.target === element && event.propertyName === 'opacity') finish();
+    };
+    const deadline = window.setTimeout(finish, Math.max(0, maxWaitMs));
+    element.addEventListener('transitionend', onEnd);
   });
 }
 

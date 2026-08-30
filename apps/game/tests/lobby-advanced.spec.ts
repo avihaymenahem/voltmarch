@@ -136,6 +136,18 @@ class StubElement {
     return child;
   }
 
+  querySelector<T>(selector: string): T | null {
+    if (!selector.startsWith('.')) return null;
+    const className = selector.slice(1);
+    const pending = [...this.childNodes];
+    while (pending.length > 0) {
+      const candidate = pending.shift()!;
+      if (candidate.classList.contains(className)) return candidate as unknown as T;
+      pending.push(...candidate.childNodes);
+    }
+    return null;
+  }
+
   setAttribute(name: string, value: string): void {
     if (name === 'class') { this.classList.value = value; return; }
     this.attrs.set(name, value);
@@ -186,7 +198,7 @@ g.document = stubDocument;
 import { SkirmishSetupScreen } from '../src/shell/SkirmishSetup';
 import { MultiplayerSetup } from '../src/shell/MultiplayerSetup';
 import { PROTOCOL_VERSION } from '../src/net/protocol';
-import { defaultSetup, type MatchSetup } from '../src/shell/settings-store';
+import { defaultSetup, withArmyCount, type MatchSetup } from '../src/shell/settings-store';
 import { UnlockGate, setUnlockGate } from '../src/progression/UnlockGate';
 import type { Shell } from '../src/shell/Shell';
 
@@ -355,6 +367,38 @@ describe('the lobby', () => {
       // assertions below would start passing by absence.
       expect(labels, `${name} is not on the lobby at all`).toContain(name);
     }
+  });
+});
+
+describe('map capacity transitions', () => {
+  const roster = ['allies', 'soviets', 'meridian', 'reclaim'];
+
+  function mapItem(host: StubElement, name: string): StubElement {
+    const item = all(host, 'vm-mapitem').find((candidate) => candidate.textContent.includes(name));
+    expect(item, `${name} is not in the battlefield list`).toBeDefined();
+    return item!;
+  }
+
+  it('restores the Sides control after a 2P map is changed back to a 4P map', () => {
+    setUnlockGate(new UnlockGate(() => ['map.frozen-sector']));
+    const setup = withArmyCount(defaultSetup(), 4, roster);
+    const host = mountLobby(setup);
+    expect(rowLabels(host)).toContain('Sides');
+
+    mapItem(host, 'Frozen Sector').click();
+    expect(rowLabels(host), 'the 2P map kept a control with only one answer').not.toContain('Sides');
+
+    mapItem(host, 'Temperate Valley').click();
+    expect(rowLabels(host), 'the 4P map did not restore its army-count control').toContain('Sides');
+  });
+
+  it('removes the Sides control on a 2P map even when the setup already has two armies', () => {
+    setUnlockGate(new UnlockGate(() => ['map.frozen-sector']));
+    const host = mountLobby(defaultSetup());
+    expect(rowLabels(host)).toContain('Sides');
+
+    mapItem(host, 'Frozen Sector').click();
+    expect(rowLabels(host)).not.toContain('Sides');
   });
 });
 

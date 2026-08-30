@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-30",
+  "asset": "allied_harvester",
+  "source": "chrono-miner.glb",
+  "output": "chrono-miner.meshopt.glb",
+  "encoder": "glTF-Transform 4.4.2 / meshoptimizer 1.x",
+  "command": "gltf-transform meshopt <input> <output> --level high",
+  "sourceBytes": 4106272,
+  "outputBytes": 2561984,
+  "transferRatio": 0.6239,
+  "savedPercent": 37.6,
+  "sourceSha256": "cb82c50ec3586d132ba2cf4082c53ca92bd01c9ee84186182cad9a4fbd6e5703",
+  "outputSha256": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+  "extensionsRequired": [
+    "EXT_meshopt_compression",
+    "KHR_mesh_quantization",
+    "KHR_texture_basisu"
+  ],
+  "decodeBenchmark": {
+    "runtime": "Node 24.19.0, Three bundled meshoptimizer 1.1 decoder",
+    "wasmSimdSupported": true,
+    "wasmInitMs": 0.315,
+    "firstDecodeMs": 1.904,
+    "hotDecodeMedianMs": 0.849,
+    "hotDecodeP95Ms": 0.966,
+    "samples": 100,
+    "meshoptStreams": 5,
+    "compressedGeometryBytes": 467319,
+    "decodedGeometryBytes": 1013070,
+    "scope": "CPU decoder microbenchmark; excludes filesystem/network transfer, KTX2 transcode, GLTF scene creation and GPU upload"
+  },
+  "notes": "One-asset runtime POC. The KTX2 source remains beside it as the byte and appearance control until family rollout is accepted."
+}

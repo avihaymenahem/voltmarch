@@ -131,7 +131,7 @@ import {
 } from '../core/types';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
-import { entityWorld } from '../render/RenderBridge';
+import { entityVisualWorld } from '../render/RenderBridge';
 // The self-repair predicate, imported rather than restated. `src/sim/Regen.ts`
 // is pure arithmetic over the store — no THREE, no DOM, no sim plumbing — and
 // the alternative is a second copy of the rule in the layer that DRAWS it,
@@ -604,7 +604,7 @@ export class Overlay {
   /** Wall-clock seconds; drives the ring pulse and the marker animation. */
   private time = 0;
 
-  /** entityWorld() output: [x,y,z,yaw,turretYaw,barrelPitch]. */
+  /** entityVisualWorld() output: [x,y,z,yaw,turretYaw,barrelPitch]. */
   private readonly xform = new Float32Array(6);
   private readonly v3 = new THREE.Vector3();
   private readonly v3b = new THREE.Vector3();
@@ -877,7 +877,29 @@ export class Overlay {
     this.drawBuildArea();
     this.drawGarrisonHints(dt);
 
+    /*
+     * Selection rings are deliberately NOT painted in this clipped pass.
+     * The perimeter HUD only occupies docks at the bottom corners, but
+     * `playfield()` models their shared band as one full-width rectangle for
+     * camera/minimap work. A unit standing in the exposed centre of that band
+     * therefore had the lower arc of its ring cut off at `dockTop`. The ring
+     * gets its own full-canvas pass below, after the clipped ground wash and
+     * garrison hints but before every foreground world annotation.
+     */
+    ctx.restore();
+
+    ctx.save();
+    ctx.scale(this.dpr, this.dpr);
     if (this.selectionRings) this.drawSelectionRings();
+    ctx.restore();
+
+    // Resume the world-annotation clip for flags, bars and floaters. Those
+    // readings should still stop before the real bottom docks.
+    ctx.save();
+    ctx.scale(this.dpr, this.dpr);
+    ctx.beginPath();
+    ctx.rect(pf.x, pf.y, pf.w, pf.h);
+    ctx.clip();
     // Under the order markers: a fresh SetRally pulse has to land ON the flag it
     // just planted, which is the whole acknowledgement.
     if (this.rallyFlags) this.drawRallyFlags();
@@ -886,8 +908,20 @@ export class Overlay {
     this.drawBars();
     this.drawFloaters(dt);
     this.drawPlacementHint();
-    this.drawMarquee();
+    ctx.restore();
 
+    /*
+     * The marquee is CLIENT-SPACE input feedback, not a world annotation.
+     * `playfield()` deliberately models the bottom docks as one full-width
+     * band for camera/minimap work, even though the centre between those docks
+     * remains exposed battlefield. Drawing the marquee inside that clip made
+     * its lower edge stop at `dockTop` while selection continued hit-testing
+     * the real pointer rectangle below it. Paint it against the full overlay
+     * canvas so the box and the gesture always describe the same pixels.
+     */
+    ctx.save();
+    ctx.scale(this.dpr, this.dpr);
+    this.drawMarquee();
     ctx.restore();
   }
 
@@ -1097,9 +1131,15 @@ export class Overlay {
       ? Math.max(2.4, store.footprintW[idx] * 2.4)
       : Math.max(1.1, store.radius[idx] * 1.35)) * k;
 
-    const cx = store.posX[idx];
-    const cy = store.posY[idx] + 0.06;
-    const cz = store.posZ[idx];
+    // Imported ships may articulate around a turret/ramp pivot well away from
+    // the middle of their hull. Use the exact interpolated hull centre the
+    // renderer derived from fitted geometry; raw sim position remains the
+    // fallback before the bridge has rendered its first frame.
+    const handle = store.handleOf(idx);
+    const rendered = entityVisualWorld(handle, this.xform);
+    const cx = rendered ? this.xform[0] : store.posX[idx];
+    const cy = (rendered ? this.xform[1] : store.posY[idx]) + 0.06;
+    const cz = rendered ? this.xform[2] : store.posZ[idx];
 
     const base = slot * RING_POINTS;
     for (let s = 0; s < RING_POINTS; s++) {
@@ -1721,7 +1761,7 @@ export class Overlay {
     let wy: number;
     let wz: number;
     const handle = store.handleOf(e);
-    if (entityWorld(handle, this.xform)) {
+    if (entityVisualWorld(handle, this.xform)) {
       wx = this.xform[0]; wy = this.xform[1]; wz = this.xform[2];
     } else {
       wx = store.posX[e]; wy = store.posY[e]; wz = store.posZ[e];

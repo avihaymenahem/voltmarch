@@ -76,12 +76,12 @@
  * `wheel` event arriving with the shape the browser is documented to send; a
  * held key does not. It is the floor under all of this.
  *
- * Drag-pan now has three bindings, all of which reach the same world-grab:
- * MIDDLE-drag, SPACE+left-drag, and RIGHT-drag past a threshold. The threshold
- * is what keeps right-drag from eating orders: a right-click that never moves
- * is still an order, and only once the pointer has travelled
- * `dragPanThresholdPx` does the gesture become a pan (see `commitRightDrag`
- * for how the order layer is told to let go).
+ * Drag-pan has two match bindings, both of which reach the same world-grab:
+ * MIDDLE-drag and SPACE+left-drag. The standalone/full camera mode also keeps
+ * the legacy RIGHT-drag-past-a-threshold binding, but match `navigation` mode
+ * does not arm it: the right button belongs exclusively to contextual orders
+ * there. Sharing it made harmless click jitter — especially from desktop
+ * pointer confinement — steal an order and move the camera.
  *
  * Panning carries a little inertia and settles rather than stopping dead. The
  * momentum lives in `update()` and is fed by an accumulator inside `panBy`, so
@@ -96,8 +96,8 @@
  *
  * `detachInput()` therefore now defaults to `{ keepNavigation: true }`: it
  * hands back the keyboard and the order buttons and KEEPS the pure navigation
- * surfaces — wheel, pinch, middle-drag, space-drag, right-drag-past-threshold,
- * edge pan. Without that, every gesture above would be dead in the only place
+ * surfaces — wheel, pinch, middle-drag, space-drag and edge pan. Without that,
+ * every gesture above would be dead in the only place
  * that matters, which is during a game. Pass `{ keepNavigation: false }` for
  * the old all-or-nothing behaviour; `dispose()` does.
  *
@@ -133,6 +133,11 @@ export type GroundHeightFn = (x: number, z: number) => number;
 
 /** How the rig is currently listening. */
 export type CameraInputMode = 'full' | 'navigation' | 'none';
+
+/** A live match reserves the right button for contextual orders. */
+export function cameraMayArmRightDrag(mode: CameraInputMode, enabled: boolean): boolean {
+  return mode === 'full' && enabled;
+}
 
 export interface CreateCameraOptions {
   /** Element that receives pointer/wheel listeners. Usually the canvas. */
@@ -367,7 +372,7 @@ export interface NavigationOptions {
   momentum: boolean;
   /** Exponential decay of the coast, per second. */
   momentumDamping: number;
-  /** Pixels a right-drag must travel before it stops being an order. */
+  /** Pixels a right-drag must travel in standalone/full camera-control mode. */
   dragPanThresholdPx: number;
   /** How fast keyboard pan ramps to full speed, per second. */
   keyAccelRate: number;
@@ -1691,9 +1696,10 @@ export class CameraRig {
       return;
     }
 
-    if (e.button === MOUSE_RIGHT && nav.enableRightDrag) {
+    if (e.button === MOUSE_RIGHT && cameraMayArmRightDrag(this.inputMode, nav.enableRightDrag)) {
       // Deliberately NOT consumed. A right-click that never moves has to reach
-      // the order layer; only crossing `dragPanThresholdPx` makes it ours.
+      // the order layer; only standalone/full camera-control mode may promote
+      // it past `dragPanThresholdPx`. Match navigation mode never enters here.
       this.pendingRight = true;
       this.pendingRightId = e.pointerId;
       this.pendingRightX = e.clientX;
@@ -1744,8 +1750,7 @@ export class CameraRig {
 
   private onContextMenu = (e: MouseEvent): void => {
     if (!this.ownsEvent(e)) return;
-    // Right-click is an in-game order and right-drag is a pan; neither wants
-    // the browser menu.
+    // Right-click is an in-game order and never wants the browser menu.
     e.preventDefault();
   };
 
@@ -1798,8 +1803,10 @@ export class CameraRig {
     }
     if (mode === 'navigation') {
       // Order keys are no longer ours; drop any that are still held or they
-      // would pan forever.
+      // would pan forever. Also end a full-mode right gesture before handing
+      // that button exclusively to the match order layer.
       this.keys.clear();
+      if (this.pendingRight || this.dragKind === DRAG_RIGHT) this.abortDrag();
     }
     this.addListeners();
   }

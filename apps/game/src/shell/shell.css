@@ -1585,38 +1585,230 @@
  * ========================================================================== */
 
 .vm-shell .vm-load {
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(ellipse 120% 90% at 50% 45%,
-    #0b1119 0%, #060a0f 55%, #03050a 100%);
+  --vm-load-rgb: 53, 200, 240;
+  --vm-load-accent: #72daf7;
+  position: absolute;
+  inset: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+  isolation: isolate;
+  background: #03070d;
+  color: #eaf3fa;
+}
+
+.vm-shell .vm-load.is-soviets {
+  --vm-load-rgb: 218, 61, 72;
+  --vm-load-accent: #f07882;
+}
+
+.vm-shell .vm-load.is-meridian,
+.vm-shell .vm-load.is-pact {
+  --vm-load-rgb: 18, 181, 143;
+  --vm-load-accent: #12b58f;
+}
+
+.vm-shell .vm-load.is-reclaim,
+.vm-shell .vm-load.is-reclamation {
+  --vm-load-rgb: 185, 63, 224;
+  --vm-load-accent: #b93fe0;
+}
+
+.vm-shell .vm-load-backdrop {
+  position: absolute;
+  z-index: -4;
+  inset: -3%;
+  width: 106%;
+  height: 106%;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(0.78) contrast(1.1) brightness(0.57);
+  transform: scale(1.015);
+  animation: vm-load-drift 20s ease-out both;
+}
+
+@keyframes vm-load-drift {
+  from { transform: scale(1.015) translate3d(0, 0, 0); }
+  to { transform: scale(1.075) translate3d(-0.5%, -0.4%, 0); }
+}
+
+.vm-shell .vm-load-atmosphere {
+  position: absolute;
+  z-index: -3;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(2, 7, 13, 0.97) 0%, rgba(3, 9, 16, 0.88) 36%, rgba(3, 8, 14, 0.32) 72%, rgba(2, 6, 11, 0.68) 100%),
+    linear-gradient(0deg, rgba(2, 6, 11, 0.96) 0%, transparent 40%, rgba(2, 7, 13, 0.48) 100%),
+    radial-gradient(circle at 74% 42%, rgba(var(--vm-load-rgb), 0.12), transparent 37%);
+}
+
+.vm-shell .vm-load-grid {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  opacity: 0.23;
+  background-image:
+    linear-gradient(rgba(var(--vm-load-rgb), 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--vm-load-rgb), 0.12) 1px, transparent 1px);
+  background-size: 84px 84px;
+  mask-image: linear-gradient(90deg, #000, transparent 72%);
 }
 
 .vm-shell .vm-load-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  min-height: 100%;
+  padding: clamp(28px, 4.4vw, 74px) clamp(30px, 6.5vw, 112px) clamp(28px, 4vw, 64px);
+}
+
+.vm-shell .vm-load-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(var(--vm-load-rgb), 0.27);
+}
+
+.vm-shell .vm-load-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.vm-shell .vm-load-mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(var(--vm-load-rgb), 0.42));
+}
+
+.vm-shell .vm-load-brand-copy {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-load-brand-copy strong {
+  color: var(--vm-load-accent);
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  letter-spacing: 0.2em;
+}
+
+.vm-shell .vm-load-brand-copy span,
+.vm-shell .vm-load-mode {
+  color: rgba(211, 226, 238, 0.62);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-load-mode {
+  padding: 6px 9px;
+  border: 1px solid rgba(var(--vm-load-rgb), 0.28);
+  background: rgba(3, 9, 16, 0.58);
+  color: var(--vm-load-accent);
+}
+
+.vm-shell .vm-load-briefing {
+  align-self: center;
+  display: grid;
+  grid-template-columns: minmax(0, 720px) minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 90px);
+  padding-block: clamp(34px, 7vh, 92px);
+}
+
+.vm-shell .vm-load-copy {
+  min-width: 0;
+}
+
+.vm-shell .vm-load-kicker {
+  margin: 0 0 12px;
+  color: var(--vm-load-accent);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-load-title {
+  max-width: 12ch;
+  margin: 0;
+  color: #f2f7fb;
+  font-size: clamp(42px, 5.8vw, 92px);
+  font-weight: 700;
+  line-height: 0.94;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  text-shadow: 0 7px 28px rgba(0, 0, 0, 0.7);
+}
+
+.vm-shell .vm-load-blurb {
+  max-width: 54ch;
+  margin: 20px 0 0;
+  color: rgba(220, 231, 240, 0.78);
+  font-size: calc(15px * var(--vm-text-scale, 1));
+  line-height: 1.55;
+  letter-spacing: 0.025em;
+}
+
+.vm-shell .vm-load-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 28px;
+}
+
+.vm-shell .vm-load-chip {
+  display: flex;
   align-items: center;
-  gap: 22px;
-  width: min(620px, 86vw);
+  min-width: 132px;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid rgba(var(--vm-load-rgb), 0.28);
+  background: linear-gradient(110deg, rgba(var(--vm-load-rgb), 0.11), rgba(2, 8, 14, 0.72));
+  box-shadow: inset 2px 0 0 rgba(var(--vm-load-rgb), 0.52);
 }
 
-.vm-shell .vm-load-campaign {
-  --vm-load-camp-rgb: 213, 64, 82;
-  --vm-load-camp-accent: #eb7c88;
+.vm-shell .vm-load-chip > svg {
+  flex: 0 0 auto;
+  color: var(--vm-load-accent);
 }
 
-.vm-shell .vm-load-campaign.is-allies {
-  --vm-load-camp-rgb: 53, 200, 240;
-  --vm-load-camp-accent: #72daf7;
+.vm-shell .vm-load-chip > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.vm-shell .vm-load-campaign.is-pact {
-  --vm-load-camp-rgb: 151, 91, 222;
-  --vm-load-camp-accent: #bf93ed;
+.vm-shell .vm-load-chip-key {
+  color: rgba(191, 208, 221, 0.54);
+  font-size: calc(7px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
 }
 
-.vm-shell .vm-load-campaign.is-reclamation {
-  --vm-load-camp-rgb: 205, 148, 51;
-  --vm-load-camp-accent: #e3b566;
+.vm-shell .vm-load-chip-value {
+  overflow: hidden;
+  color: #dce9f2;
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-load-command-slot {
+  align-self: end;
+  min-width: 0;
 }
 
 .vm-shell .vm-load-command {
@@ -1625,11 +1817,11 @@
   width: 100%;
   min-height: 108px;
   overflow: hidden;
-  border: 1px solid rgba(var(--vm-load-camp-rgb), 0.42);
+  border: 1px solid rgba(var(--vm-load-rgb), 0.42);
   background:
-    linear-gradient(100deg, rgba(var(--vm-load-camp-rgb), 0.13), transparent 56%),
-    rgba(4, 8, 16, 0.9);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+    linear-gradient(100deg, rgba(var(--vm-load-rgb), 0.15), transparent 56%),
+    rgba(3, 8, 15, 0.86);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
 }
 
 .vm-shell .vm-load-command-portrait {
@@ -1638,7 +1830,7 @@
   min-height: 108px;
   object-fit: cover;
   object-position: 50% 24%;
-  border-right: 1px solid rgba(var(--vm-load-camp-rgb), 0.38);
+  border-right: 1px solid rgba(var(--vm-load-rgb), 0.38);
   filter: saturate(0.84) contrast(1.06);
 }
 
@@ -1651,7 +1843,7 @@
 }
 
 .vm-shell .vm-load-command-kicker {
-  color: var(--vm-load-camp-accent);
+  color: var(--vm-load-accent);
   font-size: calc(8px * var(--vm-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -1691,11 +1883,38 @@
   line-height: 1.4;
 }
 
+.vm-shell .vm-load-footer {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.15fr) minmax(260px, 0.85fr);
+  gap: clamp(28px, 5vw, 76px);
+  align-items: end;
+  padding-top: 20px;
+  border-top: 1px solid rgba(var(--vm-load-rgb), 0.2);
+}
+
+.vm-shell .vm-load-sequence {
+  min-width: 0;
+}
+
+.vm-shell .vm-load-sequence-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+  color: rgba(193, 210, 223, 0.52);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
 .vm-shell .vm-load-bar {
   position: relative;
   width: 100%;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 4px;
+  border: 1px solid rgba(var(--vm-load-rgb), 0.18);
+  background: rgba(0, 0, 0, 0.34);
   overflow: hidden;
 }
 
@@ -1705,9 +1924,10 @@
   left: -34%;
   top: 0;
   bottom: 0;
-  width: 34%;
-  background: linear-gradient(90deg, transparent, var(--vm-accent), transparent);
-  animation: vm-crawl 1.5s cubic-bezier(0.62, 0.06, 0.35, 0.96) infinite;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, var(--vm-load-accent) 46%, rgba(255, 255, 255, 0.92) 50%, var(--vm-load-accent) 54%, transparent);
+  box-shadow: 0 0 16px rgba(var(--vm-load-rgb), 0.5);
+  animation: vm-crawl 1.55s cubic-bezier(0.62, 0.06, 0.35, 0.96) infinite;
 }
 
 @keyframes vm-crawl {
@@ -1716,28 +1936,99 @@
 }
 
 .vm-shell .vm-load-status {
-  font-size: calc(12px * var(--vm-text-scale, 1));
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
+  color: var(--vm-load-accent);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--vm-text-faint);
-  min-height: 1.2em;
+}
+
+.vm-shell .vm-load-intel {
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 2px solid rgba(var(--vm-load-rgb), 0.52);
+}
+
+.vm-shell .vm-load-intel-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--vm-load-accent);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
 .vm-shell .vm-load-tip {
-  max-width: 46em;
-  text-align: center;
-  font-size: calc(13px * var(--vm-text-scale, 1));
-  letter-spacing: 0.04em;
-  line-height: 1.6;
-  color: var(--vm-text-dim);
+  max-width: 52ch;
+  margin: 0;
+  color: rgba(211, 224, 234, 0.7);
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  letter-spacing: 0.025em;
+  line-height: 1.5;
 }
 
-.vm-shell .vm-load-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
+html.vm-reduced-motion .vm-shell .vm-load-backdrop {
+  animation: none;
+}
+
+html.vm-reduced-motion .vm-shell .vm-load-bar::after {
+  animation-duration: 3s;
+}
+
+@media (max-width: 900px) {
+  .vm-shell .vm-load-inner {
+    padding-inline: clamp(22px, 5vw, 44px);
+  }
+
+  .vm-shell .vm-load-briefing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .vm-shell .vm-load-title {
+    font-size: clamp(40px, 9vw, 70px);
+  }
+
+  .vm-shell .vm-load-command-slot {
+    max-width: 680px;
+  }
+
+  .vm-shell .vm-load-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  .vm-shell .vm-load-inner {
+    padding: 20px;
+  }
+
+  .vm-shell .vm-load-brand-copy span,
+  .vm-shell .vm-load-mode {
+    display: none;
+  }
+
+  .vm-shell .vm-load-briefing {
+    padding-block: 30px;
+  }
+
+  .vm-shell .vm-load-blurb {
+    font-size: calc(13px * var(--vm-text-scale, 1));
+  }
+
+  .vm-shell .vm-load-chip {
+    min-width: 0;
+    flex: 1 1 120px;
+  }
+
+  .vm-shell .vm-load-command {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .vm-shell .vm-load-command-portrait {
+    width: 70px;
+  }
 }
 
 /* ==========================================================================
@@ -3723,7 +4014,11 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   align-items: baseline;
   justify-content: space-between;
   gap: 18px;
-  margin: 0 18px 18px;
+  /* The body owns scrolling and therefore has no padding of its own. Keep the
+   * lead copy on the same 18px inset as the cards on every edge, including the
+   * header divider: a zero top margin made this first line look jammed into the
+   * title bar while the rest of the campaign board breathed normally. */
+  margin: 18px;
   color: var(--vm-text-dim);
   font-size: calc(13px * var(--vm-text-scale, 1));
   line-height: 1.55;
@@ -3853,6 +4148,34 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 .vm-shell .vm-card.vm-camp-card > :not(.vm-camp-card-portrait) {
   position: relative;
   z-index: 1;
+}
+
+.vm-shell .vm-camp-card-heading {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 3px;
+  min-width: 0;
+}
+
+/* The generic faction-card stripe is absolutely positioned in the corner.
+ * Campaign cards use it as a real heading rule instead: it spans the title and
+ * command rows, so the text sits beside the rule rather than underneath it. */
+.vm-shell .vm-camp-card-heading > .vm-card-stripe {
+  position: static;
+  grid-row: 1 / -1;
+  align-self: stretch;
+  width: 3px;
+  height: auto;
+  min-height: 34px;
+}
+
+.vm-shell .vm-camp-card-heading > .vm-card-name,
+.vm-shell .vm-camp-card-heading > .vm-camp-card-command {
+  grid-column: 2;
+  min-width: 0;
 }
 
 .vm-shell .vm-camp-card-portrait {
@@ -5953,6 +6276,48 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   color: #788a9f;
 }
 
+/* Long settings guidance is retained without making every row several lines tall. */
+.vm-shell .vm-settings-panel .vm-row-details {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--vm-accent-dim);
+  font: inherit;
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.vm-shell .vm-settings-panel .vm-row-details::after {
+  content: '›';
+  display: inline-block;
+  font-size: 15px;
+  line-height: 0.8;
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.vm-shell .vm-settings-panel .vm-row-details[aria-expanded='true']::after {
+  transform: rotate(90deg);
+}
+
+.vm-shell .vm-settings-panel .vm-row-details:hover,
+.vm-shell .vm-settings-panel .vm-row-details:focus-visible,
+.vm-shell .vm-settings-panel .vm-row-details.is-focus {
+  color: var(--vm-accent);
+  outline: none;
+  text-shadow: 0 0 12px rgba(var(--vm-accent-rgb), 0.42);
+}
+
+.vm-shell .vm-settings-panel .vm-row.has-collapsible-note.is-details-open {
+  align-items: start;
+}
+
 .vm-shell .vm-chooser-value,
 .vm-shell .vm-bind {
   background:
@@ -7828,7 +8193,23 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   right: 24px;
   bottom: 14px;
   width: auto;
+  align-items: center;
   color: rgba(202, 216, 231, 0.42);
+}
+
+/* The title footer deliberately reuses the loading screen's metadata markup,
+   but it is a one-line status rail, not a content block.  `.vm-load-meta`
+   carries a 28px content-section margin and wrapping by default; leaving those
+   active drops the faction/map chips below the build label and makes the rail
+   appear several times taller than it is. */
+.vm-shell .vm-menu-foot > .vm-load-meta {
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-top: 0;
+}
+
+.vm-shell .vm-menu-foot > span {
+  white-space: nowrap;
 }
 
 .vm-shell .vm-menu-foot .vm-chip {
@@ -8323,6 +8704,77 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
     rgba(4, 10, 19, 0.96);
 }
 
+/* TITLE-SCREEN DECISIONS — one compact, keyboard-owned gate before an action
+   can discard progress or close the desktop process. */
+.vm-shell .vm-menu-decision {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.vm-shell .vm-menu-decision-panel {
+  width: min(560px, calc(100vw - 32px));
+  border-left: 3px solid var(--vm-accent);
+  background:
+    linear-gradient(140deg, rgba(var(--vm-accent-rgb), 0.12), transparent 42%),
+    rgba(2, 7, 14, 0.98);
+  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.78);
+}
+
+.vm-shell .vm-menu-decision-head {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid rgba(var(--vm-accent-rgb), 0.24);
+  background: linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.12), transparent 72%);
+}
+
+.vm-shell .vm-menu-decision-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--vm-accent);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-menu-decision-title {
+  margin: 0;
+  color: var(--vm-text);
+  font-family: var(--vm-display);
+  font-size: calc(24px * var(--vm-text-scale, 1));
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-menu-decision-body {
+  margin: 0;
+  padding: 20px 24px;
+  color: var(--vm-text-dim);
+  font-size: calc(13px * var(--vm-text-scale, 1));
+  line-height: 1.55;
+}
+
+.vm-shell .vm-menu-decision-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  padding: 0 24px 24px;
+}
+
+.vm-shell .vm-menu-decision-actions .vm-btn {
+  min-width: 0;
+  justify-content: center;
+}
+
+.vm-shell .vm-menu-decision-actions .vm-btn-label {
+  flex: 0 1 auto;
+}
+
+.vm-shell .vm-menu-decision-actions .vm-btn-hint {
+  display: none;
+}
+
 /* Focused modal pages sit inside a tighter isolated scrim. */
 .vm-shell .vm-screen.is-modal:not(.vm-profile-page) > .vm-page-panel:not(.vm-settings-panel):not(.vm-operation-panel) {
   width: min(760px, calc(100vw - 36px));
@@ -8408,6 +8860,16 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   .vm-shell .vm-profile-offline-plate {
     border-right: 0;
     border-bottom: 1px solid rgba(175, 211, 236, 0.22);
+  }
+}
+
+@media (max-width: 560px) {
+  .vm-shell .vm-menu-decision {
+    padding: 12px;
+  }
+
+  .vm-shell .vm-menu-decision-actions {
+    grid-template-columns: 1fr;
   }
 }
 

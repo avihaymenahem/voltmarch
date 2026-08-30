@@ -58,10 +58,20 @@
  * from its ping-pong chain. The node graph has to state them explicitly.
  */
 
-import { HalfFloatType, RGBAFormat, RenderPipeline, UnsignedByteType, Vector2 } from 'three/webgpu';
-import type { Camera, DepthTexture, Node, PerspectiveCamera, Renderer, Scene, TextureNode } from 'three/webgpu';
-import { depthPass, pass, rtt, vec4 } from 'three/tsl';
+import {
+  DoubleSide,
+  HalfFloatType,
+  MeshBasicNodeMaterial,
+  RGBAFormat,
+  RenderPipeline,
+  UnsignedByteType,
+  Vector2,
+} from 'three/webgpu';
+import type { Camera, DepthTexture, Material, Node, PerspectiveCamera, Renderer, Scene, TextureNode } from 'three/webgpu';
+import { depthPass, mrt, output as sceneOutput, pass, rtt, vec4, velocity } from 'three/tsl';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
+import { traa } from 'three/addons/tsl/display/TRAANode.js';
+import { taau } from 'three/addons/tsl/display/TAAUNode.js';
 
 import { PASS_ORDER, type PassId } from './post-order';
 import { RENDER_CONFIG, type PostConfig } from './renderer';
@@ -81,6 +91,7 @@ import {
   setGradeTexel,
   type GradeNodeUniforms,
 } from './nodes/grade-node';
+import { createAtmosphereNodes, type AtmosphereNodes } from './nodes/atmosphere-node';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -94,9 +105,15 @@ type RttNode = TextureNode & {
 /** The subset of `PassNode` this module drives. */
 interface ScenePassNode {
   getTextureNode(name?: string): TextureNode;
+  setResolutionScale(scale: number): void;
+  setMRT(node: Node): void;
+  overrideMaterial: Material | null;
+  compileAsync(renderer: Renderer): Promise<void>;
   readonly renderTarget: {
     depthTexture: DepthTexture;
     texture: { name: string };
+    /** Actual sample count baked into this live target, not the requested config. */
+    samples: number;
     dispose(): void;
   };
   dispose(): void;
@@ -108,6 +125,18 @@ interface SmaaNodeLike {
   _renderTargetWeights?: { texture: { type: number; name?: string } };
   dispose(): void;
 }
+
+/** The public surface of Three's WebGPU temporal resolve used by this chain. */
+interface TemporalAaNodeLike extends Node<'vec4'> {
+  readonly isTRAANode?: true;
+  readonly isTAAUNode?: true;
+  maxVelocityLength: number;
+  useSubpixelCorrection?: boolean;
+  currentFrameWeight?: number;
+  dispose(): void;
+}
+
+export type TemporalAaMode = 'traa' | 'taau';
 
 export interface PostGraph {
   /** The finished `vec4`. Hand this to a `RenderPipeline` as its `outputNode`. */
@@ -125,6 +154,8 @@ export interface PostGraph {
   /** Which passes are in this graph. Missing = disabled, exactly as `passes` in `post.ts`. */
   readonly built: Readonly<Partial<Record<PassId, true>>>;
   readonly scenePass: ScenePassNode;
+  /** Dedicated motion-vector submission used only by the TRAA experiment. */
+  readonly velocityPass: ScenePassNode | null;
   /**
    * A single-sample depth-only pass used when scene colour is multisampled.
    *
@@ -137,6 +168,8 @@ export interface PostGraph {
    */
   readonly aoDepthPass: ScenePassNode | null;
   readonly ao: AoNodes | null;
+  /** Fused HDR atmosphere expression; no independent render target or draw. */
+  readonly atmosphere: AtmosphereNodes | null;
   /** Experimental indirect diffuse. Non-null only for a capable `?gi=` WebGPU boot. */
   readonly ssgi: SsgiNodes | null;
   readonly indirectLighting: 'gtao' | 'ssgi' | 'off';
@@ -146,6 +179,11 @@ export interface PostGraph {
   /** Full-resolution HDR materialisation sampled by BloomNode's half-res high pass. */
   readonly bloomInput: RttNode | null;
   readonly gradeUniforms: GradeNodeUniforms | null;
+  /** Experimental motion-aware AA, enabled only by `?aa=traa|taau` on WebGPU. */
+  readonly temporalAa: TemporalAaNodeLike | null;
+  /** Low-resolution HDR input materialisation owned by TAAU. */
+  readonly temporalInput: RttNode | null;
+  readonly antialiasing: TemporalAaMode | 'smaa' | 'off';
   /**
    * Construction errors, keyed by pass id. Empty on a healthy boot.
    *
@@ -157,7 +195,7 @@ export interface PostGraph {
    * expression with it — so the guard belongs here too.
    */
   readonly failures: Readonly<Partial<Record<PassId, string>>>;
-  /** Push `RENDER_CONFIG.post` into every live uniform. Cheap; no rebuilds. */
+  /** Push `RENDER_CONFIG.post` live; rebuild only when graph shape changes. */
   syncConfig(cfg: PostConfig): void;
   /** Drawing-buffer pixels. Only the grade's texel uniform needs telling. */
   setSize(width: number, height: number): void;
@@ -173,6 +211,37 @@ export interface BuildPostGraphOptions {
   height: number;
   /** Already capability-gated by `createNodePostChain`; null keeps shipped GTAO. */
   ssgiPreset?: SsgiPreset | null;
+  /** Reversible WebGPU experiment. The shipped/default graph remains SMAA. */
+  temporalAa?: TemporalAaMode | false;
+  /** Input-buffer scale for TAAU. Ignored by TRAA and clamped to 50-100%. */
+  temporalScale?: number;
+}
+
+/**
+ * Parse the development switch without making it part of persisted settings.
+ *
+ * A URL gate is deliberate for the first visual/performance scorecard: it lets
+ * the same build produce an exact SMAA control and TRAA candidate without a
+ * settings migration or a graph rebuild while a match is running.
+ */
+export function requestedTemporalAa(search: string): TemporalAaMode | null {
+  const value = new URLSearchParams(search).get('aa')?.toLowerCase();
+  return value === 'traa' || value === 'taau' ? value : null;
+}
+
+export function requestedTemporalScale(search: string): number {
+  const raw = Number(new URLSearchParams(search).get('taauScale') ?? 0.75);
+  return Number.isFinite(raw) ? Math.max(0.5, Math.min(1, raw)) : 0.75;
+}
+
+/**
+ * TAAU's reconstruction filter intentionally suppresses high-frequency noise.
+ * Restore only luma detail in the existing full-resolution grade rather than
+ * paying for another pass or sharpening RGB channels into coloured halos.
+ */
+export function taauSharpen(base: number, inputScale: number): number {
+  const scale = Math.max(0.5, Math.min(1, inputScale));
+  return Math.min(1, Math.max(0, base) + (1 - scale) * 2);
 }
 
 /**
@@ -191,6 +260,32 @@ export function enabledPasses(cfg: PostConfig): Record<PassId, boolean> {
     grade: cfg.grade.enabled,
     smaa: cfg.smaa.enabled,
   };
+}
+
+/** Rebuild signature for stages whose presence changes the node graph. */
+export function postGraphSignature(cfg: PostConfig): string {
+  return JSON.stringify({
+    ...enabledPasses(cfg),
+    atmosphere: cfg.atmosphere.enabled,
+    /*
+     * MSAA IS GRAPH SHAPE ON WEBGPU.
+     *
+     * `PassNode` bakes `samples` into its render target when the graph is
+     * constructed. The shell builds the renderer first and only then applies
+     * the persisted Graphics profile, so a saved `msaa: true` reaches this
+     * module as `0 -> 4` after the initial graph already exists. Leaving the
+     * sample count out of this signature made `syncConfig` take the uniform-only
+     * branch: Settings displayed 4x MSAA while the live scene target remained
+     * single-sampled for the entire match. Thin roof rails and panel edges then
+     * broke into the exact black/dashed crawl that coverage AA is meant to fix.
+     *
+     * Include the effective integer count rather than the raw number so two
+     * equivalent requests do not rebuild the whole pipeline needlessly.
+     */
+    msaaSamples: Number.isFinite(cfg.msaaSamples)
+      ? Math.max(0, Math.floor(cfg.msaaSamples))
+      : 0,
+  });
 }
 
 /**
@@ -240,6 +335,11 @@ export function demoteSmaaMaskTargets(node: SmaaNodeLike): boolean {
  */
 export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
   const { scene, camera, cfg } = options;
+  const temporalMode = options.temporalAa || null;
+  const useTemporalAa = temporalMode !== null;
+  const temporalScale = temporalMode === 'taau'
+    ? Math.max(0.5, Math.min(1, options.temporalScale ?? 0.75))
+    : 1;
   const want = enabledPasses(cfg);
   const built: Partial<Record<PassId, true>> = { render: true };
   const failures: Partial<Record<PassId, string>> = {};
@@ -261,12 +361,67 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
    * (`PostConfig.msaaSamples` explains why it stays off), so this is wired but
    * unexercised. Anyone who turns it on should check the AO first.
    */
+  const sceneSamples = useTemporalAa ? 0 : cfg.msaaSamples;
   const scenePass = pass(scene, camera, {
-    samples: cfg.msaaSamples,
+    // TRAA owns subpixel coverage and Three explicitly forbids pairing it with
+    // MSAA. The current shipped config is already 0; keep the invariant local
+    // so an experimental URL can never create an invalid combination.
+    samples: sceneSamples,
   }) as unknown as ScenePassNode;
   scenePass.renderTarget.texture.name = 'PostHDR';
+  scenePass.setResolutionScale(temporalScale);
 
   const colour = scenePass.getTextureNode('output');
+
+  /*
+   * A dedicated pass is intentional, even though an MRT on `scenePass` looks
+   * cheaper. The real device gate proved that a global colour+velocity MRT
+   * leaks into nested shadow renders and materials with custom fragment nodes;
+   * those pipelines then have a second target with no matching output and
+   * WebGPU correctly rejects them. An unlit override isolates motion vectors
+   * from every specialised beauty/shadow material. GPU-driven visibility is
+   * the later optimisation that can amortise this extra submission.
+   */
+  let velocityPass: ScenePassNode | null = null;
+  let velocityNode: TextureNode | null = null;
+  if (useTemporalAa) {
+    velocityPass = pass(scene, camera, { samples: 0 }) as unknown as ScenePassNode;
+    const velocityMaterial = new MeshBasicNodeMaterial();
+    velocityMaterial.name = 'TemporalVelocityOverride';
+    // Foliage and troop cards are authored two-sided. Missing their back faces
+    // from motion vectors is worse than the small extra raster cost here.
+    velocityMaterial.side = DoubleSide;
+    velocityPass.overrideMaterial = velocityMaterial;
+    velocityPass.setResolutionScale(temporalScale);
+    velocityPass.setMRT(mrt({
+      output: sceneOutput,
+      velocity,
+    }) as unknown as Node);
+    velocityNode = velocityPass.getTextureNode('velocity');
+
+    /*
+     * PassNode.compileAsync() sets the MRT but, unlike updateBefore(), does not
+     * install its override material. That asks every beauty material to compile
+     * against the velocity MRT and reproduces the exact invalid pipelines this
+     * dedicated pass exists to avoid. Keep precompile and render semantically
+     * identical. This wrapper can disappear when Three does so upstream.
+     */
+    const compileVelocityPass = velocityPass.compileAsync.bind(velocityPass);
+    velocityPass.compileAsync = async (renderer: Renderer): Promise<void> => {
+      const previousOverride = scene.overrideMaterial;
+      scene.overrideMaterial = velocityMaterial;
+      try {
+        await compileVelocityPass(renderer);
+      } finally {
+        scene.overrideMaterial = previousOverride;
+      }
+    };
+
+    // Do not rename attachment 0: MRTNode maps dictionary keys to texture slots
+    // by Texture.name, and `output` must remain exactly `output` or slot 0 turns
+    // into a sparse hole in the generated WGSL OutputType.
+    velocityPass.renderTarget.texture.name = 'output';
+  }
 
   /*
    * DEPTH MSAA HAS NO RESOLVE OPERATION IN WEBGPU.
@@ -284,7 +439,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
    * quality combination that needs it (AO + MSAA), preserves edge quality, and
    * avoids paying for a second shaded scene.
    */
-  const aoDepthPass = want.ao && cfg.msaaSamples > 0
+  const aoDepthPass = want.ao && sceneSamples > 0
     ? depthPass(scene, camera, { samples: 0 }) as unknown as ScenePassNode
     : null;
   if (aoDepthPass !== null) aoDepthPass.renderTarget.texture.name = 'AoDepthPrepass';
@@ -329,8 +484,62 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
       // multiply leaves it. See `AoNodes.occlusion`.
       lit = (colour as unknown as { mul(f: Node<'float'>): Node<'vec4'> }).mul(ao.occlusion());
     }
+    if (useTemporalAa) {
+      // Rotate the GTAO/SSGI sample pattern only when a downstream history
+      // resolve exists. The default SMAA graph remains deterministic per frame.
+      if (ao !== null) ao.march.useTemporalFiltering = true;
+      if (ssgiNodes !== null) ssgiNodes.march.useTemporalFiltering = true;
+    }
     built.ao = true;
   }
+
+  /* ---- Temporal resolve --------------------------------------------------
+   * Resolve scene + indirect lighting before bloom and grading. This gives
+   * thin foliage, subpixel troops and AO one stable HDR history, while bloom
+   * still sees a stable bright-pass source and the display transform remains
+   * outside history. SMAA is omitted when this node is active: stacking both
+   * softens UI-scale world detail and spends a second full-screen AA pass.
+   */
+  let temporalAa: TemporalAaNodeLike | null = null;
+  let temporalInput: RttNode | null = null;
+  if (useTemporalAa && velocityNode !== null) {
+    if (temporalMode === 'taau') {
+      // Materialise scene + AO/SSGI at the same lower resolution as depth and
+      // velocity. Passing the expression directly would make TAAU's implicit
+      // RTT full-size, erasing both the reconstruction ratio and much of the
+      // intended GPU saving.
+      temporalInput = rtt(lit) as unknown as RttNode;
+      temporalInput.setResolutionScale(temporalScale);
+      temporalInput.renderTarget.texture.name = 'TAAU.input';
+      temporalAa = taau(temporalInput, depthNode, velocityNode, camera) as unknown as TemporalAaNodeLike;
+      temporalAa.currentFrameWeight = 0.05;
+    } else {
+      temporalAa = traa(lit, depthNode, velocityNode, camera) as unknown as TemporalAaNodeLike;
+      temporalAa.useSubpixelCorrection = true;
+    }
+    // Reject very fast motion sooner than Three's generic 128 px default. RTS
+    // camera cuts and fast projectiles should prefer a fresh sample to a trail.
+    temporalAa.maxVelocityLength = 64;
+    lit = temporalAa;
+  }
+
+  /* ---- Cinematic atmosphere ---------------------------------------------
+   * Fused into the next materialisation (bloom input or grade input), so this
+   * adds no pass, target or submission. It sits after temporal reconstruction:
+   * the world-locked cloud field moves slowly, but it has no motion vectors and
+   * therefore must not be accumulated into experimental TAA history.
+   */
+  const atmosphere = cfg.atmosphere.enabled
+    ? createAtmosphereNodes(
+        lit,
+        depthNode,
+        camera,
+        cfg.atmosphere,
+        RENDER_CONFIG.fog.color,
+        RENDER_CONFIG.sky.horizon,
+      )
+    : null;
+  if (atmosphere !== null) lit = atmosphere.node;
 
   /* ---- Bloom -------------------------------------------------------------
    * Additive over the AO-multiplied scene. `UnrealBloomPass` does this blend
@@ -380,6 +589,9 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     gradeInput.renderTarget.texture.name = 'PostGradeInput';
     gradeUniforms = createGradeUniforms();
     applyGradeConfig(gradeUniforms, cfg.grade);
+    if (temporalMode === 'taau') {
+      gradeUniforms.sharpen.value = taauSharpen(gradeUniforms.sharpen.value, temporalScale);
+    }
     setGradeTexel(gradeUniforms, options.width, options.height);
     display = gradeNode({ input: gradeInput, uniforms: gradeUniforms });
     built.grade = true;
@@ -403,7 +615,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
    */
   let smaaNode: SmaaNodeLike | null = null;
   let output: Node<'vec4'> = display;
-  if (want.smaa) {
+  if (want.smaa && temporalAa === null) {
     try {
       const n = smaa(display);
       smaaNode = n as unknown as SmaaNodeLike;
@@ -421,21 +633,36 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     needsOutputColorTransform: !want.grade,
     built,
     scenePass,
+    velocityPass,
     aoDepthPass,
     ao,
+    atmosphere,
     ssgi: ssgiNodes,
     indirectLighting: !want.ao ? 'off' : ssgiNodes === null ? 'gtao' : 'ssgi',
     ssgiFailure,
     bloom,
     bloomInput,
     gradeUniforms,
+    temporalAa,
+    temporalInput,
+    antialiasing: temporalAa !== null && temporalMode !== null
+      ? temporalMode
+      : built.smaa === true ? 'smaa' : 'off',
     failures,
 
     syncConfig(next: PostConfig): void {
       ao?.applyConfig(next.ao);
+      atmosphere?.applyConfig(
+        next.atmosphere,
+        RENDER_CONFIG.fog.color,
+        RENDER_CONFIG.sky.horizon,
+      );
       ssgiNodes?.applyAoConfig(next.ao);
       bloom?.applyConfig(next.bloom);
       if (gradeUniforms !== null) applyGradeConfig(gradeUniforms, next.grade);
+      if (gradeUniforms !== null && temporalMode === 'taau') {
+        gradeUniforms.sharpen.value = taauSharpen(gradeUniforms.sharpen.value, temporalScale);
+      }
     },
 
     setSize(width: number, height: number): void {
@@ -449,10 +676,15 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
 
     dispose(): void {
       ao?.dispose();
+      atmosphere?.dispose();
       ssgiNodes?.dispose();
       bloom?.dispose();
       bloomInput?.renderTarget.dispose();
       smaaNode?.dispose();
+      temporalAa?.dispose();
+      temporalInput?.renderTarget.dispose();
+      velocityPass?.overrideMaterial?.dispose();
+      velocityPass?.dispose();
       gradeInput?.renderTarget.dispose();
       aoDepthPass?.dispose();
       scenePass.dispose();
@@ -466,6 +698,12 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
       `[post-nodes] graph: ${list.join(' -> ')}` +
       (ssgiNodes !== null
         ? `  [SSGI ${ssgiNodes.preset.quality} @ ${Math.round(ssgiNodes.preset.resolutionScale * 100)}%]`
+        : '') +
+      (scenePass.renderTarget.samples > 1
+        ? `  [MSAA ${scenePass.renderTarget.samples}x]`
+        : '') +
+      (temporalAa !== null
+        ? `  [AA ${temporalMode?.toUpperCase()} + velocity @ ${Math.round(temporalScale * 100)}%]`
         : '') +
       (failed.length > 0 ? `  (failed: ${failed.join(', ')})` : ''),
     );
@@ -484,6 +722,8 @@ export interface NodePostChain {
   render(dt: number): void;
   syncConfig(): void;
   setWeatherIntensity(intensity: number): void;
+  /** Human-readable live graph order for the performance overlay. */
+  postLabel(): string;
   setSize(width: number, height: number): void;
   dispose(): void;
 }
@@ -537,6 +777,12 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
       '[post-nodes] SSGI requested but unavailable on this camera/device; using GTAO',
     );
   }
+  const temporalAa = requestedTemporalAa(
+    typeof location === 'undefined' ? '' : location.search,
+  );
+  const temporalScale = requestedTemporalScale(
+    typeof location === 'undefined' ? '' : location.search,
+  );
 
   /*
    * `getDrawingBufferSize` TAKES A `Vector2`, NOT A DUCK. It calls `target.set(
@@ -561,11 +807,13 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
     width: size.width,
     height: size.height,
     ssgiPreset,
+    temporalAa: temporalAa ?? false,
+    temporalScale,
   });
 
   const pipeline = new RenderPipeline(renderer, graph.output);
 
-  let passSignature = JSON.stringify(enabledPasses(cfg));
+  let passSignature = postGraphSignature(cfg);
   let elapsed = 0;
   let rainIntensity = 0;
 
@@ -578,11 +826,12 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
     render(dt: number): void {
       elapsed += Math.max(0, Math.min(dt, 0.25));
       if (graph.gradeUniforms !== null) graph.gradeUniforms.time.value = elapsed;
+      if (graph.atmosphere !== null) graph.atmosphere.uniforms.time.value = elapsed;
       pipeline.render();
     },
 
     syncConfig(): void {
-      const signature = JSON.stringify(enabledPasses(cfg));
+      const signature = postGraphSignature(cfg);
       if (signature !== passSignature) {
         passSignature = signature;
         const s = r.getDrawingBufferSize(sizeScratch);
@@ -594,11 +843,14 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
           width: s.width,
           height: s.height,
           ssgiPreset,
+          temporalAa: temporalAa ?? false,
+          temporalScale,
         });
         if (graph.gradeUniforms !== null) {
           graph.gradeUniforms.time.value = elapsed;
           graph.gradeUniforms.rain.value = rainIntensity;
         }
+        if (graph.atmosphere !== null) graph.atmosphere.uniforms.time.value = elapsed;
         pipeline.outputNode = graph.output;
         pipeline.outputColorTransform = graph.needsOutputColorTransform;
         pipeline.needsUpdate = true;
@@ -610,6 +862,21 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
     setWeatherIntensity(intensity: number): void {
       rainIntensity = Math.max(0, Math.min(1, intensity));
       if (graph.gradeUniforms !== null) graph.gradeUniforms.rain.value = rainIntensity;
+    },
+
+    postLabel(): string {
+      const stages = ['render'];
+      const liveSamples = graph.scenePass.renderTarget.samples;
+      if (liveSamples > 1) stages.push(`msaa${liveSamples}x`);
+      if (graph.built.ao === true) stages.push('ao');
+      if (graph.antialiasing === 'traa' || graph.antialiasing === 'taau') {
+        stages.push(graph.antialiasing);
+      }
+      if (graph.atmosphere !== null) stages.push('atmosphere');
+      if (graph.built.bloom === true) stages.push('bloom');
+      if (graph.built.grade === true) stages.push('grade');
+      if (graph.antialiasing === 'smaa') stages.push('smaa');
+      return stages.join('+');
     },
 
     setSize(width: number, height: number): void {

@@ -7840,8 +7840,30 @@ export const DECAL_GRID = 6;
  * alternated which surface won the depth test as the camera moved, making the
  * mark visibly jitter. Eight centimetres remains visually welded to the ground
  * while leaving a real depth gap on every supported ground surface.
+ *
+ * The height callback supplied by `roads.system` is the higher of gameplay's
+ * bilinear heightfield and `Terrain.drawnHeightAt`. That second surface matters:
+ * a half-resolution terrain chunk may differ by 15 cm, so lift alone could not
+ * clear it without making every mark visibly hover above ordinary ground.
  */
 export const DECAL_LIFT = 0.08;
+/**
+ * Raster-depth pull for every multiply-blended ground overlay.
+ *
+ * `polygonOffsetUnits: -3` was effectively no protection on WebGPU: the value
+ * is passed directly to `GPUDepthStencilState.depthBias`, where one unit is one
+ * integer step of the depth attachment. At the RTS camera distance, three steps
+ * are much smaller than the depth delta between the terrain's triangles and a
+ * rotated/conformed decal chord. The result was the grey/brown stipple seen on
+ * dust, grime and tread patches as the camera moved.
+ *
+ * A 96-step constant bias plus a modest slope term keeps the overlay in front
+ * of the terrain without changing its projected position or disabling depth
+ * testing against units and structures. These values are shared by GLSL and
+ * node materials so the desktop WebGPU path cannot silently drift.
+ */
+export const GROUND_OVERLAY_DEPTH_BIAS_FACTOR = -4;
+export const GROUND_OVERLAY_DEPTH_BIAS_UNITS = -96;
 /** Edge length of the procedural decal atlas (4x4 tiles). */
 export const DECAL_ATLAS_SIZE = 512;
 /** Slots swept per frame looking for expired decals to collapse. */

@@ -1893,6 +1893,106 @@ and resident terrain-detail artwork. The filtered and legacy screenshots were by
 terrain-detail image was still the neutral placeholder in one arm; `gpu-frame-ab.mjs --capture`
 now gives that asynchronous decode a real-time completion window before its final frame.
 
+### Ground decals follow the terrain triangles that are actually drawn
+
+**Fixed 2026-08-30; WebGL and WebGPU.** Track, scorch and environmental decals used gameplay's
+bilinear `Terrain.heightAt`, while flat terrain chunks may submit a half-resolution triangle index
+whose colour surface differs by as much as 0.15 m. The decal's 0.08 m physical lift and polygon
+offset therefore could not prevent the optimized terrain from passing through a mark as camera depth
+changed. Raising every decal above the full error budget would have made ordinary marks visibly float.
+
+`drawnTerrainHeightAt` now mirrors both emitted terrain index topologies, including the stitched fan
+around a decimated chunk boundary. `Terrain.drawnHeightAt` selects that topology from the same chunk
+LOD mask used during mesh publication, and the decal fields conform to the higher of the authoritative
+gameplay surface and the drawn colour surface. The existing 0.08 m lift then clears both that support
+surface and the 0.06 m road ribbon. A geometry test compares fractional samples against the emitted
+fine and decimated triangles; the canonical terrain close-up passes in both renderer capture paths.
+
+### Imported unit families decode through a bounded outer pool
+
+**Measured 2026-08-30; enabled by default.** Imported vehicles already loaded each model's LOD and
+shadow files together, but the unit art systems awaited the models themselves one at a time. That
+serialized independent fetch, parse and KTX2 work across the shared Allied/Soviet roster and both
+private faction rosters. The three unit paths now use `mapConcurrent` with an outer limit of two on
+smaller clients and three on clients exposing at least eight logical cores. The limit is deliberately
+narrower than the structure pool: one unit task can fan out into LOD0, multiple colour LODs and a
+shadow proxy, while the shared KTX2 loader remains capped at two transcoder workers.
+
+On the same built `08-naval-water` all-faction cold fixture, the visible-curtain boot moved from
+roughly 23.8 s to 22.1 s (-1.7 s, about 7%). `art.units` moved from 4,324 ms to 3,390 ms (-22%),
+`art.faction3` from 3,765 ms to 3,394 ms (-10%), and `art.faction4` from 3,968 ms to 3,533 ms
+(-11%). Terrain and water checksums remained `83d6389e` / `594a489b`; all imported-load failures
+still retain their procedural fallback, result order remains deterministic, and private-faction MCVs
+are still applied before registry publication. The post-change three-run warm visible-ready median
+was 17,033 ms. Raw post-change output is `artifacts/perf/boot-unit-concurrency.json`.
+
+### Runtime imported-catalogue streaming is diagnostic-only
+
+**Measured 2026-08-30; eager preparation is the default.** Deferring non-opening GLTF catalogues
+made an MCV match reveal several seconds sooner, but GLTF parsing, Three geometry construction and
+material publication contain non-preemptible main-thread sections. `requestIdleCallback`, serial
+catalogues and yields between every model reduced rather than removed the damage: a 30-second live
+window still recorded 49 frames over 50 ms and a 217 ms worst frame. The original concurrent
+stream recorded 86 frames over 50 ms, 77 Long Tasks and a 268 ms worst frame. An RTS camera that
+freezes for one beat while claiming 60 fps is a worse result than a longer loading screen.
+
+Normal play therefore prepares every seated faction's reviewed authored imports under the loading
+curtain and compiles the populated scene before reveal. `?liveassetstream=on` retains the serial,
+idle-sliced promotion path as an explicit A/B and future worker/offline-conditioning harness; it is
+not a shipping fast path. The four-army headless cold fixture pays roughly 25 seconds before reveal
+on the test machine, versus 12-14 seconds for the unsafe stream. The long-term way to recover those
+seconds is an offline-conditioned runtime format or a GLTF parse worker, not main-thread work hidden
+behind a timer.
+
+The same investigation found two independent sources of false 60-fps confidence. The performance
+HUD used a rolling percentile that cannot show one dropped frame, and background audio deliberately
+allowed 90 ms between yields while decoding the whole recorded manifest together. The HUD now keeps
+a persistent hitch count, last wall/CPU gap and worst gap; render presentation is separately
+attributed. Sample decoding is bounded to six concurrent jobs and bank baking yields after 12 ms.
+Finally, boot compilation temporarily exposes hidden effect pools, alternate LODs, construction
+overlays and shadow proxies so their first visible use cannot compile a pipeline in the match.
+
+After those changes, the full-audio, already-calibrated 10-second live probe recorded zero Long
+Tasks; its busiest audio frame was 5.1 ms, VFX 9.5 ms, pathing 14.7 ms. Two raw rAF gaps remained in
+headless Chromium (100/67 ms) without an accompanying main-thread task, so native WebGPU pacing is
+still the final authority. The raw progression is in
+`artifacts/perf/boot-private-streaming-idle.json`, `boot-private-streaming-sliced.json`,
+`boot-no-live-asset-stream-clean.json`, and `boot-full-audio-hitch-fix.json`.
+
+### Desktop WebGPU atmosphere is fused, depth-aware and shroud-safe
+
+**Implemented 2026-08-30; Medium-Ultra WebGPU.** A scene-wide fog retry was rejected because the
+previous noon fog path washed every material and compiled fog work into the whole scene. The shipped
+slice instead reconstructs world position once in the existing HDR post expression, reads a 64 KiB
+seamless cloud field twice, preserves emissive HDR peaks, and adds at most a few percent of
+height-aware aerial perspective beyond the immediate combat range. Sky depth and black shroud pixels
+are excluded. This adds no render target, pass or draw.
+
+Airborne dust shares the existing lit particle batch. It is deterministic render-side state, samples
+only live-vision land cells around the camera, stops before combat-particle pressure, scales by quality
+and nearly disappears in rain. The real RTX WebGPU smoke completed with 147 draws and no page/pipeline
+error; `artifacts/perf/cinematic-atmosphere-smoke.json` records the correctness run. Visual tuning
+still requires a player-resolution moving-camera review rather than treating that smoke as an image
+quality or frame-time result.
+
+### Saved WebGPU MSAA was displayed as enabled while the live target stayed single-sampled
+
+**Fixed 2026-08-30; desktop WebGPU.** The shell constructs the renderer before it applies the saved
+Graphics profile. A profile with Edge Antialiasing enabled therefore changes `msaaSamples` from 0
+to 4 after the initial node graph exists. `PassNode` bakes its sample count into the scene render
+target at graph construction, but `postGraphSignature` did not include that count, so
+`NodePostChain.syncConfig` took its uniform-only path and never rebuilt. Settings truthfully stored
+and displayed 4x MSAA while the live colour target remained 0x for the whole match. At RTS scale,
+thin roof rails and panel seams then broke into black dashed crawl; SMAA cannot reconstruct geometry
+coverage that was never rasterised.
+
+The graph signature now includes the effective integer sample count. The node-chain test proves a
+0x/4x change produces different signatures and that the constructed scene target itself reports
+four samples; development diagnostics label the live graph `msaa4x` rather than repeating config.
+A native 1920x1080 Frozen Sector review on the saved Ultra/100%/adaptive-off profile showed stable
+blended coverage on the reported Allied unit and barricade line. This is intentionally not a new
+default or a performance claim: it makes the existing player choice take effect.
+
 
 ---
 

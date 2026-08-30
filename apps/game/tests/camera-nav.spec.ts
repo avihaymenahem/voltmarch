@@ -50,6 +50,7 @@ import * as THREE from 'three';
 
 import {
   CameraRig,
+  cameraMayArmRightDrag,
   classifyWheelEvent,
   createWheelDeviceState,
   type WheelSample,
@@ -869,6 +870,13 @@ describe('camera — centre on base', () => {
  * ========================================================================== */
 
 describe('camera — input ownership handover', () => {
+  it('reserves right-drag for orders while a match owns the command layer', () => {
+    expect(cameraMayArmRightDrag('full', true)).toBe(true);
+    expect(cameraMayArmRightDrag('navigation', true)).toBe(false);
+    expect(cameraMayArmRightDrag('none', true)).toBe(false);
+    expect(cameraMayArmRightDrag('full', false)).toBe(false);
+  });
+
   it('keeps the navigation gestures when the order layer takes the keyboard', () => {
     const rig = new CameraRig({ domElement: fakeElement(), attachInput: true });
     expect(rig.inputListeningMode).toBe('full');

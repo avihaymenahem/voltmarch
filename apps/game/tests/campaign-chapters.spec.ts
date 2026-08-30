@@ -383,6 +383,24 @@ describe('the campaign screen', () => {
  * ========================================================================== */
 
 describe('the chapter cards', () => {
+  it('locks the faction rule, title and command label into one heading', async () => {
+    const host = await mountCampaign();
+    for (const card of cards(host)) {
+      const heading = all(card, 'vm-camp-card-heading');
+      expect(heading).toHaveLength(1);
+      expect(all(heading[0], 'vm-card-stripe')).toHaveLength(1);
+      expect(all(heading[0], 'vm-card-name')).toHaveLength(1);
+      expect(all(heading[0], 'vm-camp-card-command')).toHaveLength(1);
+    }
+
+    const css = readFileSync(join(import.meta.dirname, '..', 'src', 'shell', 'shell.css'), 'utf8');
+    const at = css.indexOf('.vm-shell .vm-camp-card-heading {');
+    const rule = css.slice(at, css.indexOf('\n}', at));
+    expect(at).toBeGreaterThan(-1);
+    expect(rule).toContain('grid-template-columns: 3px minmax(0, 1fr)');
+    expect(rule).toContain('align-items: center');
+  });
+
   it('are the same nodes after a selection', async () => {
     const host = await mountCampaign();
     const before = cards(host);

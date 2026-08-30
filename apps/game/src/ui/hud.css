@@ -1245,7 +1245,7 @@
   transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
 }
 
-.vm-hud .vm-card:hover,
+.vm-hud .vm-card:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-card:focus-visible {
   background: rgba(var(--vm-accent-rgb), 0.16);
   border-color: rgba(var(--vm-accent-rgb), 0.6);
@@ -1483,7 +1483,7 @@
   height: calc(10 * var(--vm-u));
 }
 
-.vm-hud .vm-stance:hover,
+.vm-hud .vm-stance:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-stance:focus-visible {
   color: var(--vm-text);
   border-color: var(--vm-hairline);
@@ -1522,7 +1522,7 @@
   white-space: nowrap;
 }
 
-.vm-hud .vm-ability:hover,
+.vm-hud .vm-ability:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-ability:focus-visible {
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent-hi);
@@ -1587,7 +1587,7 @@
   text-align: center;
 }
 
-.vm-hud .vm-cargo.is-ready:hover,
+.vm-hud .vm-cargo.is-ready:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-cargo.is-ready:focus-visible {
   border-color: var(--vm-accent-hi);
   background:
@@ -1646,7 +1646,7 @@
   text-align: center;
 }
 
-.vm-hud .vm-garrison-evacuate:hover,
+.vm-hud .vm-garrison-evacuate:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-garrison-evacuate:focus-visible {
   color: #fff;
   border-color: var(--vm-accent-hi);
@@ -1699,7 +1699,7 @@
   border-color: rgba(255, 77, 61, 0.5);
 }
 
-.vm-hud .vm-destruct:hover,
+.vm-hud .vm-destruct:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-destruct:focus-visible {
   color: var(--vm-danger);
   border-color: var(--vm-danger);
@@ -1846,7 +1846,7 @@
 .vm-hud .vm-super-row.is-ready .vm-super-time { color: var(--vm-accent-hi); }
 .vm-hud .vm-super-row.is-ready .vm-super-fill { background: rgba(var(--vm-accent-rgb), 0.10); }
 
-.vm-hud .vm-super-row.is-ready:hover,
+.vm-hud .vm-super-row.is-ready:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-super-row.is-ready:focus-visible {
   border-color: var(--vm-accent-hi);
   background: rgba(var(--vm-accent-rgb), 0.30);
@@ -2095,7 +2095,7 @@
   transition: opacity 120ms linear;
 }
 
-.vm-hud .vm-tab:hover,
+.vm-hud .vm-tab:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-tab:focus-visible { color: var(--vm-text); outline: none; }
 
 .vm-hud .vm-tab.is-active {
@@ -2178,7 +2178,7 @@
   height: calc(11 * var(--vm-u));
 }
 
-.vm-hud .vm-tool:hover,
+.vm-hud .vm-tool:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-tool:focus-visible { color: var(--vm-text); outline: none; }
 
 .vm-hud .vm-tool.is-active {
@@ -2338,7 +2338,7 @@
   transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
 }
 
-.vm-hud .vm-slot:hover,
+.vm-hud .vm-slot:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-slot:focus-visible {
   background: rgba(var(--vm-accent-rgb), 0.16);
   border-color: rgba(var(--vm-accent-rgb), 0.65);
@@ -2397,7 +2397,7 @@
   border-color: var(--vm-hairline-soft);
 }
 
-.vm-hud .vm-slot:hover .vm-slot-key,
+.vm-hud .vm-slot:is(:hover, .vm-pointer-hover) .vm-slot-key,
 .vm-hud .vm-slot:focus-visible .vm-slot-key {
   color: var(--vm-accent-hi);
   border-color: rgba(var(--vm-accent-rgb), 0.6);
@@ -2579,7 +2579,7 @@
   border-color: var(--vm-hairline-soft);
 }
 
-.vm-hud .vm-slot.is-locked:hover,
+.vm-hud .vm-slot.is-locked:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-slot.is-locked:focus-visible {
   opacity: 0.85;
   background: rgba(255, 255, 255, 0.07);
@@ -2851,7 +2851,7 @@
   flex: 0 0 auto;
 }
 
-.vm-hud .vm-obj-head:hover { color: var(--vm-text); }
+.vm-hud .vm-obj-head:is(:hover, .vm-pointer-hover) { color: var(--vm-text); }
 
 .vm-hud .vm-obj-title {
   font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));

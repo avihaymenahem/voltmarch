@@ -26,7 +26,7 @@ import { CursorKind, InputManager, uiOwnsNavigation } from '../src/input/Input';
 import { CaptureService, captureService, setCaptureService } from '../src/sim/Capture';
 import { clearMoveClass } from '../src/sim/Movement';
 import {
-  Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
+  Selection, SelectMode, isEnemyOf, pickEntity, pickStructureToolTarget, type ScreenProjector,
 } from '../src/input/Selection';
 import {
   CommandMode, FeedbackKind, HEURISTIC_ROLES, OrderExecutor, createCapabilities,
@@ -232,6 +232,104 @@ describe('selection marquee renderer ownership', () => {
   });
 });
 
+describe('pointer gesture ownership', () => {
+  it('does not turn a placement-owned press into a selection click on release', () => {
+    const captures = new Set<number>();
+    const element = {
+      style: {},
+      setPointerCapture: (id: number) => captures.add(id),
+      hasPointerCapture: (id: number) => captures.has(id),
+      releasePointerCapture: (id: number) => captures.delete(id),
+    } as unknown as HTMLElement;
+    let downs = 0;
+    let clicks = 0;
+    const input = new InputManager({
+      element,
+      ground: () => false,
+      handlers: {
+        onPointerDown: () => { downs++; },
+        onClick: () => { clicks++; },
+      },
+      attach: false,
+      overlayParent: null,
+    });
+    const harness = input as unknown as {
+      dragging: boolean;
+      onPointerDown(e: PointerEvent): void;
+      onPointerUp(e: PointerEvent): void;
+    };
+    const pointer = (defaultPrevented: boolean): PointerEvent => ({
+      clientX: 640,
+      clientY: 360,
+      button: 0,
+      pointerId: 17,
+      defaultPrevented,
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      preventDefault: () => undefined,
+    }) as unknown as PointerEvent;
+
+    // This is the event after Placement's capture-phase listener has called
+    // preventDefault(). It still reaches a same-target listener in the DOM.
+    harness.onPointerDown(pointer(true));
+    harness.onPointerUp(pointer(false));
+
+    expect(downs).toBe(0);
+    expect(clicks).toBe(0);
+    expect(harness.dragging).toBe(false);
+    expect(captures.size).toBe(0);
+    input.dispose();
+  });
+
+  it('drops an older raw gesture when a modal pointer owner takes over', () => {
+    const captures = new Set<number>();
+    const element = {
+      style: {},
+      setPointerCapture: (id: number) => captures.add(id),
+      hasPointerCapture: (id: number) => captures.has(id),
+      releasePointerCapture: (id: number) => captures.delete(id),
+    } as unknown as HTMLElement;
+    let clicks = 0;
+    const input = new InputManager({
+      element,
+      ground: () => false,
+      handlers: { onClick: () => { clicks++; } },
+      attach: false,
+      overlayParent: null,
+    });
+    const harness = input as unknown as {
+      dragging: boolean;
+      onPointerDown(e: PointerEvent): void;
+      onPointerUp(e: PointerEvent): void;
+    };
+    const pointer = (id: number, defaultPrevented: boolean): PointerEvent => ({
+      clientX: 320,
+      clientY: 240,
+      button: 0,
+      pointerId: id,
+      defaultPrevented,
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      preventDefault: () => undefined,
+    }) as unknown as PointerEvent;
+
+    harness.onPointerDown(pointer(3, false));
+    expect(harness.dragging).toBe(true);
+    expect(captures.has(3)).toBe(true);
+    harness.onPointerDown(pointer(4, true));
+    harness.onPointerUp(pointer(3, false));
+
+    expect(harness.dragging).toBe(false);
+    expect(captures.size).toBe(0);
+    expect(clicks).toBe(0);
+    input.dispose();
+  });
+});
+
 /* ==========================================================================
  * Picking
  * ========================================================================== */
@@ -270,6 +368,30 @@ describe('pickEntity', () => {
     const t = tank(rig, rig.me, 100, 100);
     rig.world.store.flags[rig.world.store.index(t)] |= EntityFlag.NotSelectable;
     expect(pickEntity(rig.world, projector, 1500, 1500, 100, 100)).toBe(NONE);
+  });
+});
+
+describe('structure tool picking', () => {
+  it('targets a non-selectable wall without making it ordinarily selectable', () => {
+    const rig = makeRig();
+    const wall = building(rig, rig.me, 100, 100, 1, 1);
+    const wi = rig.world.store.index(wall);
+    rig.world.store.flags[wi] |= EntityFlag.NotSelectable | EntityFlag.Sellable;
+    rig.world.spatial.rebuild();
+
+    expect(pickEntity(rig.world, projector, 1500, 1500, 100, 100)).toBe(NONE);
+    expect(pickStructureToolTarget(rig.world, projector, 1500, 1500, 100, 100)).toBe(wall);
+  });
+
+  it('does not let a mobile unit standing on a wall steal the sell-tool click', () => {
+    const rig = makeRig();
+    const wall = building(rig, rig.me, 100, 100, 1, 1);
+    const wi = rig.world.store.index(wall);
+    rig.world.store.flags[wi] |= EntityFlag.NotSelectable | EntityFlag.Sellable;
+    tank(rig, rig.me, 100, 100);
+    rig.world.spatial.rebuild();
+
+    expect(pickStructureToolTarget(rig.world, projector, 1500, 1500, 100, 100)).toBe(wall);
   });
 });
 

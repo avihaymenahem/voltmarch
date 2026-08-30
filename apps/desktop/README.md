@@ -65,7 +65,7 @@ than assuming.
   "ignoreGpuBlocklist": false,
   "display": {
     "mode": "windowed", "width": 1600, "height": 900, "displayIndex": -1,
-    "lockPointer": false
+    "lockPointer": true
   }
 }
 ```
@@ -109,8 +109,8 @@ Windowed launches use the normal Windows frame and its standard drag, snap, mini
 close controls. The shell persists the last normal bounds and maximised state, clamps a restore to
 the connected displays' work areas, and centres a first or stale launch on the primary monitor.
 Starting a match never changes window mode; fullscreen is entered only through the Display row or
-Alt+Enter. The optional **Lock Mouse To Window** row confines a live-match pointer and releases it
-for pause/menu routes, focus loss and Alt+Tab.
+Alt+Enter. **Lock Mouse To Window** is enabled by default; its row can disable live-match pointer
+confinement. While enabled it releases the pointer for pause/menu routes, focus loss and Alt+Tab.
 
 The desktop renderer defaults to WebGPU and writes `?gpu=webgpu` on every ordinary launch. Boot
 flags still reach the renderer as an ordinary query string: `--vm-<flag>=<value>` for anything on
