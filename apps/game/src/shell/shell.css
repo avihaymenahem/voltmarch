@@ -7639,9 +7639,11 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   min-height: clamp(50px, 6.3vh, 56px);
   display: grid;
   grid-template-columns: 24px 22px minmax(0, 1fr) 18px;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: auto auto;
+  align-content: center;
   align-items: center;
   column-gap: 10px;
+  row-gap: 2px;
   padding: 7px 12px;
   overflow: hidden;
   border: 0;

@@ -70,6 +70,13 @@ describe('command shell navigation contracts', () => {
     expect(css).toContain('.vm-cinematic-top-action:disabled');
   });
 
+  it('centres each main-menu label and hint as one aligned text block', () => {
+    const css = source('shell.css');
+    expect(css).toContain('grid-template-rows: auto auto;');
+    expect(css).toContain('align-content: center;');
+    expect(css).toContain('row-gap: 2px;');
+  });
+
   it('keeps leaving the match distinct from garrison evacuation', () => {
     const pause = source('PauseMenu.ts');
     expect(pause).toContain("button('Quit To Menu'");
