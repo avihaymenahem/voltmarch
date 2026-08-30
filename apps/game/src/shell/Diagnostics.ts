@@ -367,6 +367,8 @@ export interface DiagnosticsViability {
   readonly units: number;
   readonly producers: number;
   readonly constructionVehicles: number;
+  /** Pending off-map MCV recovery. */
+  readonly recoveryPurchases: number;
   readonly contestingUnits: number;
   /** Alive, owned, and inside a building or a hull. See `Viability` §HELD. */
   readonly heldUnits: number;
@@ -495,6 +497,7 @@ function viabilityOf(world: World, player: PlayerId, out = otherScratch): Diagno
     units: s.units,
     producers: s.producers,
     constructionVehicles: s.constructionVehicles,
+    recoveryPurchases: s.recoveryPurchases,
     contestingUnits: s.contestingUnits,
     heldUnits: s.heldUnits,
     hasAssets: hasAssets(s),

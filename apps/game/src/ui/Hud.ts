@@ -1819,7 +1819,7 @@ export class Hud {
     if (this.world.time - this.lastAttackTime < ATTACK_ADVICE_SECONDS) {
       this.setAdvice('Base under attack — check the tactical map', 'alert');
     } else if (structures === 0) {
-      this.setAdvice('No structures. Deploy an MCV to found a base', 'alert');
+      this.setAdvice('No structures. Buy or deploy an MCV from the Vehicles tab', 'alert');
     } else if (power === 'down') {
       this.setAdvice('Low power — every queue is running slow. Build a power plant', 'warn');
     } else if (power === 'tight') {

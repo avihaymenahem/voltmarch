@@ -19,11 +19,12 @@
  *
  * THE VOCABULARY
  * --------------
- * A survey counts six things about one player and the three predicates below
+ * A survey counts seven things about one player and the three predicates below
  * are the only interpretations of it anyone should write:
  *
- *   canRebuild  — owns a structure that produces something buildable, OR a
- *                 construction vehicle that unpacks into one. This is the test
+ *   canRebuild  — owns a structure that produces something buildable, a
+ *                 construction vehicle that unpacks into one, OR has an MCV
+ *                 already travelling through the recovery queue. This is the test
  *                 the sell guard runs against the world MINUS the structure
  *                 being sold: if the answer is no, the sell is a soft lock.
  *   canContest  — owns at least one unit that is ON THE FIELD and is not a
@@ -65,7 +66,7 @@ import { production } from './Production';
  * 1. THE SURVEY
  * ========================================================================== */
 
-/** What one player still owns, in the only six categories that decide a match. */
+/** What one player still owns or can recover, in the categories that decide a match. */
 export interface ViabilitySurvey {
   /** Player index this survey describes. -1 before the first fill. */
   player: number;
@@ -77,6 +78,8 @@ export interface ViabilitySurvey {
   producers: number;
   /** Units that unpack into a structure (MCV and its two cousins). */
   constructionVehicles: number;
+  /** MCVs already paid/building in the recovery queue. */
+  recoveryPurchases: number;
   /**
    * Field units that are not harvesters — anything that can go and do
    * something. Excludes anything inside a garrison or a hull; see §HELD.
@@ -101,6 +104,7 @@ export function makeViabilitySurvey(): ViabilitySurvey {
     units: 0,
     producers: 0,
     constructionVehicles: 0,
+    recoveryPurchases: 0,
     contestingUnits: 0,
     heldUnits: 0,
   };
@@ -126,12 +130,19 @@ export interface ViabilityProbes {
   readonly isProducer?: (world: World, slot: number) => boolean;
   /** True when this unit slot unpacks into a structure. */
   readonly isConstructionVehicle?: (world: World, slot: number) => boolean;
+  /** True when the player already queued an MCV recovery. */
+  readonly canPurchaseRecovery?: (world: World, player: PlayerId) => boolean;
 }
 
 const NO_PROBES: ViabilityProbes = {};
 
 /** Kinds that count as "a unit". Wrecks, props and crates are not assets. */
 const UNIT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
+
+/** Live production knows the catalog, bank, queue and exact faction MCV. */
+function defaultCanPurchaseRecovery(_world: World, player: PlayerId): boolean {
+  return production()?.hasPendingMcvRequisition(player) ?? false;
+}
 
 /**
  * Does the structure in `slot` produce anything buildable?
@@ -223,12 +234,14 @@ export function surveyViability(
   const ignore = probes.ignore ?? NONE;
   const isProducer = probes.isProducer ?? defaultIsProducer;
   const isConVehicle = probes.isConstructionVehicle ?? isDeployable;
+  const canPurchaseRecovery = probes.canPurchaseRecovery ?? defaultCanPurchaseRecovery;
 
   out.player = owner;
   out.buildings = 0;
   out.units = 0;
   out.producers = 0;
   out.constructionVehicles = 0;
+  out.recoveryPurchases = canPurchaseRecovery(world, player) ? 1 : 0;
   out.contestingUnits = 0;
   out.heldUnits = 0;
 
@@ -282,7 +295,7 @@ export function hasAssets(s: ViabilitySurvey): boolean {
 
 /** Can put a new structure or a new unit on the field, now or after a deploy. */
 export function canRebuild(s: ViabilitySurvey): boolean {
-  return s.producers > 0 || s.constructionVehicles > 0;
+  return s.producers > 0 || s.constructionVehicles > 0 || s.recoveryPurchases > 0;
 }
 
 /**
@@ -314,7 +327,8 @@ export function isBeaten(s: ViabilitySurvey): boolean {
 /** One line for the boot log and the F3 overlay. */
 export function describeViability(s: ViabilitySurvey): string {
   return `p${s.player}: ${s.buildings}b/${s.units}u `
-    + `prod ${s.producers} mcv ${s.constructionVehicles} contest ${s.contestingUnits} `
+    + `prod ${s.producers} mcv ${s.constructionVehicles} recovery ${s.recoveryPurchases} `
+    + `contest ${s.contestingUnits} `
     + `held ${s.heldUnits} `
     + `${isBeaten(s) ? 'BEATEN' : isStranded(s) ? 'stranded' : 'viable'}`;
 }

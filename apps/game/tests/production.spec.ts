@@ -14,7 +14,7 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
-  BuildTab, EntityFlag, EntityKind, Faction, UnitState,
+  BuildTab, EntityFlag, EntityKind, Faction, NONE, UnitState,
 } from '../src/core/types';
 import type { PlayerId, ProductionItem, SimContext } from '../src/core/types';
 import {
@@ -24,8 +24,9 @@ import {
 import { BuildQueues, HoldReason, effectiveBuildRate, factorySpeed } from '../src/sim/BuildQueue';
 import type { QueueHooks, QueueItemInfo } from '../src/sim/BuildQueue';
 import {
-  BuildKind, ProductionCatalog, ProductionService, UNIT_PUBLIC_ID_BASE,
+  BuildKind, ProductionCatalog, ProductionService, UNIT_PUBLIC_ID_BASE, setProduction,
 } from '../src/sim/Production';
+import { canRebuild, makeViabilitySurvey, surveyViability } from '../src/sim/Viability';
 import { evaluatePlacement, makePlacementReport, withinBuildRadius } from '../src/sim/Placement';
 import { buildScenario, clearScenario, resolveDefBinding } from '../src/game/Scenarios';
 
@@ -67,7 +68,7 @@ function place(service: ProductionService, world: World, key: string, cx: number
   return service.spawnBuilding(p, entry, cx, cz, 1);
 }
 
-beforeEach(() => { simTick = 0; clearScenario(); });
+beforeEach(() => { simTick = 0; clearScenario(); setProduction(null); });
 
 /* ========================================================================== */
 
@@ -115,6 +116,120 @@ describe('ProductionCatalog', () => {
     expect(catalog.byKey('conyard')!.buildable).toBe(false);
     expect(catalog.roster(Faction.Allies, BuildTab.Structures).map((e) => e.key))
       .not.toContain('conyard');
+  });
+});
+
+/* ========================================================================== */
+/* LAST-YARD RECOVERY                                                         */
+/* ========================================================================== */
+
+const MCV_RECOVERY_CASES: readonly [Faction, string, string][] = [
+  [Faction.Allies, 'gi', 'mcv'],
+  [Faction.Soviets, 'conscript', 'mcv'],
+  [Faction.Meridian, 'mrdWayfarer', 'mrdCarryall'],
+  [Faction.Reclaim, 'rclPicker', 'rclCrawler'],
+];
+
+describe('emergency MCV requisition', () => {
+  for (const [faction, escortKey, mcvKey] of MCV_RECOVERY_CASES) {
+    it(`delivers ${mcvKey} off-map for faction ${faction} after the production chain is lost`, () => {
+      const world = new World();
+      world.addPlayer(faction, 'Commander', true, true);
+      world.addPlayer(Faction.Soviets, 'Opponent', false, false);
+      const service = new ProductionService(
+        world, new Channels(), new ProductionCatalog(EMPTY_BINDING),
+      );
+      const p = world.player(0 as PlayerId);
+      p.credits = 4000;
+
+      // A surviving field asset is the rendezvous. There is deliberately no
+      // Construction Yard and no vehicle factory anywhere in this fixture.
+      const escort = service.spawnUnit(p, service.catalog.byKey(escortKey)!, 80, 80, 0);
+      expect(escort).not.toBe(NONE);
+      world.spatial.rebuild();
+      step(service, world, 1);
+
+      const mcv = service.catalog.byKey(mcvKey)!;
+      const available = service.availabilityOf(p.id, mcv, {
+        ok: false, reason: '', capped: false,
+      });
+      expect(available).toEqual({ ok: true, reason: '', capped: false });
+      expect(service.canEmergencyRequisitionMcv(p.id)).toBe(true);
+
+      const before = p.credits;
+      service.enqueueByKey(p.id, mcvKey);
+      step(service, world, 2);
+      expect(p.queues[BuildTab.Vehicles].factoryCount, 'one virtual off-map producer').toBe(1);
+      expect(p.queues[BuildTab.Vehicles].items).toHaveLength(1);
+
+      step(service, world, Math.ceil((mcv.buildTime + 1) / SIM_DT));
+
+      const st = world.store;
+      let delivered = 0;
+      let distance = Infinity;
+      const escortSlot = st.index(escort);
+      for (let a = 0; a < st.byKindCount[EntityKind.Vehicle]; a++) {
+        const i = st.byKind[EntityKind.Vehicle][a];
+        if (st.owner[i] !== 0 || service.entryOf(st.handleOf(i))?.key !== mcvKey) continue;
+        delivered++;
+        distance = Math.hypot(st.posX[i] - st.posX[escortSlot], st.posZ[i] - st.posZ[escortSlot]);
+      }
+      expect(delivered).toBe(1);
+      expect(distance).toBeLessThanOrEqual(PRODUCTION.emergencyMcvSearchRings * CELL + CELL);
+      expect(p.queues[BuildTab.Vehicles].items).toHaveLength(0);
+      expect(before - p.credits).toBeCloseTo(mcv.cost, 2);
+      expect(service.canEmergencyRequisitionMcv(p.id)).toBe(false);
+    });
+  }
+
+  it('counts a queued recovery purchase as a live comeback route', () => {
+    const { world, service } = makeWorld();
+    const p = world.player(0 as PlayerId);
+    p.credits = 3000;
+    service.spawnUnit(p, service.catalog.byKey('gi')!, 80, 80, 0);
+    world.spatial.rebuild();
+    step(service, world, 1);
+    setProduction(service);
+    service.enqueueByKey(p.id, 'mcv');
+    step(service, world, 1);
+
+    const survey = surveyViability(world, p.id, makeViabilitySurvey());
+    expect(survey.producers).toBe(0);
+    expect(survey.constructionVehicles).toBe(0);
+    expect(survey.recoveryPurchases).toBe(1);
+    expect(canRebuild(survey)).toBe(true);
+  });
+
+  it('requires the full recovery price instead of creating a queue that can never finish', () => {
+    const { world, service } = makeWorld();
+    const p = world.player(0 as PlayerId);
+    service.spawnUnit(p, service.catalog.byKey('gi')!, 80, 80, 0);
+    world.spatial.rebuild();
+    step(service, world, 1);
+    const mcv = service.catalog.byKey('mcv')!;
+    p.credits = mcv.cost - 1;
+
+    const available = service.availabilityOf(p.id, mcv, {
+      ok: false, reason: '', capped: false,
+    });
+    expect(available.ok).toBe(false);
+    expect(available.reason).toContain(`${mcv.cost} credits`);
+    expect(service.canEmergencyRequisitionMcv(p.id)).toBe(false);
+  });
+
+  it('does not expose off-map delivery while a construction yard still stands', () => {
+    const { world, service } = makeWorld();
+    const p = world.player(0 as PlayerId);
+    p.credits = 10000;
+    place(service, world, 'conyard', 40, 40);
+    step(service, world, 1);
+    const mcv = service.catalog.byKey('mcv')!;
+    const available = service.availabilityOf(p.id, mcv, {
+      ok: false, reason: '', capped: false,
+    });
+    expect(available.ok).toBe(false);
+    expect(available.reason).toContain('War Factory');
+    expect(service.canEmergencyRequisitionMcv(p.id)).toBe(false);
   });
 });
 

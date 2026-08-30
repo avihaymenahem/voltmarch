@@ -4269,11 +4269,13 @@ export const AI_RECOVERY = {
  *
  * The other half of the same report. `conyard` is what carries
  * `producesTab: BuildTab.Structures`, so a player without one cannot build any
- * structure at all, and the ONLY route back — for a human exactly as for the
- * AI — is to buy a Construction Vehicle from a surviving war factory and
- * unfold it. `src/data/Defs.ts` says so in the `mcv` def's own comment: "a
- * fresh profile must be able to replace one it lost", which is why that def
- * carries no unlock tag.
+ * structure at all. The normal route back — for a human exactly as for the AI
+ * — is to buy a Construction Vehicle from a surviving war factory and unfold
+ * it. If that factory is gone too, `ProductionService` exposes the same MCV as
+ * a normal-price, normal-time off-map recovery requisition and delivers it
+ * beside a surviving owned asset. `src/data/Defs.ts` says so in the `mcv` def's
+ * own comment: "a fresh profile must be able to replace one it lost", which is
+ * why that def carries no unlock tag.
  *
  * The AI never bought one. `BuildRole.Mcv` exists in the catalog and the deploy
  * layer knows how to drive and unfold one, but nothing in `AI.ts` ever called
@@ -5190,6 +5192,12 @@ export const PRODUCTION = {
   rallyForwardMetres: 7.0,
   /** Rings of the spiral search for a free egress cell before giving up. */
   egressSearchRings: 5,
+  /**
+   * Rings around a surviving owned asset where an off-map recovery MCV may
+   * arrive. Twelve cells (24 m) clears even the largest structure footprint
+   * while keeping the delivery visibly tied to the player's remaining force.
+   */
+  emergencyMcvSearchRings: 12,
   /** Metres of clearance a fresh unit needs from anything already standing. */
   egressClearanceMetres: 1.15,
   /** Seconds a finished-but-blocked unit waits before it re-tries the exit. */

@@ -446,6 +446,13 @@ const I = BuildTab.Infantry;
 const V = BuildTab.Vehicles;
 const P = BuildTab.Powers;
 
+/** The one deploy target owned by each construction-vehicle catalog row. */
+const MCV_DEPLOY_TARGET: Readonly<Record<string, string>> = Object.freeze({
+  mcv: 'conyard',
+  mrdCarryall: 'mrdConclave',
+  rclCrawler: 'rclFoundry',
+});
+
 /**
  * THE TECH TREE.
  *
@@ -639,7 +646,8 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 1750, buildTime: 24, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
   },
   {
-    key: 'mcv', name: 'Construction Vehicle', blurb: 'Deploys into a second base.',
+    key: 'mcv', name: 'Construction Vehicle',
+    blurb: 'Deploys into a base. Off-map recovery delivery if your production chain is destroyed.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
     // WAR FACTORY ONLY, and this row is the one the game reads. `battleLab`
     // carries `struct.tech`, which `UnlockGate` withholds from a fresh profile,
@@ -799,7 +807,8 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 1500, buildTime: 19, prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 40,
   },
   {
-    key: 'mrdCarryall', name: 'Pactworks Carryall', blurb: 'Deploys into a second Conclave.',
+    key: 'mrdCarryall', name: 'Pactworks Carryall',
+    blurb: 'Deploys into a Conclave. Off-map recovery delivery if your production chain is destroyed.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
     // Forgeyard only — `mrdReliquary` carries `struct.tech`. See `mcv` above.
     cost: 3000, buildTime: 32, prereqs: ['mrdForgeyard'], sortOrder: 50,
@@ -951,7 +960,8 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 1150, buildTime: 15, prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 40,
   },
   {
-    key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into a second Foundry.',
+    key: 'rclCrawler', name: 'Yardcrawler',
+    blurb: 'Unfolds into a Foundry. Off-map recovery delivery if your production chain is destroyed.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
     // Breaker Yard only — `rclCrucible` carries `struct.tech`. See `mcv` above.
     cost: 3000, buildTime: 32, prereqs: ['rclBreakerYard'], sortOrder: 50,
@@ -1765,6 +1775,14 @@ function powerIdOf(entry: BuildEntry): number {
 
 /** Entity kinds `unitCensus` walks. Module scope: it runs every tick. */
 const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
+/** Stable scan order for the rare off-map MCV recovery predicate. */
+const RECOVERY_ASSET_KINDS: readonly EntityKind[] = [
+  EntityKind.Building, EntityKind.Infantry, EntityKind.Vehicle,
+];
+/** Prefer delivering beside a mobile survivor; a standing structure is fallback. */
+const RECOVERY_ANCHOR_KINDS: readonly EntityKind[] = [
+  EntityKind.Vehicle, EntityKind.Infantry, EntityKind.Building,
+];
 
 /**
  * Def-id slots the unit census buckets into, per player.
@@ -2358,18 +2376,62 @@ export class ProductionService implements QueueHooks {
       result.reason = unlockGate()?.reasonFor(entry) || LOCKED_REASON;
       return result;
     }
-    for (let i = 0; i < entry.prereqs.length; i++) {
-      const key = entry.prereqs[i];
-      if (this.hasStructure(player, key)) continue;
-      const alias = NAVAL_PREREQ_ALIASES[key];
-      if (alias !== undefined && this.hasStructure(player, alias)) continue;
-      const req = this.catalog.byKey(key);
-      result.ok = false;
-      result.reason = `Requires ${req?.name ?? key}`;
-      return result;
+    /*
+     * OFF-MAP MCV RECOVERY.
+     *
+     * Losing the yard before founding a War Factory used to be irreversible:
+     * the only vehicle that can restore the yard required that factory, and
+     * the only way to build the factory required the yard. The recovery route
+     * deliberately bypasses ONLY those two checks, ONLY for the faction's MCV,
+     * and ONLY while both the deploy target and its normal factory are gone.
+     * Price and build time remain the authored 3000 / 32 seconds.
+     *
+     * One item at a time is essential. This is an external requisition, not a
+     * virtual War Factory that may advance the tank queue behind it.
+     */
+    const emergencyMcv = this.emergencyMcvSituation(p, entry);
+    if (emergencyMcv) {
+      if (this.hasLiveConstructionVehicle(p.id, entry)) {
+        result.ok = false;
+        result.capped = true;
+        result.reason = `Deploy your existing ${entry.name}`;
+        return result;
+      }
+      const queued = this.queues.countOf(p, entry.tab, entry.publicId, false);
+      if (queued > 0) {
+        result.ok = false;
+        result.capped = true;
+        result.reason = 'Emergency MCV already en route';
+        return result;
+      }
+      if (p.queues[BuildTab.Vehicles as number].items.length > 0) {
+        result.ok = false;
+        result.reason = 'Clear the vehicle queue for emergency requisition';
+        return result;
+      }
+      // Unlike ordinary factory production, the rescue has no economy behind
+      // it to guarantee later income. Requiring the full bank up front keeps a
+      // zero-credit emergency queue from making `Viability` promise a comeback
+      // that can never finish.
+      if (p.credits < entry.cost) {
+        result.ok = false;
+        result.reason = `Emergency requisition requires ${entry.cost} credits`;
+        return result;
+      }
+    } else {
+      for (let i = 0; i < entry.prereqs.length; i++) {
+        const key = entry.prereqs[i];
+        if (this.hasStructure(player, key)) continue;
+        const alias = NAVAL_PREREQ_ALIASES[key];
+        if (alias !== undefined && this.hasStructure(player, alias)) continue;
+        const req = this.catalog.byKey(key);
+        result.ok = false;
+        result.reason = `Requires ${req?.name ?? key}`;
+        return result;
+      }
     }
     const fi = (player as number) * BUILD_TAB_COUNT + (entry.tab as number);
-    if (this.factories[fi] <= 0) {
+    if (this.factories[fi] <= 0 && !emergencyMcv) {
       result.ok = false;
       // THREE ANSWERS, NOT TWO. `census` stops counting a factory the moment a
       // blackout switches it off, so "0 factories" now covers a player whose War
@@ -2408,6 +2470,141 @@ export class ProductionService implements QueueHooks {
     result.ok = true;
     result.reason = '';
     return result;
+  }
+
+  /**
+   * Outcome/diagnostics seam: can this player pay for the last-way-back MCV,
+   * or is one already travelling through the recovery queue?
+   *
+   * This never calls `availabilityOf` — `Viability` calls this through the
+   * module singleton, and availability is itself part of the production tick.
+   * Keeping the predicate as direct reads makes that safe and deterministic.
+   */
+  canEmergencyRequisitionMcv(player: PlayerId): boolean {
+    const p = this.world.players[player as number];
+    if (p === undefined || p.defeated) return false;
+    const entry = this.mcvEntryForFaction(p.faction);
+    if (entry === null) return false;
+    if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return true;
+    if (p.credits < entry.cost) return false;
+    if (!this.emergencyMcvSituation(p, entry)) return false;
+    if (this.hasLiveConstructionVehicle(p.id, entry)) return false;
+    return p.queues[BuildTab.Vehicles as number].items.length === 0;
+  }
+
+  /** True while any faction-correct MCV is paid/building in the vehicle queue. */
+  hasPendingMcvRequisition(player: PlayerId): boolean {
+    const p = this.world.players[player as number];
+    if (p === undefined || p.defeated) return false;
+    const entry = this.mcvEntryForFaction(p.faction);
+    return entry !== null && this.queues.countOf(p, entry.tab, entry.publicId, false) > 0;
+  }
+
+  /** The construction-vehicle row this faction fields. */
+  private mcvEntryForFaction(faction: Faction): BuildEntry | null {
+    if (faction === Faction.Meridian) return this.catalog.byKey('mrdCarryall');
+    if (faction === Faction.Reclaim) return this.catalog.byKey('rclCrawler');
+    if (faction === Faction.Allies || faction === Faction.Soviets) {
+      return this.catalog.byKey('mcv');
+    }
+    return null;
+  }
+
+  /** True only for the three catalog rows that unfold into a construction yard. */
+  private isConstructionVehicleEntry(entry: BuildEntry): boolean {
+    return MCV_DEPLOY_TARGET[entry.key] !== undefined;
+  }
+
+  /**
+   * The narrow state in which off-map delivery replaces a physical factory:
+   * the player's yard is gone, the required MCV factory is not working, and
+   * at least one owned asset remains for the delivery to rendezvous with.
+   */
+  private emergencyMcvSituation(p: PlayerState, entry: BuildEntry): boolean {
+    if (!this.isConstructionVehicleEntry(entry)) return false;
+    if (entry.faction !== Faction.Neutral && entry.faction !== p.faction) return false;
+    const target = MCV_DEPLOY_TARGET[entry.key];
+    if (target === undefined || this.hasLiveStructureKey(p.id, target)) return false;
+    if (this.hasWorkingMcvFactory(p.id, entry)) return false;
+    return this.hasOwnedAsset(p.id);
+  }
+
+  /** An already-authorised MCV queue item that must arrive without a factory door. */
+  private isOffMapMcvBuild(p: PlayerState, entry: BuildEntry): boolean {
+    return this.isConstructionVehicleEntry(entry) && !this.hasWorkingMcvFactory(p.id, entry);
+  }
+
+  /** Any targetable owned asset can serve as the off-map delivery rendezvous. */
+  private hasOwnedAsset(player: PlayerId): boolean {
+    const st = this.world.store;
+    const owner = player as number;
+    for (let k = 0; k < RECOVERY_ASSET_KINDS.length; k++) {
+      const list = st.byKind[RECOVERY_ASSET_KINDS[k]];
+      const count = st.byKindCount[RECOVERY_ASSET_KINDS[k]];
+      for (let a = 0; a < count; a++) {
+        const i = list[a];
+        if (st.owner[i] !== owner) continue;
+        const flags = st.flags[i];
+        if ((flags & EntityFlag.Alive) === 0) continue;
+        if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
+        if (st.kind[i] !== EntityKind.Building && (flags & EntityFlag.Garrisoned) !== 0) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** A live structure by catalog identity, including one still rising. */
+  private hasLiveStructureKey(player: PlayerId, key: string): boolean {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.Alive) === 0 || (flags & EntityFlag.PendingDestroy) !== 0) continue;
+      if (this.entryForSlot(i)?.key === key) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Does the exact prerequisite factory that makes this MCV exist and have
+   * power? A dock sharing the Vehicles tab is deliberately not an answer.
+   */
+  private hasWorkingMcvFactory(player: PlayerId, entry: BuildEntry): boolean {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.Alive) === 0 || (flags & EntityFlag.PendingDestroy) !== 0) continue;
+      if ((flags & EntityFlag.UnderConstruction) !== 0 || st.buildProgress[i] < 1) continue;
+      const factory = this.entryForSlot(i);
+      if (factory === null || !entry.prereqs.includes(factory.key)) continue;
+      if (!factory.producesTabs.includes(BuildTab.Vehicles)) continue;
+      const dark = (flags & (EntityFlag.NeedsPower | EntityFlag.Powered)) === EntityFlag.NeedsPower;
+      if (!dark) return true;
+    }
+    return false;
+  }
+
+  /** Is this exact construction vehicle already alive on the field? */
+  private hasLiveConstructionVehicle(player: PlayerId, entry: BuildEntry): boolean {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Vehicle];
+    const count = st.byKindCount[EntityKind.Vehicle];
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.Alive) === 0 || (flags & EntityFlag.PendingDestroy) !== 0) continue;
+      if (this.entryForSlot(i)?.key === entry.key) return true;
+    }
+    return false;
   }
 
   /** True when a completed, powered structure of this key exists. */
@@ -2780,11 +2977,20 @@ export class ProductionService implements QueueHooks {
       }
     }
 
-    // Mirror into the shared columns so nobody has to ask us.
+    // Mirror into the shared columns so nobody has to ask us. An emergency MCV
+    // gets exactly ONE virtual producer while it is at the head. This is kept
+    // out of `factories[]`: availability must not mistake off-map logistics for
+    // a War Factory, and nothing behind the MCV may inherit the exception.
     for (let pi = 0; pi < world.players.length; pi++) {
       const p = world.players[pi];
       for (let t = 0; t < BUILD_TAB_COUNT; t++) {
-        p.queues[t].factoryCount = this.factories[pi * BUILD_TAB_COUNT + t];
+        let count = this.factories[pi * BUILD_TAB_COUNT + t];
+        if ((t as BuildTab) === BuildTab.Vehicles) {
+          const head = this.queues.head(p, BuildTab.Vehicles);
+          const entry = head === null ? null : this.resolveQueueEntry(head);
+          if (entry !== null && this.isOffMapMcvBuild(p, entry)) count = 1;
+        }
+        p.queues[t].factoryCount = count;
       }
     }
 
@@ -3673,6 +3879,11 @@ export class ProductionService implements QueueHooks {
     }
     if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
 
+    // No factory survived, by definition. Deliver the paid MCV beside a live
+    // owned asset instead of leaving a fully-paid queue head waiting forever
+    // for a door that cannot be rebuilt without this very vehicle.
+    if (this.isOffMapMcvBuild(p, entry)) return this.tryOffMapMcvDelivery(p, entry);
+
     const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
     /*
      * A HULL LAUNCHES FROM THE DOCK, never from the war factory that happens to
@@ -3862,6 +4073,37 @@ export class ProductionService implements QueueHooks {
     }
   }
 
+  /** Complete an emergency requisition beside the first safe owned rendezvous. */
+  private tryOffMapMcvDelivery(p: PlayerState, entry: BuildEntry): boolean {
+    const st = this.world.store;
+    const fb = FALLBACK_UNITS[entry.key];
+    if (fb === undefined) return false;
+    const def: UnitDef | undefined =
+      entry.defId >= 0 ? this.bindingTables?.units[entry.defId] : undefined;
+    const radius = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
+    const loco = def?.locomotor ?? fb.locomotor;
+
+    for (let k = 0; k < RECOVERY_ANCHOR_KINDS.length; k++) {
+      const list = st.byKind[RECOVERY_ANCHOR_KINDS[k]];
+      const count = st.byKindCount[RECOVERY_ANCHOR_KINDS[k]];
+      for (let a = 0; a < count; a++) {
+        const i = list[a];
+        if (st.owner[i] !== (p.id as number)) continue;
+        const flags = st.flags[i];
+        if ((flags & EntityFlag.Alive) === 0 || (flags & EntityFlag.PendingDestroy) !== 0) continue;
+        if (st.kind[i] !== EntityKind.Building && (flags & EntityFlag.Garrisoned) !== 0) continue;
+        if (!this.findEgressSpot(
+          st.posX[i], st.posZ[i], radius, loco, spot, false,
+          PRODUCTION.emergencyMcvSearchRings,
+        )) continue;
+        if (this.spawnUnit(p, entry, spot[0], spot[1], st.yaw[i]) === NONE) return false;
+        this.world.audio.eva(p.id, EvaLine.Reinforcements);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Spiral outward from the factory door for somewhere the unit fits.
    * Deterministic ring order, so two machines produce the same column.
@@ -3916,7 +4158,7 @@ export class ProductionService implements QueueHooks {
    */
   private findEgressSpot(
     x: number, z: number, radius: number, loco: number, out: Float32Array,
-    naval = false,
+    naval = false, ringLimit?: number,
   ): boolean {
     const world = this.world;
     const step = CELL;
@@ -3928,7 +4170,8 @@ export class ProductionService implements QueueHooks {
       out[1] = z;
       return true;
     }
-    const rings = naval ? PRODUCTION.navalEgressRings : PRODUCTION.egressSearchRings;
+    const rings = ringLimit
+      ?? (naval ? PRODUCTION.navalEgressRings : PRODUCTION.egressSearchRings);
     for (let ring = 0; ring <= rings; ring++) {
       const cells = ring === 0 ? 1 : ring * 8;
       for (let c = 0; c < cells; c++) {
