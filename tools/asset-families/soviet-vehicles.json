@@ -24,6 +24,20 @@
       "movingParts": true
     },
     {
+      "key": "soviet_sickle",
+      "file": "sickle.glb",
+      "class": "standard",
+      "lods": true,
+      "movingParts": false
+    },
+    {
+      "key": "soviet_v4",
+      "file": "v4-rocket-launcher.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
       "key": "soviet_harvester",
       "file": "ore-collector.glb",
       "class": "hero",

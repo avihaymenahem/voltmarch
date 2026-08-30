@@ -1,8 +1,9 @@
 /**
- * Eight authored infantry bodies, sixteen gameplay roles, zero live skeletons.
+ * Nine authored infantry bodies, seventeen gameplay roles, zero live skeletons.
  *
  * Each faction loads its shared line body and unique commander body in an
- * authored gait stance. Each rig is sampled once while the loading curtain is
+ * authored gait stance; aquatic troops may add one equipment-heavy body. Each
+ * rig is sampled once while the loading curtain is
  * up, then discarded. The
  * resulting ordinary BufferGeometry is shared by that faction's line,
  * specialist and engineer KindMeshes; role identity comes from the <=200-tri
@@ -70,6 +71,14 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
       { modelKey: 'soviet_engineer', weapon: 'cutter', pack: 'gas-bottle' },
     ],
     baseColorGain: 1.10, roughnessGain: 1.16, normalScale: 1.10, envMapIntensity: 0.52,
+  },
+  {
+    key: 'soviet_naval_infantry', label: 'Soviet Naval Infantry', poseTime: 0.12,
+    skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/soviets/naval-infantry/naval-infantry-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/soviets/naval-infantry/naval-infantry-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'soviet_diver', weapon: 'rifle' }],
+    baseColorGain: 1.08, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.50,
   },
   {
     key: 'meridian_wayfarer', label: 'Meridian Wayfarer', poseTime: 0.12,

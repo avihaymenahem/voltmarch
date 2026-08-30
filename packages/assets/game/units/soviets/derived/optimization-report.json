@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-29T18:38:27.162Z",
+  "generatedAt": "2026-08-30T01:30:30.963Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -108,6 +108,88 @@
           "boundsDriftMeters": 0,
           "boundsDriftRatio": 0,
           "fileBytes": 25028,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            9
+          ],
+          "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "soviet_sickle",
+      "class": "standard",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/sickle.glb",
+        "triangles": 19894,
+        "fileBytes": 3821912
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sickle.lod1.glb",
+          "triangles": 8950,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00027,
+          "boundsDriftRatio": 0.00018,
+          "fileBytes": 297916,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sickle.lod2.glb",
+          "triangles": 3579,
+          "triangleRatio": 0.1799,
+          "boundsDriftMeters": 0.00682,
+          "boundsDriftRatio": 0.00352,
+          "fileBytes": 150776,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/sickle.shadow.glb",
+          "triangles": 1836,
+          "triangleRatio": 0.0923,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 26504,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 153
+        }
+      ]
+    },
+    {
+      "key": "soviet_v4",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/soviets/v4-rocket-launcher.glb",
+        "triangles": 24077,
+        "fileBytes": 5782660
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/v4-rocket-launcher.shadow.glb",
+          "triangles": 1728,
+          "triangleRatio": 0.0718,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 24992,
           "geometryOnly": true,
           "grid": [
             16,

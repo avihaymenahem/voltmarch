@@ -22,6 +22,7 @@ interface AssetFamily {
 }
 
 const FAMILIES: readonly AssetFamily[] = [
+  { name: 'Soviet Sickle', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_sickle', file: 'sickle.glb', stem: 'sickle' },
   { name: 'Soviet Ore Collector', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_harvester', file: 'ore-collector.glb', stem: 'ore-collector' },
   { name: 'Allied Chrono Miner', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_harvester', file: 'chrono-miner.glb', stem: 'chrono-miner' },
   { name: 'Meridian Sun Collector', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_collector', file: 'sun-collector.glb', stem: 'sun-collector' },
@@ -164,6 +165,33 @@ describe('imported unit shipping budgets', () => {
         expect(json.images?.every((image) => image.mimeType === 'image/ktx2'), asset.key).toBe(true);
       }
     }
+  });
+
+  it('ships the articulated V4 without publishing invalid colour LODs', () => {
+    const sourceDir = path.join(root, 'packages/assets/game/units/soviets');
+    const source = glbJson(path.join(sourceDir, 'v4-rocket-launcher.glb'));
+    const runtimeAsset = glbJson(path.join(sourceDir, 'compressed/v4-rocket-launcher.glb'));
+    const shadow = glbJson(path.join(sourceDir, 'derived/v4-rocket-launcher.shadow.glb'));
+    expect(source.json.meshes.map((mesh) => mesh.name).sort()).toEqual(['Hull', 'Launcher']);
+    expect(source.json.nodes.filter((node) => node.mesh !== undefined).map((node) => node.name).sort())
+      .toEqual(['Hull', 'Launcher']);
+    expect(source.json.materials?.every((material) => material.doubleSided !== true)).toBe(true);
+    expect(triangles(source.json)).toBeLessThanOrEqual(30_000);
+    expect(runtimeAsset.bytes.length).toBeLessThanOrEqual(7 * 1024 * 1024);
+    expect(runtimeAsset.json.extensionsRequired).toContain('KHR_texture_basisu');
+    expect(runtimeAsset.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
+    expect(triangles(shadow.json)).toBeLessThanOrEqual(2_000);
+
+    const runtime = fs.readFileSync(
+      path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
+    );
+    const start = runtime.indexOf("key: 'soviet_v4'");
+    const section = runtime.slice(start, runtime.indexOf("key: 'soviet_harvester'", start));
+    expect(section).toContain("turretName: 'Launcher'");
+    expect(section).toContain('sourceTurretPivot: [0.595115, -0.05, 0.000434]');
+    expect(section).toContain('soviets/compressed/v4-rocket-launcher.glb');
+    expect(section).toContain('soviets/derived/v4-rocket-launcher.shadow.glb');
+    expect(section).not.toContain('v4-rocket-launcher.lod1.glb');
   });
 
   it('keeps the Sputnik Dozer hull on its approved runtime axis', () => {

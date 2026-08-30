@@ -20,12 +20,22 @@ const seal = args.includes('--seal');
 const minimalSeal = args.includes('--minimal-seal');
 const keepAllTurretComponents = args.includes('--keep-all-turret-components');
 const sealAllLoops = args.includes('--seal-all-loops');
+const generatedUvArg = value('--generated-uv');
+const generatedUv = generatedUvArg === undefined
+  ? [0, 0]
+  : generatedUvArg.split(',').map(Number);
+
+if (generatedUv.length !== 2 || generatedUv.some((component) => !Number.isFinite(component)
+  || component < 0 || component > 1)) {
+  throw new Error('--generated-uv must be two normalized coordinates: u,v');
+}
 
 if (!inputArg || !outputArg || !Number.isFinite(threshold)) {
   throw new Error(
     'usage: node tools/split-glb-horizontal.mjs --input <source.glb> --output <split.glb> '
     + '--threshold <source-y> [--body-name body] [--turret-name turret] '
-    + '[--seal] [--minimal-seal] [--keep-all-turret-components] [--seal-all-loops]',
+    + '[--seal] [--minimal-seal] [--keep-all-turret-components] [--seal-all-loops] '
+    + '[--generated-uv u,v]',
   );
 }
 
@@ -348,6 +358,7 @@ function generatedVertex(point, normal) {
     if (semantic === 'POSITION') values.splice(0, 3, point[0], point[1] ?? threshold, point[2]);
     if (semantic === 'NORMAL') values.splice(0, 3, normal[0], normal[1], normal[2]);
     if (semantic === 'TANGENT') values.splice(0, 4, 1, 0, 0, 1);
+    if (semantic === 'TEXCOORD_0') values.splice(0, 2, generatedUv[0], generatedUv[1]);
     vertex.set(semantic, values);
   }
   return vertex;
@@ -550,6 +561,7 @@ console.log(JSON.stringify({
   sealed: seal,
   sealAllLoops,
   minimalSeal,
+  generatedUv,
   sealedLoops: loops.length,
   sealedPrimaryLoops: loopsToSeal.length,
   duplicatedDeckShell,

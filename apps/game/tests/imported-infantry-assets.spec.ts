@@ -9,16 +9,18 @@ import {
 import { IMPORTED_INFANTRY_FAMILIES } from '../src/art/ImportedInfantryAssets';
 
 describe('shared authored infantry runtime', () => {
-  it('maps four shared bodies and four unique commander bodies to all sixteen roles', () => {
-    expect(IMPORTED_INFANTRY_FAMILIES).toHaveLength(8);
+  it('maps four shared bodies, four commanders and one aquatic body to all seventeen roles', () => {
+    expect(IMPORTED_INFANTRY_FAMILIES).toHaveLength(9);
     const modelKeys = new Set<string>();
     for (const family of IMPORTED_INFANTRY_FAMILIES) {
       expect(family.url).toMatch(/-lod0\.glb/);
       expect(family.clipUrl).toMatch(/-(?:walk|run-shoot)\.glb/);
       for (const role of family.roles) modelKeys.add(role.modelKey);
     }
-    const shared = IMPORTED_INFANTRY_FAMILIES.filter((family) => family.skinGait !== true);
-    const commanders = IMPORTED_INFANTRY_FAMILIES.filter((family) => family.skinGait === true);
+    const shared = IMPORTED_INFANTRY_FAMILIES.filter((family) => family.roles.length === 3);
+    const commanders = IMPORTED_INFANTRY_FAMILIES.filter((family) =>
+      ['allied_marshal', 'soviet_commissar', 'meridian_hierarch', 'reclaim_baron']
+        .includes(family.roles[0].modelKey));
     expect(shared).toHaveLength(4);
     expect(shared.every((family) => family.roles.length === 3)).toBe(true);
     expect(commanders).toHaveLength(4);
@@ -26,7 +28,8 @@ describe('shared authored infantry runtime', () => {
     expect(commanders.map((family) => family.roles[0].modelKey)).toEqual([
       'allied_marshal', 'soviet_commissar', 'meridian_hierarch', 'reclaim_baron',
     ]);
-    expect(modelKeys.size).toBe(16);
+    expect(modelKeys.size).toBe(17);
+    expect(modelKeys).toContain('soviet_diver');
   });
 
   it('keeps every modular role part beneath the 200-triangle ceiling', () => {
