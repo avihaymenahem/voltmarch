@@ -5,6 +5,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { linearColorTriple } from '../core/assets';
+import { applyShroudTint } from '../render/FogOfWar';
+import { nodePath } from '../render/gpu-path';
 import {
   ENVIRONMENT_ASSET_KEYS, environmentAssetManifest,
 } from './EnvironmentAssetCatalog';
@@ -15,6 +17,25 @@ import type { BiomeName } from './Biomes';
 const loader = new GLTFLoader();
 const textureLoader = new THREE.TextureLoader();
 export const FOLIAGE_ALPHA_TEST = 0.85;
+type EnvironmentMaterial = THREE.Material;
+
+/**
+ * Authored environment surfaces still stand above the depth-tested shroud
+ * carpet, exactly like the procedural prop material. Build them through the
+ * backend's shroud-aware standard material instead of handing a stock PBR
+ * material to Scatter, or imported foliage remains visible in unexplored fog.
+ */
+export function createEnvironmentMaterial(
+  params: THREE.MeshStandardMaterialParameters,
+): EnvironmentMaterial {
+  const np = nodePath();
+  if (np !== null) return np.createShroudTintedStandard(params);
+
+  const material = new THREE.MeshStandardMaterial(params);
+  material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+  material.customProgramCacheKey = () => 'vm.environment-pbr.shroud.v1';
+  return material;
+}
 const PROP_SURFACE_DELIVERY_MODULES = import.meta.glob<string>(
   '../../../../packages/assets/game/environment/prop-surface/**/*.glb',
   { eager: true, query: '?url', import: 'default' },
@@ -270,7 +291,7 @@ const PROP_SURFACE_TEXTURE_URLS = Object.freeze({
   ).href,
 });
 
-function createMineralMaterial(): Promise<THREE.MeshStandardMaterial> {
+function createMineralMaterial(): Promise<EnvironmentMaterial> {
   return Promise.all([
     textureLoader.loadAsync(MINERAL_TEXTURE_URLS.base),
     textureLoader.loadAsync(MINERAL_TEXTURE_URLS.normal),
@@ -286,7 +307,7 @@ function createMineralMaterial(): Promise<THREE.MeshStandardMaterial> {
       texture.anisotropy = 4;
       texture.needsUpdate = true;
     }
-    const material = new THREE.MeshStandardMaterial({
+    const material = createEnvironmentMaterial({
       name: 'foliage.mineral-rock-v1.pbr',
       color: 0xffffff,
       map: base,
@@ -305,7 +326,7 @@ function createMineralMaterial(): Promise<THREE.MeshStandardMaterial> {
   });
 }
 
-function createShrubMaterial(): Promise<THREE.MeshStandardMaterial> {
+function createShrubMaterial(): Promise<EnvironmentMaterial> {
   return Promise.all([
     textureLoader.loadAsync(SHRUB_TEXTURE_URLS.base),
     textureLoader.loadAsync(SHRUB_TEXTURE_URLS.normal),
@@ -320,7 +341,7 @@ function createShrubMaterial(): Promise<THREE.MeshStandardMaterial> {
       texture.anisotropy = 4;
       texture.needsUpdate = true;
     }
-    return new THREE.MeshStandardMaterial({
+    return createEnvironmentMaterial({
       name: 'foliage.temperate-shrub-v1.pbr',
       color: 0xffffff,
       map: base,
@@ -341,7 +362,7 @@ function createShrubMaterial(): Promise<THREE.MeshStandardMaterial> {
   });
 }
 
-function createBoxPropMaterial(): Promise<THREE.MeshStandardMaterial> {
+function createBoxPropMaterial(): Promise<EnvironmentMaterial> {
   return Promise.all([
     textureLoader.loadAsync(BOX_PROP_TEXTURE_URLS.base),
     textureLoader.loadAsync(BOX_PROP_TEXTURE_URLS.normal),
@@ -356,7 +377,7 @@ function createBoxPropMaterial(): Promise<THREE.MeshStandardMaterial> {
       texture.anisotropy = 4;
       texture.needsUpdate = true;
     }
-    return new THREE.MeshStandardMaterial({
+    return createEnvironmentMaterial({
       name: 'foliage.box-prop-v1.pbr',
       color: 0xffffff,
       map: base,
@@ -377,7 +398,7 @@ function createBoxPropMaterial(): Promise<THREE.MeshStandardMaterial> {
   });
 }
 
-function createExtendedFoliageMaterial(): Promise<THREE.MeshStandardMaterial> {
+function createExtendedFoliageMaterial(): Promise<EnvironmentMaterial> {
   return Promise.all([
     textureLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.base),
     textureLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.normal),
@@ -392,7 +413,7 @@ function createExtendedFoliageMaterial(): Promise<THREE.MeshStandardMaterial> {
       texture.anisotropy = 4;
       texture.needsUpdate = true;
     }
-    return new THREE.MeshStandardMaterial({
+    return createEnvironmentMaterial({
       name: 'foliage.extended-foliage-v1.pbr',
       color: 0xffffff,
       map: base,
@@ -413,7 +434,7 @@ function createExtendedFoliageMaterial(): Promise<THREE.MeshStandardMaterial> {
   });
 }
 
-function createPropSurfaceMaterial(): Promise<THREE.MeshStandardMaterial> {
+function createPropSurfaceMaterial(): Promise<EnvironmentMaterial> {
   return Promise.all([
     textureLoader.loadAsync(PROP_SURFACE_TEXTURE_URLS.base),
     textureLoader.loadAsync(PROP_SURFACE_TEXTURE_URLS.normal),
@@ -428,7 +449,7 @@ function createPropSurfaceMaterial(): Promise<THREE.MeshStandardMaterial> {
       texture.anisotropy = 4;
       texture.needsUpdate = true;
     }
-    return new THREE.MeshStandardMaterial({
+    return createEnvironmentMaterial({
       name: 'foliage.prop-surface-v1.pbr',
       color: 0xffffff,
       map: base,
@@ -549,21 +570,37 @@ function tintShrubGeometry(
   colour.needsUpdate = true;
 }
 
-function pbrMaterial(source: THREE.Material, key: string): THREE.MeshStandardMaterial {
+function pbrMaterial(source: THREE.Material, key: string): EnvironmentMaterial {
   if (!(source instanceof THREE.MeshStandardMaterial)) {
     throw new Error(`[foliage] PBR LOD0 expected MeshStandardMaterial, got ${source.type}`);
   }
-  const material = source.clone();
-  material.name = `foliage.${key}.pbr`;
-  material.side = THREE.FrontSide;
-  material.dithering = true;
-  material.envMapIntensity = 0.55;
-  material.normalScale.set(0.82, 0.82);
-  material.roughness = Math.max(0.78, material.roughness);
-  material.alphaTest = FOLIAGE_ALPHA_TEST;
-  material.alphaToCoverage = false;
+  const material = createEnvironmentMaterial({
+    name: `foliage.${key}.pbr`,
+    color: source.color,
+    map: source.map,
+    normalMap: source.normalMap,
+    normalMapType: source.normalMapType,
+    normalScale: new THREE.Vector2(0.82, 0.82),
+    roughness: Math.max(0.78, source.roughness),
+    roughnessMap: source.roughnessMap,
+    metalness: source.metalness,
+    metalnessMap: source.metalnessMap,
+    aoMap: source.aoMap,
+    aoMapIntensity: source.aoMapIntensity,
+    emissive: source.emissive,
+    emissiveIntensity: source.emissiveIntensity,
+    emissiveMap: source.emissiveMap,
+    alphaMap: source.alphaMap,
+    vertexColors: source.vertexColors,
+    transparent: false,
+    alphaTest: FOLIAGE_ALPHA_TEST,
+    alphaToCoverage: false,
+    side: THREE.FrontSide,
+    dithering: true,
+    envMapIntensity: 0.55,
+  });
   for (const texture of [
-    material.map, material.normalMap, material.metalnessMap, material.roughnessMap,
+    source.map, source.normalMap, source.metalnessMap, source.roughnessMap,
   ]) {
     if (texture === null) continue;
     texture.anisotropy = 4;
@@ -578,11 +615,11 @@ async function loadDelivery(
   name: string,
   authoredMaterial: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined,
   biome: BiomeName,
-  mineralMaterial: THREE.MeshStandardMaterial | undefined,
-  shrubMaterial: THREE.MeshStandardMaterial | undefined,
-  boxPropMaterial: THREE.MeshStandardMaterial | undefined,
-  extendedFoliageMaterial: THREE.MeshStandardMaterial | undefined,
-  propSurfaceMaterial: THREE.MeshStandardMaterial | undefined,
+  mineralMaterial: EnvironmentMaterial | undefined,
+  shrubMaterial: EnvironmentMaterial | undefined,
+  boxPropMaterial: EnvironmentMaterial | undefined,
+  extendedFoliageMaterial: EnvironmentMaterial | undefined,
+  propSurfaceMaterial: EnvironmentMaterial | undefined,
 ): Promise<PropGeometry> {
   const gltf = await loader.loadAsync(deliveryUrl(file));
   gltf.scene.updateMatrixWorld(true);
@@ -660,9 +697,15 @@ function disposeDelivery(
 function disposeMaterial(material: THREE.Material): void {
   // Family PBR materials and maps are shared across independent prop keys;
   // the successful FoliageEngine registration owns their final disposal.
-  if (material instanceof THREE.MeshStandardMaterial) {
+  if ('map' in material) {
+    const textured = material as EnvironmentMaterial & {
+      map?: THREE.Texture | null;
+      normalMap?: THREE.Texture | null;
+      metalnessMap?: THREE.Texture | null;
+      roughnessMap?: THREE.Texture | null;
+    };
     const textures = new Set([
-      material.map, material.normalMap, material.metalnessMap, material.roughnessMap,
+      textured.map, textured.normalMap, textured.metalnessMap, textured.roughnessMap,
     ]);
     for (const texture of textures) texture?.dispose();
   }
@@ -672,11 +715,11 @@ function disposeMaterial(material: THREE.Material): void {
 async function loadFamily(
   key: string,
   biome: BiomeName,
-  mineralMaterial?: THREE.MeshStandardMaterial,
-  shrubMaterial?: THREE.MeshStandardMaterial,
-  boxPropMaterial?: THREE.MeshStandardMaterial,
-  extendedFoliageMaterial?: THREE.MeshStandardMaterial,
-  propSurfaceMaterial?: THREE.MeshStandardMaterial,
+  mineralMaterial?: EnvironmentMaterial,
+  shrubMaterial?: EnvironmentMaterial,
+  boxPropMaterial?: EnvironmentMaterial,
+  extendedFoliageMaterial?: EnvironmentMaterial,
+  propSurfaceMaterial?: EnvironmentMaterial,
 ): Promise<EnvironmentGeometryFamily | undefined> {
   const manifest = environmentAssetManifest(key);
   const def = propDef(key);
@@ -740,11 +783,11 @@ export async function loadImportedFoliage(
   biome: BiomeName,
 ): Promise<ReadonlyMap<string, EnvironmentGeometryFamily>> {
   const families = new Map<string, EnvironmentGeometryFamily>();
-  let mineralMaterialPromise: Promise<THREE.MeshStandardMaterial> | undefined;
-  let shrubMaterialPromise: Promise<THREE.MeshStandardMaterial> | undefined;
-  let boxPropMaterialPromise: Promise<THREE.MeshStandardMaterial> | undefined;
-  let extendedFoliageMaterialPromise: Promise<THREE.MeshStandardMaterial> | undefined;
-  let propSurfaceMaterialPromise: Promise<THREE.MeshStandardMaterial> | undefined;
+  let mineralMaterialPromise: Promise<EnvironmentMaterial> | undefined;
+  let shrubMaterialPromise: Promise<EnvironmentMaterial> | undefined;
+  let boxPropMaterialPromise: Promise<EnvironmentMaterial> | undefined;
+  let extendedFoliageMaterialPromise: Promise<EnvironmentMaterial> | undefined;
+  let propSurfaceMaterialPromise: Promise<EnvironmentMaterial> | undefined;
   for (const key of ENVIRONMENT_ASSET_KEYS) {
     try {
       const manifest = environmentAssetManifest(key);

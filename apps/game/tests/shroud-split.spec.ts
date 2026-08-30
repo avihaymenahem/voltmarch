@@ -35,9 +35,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createEnvironmentMaterial } from '../src/world/EnvironmentAssetLoader';
+import { shroudUniforms } from '../src/render/FogOfWar';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8');
@@ -98,6 +101,7 @@ describe('everything that draws above the ground tints itself', () => {
     ['apps/game/src/art/UnitFactory.ts', 'units'],
     ['apps/game/src/art/BuildingFactory.ts', 'structures'],
     ['apps/game/src/world/PropLibrary.ts', 'scatter props'],
+    ['apps/game/src/world/EnvironmentAssetLoader.ts', 'imported PBR props and foliage'],
     ['apps/game/src/render/RenderBridge.ts', 'the placeholder box'],
   ];
 
@@ -106,6 +110,29 @@ describe('everything that draws above the ground tints itself', () => {
       expect(code(read(file))).toContain('applyShroudTint(shader)');
     });
   }
+
+  it('builds imported PBR materials through the WebGPU shroud twin too', () => {
+    const loader = code(read('apps/game/src/world/EnvironmentAssetLoader.ts'));
+    expect(loader).toContain('np.createShroudTintedStandard(params)');
+    expect(loader).toContain("'vm.environment-pbr.shroud.v1'");
+  });
+
+  it('injects the live shared shroud mask into imported WebGL PBR materials', () => {
+    const material = createEnvironmentMaterial({ map: new THREE.Texture() });
+    expect(material).toBeInstanceOf(THREE.MeshStandardMaterial);
+    const shader = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: 'void main() {\n#include <project_vertex>\n}',
+      fragmentShader: 'void main() {\n#include <tonemapping_fragment>\n}',
+    };
+    material.onBeforeCompile(shader as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
+
+    expect(shader.uniforms.uFogMask).toBe(shroudUniforms.uFogMask);
+    expect(shader.uniforms.uFogAmount).toBe(shroudUniforms.uFogAmount);
+    expect(shader.vertexShader).toContain('vShroudUv');
+    expect(shader.fragmentShader).toContain('texture2D(uFogMask, vShroudUv)');
+    material.dispose();
+  });
 
   it('entity props use the same shroud-aware material as scatter props', () => {
     // The entity integration deliberately stopped cloning a smaller material:
