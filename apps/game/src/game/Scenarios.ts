@@ -1464,11 +1464,10 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
 
   /* -- THE MERIDIAN PACT ---------------------------------------------------
    * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
-   * number here. Two Pact-wide rules are visible in the rows and are the whole
-   * faction: EVERY hull is `Locomotor.Hover` (Flowfield promotes a hover unit
-   * to MoveClass.Naval on its first water query, so the army is amphibious and
-   * pays no slope cost), and every hull is `crushLevel: 0` — nothing the Pact
-   * fields can drive over anything.
+   * number here. Most Pact hulls hover and every hull has `crushLevel: 0`.
+   * `mrdSolarch` is the main-line tank and the deliberate land-only exception;
+   * keeping this fallback row tracked ensures scenario and production spawns
+   * agree about whether it may enter water.
    * ---------------------------------------------------------------------- */
   mrdWayfarer: unit('mrdWayfarer', EntityKind.Infantry, U.infantry, 110, ArmorClass.Infantry, 3.8,
     Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
@@ -1485,7 +1484,7 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   mrdSkiff: unit('mrdSkiff', EntityKind.Vehicle, U.ifv, 190, ArmorClass.Light, 9.2,
     Locomotor.Hover, 32, TURRETED, Faction.Meridian, { crushableBy: 4, turretTurnRate: 3.4 }),
   mrdSolarch: unit('mrdSolarch', EntityKind.Vehicle, U.lightTank, 330, ArmorClass.Light, 7.6,
-    Locomotor.Hover, 30, TURRETED, Faction.Meridian, { crushableBy: 5 }),
+    Locomotor.Track, 30, TURRETED, Faction.Meridian, { crushableBy: 5 }),
   mrdZenith: unit('mrdZenith', EntityKind.Vehicle, U.prismTank, 240, ArmorClass.Light, 6.2,
     Locomotor.Hover, 34, TURRETED, Faction.Meridian, { crushableBy: 5 }),
   mrdCarryall: unit('mrdCarryall', EntityKind.Vehicle, U.mcv, 950, ArmorClass.Heavy, 5.0,

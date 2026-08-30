@@ -89,6 +89,8 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // `core/types.ts` records what happens when a verb skips the bus.
 import { commanderPowerSeamOf } from '../sim/CommanderPowers';
 import { isDeployable } from '../sim/Deploy';
+import { MoveClass, locomotorForMoveClass } from '../sim/Flowfield';
+import { moveClassAt } from '../sim/Movement';
 import { transportService } from '../sim/Transport';
 import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
 // The same shape as the `isDeployable` edge above, and bought for the same
@@ -409,6 +411,8 @@ export interface SelectionCapabilities {
    * because four fifths of that selection cannot follow.
    */
   airCount: number;
+  /** Bitset of the `MoveClass` values represented by own mobile units. */
+  moveClassMask: number;
   hasHarvester: boolean;
   /** Infantry that could board a transport. */
   hasPassengers: boolean;
@@ -441,6 +445,7 @@ export function readCapabilities(
   out.canCapture = false;
   out.canRepair = false;
   out.airCount = 0;
+  out.moveClassMask = 0;
   out.hasHarvester = false;
   out.hasPassengers = false;
   out.factoryCount = 0;
@@ -459,6 +464,7 @@ export function readCapabilities(
     if ((f & EntityFlag.CanMove) !== 0) {
       out.mobileCount++;
       if (s.locomotor[i] === Locomotor.Air) out.airCount++;
+      out.moveClassMask |= 1 << moveClassAt(s, i);
     }
     if ((f & EntityFlag.CanAttack) !== 0) out.canAttack = true;
     if (roles.isHarvester(world, i)) out.hasHarvester = true;
@@ -484,6 +490,7 @@ export function createCapabilities(): SelectionCapabilities {
   return {
     ownCount: 0, mobileCount: 0, buildingCount: 0,
     canAttack: false, canCapture: false, canRepair: false, airCount: 0,
+    moveClassMask: 0,
     hasHarvester: false, hasPassengers: false, factoryCount: 0, deployCount: 0,
   };
 }
@@ -927,22 +934,13 @@ export function resolveContextOrder(
 }
 
 /**
- * True when the SELECTION could arrive at this cell.
+ * True when EVERY mobile class in the selection can occupy this cell.
  *
- * This function was named for the selection while ignoring it entirely: it
- * asked whether Track, Foot or Hover could stand on the cell and nothing else.
- * That was a complete answer for as long as those were the only ways to travel.
- * `Locomotor.Air` ended that — aircraft ignore the grid, so a flight of
- * gunships was being shown the "no move" cursor over every cliff and every
- * stretch of open water on the map, which is precisely where you send them.
- *
- * The order always issued; only the pointer lied. That makes it cosmetic in the
- * sense that nothing was unreachable, and NOT cosmetic in the sense that the
- * cursor is how a player learns what a unit can do.
- *
- * The test is "every mobile unit here flies", not "one does". A gunship
- * escorting four tanks still deserves the warning, because the escort is what
- * will fail to arrive.
+ * The old implementation ORed Track, Foot and Hover terrain checks together.
+ * Open water therefore advertised a green move cursor to a tracked tank merely
+ * because some unrelated hovercraft class could stand there. Orders still
+ * route as close as possible, but the cursor must describe the selected units,
+ * not every locomotor that exists in the game.
  */
 function passableForSelection(
   world: World,
@@ -950,14 +948,21 @@ function passableForSelection(
   x: number,
   z: number,
 ): boolean {
-  if (caps.mobileCount > 0 && caps.airCount === caps.mobileCount) return true;
+  if (caps.mobileCount <= 0) return false;
+  // Aircraft do not consult the terrain grid. Keep this fast path explicit so
+  // a pure flight cannot inherit a stale ground warning from any other class.
+  if (caps.airCount === caps.mobileCount) return true;
   const cx = worldToCell(x);
   const cz = worldToCell(z);
-  return (
-    world.terrain.isPassable(cx, cz, Locomotor.Track) ||
-    world.terrain.isPassable(cx, cz, Locomotor.Foot) ||
-    world.terrain.isPassable(cx, cz, Locomotor.Hover)
-  );
+  const mask = caps.moveClassMask;
+  for (let cls = MoveClass.Foot; cls <= MoveClass.Air; cls++) {
+    if ((mask & (1 << cls)) === 0) continue;
+    const moveClass = cls as MoveClass;
+    if (moveClass === MoveClass.Air) continue;
+    if (moveClass === MoveClass.Naval && !world.terrain.isWater(cx, cz)) return false;
+    if (!world.terrain.isPassable(cx, cz, locomotorForMoveClass(moveClass))) return false;
+  }
+  return true;
 }
 
 /* ==========================================================================

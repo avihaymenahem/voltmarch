@@ -1427,14 +1427,12 @@ export const UNITS: readonly UnitDef[] = [
    *
    * THE TWO RULES THAT MAKE THE ARMY, and every number below is one of them:
    *
-   * 1. NOTHING THE PACT FIELDS TOUCHES THE GROUND. Every Meridian vehicle and
-   *    ship is `Locomotor.Hover`, which `sim/Flowfield.ts` promotes to
-   *    MoveClass.Naval the first time it queries a water cell — so the whole
-   *    army is amphibious, ignores slope cost, and can open a second front
-   *    across any lake on the map. The Kestrel is the one hull that goes
-   *    further and is `Locomotor.Air`. The price is paid twice: `crushLevel: 0`
-   *    on everything (a skirt cannot crush a conscript, so the Pact never wins
-   *    a ram) and one armour class lower than the equivalent tracked hull.
+   * 1. MOST PACT HULLS SKIM. The Collector, Sandskiff, Zenith and Carryall are
+   *    `Locomotor.Hover`; ships are water-only and the Kestrel flies. The
+   *    Solarch is the deliberate exception: it is the faction's main-line
+   *    TANK, so it uses `Locomotor.Track` and may not cross open water. The
+   *    faction still pays for light hovering hulls with `crushLevel: 0` on
+   *    everything and one armour class less than the opposing main line.
    *
    * 2. SHIELDS STOP SHELLS, NOT BULLETS. The main line is ArmorClass.Light
    *    with a deep HP pool instead of ArmorClass.Medium/Heavy with a shallow
@@ -1517,7 +1515,7 @@ export const UNITS: readonly UnitDef[] = [
     prereqs: ['mrdForgeyard'], sortOrder: 30,
     model: 'meridian_solarch',
     maxHp: 330, armor: ArmorClass.Light, maxSpeed: 7.6, turnRate: 2.6 - U.lightTank.l * 0.14,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.lightTank), sight: 30,
+    locomotor: Locomotor.Track, radius: hullRadius(U.lightTank), sight: 30,
     weapons: [w('focusLance')], hasTurret: true, crushableBy: 5,
     flags: MRD_TURRETED,
   }),

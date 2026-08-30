@@ -24,6 +24,7 @@ import type { Command, EntityId, ITerrain, PlayerId } from '../src/core/types';
 
 import { CursorKind, InputManager, uiOwnsNavigation } from '../src/input/Input';
 import { CaptureService, captureService, setCaptureService } from '../src/sim/Capture';
+import { clearMoveClass } from '../src/sim/Movement';
 import {
   Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
 } from '../src/input/Selection';
@@ -104,6 +105,7 @@ function tank(rig: Rig, owner: PlayerId, x: number, z: number, defId = 1): Entit
   s.hp[i] = 100;
   s.maxHp[i] = 100;
   s.weaponIndex[i] = 0;
+  clearMoveClass(s, id);
   rig.world.spatial.rebuild();
   return id;
 }
@@ -855,6 +857,26 @@ function refuseGround(world: World): void {
   world.terrain = stub;
 }
 
+/** Open water: hover/naval movement may stand here, ground movement may not. */
+function exposeOpenWater(world: World): void {
+  const base = world.terrain;
+  const stub: ITerrain = {
+    heightAt: (x, z) => base.heightAt(x, z),
+    normalAt: (x, z, out) => base.normalAt(x, z, out),
+    slopeAt: (x, z) => base.slopeAt(x, z),
+    isPassable: (_cx, _cz, loco) => loco === Locomotor.Hover,
+    isBuildable: () => false,
+    isOccupied: (cx, cz) => base.isOccupied(cx, cz),
+    markOccupied: (cx, cz, w, h, id) => base.markOccupied(cx, cz, w, h, id),
+    clearOccupied: (cx, cz, w, h) => base.clearOccupied(cx, cz, w, h),
+    occupancyVersion: () => base.occupancyVersion(),
+    isWater: () => true,
+    raycastGround: (ox, oy, oz, dx, dy, dz, out) =>
+      base.raycastGround(ox, oy, oz, dx, dy, dz, out),
+  };
+  world.terrain = stub;
+}
+
 /** Spawn an aircraft — `Locomotor.Air`, the class that ignores the grid. */
 function gunship(rig: Rig, owner: PlayerId, x: number, z: number): EntityId {
   const s = rig.world.store;
@@ -866,11 +888,32 @@ function gunship(rig: Rig, owner: PlayerId, x: number, z: number): EntityId {
   s.locomotor[i] = Locomotor.Air;
   s.hp[i] = 210;
   s.maxHp[i] = 210;
+  clearMoveClass(s, id);
   rig.world.spatial.rebuild();
   return id;
 }
 
 describe('move cursor over impassable ground', () => {
+  it('refuses open water for a tracked tank even though hovercraft can cross it', () => {
+    const rig = makeRig();
+    exposeOpenWater(rig.world);
+    rig.sel.select(tank(rig, rig.me, 100, 100), SelectMode.Replace);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.NoMove);
+  });
+
+  it('allows open water only when every selected ground unit can cross it', () => {
+    const rig = makeRig();
+    exposeOpenWater(rig.world);
+    const hover = tank(rig, rig.me, 100, 100);
+    rig.world.store.locomotor[rig.world.store.index(hover)] = Locomotor.Hover;
+    clearMoveClass(rig.world.store, hover);
+    rig.sel.select(hover, SelectMode.Replace);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.Move);
+
+    rig.sel.select(tank(rig, rig.me, 104, 100), SelectMode.Add);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.NoMove);
+  });
+
   it('still warns a ground selection off it', () => {
     // The control. If this ever goes green-by-default the rest of this block
     // proves nothing, because `refuseGround` would not be refusing anything.

@@ -145,26 +145,18 @@ describe('the Meridian Pact — balance envelope', () => {
     }
   });
 
-  it('is amphibious and cannot crush — the two halves of one trade', () => {
-    // "Nothing the Pact fields touches the ground" now has exactly one hull
-    // that goes further than skimming: the Kestrel is `Locomotor.Air` since the
-    // air layer landed. It is named here rather than exempted by a predicate on
-    // purpose — a second Pact vehicle quietly leaving the water has to fail
-    // this test, because amphibious-everywhere IS the faction.
+  it('keeps the Solarch tank on land and every Pact hull unable to crush', () => {
     const FLIES = new Set(['mrdKestrel']);
+    const TRACKS = new Set(['mrdSolarch']);
     for (const u of mrdUnits) {
       if (u.kind !== EntityKind.Vehicle) continue;
-      expect(u.locomotor, `${u.key} must skim, not roll`)
-        .toBe(FLIES.has(u.key) ? Locomotor.Air : Locomotor.Hover);
+      const expected = FLIES.has(u.key)
+        ? Locomotor.Air
+        : TRACKS.has(u.key) ? Locomotor.Track : Locomotor.Hover;
+      expect(u.locomotor, `${u.key} has the wrong movement contract`).toBe(expected);
       expect(u.crushLevel, `${u.key} must not crush`).toBe(0);
     }
-    // And the exemption list is not a licence: everything on it must actually
-    // be an aircraft, so a stale entry cannot hide a hull that just went Wheel.
-    for (const key of FLIES) {
-      const u = mrdUnits.find((x) => x.key === key);
-      expect(u?.locomotor, `${key} is on the flying list but is not flying`)
-        .toBe(Locomotor.Air);
-    }
+    expect(mrdUnits.find((u) => u.key === 'mrdSolarch')?.amphibious).toBe(false);
   });
 
   it('trades armour class for a deeper HP pool on the main line', () => {
