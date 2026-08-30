@@ -1651,18 +1651,20 @@ function buildDebrisPile(m: PropMesh, rng: Rng, p: PropPalette): void {
 
 function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = 3.4, r = 2.0;
+  const canvas = '#7B8158';
+  const canvasShade = '#6E744D';
   m.ao(0.44, 0, h).sway(0, 0, 1);
   // This is large enough to fill the close inspection camera. Twelve hard
   // wedges made the shelter read as a dodecagon even under the realistic hay
   // atlas, so the soft straw masses use a round 32-segment silhouette and
   // authored smooth normals. The hidden caps stay omitted: the lower opening
   // is buried in terrain and the roof overlaps the upper ring.
-  m.color(p.hay).cyl(0, 0, 0, r, r * 0.86, h * 0.45, 32, 0, false, false, 0, true);
-  m.color(shadeOf(p.hay, 0.88)).cone(0, h * 0.45, 0, r * 0.92, h * 0.62, 32, false, true);
+  m.color(canvas).cyl(0, 0, 0, r, r * 0.86, h * 0.45, 32, 0, false, false, 0, true);
+  m.color(canvasShade).cone(0, h * 0.45, 0, r * 0.92, h * 0.62, 32, false, true);
   m.color(p.woodDark).cyl(0, h * 0.95, 0, 0.08, 0.08, 0.8, 10, 0);
-  // Rectangular bales leaning against the stack — the greeble that turns a
-  // cone into a farmyard.
-  m.color(p.hay);
+  // Timber supply boxes leaning against the canvas shelter keep the camp
+  // silhouette grounded without extending the fabric treatment onto cuboids.
+  m.color(p.wood);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU + 0.4;
     m.box(Math.cos(a) * (r + 0.55), 0.42, Math.sin(a) * (r + 0.55), 1.4, 0.80, 0.80, 0.07, a);

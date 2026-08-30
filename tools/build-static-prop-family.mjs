@@ -50,7 +50,14 @@ function kebab(key) {
 }
 
 function materialCell(key, r, g, b) {
-  if (key === 'haystack' || key === 'cafeUmbrella') return 2;
+  if (key === 'haystack') {
+    // The approved Meshy canvas occupies the third atlas cell. Keep the pole
+    // and three attached supply boxes on the shared timber cell so the camp
+    // reads as assembled materials instead of one yellow straw blob.
+    const timber = r > g * 1.12 && g > b * 1.08;
+    return timber ? 1 : 2;
+  }
+  if (key === 'cafeUmbrella') return 2;
   if (key === 'telegraphPole') return 1;
   if (key === 'bench') {
     const brown = r > g * 1.18 && g > b * 1.12;

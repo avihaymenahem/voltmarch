@@ -15,7 +15,7 @@ const cell = 512;
 const sources = [
   ['metal-v1-imagegen.png', 0.82, 0.18],
   ['wood-v1-imagegen.png', 0.86, 0.22],
-  ['hay-v1-imagegen.png', 0.88, 0.24],
+  ['canvas-v1-meshy.png', 0.91, 0.28],
   ['stone-v1-imagegen.png', 0.84, 0.20],
 ];
 

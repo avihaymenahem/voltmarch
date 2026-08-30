@@ -3,18 +3,22 @@
   "family": "prop-surface-v1",
   "generatedAt": "2026-08-30",
   "source": {
-    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and closed caster generation; the hay shelter uses a 32-segment smooth straw silhouette and preserves that approved 264-triangle topology across colour LODs",
+    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and closed caster generation; the field tent uses a 32-segment smooth canvas silhouette and preserves that approved 264-triangle topology across colour LODs",
     "geometryTool": "tools/build-static-prop-family.mjs",
-    "textureMethod": "four ImageGen/reused realistic surface sources normalized into one colour-preserving PBR atlas",
-    "textureTool": "tools/build-prop-surface-pbr.mjs",
-    "imageGenSources": [
+    "textureMethod": "Meshy 6 exact-geometry 4K PBR retexture conditioned into the canvas cell beside three approved ImageGen/reused realistic surfaces; all four are normalized into one colour-preserving runtime atlas",
+    "textureTool": "tools/extract-glb-textures.mjs + tools/build-prop-surface-pbr.mjs",
+    "textureSources": [
       {"file":"source/metal-v1-imagegen.png","dimensions":[1254,1254],"bytes":2640968,"sha256":"87386f87d1e4afe01885c14584aea5598561ad6bda8526c624e116b4fe357bf5","promptSummary":"Neutral industrial rolled sheet metal with restrained fine scratches and fasteners under flat diffuse light; no chrome, corrugation or large panel seams."},
       {"file":"source/wood-v1-imagegen.png","dimensions":[1254,1254],"bytes":3567199,"sha256":"9671f6d6a70907c534bd62f8dc10f9d5df1d7231602d26ad95739e5c3e2fd37d","promptSummary":"Reused approved realistic weathered timber source from the crate family."},
-      {"file":"source/hay-v1-imagegen.png","dimensions":[1254,1254],"bytes":3667709,"sha256":"fb6c3c0aa24a495a8eca01c002b5ff649ce7a27a106bb1228a90b86c0aa74edf","promptSummary":"Edge-to-edge photoreal dry hay and straw material under neutral diffuse light; no bale, rope, ground or cartoon shine."},
+      {"file":"source/canvas-v1-meshy.png","dimensions":[1254,1254],"bytes":1805245,"sha256":"7d72b93f0978d636698b7f484ed28192daea2f1698f18dcaa9c89f1ec13a353d","promptSummary":"Conditioned upper-left UV cell from the accepted Meshy 6 exact-geometry retexture: realistic field-camp canvas with broad stitched/folded regions, no straw or baked lighting."},
       {"file":"source/stone-v1-imagegen.png","dimensions":[1254,1254],"bytes":3363956,"sha256":"a1221285566c9bac49958b8bbbf24554cbba2c51d5ba04b1ecd7ee7c929a4301","promptSummary":"Reused approved realistic mineral-rock surface source."}
     ],
-    "meshyTasks": [],
-    "meshyCredits": 0
+    "meshyTasks": [
+      {"id":"01a05161-7f39-7293-9d07-a04b30e53dd4","type":"retexture","credits":10,"status":"rejected","reason":"Useful soft-canvas proof, but beige output and canvas-covered supply boxes failed the material-separation gate."},
+      {"id":"01a05163-9fb8-7688-8061-6d19aefe8c0c","type":"retexture","credits":10,"status":"accepted-source","reason":"Preserved the exact 264-triangle topology and original UVs; its sharper 4K fold, seam and weave field was conditioned into the shared atlas while deterministic vertex colour supplies the requested olive hue."}
+    ],
+    "meshyCredits": 20,
+    "meshyBalanceAfter": 549
   },
   "material": {
     "name": "prop-surface-v1-pbr",
@@ -22,10 +26,10 @@
     "runtimeInstances": 1,
     "doubleSided": false,
     "metalness": 0.88,
-    "atlasLayout": "2x2: neutral metal, timber, hay, stone; grayscale-normalized base preserves authored COLOR_0 identity",
+    "atlasLayout": "2x2: neutral metal, timber, Meshy-conditioned olive canvas, stone; grayscale-normalized base preserves authored COLOR_0 identity",
     "maps": [
-      {"role":"baseColor","file":"material/prop-surface-v1.base.webp","dimensions":[1024,1024],"bytes":186156,"sha256":"f6a2c6828156ac4f5ec84b30d27a44731bddb624d27521bd40bfb058cc990d8c"},
-      {"role":"normal","file":"material/prop-surface-v1.normal.jpg","dimensions":[512,512],"bytes":35135,"sha256":"e6d0c634c8f191a6813935674b4fd751565e63eb0e00736c365bd08907dbe5a9"},
+      {"role":"baseColor","file":"material/prop-surface-v1.base.webp","dimensions":[1024,1024],"bytes":83568,"sha256":"9994fd14caeb5cb39dc622766886788a1e9e2532a81b5036fa684f7f4e8d0db9"},
+      {"role":"normal","file":"material/prop-surface-v1.normal.jpg","dimensions":[512,512],"bytes":34982,"sha256":"671d174ba79f2b743060dbf9c18c9b13521da3799dc3d30c019e03d5f29ffd85"},
       {"role":"metallicRoughness","file":"material/prop-surface-v1.mr.jpg","dimensions":[512,512],"bytes":3674,"sha256":"d4343f1d77c4af3fe35b1dd24832af6018bfd93ea532eb5d90a4bea946c37fda"}
     ]
   },
@@ -41,15 +45,19 @@
   "triangleArrayOrder": ["lod0","lod1","lod2Emergency","shadow"],
   "deliveryFileCount": 76,
   "deliveryBytes": 4339264,
-  "deliveryAggregateSha256": "7fa523b1d0c3d3e6822713a72eedfc777d53c4ac5172350e0d5f05be0370450c",
+  "deliveryAggregateSha256": "ec055db36f6a4a29c62cc595c1a95d845a1775ccacd6d1a8dde9ba209b6903b8",
   "deliveryAggregateMethod": "sha256 of the concatenated lowercase SHA256 hex digests of all 76 GLBs sorted by absolute path",
-  "shippingFamilyBytes": 4564229,
+  "shippingFamilyBytes": 4461488,
   "reviews": [
     {"file":"review/barrel-webgpu.png","sha256":"37922886b9ee8384e06f1416a24e2c4e411b86a75e968d894766919ffefd150d","note":"WebGPU proof of the imported PBR barrel stack."},
     {"file":"review/umbrella-webgpu.png","sha256":"801db99532041b918c3b82562ed70c96d8903bd1383ac3d2528c9cbb469ba83a","note":"WebGPU proof of the complete umbrella, table and chair composition."},
     {"file":"review/sedan-webgpu.png","sha256":"22e13306a574009b62ffa8dfa273330cc8bb5a6c96032872787c21b5c3330396","note":"WebGPU proof of the sedan family."},
     {"file":"review/van-webgpu.png","sha256":"374d131f2ea686e5b6555659aa6c3e17959781f786af9ea3cd131492763a971e","note":"WebGPU proof of the van family."},
-    {"file":"review/pickup-webgpu.png","sha256":"9952bd51fc6545552910da6f2858304e1bd075f1d407cd5cc34c125962b8bf4c","note":"WebGPU proof of the pickup family."}
+    {"file":"review/pickup-webgpu.png","sha256":"9952bd51fc6545552910da6f2858304e1bd075f1d407cd5cc34c125962b8bf4c","note":"WebGPU proof of the pickup family."},
+    {"file":"review/tent-webgl.png","sha256":"de760e1d9f86f634c02dc6bd7404a9054f0fcd985ee43c2edaa91c843f744765","note":"WebGL front/right/back/left proof of the Meshy-conditioned olive canvas tent and timber supply boxes."},
+    {"file":"review/tent-webgpu.png","sha256":"b20f40cd87892a7ba35387587f1a4712fdd7135e939c91bf3ffb2a8c6a0fe455","note":"WebGPU front/right/back/left parity proof of the tent material."},
+    {"file":"review/tent-top-webgl.png","sha256":"c3b3734f45cf7d2ec4029c6cc3003b963b5cd6b19e218ab7a59893e8569e746d","note":"WebGL top-down RTS-distance material read."},
+    {"file":"review/tent-top-webgpu.png","sha256":"d1ac3e517b7bc4d557fcfba9012df2a2e68f3ef66d64e8cc2d1fffeaf8116041","note":"WebGPU top-down RTS-distance parity proof."}
   ],
   "rejections": [
     {"delivery":"topology-locked first LOD pass","reason":"UV, normal and colour seams prevented any index reduction; it was rejected because LOD1 and LOD2 retained full LOD0 triangle counts."},
