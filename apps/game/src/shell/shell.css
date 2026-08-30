@@ -7734,7 +7734,7 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   background:
     linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.22), rgba(13, 25, 39, 0.48)),
     rgba(10, 20, 32, 0.88);
-  transform: translateX(4px);
+  transform: none;
 }
 
 .vm-shell .vm-cinematic-modes > .vm-cinematic-mode:hover > .vm-icon:last-child,
