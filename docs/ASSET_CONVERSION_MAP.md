@@ -153,9 +153,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
-| A3 | `allied_guardian` | Guardian Tank | VEH | procedural | Establish Allied ceramic tracked chassis and turret family |
-| A3 | `allied_ifv` | Sabre IFV | VEH | procedural | Shared chassis/material; modular weapon station |
-| A3 | `allied_prism` | Refractor Tank | VEH | procedural | Energy-weapon derivative; emitter pivot and VFX socket |
+| A3 | `allied_guardian` | Guardian Tank | VEH | integrated | Meshy geometry `01a05050-7dc3-73bc-ac85-9b35b656236f`, PBR `01a05055-8ab1-7049-937b-c87396a926de`; 25,348-triangle `Hull`/`Turret` source with a sealed graphite articulation ring, KTX2 runtime and shadow proxy. |
+| A3 | `allied_ifv` | Sabre IFV | VEH | integrated | Meshy geometry `01a05050-7e66-70fb-952b-cde9a97ae34d`, PBR `01a05055-8c1a-749f-85a9-800eb4fd2e86`; 23,353-triangle `Hull`/`Turret` source with bounded compact weapon-station articulation, KTX2 runtime and shadow proxy. |
+| A3 | `allied_prism` | Refractor Tank | VEH | integrated | Meshy geometry `01a05050-7f21-776f-b91e-6d101791eb45`, PBR `01a05055-8c53-73f5-b926-9f195e96afcf`; 25,231-triangle `Hull`/`Emitter` source with a sealed graphite articulation ring, KTX2 runtime and shadow proxy. Procedural emitter VFX and sockets remain authoritative. |
 | A3 | `allied_harvester` | Chrono Miner | VEH | integrated | 49,825-triangle precision-shell miner, 22,416/8,968 LODs, 1,728-triangle shadow proxy and KTX2 PBR; procedural fallback retained |
 | A3 | `allied_dozer` | Construction Dozer | VEH | integrated | Geometry `01a04447-7acc-7897-98f1-c91c8e32646f`, texture `01a04456-9e61-736f-a71c-50fe79999c08`; 19,305-triangle ceramic tracked construction chassis with 10,862/6,711 LODs, 2,112-triangle shadow proxy and 2.85 MiB KTX2 PBR. Deployment behavior and sockets remain procedural authority. |
 | A3 | `allied_vindicator` | Petrel Bomber | AIR | integrated | Geometry `01a04441-a0bb-7eff-9e1d-baecf3410869`, texture `01a04456-934c-7875-9573-ca754895ce72`; 18,056-triangle Allied strike aircraft with 8,119/3,250 LODs, 1,416-triangle shadow proxy and 2.24 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
@@ -168,7 +168,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_javelin` | Javelin | CHAR | integrated-hybrid | Reuses the live canonical 2,888-triangle Peacekeeper body with a code-native missile pack and launcher, each hard-capped below 200 triangles. The paid unique body (`01a048df-0a39-7169-9415-df93ef821e26`) was rejected as redundant and archived outside shipping. |
 | A3 | `allied_engineer` | Engineer | CHAR | integrated-hybrid | Reuses the live canonical Peacekeeper body with a code-native compact toolcase and powered wrench, each below the 200-triangle attachment ceiling. |
 | A3 | `allied_marshal` | Field Marshal | CHAR | production | Unique geometry `01a04f42-bd2a-7762-9431-5908a5631d12`, PBR `01a04f47-2e16-74e4-ad96-29a47a1f507d`, rig `01a04f4a-6935-7095-a4dc-7b5c7add8385`; 47,618-triangle/6.05 MiB ceramic-armour commander with 1024 base/normal and 512 metallic-roughness maps. The gameplay LOD0 and mesh-free 72-channel walk/run clips are grouped in Asset Lab. Runtime bakes one walk pose, derives gait only from limb skin weights so the cape stays rigid, then discards the live skeleton. |
-| A3 | `allied_frogman` | Frogman | CHAR | procedural | Shared rig where possible; aquatic gear variant |
+| A3 | `allied_frogman` | Frogman | CHAR | production | Geometry `01a05050-7fd8-7545-a7b1-749e1c53d979`, remesh `01a05055-8ca2-71f2-8be2-39dce90738a5`, PBR `01a05057-5141-75f6-a8c8-ddc737613e49`, rig `01a05057-5195-766f-8568-e32922def1f2`; 10,443-triangle two-tank aquatic body with 512/256 px textures and animation-only walk clip. |
 
 ## Meridian Pact — 15 structures
 

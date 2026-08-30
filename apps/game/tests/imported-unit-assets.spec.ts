@@ -194,6 +194,38 @@ describe('imported unit shipping budgets', () => {
     expect(section).not.toContain('v4-rocket-launcher.lod1.glb');
   });
 
+  it('ships the Allied tracked trio with authored articulation and no invalid colour LODs', () => {
+    const runtime = fs.readFileSync(
+      path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
+    );
+    for (const contract of [
+      { key: 'allied_guardian', file: 'guardian-tank.glb', turret: 'Turret' },
+      { key: 'allied_ifv', file: 'sabre-ifv.glb', turret: 'Turret' },
+      { key: 'allied_prism', file: 'refractor-tank.glb', turret: 'Emitter' },
+    ]) {
+      const sourceDir = path.join(root, 'packages/assets/game/units/allies');
+      const source = glbJson(path.join(sourceDir, contract.file));
+      const runtimeAsset = glbJson(path.join(sourceDir, 'compressed', contract.file));
+      const shadow = glbJson(path.join(
+        sourceDir, 'derived', contract.file.replace(/\.glb$/, '.shadow.glb'),
+      ));
+      expect(source.json.meshes.map((mesh) => mesh.name).sort(), contract.key)
+        .toEqual(['Hull', contract.turret].sort());
+      expect(source.json.materials?.every((material) => material.doubleSided !== true)).toBe(true);
+      expect(triangles(source.json), contract.key).toBeLessThanOrEqual(30_000);
+      expect(runtimeAsset.bytes.length, contract.key).toBeLessThanOrEqual(7 * 1024 * 1024);
+      expect(runtimeAsset.json.extensionsRequired, contract.key).toContain('KHR_texture_basisu');
+      expect(runtimeAsset.json.images?.every((image) => image.mimeType === 'image/ktx2')).toBe(true);
+      expect(triangles(shadow.json), contract.key).toBeLessThanOrEqual(2_000);
+      const start = runtime.indexOf(`key: '${contract.key}'`);
+      const section = runtime.slice(start, runtime.indexOf('\n  {', start + 8));
+      expect(section).toContain(`turretName: '${contract.turret}'`);
+      expect(section).toContain(`allies/compressed/${contract.file}`);
+      expect(section).toContain(`allies/derived/${contract.file.replace(/\.glb$/, '.shadow.glb')}`);
+      expect(section).not.toContain('.lod1.glb');
+    }
+  });
+
   it('keeps the Sputnik Dozer hull on its approved runtime axis', () => {
     const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
     const dozer = runtime.slice(runtime.indexOf("key: 'soviet_dozer'"), runtime.indexOf("key: 'soviet_mig'"));

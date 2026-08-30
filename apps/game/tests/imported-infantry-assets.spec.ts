@@ -9,8 +9,8 @@ import {
 import { IMPORTED_INFANTRY_FAMILIES } from '../src/art/ImportedInfantryAssets';
 
 describe('shared authored infantry runtime', () => {
-  it('maps four shared bodies, four commanders and one aquatic body to all seventeen roles', () => {
-    expect(IMPORTED_INFANTRY_FAMILIES).toHaveLength(9);
+  it('maps four shared bodies, four commanders and two aquatic bodies to all eighteen roles', () => {
+    expect(IMPORTED_INFANTRY_FAMILIES).toHaveLength(10);
     const modelKeys = new Set<string>();
     for (const family of IMPORTED_INFANTRY_FAMILIES) {
       expect(family.url).toMatch(/-lod0\.glb/);
@@ -28,8 +28,9 @@ describe('shared authored infantry runtime', () => {
     expect(commanders.map((family) => family.roles[0].modelKey)).toEqual([
       'allied_marshal', 'soviet_commissar', 'meridian_hierarch', 'reclaim_baron',
     ]);
-    expect(modelKeys.size).toBe(17);
+    expect(modelKeys.size).toBe(18);
     expect(modelKeys).toContain('soviet_diver');
+    expect(modelKeys).toContain('allied_frogman');
   });
 
   it('keeps every modular role part beneath the 200-triangle ceiling', () => {

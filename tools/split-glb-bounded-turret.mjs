@@ -30,15 +30,21 @@ const pivot = [
 const radius = [Number(value('--radius-x')), Number(value('--radius-z'))];
 const hullName = value('--hull-name') ?? 'Hull';
 const turretName = value('--turret-name') ?? 'Turret';
+const generatedUv = (value('--generated-uv') ?? '0.5,0.5')
+  .split(',')
+  .map((entry) => Number(entry));
 
 if (!inputArg || !outputArg
   || Object.values(bounds).some((entry) => !Number.isFinite(entry))
   || pivot.some((entry) => !Number.isFinite(entry))
-  || radius.some((entry) => !(entry > 0))) {
+  || radius.some((entry) => !(entry > 0))
+  || generatedUv.length !== 2
+  || generatedUv.some((entry) => !Number.isFinite(entry) || entry < 0 || entry > 1)) {
   throw new Error(
     'usage: node tools/split-glb-bounded-turret.mjs --input source.glb --output split.glb '
     + '--min-x N --max-x N --min-y N --min-z N --max-z N '
-    + '--pivot-x N --pivot-y N --pivot-z N --radius-x N --radius-z N',
+    + '--pivot-x N --pivot-y N --pivot-z N --radius-x N --radius-z N '
+    + '[--generated-uv U,V]',
   );
 }
 
@@ -137,7 +143,7 @@ function appendGeneratedVertex(target, position, normal, uv) {
 
 function addDisc(target, y, normalY) {
   const segments = 24;
-  const centre = appendGeneratedVertex(target, [pivot[0], y, pivot[2]], [0, normalY, 0], [0.5, 0.5]);
+  const centre = appendGeneratedVertex(target, [pivot[0], y, pivot[2]], [0, normalY, 0], generatedUv);
   const ring = [];
   for (let index = 0; index < segments; index++) {
     const angle = index / segments * Math.PI * 2;
@@ -145,7 +151,7 @@ function addDisc(target, y, normalY) {
     const sine = Math.sin(angle);
     ring.push(appendGeneratedVertex(target, [
       pivot[0] + cosine * radius[0], y, pivot[2] + sine * radius[1],
-    ], [0, normalY, 0], [0.5 + cosine * 0.04, 0.5 + sine * 0.04]));
+    ], [0, normalY, 0], generatedUv));
   }
   for (let index = 0; index < segments; index++) {
     const next = ring[(index + 1) % segments];
@@ -199,6 +205,7 @@ console.log(JSON.stringify({
   bounds,
   pivot,
   radius,
+  generatedUv,
   hullTriangles: hull.indices.length / 3,
   turretTriangles: turret.indices.length / 3,
   totalTriangles: (hull.indices.length + turret.indices.length) / 3,

@@ -1,5 +1,5 @@
 /**
- * Nine authored infantry bodies, seventeen gameplay roles, zero live skeletons.
+ * Ten authored infantry bodies, eighteen gameplay roles, zero live skeletons.
  *
  * Each faction loads its shared line body and unique commander body in an
  * authored gait stance; aquatic troops may add one equipment-heavy body. Each
@@ -79,6 +79,14 @@ export const IMPORTED_INFANTRY_FAMILIES: readonly ImportedInfantryFamily[] = [
     clipUrl: new URL('../../../../packages/assets/game/units/soviets/naval-infantry/naval-infantry-walk.glb', import.meta.url).href,
     roles: [{ modelKey: 'soviet_diver', weapon: 'rifle' }],
     baseColorGain: 1.08, roughnessGain: 1.18, normalScale: 1.10, envMapIntensity: 0.50,
+  },
+  {
+    key: 'allied_frogman', label: 'Allied Frogman', poseTime: 0.12,
+    skinGait: true,
+    url: new URL('../../../../packages/assets/game/units/allies/frogman/frogman-lod0.glb', import.meta.url).href,
+    clipUrl: new URL('../../../../packages/assets/game/units/allies/frogman/frogman-walk.glb', import.meta.url).href,
+    roles: [{ modelKey: 'allied_frogman', weapon: 'bullpup' }],
+    baseColorGain: 1.06, roughnessGain: 1.14, normalScale: 1.10, envMapIntensity: 0.54,
   },
   {
     key: 'meridian_wayfarer', label: 'Meridian Wayfarer', poseTime: 0.12,

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "generatedAt": "2026-08-29T18:38:26.934Z",
+  "generatedAt": "2026-08-30T01:50:05.771Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-vehicles.json",
   "rows": [
@@ -55,6 +55,93 @@
             9
           ],
           "occupiedCells": 144
+        }
+      ]
+    },
+    {
+      "key": "allied_guardian",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/guardian-tank.glb",
+        "triangles": 25348,
+        "fileBytes": 6798704
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/guardian-tank.shadow.glb",
+          "triangles": 1440,
+          "triangleRatio": 0.0568,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 20960,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            8
+          ],
+          "occupiedCells": 120
+        }
+      ]
+    },
+    {
+      "key": "allied_ifv",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/sabre-ifv.glb",
+        "triangles": 23353,
+        "fileBytes": 5366532
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/sabre-ifv.shadow.glb",
+          "triangles": 1344,
+          "triangleRatio": 0.0576,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19616,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            7
+          ],
+          "occupiedCells": 112
+        }
+      ]
+    },
+    {
+      "key": "allied_prism",
+      "class": "standard",
+      "movingParts": true,
+      "source": {
+        "file": "packages/assets/game/units/allies/refractor-tank.glb",
+        "triangles": 25231,
+        "fileBytes": 6538644
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/refractor-tank.shadow.glb",
+          "triangles": 1920,
+          "triangleRatio": 0.0761,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 27680,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            10
+          ],
+          "occupiedCells": 160
         }
       ]
     },

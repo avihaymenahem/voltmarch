@@ -17,6 +17,27 @@
       "movingParts": false
     },
     {
+      "key": "allied_guardian",
+      "file": "guardian-tank.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
+      "key": "allied_ifv",
+      "file": "sabre-ifv.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
+      "key": "allied_prism",
+      "file": "refractor-tank.glb",
+      "class": "standard",
+      "lods": false,
+      "movingParts": true
+    },
+    {
       "key": "allied_dozer",
       "file": "construction-dozer.glb",
       "class": "standard",
