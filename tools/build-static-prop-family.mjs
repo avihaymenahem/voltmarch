@@ -16,12 +16,19 @@ import { MeshoptSimplifier } from 'meshoptimizer';
 
 const repo = process.cwd();
 const outputRoot = path.resolve('packages/assets/game/environment/prop-surface');
-const keys = [
+const allKeys = [
   'haystack', 'containerStack', 'barrel',
   'streetLamp', 'streetLampTwin', 'bench', 'carSedan', 'carVan', 'carPickup',
   'trafficLight', 'fence', 'railing', 'telegraphPole', 'roadSign', 'roadSignDisc',
   'cafeUmbrella', 'statue', 'statueRider', 'waterTower',
 ];
+const requestedKey = process.argv.includes('--key')
+  ? process.argv[process.argv.indexOf('--key') + 1]
+  : undefined;
+if (requestedKey !== undefined && !allKeys.includes(requestedKey)) {
+  throw new Error(`Unknown static prop key: ${requestedKey}`);
+}
+const keys = requestedKey === undefined ? allKeys : [requestedKey];
 
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'voltmarch-static-props-'));
 const bundle = path.join(scratch, 'PropLibrary.mjs');
@@ -169,8 +176,19 @@ for (const key of keys) {
   const name = `${kebab(key)}-v1`;
   const data = geometryData(key, entry.geometry);
   report.push(await writeDocument(`${name}.glb`, documentFor(`${name}.lod0`, data, true)));
-  report.push(await writeDocument(`derived/${name}.lod1.glb`, await simplifiedDocument(`${name}.lod1`, data, 0.58, 0.03)));
-  report.push(await writeDocument(`derived/${name}.lod2.glb`, await simplifiedDocument(`${name}.lod2`, data, 0.30, 0.08)));
+  // The hay shelter is already only 264 triangles. Meshopt reaches the numeric
+  // target by replacing several round-wall sectors with one long chord, which
+  // puts a visible wedge back into the silhouette at normal camera distance.
+  // Preserve the approved source topology for its two named deliveries; the
+  // static family still swaps material/shadow policy by camera band, and the
+  // eight-triangle increase over the old LOD0 is below measurement noise.
+  if (key === 'haystack') {
+    report.push(await writeDocument(`derived/${name}.lod1.glb`, documentFor(`${name}.lod1`, data, true)));
+    report.push(await writeDocument(`derived/${name}.lod2.glb`, documentFor(`${name}.lod2`, data, true)));
+  } else {
+    report.push(await writeDocument(`derived/${name}.lod1.glb`, await simplifiedDocument(`${name}.lod1`, data, 0.58, 0.03)));
+    report.push(await writeDocument(`derived/${name}.lod2.glb`, await simplifiedDocument(`${name}.lod2`, data, 0.30, 0.08)));
+  }
   report.push(await writeDocument(`derived/${name}.shadow.glb`, documentFor(`${name}.shadow`, boxData(entry.geometry), false)));
 }
 

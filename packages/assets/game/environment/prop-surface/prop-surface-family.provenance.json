@@ -3,7 +3,7 @@
   "family": "prop-surface-v1",
   "generatedAt": "2026-08-30",
   "source": {
-    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and closed caster generation",
+    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and closed caster generation; the hay shelter uses a 32-segment smooth straw silhouette and preserves that approved 264-triangle topology across colour LODs",
     "geometryTool": "tools/build-static-prop-family.mjs",
     "textureMethod": "four ImageGen/reused realistic surface sources normalized into one colour-preserving PBR atlas",
     "textureTool": "tools/build-prop-surface-pbr.mjs",
@@ -30,7 +30,7 @@
     ]
   },
   "triangles": {
-    "haystack":[256,148,76,12],"containerStack":[2376,1378,712,12],"barrel":[1524,882,456,12],
+    "haystack":[264,264,264,12],"containerStack":[2376,1378,712,12],"barrel":[1524,882,456,12],
     "streetLamp":[308,178,92,12],"streetLampTwin":[492,284,146,12],"bench":[396,224,118,12],
     "carSedan":[496,286,148,12],"carVan":[496,286,148,12],"carPickup":[584,338,174,12],
     "trafficLight":[472,273,140,12],"fence":[176,102,52,12],"railing":[1012,586,302,12],
@@ -40,9 +40,10 @@
   },
   "triangleArrayOrder": ["lod0","lod1","lod2Emergency","shadow"],
   "deliveryFileCount": 76,
-  "deliveryBytes": 4332352,
-  "deliveryAggregateSha256": "40a660618778d956d1267358c508c4576ab5cf8b26e18aa3b395487e9efb7ec9",
-  "shippingFamilyBytes": 4557317,
+  "deliveryBytes": 4339264,
+  "deliveryAggregateSha256": "7fa523b1d0c3d3e6822713a72eedfc777d53c4ac5172350e0d5f05be0370450c",
+  "deliveryAggregateMethod": "sha256 of the concatenated lowercase SHA256 hex digests of all 76 GLBs sorted by absolute path",
+  "shippingFamilyBytes": 4564229,
   "reviews": [
     {"file":"review/barrel-webgpu.png","sha256":"37922886b9ee8384e06f1416a24e2c4e411b86a75e968d894766919ffefd150d","note":"WebGPU proof of the imported PBR barrel stack."},
     {"file":"review/umbrella-webgpu.png","sha256":"801db99532041b918c3b82562ed70c96d8903bd1383ac3d2528c9cbb469ba83a","note":"WebGPU proof of the complete umbrella, table and chair composition."},
@@ -53,6 +54,7 @@
   "rejections": [
     {"delivery":"topology-locked first LOD pass","reason":"UV, normal and colour seams prevented any index reduction; it was rejected because LOD1 and LOD2 retained full LOD0 triangle counts."},
     {"delivery":"non-topological sloppy simplification","reason":"It reached low counts but folded barrel and car surfaces and disconnected umbrella furniture; all such files were overwritten."},
-    {"delivery":"accepted simplification","reason":"Position-topology simplification with permissive seam handling retained connected silhouettes in cardinal review while reducing every LOD1/LOD2 delivery."}
+    {"delivery":"accepted simplification","reason":"Position-topology simplification with permissive seam handling retained connected silhouettes in cardinal review while reducing the larger LOD1/LOD2 deliveries."},
+    {"delivery":"haystack LOD1/LOD2 simplification","reason":"Rejected after gameplay-distance review exposed a large chord cut into the round wall. The 264-triangle approved source topology is retained for both colour LOD names; the 12-triangle closed caster remains the shadow delivery."}
   ]
 }

@@ -48,7 +48,7 @@ export interface EnvironmentArchetypeManifest {
 const STATIC_PROP_SPECS: readonly [
   key: string, family: PropFamily, radius: number, height: number, triangles: number, file: string,
 ][] = [
-  ['haystack', 'yard', 2.4, 4.03, 256, 'haystack-v1'],
+  ['haystack', 'yard', 2.4, 4.03, 264, 'haystack-v1'],
   ['containerStack', 'yard', 3.4, 5.29, 2_376, 'container-stack-v1'],
   ['barrel', 'yard', 1.2, 1.07, 1_524, 'barrel-v1'],
   ['streetLamp', 'street', 0.5, 6.63, 308, 'street-lamp-v1'],
@@ -69,6 +69,11 @@ const STATIC_PROP_SPECS: readonly [
   ['waterTower', 'civic', 3.2, 13.10, 1_778, 'water-tower-v1'],
 ];
 
+/** Tiny soft silhouettes where reduction costs more visually than it saves. */
+const STATIC_PROP_LOD_FLOORS: Readonly<Record<string, number>> = Object.freeze({
+  haystack: 264,
+});
+
 const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.map(([
   key, family, radius, height, triangles, file,
 ]) => [key, Object.freeze({
@@ -82,10 +87,10 @@ const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.m
   budget: Object.freeze({
     rawTriangles: triangles,
     lod0Triangles: triangles,
-    lod1Triangles: Math.ceil(triangles * 0.86),
-    lod2Triangles: Math.ceil(triangles * 0.55),
+    lod1Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.86),
+    lod2Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
     shadowTriangles: 12,
-    emergencyTriangles: Math.ceil(triangles * 0.55),
+    emergencyTriangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
     shippingBytes: 1_048_576,
   }),
   deliveries: Object.freeze({

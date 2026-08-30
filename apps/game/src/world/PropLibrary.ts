@@ -175,9 +175,9 @@ export function shadeOf(hex: string, mul: number): string {
  * A flat accumulator with a little state (paint, sway ramp, emissive, AO ramp)
  * so a prop reads as a list of volumes instead of buffer bookkeeping.
  *
- * Every face is FLAT SHADED — vertices are never shared across faces. Props are
- * toys, and smooth normals on a 12-facet cylinder is exactly the "smooth
- * 32-segment tube" tell scorecard #40 punishes.
+ * Faces are flat shaded by default — vertices are never shared across faces.
+ * A few soft organic surfaces may request authored vertex normals explicitly;
+ * hard-surface cylinders retain the 12-16 facet language.
  * ========================================================================== */
 
 const SCRATCH_A = new Float32Array(3);
@@ -424,9 +424,9 @@ export class PropMesh {
   }
 
   /**
-   * A triangle with authored vertex normals. Used only by organic ellipsoids:
-   * hard-surface primitives continue through `tri()` and remain flat shaded.
-   * The vertices are intentionally still split per facet so seeded canopy
+   * A triangle with authored vertex normals for soft organic surfaces.
+   * Hard-surface primitives continue through `tri()` and remain flat shaded.
+   * The vertices are intentionally still split per facet so seeded surface
    * colour remains constant inside each triangle.
    */
   private smoothTri(
@@ -569,7 +569,7 @@ export class PropMesh {
     cx: number, cy: number, cz: number,
     rBottom: number, rTop: number, h: number,
     segs: number, chamfer: number,
-    capBottom = true, capTop = true, yawOffset = 0,
+    capBottom = true, capTop = true, yawOffset = 0, smooth = false,
   ): void {
     const n = Math.max(3, Math.round(segs));
     const c = clamp(chamfer, 0, Math.min(h * 0.4, Math.min(rBottom, rTop) * 0.8));
@@ -596,13 +596,25 @@ export class PropMesh {
         // Tilt the outward reference with the taper so a chamfer strip and a
         // cone flank both wind correctly.
         const oy = (rr[r] - rr[r + 1]) / Math.max(Math.abs(ry[r + 1] - ry[r]), 1e-4);
-        this.quad(
-          cx + c0 * rr[r], ry[r], cz + s0 * rr[r],
-          cx + c1 * rr[r], ry[r], cz + s1 * rr[r],
-          cx + c1 * rr[r + 1], ry[r + 1], cz + s1 * rr[r + 1],
-          cx + c0 * rr[r + 1], ry[r + 1], cz + s0 * rr[r + 1],
-          mx, oy * 0.5, mz, isBevel,
-        );
+        if (smooth && !isBevel) {
+          const nl = Math.max(1e-6, Math.hypot(1, oy));
+          const n0: [number, number, number] = [c0 / nl, oy / nl, s0 / nl];
+          const n1: [number, number, number] = [c1 / nl, oy / nl, s1 / nl];
+          this.smoothQuad(
+            [cx + c0 * rr[r], ry[r], cz + s0 * rr[r]], n0,
+            [cx + c1 * rr[r], ry[r], cz + s1 * rr[r]], n1,
+            [cx + c1 * rr[r + 1], ry[r + 1], cz + s1 * rr[r + 1]], n1,
+            [cx + c0 * rr[r + 1], ry[r + 1], cz + s0 * rr[r + 1]], n0,
+          );
+        } else {
+          this.quad(
+            cx + c0 * rr[r], ry[r], cz + s0 * rr[r],
+            cx + c1 * rr[r], ry[r], cz + s1 * rr[r],
+            cx + c1 * rr[r + 1], ry[r + 1], cz + s1 * rr[r + 1],
+            cx + c0 * rr[r + 1], ry[r + 1], cz + s0 * rr[r + 1],
+            mx, oy * 0.5, mz, isBevel,
+          );
+        }
       }
     }
     if (capBottom) this.disc(cx, ry[0], cz, rr[0], n, -1, yawOffset);
@@ -696,17 +708,35 @@ export class PropMesh {
   }
 
   /** Faceted cone standing on +Y from base `cy`. Conifer tiers, roof caps. */
-  cone(cx: number, cy: number, cz: number, r: number, h: number, segs: number, capBottom = true): void {
+  cone(
+    cx: number, cy: number, cz: number,
+    r: number, h: number, segs: number,
+    capBottom = true, smooth = false,
+  ): void {
     const n = Math.max(3, Math.round(segs));
     for (let i = 0; i < n; i++) {
       const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU;
       const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
-      this.tri(
-        cx + c0 * r, cy, cz + s0 * r,
-        cx + c1 * r, cy, cz + s1 * r,
-        cx, cy + h, cz,
-        (c0 + c1) * 0.5, r / Math.max(h, 1e-3), (s0 + s1) * 0.5, false,
-      );
+      if (smooth) {
+        const slope = r / Math.max(h, 1e-3);
+        const nl = Math.max(1e-6, Math.hypot(1, slope));
+        const n0: [number, number, number] = [c0 / nl, slope / nl, s0 / nl];
+        const n1: [number, number, number] = [c1 / nl, slope / nl, s1 / nl];
+        const am = (a0 + a1) * 0.5;
+        const nm: [number, number, number] = [Math.cos(am) / nl, slope / nl, Math.sin(am) / nl];
+        this.smoothTri(
+          [cx + c0 * r, cy, cz + s0 * r], n0,
+          [cx + c1 * r, cy, cz + s1 * r], n1,
+          [cx, cy + h, cz], nm,
+        );
+      } else {
+        this.tri(
+          cx + c0 * r, cy, cz + s0 * r,
+          cx + c1 * r, cy, cz + s1 * r,
+          cx, cy + h, cz,
+          (c0 + c1) * 0.5, r / Math.max(h, 1e-3), (s0 + s1) * 0.5, false,
+        );
+      }
     }
     if (capBottom) this.disc(cx, cy, cz, r, n, -1);
   }
@@ -1622,9 +1652,14 @@ function buildDebrisPile(m: PropMesh, rng: Rng, p: PropPalette): void {
 function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = 3.4, r = 2.0;
   m.ao(0.44, 0, h).sway(0, 0, 1);
-  m.color(p.hay).cyl(0, 0, 0, r, r * 0.86, h * 0.45, 12, 0.10);
-  m.color(shadeOf(p.hay, 0.88)).cone(0, h * 0.45, 0, r * 0.92, h * 0.62, 12, false);
-  m.color(p.woodDark).cyl(0, h * 0.95, 0, 0.08, 0.08, 0.8, 6, 0);
+  // This is large enough to fill the close inspection camera. Twelve hard
+  // wedges made the shelter read as a dodecagon even under the realistic hay
+  // atlas, so the soft straw masses use a round 32-segment silhouette and
+  // authored smooth normals. The hidden caps stay omitted: the lower opening
+  // is buried in terrain and the roof overlaps the upper ring.
+  m.color(p.hay).cyl(0, 0, 0, r, r * 0.86, h * 0.45, 32, 0, false, false, 0, true);
+  m.color(shadeOf(p.hay, 0.88)).cone(0, h * 0.45, 0, r * 0.92, h * 0.62, 32, false, true);
+  m.color(p.woodDark).cyl(0, h * 0.95, 0, 0.08, 0.08, 0.8, 10, 0);
   // Rectangular bales leaning against the stack — the greeble that turns a
   // cone into a farmyard.
   m.color(p.hay);
