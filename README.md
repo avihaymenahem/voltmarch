@@ -80,20 +80,25 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll.</sub>
 </p>
 
-## What's new in 3.14.0
+## What's new in 3.15.0
 
-- **Authored naval fleets:** all four factions field new optimized ship models, silhouettes, LODs and
-  shadow proxies over deeper, more readable water.
-- **Reliable multiplayer:** the lobby stays connected while browsing, surfaces open games clearly and
-  recovers from transient relay failures without requiring an app restart.
-- **Sharper battlefield control:** minimap orders and pings work again, aircraft and anti-air troops
-  acquire valid targets, and tanks can board naval transports without becoming stuck.
-- **Clearer command feedback:** production shows real build times and blocked reasons, Chronoshift
-  explains its targeting flow, and transport evacuation is available directly from the command HUD.
-- **Native desktop behavior:** matches preserve the chosen window mode, windowed play uses native
-  Windows controls, optional pointer confinement is available, and the Cheat Engine closes cleanly.
-- **Smoother UI:** asynchronous asset readback and desktop storage, idle autosaves and reduced setup
-  redraws remove several sources of split-second interface stalls.
+- **A fully authored battlefield:** all 32 foliage and neutral-prop families now use optimized PBR
+  assets, including trees, shrubs, rocks, crates, street furniture, cars, umbrellas and tents, with deterministic
+  placement, shared materials, LODs and shadow proxies.
+- **The completed current army roster:** the remaining Soviet, Allied, Meridian and Reclamation units
+  now ship through the same audited model pipeline, including construction vehicles, aircraft,
+  commanders and naval support hulls.
+- **More cinematic WebGPU presentation:** restrained cloud shadow, far haze and ambient dust add depth
+  without hiding orders or shroud; terrain decals follow the drawn surface instead of flickering.
+- **Reliable battlefield control:** right-click once again owns contextual orders rather than camera
+  drag, pointer confinement is on by default on Windows, placement and sell modes cancel cleanly, and
+  selection overlays stay visible at HUD and screen edges.
+- **Fairer recovery and skirmish pacing:** Easy AI now runs a genuinely smaller, slower economy and
+  attack schedule, land units stay out of water, and a player with survivors and 3,000 credits can
+  requisition a replacement construction vehicle after losing the entire production chain.
+- **Faster, clearer transitions:** bounded asset/audio preparation reduces visible stalls, tactical
+  loading screens use map and faction context, and title-to-battlefield presentation crossfades rather
+  than exposing a hard scene swap.
 
 ## Play VOLTMARCH
 
@@ -102,7 +107,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.14.0**. The
+The browser build and Windows release share the same game. The current release is **3.15.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 
@@ -153,7 +158,8 @@ Useful project documents:
 
 - [Project guide](CLAUDE.md)
 - [Campaign build specification](docs/campaign/CAMPAIGN_BUILD_SPEC.md)
-- [Visual direction](docs/RA3_LOOK_BIBLE.md)
+- [Visual direction](docs/VISUAL_DNA.md)
+- [Measured visual benchmark](docs/RA3_LOOK_BIBLE.md)
 - [Asset optimization pipeline](docs/ASSET_OPTIMIZATION_PIPELINE.md)
 - [Multiplayer relay](apps/relay/README.md)
 - [Launch site deployment](apps/website/README.md)

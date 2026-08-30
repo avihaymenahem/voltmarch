@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.14.0**.
-- The `v3.14.0` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.15.0**.
+- The `v3.15.0` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -34,6 +34,13 @@ project decision obsolete.
 - The old `marketing/facebook-screenshots/` set was deliberately deleted because it no longer
   represented the game. Do not restore it; create new captures against the current build when a
   new marketing set is requested.
+- Release 3.15 completes the current imported unit wave and the 32-key authored environment
+  catalogue, makes those environment families the default presentation, adds the first cinematic
+  WebGPU atmosphere slice, fixes terrain/decal depth fighting and restores the right-button command
+  boundary under desktop pointer confinement.
+- Easy skirmish now uses a 0.65 harvest multiplier, 28 APM, a 6:40 first-push floor and no advanced
+  tactics. A player who loses both yard and factory may buy the normal 3,000-credit/32-second MCV
+  through one off-map recovery queue if any owned rendezvous asset survives.
 
 The repository should be clean and `origin/main` should match the working branch at this handoff.
 Verify rather than trusting that sentence after time has passed.
@@ -155,8 +162,12 @@ The Sputnik Dozer's front claw keeps its approved source-local rotation and rece
 source-X mount translation, leaving a small mechanical overlap instead of a visible air gap. The
 runtime yaw rotates the complete connected vehicle 180 degrees together. Do not rotate the claw again.
 On MCV-only openings, every faction's imported construction vehicle must be loaded before its first
-registry publication. Allied/Soviet non-MCV imports may still stream after the curtain, but restoring
-the former all-deferred fast path visibly morphs the starting procedural dozer into its imported shell.
+registry publication. All other seated-faction imports are also prepared before the curtain by
+default: measured post-reveal GLTF parse/publication caused 150-270 ms visible freezes that an FPS
+average hid. `?liveassetstream=on` is diagnostic-only until parsing can move to a worker or an
+offline-conditioned runtime format. Do not restore runtime catalogue streaming as the shipping fast
+path, and do not restore the former all-deferred path that visibly morphed the starting procedural
+dozer into its imported shell.
 
 ## Non-negotiable art decisions
 
@@ -199,8 +210,8 @@ the former all-deferred fast path visibly morphs the starting procedural dozer i
 - Use Electron native fullscreen semantics. Escape belongs to the game/pause UI; Alt+Enter is the
   explicit desktop fullscreen toggle. Starting a match never changes window mode.
 - Windowed desktop play uses native Windows chrome and restores its last safe normal bounds/maximised
-  state. Optional pointer confinement is desktop-only and releases on every menu, pause, focus-loss
-  and visibility transition.
+  state. Pointer confinement is enabled by default, remains desktop-only and releases on every menu,
+  pause, focus-loss and visibility transition. An explicit saved `false` preference remains off.
 - HUD density matters. Selection, stance and formation actions must remain compact; clicking a build
   card must not double the panel height or cover the battlefield.
 - Plain Move is weapons-cold; Attack Move is the explicit move-and-fire order. An explicit Guard
@@ -270,13 +281,18 @@ the former all-deferred fast path visibly morphs the starting procedural dozer i
 This is an index, not a duplicate checklist:
 
 - **Engineering backlog:** `TODO.md` — currently multiplayer seat/topology follow-ups, 3–4 player PvP,
-  LAN/self-hosting, and desktop distribution/signing research.
+  LAN/self-hosting, desktop distribution/signing, final foliage runtime acceptance and the bounded
+  WebGPU visual-performance experiments below.
 - **Asset conversion:** `docs/ASSET_CONVERSION_MAP.md` — continue imported assets only through the
   approved pipeline; do not infer completion from concept folders alone.
 - **Environment realism:** `docs/ENVIRONMENT_REALISM_PLAN.md` — contextual dirt/leaf/rust/gravel
-  composition, physical geometry debris, prop-family integration and bounded atmosphere. Dynamic
-  rain/lightning is shipped; the civilian sedan remains an approved candidate, not automatically a
-  runtime replacement.
+  composition, physical geometry debris, the completed authored prop-family catalogue and bounded
+  atmosphere. Dynamic rain/lightning, cloud cover, far haze and ambient dust are shipped; correlation,
+  biome aging and destruction continuity remain open.
+- **WebGPU visual performance:** `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` — desktop rendering is the
+  product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
+  culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
+  POC; do not roll compression across every family until cold-load timing and image parity pass.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the
