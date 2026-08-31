@@ -2,6 +2,13 @@
   "version": 1,
   "family": "extended-foliage-v1",
   "generatedAt": "2026-08-30",
+  "runtimeStatus": {
+    "treeAutumn": "procedural-live-fallback",
+    "conifer": "procedural-live-fallback",
+    "palm": "procedural-live-fallback",
+    "grassTuft": "authored",
+    "grassTuftGreen": "authored"
+  },
   "source": {
     "geometryMethod": "deterministic card, segmented-trunk and closed-caster generator",
     "geometryTool": "tools/build-extended-foliage-family.mjs",
@@ -51,6 +58,7 @@
   "rejections": [
     {"delivery":"first trunk-atlas mapping","reason":"Transparent atlas pixels made trunks render nearly black; an opaque guarded bark swatch and point UV mapping replaced it."},
     {"delivery":"first conifer LOD0","reason":"Nine cards exposed too much pole-like trunk in cardinal review; the accepted LOD0 uses fifteen cards while remaining only 82 triangles."},
-    {"delivery":"soft alpha-to-coverage foliage edges","reason":"Partial-alpha source texels produced bright strokes around leaf and grass silhouettes in the live WebGPU scene. Production uses a strict 0.85 mask without alpha-to-coverage."}
+    {"delivery":"soft alpha-to-coverage foliage edges","reason":"Partial-alpha source texels produced bright strokes around leaf and grass silhouettes in the live WebGPU scene. Production uses a strict 0.85 mask without alpha-to-coverage."},
+    {"delivery":"autumn/conifer/palm live runtime promotion","reason":"Gameplay camera angles exposed shredded radial cards and sparse pole-like silhouettes that isolated cardinal review missed. The packaged files remain production candidates, but runtime is pinned to the existing procedural families until replacements pass WebGPU scene review."}
   ]
 }

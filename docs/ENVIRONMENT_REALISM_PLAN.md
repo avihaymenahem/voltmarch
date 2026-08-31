@@ -75,15 +75,15 @@ The first static composition slice is live, with one important correction from i
 - the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
   repeated roadside cars/planters/benches were reduced so limited prop diversity is not amplified by
   uniform spacing;
-- all 32 stable Scatter identities now resolve through audited imported families. World reveal uses
-  deterministic procedural geometry immediately, then atomically promotes Scatter plus
-  scenario-spawned trees, bushes, rocks, barrels and crates to the same loaded PBR families without
-  changing placement or saved felling state;
+- all 32 stable Scatter identities have asset manifests. World reveal uses deterministic procedural
+  geometry immediately, then atomically promotes only live-review-approved families without changing
+  placement or saved felling state. Autumn broadleaf, conifer and palm are explicitly held on their
+  procedural presentation after WebGPU gameplay angles rejected their ultra-low-card candidates;
 - the old rectangular `debrisPile` blocks are removed from imported presentation; that identity now
   reuses the approved rounded and striated rock-cluster LOD/caster family;
-- autumn tree, conifer, palm and both grass tufts share one ImageGen-derived alpha PBR atlas. The
-  remaining yard, street and civic props share a separate neutral PBR atlas and offline static GLBs;
-  barrels, cafe umbrellas and sedan/van/pickup families have explicit WebGL/WebGPU cardinal proofs;
+- autumn tree, conifer, palm and both grass tufts have one packaged ImageGen-derived alpha PBR atlas;
+  only the grass identities currently promote from it. The remaining yard, street and civic props
+  share a separate neutral PBR atlas and offline static GLBs;
 - civilian apartments are six separately scattered, mirrored strongpoints hidden until scouted;
   Oil Derrick, Hospital and Ore Mine counts are unchanged.
 

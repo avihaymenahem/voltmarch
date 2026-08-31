@@ -73,9 +73,13 @@ describe('environment asset catalogue', () => {
 
   it('covers every stable Scatter prop identity with an asset-engine manifest', () => {
     expect(Object.keys(ENVIRONMENT_ASSET_CATALOG).sort()).toEqual([...PROP_KEYS].sort());
+    const liveReviewRejected = new Set(['treeAutumn', 'conifer', 'palm']);
     for (const key of PROP_KEYS) {
       const manifest = environmentAssetManifest(key);
-      expect(manifest?.stage, key).toBe('integrated');
+      expect(manifest?.stage, key).toBe(liveReviewRejected.has(key) ? 'production' : 'integrated');
+      expect(manifest?.runtimePresentation, key).toBe(
+        liveReviewRejected.has(key) ? 'procedural' : undefined,
+      );
       expect(manifest?.deliveries, key).toBeDefined();
     }
   });
@@ -98,7 +102,7 @@ describe('environment asset catalogue', () => {
     expect(tree?.deliveries).toEqual({
       lod0: 'temperate-broadleaf-v1.glb',
       lod1: 'derived/temperate-broadleaf-v1.lod1.glb',
-      lod2: 'derived/temperate-broadleaf-v1.lod2.glb',
+      lod2: 'derived/temperate-broadleaf-v1.lod1.glb',
       shadow: 'derived/temperate-broadleaf-v1.shadow.glb',
       emergency: 'derived/temperate-broadleaf-v1.lod2.glb',
     });
@@ -106,7 +110,7 @@ describe('environment asset catalogue', () => {
       rawTriangles: 12_000,
       lod0Triangles: 3_500,
       lod1Triangles: 900,
-      lod2Triangles: 400,
+      lod2Triangles: 900,
       shadowTriangles: 900,
       emergencyTriangles: 400,
       shippingBytes: 1_572_864,
@@ -401,6 +405,25 @@ describe('broadleaf camera-band LOD pilot', () => {
     source.dispose();
   }, 20_000);
 
+  it('collapses an accepted medium/far alias into two colour buckets', () => {
+    const source = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['tree'] });
+    const deliveries = family(source.get('tree')!);
+    const retiredLod2 = deliveries.lod2;
+    const accepted = { ...deliveries, lod2: deliveries.lod1 };
+    const imported = scatterRig('imported', accepted);
+
+    imported.scatter.update(camera(160), 0);
+    const colour = imported.scene.children.flatMap((root) => root.children)
+      .filter((object) => object.name.startsWith('prop.tree.lod')) as THREE.InstancedMesh[];
+    expect(colour.map((mesh) => mesh.name)).toEqual(['prop.tree.lod0', 'prop.tree.lod1']);
+    expect(imported.scatter.visibleLod2).toBe(0);
+    expect(colour.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(imported.scatter.propCount);
+
+    imported.scatter.dispose();
+    retiredLod2.geometry.dispose();
+    source.dispose();
+  }, 20_000);
+
   it('promotes a generated procedural fallback without resurrecting felled props', () => {
     const source = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['tree'] });
     const deliveries = family(source.get('tree')!);
@@ -486,7 +509,8 @@ describe('foliage production profile', () => {
     expect(shippingBytes).toBeLessThanOrEqual(tree.budget.shippingBytes);
     expect(triangles[tree.deliveries!.lod0]).toBe(3_363);
     expect(triangles[tree.deliveries!.lod1]).toBe(802);
-    expect(triangles[tree.deliveries!.lod2]).toBe(384);
+    expect(triangles[tree.deliveries!.lod2]).toBe(802);
+    expect(triangles[tree.deliveries!.emergency]).toBe(384);
     expect(triangles[tree.deliveries!.shadow]).toBe(802);
   });
 

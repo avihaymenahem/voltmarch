@@ -876,7 +876,8 @@ async function loadFamily(
 ): Promise<EnvironmentGeometryFamily | undefined> {
   const manifest = environmentAssetManifest(key);
   const def = propDef(key);
-  if (manifest?.deliveries === undefined || def === undefined) return undefined;
+  if (manifest?.deliveries === undefined || manifest.runtimePresentation === 'procedural'
+    || def === undefined) return undefined;
   const files = manifest.deliveries;
   const shrubVisibleMaterial: 'shrub' | undefined = def.family === 'shrub' ? 'shrub' : undefined;
   const boxPropVisibleMaterial: 'box-prop' | undefined = manifest.materialFamily === 'box-prop-v1-pbr'
@@ -894,23 +895,31 @@ async function loadFamily(
   const lod0Material: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined = key === 'tree'
     ? 'embedded'
     : mineralVisibleMaterial ?? visibleMaterial;
+  type AuthoredMaterial = Parameters<typeof loadDelivery>[3];
+  const deliveryPromises = new Map<string, Promise<PropGeometry>>();
+  const request = (
+    file: string,
+    name: 'lod0' | 'lod1' | 'lod2' | 'shadow' | 'emergency',
+    authoredMaterial: AuthoredMaterial,
+  ): Promise<PropGeometry> => {
+    // An accepted rung may intentionally occupy two camera bands. Share its
+    // decode/geometry instead of paying twice at boot for the same file.
+    const cacheKey = `${file}\u0000${authoredMaterial ?? 'shared'}`;
+    const cached = deliveryPromises.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const promise = loadDelivery(
+      def, file, name, authoredMaterial, biome,
+      mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
+    );
+    deliveryPromises.set(cacheKey, promise);
+    return promise;
+  };
   const settled = await Promise.allSettled([
-    loadDelivery(
-      def, files.lod0, 'lod0', lod0Material, biome,
-      mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
-    ),
-    loadDelivery(
-      def, files.lod1, 'lod1', visibleMaterial, biome,
-      mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
-    ),
-    loadDelivery(
-      def, files.lod2, 'lod2', visibleMaterial, biome,
-      mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
-    ),
-    loadDelivery(
-      def, files.shadow, 'shadow', undefined, biome,
-      mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
-    ),
+    request(files.lod0, 'lod0', lod0Material),
+    request(files.lod1, 'lod1', visibleMaterial),
+    request(files.lod2, 'lod2', visibleMaterial),
+    request(files.shadow, 'shadow', undefined),
+    request(files.emergency, 'emergency', visibleMaterial),
   ]);
   const available = settled.map((result) => (
     result.status === 'fulfilled' ? result.value : undefined
@@ -918,8 +927,12 @@ async function loadFamily(
   if (available.slice(0, 3).every((delivery) => delivery === undefined)) {
     const preservedMaterial = mineralMaterial ?? shrubMaterial ?? boxPropMaterial
       ?? extendedFoliageMaterial ?? propSurfaceMaterial;
+    const disposed = new Set<PropGeometry>();
     for (const delivery of available) {
-      if (delivery !== undefined) disposeDelivery(delivery, preservedMaterial);
+      if (delivery !== undefined && !disposed.has(delivery)) {
+        disposeDelivery(delivery, preservedMaterial);
+        disposed.add(delivery);
+      }
     }
     const reasons = settled
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
@@ -928,8 +941,8 @@ async function loadFamily(
   }
 
   type VisibleDelivery = 'lod0' | 'lod1' | 'lod2';
-  type AnyDelivery = VisibleDelivery | 'shadow';
-  const names: readonly AnyDelivery[] = ['lod0', 'lod1', 'lod2', 'shadow'];
+  type AnyDelivery = VisibleDelivery | 'shadow' | 'emergency';
+  const names: readonly AnyDelivery[] = ['lod0', 'lod1', 'lod2', 'shadow', 'emergency'];
   const choose = (preference: readonly number[]): { geometry: PropGeometry; source: AnyDelivery } => {
     for (const index of preference) {
       const geometry = available[index];
@@ -940,15 +953,17 @@ async function loadFamily(
   // Prefer the requested rung, then a cheaper rung, then the nearest more
   // expensive rung. The shadow proxy similarly falls toward the cheapest
   // visible delivery instead of removing the complete family.
-  const lod0 = choose([0, 1, 2]);
-  const lod1 = choose([1, 2, 0]);
-  const lod2 = choose([2, 1, 0]);
-  const shadow = choose([3, 2, 1, 0]);
+  const lod0 = choose([0, 1, 2, 4]);
+  const lod1 = choose([1, 2, 0, 4]);
+  const lod2 = choose([2, 1, 0, 4]);
+  const shadow = choose([3, 2, 1, 0, 4]);
+  const emergency = choose([4, 2, 1, 0]);
   const degraded = settled.some((result) => result.status === 'rejected');
   if (degraded) {
     console.warn(
       `[foliage] ${key} degraded packaged family: `
-      + `lod0=${lod0.source}, lod1=${lod1.source}, lod2=${lod2.source}, shadow=${shadow.source}`,
+      + `lod0=${lod0.source}, lod1=${lod1.source}, lod2=${lod2.source}, `
+      + `shadow=${shadow.source}, emergency=${emergency.source}`,
     );
   }
   return {
@@ -956,13 +971,13 @@ async function loadFamily(
     lod1: lod1.geometry,
     lod2: lod2.geometry,
     shadow: shadow.geometry,
-    emergency: lod2.geometry,
+    emergency: emergency.geometry,
     deliverySources: degraded ? {
       lod0: lod0.source as VisibleDelivery,
       lod1: lod1.source as VisibleDelivery,
       lod2: lod2.source as VisibleDelivery,
       shadow: shadow.source,
-      emergency: lod2.source as VisibleDelivery,
+      emergency: emergency.source as VisibleDelivery | 'emergency',
     } : undefined,
   };
 }
@@ -1014,6 +1029,7 @@ export async function loadImportedFoliage(
   for (const key of ENVIRONMENT_ASSET_KEYS) {
     try {
       const manifest = environmentAssetManifest(key);
+      if (manifest?.runtimePresentation === 'procedural') continue;
       const mineralMaterial = manifest?.materialFamily === 'mineral-rock-v1-pbr'
         ? await (mineralMaterialPromise ??= createMineralMaterial())
         : undefined;

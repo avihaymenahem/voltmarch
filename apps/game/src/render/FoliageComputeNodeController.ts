@@ -208,8 +208,8 @@ function copyBatchSources(spec: FoliageComputeSpec): {
       || batch.chunkRanges.length !== spec.chunkCount * 2) {
       throw new Error(`[foliage.compute] invalid source column lengths for ${batch.key}`);
     }
-    if (batch.colour.length !== 1 && batch.colour.length !== 3) {
-      throw new Error(`[foliage.compute] ${batch.key} must expose one or three colour deliveries`);
+    if (batch.colour.length < 1 || batch.colour.length > 3) {
+      throw new Error(`[foliage.compute] ${batch.key} must expose one to three colour deliveries`);
     }
     if (sourceBases.has(batch.key)) {
       throw new Error(`[foliage.compute] duplicate pilot key ${batch.key}`);
@@ -259,7 +259,7 @@ function copyBatchSources(spec: FoliageComputeSpec): {
     const lod0 = colourCommands[0];
     typeCommands[typeIndex * 4] = lod0;
     typeCommands[typeIndex * 4 + 1] = colourCommands[1] ?? lod0;
-    typeCommands[typeIndex * 4 + 2] = colourCommands[2] ?? lod0;
+    typeCommands[typeIndex * 4 + 2] = colourCommands[2] ?? colourCommands[1] ?? lod0;
 
     if (batch.shadow === null) {
       typeCommands[typeIndex * 4 + 3] = UINT_NONE;

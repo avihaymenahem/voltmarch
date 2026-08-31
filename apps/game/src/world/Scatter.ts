@@ -231,6 +231,27 @@ export function foliageLodForDistanceSquared(distanceSquared: number, stableId: 
   return 0;
 }
 
+type FoliageColourLodCount = 1 | 2 | 3;
+
+function foliageColourLodCount(
+  key: string,
+  family: EnvironmentRenderFamily,
+): FoliageColourLodCount {
+  if (key !== 'tree') return 1;
+  if (family.lod1 === family.lod0 && family.lod2 === family.lod0) return 1;
+  // A rejected far derivative can be replaced by the accepted medium rung.
+  // Do not keep an empty third draw bucket when both bands share one delivery.
+  if (family.lod2 === family.lod1) return 2;
+  return 3;
+}
+
+function clampFoliageLod(
+  lod: 0 | 1 | 2,
+  count: FoliageColourLodCount,
+): 0 | 1 | 2 {
+  return Math.min(lod, count - 1) as 0 | 1 | 2;
+}
+
 /** Presentation-independent visual envelope used by clearing and save masks. */
 export function stablePropVisualRadius(def: PropDef, scale: number): number {
   return (environmentAssetManifest(def.key)?.metres.radius ?? def.radius) * scale;
@@ -706,7 +727,7 @@ interface ScatterType {
   readonly defIndex: number;
   geo: PropGeometry;
   renderFamily: EnvironmentRenderFamily;
-  lodEnabled: boolean;
+  colourLodCount: FoliageColourLodCount;
   /** LOD0 alias retained for the diagnostic BatchedMesh arm. */
   mesh: THREE.InstancedMesh | null;
   lodMeshes: [THREE.InstancedMesh | null, THREE.InstancedMesh | null, THREE.InstancedMesh | null];
@@ -1499,10 +1520,9 @@ export class Scatter {
       // Gate 3 is deliberately a broadleaf pilot: at most two additional
       // colour submissions, rather than multiplying every vegetation and rock
       // archetype by three before the frame budget has been measured live.
-      const lodEnabled = def.key === 'tree'
-        && (renderFamily.lod1 !== renderFamily.lod0 || renderFamily.lod2 !== renderFamily.lod0);
+      const colourLodCount = foliageColourLodCount(def.key, renderFamily);
       avail.push({
-        def, defIndex: i, geo, renderFamily, lodEnabled,
+        def, defIndex: i, geo, renderFamily, colourLodCount,
         mesh: null, lodMeshes: [null, null, null], shadowMesh: null,
         batch: null, batchInstances: EMPTY_I32, count: 0,
         srcMatrix: EMPTY_F32, srcColor: EMPTY_F32, srcPhase: EMPTY_F32,
@@ -1773,8 +1793,7 @@ export class Scatter {
       if (renderFamily === undefined) continue;
       type.renderFamily = renderFamily;
       type.geo = renderFamily.lod0;
-      type.lodEnabled = type.def.key === 'tree'
-        && (renderFamily.lod1 !== renderFamily.lod0 || renderFamily.lod2 !== renderFamily.lod0);
+      type.colourLodCount = foliageColourLodCount(type.def.key, renderFamily);
     }
 
     this.maxPropReach = 0;
@@ -2476,9 +2495,9 @@ export class Scatter {
 
   /** Build the existing CPU-compacted presentation for one live type. */
   private buildCpuMeshes(type: ScatterType, capacity: number): void {
-    const deliveries: readonly PropGeometry[] = type.lodEnabled
-      ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
-      : [type.renderFamily.lod0];
+    const deliveries = [
+      type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2,
+    ].slice(0, type.colourLodCount);
     for (let lod = 0; lod < deliveries.length; lod++) {
       const delivery = deliveries[lod];
       const geometry = delivery.geometry.clone();
@@ -2544,9 +2563,9 @@ export class Scatter {
       chunkRanges[chunk * 2] = type.chunkStart[chunk];
       chunkRanges[chunk * 2 + 1] = type.chunkStart[chunk + 1];
     }
-    const deliveries: readonly PropGeometry[] = type.lodEnabled
-      ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
-      : [type.renderFamily.lod0];
+    const deliveries = [
+      type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2,
+    ].slice(0, type.colourLodCount);
     return {
       key: type.def.key,
       matrices: type.srcMatrix.slice(),
@@ -2896,14 +2915,14 @@ export class Scatter {
         for (let i = a; i < b; i++) {
           const sm = i * 16;
           let lod: 0 | 1 | 2 = 0;
-          if (type.lodEnabled) {
+          if (type.colourLodCount > 1) {
             const dx = camera.position.x - srcM[sm + 12];
             const dy = camera.position.y - srcM[sm + 13];
             const dz = camera.position.z - srcM[sm + 14];
-            lod = foliageLodForDistanceSquared(
+            lod = clampFoliageLod(foliageLodForDistanceSquared(
               dx * dx + dy * dy + dz * dz,
               type.instOf[i],
-            );
+            ), type.colourLodCount);
           }
           const mesh = type.lodMeshes[lod]!;
           const w = type.lodDrawCount[lod]++;
@@ -3697,7 +3716,7 @@ export class Scatter {
     const commandKey = (key: string, pass: string): string => `${key}:${pass}`;
     for (const type of this.types) {
       if (!type.computeOwned) continue;
-      const lods = type.lodEnabled ? 3 : 1;
+      const lods = type.colourLodCount;
       for (let lod = 0; lod < lods; lod++) {
         expectedByCommand.set(commandKey(type.def.key, `lod${lod}`), []);
       }
@@ -3710,11 +3729,14 @@ export class Scatter {
       const type = this.types[placement.slot];
       if (!type.computeOwned) continue;
       let lod: 0 | 1 | 2 = 0;
-      if (type.lodEnabled) {
+      if (type.colourLodCount > 1) {
         const dx = this.computeCameraPosition.x - placement.x;
         const dy = this.computeCameraPosition.y - placement.y;
         const dz = this.computeCameraPosition.z - placement.z;
-        lod = foliageLodForDistanceSquared(dx * dx + dy * dy + dz * dz, placement.index);
+        lod = clampFoliageLod(
+          foliageLodForDistanceSquared(dx * dx + dy * dy + dz * dz, placement.index),
+          type.colourLodCount,
+        );
       }
       expectedByCommand.get(commandKey(type.def.key, `lod${lod}`))!.push(placement.index);
       expectedByCommand.get(commandKey(type.def.key, 'shadow'))?.push(placement.index);

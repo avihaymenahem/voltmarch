@@ -46,7 +46,7 @@
       "singleSided": true
     },
     {
-      "role": "lod1",
+      "role": "lod1-and-far-normal",
       "file": "derived/temperate-broadleaf-v1.lod1.glb",
       "bytes": 39376,
       "triangles": 802,
@@ -60,7 +60,8 @@
       "triangles": 384,
       "vertices": 768,
       "sha256": "2d1e767d62992088a90aeaee41d2926137ea38303366ee2632678ed83318fbf2",
-      "method": "crossed silhouette planes with vertex colour; no texture sampler"
+      "method": "crossed silhouette planes with vertex colour; no texture sampler",
+      "runtime": "explicit emergency presentation only"
     },
     {
       "role": "shadow",
@@ -77,6 +78,10 @@
     {
       "delivery": "direct simplified LOD2/shadow",
       "reason": "Numerical triangle and bounds gates passed, but cardinal review showed collapsed slab geometry and lost trunk/crown silhouette."
+    },
+    {
+      "delivery": "crossed silhouette normal LOD2",
+      "reason": "Live WebGPU gameplay review exposed tall vertical card slabs at the 116 m camera transition. The accepted 802-triangle LOD1 now occupies the far normal band; this derivative remains emergency-only."
     }
   ],
   "review": {

@@ -40,6 +40,12 @@ export interface EnvironmentArchetypeManifest {
   readonly origin: 'ground-centre';
   readonly metres: { readonly radius: number; readonly height: number };
   readonly wind: 'none' | 'grass' | 'canopy';
+  /**
+   * An authored family can remain packaged for iteration without being allowed
+   * to replace the procedural presentation. Use this when live camera review
+   * rejects a delivery that passed only isolated asset-card checks.
+   */
+  readonly runtimePresentation?: 'procedural';
   readonly budget: EnvironmentAssetBudget;
   /** Absent until every referenced file has passed the local production gate. */
   readonly deliveries?: EnvironmentAssetDeliveries;
@@ -121,7 +127,10 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
         rawTriangles: 12_000,
         lod0Triangles: 3_500,
         lod1Triangles: 900,
-        lod2Triangles: 400,
+        // Live WebGPU review rejected the 384-triangle crossed-card silhouette.
+        // LOD1 is deliberately retained through the far camera band until a
+        // silhouette-preserving derivative passes gameplay review.
+        lod2Triangles: 900,
         shadowTriangles: 900,
         emergencyTriangles: 400,
         shippingBytes: 1_572_864,
@@ -129,7 +138,7 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       deliveries: Object.freeze({
         lod0: 'temperate-broadleaf-v1.glb',
         lod1: 'derived/temperate-broadleaf-v1.lod1.glb',
-        lod2: 'derived/temperate-broadleaf-v1.lod2.glb',
+        lod2: 'derived/temperate-broadleaf-v1.lod1.glb',
         shadow: 'derived/temperate-broadleaf-v1.shadow.glb',
         emergency: 'derived/temperate-broadleaf-v1.lod2.glb',
       }),
@@ -137,11 +146,12 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     treeAutumn: Object.freeze({
       key: 'treeAutumn',
       family: 'canopy',
-      stage: 'integrated',
+      stage: 'production',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 4.8, height: 10.6 }),
       wind: 'canopy',
+      runtimePresentation: 'procedural',
       budget: Object.freeze({ rawTriangles: 54, lod0Triangles: 64, lod1Triangles: 56, lod2Triangles: 48, shadowTriangles: 48, emergencyTriangles: 48, shippingBytes: 786_432 }),
       deliveries: Object.freeze({
         lod0: 'tree-autumn-v1.glb', lod1: 'derived/tree-autumn-v1.lod1.glb',
@@ -152,11 +162,12 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     conifer: Object.freeze({
       key: 'conifer',
       family: 'canopy',
-      stage: 'integrated',
+      stage: 'production',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 3.9, height: 11.4 }),
       wind: 'canopy',
+      runtimePresentation: 'procedural',
       budget: Object.freeze({ rawTriangles: 82, lod0Triangles: 90, lod1Triangles: 70, lod2Triangles: 60, shadowTriangles: 48, emergencyTriangles: 60, shippingBytes: 131_072 }),
       deliveries: Object.freeze({
         lod0: 'conifer-v1.glb', lod1: 'derived/conifer-v1.lod1.glb',
@@ -167,11 +178,12 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     palm: Object.freeze({
       key: 'palm',
       family: 'canopy',
-      stage: 'integrated',
+      stage: 'production',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 4.7, height: 8.4 }),
       wind: 'canopy',
+      runtimePresentation: 'procedural',
       budget: Object.freeze({ rawTriangles: 170, lod0Triangles: 180, lod1Triangles: 176, lod2Triangles: 172, shadowTriangles: 44, emergencyTriangles: 172, shippingBytes: 196_608 }),
       deliveries: Object.freeze({
         lod0: 'palm-v1.glb', lod1: 'derived/palm-v1.lod1.glb',

@@ -23,11 +23,11 @@ export interface EnvironmentGeometryFamily {
    * Omitted means the family is complete and every slot owns its named file.
    */
   readonly deliverySources?: Readonly<{
-    lod0: 'lod0' | 'lod1' | 'lod2';
-    lod1: 'lod0' | 'lod1' | 'lod2';
-    lod2: 'lod0' | 'lod1' | 'lod2';
-    shadow: 'lod0' | 'lod1' | 'lod2' | 'shadow';
-    emergency: 'lod0' | 'lod1' | 'lod2';
+    lod0: 'lod0' | 'lod1' | 'lod2' | 'emergency';
+    lod1: 'lod0' | 'lod1' | 'lod2' | 'emergency';
+    lod2: 'lod0' | 'lod1' | 'lod2' | 'emergency';
+    shadow: 'lod0' | 'lod1' | 'lod2' | 'shadow' | 'emergency';
+    emergency: 'lod0' | 'lod1' | 'lod2' | 'emergency';
   }>;
 }
 
@@ -126,6 +126,7 @@ export class FoliageEngine {
       lod1: manifest.budget.lod1Triangles,
       lod2: manifest.budget.lod2Triangles,
       shadow: manifest.budget.shadowTriangles,
+      emergency: manifest.budget.emergencyTriangles,
     } as const;
     const source = family.deliverySources;
     assertGeometry(key, family.lod0, budget[source?.lod0 ?? 'lod0'], 'lod0');

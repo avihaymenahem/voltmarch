@@ -348,7 +348,26 @@ wall median 5.10% on WebGL and 2.77% on WebGPU. A deterministic 200,000-resample
 regression ceiling. Tree-focused 24/62/116 m noon/dusk captures now live
 beside the asset on both backends. They approve the broadleaf silhouette; they also record remaining
 catalogue defects—vertical card groupings at far range, weak dusk interior readability, and broader
-renderer-parity differences—so those later family gates remain open.
+  renderer-parity differences—so those later family gates remain open.
+
+Live-game correction, 2026-08-31 (WebGPU authority): the gameplay camera rejected the crossed-card
+far broadleaf and the ultra-low-card autumn/conifer/palm families visible in the acceptance evidence.
+The normal broadleaf chain now shares the accepted 802-triangle LOD1 across the medium and far bands;
+the 384-triangle crossed derivative is loaded independently and is reachable only through explicit
+emergency presentation. Sharing the repeated file removes the duplicate decode and collapses the
+normal colour presentation from three tree buckets to two. Autumn broadleaf, conifer and palm remain
+packaged production candidates but are marked procedural-only at runtime until replacements pass live
+camera review.
+
+On the same seed-7 368-prop fixture this quality rollback changes the prior imported result from
+328/27/13 to 328/40/0 LOD0/1/2 instances and removes one colour draw (16 -> 15) plus three compiled
+programs (307 -> 304). The honest geometry cost is 94,076 -> 165,624 colour triangles (+76.1%) and
+51,498 -> 117,850 shadow triangles (+128.8%): broadleaf itself adds only 5,434 colour triangles; the
+rest buys back the accepted procedural autumn/conifer silhouettes and their matching casters. A fresh
+8-frame x 2-block native-WebGPU run records 4.65 ms minimum / 4.669 ms median wall time at 1280x720,
+but it is an absolute smoke measurement rather than a timing A/B. New 24/62/116 m captures show no
+vertical slabs or shredded cards. Gate 4 remains open for a true silhouette-preserving broadleaf LOD2
+and authored replacements for the three quarantined tree families.
 
 The shared extended-foliage atlas is a deterministic single-thread Basis cook. Three consecutive
 clean recooks reproduce its tracked report and source hashes. Output is 509,145 bytes versus 573,010
@@ -362,8 +381,10 @@ in `review/gate4-runtime-report.json` beside this family, and the exact cook evi
 
 Migrate by reusable family, not by one-off asset:
 
-1. Foliage family: broadleaf, autumn broadleaf, conifer, palm, two grass identities, bush and hedge
-   are integrated. Autumn/conifer/palm/grass share one ImageGen-derived 1024/512/512 alpha PBR atlas;
+1. Foliage family: broadleaf, two grass identities, bush and hedge are integrated. Broadleaf currently
+   has two accepted normal colour rungs; its old crossed derivative is emergency-only. Autumn
+   broadleaf, conifer and palm are packaged but quarantined to procedural runtime presentation after
+   live-camera rejection. Grass keeps the shared ImageGen-derived 1024/512/512 alpha PBR atlas;
    bush/hedge share their separate continuous-shrub atlas.
 2. Mineral/debris family: boulder and rock cluster are integrated. `debrisPile` deliberately resolves
    to the same approved rounded rock-cluster family, removing the old single rectangular blocks from
