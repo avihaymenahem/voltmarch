@@ -49,6 +49,50 @@ function mipBytes(width, height, bytesPerPixel) {
   }
 }
 
+function stableCookReport(report) {
+  return {
+    version: report.version,
+    family: report.family,
+    encoder: report.encoder,
+    sourceBytes: report.sourceBytes,
+    sourceGpuBytesRGBA8: report.sourceGpuBytesRGBA8,
+    compressedGpuBytes8bpp: report.compressedGpuBytes8bpp,
+    rows: report.rows.map((row) => ({
+      role: row.role,
+      source: row.source,
+      output: row.output,
+      codec: row.codec,
+      dimensions: row.dimensions,
+      sourceBytes: row.sourceBytes,
+      sourceSha256: row.sourceSha256,
+      sourceGpuBytesRGBA8: row.sourceGpuBytesRGBA8,
+      compressedGpuBytes8bpp: row.compressedGpuBytes8bpp,
+    })),
+  };
+}
+
+function assertNativeCookCompatible(tracked, cooked) {
+  if (JSON.stringify(stableCookReport(tracked)) !== JSON.stringify(stableCookReport(cooked))) {
+    throw new Error('foliage KTX2 native recook changed the source or cook specification');
+  }
+  for (let index = 0; index < cooked.rows.length; index += 1) {
+    const trackedRow = tracked.rows[index];
+    const cookedRow = cooked.rows[index];
+    // Basis Universal's independently compiled Windows and Linux encoders can
+    // choose different, equally valid ETC1S/UASTC blocks. Keep the Windows x64
+    // cook as the frozen delivery, but require every native recook to remain
+    // close to its reviewed transfer size instead of pretending the binaries
+    // produce identical bytes across operating systems.
+    const tolerance = Math.max(1024, Math.ceil(trackedRow.outputBytes * 0.1));
+    if (Math.abs(cookedRow.outputBytes - trackedRow.outputBytes) > tolerance) {
+      throw new Error(
+        `foliage KTX2 native recook size drifted for ${cookedRow.output}: `
+        + `${trackedRow.outputBytes} -> ${cookedRow.outputBytes}`,
+      );
+    }
+  }
+}
+
 const temporary = await fsp.mkdtemp(path.join(os.tmpdir(), 'voltmarch-foliage-ktx2-'));
 try {
   const rows = [];
@@ -125,14 +169,21 @@ try {
     );
   } else {
     const tracked = JSON.parse(await fsp.readFile(reportPath, 'utf8'));
-    if (JSON.stringify(tracked) !== JSON.stringify(report)) {
+    const canonicalCookHost = process.platform === 'win32' && process.arch === 'x64';
+    if (canonicalCookHost && JSON.stringify(tracked) !== JSON.stringify(report)) {
       throw new Error(
         'foliage KTX2 recook differs from the tracked report; run with --write only after review',
       );
     }
+    if (!canonicalCookHost) assertNativeCookCompatible(tracked, report);
   }
   console.log(JSON.stringify(report, null, 2));
-  if (!write) console.log('[foliage-ktx2] reproducible recook matches tracked report');
+  if (!write) {
+    const mode = process.platform === 'win32' && process.arch === 'x64'
+      ? 'byte-identical canonical recook matches tracked report'
+      : 'native recook matches tracked source, format, and transfer bounds';
+    console.log(`[foliage-ktx2] ${mode}`);
+  }
 } finally {
   await fsp.rm(temporary, { recursive: true, force: true });
 }

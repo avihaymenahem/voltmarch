@@ -47,7 +47,7 @@ describe('extended foliage KTX2 promotion', () => {
     expect(report.transferRatio).toBeLessThan(0.9);
   });
 
-  it('recooks byte-identically with the repository encoder', () => {
+  it('recooks exactly on the canonical host and validates native cooks elsewhere', () => {
     execFileSync(process.execPath, [resolve(root, 'tools/promote-environment-atlas.mjs')], {
       cwd: root,
       stdio: 'pipe',
