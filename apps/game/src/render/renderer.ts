@@ -594,7 +594,13 @@ export const RENDER_CONFIG: RenderConfig = {
 /* -------------------------------------------------------------------------- */
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
-export type ConfigListener = (changed: ReadonlyArray<string>) => void;
+export interface ConfigChangeMeta {
+  /** Uniform animation: listeners must not rebuild textures or pipelines. */
+  readonly transient: boolean;
+}
+export type ConfigListener = (changed: ReadonlyArray<string>, meta: ConfigChangeMeta) => void;
+
+const STEADY_CONFIG_CHANGE: ConfigChangeMeta = Object.freeze({ transient: false });
 
 const configListeners: ConfigListener[] = [];
 
@@ -629,13 +635,16 @@ function deepMerge(target: any, patch: any, prefix: string, changed: string[]): 
  * mutate uniforms in response — never rebuild a texture or geometry here, or a
  * slider drag becomes a slideshow.
  */
-export function configureRender(patch: DeepPartial<RenderConfig>): ReadonlyArray<string> {
+export function configureRender(
+  patch: DeepPartial<RenderConfig>,
+  meta: ConfigChangeMeta = STEADY_CONFIG_CHANGE,
+): ReadonlyArray<string> {
   const changed: string[] = [];
   deepMerge(RENDER_CONFIG as any, patch as any, '', changed);
   if (changed.length) {
     for (let i = 0; i < configListeners.length; i++) {
       try {
-        configListeners[i](changed);
+        configListeners[i](changed, meta);
       } catch (err) {
         console.error('[render] config listener threw', err);
       }

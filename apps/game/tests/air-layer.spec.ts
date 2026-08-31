@@ -73,14 +73,22 @@ const P1 = 1 as PlayerId;
  * silhouette-validated on every boot with no `UnitDef` behind either of them,
  * so two of the four armies could be flown at and could not fly.
  */
-const AIRCRAFT_KEYS = ['mrdKestrel', 'rclHornet', 'vindicator', 'mig'] as const;
+const TACTICAL_AIRCRAFT_KEYS = ['mrdKestrel', 'rclHornet', 'vindicator', 'mig'] as const;
+const STRATEGIC_AIRCRAFT_KEYS = [
+  'alliedAlbatross', 'sovietMolot', 'mrdEcliptic', 'rclScrapvulture',
+] as const;
+const AIRCRAFT_KEYS = [...TACTICAL_AIRCRAFT_KEYS, ...STRATEGIC_AIRCRAFT_KEYS] as const;
 
 /** One per army, so a per-faction assertion cannot pass by testing one twice. */
 const AIRCRAFT_BY_FACTION: readonly (readonly [Faction, string])[] = [
   [Faction.Allies, 'vindicator'],
+  [Faction.Allies, 'alliedAlbatross'],
   [Faction.Soviets, 'mig'],
+  [Faction.Soviets, 'sovietMolot'],
   [Faction.Meridian, 'mrdKestrel'],
+  [Faction.Meridian, 'mrdEcliptic'],
   [Faction.Reclaim, 'rclHornet'],
+  [Faction.Reclaim, 'rclScrapvulture'],
 ];
 
 function unitDef(key: string) {
@@ -421,7 +429,8 @@ describe('canTargetAir — the gate, and its default', () => {
       // rebalance cut its damage, never its ability to shoot up.
       'ifvChaingun'];
     const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'prismSiegeBeam', 'flameJet',
-      'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite',
+      'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite', 'albatrossBomb', 'molotBomb',
+      'eclipticCharge', 'scrapvultureCask',
       'focusLance', 'zenithBeam', 'glaiveRepeater', 'mirrorGun',
       'slagCharge', 'grinderArc', 'slagMortar', 'scowGun', 'hulkBattery', 'postCoil'];
     for (const k of can) expect(weaponByKey(k).canTargetAir, k).toBe(true);
@@ -805,7 +814,7 @@ describe('every air claim in the content has something behind it', () => {
 
   it('gives the aircraft themselves a way to fight each other', () => {
     // "Own the only gunship" must not be a win condition.
-    for (const key of AIRCRAFT_KEYS) {
+    for (const key of TACTICAL_AIRCRAFT_KEYS) {
       const def = unitDef(key);
       expect(def.weapons.length, key).toBeGreaterThan(0);
       expect(def.weapons.some((wi) => WEAPONS[wi]!.canTargetAir), key).toBe(true);
@@ -842,8 +851,8 @@ describe('every air claim in the content has something behind it', () => {
  * catalogue of.
  * ========================================================================== */
 
-describe('all four armies field exactly one aircraft', () => {
-  it('gives each faction its own, and none of them Neutral', () => {
+describe('all four armies field aircraft and Allies field a strategic wing', () => {
+  it('gives every aircraft an authored faction, and none of them Neutral', () => {
     // Neutral would put the same aircraft in every other army's sidebar, which
     // is the failure the Pact and Reclamation catalog blocks both warn about.
     for (const [faction, key] of AIRCRAFT_BY_FACTION) {
@@ -858,14 +867,14 @@ describe('all four armies field exactly one aircraft', () => {
     // mean a number. Cheapest to dearest the four are 900/1000/1100/1200 and
     // 180/190/210/240 hp; a 2x spread in either would mean one faction's air
     // tier is a different decision from another's.
-    const costs = AIRCRAFT_KEYS.map((k) => unitDef(k).cost);
-    const hps = AIRCRAFT_KEYS.map((k) => unitDef(k).maxHp);
+    const costs = TACTICAL_AIRCRAFT_KEYS.map((k) => unitDef(k).cost);
+    const hps = TACTICAL_AIRCRAFT_KEYS.map((k) => unitDef(k).maxHp);
     expect(Math.max(...costs) / Math.min(...costs)).toBeLessThanOrEqual(1.5);
     expect(Math.max(...hps) / Math.min(...hps)).toBeLessThanOrEqual(1.5);
     // And every one of them is the thinnest-skinned thing its army can build
     // for the money — an aircraft is bought for where it stands, never for how
     // much it survives.
-    for (const key of AIRCRAFT_KEYS) {
+    for (const key of TACTICAL_AIRCRAFT_KEYS) {
       const d = unitDef(key);
       expect(d.armor, key).toBe(ArmorClass.Light);
       expect(d.maxHp, key).toBeLessThan(300);
@@ -881,7 +890,7 @@ describe('all four armies field exactly one aircraft', () => {
     ]);
     const radars = new Set(['radar', 'mrdOculus', 'rclSpotter']);
     const techs = new Set(['battleLab', 'mrdReliquary', 'rclCrucible']);
-    for (const key of AIRCRAFT_KEYS) {
+    for (const key of TACTICAL_AIRCRAFT_KEYS) {
       const p = unitDef(key).prereqs;
       expect(p.length, key).toBe(2);
       expect(p.some((k) => factories.has(k)), `${key} has no vehicle factory prereq`).toBe(true);
@@ -894,7 +903,7 @@ describe('all four armies field exactly one aircraft', () => {
     // `UNLOCK_TAGS` mirrors its groups across the four armies on purpose, and
     // `unit.air` named two keys while four aircraft existed in doctrine. A
     // player who switches faction must not be sent back down the curve.
-    for (const key of AIRCRAFT_KEYS) {
+    for (const key of TACTICAL_AIRCRAFT_KEYS) {
       expect(unitDef(key).unlockedBy, key).toBe('unit.air');
     }
   });
@@ -926,7 +935,12 @@ describe('all four armies field exactly one aircraft', () => {
       expect(FALLBACK_UNITS[key], `${key} has no fallback row`).toBeDefined();
       const entry = catalog.get(key);
       expect(entry, `${key} is not in the AI catalog`).toBeDefined();
-      expect(entry!.answers[4], `${key} scores nothing against air`).toBeGreaterThan(0);
+      if ((STRATEGIC_AIRCRAFT_KEYS as readonly string[]).includes(key)) {
+        expect(entry!.answers[4], `${key} must not pretend its bomb is anti-air`).toBe(0);
+        expect(entry!.answers[3], `${key} must value structural strike targets`).toBeGreaterThan(1);
+      } else {
+        expect(entry!.answers[4], `${key} scores nothing against air`).toBeGreaterThan(0);
+      }
     }
   });
 

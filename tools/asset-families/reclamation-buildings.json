@@ -41,6 +41,7 @@
     { "key": "reclaim_spitpost", "file": "spitpost.glb", "class": "standard", "lods": true },
     { "key": "reclaim_pylon", "file": "arc-pylon.glb", "class": "standard", "lods": true },
     { "key": "reclaim_barricade", "file": "scrap-barricade.glb", "class": "modular", "lods": false },
-    { "key": "reclaim_stormworks", "file": "stormworks.glb", "class": "landmark", "lods": true }
+    { "key": "reclaim_stormworks", "file": "stormworks.glb", "class": "landmark", "lods": true },
+    { "key": "reclaim_airbase", "file": "carrion-roost.glb", "class": "landmark", "lods": true }
   ]
 }

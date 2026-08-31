@@ -845,8 +845,8 @@ export const MAPS: readonly MapChoice[] = [
   },
   {
     id: 'industrial-grid', name: 'Industrial Grid', biome: 'urban', preset: 'urban',
-    mapSeed: 0x1d0c17, mood: 'dusk', players: 4,
-    blurb: 'Roads, kerbs and container stacks. Almost no relief, all cover.',
+    mapSeed: 0x1d0c17, mood: 'night', players: 4,
+    blurb: 'An eight-minute day/night shift over working street lamps and container stacks. Almost no relief, all cover.',
   },
   {
     id: 'contested-strait', name: 'Contested Strait', biome: 'temperate', preset: 'coast',
@@ -1478,6 +1478,7 @@ export function buildMatchQuery(
   seedOverride?: number,
 ): URLSearchParams {
   const q = typeof base === 'string' ? new URLSearchParams(base) : new URLSearchParams(base);
+  const weatherOverride = q.get('weather')?.toLowerCase();
   for (const k of MANAGED_FLAGS) q.delete(k);
 
   const map = mapById(setup.map);
@@ -1485,7 +1486,12 @@ export function buildMatchQuery(
   q.set('biome', map.biome);
   q.set('mapseed', String(map.mapSeed | 0));
   q.set('seed', String((seedOverride ?? setup.seed) >>> 0));
-  q.set('weather', setup.weather ? 'on' : 'off');
+  q.set(
+    'weather',
+    setup.weather && (weatherOverride === 'light' || weatherOverride === 'heavy')
+      ? weatherOverride
+      : setup.weather ? 'on' : 'off',
+  );
   q.set('art', map.mood);
 
   const armies = effectiveOpponents(setup);

@@ -387,6 +387,10 @@ function populate(fx: Fixture, tanks = 60): { tanks: EntityId[]; refinery: Entit
 
   // A live target reference between two units.
   world.store.targetId[world.store.index(list[0])] = list[1] as number;
+  // Strategic-air-wing ownership is another handle-valued relationship, and
+  // its packed bay/ammunition/rearm word must survive beside it.
+  world.store.sortieHostId[world.store.index(list[2])] = refinery as number;
+  world.store.sortieData[world.store.index(list[2])] = 0x1234;
 
   const p0 = world.player(P0);
   p0.credits = 4310;
@@ -482,7 +486,7 @@ describe('snapshot round trip', () => {
       'veterancy', 'killCount', 'crushLevel', 'crushableBy',
       'state', 'orderKind', 'orderX', 'orderZ', 'stance', 'guardX', 'guardZ',
       'cargo', 'cargoMax', 'buildProgress', 'footprintW', 'footprintH', 'powerDraw',
-      'animClip', 'animTime', 'emissive', 'seed',
+      'animClip', 'animTime', 'emissive', 'sortieData', 'seed',
     ];
 
     for (let k = 0; k < orderA.length; k++) {
@@ -523,6 +527,22 @@ describe('snapshot round trip', () => {
     expect(b.footprintW[dockB]).toBe(3);
     // The handle VALUE must have changed — the generations were bumped.
     expect(b.dockTarget[ib]).not.toBe(a.dockTarget[ia]);
+
+    const findSortie = (s: typeof a): number => {
+      for (let k = 0; k < s.aliveCount; k++) {
+        const i = s.alive[k];
+        if (s.sortieData[i] === 0x1234) return i;
+      }
+      return -1;
+    };
+    const bomberA = findSortie(a);
+    const bomberB = findSortie(b);
+    expect(bomberA).toBeGreaterThanOrEqual(0);
+    expect(bomberB).toBeGreaterThanOrEqual(0);
+    const hostB = b.index(b.sortieHostId[bomberB] as EntityId);
+    expect(hostB).toBeGreaterThanOrEqual(0);
+    expect(b.kind[hostB]).toBe(EntityKind.Building);
+    expect(b.sortieHostId[bomberB]).not.toBe(a.sortieHostId[bomberA]);
   });
 
   it('drops a handle that pointed at something already dead', () => {

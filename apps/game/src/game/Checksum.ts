@@ -191,6 +191,10 @@ function hashEntities(world: World): number {
     // bookkeeping: they deal different damage from different buildings on the
     // next `Phase.Weapons`, and until this line the hash said they agreed.
     h = mix(h, s.garrisonId[i]);
+    // The bay contract is real simulation state: clients must agree both on
+    // which airbase owns the bomber and whether its one bomb is available.
+    h = mix(h, s.sortieHostId[i]);
+    h = mix(h, s.sortieData[i]);
     // SUMMED, not folded. See the header: `alive[]` order follows the free
     // list, and a slot recycled in a different order is the same world.
     sum = (sum + h) >>> 0;

@@ -11,7 +11,7 @@ describe('imported building runtime contract', () => {
     // Thirty-three static buildings have geometry-only caster proxies. Moving
     // defences are deliberately excluded: a fused proxy would leave their
     // shadows pointing in the authored direction after the head slews.
-    expect(source.split('.shadow.glb').length - 1).toBe(33);
+    expect(source.split('.shadow.glb').length - 1).toBe(35);
     const sentry = source.match(/key: 'soviet_sentry',[\s\S]*?\n  \},\n  \{\n    key: 'soviet_tesla'/)?.[0];
     expect(sentry).toBeDefined();
     expect(sentry).not.toContain('shadowUrl:');
@@ -46,8 +46,10 @@ describe('imported building runtime contract', () => {
     expect(source).toContain("flame-tower.lod1.glb");
     expect(source).toContain("civilian/derived/apartment-block.lod1.glb");
     expect(source).toContain("civilian/derived/ore-mine.lod1.glb");
-    expect(source.split('.lod1.glb').length - 1).toBe(22);
-    expect(source.split('.lod2.glb').length - 1).toBe(4);
+    expect(source).toContain('heavy-aviation-works.lod1.glb');
+    expect(source).toContain('heavy-aviation-works.lod2.glb');
+    expect(source.split('.lod1.glb').length - 1).toBe(24);
+    expect(source.split('.lod2.glb').length - 1).toBe(5);
     expect(source).toContain('minDistance: 78');
     expect(source).toContain('minDistance: 82');
     expect(source).toContain('minDistance: 86');

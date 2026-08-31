@@ -110,6 +110,7 @@ export interface DecalNodeMaterialSet {
   readonly material: NodeMaterial;
   /** The field's own clock. Written every frame by `DecalField.frame`. */
   setTime(t: number): void;
+  setLightPoolGain(gain: number): void;
   dispose(): void;
 }
 
@@ -133,6 +134,7 @@ export function createDecalNodeMaterial(
   const uTime = uniform(0);
   const uCols = uniform(atlasCols);
   const uFloor = uniform(DECAL_DARKEN_FLOOR);
+  const uLightPoolGain = uniform(1);
 
   /** `aUv`, `aParams`, `aTint` — the three custom vertex attributes. */
   const aUv = attribute<'vec2'>('aUv', 'vec2');
@@ -169,7 +171,8 @@ export function createDecalNodeMaterial(
     const row = floor(vParams.x.div(uCols)).toVar('decalRow');
     const s = uAtlas.sample(vec2(col, row).add(t).div(uCols)).toVar('decalS');
 
-    const a = s.a.mul(vParams.w).mul(fade).toVar('decalA');
+    const kindGain = vParams.x.equal(7.0).select(uLightPoolGain, float(1.0));
+    const a = s.a.mul(vParams.w).mul(fade).mul(kindGain).toVar('decalA');
     // RGB is a multiply factor stored at half scale, so 0.5 decodes to 1.0.
     const factor = vTint.mul(s.rgb.mul(2.0)).toVar('decalFactor');
     return vec4(max(mix(vec3(1.0), factor, a), vec3(uFloor)), 1.0);
@@ -203,6 +206,7 @@ export function createDecalNodeMaterial(
   return {
     material,
     setTime(t: number): void { uTime.value = t; },
+    setLightPoolGain(gain: number): void { uLightPoolGain.value = gain; },
     dispose(): void { material.dispose(); },
   };
 }

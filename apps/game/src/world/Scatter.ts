@@ -516,6 +516,10 @@ export interface ScatterOptions {
    * `lowProfileExclusions` continue to protect the deploy/egress pocket.
    */
   readonly openingCenters?: readonly { readonly x: number; readonly z: number }[];
+  /** Presentation-only time-of-day gain for the existing batched lamp pools. */
+  readonly localLightPoolGain?: number;
+  /** Hard ceiling for lamp stories admitted to the shared ground-decal pool. */
+  readonly localLightMaxAnchors?: number;
 }
 
 /** Permanent marks composed around semantic prop anchors. */
@@ -2118,13 +2122,20 @@ export class Scatter {
     {
       const rng = new Rng((this.opts.seed ^ 0x51a77e19) >>> 0);
       let anchors = 0;
-      for (let i = 0; i < this.placements.length && anchors < 24 && hasRoom(); i++) {
+      const maxAnchors = clamp(Math.floor(this.opts.localLightMaxAnchors ?? 24), 0, 40);
+      const lightGain = clamp(this.opts.localLightPoolGain ?? 1, 0, 2.5);
+      for (let i = 0; i < this.placements.length && anchors < maxAnchors && hasRoom(); i++) {
         const p = this.placements[i];
         const def = PROP_DEFS[p.defIndex];
         if (!p.alive || def === undefined || !LAMP_STORY_KEYS.has(def.key)) continue;
         if (isFaultyLampAt(p.x, p.z) || rng.next() > 0.86) continue;
         if (!legal(p.x, p.z, true) || !reserve(p.x, p.z, 6.5)) continue;
-        decals.lightPool(p.x, p.z, 3.6 * p.scale, rng.range(0.18, 0.25));
+        decals.lightPool(
+          p.x,
+          p.z,
+          3.6 * p.scale,
+          clamp(rng.range(0.18, 0.25) * lightGain, 0, 0.58),
+        );
         add('lighting');
         anchors++;
       }

@@ -174,6 +174,7 @@ export class ProjectileSystem {
     let flags = PFlag.Live;
     switch (pkind) {
       case ProjectileKind.Shell:
+      case ProjectileKind.Bomb:
         flags |= PFlag.Ballistic | PFlag.BurstOnExpiry;
         break;
       case ProjectileKind.Rocket:

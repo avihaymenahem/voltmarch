@@ -93,17 +93,32 @@ no leaf/gravel/paper decal can spawn from openings, roads, ore edges, semantic s
 demolition rubble. The geometry replacement remains inside the existing WebGPU prop batches.
 
 Dynamic atmosphere is also live. Skirmish Advanced settings can disable weather; when enabled, seeded
-presentation state selects clear, light-rain or heavy-rain windows without entering the deterministic
-simulation. Rain uses narrow camera-projected streaks in WebGPU and WebGL, windows last 84–114 seconds
-to avoid rapid switching, and occasional lightning briefly raises the existing sun and hemisphere
-lights so the flash affects the world and its shadows. Film grain is a separate restrained post layer
-at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
+presentation state selects clear, light or heavy precipitation windows without entering the
+deterministic simulation. Rain uses narrow camera-projected streaks in WebGPU and WebGL; Frozen Sector
+maps the same schedule to two-layer drifting snowfall and suppresses lightning. One of the first two
+160-second windows is guaranteed to contain a heavy event, while non-forced windows retain dry/light
+variety. Events last 84–114 seconds to avoid rapid switching, and rain lightning briefly raises the
+existing sun and hemisphere lights so the flash affects the world and its shadows. Both precipitation
+types remain fused into the grade pass: no particle draw, buffer or shader rebuild. Film grain is a
+separate restrained post layer at 0.006 strength and 12 Hz, capped by the look bible at 0.008.
 
 Desktop WebGPU additionally ships the first cinematic atmosphere slice on Medium through Ultra:
 world-locked cloud cover and capped height-aware far haze are fused into the existing HDR composite,
 preserve emissive peaks, exclude sky depth and never lift undiscovered shroud. Sparse ambient dust
 reuses the lit-particle draw, emits only over visible non-water cells, yields to combat smoke and is
 scrubbed almost completely by rain. Low and the browser fallback disable this desktop-only slice.
+
+Industrial Grid is the first dynamic time-of-day map. Its eight-minute day/dusk/night/dawn cycle is
+sampled from simulation ticks at 2 Hz, so pause freezes it, game speed advances it, and replay reaches
+the same presentation at the same tick without adding anything to authoritative state or checksums.
+Transitions mutate existing sun, hemisphere, sky/fog, grade, bloom and water uniforms. All 36 bounded
+street-light stories are admitted once to the shared decal draw and faded with one material uniform;
+there is no per-lamp draw, instance-buffer repack or mid-match shader compilation. The initial night
+environment probe deliberately remains stable: a live desktop WebGPU probe rebake measured about
+90 ms and produced a visible frame hitch, so runtime PMREM rebakes are prohibited until an
+asynchronous or pre-baked probe set is proven hitch-free. Screenshot fixtures, title backdrops and
+non-skirmish scenarios remain fixed. Critics can use `?daycycle=off`, `?daycycle=<seconds>` and
+`?dayphase=day|dusk|night|dawn|<0..1>` without changing the authored map default.
 
 ## The five-layer solution
 
@@ -171,11 +186,14 @@ Create deterministic templates that combine a few existing systems:
 Templates own exclusion radii and gameplay clearance. Scatter still owns biome legality and chunk
 culling. The template system only makes placements correlate.
 
-### 5. Dynamic atmosphere — pooled and quality-scaled
+### 5. Dynamic atmosphere and time of day — pooled and quality-scaled
 
-The first restrained slice is shipped: weather rain/lightning on both renderers plus WebGPU cloud
+The first restrained slice is shipped: rain/lightning and snow on both renderers plus WebGPU cloud
 cover, far haze and ambient dust on Medium–Ultra. These effects are presentation-only, deterministic
 from render state rather than simulation authority, and bounded by existing post/particle passes.
+Industrial Grid also ships the first tick-derived day/night clock and uniform-only lamp fade. Do not
+rebake environment probes during a match; author or asynchronously pre-bake a bounded probe set before
+rolling the clock to reflective water maps.
 Future wind-driven leaf groups, movement dust and debris settling must follow the same ceilings and
 yield to combat readability instead of creating another full-screen layer.
 

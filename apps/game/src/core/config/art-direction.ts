@@ -1089,23 +1089,55 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
     },
   },
 
-  /** Emissives carry the whole image. Bloom threshold drops so panels glow. */
+  /**
+   * Night keyframe. A real elevated moon supplies the key; emissives and the
+   * existing pooled street-light stories supply warm local contrast.
+   */
   night: {
     sun: {
-      elevationDeg: -6, color: '#7C9CD8', intensity: 0.8,
-      shadowIntensity: 0.6,
+      elevationDeg: 40, azimuthDeg: 138,
+      color: '#D2DCFF', intensity: 1.42,
+      shadowIntensity: 0.90, shadowSoftness: 2.4,
     },
     atmosphere: {
-      fogColor: '#14203A', fogDensity: 0.014,
-      skyZenith: '#060C1A', skyHorizon: '#1A2A44', skyGround: '#000000',
+      fogColor: '#121F39', fogDensity: 0.0020, fogStart: 175,
+      aerialPerspective: 0.08,
+      skyZenith: '#040914', skyHorizon: '#172A4B', skyGround: '#000000',
+      sunDiskDeg: 0.9, hazeWidthDeg: 4,
       /** Night is the one mood where a cool fill is CORRECT: the light source
        *  genuinely is a blue sky. Kept dim so it tints without smearing. */
-      hemiSky: '#2A3A5E', hemiSkyIntensity: 0.30,
-      hemiGround: '#181410', hemiGroundIntensity: 0.14,
-      envIntensity: 0.42,
+      hemiSky: '#38447A', hemiSkyIntensity: 0.46,
+      hemiGround: '#1C2446', hemiGroundIntensity: 0.25,
+      envIntensity: 0.55,
     },
-    bloom: { threshold: 0.85, strength: 0.72, emissiveBoost: 2.4 },
-    tone: { exposure: 1.12, contrast: 1.28, shadowSaturation: 0.80 },
+    bloom: { threshold: 0.90, strength: 0.62, emissiveBoost: 2.25 },
+    tone: {
+      exposure: 1.10, contrast: 1.18, saturation: 0.92, shadowSaturation: 0.84,
+      shadowTint: '#485679', midTint: '#8390AB', highlightTint: '#DCE2FF',
+    },
+  },
+
+  /** Cool pre-sunrise fill turning into a restrained peach key. */
+  dawn: {
+    sun: {
+      elevationDeg: 13, azimuthDeg: 336,
+      color: '#FFD0A6', intensity: 2.35,
+      shadowIntensity: 1.0, shadowSoftness: 1.5,
+    },
+    atmosphere: {
+      fogColor: '#667488', fogDensity: 0.0018, fogStart: 165,
+      aerialPerspective: 0.04,
+      skyZenith: '#182D50', skyHorizon: '#E6A18A', skyGround: '#000000',
+      sunDiskDeg: 0.75, hazeWidthDeg: 7,
+      hemiSky: '#AAB8CC', hemiSkyIntensity: 0.38,
+      hemiGround: '#735044', hemiGroundIntensity: 0.19,
+      envIntensity: 0.56,
+    },
+    bloom: { threshold: 1.0, strength: 0.52, emissiveBoost: 1.75 },
+    tone: {
+      exposure: 0.94, contrast: 1.15, saturation: 0.93, shadowSaturation: 0.88,
+      shadowTint: '#53637D', midTint: '#9399A6', highlightTint: '#FFD8B4',
+    },
   },
 
   /** Flat, soft, desaturated. The "is the lighting carrying this?" control. */

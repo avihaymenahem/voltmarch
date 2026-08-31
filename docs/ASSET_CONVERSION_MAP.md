@@ -1,6 +1,6 @@
 # VOLTMARCH asset conversion map
 
-This is the production map for replacing or selectively upgrading the procedural troop, vehicle, naval, aircraft, and building roster. It covers **135 authored gameplay assets: 65 units and 70 structures**. Wrecks, LODs, shadow proxies, construction states, and UI renders are derived deliverables and do not buy a separate Meshy generation.
+This is the production map for replacing or selectively upgrading the procedural troop, vehicle, naval, aircraft, and building roster. It covers **139 authored gameplay assets: 67 units and 72 structures**. Wrecks, LODs, shadow proxies, construction states, and UI renders are derived deliverables and do not buy a separate Meshy generation.
 
 The procedural roster remains the live fallback until each imported asset reaches `validated`.
 
@@ -170,7 +170,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | A3 | `allied_marshal` | Field Marshal | CHAR | production | Unique geometry `01a04f42-bd2a-7762-9431-5908a5631d12`, PBR `01a04f47-2e16-74e4-ad96-29a47a1f507d`, rig `01a04f4a-6935-7095-a4dc-7b5c7add8385`; 47,618-triangle/6.05 MiB ceramic-armour commander with 1024 base/normal and 512 metallic-roughness maps. The gameplay LOD0 and mesh-free 72-channel walk/run clips are grouped in Asset Lab. Runtime bakes one walk pose, derives gait only from limb skin weights so the cape stays rigid, then discards the live skeleton. |
 | A3 | `allied_frogman` | Frogman | CHAR | production | Geometry `01a05050-7fd8-7545-a7b1-749e1c53d979`, remesh `01a05055-8ca2-71f2-8be2-39dce90738a5`, PBR `01a05057-5141-75f6-a8c8-ddc737613e49`, rig `01a05057-5195-766f-8568-e32922def1f2`; 10,443-triangle two-tank aquatic body with 512/256 px textures and animation-only walk clip. |
 
-## Meridian Pact — 15 structures
+## Meridian Pact — 16 structures
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
@@ -189,8 +189,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_helios` | Helios Spire | DEF | validated | Geometry `01a03039-fdb0-78d3-96d7-c0e015b41c0f`, texture `01a03047-4cf8-7a3f-8c05-7c90c3b47fa2`; 13,944 triangles split and sealed into runtime `Body`/`Head`, KTX2 PBR and full articulated shadows |
 | M3 | `meridian_rampart` | Rampart | MOD | validated | Geometry `01a0303a-0bde-78d5-83e6-52c9a417815c`, texture `01a03047-5950-7a40-b683-f5325e078043`; seamless 7,899-triangle one-cell wall with no duplicate pad and a 912-triangle caster |
 | M3 | `meridian_heliograph` | Heliograph | BLD | validated | Geometry `01a0303a-1961-7eb4-b239-b1ae3c7704c4`, texture `01a03047-644a-7b7e-add3-06b920a0825f`; 35,413-triangle hero dish, 16,997/8,562-triangle colour LODs and 2,640-triangle caster |
+| M3 | `meridian_aerodrome` | Solar Aerodrome | BLD | integrated | ImageGen reference plus PBR image-to-3D `01a05484-5e27-7644-ae83-b25294637672`; conditioned 49,490-triangle radial four-cradle landmark with 23,748/9,892 colour LODs, a 3,072-triangle shadow proxy and 4.33 MiB KTX2 runtime GLB. Four-bay WebGPU fixture passed; procedural socket/failure fallback retained. |
 
-## Meridian Pact — 16 units
+## Meridian Pact — 17 units
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
@@ -200,6 +201,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_collector` | Sun Collector | VEH | integrated | 49,837-triangle true-hover collector, 22,425/8,968 LODs, 1,656-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
 | M3 | `meridian_carryall` | Pactworks Carryall | VEH | integrated | Geometry `01a04447-9298-7ca7-8f6a-2d247de21a7f`, texture `01a04456-b6c4-7380-ac1f-24aa47718037`; 19,594-triangle ivory/teal construction carrier with 8,817/4,943 LODs, 1,680-triangle shadow proxy and 3.03 MiB KTX2 PBR. Private-registry loading keeps its procedural deploy cues and fallback. |
 | M3 | `meridian_kestrel` | Kestrel Gunship | AIR | integrated | Geometry `01a04447-b377-7cb9-9b99-61f115d2f35f`, texture `01a04456-d97f-79eb-9780-48006a92104e`; 19,360-triangle solar gunship with 8,710/3,484 LODs, 1,080-triangle shadow proxy and 2.92 MiB KTX2 PBR. Private-registry loading retains procedural sockets and fallback. |
+| M3 | `meridian_ecliptic` | Ecliptic Heavy Bomber | AIR | integrated | ImageGen reference plus PBR image-to-3D `01a05484-5273-72db-8249-74b00b79335a`; conditioned 19,904-triangle manta airframe with 8,956/3,582 colour LODs, a 1,188-triangle shadow proxy and 3.12 MiB KTX2 runtime GLB. Twin negative-space cuts and solar nacelles passed WebGPU review; procedural sockets/failure fallback retained. |
 | M3 | `meridian_corvette` | Kite Corvette | NAV | integrated | Geometry `01a04d87-4b38-75bb-b9e7-4857b4793db8`, retexture `01a04d97-126c-7651-bab5-24cfcd86c025`; 24,650-triangle broad kite/manta warship split into `Hull`/`Turret`, a 1,464-triangle shadow proxy and 5.99 MiB KTX2 PBR. Its broad closed-wing planform is intentionally unlike the previous crescent/open-jaw Sun Cutter. Generated colour LODs failed the UV-seam gate and are not registered; procedural battery pivot and sockets remain authoritative. |
 | M3 | `meridian_monitor` | Sunmonitor | NAV | integrated | Geometry `01a04dbb-ce9a-7135-92ea-edd7057f419c`, successful retexture retry `01a04dc0-a355-7346-8666-f65eb5e14a40`; 23,611-triangle solar capital ship split into `Hull`/`Turret`, a 708-triangle shadow proxy and 5.84 MiB KTX2 PBR. The first retexture attempt `01a04dbd-af12-740b-a864-3d58396f9e32` failed without consuming credit. Runtime fits the ship to 15.0 × 4.6 × 4.4 m and retains procedural combat/socket authority; generated colour LODs remain blocked. |
 | M3 | `meridian_cutter` | Sun Cutter | NAV | integrated | Geometry `01a04cf5-c28d-7435-99fd-d5c5eb1b2fb0`, retexture `01a04cfe-8f49-71de-b536-14d8b9fa2463`; 18,287-triangle crescent/open-jaw fast hull with a 4.73 MiB KTX2 source and dedicated shadow proxy. Its fitted recon envelope is 9.2 × 3.3 × 2.8 m; unsafe generated colour LODs are withheld. |
@@ -211,7 +213,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | M3 | `meridian_hierarch` | Hierarch | CHAR | production | Unique geometry `01a04f42-be77-74ad-9f39-aa31d41bc357`, PBR `01a04f47-2f7d-7386-8266-09372c438c47`, rig `01a04f4a-6ae5-7281-8724-1bdb0b8a79b4`; 47,225-triangle/6.26 MiB bone/jade/gold commander with 1024 base/normal and 512 metallic-roughness maps. The gameplay LOD0 and mesh-free 72-channel walk/run clips are grouped in Asset Lab. Runtime bakes one walk pose, derives gait only from limb skin weights so the vestment stays rigid, then discards the live skeleton. |
 | M3 | `meridian_tidewalker` | Tidewalker | CHAR | production | Geometry `01a05060-dd28-73e1-a9fd-bc9ad12b09f7`, remesh `01a05063-3bde-71f9-a966-ed3eaef33b47`, PBR `01a05064-c655-77fe-8ebf-e0b04d06da38`, rig `01a05064-c6b0-7751-ac91-b16e733f4967`; 20,592-triangle two-tank aquatic body with 512/256 px textures and animation-only walk clip. |
 
-## The Reclamation — 15 structures
+## The Reclamation — 16 structures
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
@@ -230,8 +232,9 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R2 | `reclaim_pylon` | Arc Pylon | DEF | validated | Meshy geometry `01a0314e-b329-71d5-8375-7c2dfa70348e`; 24,552-triangle fixed broken-ring emitter, KTX2; colour LOD blocked |
 | R2 | `reclaim_barricade` | Scrap Barricade | MOD | validated | Meshy geometry `01a0314e-b322-72bc-9953-cc7fb393d6a6`; 7,417-triangle tileable wall, KTX2, no colour LOD required |
 | R2 | `reclaim_stormworks` | Stormworks | BLD | validated | Meshy geometry `01a0314e-b31f-710e-b55f-510451b52eb6`; 42,464-triangle superweapon landmark, KTX2; colour LOD blocked |
+| R3 | `reclaim_airbase` | Carrion Roost | BLD | integrated | ImageGen reference plus PBR image-to-3D `01a05484-765a-77bc-b96d-767b68cf89e8`; conditioned 49,598-triangle four-deck salvage landmark with 23,760/11,854 colour LODs, a 2,592-triangle shadow proxy and 4.36 MiB KTX2 runtime GLB. WebGPU fixture retained deck separation and readable violet/warm service accents; procedural socket/failure fallback retained. |
 
-## The Reclamation — 15 units
+## The Reclamation — 16 units
 
 | Wave | Key | Asset | Route | Current state | Family plan |
 | --- | --- | --- | --- | --- | --- |
@@ -241,6 +244,7 @@ the geometry-only LOD and shadow files continue sharing the already-resident LOD
 | R3 | `reclaim_scrapper` | Scrapjaw | VEH | integrated | 44,402-triangle open-frame crusher, 19,913/12,267 LODs, 1,104-triangle shadow proxy and KTX2 PBR; private-registry fallback retained |
 | R3 | `reclaim_crawler` | Yardcrawler | VEH | integrated | Geometry `01a04447-9d30-71b1-81c1-565a961eb744`, texture `01a04456-c1bd-7382-80a2-3c043e87ef33`; 43,232-triangle open-frame construction hero with 23,700/15,116 LODs, 2,472-triangle shadow proxy and 4.01 MiB KTX2 PBR. Paid remesh `01a04453-209c-78b5-ac46-b8086b0ad1ca` was rejected for changing and over-smoothing the salvage machinery; the reviewed local reduction ships. Private-registry fallback retains deployment behavior. |
 | R3 | `reclaim_hornet` | Swarmhornet | AIR | integrated | V1 geometry `01a04447-be66-78b8-a1ed-76ffe03c655a` / texture `01a04456-e53f-7fe2-8a32-420e0eb5c8fa` was rejected after the live art gate exposed folded surfaces, self-intersections and malformed fan ducts; every V1 runtime binary was removed. V2 geometry `01a0448a-33fb-7d12-a912-52e9c04799f5` and texture `01a04490-df81-76d3-b463-f7382d144820` use coherent top/front/side/rear references and ship as one clean 19,775-triangle hull with exactly two enclosed fans, 8,895/3,558 LODs, a 1,728-triangle shadow proxy and 2.83 MiB KTX2 PBR. Procedural sockets and fallback remain active. |
+| R3 | `reclaim_scrapvulture` | Scrapvulture Heavy Bomber | AIR | integrated | V1 `01a05484-6b3e-7762-b8f2-d951a0e0f734` was rejected after the live game exposed fused/self-intersecting aircraft topology. The from-scratch V2 uses the accepted four-view ImageGen geometry sheet, Meshy 6 geometry `01a0560c-3b32-71b8-8ff3-8a143124b2b6`, 18k remesh `01a05612-d958-7398-85d5-e9be1a8cbb95` and ImageGen-led PBR `01a05615-9fac-7173-a694-5db372c63093`. It ships as one clean 18,108-triangle asymmetric hull with 8,147/6,336 reviewed LODs, a 1,248-triangle shadow proxy and 2.79 MiB KTX2 runtime GLB; the Carrion Roost WebGPU fixture imports four docked bombers without fallback. |
 | R3 | `reclaim_scow` | Slag Scow | NAV | integrated | V1 geometry `01a04d87-4c72-72d4-9d3b-9ac423dc1710` was rejected for ambiguous multi-barrel bow clutter. V2 geometry `01a04d95-fef0-7207-9d39-202820f950f7` and retexture `01a04d9b-a5f3-76d6-90f2-33c4c5437673` ship as a 23,182-triangle slab-sided salvage scow with one deterministic 192-triangle central fixed cannon, 10,423/4,202-triangle reviewed LODs, a 1,500-triangle shadow proxy and 3.36 MiB KTX2 PBR. Procedural firing socket remains authoritative. |
 | R3 | `reclaim_hulk` | Reclaimed Hulk | NAV | integrated | The cluttered V1 (`01a04dbb-cfb6-7063-ac11-e830b9f3d523`, retexture `01a04dbd-b002-747f-a447-43ebc89fa753`, remesh `01a04dc6-62f6-72eb-a17b-aea1953725b1`) was rejected and never entered runtime. Clean V2 geometry `01a04ddd-5eba-7264-899e-8b2eb0ef60a3` and retexture `01a04ddf-b137-7468-a079-d7e5a77726c5` ship as a 24,692-triangle closed salvage barge split into `Hull`/`Turret`, with a 1,932-triangle shadow proxy and 5.23 MiB KTX2 PBR. Runtime fits it to 15.0 × 4.8 × 4.4 m and retains procedural behavior/socket authority; generated colour LODs are withheld. |
 | R3 | `reclaim_skimmer` | Scrap Skimmer | NAV | integrated | From-scratch V2 geometry `01a04eec-a69c-745c-a276-543f75676203`, reference-led PBR `01a04ef3-f304-7168-91b3-e119f99eaa55`; the rejected prior mesh and texture were not inputs. The 21,888-triangle graphite/violet recon dart has exactly one fixed bow barrel, a 9,849-triangle LOD1, 984-triangle shadow proxy and 3.55 MiB KTX2 runtime GLB. LOD2 is withheld at its 37.0% simplifier floor. It is fitted to the 9.0 × 3.4 × 2.8 m recon envelope; the procedural fixed weapon socket remains authoritative. |

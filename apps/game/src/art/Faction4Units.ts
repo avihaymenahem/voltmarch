@@ -1532,6 +1532,7 @@ export const RECLAIM_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   scrapShip({ key: 'reclaim_hauler', name: 'Slag Hauler', length: 13.0, beam: 6.2, height: 3.6, armament: 'ramp', heavy: true }),
 
   scrapFlyer('reclaim_hornet', 'Swarmhornet', 10.0, 10.6, 2.9),
+  scrapFlyer('reclaim_scrapvulture', 'Scrapvulture Heavy Bomber', 17.0, 19.0, 5.0),
 
   scrapInfantry({ key: 'reclaim_dredger', name: 'Dredger', weapon: 'prod', pack: 'bottles' }),
 ];
@@ -1556,6 +1557,7 @@ export const RECLAIM_UNIT_MODELS: Readonly<Record<string, string>> = {
   rclSlaghurler: 'reclaim_slaghurler',
   rclCrawler: 'reclaim_crawler',
   rclHornet: 'reclaim_hornet',
+  rclScrapvulture: 'reclaim_scrapvulture',
   rclScow: 'reclaim_scow',
   rclHulk: 'reclaim_hulk',
   rclSkimmer: 'reclaim_skimmer',
@@ -1704,6 +1706,7 @@ export async function buildAndRegisterReclaimUnits(
   const importedKeys = [
     'reclaim_grinder', 'reclaim_spitter', 'reclaim_slaghurler',
     'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
+    'reclaim_scrapvulture',
     'reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler',
   ] as const;
   const importedDependencies = new Map<string, readonly string[]>(importedKeys.map((key) => [

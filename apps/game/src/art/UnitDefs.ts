@@ -2291,6 +2291,68 @@ function plane(o: PlaneOpts): UnitMassList {
   };
 }
 
+/** Greybox authority for the strategic bomber; imported art replaces it later. */
+function alliedHeavyBomber(): UnitMassList {
+  const L = 15.0, S = 16.0, H = 4.2;
+  const base = plane({
+    key: 'allied_albatross', name: 'Albatross Heavy Bomber', faction: 'allies',
+    hullNumber: 4172, length: L, span: S, height: H, nacelles: true,
+  });
+  return {
+    ...base,
+    masses: [
+      ...base.masses.map((mass) => mass.name === 'forwardFuselage'
+        ? { ...mass, size: [mass.size[0] * 1.18, mass.size[1], mass.size[2] * 1.18] as const }
+        : mass),
+      // The deep belly and single store are the normal-zoom role read. They
+      // are separate groups so imported gear/doors/bomb can inherit the seam.
+      greeble('bombBaySpine', 'taperedBox', [S * 0.18, H * 0.34, L * 0.42],
+        [0, H * 0.36, -L * 0.02], 'paintSmall', {
+          group: 'bombBay', shape: { topScaleX: 0.72, topScaleZ: 0.76, cornerCut: 0.12 },
+        }),
+      greeble('heavyBomb', 'revolve', [0.72, L * 0.28, 0.72],
+        [0, H * 0.12, L * 0.01], 'bareMetal', {
+          rot: [HALF_PI, 0, 0], group: 'ordnance',
+          shape: { profile: CAPSULE_PROFILE, segments: 12 },
+        }),
+      slab('centreBand', [S * 0.20, 0.09, L * 0.24], [0, H * 0.70, -L * 0.04],
+        { k: TEAM_K.plane }),
+    ],
+    sockets: [
+      ...base.sockets.filter((socket) =>
+        socket.part !== PartId.MuzzleA && socket.part !== PartId.MuzzleB),
+      { part: PartId.MuzzleA, pos: [0, H * 0.12, L * 0.01] },
+    ],
+  };
+}
+
+/** Soviet fallback authority; the imported Molot supplies the four-engine art. */
+function sovietHeavyBomber(): UnitMassList {
+  const L = 13.0, S = 12.6, H = 3.8;
+  const base = plane({
+    key: 'soviet_molot', name: 'Molot Heavy Bomber', faction: 'soviets',
+    hullNumber: 8188, length: L, span: S, height: H, nacelles: true,
+  });
+  return {
+    ...base,
+    masses: [
+      ...base.masses.map((mass) => mass.name === 'forwardFuselage'
+        ? { ...mass, size: [mass.size[0] * 1.18, mass.size[1], mass.size[2] * 1.14] as const }
+        : mass),
+      greeble('demolitionBomb', 'revolve', [0.86, L * 0.30, 0.86],
+        [0, H * 0.10, L * 0.01], 'bareMetal', {
+          rot: [HALF_PI, 0, 0], group: 'ordnance',
+          shape: { profile: CAPSULE_PROFILE, segments: 12 },
+        }),
+    ],
+    sockets: [
+      ...base.sockets.filter((socket) =>
+        socket.part !== PartId.MuzzleA && socket.part !== PartId.MuzzleB),
+      { part: PartId.MuzzleA, pos: [0, H * 0.10, L * 0.01] },
+    ],
+  };
+}
+
 /* ==========================================================================
  * 12. THE ROSTER
  * ========================================================================== */
@@ -2349,6 +2411,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     key: 'allied_vindicator', name: 'Petrel Bomber', faction: 'allies', hullNumber: 4172,
     length: 11.0, span: 12.0, height: 3.0, nacelles: false,
   }),
+  alliedHeavyBomber(),
   // The two naval rungs added when every army got a full fleet. The recon hull
   // is the smallest thing afloat in the game on purpose — it is bought for its
   // sight radius, and a silhouette that reads as cheap is half of what stops a
@@ -2417,6 +2480,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     key: 'soviet_mig', name: 'Interceptor', faction: 'soviets', hullNumber: 8188,
     length: 10.0, span: 10.5, height: 2.9, nacelles: true,
   }),
+  sovietHeavyBomber(),
   ship({
     key: 'soviet_picket', name: 'Picket Boat', faction: 'soviets', hullNumber: 8188,
     length: 9.0, beam: 3.3, height: 2.9, brutalist: true, armament: 'turret',

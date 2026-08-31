@@ -278,8 +278,8 @@ function createNodePostAdapter(
     },
     syncConfig(): void { chain.syncConfig(); },
     setWeatherIntensity(intensity: number): void {
-      rainIntensity = intensity;
-      chain.setWeatherIntensity(intensity);
+      rainIntensity = Math.max(-1, Math.min(1, intensity));
+      chain.setWeatherIntensity(rainIntensity);
     },
     postLabel(): string { return chain.postLabel(); },
     setSize(w: number, h: number): void { chain.setSize(w, h); },

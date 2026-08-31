@@ -1207,6 +1207,44 @@ function heliograph(): StructureMassList {
   ]);
 }
 
+/** Four-bay strategic-air fallback. The imported Solar Aerodrome owns the
+ * visible art; these masses preserve footprint, sockets and a safe fallback. */
+function solarAerodrome(): StructureMassList {
+  const f = fp('airbase');
+  const w = f.w * CELL;
+  const d = f.h * CELL;
+  const masses: M[] = [...pactPad(f.w, f.h, f.height)];
+  for (const [i, sx, sz] of [[0, -1, -1], [1, 1, -1], [2, -1, 1], [3, 1, 1]] as const) {
+    masses.push(
+      cyl(`cradle.${i}`, MassRole.Primary, [w * 0.36, 0.55, d * 0.36], [sx * w * 0.25, 0.36, sz * d * 0.25], 'paintMed', {
+        capSlot: 'hatch', segments: 16, group: 'cradles',
+      }),
+      teamPanel(`cradle.team.${i}`, [w * 0.19, 0.12, d * 0.025], [sx * w * 0.25, 0.70, sz * d * 0.25]),
+      box(`service.${i}`, MassRole.Greeble, [w * 0.08, 0.42, d * 0.05], [sx * w * 0.13, 0.48, sz * d * 0.25], 'bareMetal', {
+        group: `service${i}`, chamfer: 0.04,
+      }),
+      box(`light.${i}`, MassRole.Emissive, [w * 0.14, 0.10, d * 0.025], [sx * w * 0.25, 0.78, sz * d * 0.18], 'emissive', {
+        group: `light${i}`, feature: Feature.Window, chamfer: 0.03,
+      }),
+    );
+  }
+  masses.push(
+    cyl('astrolabe.base', MassRole.Primary, [w * 0.18, f.height * 0.34, d * 0.18], [0, f.height * 0.17, 0], 'paintSmall', {
+      topRadius: 0.74, capSlot: 'bareMetal', segments: 12,
+    }),
+    cyl('astrolabe.crown', MassRole.Greeble, [w * 0.12, f.height * 0.15, d * 0.12], [0, f.height * 0.925, 0], 'bareMetal', {
+      topRadius: 0.72, capSlot: 'emissive', segments: 12,
+    }),
+    box('astrolabe.console', MassRole.Greeble, [w * 0.08, 0.62, d * 0.06], [w * 0.09, 0.43, d * 0.04], 'hatch', {
+      group: 'astrolabeConsole', chamfer: 0.05,
+    }),
+    insignia(1.40, [0, f.height * 0.36, d * 0.075]),
+  );
+  return list('meridian_aerodrome', 'Solar Aerodrome', 'airbase', masses, [
+    { part: PartId.ExitPoint, pos: [0, 0.2, d * 0.5 + 3.0] },
+  ]);
+}
+
 /* ==========================================================================
  * 6. THE ROSTER
  * ========================================================================== */
@@ -1227,6 +1265,7 @@ export const MERIDIAN_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   heliosSpire(),
   rampart(),
   heliograph(),
+  solarAerodrome(),
 ];
 
 export const MERIDIAN_STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
@@ -1252,6 +1291,7 @@ export const MERIDIAN_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   mrdHelios: 'meridian_helios',
   mrdRampart: 'meridian_rampart',
   mrdHeliograph: 'meridian_heliograph',
+  mrdSolarAerodrome: 'meridian_aerodrome',
 };
 
 const MERIDIAN_IMPORTED_STYLE: ImportedStructureStyle = {
@@ -1444,6 +1484,18 @@ export const MERIDIAN_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[]
     ],
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.98,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
+  },
+  {
+    key: 'meridian_aerodrome',
+    label: 'Meridian Solar Aerodrome',
+    url: new URL('../../../../packages/assets/game/buildings/meridian/compressed/solar-aerodrome.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/meridian/derived/solar-aerodrome.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../../../../packages/assets/game/buildings/meridian/derived/solar-aerodrome.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/meridian/derived/solar-aerodrome.lod2.glb', import.meta.url).href, minDistance: 126 },
+    ],
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.82,
+    creaseAngle: 42, shadowInset: 0.94, proceduralParts: 'none', style: MERIDIAN_IMPORTED_STYLE,
   },
 ];
 

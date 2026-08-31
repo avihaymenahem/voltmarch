@@ -51,6 +51,7 @@ import {
 import { PLACEMENT_ROTATE_HOTKEYS } from '../src/input/ActionCatalogue';
 import { actionById } from '../src/input/ActionCatalogue';
 import { clearScenario } from '../src/game/Scenarios';
+import { clearKindMeshes, registerKindMesh } from '../src/render/RenderBridge';
 
 const EMPTY_BINDING = { tables: null, unitId: {}, buildingId: {} };
 
@@ -378,10 +379,14 @@ describe('placing a turned structure', () => {
  * ========================================================================== */
 
 /** A `PlacementController` with stubs for everything that needs a screen. */
-function makeGhost(service: ProductionService, world: World): PlacementController {
+function makeGhost(
+  service: ProductionService,
+  world: World,
+  scene: THREE.Scene = new THREE.Scene(),
+): PlacementController {
   return new PlacementController({
     world,
-    scene: new THREE.Scene(),
+    scene,
     // Only `screenToGround` is ever called, and only when a pointer has moved.
     rig: { screenToGround: () => false } as never,
     canvas: {} as HTMLCanvasElement,
@@ -460,6 +465,39 @@ describe('the placement ghost', () => {
     expect(ghost.cx + ghost.report.w).toBeLessThanOrEqual(MAP_CELLS);
     expect(ghost.cz + ghost.report.h).toBeLessThanOrEqual(MAP_CELLS);
     ghost.dispose();
+  });
+
+  it('refreshes a fallback silhouette when authored art streams in mid-placement', () => {
+    clearKindMeshes();
+    const fallback = new THREE.BoxGeometry(2, 2, 2);
+    const authored = new THREE.BoxGeometry(20, 6, 20);
+    const material = new THREE.MeshStandardMaterial();
+    registerKindMesh(EntityKind.Building, Faction.Allies, {
+      geometry: fallback,
+      material,
+    }, -1);
+
+    const { world, service } = makeBase();
+    buildUntilReady(service, world, 'powerPlant');
+    const scene = new THREE.Scene();
+    const ghost = makeGhost(service, world, scene);
+    const entry = service.catalog.byKey('powerPlant')!;
+    expect(ghost.begin(entry.publicId)).toBe(true);
+    const preview = scene.getObjectByName('placement-building-preview') as THREE.Group;
+    expect((preview.children[0] as THREE.Mesh).geometry).toBe(fallback);
+
+    registerKindMesh(EntityKind.Building, Faction.Allies, {
+      geometry: authored,
+      material,
+    }, -1, true);
+    ghost.frame();
+    expect((preview.children[0] as THREE.Mesh).geometry).toBe(authored);
+
+    ghost.dispose();
+    clearKindMeshes();
+    fallback.dispose();
+    authored.dispose();
+    material.dispose();
   });
 });
 

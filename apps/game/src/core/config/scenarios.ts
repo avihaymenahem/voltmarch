@@ -30,6 +30,14 @@ export interface MapPreset {
   readonly name: string;
   /** Advisory `?art=` mood. NOT auto-applied — `?art=` always wins. */
   readonly mood: string;
+  /**
+   * Optional presentation-only day/night cycle. `phaseOffset` is a normalized
+   * 0..1 position in the authored timeline; simulation state never reads it.
+   */
+  readonly timeOfDayCycle?: {
+    readonly durationSeconds: number;
+    readonly phaseOffset: number;
+  };
   /** Heightfield amplitude as a fraction of TERRAIN_MAX_HEIGHT. */
   readonly relief: number;
   /** How much of the relief is expressed as impassable cliff faces. */
@@ -188,7 +196,8 @@ export const MAP_PRESETS: Record<string, MapPreset> = {
   },
   /** Roads, kerbs, crosswalks, container stacks. The terrain-detail fixture. */
   urban: {
-    name: 'Industrial Grid', mood: 'noon',
+    name: 'Industrial Grid', mood: 'night',
+    timeOfDayCycle: { durationSeconds: 480, phaseOffset: 0.57 },
     relief: 0.14, cliffs: 0.10, water: 0.0, scatter: 0.60, urban: 0.95,
     oreRichness: 0.70, props: ['barrel', 'crate', 'bush', 'rock'],
   },

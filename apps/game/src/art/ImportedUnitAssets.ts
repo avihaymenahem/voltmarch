@@ -142,7 +142,9 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     hullName: 'Hull',
     target: [3.9, 3.25, 8.4],
     yawDeg: 90,
-    baseColorGain: 1.10,
+    // Retain the sooty Soviet PBR but recover the wing and engine silhouette
+    // against the equally dark service bays at the normal gameplay camera.
+    baseColorGain: 1.24,
     roughnessGain: 1.20,
     normalScale: 1.16,
     envMapIntensity: 0.56,
@@ -398,6 +400,66 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     emissiveIntensity: 0.010,
   },
   {
+    key: 'allied_albatross',
+    label: 'Allied Albatross Heavy Bomber',
+    url: new URL(
+      '../../../../packages/assets/game/units/allies/compressed/albatross-heavy-bomber.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/allies/derived/albatross-heavy-bomber.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 58,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/allies/derived/albatross-heavy-bomber.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [13.0, 3.6, 12.5],
+    // The ImageGen source faces source -X; rotate that nose onto gameplay +Z.
+    yawDeg: 90,
+    baseColorGain: 1.08,
+    roughnessGain: 1.18,
+    normalScale: 1.16,
+    envMapIntensity: 0.62,
+    emissiveIntensity: 0.012,
+  },
+  {
+    key: 'soviet_molot',
+    label: 'Soviet Molot Heavy Bomber',
+    url: new URL(
+      '../../../../packages/assets/game/units/soviets/compressed/molot-heavy-bomber.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/molot-heavy-bomber.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 58,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/soviets/derived/molot-heavy-bomber.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 88,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/soviets/derived/molot-heavy-bomber.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [12.6, 3.8, 13.0],
+    sourceLongAxis: 'x',
+    yawDeg: -90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.20,
+    normalScale: 1.16,
+    envMapIntensity: 0.58,
+    emissiveIntensity: 0.010,
+  },
+  {
     key: 'soviet_dozer',
     label: 'Soviet Sputnik Dozer',
     url: new URL('../../../../packages/assets/game/units/soviets/compressed/sputnik-dozer.glb', import.meta.url).href,
@@ -581,6 +643,39 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     emissiveIntensity: 0.012,
   },
   {
+    key: 'meridian_ecliptic',
+    label: 'Meridian Ecliptic Heavy Bomber',
+    url: new URL(
+      '../../../../packages/assets/game/units/meridian/compressed/ecliptic-heavy-bomber.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 58,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 88,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [13.8, 3.5, 12.8],
+    sourceLongAxis: 'x',
+    yawDeg: 90,
+    baseColorGain: 1.10,
+    roughnessGain: 1.16,
+    normalScale: 1.16,
+    envMapIntensity: 0.62,
+    emissiveIntensity: 0.012,
+  },
+  {
     key: 'reclaim_grinder',
     label: 'Reclamation Grinder',
     url: new URL('../../../../packages/assets/game/units/reclamation/compressed/grinder.glb', import.meta.url).href,
@@ -711,6 +806,39 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     normalScale: 1.14,
     envMapIntensity: 0.50,
     emissiveIntensity: 0.008,
+  },
+  {
+    key: 'reclaim_scrapvulture',
+    label: 'Reclamation Scrapvulture Heavy Bomber',
+    url: new URL(
+      '../../../../packages/assets/game/units/reclamation/compressed/scrapvulture-heavy-bomber.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 58,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 88,
+      },
+    ],
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.shadow.glb', import.meta.url,
+    ).href,
+    hullName: 'Hull',
+    target: [12.8, 3.8, 13.2],
+    sourceLongAxis: 'x',
+    yawDeg: 90,
+    baseColorGain: 1.18,
+    roughnessGain: 1.22,
+    normalScale: 1.16,
+    envMapIntensity: 0.54,
+    emissiveIntensity: 0.010,
   },
   {
     key: 'allied_hydrofoil',

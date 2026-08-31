@@ -128,6 +128,10 @@ function seedFlag(): number {
 export const SCENARIO_PITCH_DEG: Readonly<Record<string, number>> = {
   skirmish: 47.9367,          // d = 58
   'allied-base': 48.4558,     // d = 62
+  'strategic-airbase': 48.4558, // d = 62
+  'soviet-aviation-works': 48.4558, // d = 62
+  'meridian-solar-aerodrome': 48.4558, // d = 62
+  'reclamation-carrion-roost': 48.4558, // d = 62
   'soviet-base': 48.4558,     // d = 62
   'meridian-base': 48.4558,   // d = 62
   'meridian-support': 46.5337, // d = 44

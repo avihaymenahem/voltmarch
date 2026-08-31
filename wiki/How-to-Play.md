@@ -11,7 +11,9 @@ If you have played Command & Conquer, most of this will be familiar and you can 
 ## Starting a match
 
 The main menu offers **Tutorial**, **Campaign**, **Skirmish**, **Multiplayer**, **Profile**,
-**Service Record**, **Load Game**, **Replays** and **Settings**. After the Tutorial is completed its menu item is hidden;
+**Service Record**, **Load Game**, **Replays**, **Settings** and **Support**. The top-right Support
+button opens the VOLTMARCH Discord, while **News & Events** opens the live command feed and release status.
+After the Tutorial is completed its menu item is hidden;
 **Settings → Gameplay → Training → Restore Tutorial** brings it back without erasing the rest of
 the profile. Profile and the commander identity card both open the Service Record, which holds lifetime stats, faction wins,
 campaign medals and the honours collection; its **Missions** action opens the complete progression

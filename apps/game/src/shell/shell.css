@@ -3912,6 +3912,100 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   padding-bottom: 14px;
 }
 
+.vm-shell .vm-command-feed-status {
+  margin: 0;
+  padding: 10px 18px;
+  color: var(--vm-accent-dim);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-command-feed-item {
+  margin: 0 18px 10px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-left: 2px solid var(--vm-accent);
+  background:
+    linear-gradient(135deg, rgba(var(--vm-accent-rgb), 0.08), transparent 64%),
+    rgba(2, 8, 15, 0.72);
+}
+
+.vm-shell .vm-command-feed-item.is-event {
+  border-left-color: #f3ad36;
+}
+
+.vm-shell .vm-command-feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vm-shell .vm-command-feed-kind,
+.vm-shell .vm-command-feed-date {
+  color: var(--vm-text-faint);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-command-feed-kind { color: var(--vm-accent); }
+.vm-shell .vm-command-feed-item.is-event .vm-command-feed-kind { color: #f3ad36; }
+
+.vm-shell .vm-command-feed-title {
+  margin: 8px 0 3px;
+  color: var(--vm-text);
+  font-size: calc(14px * var(--vm-text-scale, 1));
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+.vm-shell .vm-command-feed-summary {
+  margin: 0;
+  color: var(--vm-text-dim);
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  line-height: 1.5;
+}
+
+.vm-shell .vm-command-feed-item > .vm-btn {
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  margin-top: 11px;
+  padding: 6px 10px;
+}
+
+.vm-shell .vm-command-feed-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 14px;
+  padding: 11px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-command-feed-empty > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.vm-shell .vm-command-feed-empty strong {
+  color: var(--vm-text-dim);
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-command-feed-empty small {
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  line-height: 1.35;
+}
+
 .vm-shell .vm-diag-status {
   margin: 0;
   padding: 2px 18px 10px;
@@ -8128,6 +8222,57 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
 
 .vm-shell .vm-cinematic-top-actions { display: contents; }
 
+/* Community routes sit in the open battlefield corner, visually separate
+   from both the play spine and its infrequent system actions. */
+.vm-shell .vm-menu-corner-actions {
+  position: absolute;
+  top: clamp(22px, 3.5vh, 42px);
+  right: clamp(24px, 3.2vw, 54px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.vm-shell .vm-menu-corner-actions > .vm-btn {
+  width: auto;
+  min-width: 118px;
+  min-height: 40px;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(235, 243, 250, 0.88);
+  background:
+    linear-gradient(90deg, rgba(var(--vm-accent-rgb), 0.1), transparent 70%),
+    rgba(3, 9, 17, 0.82);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  transform: none;
+}
+
+.vm-shell .vm-menu-corner-actions > .vm-btn:hover,
+.vm-shell .vm-menu-corner-actions > .vm-btn:focus-visible,
+.vm-shell .vm-menu-corner-actions > .vm-btn.is-focus {
+  border-color: rgba(var(--vm-accent-rgb), 0.72);
+  color: #fff;
+  background: rgba(var(--vm-accent-rgb), 0.17);
+  transform: translateY(-1px);
+}
+
+.vm-shell .vm-menu-corner-actions .vm-btn-label {
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-menu-corner-actions .vm-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--vm-accent);
+}
+
 .vm-shell .vm-cinematic-secondary:has(.vm-cinematic-top-actions > .is-danger) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -8257,6 +8402,28 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
     right: 20px;
     width: auto;
   }
+
+  .vm-shell .vm-menu-corner-actions {
+    top: 12px;
+    right: 20px;
+    gap: 4px;
+  }
+
+  .vm-shell .vm-menu-corner-actions > .vm-btn {
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 9px;
+  }
+
+  .vm-shell .vm-menu-corner-actions .vm-btn-label {
+    font-size: calc(9px * var(--vm-text-scale, 1));
+  }
+}
+
+@media (max-width: 500px) {
+  .vm-shell .vm-cinematic-topbar { padding-right: 205px; }
+  .vm-shell .vm-cinematic-identity { gap: 6px; }
+  .vm-shell .vm-cinematic-overline { display: none; }
 }
 
 /* The shared page scaffold is a navigation header, not a status console. */

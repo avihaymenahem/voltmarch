@@ -465,6 +465,17 @@ function abilitySeam(): AbilitySeamRead | null {
   return a !== undefined && typeof a.abilityOf === 'function' ? a : null;
 }
 
+/** Strategic-airbase bay state, without a hard UI -> sim dependency. */
+interface BomberSortieSeamRead {
+  summaryForHost(host: EntityId, out: Uint8Array): boolean;
+}
+
+function bomberSortieSeam(): BomberSortieSeamRead | null {
+  const g = globalThis as unknown as { __vmBombers?: BomberSortieSeamRead };
+  const b = g.__vmBombers;
+  return b !== undefined && typeof b.summaryForHost === 'function' ? b : null;
+}
+
 /**
  * The transport service, duck-typed off `globalThis.__vmFeatures.transport`.
  *
@@ -941,6 +952,8 @@ export class Hud {
 
   /** Pooled selection view. Never reallocated. */
   private readonly view: SelectionView;
+  /** [empty, ready, airborne, reloading], written by the optional bomber seam. */
+  private readonly bomberBaySummary = new Uint8Array(4);
   /**
    * Pooled superweapon countdowns, in the order the service pushed them.
    *
@@ -2328,6 +2341,13 @@ export class Hud {
       view.subtitle = n > 1
         ? `${n} types selected`
         : allBuildings ? 'Structure' : info.role;
+      if (n === 1 && allBuildings) {
+        const bomberSeam = bomberSortieSeam();
+        if (bomberSeam?.summaryForHost(store.handleOf(primaryIdx), this.bomberBaySummary)) {
+          const b = this.bomberBaySummary;
+          view.subtitle = `${b[1]} ready · ${b[2]} airborne · ${b[3]} rearming · ${b[0]} empty`;
+        }
+      }
       view.veterancy = n > 1 ? 0 : rankOf(store.flags[primaryIdx]);
       this.fillStats(primaryIdx);
     } else {

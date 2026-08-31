@@ -21,6 +21,19 @@ describe('command shell navigation contracts', () => {
     expect(menu).not.toContain("el('section', 'vm-command-deck')");
   });
 
+  it('keeps support and the live announcement feed in the main-screen top-right corner', () => {
+    const menu = source('MainMenu.ts');
+    const shell = source('Shell.ts');
+    const css = source('shell.css');
+    expect(menu).toContain("el('nav', 'vm-menu-corner-actions')");
+    expect(menu).toContain("button('Support'");
+    expect(menu).toContain("button('News & Events'");
+    expect(menu).toContain('https://discord.gg/pvJGJyafU3');
+    expect(menu).toContain("this.shell.openSettings('menu', 'updates')");
+    expect(shell).toContain("initialTab: TabId = 'graphics'");
+    expect(css).toMatch(/\.vm-shell \.vm-menu-corner-actions\s*\{[^}]*position:\s*absolute;[^}]*right:/s);
+  });
+
   it('gives every shared page a simple back-and-title header without fake telemetry', () => {
     const shell = source('Shell.ts');
     expect(shell).toContain("el('div', 'vm-page-title-block')");

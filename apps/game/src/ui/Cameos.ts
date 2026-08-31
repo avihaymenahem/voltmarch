@@ -398,6 +398,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   gunboat: 'allied_gunboat',
   destroyer: 'allied_destroyer',
   vindicator: 'allied_vindicator',
+  alliedAlbatross: 'allied_albatross',
   hydrofoil: 'allied_hydrofoil',
   landingCraft: 'allied_lighter',
   frogman: 'allied_frogman',
@@ -413,6 +414,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
   mig: 'soviet_mig',
+  sovietMolot: 'soviet_molot',
   picketBoat: 'soviet_picket',
   assaultBarge: 'soviet_lighter',
   navalInfantry: 'soviet_diver',
@@ -450,6 +452,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   mrdZenith: 'meridian_zenith',
   mrdCarryall: 'meridian_carryall',
   mrdKestrel: 'meridian_kestrel',
+  mrdEcliptic: 'meridian_ecliptic',
   mrdCorvette: 'meridian_corvette',
   mrdMonitor: 'meridian_monitor',
   mrdCutter: 'meridian_cutter',
@@ -468,6 +471,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   rclSlaghurler: 'reclaim_slaghurler',
   rclCrawler: 'reclaim_crawler',
   rclHornet: 'reclaim_hornet',
+  rclScrapvulture: 'reclaim_scrapvulture',
   rclScow: 'reclaim_scow',
   rclHulk: 'reclaim_hulk',
   rclSkimmer: 'reclaim_skimmer',
@@ -502,6 +506,8 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
 
   /* -- single-army --------------------------------------------------------*/
   navalYard: 'allied_navalyard',
+  alliedAirbase: 'allied_airbase',
+  sovietAviationWorks: 'soviet_airbase',
   subPen: 'soviet_subpen',
   pillbox: 'allied_pillbox',
   aaTurret: 'allied_aa',
@@ -513,6 +519,9 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   weatherControl: 'allied_weather',
   nuclearSilo: 'soviet_nuke',
   ironCurtain: 'soviet_curtain',
+
+  mrdSolarAerodrome: 'meridian_aerodrome',
+  rclCarrionRoost: 'reclaim_airbase',
 
   /* -- the Meridian Pact ------------------------------------------------- */
   mrdConclave: 'meridian_conclave',

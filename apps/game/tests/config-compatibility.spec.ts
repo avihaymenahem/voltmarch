@@ -120,7 +120,7 @@ describe('core/config compatibility facade', () => {
   });
 
   it('preserves the aggregate runtime value graph, not only its names', () => {
-    expect(runtimeValueDigest()).toBe('cb8c44168b7b8b60f211ae14073c400cfae21fd093f68f49e06bf6c813e158c3');
+    expect(runtimeValueDigest()).toBe('a95ea01d58378f36c241f5021f4185cd8fc206f5c3148355d45d8f06a26f4ec2');
   });
 
   it('keeps representative derived relationships unchanged', () => {

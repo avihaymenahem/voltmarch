@@ -124,11 +124,11 @@ function readTargeting(): string {
  * 3. THE THREE AIRFRAMES THIS DOES NOT TOUCH
  * ========================================================================== */
 
-describe('the other three aircraft keep their ground role', () => {
+describe('the other aircraft keep their ground role', () => {
   const AIR = UNITS.filter((u) => u.locomotor === Locomotor.Air);
 
-  it('there are four aircraft and one of them is the Interceptor', () => {
-    expect(AIR.length, 'four armies, one airframe each').toBe(4);
+  it('there are eight aircraft and one of them is the Interceptor', () => {
+    expect(AIR.length, 'four tactical airframes plus four strategic bombers').toBe(8);
     expect(AIR.some((u) => u.key === 'mig')).toBe(true);
   });
 

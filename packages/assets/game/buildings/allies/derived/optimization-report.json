@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-buildings",
-  "generatedAt": "2026-08-26T23:40:36.704Z",
+  "generatedAt": "2026-08-30T19:52:28.115Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-buildings.json",
   "rows": [
@@ -780,6 +780,61 @@
             16
           ],
           "occupiedCells": 219
+        }
+      ]
+    },
+    {
+      "key": "allied_airbase",
+      "class": "airbase",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/buildings/allies/strategic-airbase.glb",
+        "triangles": 88608,
+        "fileBytes": 11832544
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/allies/derived/strategic-airbase.lod1.glb",
+          "triangles": 44031,
+          "triangleRatio": 0.4969,
+          "boundsDriftMeters": 0.00059,
+          "boundsDriftRatio": 0.00145,
+          "fileBytes": 1993544,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 49.5% exceeds 26.0% ceiling"
+          ],
+          "file": "packages/assets/game/buildings/allies/derived/strategic-airbase.lod2.glb",
+          "triangles": 43824,
+          "triangleRatio": 0.4946,
+          "boundsDriftMeters": 0.00059,
+          "boundsDriftRatio": 0.00145,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/allies/derived/strategic-airbase.shadow.glb",
+          "triangles": 3072,
+          "triangleRatio": 0.0347,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 43844,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 256
         }
       ]
     }

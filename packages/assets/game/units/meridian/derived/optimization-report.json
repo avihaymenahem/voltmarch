@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-vehicles",
-  "generatedAt": "2026-08-30T02:02:04.017Z",
+  "generatedAt": "2026-08-30T21:37:18.714Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-vehicles.json",
   "rows": [
@@ -529,6 +529,59 @@
             12
           ],
           "occupiedCells": 135
+        }
+      ]
+    },
+    {
+      "key": "meridian_ecliptic",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/meridian/ecliptic-heavy-bomber.glb",
+        "triangles": 19904,
+        "fileBytes": 5115920
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.lod1.glb",
+          "triangles": 8956,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00157,
+          "boundsDriftRatio": 0.00083,
+          "fileBytes": 294136,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.lod2.glb",
+          "triangles": 3582,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00157,
+          "boundsDriftRatio": 0.00249,
+          "fileBytes": 144796,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/meridian/derived/ecliptic-heavy-bomber.shadow.glb",
+          "triangles": 1188,
+          "triangleRatio": 0.0597,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 17464,
+          "geometryOnly": true,
+          "grid": [
+            12,
+            14
+          ],
+          "occupiedCells": 99
         }
       ]
     }

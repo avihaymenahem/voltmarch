@@ -23,6 +23,7 @@
     { "key": "meridian_glaive", "file": "meridian-glaive-v2.glb", "class": "defence", "lods": true },
     { "key": "meridian_helios", "file": "helios-spire.glb", "class": "defence", "lods": false },
     { "key": "meridian_rampart", "file": "rampart.glb", "class": "wall", "lods": false },
-    { "key": "meridian_heliograph", "file": "heliograph.glb", "class": "landmark", "lods": true }
+    { "key": "meridian_heliograph", "file": "heliograph.glb", "class": "landmark", "lods": true },
+    { "key": "meridian_aerodrome", "file": "solar-aerodrome.glb", "class": "landmark", "lods": true }
   ]
 }

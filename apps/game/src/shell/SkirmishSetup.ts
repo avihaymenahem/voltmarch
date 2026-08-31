@@ -832,7 +832,7 @@ export class SkirmishSetupScreen implements Screen {
         this.setup.weather ? 1 : 0,
         (v) => { this.setup.weather = v === 1; },
       ),
-      'Randomly brings in light or heavy rain. Visual only; simulation and balance stay unchanged.',
+      'Brings in light or heavy rain, or snowfall on Frozen Sector. Visual only; simulation and balance stay unchanged.',
     ));
 
     /* -- seed ------------------------------------------------------------- */

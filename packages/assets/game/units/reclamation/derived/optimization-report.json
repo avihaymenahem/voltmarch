@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-vehicles",
-  "generatedAt": "2026-08-30T02:16:46.295Z",
+  "generatedAt": "2026-08-31T04:46:50.819Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-vehicles.json",
   "rows": [
@@ -542,6 +542,59 @@
             8
           ],
           "occupiedCells": 128
+        }
+      ]
+    },
+    {
+      "key": "reclaim_scrapvulture",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/reclamation/scrapvulture-heavy-bomber.glb",
+        "triangles": 18108,
+        "fileBytes": 3956432
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.lod1.glb",
+          "triangles": 8147,
+          "triangleRatio": 0.4499,
+          "boundsDriftMeters": 0.00001,
+          "boundsDriftRatio": 0.00002,
+          "fileBytes": 173876,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.lod2.glb",
+          "triangles": 6336,
+          "triangleRatio": 0.3499,
+          "boundsDriftMeters": 0.00001,
+          "boundsDriftRatio": 0.00002,
+          "fileBytes": 144732,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/reclamation/derived/scrapvulture-heavy-bomber.shadow.glb",
+          "triangles": 1248,
+          "triangleRatio": 0.0689,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 18268,
+          "geometryOnly": true,
+          "grid": [
+            15,
+            16
+          ],
+          "occupiedCells": 104
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-buildings",
-  "generatedAt": "2026-08-23T22:17:56.569Z",
+  "generatedAt": "2026-08-30T21:26:11.436Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -998,16 +998,82 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "meridian_aerodrome",
+      "source": "packages/assets/game/buildings/meridian/solar-aerodrome.glb",
+      "output": "packages/assets/game/buildings/meridian/compressed/solar-aerodrome.glb",
+      "sourceFileBytes": 6282560,
+      "outputFileBytes": 4536248,
+      "transferRatio": 0.722,
+      "sourceTextureBytes": 4118814,
+      "ktx2TextureBytes": 2372300,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2122743,
+          "ktx2Bytes": 1011965,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 422057,
+          "ktx2Bytes": 236763,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1574014,
+          "ktx2Bytes": 1123572,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 87063604,
-    "outputFileBytes": 48395496,
-    "transferRatio": 0.5559,
-    "sourceTextureBytes": 67339220,
-    "ktx2TextureBytes": 28668119,
-    "sourceGpuBytesRGBA8": 671088580,
-    "compressedGpuBytes8bpp": 117440497,
-    "compressedGpuBytes4bpp": 58720271
+    "sourceFileBytes": 93346164,
+    "outputFileBytes": 52931744,
+    "transferRatio": 0.567,
+    "sourceTextureBytes": 71458034,
+    "ktx2TextureBytes": 31040419,
+    "sourceGpuBytesRGBA8": 721420224,
+    "compressedGpuBytes8bpp": 125829104,
+    "compressedGpuBytes4bpp": 62914576
   }
 }

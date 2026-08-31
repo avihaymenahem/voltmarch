@@ -860,7 +860,7 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
     },
 
     setWeatherIntensity(intensity: number): void {
-      rainIntensity = Math.max(0, Math.min(1, intensity));
+      rainIntensity = Math.max(-1, Math.min(1, intensity));
       if (graph.gradeUniforms !== null) graph.gradeUniforms.rain.value = rainIntensity;
     },
 

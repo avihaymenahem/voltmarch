@@ -38,6 +38,7 @@ import { DamageSystem, setArmorMatrix } from './Damage';
 import { ProjectileSystem } from './Projectiles';
 import { WeaponSystem, setContentWeaponMap, setWeaponKeyResolver, setWeaponTable } from './Combat';
 import { TargetingSystem } from './Targeting';
+import { BomberSortieSystem } from './BomberSortie';
 
 /* ==========================================================================
  * CONTENT KEY -> WEAPON KEY
@@ -59,6 +60,8 @@ const CONTENT_WEAPON: Readonly<Record<string, string>> = {
   ifv: 'chaingun',
   prismTank: 'prismBeam',
   prism: 'prismBeam',
+  alliedAlbatross: 'albatrossBomb',
+  mrdEcliptic: 'eclipticCharge',
 
   /* -- Soviet infantry / vehicles --------------------------------------- */
   conscript: 'conscriptRifle',
@@ -68,6 +71,8 @@ const CONTENT_WEAPON: Readonly<Record<string, string>> = {
   apocalypse: 'twinCannon',
   sickle: 'chaingun',
   v4: 'artillery',
+  sovietMolot: 'molotBomb',
+  rclScrapvulture: 'scrapvultureCask',
 
   /* -- Naval ------------------------------------------------------------- */
   gunboat: 'navalGun',
@@ -94,6 +99,7 @@ let targeting: TargetingSystem | null = null;
 let weapons: WeaponSystem | null = null;
 let projectiles: ProjectileSystem | null = null;
 let damage: DamageSystem | null = null;
+let bombers: BomberSortieSystem | null = null;
 /** Ids this module put on the registry, so dispose can take them off again. */
 const CHILD_IDS = ['combat.weapons', 'combat.projectiles', 'combat.damage', 'combat.cleanup'];
 let childrenRegistered = false;
@@ -115,7 +121,10 @@ const weaponsModule: SystemModule = defineSystem({
   id: 'combat.weapons',
   phase: Phase.Weapons,
   order: 0,
-  simTick(s: SimContext): void { weapons?.tick(s); },
+  simTick(s: SimContext): void {
+    weapons?.tick(s);
+    bombers?.postWeaponsTick();
+  },
 });
 
 const projectilesModule: SystemModule = defineSystem({
@@ -162,6 +171,8 @@ export default defineSystem({
     damage = new DamageSystem(world, channels);
     weapons = new WeaponSystem(world, channels, projectiles);
     targeting = new TargetingSystem(world, channels, weapons);
+    bombers = new BomberSortieSystem(world);
+    (globalThis as unknown as { __vmBombers?: BomberSortieSystem }).__vmBombers = bombers;
 
     // Content binding. Both calls are no-ops the instant a real def table
     // assigns a valid `weaponIndex` at spawn — resolution checks that first.
@@ -184,6 +195,12 @@ export default defineSystem({
     try {
       const binding = await resolveDefBinding();
       const t = binding.tables;
+      bombers?.setCompatibleHostDefs([
+        binding.buildingId.alliedAirbase ?? -1,
+        binding.buildingId.sovietAviationWorks ?? -1,
+        binding.buildingId.mrdSolarAerodrome ?? -1,
+        binding.buildingId.rclCarrionRoost ?? -1,
+      ]);
       if (t !== null) {
         const sameArmoury = t.weapons.length > 0 && setWeaponTable(t.weapons);
         const sameMatrix = setArmorMatrix(t.armorMatrix);
@@ -234,6 +251,7 @@ export default defineSystem({
   },
 
   simTick(s: SimContext): void {
+    bombers?.preTick(s);
     targeting?.tick(s);
   },
 
@@ -251,7 +269,9 @@ export default defineSystem({
     weapons = null;
     projectiles = null;
     damage = null;
+    bombers = null;
     delete (globalThis as unknown as { __vmCombat?: CombatProbe }).__vmCombat;
+    delete (globalThis as unknown as { __vmBombers?: BomberSortieSystem }).__vmBombers;
   },
 });
 

@@ -38,6 +38,9 @@ project decision obsolete.
   catalogue, makes those environment families the default presentation, adds the first cinematic
   WebGPU atmosphere slice, fixes terrain/decal depth fighting and restores the right-button command
   boundary under desktop pointer confinement.
+- The title menu exposes top-right Support and News & Events actions. Support opens the stable
+  Discord invite; News & Events opens the Updates tab, whose validated `voltmarch.com/news.json`
+  feed can change independently of an installed client and falls back to a bundled release bulletin.
 - Easy skirmish now uses a 0.65 harvest multiplier, 28 APM, a 6:40 first-push floor and no advanced
   tactics. A player who loses both yard and factory may buy the normal 3,000-credit/32-second MCV
   through one off-map recovery queue if any owned rendezvous asset survives.
@@ -289,9 +292,19 @@ This is an index, not a duplicate checklist:
 - **Asset conversion:** `docs/ASSET_CONVERSION_MAP.md` — continue imported assets only through the
   approved pipeline; do not infer completion from concept folders alone.
 - **Environment realism:** `docs/ENVIRONMENT_REALISM_PLAN.md` — contextual dirt/leaf/rust/gravel
-  composition, physical geometry debris, the delivered authored prop-family catalogue and bounded
-  atmosphere. The broadleaf CPU pilot passes, but per-family visual/performance acceptance (including
-  far card groupings and dusk readability), correlation, biome aging and destruction continuity remain open.
+  composition, physical geometry debris, the completed authored prop-family catalogue and bounded
+  atmosphere. Dynamic rain/lightning, snow-biome snowfall, cloud cover, far haze and ambient dust are
+  shipped; one of the first two seeded weather windows is guaranteed heavy so the full presentation
+  path is observable in ordinary matches. Industrial
+  Grid is the deterministic eight-minute day/night pilot; it animates existing uniforms and one
+  pooled lamp-decal gain only, with runtime PMREM rebakes explicitly forbidden after a measured
+  ~90 ms WebGPU hitch. Correlation, biome aging and destruction continuity remain open.
+- **Strategic air wing:** `docs/STRATEGIC_AIRBASE_PLAN.md` — all four faction-specific airbase/heavy-
+  bomber pairs now have conditioned ImageGen-to-Meshy PBR assets, KTX2/LOD/shadow derivatives,
+  procedural fallbacks, catalogue bindings and deterministic fixtures. Each base costs 3,000 credits,
+  is capped at one per player and owns four single-payload bombers. Slice 1 failure handling and Slice 3
+  balance/performance review remain open; do not regenerate the accepted meshes without a recorded
+  visual or budget failure.
 - **WebGPU visual performance:** `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` — desktop rendering is the
   product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt

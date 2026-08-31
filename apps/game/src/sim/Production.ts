@@ -78,6 +78,7 @@ import { isBuildable, LOCKED_REASON, unlockGate } from '../progression/UnlockGat
 // but `core/types`, so this edge adds no cycle and no progression dependency —
 // an upgrade is in-match state and must never consult the local profile.
 import { grantUpgrade, hasUpgradeKey, upgradeByKey } from './Upgrades';
+import { dockNewBomber, firstFreeBomberBay } from './BomberSortie';
 
 // The commander-power TABLE, and the pure mask helpers over it. Same shape of
 // edge as `./Upgrades`: `src/progression/powers.ts` imports nothing at all — not
@@ -307,6 +308,8 @@ export interface BuildEntry {
   readonly buildRadius: number;
   /** Which queues this structure services. Empty for non-factories. */
   readonly producesTabs: readonly BuildTab[];
+  /** Exact content keys this producer can emit. Empty keeps legacy tab-wide routing. */
+  readonly produces: readonly string[];
   /** Local-space exit, metres, +Z forward. */
   readonly exitX: number;
   readonly exitZ: number;
@@ -404,14 +407,9 @@ export interface BuildEntry {
    */
   readonly amphibious: boolean;
   /**
-   * Cap on how many of this entry one player may have at once. 0 = unlimited,
-   * which is every entry except the four commanders.
-   *
-   * Copied off `UnitDef.maxAlive`, never authored in `CONTENT`, for the same
-   * reason `unlockedBy` is: the def table is the authority on content and the
-   * catalog is a view of it. On a fallback boot (no data module) it lands at 0
-   * and the cap is simply off — a headless test that spawns three commanders is
-   * doing something the sidebar cannot, and there is nothing to protect there.
+   * Cap on how many of this entry one player may own at once. 0 = unlimited.
+   * Unit caps come from `UnitDef.maxAlive`; capped structures author the rule
+   * in `CONTENT`. Queued and under-construction copies count too.
    */
   readonly maxAlive: number;
 }
@@ -430,6 +428,8 @@ interface ContentSpec {
   sortOrder: number;
   buildable?: boolean;
   producesTabs?: readonly BuildTab[];
+  /** Exact output keys for producer-family routing. */
+  produces?: readonly string[];
   buildRadius?: number;
   /** See `BuildEntry.shipsWith`. Authored on the three refineries only. */
   shipsWith?: string;
@@ -439,6 +439,8 @@ interface ContentSpec {
   waterOnly?: boolean;
   /** See `BuildEntry.warship`. Authored on the gunned hulls with no cargo role. */
   warship?: boolean;
+  /** Per-player ownership cap. Queued and under-construction copies count. */
+  maxAlive?: number;
 }
 
 const S = BuildTab.Structures;
@@ -1438,7 +1440,72 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
     cost: 300, buildTime: 6, prereqs: ['rclRookery'], sortOrder: 40,
   },
+  // APPENDED: the airbase shares the Vehicles sidebar, but its exact output
+  // list makes it a separate producer family from factories and shipyards.
+  {
+    key: 'alliedAirbase', name: 'Strategic Airbase',
+    blurb: 'Builds and rearms up to four Albatross heavy bombers.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: S,
+    cost: 3000, buildTime: 30, prereqs: ['battleLab'], sortOrder: 88,
+    producesTabs: [V], produces: ['alliedAlbatross'],
+    maxAlive: 1,
+  },
+  {
+    key: 'alliedAlbatross', name: 'Albatross Heavy Bomber',
+    blurb: 'Carries one heavy bomb, then returns to its airbase to rearm.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 2000, buildTime: 26, prereqs: ['alliedAirbase'], sortOrder: 47,
+  },
+  {
+    key: 'sovietAviationWorks', name: 'Heavy Aviation Works',
+    blurb: 'Builds and rearms up to four Molot heavy bombers.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
+    cost: 3000, buildTime: 32, prereqs: ['battleLab'], sortOrder: 89,
+    producesTabs: [V], produces: ['sovietMolot'],
+    maxAlive: 1,
+  },
+  {
+    key: 'sovietMolot', name: 'Molot Heavy Bomber',
+    blurb: 'Drops one demolition bomb, then returns to its Works to rearm.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 2200, buildTime: 28, prereqs: ['sovietAviationWorks'], sortOrder: 48,
+  },
+  {
+    key: 'mrdSolarAerodrome', name: 'Solar Aerodrome',
+    blurb: 'Builds and rearms up to four Ecliptic heavy bombers.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 3000, buildTime: 31, prereqs: ['mrdReliquary'], sortOrder: 92,
+    producesTabs: [V], produces: ['mrdEcliptic'],
+    maxAlive: 1,
+  },
+  {
+    key: 'mrdEcliptic', name: 'Ecliptic Heavy Bomber',
+    blurb: 'Focuses one sun charge, then returns to its Aerodrome to rearm.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 2400, buildTime: 29, prereqs: ['mrdSolarAerodrome'], sortOrder: 49,
+  },
+  {
+    key: 'rclCarrionRoost', name: 'Carrion Roost',
+    blurb: 'Builds and rearms up to four Scrapvulture heavy bombers.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 3000, buildTime: 31, prereqs: ['rclCrucible'], sortOrder: 91,
+    producesTabs: [V], produces: ['rclScrapvulture'],
+    maxAlive: 1,
+  },
+  {
+    key: 'rclScrapvulture', name: 'Scrapvulture Heavy Bomber',
+    blurb: 'Drops one wide slag cask, then returns to its Roost to rearm.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 2100, buildTime: 27, prereqs: ['rclCarrionRoost'], sortOrder: 50,
+  },
 ];
+
+const STRATEGIC_BOMBER_KEYS = new Set([
+  'alliedAlbatross', 'sovietMolot', 'mrdEcliptic', 'rclScrapvulture',
+]);
+const STRATEGIC_AIRBASE_KEYS = new Set([
+  'alliedAirbase', 'sovietAviationWorks', 'mrdSolarAerodrome', 'rclCarrionRoost',
+]);
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
 const PLAYABLE_FACTIONS: readonly Faction[] = [
@@ -1480,6 +1547,8 @@ export class ProductionCatalog {
   private readonly byUpgradeId = new Map<number, BuildEntry>();
   /** Purchasable commander powers by `publicId`. Same reason as `byUpgradeId`. */
   private readonly byPowerId = new Map<number, BuildEntry>();
+  /** Exact producer families, keyed by the unit content key they emit. */
+  private readonly producersByOutput = new Map<string, BuildEntry[]>();
   /** 1 where the entry needs a sea to exist. Indexed by `BuildEntry.index`. */
   private readonly seaBound: Uint8Array;
   /** Each army's own bundling structure, or null. Indexed by `Faction`. See `bundlerFor`. */
@@ -1501,6 +1570,17 @@ export class ProductionCatalog {
 
     for (const e of entries) {
       this.byKeyMap.set(e.key, e);
+      if (e.kind === BuildKind.Building) {
+        for (let i = 0; i < e.produces.length; i++) {
+          const key = e.produces[i];
+          let list = this.producersByOutput.get(key);
+          if (list === undefined) {
+            list = [];
+            this.producersByOutput.set(key, list);
+          }
+          list.push(e);
+        }
+      }
       if (e.kind === BuildKind.Power) { this.byPowerId.set(e.publicId, e); continue; }
       if (e.kind === BuildKind.Upgrade) { this.byUpgradeId.set(e.publicId, e); continue; }
       if (e.defId >= 0) {
@@ -1580,6 +1660,11 @@ export class ProductionCatalog {
 
   byKey(key: string): BuildEntry | null {
     return this.byKeyMap.get(key) ?? null;
+  }
+
+  /** Exact producer definitions for an output, or an immutable empty list. */
+  producersFor(outputKey: string): readonly BuildEntry[] {
+    return this.producersByOutput.get(outputKey) ?? EMPTY_ENTRIES;
   }
 
   /** Map a REAL def-table index back to a catalog entry. */
@@ -1832,6 +1917,7 @@ function emptyNonEntityEntry(index: number, spec: ContentSpec): BuildEntry {
     storage: 0,
     buildRadius: 0,
     producesTabs: EMPTY_TABS,
+    produces: EMPTY_KEYS,
     exitX: 0,
     exitZ: 0,
     shipsWith: '',
@@ -1919,6 +2005,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       storage: def?.storage ?? fb.storage,
       buildRadius: spec.buildRadius ?? def?.buildRadius ?? PLACEMENT.adjacencyRadius,
       producesTabs: spec.producesTabs ?? EMPTY_TABS,
+      produces: def?.produces ?? spec.produces ?? EMPTY_KEYS,
       // Default exit: dead centre of the front (+Z) edge, one clearance out.
       exitX: def?.exitOffsetX ?? 0,
       exitZ: def?.exitOffsetZ ?? (fh * CELL * 0.5 + PRODUCTION.exitClearanceMetres),
@@ -1929,8 +2016,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       waterOnly: false,
       warship: false,
       amphibious: false,
-      // No structure is capped. If one ever is, this reads the def field.
-      maxAlive: 0,
+      maxAlive: spec.maxAlive ?? 0,
     };
   }
 
@@ -1966,6 +2052,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     storage: 0,
     buildRadius: 0,
     producesTabs: EMPTY_TABS,
+    produces: EMPTY_KEYS,
     exitX: 0,
     exitZ: 0,
     shipsWith: '',
@@ -1974,11 +2061,13 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     waterOnly: def?.waterOnly ?? spec.waterOnly === true,
     warship: spec.warship === true,
     amphibious: def?.amphibious ?? false,
-    maxAlive: def?.maxAlive ?? 0,
+    maxAlive: def?.maxAlive ?? spec.maxAlive ?? 0,
   };
 }
 
 const EMPTY_TABS: readonly BuildTab[] = [];
+const EMPTY_KEYS: readonly string[] = [];
+const EMPTY_ENTRIES: readonly BuildEntry[] = [];
 
 /* ==========================================================================
  * 3. INTENTS
@@ -2430,7 +2519,11 @@ export class ProductionService implements QueueHooks {
       }
     }
     const fi = (player as number) * BUILD_TAB_COUNT + (entry.tab as number);
-    if (this.factories[fi] <= 0 && !emergencyMcv) {
+    const explicitProducers = this.catalog.producersFor(entry.key);
+    const workingProducers = explicitProducers.length > 0
+      ? this.compatibleProducerCount(player, entry)
+      : this.factories[fi];
+    if (workingProducers <= 0 && !emergencyMcv) {
       result.ok = false;
       // THREE ANSWERS, NOT TWO. `census` stops counting a factory the moment a
       // blackout switches it off, so "0 factories" now covers a player whose War
@@ -2444,18 +2537,28 @@ export class ProductionService implements QueueHooks {
           : 'Requires a production structure';
       return result;
     }
-    // THE HERO CAP. Last, because it is the only reason on this list that is
+    if (STRATEGIC_BOMBER_KEYS.has(entry.key) && !this.devUncapped(player)) {
+      const capacity = this.completedProducerCount(player, entry) * 4;
+      const reserved = this.aliveEntryCount(player, entry)
+        + this.queues.countOf(p, entry.tab, entry.publicId, false);
+      if (reserved >= capacity) {
+        result.ok = false;
+        result.capped = true;
+        result.reason = `All ${capacity} airbase bays are reserved`;
+        return result;
+      }
+    }
+    // THE OWNERSHIP CAP. Last, because it is the only reason on this list that is
     // temporary: every other refusal is "you cannot have this yet", and this
     // one is "you already do". Reporting it ahead of a missing prereq would
     // tell a player who has neither a barracks nor a commander the wrong thing.
     //
-    // WHAT IS COUNTED: alive units of this def PLUS whatever is in the tab's
-    // queue. The queued half is not decoration — the alive count alone lets a
-    // player queue five commanders while the first is still on the line, and
-    // then all five walk out. `queued` includes the head that is currently
-    // building, which is exactly right.
+    // WHAT IS COUNTED: alive units, or completed/under-construction buildings,
+    // PLUS whatever is in the tab's queue. The queued half is not decoration —
+    // without it, shift-click can order several capped entries before the first
+    // entity exists. `queued` includes the head currently building.
     if (entry.maxAlive > 0 && !this.devUncapped(player)) {
-      const inHand = this.aliveOf(player, entry.defId)
+      const inHand = this.cappedOwnedCount(player, entry)
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
       if (inHand >= entry.maxAlive) {
         result.ok = false;
@@ -2806,6 +2909,10 @@ export class ProductionService implements QueueHooks {
       if (p.faction === Faction.Neutral) continue;
       const sc = this.scratch[pi];
 
+      // A tab is only the purchasing surface. When its head has an explicit
+      // producer family, only those powered structures advance it.
+      this.configureHeadProducerCounts(p);
+
       this.queues.advance(p, s.dt, progressTick);
 
       // A finished vehicle tries the door every few ticks until it fits.
@@ -2835,6 +2942,98 @@ export class ProductionService implements QueueHooks {
 
     // 4. Publish for the HUD.
     this.refreshSnapshot(s);
+  }
+
+  /** Override tab-wide counts for queue heads that name exact producers. */
+  private configureHeadProducerCounts(p: PlayerState): void {
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const tab = t as BuildTab;
+      const head = this.queues.head(p, tab);
+      if (head === null || head.isBuilding) continue;
+      const entry = this.resolveQueueEntry(head);
+      if (entry === null || this.catalog.producersFor(entry.key).length === 0) continue;
+      p.queues[t].factoryCount = this.compatibleProducerCount(p.id, entry);
+    }
+  }
+
+  /** Number of completed, powered structures that explicitly produce entry. */
+  private compatibleProducerCount(player: PlayerId, entry: BuildEntry): number {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    let total = 0;
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.PendingDestroy) !== 0
+        || (flags & EntityFlag.UnderConstruction) !== 0
+        || st.buildProgress[i] < 1) continue;
+      const producer = this.entryForSlot(i);
+      if (producer === null || !producer.produces.includes(entry.key)) continue;
+      const dark = (flags & (EntityFlag.NeedsPower | EntityFlag.Powered)) === EntityFlag.NeedsPower;
+      if (!dark) total++;
+    }
+    return total;
+  }
+
+  /** Completed hosts still own bays during blackout even though they cannot build/rearm. */
+  private completedProducerCount(player: PlayerId, entry: BuildEntry): number {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    let total = 0;
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.PendingDestroy) !== 0
+        || (flags & EntityFlag.UnderConstruction) !== 0
+        || st.buildProgress[i] < 1) continue;
+      const producer = this.entryForSlot(i);
+      if (producer !== null && producer.produces.includes(entry.key)) total++;
+    }
+    return total;
+  }
+
+  /** Alive count by catalog identity, including fallback boots with defId -1. */
+  private aliveEntryCount(player: PlayerId, entry: BuildEntry): number {
+    const st = this.world.store;
+    const list = st.byKind[entry.entityKind];
+    const count = st.byKindCount[entry.entityKind];
+    let total = 0;
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      if ((st.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      if (this.entryForSlot(i)?.key === entry.key) total++;
+    }
+    return total;
+  }
+
+  /** Deterministic compatible producer; Primary wins within its own family. */
+  private compatibleProducerSlot(player: PlayerId, entry: BuildEntry): number {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    let chosen = -1;
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      if (st.owner[i] !== (player as number)) continue;
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.PendingDestroy) !== 0
+        || (flags & EntityFlag.UnderConstruction) !== 0
+        || st.buildProgress[i] < 1) continue;
+      const producer = this.entryForSlot(i);
+      if (producer === null || !producer.produces.includes(entry.key)) continue;
+      const dark = (flags & (EntityFlag.NeedsPower | EntityFlag.Powered)) === EntityFlag.NeedsPower;
+      if (dark) continue;
+      if (STRATEGIC_BOMBER_KEYS.has(entry.key) && firstFreeBomberBay(this.world, i) < 0) continue;
+      if (chosen < 0) chosen = i;
+      else if ((flags & EntityFlag.PrimaryFactory) !== 0
+        && (st.flags[chosen] & EntityFlag.PrimaryFactory) === 0) chosen = i;
+    }
+    return chosen;
   }
 
   /* ======================================================================
@@ -3418,7 +3617,7 @@ export class ProductionService implements QueueHooks {
       n = 1;
     }
     if (entry.maxAlive > 0 && !this.devUncapped(p.id)) {
-      const inHand = this.aliveOf(p.id, entry.defId)
+      const inHand = this.cappedOwnedCount(p.id, entry)
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
       n = Math.min(n, entry.maxAlive - inHand);
       if (n <= 0) return;
@@ -3475,6 +3674,12 @@ export class ProductionService implements QueueHooks {
     if ((st.flags[i] & EntityFlag.Sellable) === 0) return;
 
     const entry = this.entryForSlot(i);
+
+    if (entry !== null && STRATEGIC_AIRBASE_KEYS.has(entry.key)
+        && this.sellWouldOrphanBombers(p, i, entry)) {
+      this.refuseAirbaseSell(p, entry.name);
+      return;
+    }
 
     // THE LAST-WAY-OUT GUARD.
     //
@@ -3596,6 +3801,37 @@ export class ProductionService implements QueueHooks {
     console.info(
       `[production] sell refused for player ${p.id as number}: "${name}" is their last `
       + 'structure that can produce, and they hold no construction vehicle',
+    );
+  }
+
+  /** Selling an airbase may not strand live or queued aircraft without powered bays. */
+  private sellWouldOrphanBombers(p: PlayerState, slot: number, airbase: BuildEntry): boolean {
+    const bomberKey = airbase.produces.find((key) => STRATEGIC_BOMBER_KEYS.has(key));
+    const bomber = bomberKey === undefined ? null : this.catalog.byKey(bomberKey);
+    if (bomber === null) return false;
+    const st = this.world.store;
+    const flags = st.flags[slot];
+    const currentWorking = (flags & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) === 0
+      && st.buildProgress[slot] >= 1
+      && (flags & (EntityFlag.NeedsPower | EntityFlag.Powered)) !== EntityFlag.NeedsPower;
+    const remainingPoweredHosts = Math.max(
+      0, this.compatibleProducerCount(p.id, bomber) - (currentWorking ? 1 : 0),
+    );
+    const reserved = this.aliveEntryCount(p.id, bomber)
+      + this.queues.countOf(p, bomber.tab, bomber.publicId, false);
+    return reserved > remainingPoweredHosts * 4;
+  }
+
+  private refuseAirbaseSell(p: PlayerState, name: string): void {
+    if ((p.id as number) === (this.world.localPlayer as number)) {
+      hudToast()?.toast(
+        'warn', 'sell-airbase-reserved', 'Cannot sell',
+        `${name} still owns bomber bays. Build and power enough replacement airbases first.`,
+      );
+    }
+    console.info(
+      `[production] sell refused for player ${p.id as number}: "${name}" has bomber `
+      + 'reservations that cannot be rehomed to powered compatible bays',
     );
   }
 
@@ -3902,9 +4138,12 @@ export class ProductionService implements QueueHooks {
      * The fallback is the ordinary primary, so an army with no dock behaves
      * exactly as it did.
      */
-    const slot = this.catalog.requiresSea(entry) && this.navalFactory[fi] >= 0
-      ? this.navalFactory[fi]
-      : this.primaryFactory[fi];
+    const exact = this.catalog.producersFor(entry.key);
+    const slot = exact.length > 0
+      ? this.compatibleProducerSlot(p.id, entry)
+      : this.catalog.requiresSea(entry) && this.navalFactory[fi] >= 0
+        ? this.navalFactory[fi]
+        : this.primaryFactory[fi];
     if (slot < 0) return false;
 
     const st = this.world.store;
@@ -3924,6 +4163,17 @@ export class ProductionService implements QueueHooks {
       entry.defId >= 0 ? this.bindingTables?.units[entry.defId] : undefined;
     const radius = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
     const loco = def?.locomotor ?? fb.locomotor;
+
+    // Strategic bombers do not roll through a generic factory door. Their
+    // completed queue item becomes a physical aircraft in one of this exact
+    // producer's four authored bays, and that reservation is authoritative.
+    if (STRATEGIC_BOMBER_KEYS.has(entry.key)) {
+      const id = this.spawnUnit(p, entry, exitX, exitZ, yaw);
+      if (id === NONE) return false;
+      if (dockNewBomber(this.world, id, factory)) return true;
+      st.markDead(id);
+      return false;
+    }
 
     if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, entry.waterOnly)) return false;
 
@@ -4503,12 +4753,10 @@ export class ProductionService implements QueueHooks {
    * Completed mobile units, bucketed by (player, def id). PLAYER-MAJOR.
    *
    * This started life as a 256-entry scratch for the local player's sidebar
-   * badges. It is now also what enforces `BuildEntry.maxAlive`, and that
-   * second reader is why it had to grow a player axis: `availabilityOf` is
-   * asked the same question by the HUD, by the AI and by the dequeue check,
-   * for every player, and a count that only ever described the local one would
-   * have capped the human's commander and let all three AIs field a squad of
-   * them. Nothing would have logged an error.
+   * badges. It is also the unit half of `BuildEntry.maxAlive`; capped buildings
+   * use the existing `builtCount`/`buildingCount` census instead. This unit
+   * reader is player-major because availability is queried by the HUD, AI and
+   * dequeue checks for every player, not only for the local commander.
    */
   private readonly aliveByPlayerDef = new Int32Array(MAX_PLAYERS * UNIT_DEF_SLOTS);
 
@@ -4518,6 +4766,15 @@ export class ProductionService implements QueueHooks {
     const pi = player as number;
     if (pi < 0 || pi >= MAX_PLAYERS) return 0;
     return this.aliveByPlayerDef[pi * UNIT_DEF_SLOTS + defId];
+  }
+
+  /** Ownership count used by `maxAlive`, without scanning the entity store per cameo. */
+  private cappedOwnedCount(player: PlayerId, entry: BuildEntry): number {
+    if (entry.kind !== BuildKind.Building) return this.aliveOf(player, entry.defId);
+    const pi = player as number;
+    if (pi < 0 || pi >= MAX_PLAYERS) return 0;
+    const slot = pi * this.catalog.count + entry.index;
+    return this.builtCount[slot] + this.buildingCount[slot];
   }
 
   /**

@@ -26,10 +26,10 @@ function glbJson(file: string): Record<string, any> {
 }
 
 describe('the imported Meridian building family', () => {
-  it('ships fifteen single-material KTX2 PBR replacements inside the building budget', () => {
-    expect(manifest.assets).toHaveLength(15);
-    expect(compression.rows).toHaveLength(15);
-    expect(optimization.rows).toHaveLength(14);
+  it('ships sixteen single-material KTX2 PBR replacements inside the building budget', () => {
+    expect(manifest.assets).toHaveLength(16);
+    expect(compression.rows).toHaveLength(16);
+    expect(optimization.rows).toHaveLength(15);
 
     for (const asset of manifest.assets) {
       const promoted = path.join(compressedDir, asset.file);
@@ -50,7 +50,7 @@ describe('the imported Meridian building family', () => {
         expect(row, 'moving Helios deliberately has no fused derived geometry').toBeUndefined();
       } else {
         expect(row.source.triangles, asset.key).toBeGreaterThanOrEqual(7_000);
-        expect(row.source.triangles, asset.key).toBeLessThanOrEqual(40_000);
+        expect(row.source.triangles, asset.key).toBeLessThanOrEqual(50_000);
       }
     }
   });

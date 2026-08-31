@@ -205,7 +205,7 @@ export const ARCHITECTURE_SHOWCASE_LANES: readonly ArchitectureShowcaseLane[] = 
       'mrdOculus', 'mrdReliquary', 'mrdPharos',
       'mrdVault', 'mrdDepot', 'mrdRampart',
       'mrdGlaive', null, 'mrdHelios',
-      'mrdHeliograph', null, null,
+      'mrdHeliograph', 'mrdSolarAerodrome', null,
     ],
   },
   {
@@ -216,7 +216,7 @@ export const ARCHITECTURE_SHOWCASE_LANES: readonly ArchitectureShowcaseLane[] = 
       'rclSpotter', 'rclCrucible', 'rclSignalRig',
       'rclHeap', 'rclDepot', 'rclBarricade',
       'rclSpitpost', null, 'rclPylon',
-      'rclStormworks', null, null,
+      'rclStormworks', 'rclCarrionRoost', null,
     ],
   },
 ] as const;

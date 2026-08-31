@@ -12,6 +12,10 @@ const AIR = [
   ...RECLAIM_UNIT_MASS_LISTS,
 ].filter((u) => u.cls === 'air');
 
+const STRATEGIC_BOMBERS = new Set([
+  'allied_albatross', 'soviet_molot', 'meridian_ecliptic', 'reclaim_scrapvulture',
+]);
+
 function byKey(key: string): UnitMassList {
   const unit = AIR.find((u) => u.key === key);
   if (unit === undefined) throw new Error(`missing aircraft ${key}`);
@@ -19,13 +23,14 @@ function byKey(key: string): UnitMassList {
 }
 
 describe('aircraft geometry reaches its live effects sockets', () => {
-  it('covers all four shipped aircraft', () => {
+  it('covers all eight shipped aircraft', () => {
     expect(AIR.map((u) => u.key).sort()).toEqual([
-      'allied_vindicator', 'meridian_kestrel', 'reclaim_hornet', 'soviet_mig',
+      'allied_albatross', 'allied_vindicator', 'meridian_ecliptic', 'meridian_kestrel',
+      'reclaim_hornet', 'reclaim_scrapvulture', 'soviet_mig', 'soviet_molot',
     ]);
   });
 
-  for (const unit of AIR) {
+  for (const unit of AIR.filter((u) => !STRATEGIC_BOMBERS.has(u.key))) {
     it(`${unit.key} has visible paired gun mouths ending on its muzzle sockets`, () => {
       const gun = unit.masses.find((m) => m.name === 'gunMuzzle');
       const muzzleA = unit.sockets.find((s) => s.part === PartId.MuzzleA);
@@ -53,6 +58,16 @@ describe('aircraft geometry reaches its live effects sockets', () => {
       expect(noseRoot, 'nose root must overlap the fuselage').toBeLessThan(foreFront);
     });
   }
+
+  it('allied_albatross releases from its visible centreline bomb cradle', () => {
+    const bomber = byKey('allied_albatross');
+    const bomb = bomber.masses.find((m) => m.name === 'heavyBomb');
+    const socket = bomber.sockets.find((s) => s.part === PartId.MuzzleA);
+    expect(bomb).toBeDefined();
+    expect(socket).toBeDefined();
+    expect(bomb!.anchor[0]).toBeCloseTo(socket!.pos[0], 9);
+    expect(bomb!.anchor[2]).toBeCloseTo(socket!.pos[2], 9);
+  });
 });
 
 describe('the four aircraft keep faction-readable silhouettes', () => {

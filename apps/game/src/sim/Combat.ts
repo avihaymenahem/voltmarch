@@ -58,6 +58,7 @@ import {
 } from '../core/math';
 import { armorMultiplier, estimatedHeight, hitRadius, veterancyDamageMul } from './Damage';
 import { ProjectileSystem, ROCKET_TURN_RATE } from './Projectiles';
+import { sortieHasBomb } from './BomberSortie';
 import { upgradeMul } from './Upgrades';
 
 /* ==========================================================================
@@ -629,7 +630,7 @@ export class WeaponSystem {
     const st = this.world.store;
     const traverses = canTraverse(st.kind[i], st.flags[i]);
 
-    this.muzzleOf(i, this.muzzle);
+    this.weaponMuzzleOf(i, w, this.muzzle);
     this.aimPointOf(t, this.aim);
 
     // Lead the target so a moving tank is actually hit rather than chased.
@@ -700,9 +701,12 @@ export class WeaponSystem {
     // otherwise get the pre-fix behaviour back, one click wide.
     if (!w.canTargetGround && !isAirborne(st, t)) return;
     if (st.cooldown[i] > 0) return;
+    if (w.projectile === ProjectileKind.Bomb && !sortieHasBomb(st.sortieData[i])) return;
     // Hold-fire units still track a target with the turret (the gating above
     // already ran) — they simply never pull the trigger unless force-fired.
-    if (st.stance[i] === Stance.HoldFire && st.orderKind[i] !== OrderKind.ForceAttack) return;
+    if (st.stance[i] === Stance.HoldFire
+        && st.orderKind[i] !== OrderKind.ForceAttack
+        && !(w.projectile === ProjectileKind.Bomb && st.orderKind[i] === OrderKind.Attack)) return;
     if ((st.flags[i] & EntityFlag.UnderConstruction) !== 0) return;
     /*
      * A DARK BUILDING CANNOT SHOOT — reported as *"If no electrcity left,
@@ -824,7 +828,7 @@ export class WeaponSystem {
 
     // Recompute the muzzle AFTER the traverse so the flash is on the barrel
     // that just moved, not on last tick's bearing.
-    this.muzzleOf(i, this.muzzle);
+    this.weaponMuzzleOf(i, w, this.muzzle);
     const mx = this.muzzle[0], my = this.muzzle[1], mz = this.muzzle[2];
 
     const dxz = Math.atan2(aimX - mx, aimZ - mz);
@@ -1022,6 +1026,16 @@ export class WeaponSystem {
     out[0] = st.posX[i] + Math.sin(yaw) * forward;
     out[1] = st.posY[i] + height;
     out[2] = st.posZ[i] + Math.cos(yaw) * forward;
+  }
+
+  /** Bombs release from the centre bay, not a radius-derived nose muzzle. */
+  private weaponMuzzleOf(i: number, w: WeaponDef, out: Float32Array): void {
+    this.muzzleOf(i, out);
+    if (w.projectile !== ProjectileKind.Bomb) return;
+    const st = this.world.store;
+    out[0] = st.posX[i];
+    out[1] = st.posY[i] + 0.15;
+    out[2] = st.posZ[i];
   }
 
   /** Centre-of-mass aim point of a target, written into `out` as [x, y, z]. */

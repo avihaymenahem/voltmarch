@@ -91,6 +91,13 @@
       "class": "hero",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "meridian_ecliptic",
+      "file": "ecliptic-heavy-bomber.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false
     }
   ]
 }

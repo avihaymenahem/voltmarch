@@ -24,6 +24,15 @@
     { "key": "soviet_power", "file": "tesla-reactor.glb", "class": "standard", "lods": true },
     { "key": "soviet_flametower", "file": "flame-tower.glb", "class": "defence", "lods": true },
     { "key": "soviet_sentry", "file": "sentry-gun.glb", "class": "defence", "lods": false, "movingParts": true },
-    { "key": "soviet_tesla", "file": "tesla-coil.glb", "class": "defence", "lods": true }
+    { "key": "soviet_tesla", "file": "tesla-coil.glb", "class": "defence", "lods": true },
+    {
+      "key": "soviet_airbase",
+      "file": "heavy-aviation-works.glb",
+      "class": "airbase",
+      "lods": true,
+      "profiles": {
+        "shadow": { "ratio": 0.08, "error": 0.06, "maxRatio": 0.2, "maxTriangles": 3200 }
+      }
+    }
   ]
 }

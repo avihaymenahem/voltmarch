@@ -963,6 +963,70 @@ function alliedWarFactory(): StructureMassList {
 }
 
 /**
+ * Four-pad strategic airbase greybox. The imported family will replace the
+ * visible core/pads while these sockets and the 6x6 footprint remain gameplay
+ * authority.
+ */
+function alliedAirbase(): StructureMassList {
+  const f = fp('airbase');
+  const w = f.w * CELL;
+  const d = f.h * CELL;
+  const h = f.height;
+  const masses: M[] = [...foundationPad('allies', f.w, f.h, h)];
+  const pad = 10.4;
+  for (const x of [-5.5, 5.5]) {
+    for (const z of [-5.5, 5.5]) {
+      const side = x < 0 ? 'L' : 'R';
+      const row = z < 0 ? 'N' : 'S';
+      masses.push(
+        tbox(`bay.${side}${row}`, MassRole.Primary, [pad, 0.42, pad], [x, 0.42, z],
+          'paintSmall', { topScaleX: 0.96, topScaleZ: 0.96, cornerCut: 0.7 },
+          { group: 'flightDeck', chamfer: 0.10 }),
+        box(`bay.${side}${row}.stripe`, MassRole.TeamSlab, [pad * 0.66, 0.08, 1.80],
+          [x, 0.68, z], 'teamSlab', { group: 'bayMarkings', chamfer: 0.03 }),
+        box(`bay.${side}${row}.light`, MassRole.Emissive, [0.32, 0.14, pad * 0.72],
+          [x + (x < 0 ? -pad * 0.38 : pad * 0.38), 0.70, z], 'emissive', {
+            group: 'bayLights', feature: Feature.Window, chamfer: 0.02,
+          }),
+        box(`bay.${side}${row}.fuel`, MassRole.Greeble, [1.10, 0.34, 0.74],
+          [x - (x < 0 ? -pad * 0.31 : pad * 0.31), 0.78, z - pad * 0.34],
+          'bareMetal', { chamfer: 0.06 }),
+        box(`bay.${side}${row}.service`, MassRole.Greeble, [0.72, 0.48, 0.72],
+          [x - (x < 0 ? -pad * 0.31 : pad * 0.31), 0.86, z + pad * 0.34],
+          'paintMed', { faceSlots: { pz: 'emissive' }, chamfer: 0.06 }),
+      );
+    }
+  }
+  masses.push(
+    tbox('ops.core', MassRole.Primary, [5.4, h * 0.58, 5.4], [0, h * 0.29, 0],
+      'paintMed', { topScaleX: 0.68, topScaleZ: 0.68, cornerCut: 0.55 },
+      { capSlot: 'glass', chamfer: 0.16 }),
+    tbox('ops.crown', MassRole.Primary, [3.8, h * 0.30, 3.8], [0, h * 0.72, 0],
+      'paintSmall', { topScaleX: 0.52, topScaleZ: 0.52, cornerCut: 0.42 },
+      { capSlot: 'glass', chamfer: 0.12 }),
+    box('ops.team', MassRole.TeamSlab, [4.4, 0.18, 0.32], [0, h * 0.55, 2.72],
+      'teamSlab', { chamfer: 0.04 }),
+    box('ops.beacon', MassRole.Emissive, [0.30, 0.30, 0.30], [0, h + 0.12, 0],
+      'emissive', { feature: Feature.Window, chamfer: 0.08 }),
+    insignia(1.35, [0, h * 0.73, 2.74]),
+  );
+  return list('allied_airbase', 'Strategic Airbase', 'allies', 'airbase', masses, [
+    ...baseSockets(d, h, -w * 0.36, -d * 0.36),
+  ]);
+}
+
+/** Imported art differs completely; this clone only guarantees a valid fallback. */
+function sovietAirbase(): StructureMassList {
+  const base = alliedAirbase();
+  return {
+    ...base,
+    key: 'soviet_airbase',
+    name: 'Heavy Aviation Works',
+    faction: 'soviets',
+  };
+}
+
+/**
  * ALLIED REPAIR DEPOT — a vehicle service pad, not a garage.
  *
  * The frozen roofline is 6.5 m — only the Ore Silo (5.0) and the Barracks
@@ -2916,6 +2980,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   alliedBarracks(),
   alliedRefinery(),
   alliedWarFactory(),
+  alliedAirbase(),
   alliedDepot(),
   alliedRadar(),
   alliedTech(),
@@ -2935,6 +3000,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietBarracks(),
   sovietRefinery(),
   sovietWarFactory(),
+  sovietAirbase(),
   sovietDepot(),
   sovietRadar(),
   sovietTech(),

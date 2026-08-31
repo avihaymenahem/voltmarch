@@ -42,6 +42,7 @@ describe('Reclamation hard-surface asset chain', () => {
       reclaim_pylon: 24_552,
       reclaim_barricade: 7_417,
       reclaim_stormworks: 42_464,
+      reclaim_airbase: 49_598,
     });
     for (const row of report.rows) {
       expect(fs.statSync(path.resolve(row.source.file)).size).toBe(row.source.fileBytes);
@@ -60,6 +61,8 @@ describe('Reclamation hard-surface asset chain', () => {
       'crucible.lod1.glb',
       'patch-yard.lod1.glb',
       'breaker-dock.lod1.glb',
+      'carrion-roost.lod1.glb',
+      'carrion-roost.lod2.glb',
     ]);
     expect(runtime).toContain('the whole 3D command buffer is rejected');
     expect(runtime).not.toContain('foundry.lod1.glb');

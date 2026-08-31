@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { lightningAt, weatherAt } from '../src/world/Weather';
+import { lightningAt, precipitationForBiome, weatherAt } from '../src/world/Weather';
 
 describe('deterministic dynamic weather', () => {
   it('is byte-stable for the same seed and time', () => {
@@ -15,6 +15,27 @@ describe('deterministic dynamic weather', () => {
       for (let t = 0; t < 360; t += 1) seen.add(weatherAt(seed, t).kind);
     }
     expect(seen).toEqual(new Set(['clear', 'light', 'heavy']));
+  });
+
+  it('guarantees a heavy event in one of the first two weather windows', () => {
+    for (let seed = 1; seed <= 128; seed++) {
+      let heavy = false;
+      for (let t = 0; t < 320; t += 1) {
+        if (weatherAt(seed, t).kind === 'heavy') {
+          heavy = true;
+          break;
+        }
+      }
+      expect(heavy, `seed ${seed} never reached heavy weather`).toBe(true);
+    }
+  });
+
+  it('maps snow-biome precipitation to snow and every other biome to rain', () => {
+    expect(precipitationForBiome('clear', 'snow')).toBe('none');
+    expect(precipitationForBiome('light', 'snow')).toBe('snow');
+    expect(precipitationForBiome('heavy', 'snow')).toBe('snow');
+    expect(precipitationForBiome('heavy', 'urban')).toBe('rain');
+    expect(precipitationForBiome('light', null)).toBe('rain');
   });
 
   it('keeps intensity bounded and light rain below heavy rain', () => {

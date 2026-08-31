@@ -218,6 +218,18 @@ export class EntityStore {
    */
   readonly garrisonId = new Int32Array(MAX_ENTITIES);
 
+  /**
+   * The Strategic Airbase currently responsible for this aircraft, or 0.
+   *
+   * This is an authoritative handle: return routing, bay occupancy and rearm
+   * all depend on the exact host. It therefore follows the same persistence
+   * rule as `carrierId` and `garrisonId` rather than living in a service-local
+   * side array that would disappear on save/load.
+   */
+  readonly sortieHostId = new Int32Array(MAX_ENTITIES);
+  /** Packed bomber sortie state, bay, ammunition and deterministic rearm ticks. */
+  readonly sortieData = new Uint16Array(MAX_ENTITIES);
+
   /* -- buildings ---------------------------------------------------------- */
   /** 0..1 construction progress. 1 = complete. */
   readonly buildProgress = new Float32Array(MAX_ENTITIES);
@@ -408,6 +420,8 @@ export class EntityStore {
     this.dockTarget[i] = 0;
     this.carrierId[i] = 0;
     this.garrisonId[i] = 0;
+    this.sortieHostId[i] = 0;
+    this.sortieData[i] = 0;
 
     // Buildings
     this.buildProgress[i] = 1;

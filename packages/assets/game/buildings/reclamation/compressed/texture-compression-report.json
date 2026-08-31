@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-buildings",
-  "generatedAt": "2026-08-24T01:16:40.262Z",
+  "generatedAt": "2026-08-30T21:26:55.503Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -947,16 +947,82 @@
           "compressedGpuBytes4bpp": 699051
         }
       ]
+    },
+    {
+      "key": "reclaim_airbase",
+      "source": "packages/assets/game/buildings/reclamation/carrion-roost.glb",
+      "output": "packages/assets/game/buildings/reclamation/compressed/carrion-roost.glb",
+      "sourceFileBytes": 6042012,
+      "outputFileBytes": 4569424,
+      "transferRatio": 0.7563,
+      "sourceTextureBytes": 3648610,
+      "ktx2TextureBytes": 2175817,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 1866562,
+          "ktx2Bytes": 922509,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 1,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 372758,
+          "ktx2Bytes": 234851,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 2,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 1409290,
+          "ktx2Bytes": 1018457,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 64897124,
-    "outputFileBytes": 55106480,
-    "transferRatio": 0.8491,
-    "sourceTextureBytes": 30080744,
-    "ktx2TextureBytes": 20287150,
-    "sourceGpuBytesRGBA8": 574619592,
-    "compressedGpuBytes8bpp": 102760434,
-    "compressedGpuBytes4bpp": 51380238
+    "sourceFileBytes": 70939136,
+    "outputFileBytes": 59675904,
+    "transferRatio": 0.8412,
+    "sourceTextureBytes": 33729354,
+    "ktx2TextureBytes": 22462967,
+    "sourceGpuBytesRGBA8": 624951236,
+    "compressedGpuBytes8bpp": 111149041,
+    "compressedGpuBytes4bpp": 55574543
   }
 }

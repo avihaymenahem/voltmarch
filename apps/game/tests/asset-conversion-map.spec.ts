@@ -8,8 +8,8 @@ describe('asset conversion map', () => {
   it('maps the complete authored gameplay roster exactly once', () => {
     const markdown = fs.readFileSync(ROADMAP, 'utf8');
     const keys = [...markdown.matchAll(/^\| [SAMRN]\d \| `([^`]+)` \|/gm)].map((match) => match[1]);
-    expect(keys).toHaveLength(135);
-    expect(new Set(keys).size).toBe(135);
+    expect(keys).toHaveLength(139);
+    expect(new Set(keys).size).toBe(139);
   });
 
   it('keeps the Meshy pilot visible as an integrated but not prematurely validated asset', () => {

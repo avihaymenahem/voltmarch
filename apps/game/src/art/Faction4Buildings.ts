@@ -1569,6 +1569,42 @@ function stormworks(): StructureMassList {
   ]);
 }
 
+/** Four-deck strategic-air fallback. The imported Carrion Roost owns the
+ * visible art; these masses preserve footprint, sockets and a safe fallback. */
+function carrionRoost(): StructureMassList {
+  const f = fp('airbase');
+  const w = f.w * CELL;
+  const d = f.h * CELL;
+  const masses: M[] = [...slagApron(f.w, f.h, f.height)];
+  for (const [i, sx, sz] of [[0, -1, -1], [1, 1, -1], [2, -1, 1], [3, 1, 1]] as const) {
+    const deckScale = i === 0 ? 0.49 : 0.37;
+    masses.push(
+      pri(`deck.${i}`, MassRole.Primary, [w * deckScale, 0.65, d * deckScale], [sx * w * 0.25, 0.40, sz * d * 0.25], 'paintMed', {
+        plan: 'cutBox', cornerCut: 0.12, capSlot: 'tread', group: 'decks',
+      }),
+      teamPanel(`deck.team.${i}`, [w * 0.16, 0.16, d * 0.10], [sx * w * 0.25, 0.80, sz * d * 0.25]),
+      box(`deck.service.${i}`, MassRole.Greeble, [w * 0.07, 0.46, d * 0.05], [sx * w * 0.13, 0.50, sz * d * 0.25], 'bareMetal', {
+        group: `deckService${i}`, chamfer: 0.04,
+      }),
+      box(`deck.light.${i}`, MassRole.Emissive, [w * 0.13, 0.10, d * 0.025], [sx * w * 0.25, 0.86, sz * d * 0.18], 'emissive', {
+        group: `deckLight${i}`, feature: Feature.Window, chamfer: 0.03,
+      }),
+    );
+  }
+  masses.push(
+    girder('salvage.gantry', [w * 0.32, f.height * 0.92, 0.65], [-w * 0.10, f.height * 0.46, 0], { group: 'gantry' }),
+    girder('salvage.jib', [w * 0.38, 0.55, 0.55], [w * 0.02, f.height * 0.90, 0], { group: 'gantry' }),
+    cyl('service.furnace', MassRole.Greeble, [w * 0.12, f.height * 0.42, d * 0.12], [w * 0.16, f.height * 0.21, d * 0.08], 'bareMetal', {
+      topRadius: 0.82, capSlot: 'emissive', segments: 10,
+    }),
+    ...arcCoil('airbase', w * 0.13, f.height * 0.48, -d * 0.06, 1.25, 1.7),
+    insignia(1.40, [0, f.height * 0.25, d * 0.10]),
+  );
+  return list('reclaim_airbase', 'Carrion Roost', 'airbase', masses, [
+    { part: PartId.ExitPoint, pos: [0, 0.2, d * 0.5 + 3.0] },
+  ]);
+}
+
 /* ==========================================================================
  * 6. THE ROSTER
  * ========================================================================== */
@@ -1589,6 +1625,7 @@ export const RECLAIM_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   spitpost(),
   arcPylon(),
   stormworks(),
+  carrionRoost(),
 ];
 
 export const RECLAIM_STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
@@ -1615,6 +1652,7 @@ export const RECLAIM_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   rclSpitpost: 'reclaim_spitpost',
   rclPylon: 'reclaim_pylon',
   rclStormworks: 'reclaim_stormworks',
+  rclCarrionRoost: 'reclaim_airbase',
 };
 
 const RECLAIM_IMPORTED_STYLE: ImportedStructureStyle = {
@@ -1796,6 +1834,18 @@ export const RECLAIM_IMPORTED_STRUCTURE_SPECS: readonly ImportedStructureSpec[] 
     // remained above the family ceiling and are not exposed to WebGPU.
     widthScale: 0.94, depthScale: 0.94, heightScale: 0.96,
     creaseAngle: 42, shadowInset: 0.985, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
+  },
+  {
+    key: 'reclaim_airbase',
+    label: 'Reclamation Carrion Roost',
+    url: new URL('../../../../packages/assets/game/buildings/reclamation/compressed/carrion-roost.glb', import.meta.url).href,
+    shadowUrl: new URL('../../../../packages/assets/game/buildings/reclamation/derived/carrion-roost.shadow.glb', import.meta.url).href,
+    lods: [
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/carrion-roost.lod1.glb', import.meta.url).href, minDistance: 86 },
+      { url: new URL('../../../../packages/assets/game/buildings/reclamation/derived/carrion-roost.lod2.glb', import.meta.url).href, minDistance: 126 },
+    ],
+    widthScale: 0.90, depthScale: 0.90, heightScale: 0.82,
+    creaseAngle: 42, shadowInset: 0.94, proceduralParts: 'none', style: RECLAIM_IMPORTED_STYLE,
   },
 ];
 

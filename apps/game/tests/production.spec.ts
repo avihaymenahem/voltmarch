@@ -16,7 +16,7 @@ import { Rng } from '../src/core/math';
 import {
   BuildTab, EntityFlag, EntityKind, Faction, NONE, UnitState,
 } from '../src/core/types';
-import type { PlayerId, ProductionItem, SimContext } from '../src/core/types';
+import type { EntityId, PlayerId, PlayerState, ProductionItem, SimContext } from '../src/core/types';
 import {
   BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAX_QUEUE_DEPTH, PLACEMENT, PRODUCTION, SIM_DT,
 } from '../src/core/config';
@@ -26,6 +26,7 @@ import type { QueueHooks, QueueItemInfo } from '../src/sim/BuildQueue';
 import {
   BuildKind, ProductionCatalog, ProductionService, UNIT_PUBLIC_ID_BASE, setProduction,
 } from '../src/sim/Production';
+import { dockNewBomber } from '../src/sim/BomberSortie';
 import { canRebuild, makeViabilitySurvey, surveyViability } from '../src/sim/Viability';
 import { evaluatePlacement, makePlacementReport, withinBuildRadius } from '../src/sim/Placement';
 import { buildScenario, clearScenario, resolveDefBinding } from '../src/game/Scenarios';
@@ -477,6 +478,86 @@ describe('placement rule', () => {
 /* ========================================================================== */
 
 describe('ProductionService — the whole loop', () => {
+  it('limits each player to one queued, constructing, or completed strategic airbase', () => {
+    const { world, service } = makeWorld();
+    const p = 0 as PlayerId;
+    const player = world.player(p);
+    player.credits = 10000;
+    place(service, world, 'conyard', 26, 26);
+    place(service, world, 'battleLab', 34, 26);
+    step(service, world, 1);
+
+    const airbase = service.catalog.byKey('alliedAirbase')!;
+    expect(service.availabilityOf(p, airbase, { ok: false, reason: '', capped: false }).ok)
+      .toBe(true);
+    service.enqueue(p, airbase.publicId, 5, true);
+    step(service, world, 1);
+    expect(player.queues[BuildTab.Structures].items.filter((item) => item.defId === airbase.publicId))
+      .toHaveLength(1);
+    expect(service.availabilityOf(p, airbase, { ok: false, reason: '', capped: false }))
+      .toEqual({ ok: false, reason: 'You already have a Strategic Airbase', capped: true });
+
+    const completed = makeWorld();
+    const owner = completed.world.player(p);
+    place(completed.service, completed.world, 'conyard', 26, 26);
+    place(completed.service, completed.world, 'battleLab', 34, 26);
+    place(completed.service, completed.world, 'alliedAirbase', 44, 40);
+    step(completed.service, completed.world, 1);
+    expect(completed.service.availabilityOf(
+      p, completed.service.catalog.byKey('alliedAirbase')!,
+      { ok: false, reason: '', capped: false },
+    )).toEqual({ ok: false, reason: 'You already have a Strategic Airbase', capped: true });
+    expect(owner.queues[BuildTab.Structures].items).toHaveLength(0);
+  });
+
+  it('routes a fifth strategic bomber to another airbase when the primary four bays are full', () => {
+    const { world, service } = makeWorld();
+    const p = 0 as PlayerId;
+    const player = world.player(p);
+    const first = place(service, world, 'alliedAirbase', 40, 40);
+    const second = place(service, world, 'alliedAirbase', 54, 40);
+    const st = world.store;
+    st.flags[st.index(first)] |= EntityFlag.Powered;
+    st.flags[st.index(second)] |= EntityFlag.Powered;
+    const bomber = service.catalog.byKey('alliedAlbatross')!;
+    for (let bay = 0; bay < 4; bay++) {
+      const id = service.spawnUnit(player, bomber, 40 * CELL, 40 * CELL, 0);
+      expect(id).not.toBe(NONE);
+      expect(dockNewBomber(world, id, first)).toBe(true);
+    }
+
+    const whiteBox = service as unknown as {
+      compatibleProducerSlot(player: PlayerId, entry: unknown): number;
+    };
+    expect(whiteBox.compatibleProducerSlot(p, bomber)).toBe(st.index(second));
+  });
+
+  it('refuses to sell occupied bomber capacity until powered replacement bays exist', () => {
+    const { world, service } = makeWorld();
+    const p = 0 as PlayerId;
+    const player = world.player(p);
+    place(service, world, 'conyard', 28, 28);
+    const first = place(service, world, 'alliedAirbase', 40, 40);
+    const st = world.store;
+    st.flags[st.index(first)] |= EntityFlag.Powered;
+    const bomber = service.catalog.byKey('alliedAlbatross')!;
+    for (let bay = 0; bay < 4; bay++) {
+      const id = service.spawnUnit(player, bomber, 40 * CELL, 40 * CELL, 0);
+      expect(dockNewBomber(world, id, first)).toBe(true);
+    }
+    const whiteBox = service as unknown as {
+      applySell(player: PlayerState, building: EntityId): void;
+    };
+
+    whiteBox.applySell(player, first);
+    expect(st.flags[st.index(first)] & EntityFlag.PendingDestroy).toBe(0);
+
+    const second = place(service, world, 'alliedAirbase', 54, 40);
+    st.flags[st.index(second)] |= EntityFlag.Powered;
+    whiteBox.applySell(player, first);
+    expect(st.flags[st.index(first)] & EntityFlag.PendingDestroy).not.toBe(0);
+  });
+
   it('unlocks the tech tree one structure at a time', () => {
     const { world, service } = makeWorld();
     const p = 0 as PlayerId;

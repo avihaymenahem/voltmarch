@@ -597,6 +597,11 @@ describe('boot flags', () => {
     expect(q.get('weather')).toBe('on');
   });
 
+  it('preserves explicit light/heavy critic weather while weather stays enabled', () => {
+    expect(buildMatchQuery(defaultSetup(), settings, 'weather=heavy').get('weather')).toBe('heavy');
+    expect(buildMatchQuery(defaultSetup(), settings, 'weather=light').get('weather')).toBe('light');
+  });
+
   it('NEVER writes ?shot= — that flag belongs to the screenshot harness', () => {
     const q = buildMatchQuery(defaultSetup(), settings, 'shot=allied-base');
     expect(MANAGED_FLAGS).not.toContain('shot');

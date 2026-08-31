@@ -108,6 +108,12 @@ import {
 } from './unlockall.system';
 import { readProgression } from '../ui/Objectives';
 import { restoreTutorialMenuItem, tutorialCompleted, tutorialMenuHint } from './Tutorial';
+import {
+  OFFLINE_COMMAND_FEED,
+  commandFeedDate,
+  loadCommandFeed,
+  type CommandFeed,
+} from './CommandFeed';
 
 import {
   button,
@@ -441,7 +447,8 @@ function row(label: string, control: HTMLElement, note?: string): HTMLDivElement
  * in `Shell.ts` and an unknown name silently degrades to `info`, so naming a
  * real one is the difference between six distinct glyphs and five.
  */
-type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'updates' | 'manual' | 'credits' | 'diagnostics';
+export type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'updates'
+  | 'manual' | 'credits' | 'diagnostics';
 type TabGroup = 'configure' | 'reference';
 
 interface SettingsTab {
@@ -536,7 +543,7 @@ function diagStamp(): string {
 export class SettingsScreen implements Screen {
   readonly id = 'settings';
 
-  private tab: TabId = 'graphics';
+  private tab: TabId;
   private body: HTMLElement | null = null;
   private host: HTMLElement | null = null;
   /**
@@ -623,11 +630,17 @@ export class SettingsScreen implements Screen {
   private profileResetTimer = 0;
   private profileResetArmed = false;
   private profileResetButton: HTMLButtonElement | null = null;
+  /** Bundled immediately, replaced by the website feed only after validation. */
+  private commandFeed: CommandFeed = OFFLINE_COMMAND_FEED;
+  private commandFeedState: 'idle' | 'loading' | 'live' | 'offline' = 'idle';
 
   constructor(
     private readonly shell: Shell,
     private readonly returnTo: ShellState,
-  ) {}
+    initialTab: TabId = 'graphics',
+  ) {
+    this.tab = initialTab;
+  }
 
   mount(host: HTMLElement): void {
     this.host = host;
@@ -668,6 +681,7 @@ export class SettingsScreen implements Screen {
     frame.root.insertBefore(tabs, frame.body);
 
     this.body = frame.body;
+    if (this.tab === 'updates') this.ensureCommandFeed();
     this.renderTab();
     this.refreshDesktop();
     const desktop = desktopBridge();
@@ -840,6 +854,7 @@ export class SettingsScreen implements Screen {
     }
     this.body?.setAttribute('aria-labelledby', `vm-settings-tab-${id}`);
     if (this.body !== null) this.body.scrollTop = 0;
+    if (id === 'updates') this.ensureCommandFeed();
     this.renderTab();
   }
 
@@ -1000,6 +1015,41 @@ export class SettingsScreen implements Screen {
    * ------------------------------------------------------------------------ */
 
   private renderUpdates(body: HTMLElement): void {
+    const transmission = this.section(body, 'News & Events');
+    const status = this.commandFeedState === 'live'
+      ? 'Live command feed'
+      : this.commandFeedState === 'loading'
+        ? 'Checking live command feed…'
+        : 'Offline bulletin';
+    transmission.appendChild(el('p', 'vm-command-feed-status', status));
+
+    for (const item of this.commandFeed.items) {
+      const card = el('article', `vm-command-feed-item is-${item.kind}`);
+      const head = el('header', 'vm-command-feed-head');
+      head.appendChild(el('span', 'vm-command-feed-kind', item.kind));
+      head.appendChild(el('time', 'vm-command-feed-date', commandFeedDate(item.date)));
+      card.appendChild(head);
+      card.appendChild(el('h4', 'vm-command-feed-title', item.title));
+      card.appendChild(el('p', 'vm-command-feed-summary', item.summary));
+      if (item.url !== undefined && item.actionLabel !== undefined) {
+        card.appendChild(button(item.actionLabel, {
+          iconName: 'chevronRight',
+          onClick: () => openProjectLink(item.url ?? ''),
+        }));
+      }
+      transmission.appendChild(card);
+    }
+
+    if (!this.commandFeed.items.some((item) => item.kind === 'event')) {
+      const quiet = el('div', 'vm-command-feed-empty');
+      quiet.appendChild(icon('clock', 18));
+      const copy = el('span');
+      copy.appendChild(el('strong', undefined, 'No active field event'));
+      copy.appendChild(el('small', undefined, 'Playtests and limited-time operations will appear here.'));
+      quiet.appendChild(copy);
+      transmission.appendChild(quiet);
+    }
+
     const updateBridge = desktopBridge();
     const state = this.desktopUpdate;
     const release = this.section(body, 'Release Channel');
@@ -1116,6 +1166,17 @@ export class SettingsScreen implements Screen {
       onClick: () => openProjectLink(GITHUB_RELEASES_URL),
     }));
     links.appendChild(linkActions);
+  }
+
+  /** Start one bounded request only when the Updates route is actually opened. */
+  private ensureCommandFeed(): void {
+    if (this.commandFeedState !== 'idle') return;
+    this.commandFeedState = 'loading';
+    void loadCommandFeed().then(({ feed, source }) => {
+      this.commandFeed = feed;
+      this.commandFeedState = source;
+      if (this.body !== null && this.tab === 'updates') this.renderTab();
+    });
   }
 
   /* -- diagnostics --------------------------------------------------------- *

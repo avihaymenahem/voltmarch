@@ -54,6 +54,17 @@ import { MusicControl } from './MusicControl';
 import { desktopBridge } from '../platform/desktop';
 import { normalizeCommanderName } from '../net/protocol';
 
+export const DISCORD_SUPPORT_URL = 'https://discord.gg/pvJGJyafU3';
+
+/** Open a trusted community destination without giving it a handle to the game. */
+function openCommunityLink(url: string): void {
+  const a = el('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.click();
+}
+
 /* ==========================================================================
  * MAIN MENU
  * ========================================================================== */
@@ -311,6 +322,22 @@ export class MainMenuScreen implements Screen {
     play.appendChild(secondary);
     inner.appendChild(play);
     host.appendChild(inner);
+
+    /* -- community corner ------------------------------------------------ */
+    // These live on the battlefield side of the composition rather than in
+    // the command spine: support and announcements are always available, but
+    // neither competes with the choice of what to play.
+    const community = el('nav', 'vm-menu-corner-actions');
+    community.setAttribute('aria-label', 'Community and announcements');
+    community.appendChild(button('Support', {
+      iconName: 'info',
+      onClick: () => openCommunityLink(DISCORD_SUPPORT_URL),
+    }));
+    community.appendChild(button('News & Events', {
+      iconName: 'refresh',
+      onClick: () => this.shell.openSettings('menu', 'updates'),
+    }));
+    host.appendChild(community);
 
     /* -- footer chips ----------------------------------------------------- */
     const foot = el('div', 'vm-menu-foot');

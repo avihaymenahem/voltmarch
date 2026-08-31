@@ -578,6 +578,8 @@ uniform float uTime;
 uniform float uCols;
 /** Hard floor on the darkening factor. No decal may take the ground below it. */
 uniform float uFloor;
+/** One global fade for permanent street-light pools; every other kind stays 1. */
+uniform float uLightPoolGain;
 
 varying vec2 vUv;
 varying vec4 vParams;
@@ -598,7 +600,8 @@ void main() {
   float row = floor(vParams.x / uCols);
   vec4 s = texture2D(uAtlas, (vec2(col, row) + t) / uCols);
 
-  float a = s.a * vParams.w * fade;
+  float kindGain = abs(vParams.x - ${DecalKind.LightPool.toFixed(1)}) < 0.5 ? uLightPoolGain : 1.0;
+  float a = s.a * vParams.w * fade * kindGain;
   // RGB is a multiply factor stored at half scale, so 0.5 decodes to 1.0.
   vec3 factor = vTint * (s.rgb * 2.0);
   // Blend toward "leave the ground alone" by coverage, then never emit a
@@ -639,6 +642,8 @@ export class DecalField {
   private readonly material: THREE.Material;
   /** Advances the fade clock. One call per frame, either backend. */
   private readonly setMaterialTime: (t: number) => void;
+  /** Fades every pooled street light without touching per-decal buffers. */
+  private readonly setMaterialLightPoolGain: (gain: number) => void;
   private readonly atlas: THREE.DataTexture;
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
@@ -760,6 +765,7 @@ export class DecalField {
         uTime: { value: 0 },
         uCols: { value: ATLAS_COLS },
         uFloor: { value: DECAL_DARKEN_FLOOR },
+        uLightPoolGain: { value: 1 },
       },
       vertexShader: DECAL_VERT,
       fragmentShader: DECAL_FRAG,
@@ -803,10 +809,12 @@ export class DecalField {
       glsl.customProgramCacheKey = () => 'vm.decals.shroud-factor.v1';
       this.material = glsl;
       this.setMaterialTime = (t) => { glsl.uniforms.uTime.value = t; };
+      this.setMaterialLightPoolGain = (gain) => { glsl.uniforms.uLightPoolGain.value = gain; };
     } else {
       const set = np!.createDecalMaterial(this.atlas, ATLAS_COLS, TILE_INSET);
       this.material = set.material;
       this.setMaterialTime = (t) => set.setTime(t);
+      this.setMaterialLightPoolGain = (gain) => set.setLightPoolGain(gain);
     }
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
@@ -933,6 +941,11 @@ export class DecalField {
   /** Daylight lamp pool. The one decal whose tint is above 1.0. */
   lightPool(x: number, z: number, radius = LIGHT_POOL_HALF_SIZE, strength = 0.25): number {
     return this.spawn(DecalKind.LightPool, x, z, radius, radius * 1.25, 0, 0, strength);
+  }
+
+  /** Uniform-only time-of-day modulation; does not dirty the pooled geometry. */
+  setLightPoolGain(gain: number): void {
+    this.setMaterialLightPoolGain(clamp(gain, 0, 2.5));
   }
 
   /* ======================================================================

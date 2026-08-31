@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-30T15:45:57Z",
+  "items": [
+    {
+      "id": "update-3-15-0",
+      "kind": "update",
+      "title": "VOLTMARCH 3.15.0 is live",
+      "summary": "The authored environment catalogue, imported unit wave, cinematic atmosphere, terrain and input fixes are now deployed.",
+      "date": "2026-08-30",
+      "actionLabel": "Read release notes",
+      "url": "https://github.com/avihaymenahem/voltmarch/releases/tag/v3.15.0"
+    }
+  ]
+}

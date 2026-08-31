@@ -272,6 +272,16 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'and buildings alike, and most of the army cannot shoot back at it. Buy '
     + 'it to open a base, not to win a dogfight.',
 
+  alliedAirbase:
+    'The home for your strategic air wing. Its landing bays reserve and rearm '
+    + 'Albatrosses, and losing it strands the wing. It needs your final tech '
+    + 'building and draws heavily on the grid.',
+
+  alliedAlbatross:
+    'A single-payload heavy bomber. Send it anywhere to reposition, or order an '
+    + 'attack for one precise demolition run; after release it returns to its '
+    + 'airbase and rearms before flying again.',
+
   gunboat:
     'An escort hull with a high-explosive deck gun, which is the warhead '
     + 'buildings resist worst — so it is a shore bombardment platform as much '
@@ -381,6 +391,16 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'its best against light armour, which is what every aircraft is made of. '
     + 'It cannot hurt a tank or open a base.',
 
+  sovietAviationWorks:
+    'A fortified home for the Soviet strategic wing. Its revetted bays reserve '
+    + 'and rearm Molots, and losing it strands them. It needs the Proving Ground '
+    + 'and places a severe load on the grid.',
+
+  sovietMolot:
+    'A single-payload armoured bomber built for demolition. Attack sends it on '
+    + 'one broad, punishing run; after release it turns for the Aviation Works '
+    + 'and must rearm before another strike.',
+
   submarine:
     'An ambush hull. One heavy torpedo on a long reload, so it wants to open a '
     + 'fight rather than sit in one. It cannot shoot at aircraft, and it dies '
@@ -480,6 +500,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'the Zenith siege beam, the Helios Spire, the Sunmonitor and the '
     + 'Heliograph. It needs an Oculus, and it draws heavily.',
 
+  mrdSolarAerodrome:
+    'Four levitation cradles for the Pact strategic wing. It reserves and rearms '
+    + 'Ecliptics, needs a Reliquary, and becomes their only safe landing point. '
+    + 'Protect its demanding grid connection.',
+
   mrdRampart:
     'The Pact wall. It stops vehicles and nothing else — infantry walk straight '
     + 'through — and the Pact has no gate, so leave your own column a way out '
@@ -549,6 +574,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Guided rocket pods on a fast airframe. Tank guns cannot elevate, so a '
     + 'Kestrel over an armoured column is untouchable by most of it — and its '
     + 'wide sight makes it an excellent scout.',
+
+  mrdEcliptic:
+    'A single-payload solar bomber with a focused strike. It may fly freely, but '
+    + 'an attack order commits its charge and sends it home after release to '
+    + 'land and rearm.',
 
   mrdCorvette:
     'A Pact escort hull. Its battery is high explosive, the warhead buildings '
@@ -654,6 +684,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'the army that can break a base — plus the Reclaimed Hulk and the '
     + 'Stormworks. It hangs off the Spotter Mast.',
 
+  rclCarrionRoost:
+    'Four repaired launch decks and the only home for Scrapvultures. It reserves '
+    + 'and rearms the wing after a Crucible is standing; if the Roost falls, the '
+    + 'aircraft lose their service point.',
+
   rclBarricade:
     'The Reclamation wall. It stops vehicles and nothing else — infantry walk '
     + 'straight through — and the Reclamation has no gate, so leave yourself a '
@@ -723,6 +758,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'The cheapest aircraft in the game and the thinnest-skinned. Its arc chains '
     + 'between targets, so one pass lands on several things at once. Fly it '
     + 'over the line, and keep it away from flak.',
+
+  rclScrapvulture:
+    'A single-payload salvage bomber with the widest blast of the wing. Move it '
+    + 'freely, or commit one slag-cask attack; after release it returns to the '
+    + 'Carrion Roost to land and rearm.',
 
   rclScow:
     'An armed barge. Its bow gun is high explosive, which is what actually '

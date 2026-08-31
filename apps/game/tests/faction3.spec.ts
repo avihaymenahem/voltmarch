@@ -146,7 +146,7 @@ describe('the Meridian Pact — balance envelope', () => {
   });
 
   it('keeps every Forgeyard vehicle on land and every Pact hull unable to crush', () => {
-    const FLIES = new Set(['mrdKestrel']);
+    const FLIES = new Set(['mrdKestrel', 'mrdEcliptic']);
     const TRACKS = new Set(['mrdSolarch', 'mrdZenith']);
     const WHEELS = new Set(['mrdCollector', 'mrdSkiff', 'mrdCarryall']);
     for (const u of mrdUnits) {

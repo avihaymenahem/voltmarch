@@ -145,6 +145,7 @@ export const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   // the boot scorecard on every single boot — with no def row and no line here.
   // See `flakTrooper` below: same defect, same fix, three files apart.
   vindicator: 'allied_vindicator',
+  alliedAlbatross: 'allied_albatross',
   hydrofoil: 'allied_hydrofoil',
   landingCraft: 'allied_lighter',
   frogman: 'allied_frogman',
@@ -162,6 +163,7 @@ export const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
   mig: 'soviet_mig',
+  sovietMolot: 'soviet_molot',
   picketBoat: 'soviet_picket',
   assaultBarge: 'soviet_lighter',
   navalInfantry: 'soviet_diver',

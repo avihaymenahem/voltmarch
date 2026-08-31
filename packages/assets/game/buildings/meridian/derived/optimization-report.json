@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "meridian-buildings",
-  "generatedAt": "2026-08-23T22:17:51.828Z",
+  "generatedAt": "2026-08-30T21:25:44.916Z",
   "write": true,
   "sourceManifest": "tools/asset-families/meridian-buildings.json",
   "rows": [
@@ -698,6 +698,59 @@
             16
           ],
           "occupiedCells": 220
+        }
+      ]
+    },
+    {
+      "key": "meridian_aerodrome",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/buildings/meridian/solar-aerodrome.glb",
+        "triangles": 49490,
+        "fileBytes": 6282560
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/meridian/derived/solar-aerodrome.lod1.glb",
+          "triangles": 23748,
+          "triangleRatio": 0.4799,
+          "boundsDriftMeters": 0.00031,
+          "boundsDriftRatio": 0.00047,
+          "fileBytes": 753960,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/meridian/derived/solar-aerodrome.lod2.glb",
+          "triangles": 9892,
+          "triangleRatio": 0.1999,
+          "boundsDriftMeters": 0.00732,
+          "boundsDriftRatio": 0.0109,
+          "fileBytes": 376988,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/meridian/derived/solar-aerodrome.shadow.glb",
+          "triangles": 3072,
+          "triangleRatio": 0.0621,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 43844,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 256
         }
       ]
     }

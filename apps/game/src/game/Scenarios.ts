@@ -79,6 +79,7 @@ import {
 import { MoveClass, TerrainRegions } from '../sim/Flowfield';
 import { setMoveClass } from '../sim/Movement';
 import { facedFootprintH, facedFootprintW, yawToFacing } from '../sim/Placement';
+import { dockNewBomber } from '../sim/BomberSortie';
 import { getTerrain } from '../world/Terrain';
 import { getRoads } from '../world/Roads';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
@@ -280,6 +281,10 @@ export function layoutBudget(distance: number, yawDeg: number): { halfX: number;
 export const SCENARIO_NAMES = [
   'skirmish',
   'allied-base',
+  'strategic-airbase',
+  'soviet-aviation-works',
+  'meridian-solar-aerodrome',
+  'reclamation-carrion-roost',
   'soviet-base',
   'meridian-base',
   'meridian-support',
@@ -1461,6 +1466,16 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Air, 38, GUNNER, Faction.Allies, { crushableBy: 0, turnRate: 2.9 }),
   mig: unit('mig', EntityKind.Vehicle, U.ifv, 190, ArmorClass.Light, 13.5,
     Locomotor.Air, 32, GUNNER, Faction.Soviets, { crushableBy: 0, turnRate: 3.6 }),
+  alliedAlbatross: unit(
+    'alliedAlbatross', EntityKind.Vehicle, { l: 12.5, w: 13, h: 3.6 },
+    320, ArmorClass.Light, 10.0, Locomotor.Air, 34, GUNNER, Faction.Allies,
+    { crushableBy: 0, turnRate: 2.2 },
+  ),
+  sovietMolot: unit(
+    'sovietMolot', EntityKind.Vehicle, { l: 13.0, w: 12.6, h: 3.8 },
+    390, ArmorClass.Light, 9.2, Locomotor.Air, 34, GUNNER, Faction.Soviets,
+    { crushableBy: 0, turnRate: 1.9 },
+  ),
 
   /* -- THE MERIDIAN PACT ---------------------------------------------------
    * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
@@ -1493,6 +1508,11 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   // `tests/data.spec.ts` "does not silently re-balance the game" exists to catch.
   mrdKestrel: unit('mrdKestrel', EntityKind.Vehicle, U.ifv, 210, ArmorClass.Light, 12.0,
     Locomotor.Air, 36, GUNNER, Faction.Meridian, { crushableBy: 0, turnRate: 3.2 }),
+  mrdEcliptic: unit(
+    'mrdEcliptic', EntityKind.Vehicle, { l: 12.8, w: 13.8, h: 3.5 },
+    300, ArmorClass.Light, 10.6, Locomotor.Air, 36, GUNNER, Faction.Meridian,
+    { crushableBy: 0, turnRate: 2.3 },
+  ),
 
   mrdCorvette: unit('mrdCorvette', EntityKind.Vehicle, NU.gunboat, 380, ArmorClass.Light, 7.6,
     Locomotor.Hover, 34, TURRETED, Faction.Meridian),
@@ -1534,6 +1554,11 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   // `Locomotor.Air`, in lockstep with `src/data/Defs.ts`. See the Kestrel row.
   rclHornet: unit('rclHornet', EntityKind.Vehicle, U.ifv, 180, ArmorClass.Light, 11.0,
     Locomotor.Air, 34, GUNNER, Faction.Reclaim, { crushableBy: 0, turnRate: 3.4 }),
+  rclScrapvulture: unit(
+    'rclScrapvulture', EntityKind.Vehicle, { l: 13.2, w: 12.8, h: 3.8 },
+    360, ArmorClass.Light, 9.6, Locomotor.Air, 32, GUNNER, Faction.Reclaim,
+    { crushableBy: 0, turnRate: 2.0 },
+  ),
 
   rclScow: unit('rclScow', EntityKind.Vehicle, NU.gunboat, 340, ArmorClass.Light, 7.2,
     Locomotor.Hover, 32, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.gunboat) }),
@@ -1672,6 +1697,14 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Neutral),
   radar: building('radar', B.radar, 700, -40, 44, EntityFlag.IsRadar, Faction.Neutral),
   battleLab: building('battleLab', B.battleLab, 900, -60, 20, 0, Faction.Neutral),
+  alliedAirbase: building('alliedAirbase', B.airbase, 1400, -80, 28,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Allies),
+  sovietAviationWorks: building('sovietAviationWorks', B.airbase, 1750, -100, 28,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Soviets),
+  mrdSolarAerodrome: building('mrdSolarAerodrome', B.airbase, 1450, -90, 30,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
+  rclCarrionRoost: building('rclCarrionRoost', B.airbase, 1600, -90, 28,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
   oreSilo: building('oreSilo', B.oreSilo, 500, -10, 12, 0, Faction.Neutral,
     { storage: SILO_STORAGE }),
   // Its whole behaviour is positional — `RepairSell.tickDepots` finds it by
@@ -1988,6 +2021,10 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   // and still fly; it would just wear the per-faction default hull, which is a
   // Warden. No bare 'mig' -> anything else: the key IS 'mig'.
   vindicator: ['vindicator', 'alliedvindicator', 'alliedbomber', 'harrier'],
+  alliedAlbatross: ['alliedalbatross', 'albatross', 'albatrossheavybomber'],
+  sovietMolot: ['sovietmolot', 'molot', 'molotheavybomber'],
+  mrdEcliptic: ['mrdecliptic', 'ecliptic', 'eclipticheavybomber'],
+  rclScrapvulture: ['rclscrapvulture', 'scrapvulture', 'scrapvultureheavybomber'],
   mig: ['mig', 'sovietmig', 'migfighter', 'sovietfighter'],
 
   // The Meridian Pact. Its def keys are already unambiguous, so each row is
@@ -2042,6 +2079,10 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   aaTurret: ['aaturret', 'multigunneraa', 'aagun', 'flakcannon'],
   sentryGun: ['sentrygun', 'sentry', 'machinegunturret'],
   repairDepot: ['repairdepot', 'servicedepot', 'depot', 'repairbay', 'maintenance'],
+  alliedAirbase: ['alliedairbase', 'strategicairbase', 'heavybomberairbase'],
+  sovietAviationWorks: ['sovietaviationworks', 'heavyaviationworks', 'molotairbase'],
+  mrdSolarAerodrome: ['mrdsolaraerodrome', 'solaraerodrome', 'eclipticairbase'],
+  rclCarrionRoost: ['rclcarrionroost', 'carrionroost', 'scrapvultureairbase'],
 
   mrdConclave: ['mrdconclave', 'conclave', 'meridianconclave'],
   mrdSolarArray: ['mrdsolararray', 'solararray', 'meridiansolararray'],
@@ -4677,6 +4718,89 @@ const PLANS: Record<string, ScenarioPlan> = {
       buildAlliedBase(b, cx - 1, cz - 7, { facingDeg: 0, garrison: true });
       b.addOre(cx + 52, cz - 6, 24);
       b.scatter({ minX: cx - 74, minZ: cz - 66, maxX: cx + 74, maxZ: cz + 30 }, 120);
+    },
+  },
+
+  'strategic-airbase': {
+    map: 'temperate', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Allied Strategic Airbase POC with four parked Albatross heavy bombers.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Allies);
+      const base = b.spawnBuilding('alliedAirbase', owner, cx, cz, { yawDeg: 0 });
+      for (const [x, z, yaw] of [
+        [cx - 5.5, cz - 5.5, 0], [cx + 5.5, cz - 5.5, 0],
+        [cx - 5.5, cz + 5.5, 180], [cx + 5.5, cz + 5.5, 180],
+      ] as const) {
+        const aircraft = b.spawnUnit(
+          'alliedAlbatross', owner, x, z, { yawDeg: yaw, stance: Stance.HoldFire },
+        );
+        if (aircraft !== NONE && base !== NONE) dockNewBomber(b.world, aircraft, base);
+      }
+      b.select([base].filter((id) => id !== NONE));
+      b.setCameraFocus(cx, cz);
+      b.scatter({ minX: cx - 54, minZ: cz - 46, maxX: cx + 54, maxZ: cz + 46 }, 42);
+    },
+  },
+
+  'soviet-aviation-works': {
+    map: 'arid', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Soviet Heavy Aviation Works with four parked Molot demolition bombers.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Soviets);
+      const base = b.spawnBuilding('sovietAviationWorks', owner, cx, cz, { yawDeg: 0 });
+      for (const [x, z, yaw] of [
+        [cx - 5.5, cz - 5.5, 0], [cx + 5.5, cz - 5.5, 0],
+        [cx - 5.5, cz + 5.5, 180], [cx + 5.5, cz + 5.5, 180],
+      ] as const) {
+        const aircraft = b.spawnUnit(
+          'sovietMolot', owner, x, z, { yawDeg: yaw, stance: Stance.HoldFire },
+        );
+        if (aircraft !== NONE && base !== NONE) dockNewBomber(b.world, aircraft, base);
+      }
+      // Keep the audit fixture neutral: Soviet selection emissive is deliberately
+      // strong and would hide the authored olive/red PBR breakup in screenshots.
+      b.setCameraFocus(cx, cz);
+      b.scatter({ minX: cx - 54, minZ: cz - 46, maxX: cx + 54, maxZ: cz + 46 }, 42);
+    },
+  },
+
+  'meridian-solar-aerodrome': {
+    map: 'arid', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Meridian Solar Aerodrome with four docked Ecliptic sun-charge bombers.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Meridian);
+      const base = b.spawnBuilding('mrdSolarAerodrome', owner, cx, cz, { yawDeg: 0 });
+      for (const [x, z, yaw] of [
+        [cx - 5.5, cz - 5.5, 0], [cx + 5.5, cz - 5.5, 0],
+        [cx - 5.5, cz + 5.5, 180], [cx + 5.5, cz + 5.5, 180],
+      ] as const) {
+        const aircraft = b.spawnUnit(
+          'mrdEcliptic', owner, x, z, { yawDeg: yaw, stance: Stance.HoldFire },
+        );
+        if (aircraft !== NONE && base !== NONE) dockNewBomber(b.world, aircraft, base);
+      }
+      b.setCameraFocus(cx, cz);
+      b.scatter({ minX: cx - 54, minZ: cz - 46, maxX: cx + 54, maxZ: cz + 46 }, 42);
+    },
+  },
+
+  'reclamation-carrion-roost': {
+    map: 'temperate', distance: 62, yawDeg: 24, frozen: true, settleTicks: 0,
+    summary: 'Reclamation Carrion Roost with four docked Scrapvulture slag-cask bombers.',
+    build(b, cx, cz) {
+      const owner = b.ownerForFaction(Faction.Reclaim);
+      const base = b.spawnBuilding('rclCarrionRoost', owner, cx, cz, { yawDeg: 0 });
+      for (const [x, z, yaw] of [
+        [cx - 5.5, cz - 5.5, 0], [cx + 5.5, cz - 5.5, 0],
+        [cx - 5.5, cz + 5.5, 180], [cx + 5.5, cz + 5.5, 180],
+      ] as const) {
+        const aircraft = b.spawnUnit(
+          'rclScrapvulture', owner, x, z, { yawDeg: yaw, stance: Stance.HoldFire },
+        );
+        if (aircraft !== NONE && base !== NONE) dockNewBomber(b.world, aircraft, base);
+      }
+      b.setCameraFocus(cx, cz);
+      b.scatter({ minX: cx - 54, minZ: cz - 46, maxX: cx + 54, maxZ: cz + 46 }, 42);
     },
   },
 

@@ -327,6 +327,10 @@ export const BUILDING_DIMENSIONS = {
   // via `EXTRA_DIMENSIONS`, so unlike `gate` and `repairDepot` there is no
   // second copy in `BUILDING_FOOTPRINTS` that could drift out of step.
   superweapon: { w: 3, h: 3, height: 13.0 },
+  // Four compact service bays. Six cells keeps the structure readable as a
+  // strategic producer without letting one airbase consume an entire base
+  // quadrant; the aircraft wings may overhang their inset decks while parked.
+  airbase:     { w: 6, h: 6, height: 8.5 },
   // A gantry over an open pad. Low on purpose — only the Ore Silo (5.0) and
   // the Barracks (6.4) sit under it — because the thing the player needs to
   // see is the deck they are driving onto, and a tall shed would hide the

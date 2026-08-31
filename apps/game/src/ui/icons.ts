@@ -867,7 +867,7 @@ const STRUCTURE_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['chapterhouse', 'barracks'], ['forgeyard', 'warfactory'], ['oculus', 'radar'],
   ['vault', 'silo'], ['slipway', 'navalyard'], ['reliquary', 'lab'],
   ['rampart', 'wall'], ['glaive', 'turret'], ['helios', 'prism'],
-  ['infirmary', 'depot'],
+  ['infirmary', 'depot'], ['solaraerodrome', 'airfield'],
 
   // THE RECLAMATION, for exactly the reason stated above the Pact block, and
   // that army never got one. Its structures are named out of a scrapyard, so
@@ -886,7 +886,7 @@ const STRUCTURE_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['foundry', 'conyard'], ['furnace', 'power'], ['sorter', 'refinery'],
   ['rookery', 'barracks'], ['breakeryard', 'warfactory'], ['spotter', 'radar'],
   ['slagheap', 'silo'], ['breakerdock', 'navalyard'], ['crucible', 'lab'],
-  ['patchyard', 'depot'],
+  ['patchyard', 'depot'], ['carrionroost', 'airfield'],
 
   ['conyard', 'conyard'], ['constructionyard', 'conyard'], ['construction', 'conyard'],
   // THE SUPERWEAPONS, and they must all precede the `silo` and `helios` rules
@@ -908,7 +908,8 @@ const STRUCTURE_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['radar', 'radar'], ['dome', 'radar'], ['outpost', 'radar'], ['spy', 'radar'],
   ['lab', 'lab'], ['tech', 'lab'], ['research', 'lab'],
   ['silo', 'silo'], ['storage', 'silo'],
-  ['airfield', 'airfield'], ['airforce', 'airfield'], ['helipad', 'airfield'], ['air', 'airfield'],
+  ['aviationworks', 'airfield'], ['airfield', 'airfield'], ['airforce', 'airfield'],
+  ['helipad', 'airfield'], ['air', 'airfield'],
   ['navalyard', 'navalyard'], ['shipyard', 'navalyard'], ['subpen', 'navalyard'], ['naval', 'navalyard'],
   ['depot', 'depot'], ['repair', 'depot'], ['service', 'depot'], ['hospital', 'depot'],
 ];

@@ -8,7 +8,7 @@
  *     unsharp mask (luma only) -> exposure -> tonemap -> 3-way tint ->
  *     lift/gain -> gamma contrast about scene-linear 0.18 -> white point ->
  *     saturation (shadows desaturate further) -> blown-to-paper-white fold ->
- *     vignette -> rain -> sRGB encode -> restrained film grain
+ *     vignette -> rain/snow -> sRGB encode -> restrained film grain
  *
  * The reasoning for every one of those stages lives in `post.ts` and is NOT
  * repeated here; this file records only what is different about expressing it
@@ -17,7 +17,7 @@
  * Chromatic aberration remains deliberately absent. The small film-grain path
  * is intentional art direction as of 2026-08-27 and is implemented here as well
  * as in GLSL so WebGPU remains the primary renderer. The same time uniform also
- * drives screen-space rain without another pass or draw call.
+ * drives screen-space rain or snow without another pass or draw call.
  *
  * ── WHAT IS NOT ABSENT ───────────────────────────────────────────────────────
  * The unsharp mask IS ported, exactly, including the luma-only application. It
@@ -220,6 +220,30 @@ function rainLayer(
   const tail = float(1).sub(smoothstep(0.30, 0.44, local.y));
   const occupied = step(float(1 - density), random);
   return line.mul(head).mul(tail).mul(occupied).mul(random.mul(0.55).add(0.45));
+}
+
+function snowLayer(
+  pixel: Node<'vec2'>,
+  time: Flt,
+  spacing: number,
+  speed: number,
+  drift: number,
+  density: number,
+): Flt {
+  const moving = vec2(
+    pixel.x.add(sin(time.mul(0.72).add(pixel.y.mul(0.012))).mul(drift)),
+    pixel.y.sub(time.mul(speed)),
+  ).toVar();
+  const grid = moving.div(spacing).toVar();
+  const cell = floor(grid).toVar();
+  const local = fract(grid).sub(0.5).toVar();
+  const random = hash21(cell.add(vec2(41, 19))).toVar();
+  const centre = vec2(
+    hash21(cell.add(vec2(7, 31))),
+    hash21(cell.add(vec2(29, 5))),
+  ).sub(0.5).mul(0.46).toVar();
+  const flake = float(1).sub(smoothstep(0.025, 0.078, length(local.sub(centre))));
+  return flake.mul(step(float(1 - density), random)).mul(random.mul(0.45).add(0.55));
 }
 
 /* ---------------- AgX (Blender / Filament minimal implementation) --------- */
@@ -473,24 +497,40 @@ export function gradeNode(options: GradeNodeOptions): Node<'vec4'> {
       col.mulAssign(mix(float(1), v, u.vignette));
     });
 
+    const rainAmount = max(u.rain, 0).toVar();
+    const snowAmount = max(float(0).sub(u.rain), 0).toVar();
+
     /* --- rain: screen-space streaks plus a restrained cool, wet grade. ------ */
-    If(u.rain.greaterThan(0.0001), () => {
+    If(rainAmount.greaterThan(0.0001), () => {
       const grey = vec3(luma(col)).toVar();
       const wet = mix(grey, col, 0.82).mul(vec3(0.92, 0.96, 1.02)).toVar();
-      col.assign(mix(col, wet, u.rain.mul(0.22)));
-      col.mulAssign(float(1).sub(u.rain.mul(0.06)));
+      col.assign(mix(col, wet, rainAmount.mul(0.16)));
+      col.mulAssign(float(1).sub(rainAmount.mul(0.03)));
+    });
+    If(snowAmount.greaterThan(0.0001), () => {
+      const grey = vec3(luma(col)).toVar();
+      const snowAir = mix(grey, col, 0.88).mul(vec3(0.98, 1, 1.03)).toVar();
+      col.assign(mix(col, snowAir, snowAmount.mul(0.12)));
     });
 
     const outCol = vec3(linearToSrgb(col)).toVar();
 
-    If(u.rain.greaterThan(0.0001), () => {
+    If(rainAmount.greaterThan(0.0001), () => {
       const pixel = uvNode.div(u.texel).toVar();
       const nearRain = rainLayer(pixel, u.time, 30, 120, 980, 0.18, 0.31).mul(0.085).toVar();
       const farRain = rainLayer(pixel.add(vec2(71, 29)), u.time, 20, 82, 760, 0.09, 0.24)
         .mul(0.038)
-        .mul(smoothstep(0.42, 0.9, u.rain));
-      const streak = nearRain.add(farRain).mul(u.rain);
+        .mul(smoothstep(0.42, 0.9, rainAmount));
+      const streak = nearRain.add(farRain).mul(rainAmount);
       outCol.addAssign(vec3(0.68, 0.78, 0.90).mul(streak));
+    });
+    If(snowAmount.greaterThan(0.0001), () => {
+      const pixel = uvNode.div(u.texel).toVar();
+      const nearSnow = snowLayer(pixel, u.time, 34, 78, 20, 0.34).mul(0.12).toVar();
+      const farSnow = snowLayer(pixel.add(vec2(83, 47)), u.time, 18, 132, 11, 0.20)
+        .mul(0.055)
+        .mul(smoothstep(0.42, 0.9, snowAmount));
+      outCol.addAssign(vec3(0.91, 0.95, 1).mul(nearSnow.add(farSnow).mul(snowAmount)));
     });
 
     /* --- film grain: display-space, mid-weighted, intentionally subtle. ---- */

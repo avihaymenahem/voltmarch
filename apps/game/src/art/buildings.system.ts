@@ -147,6 +147,8 @@ export const SHARED_KEYS: Readonly<Record<string, PerArmy<string>>> = {
 
 /** Content keys whose def already picks a side. Registered at FACTION_ANY. */
 export const FACTION_KEYS: Readonly<Record<string, string>> = {
+  alliedAirbase: 'allied_airbase',
+  sovietAviationWorks: 'soviet_airbase',
   pillbox: 'allied_pillbox',
   // Real slewing crystal head, not the AA mount it stood in for.
   prismTower: 'allied_prismtower',
@@ -1155,6 +1157,87 @@ const IMPORTED_ALLIED_STRUCTURES: readonly ImportedStructureSpec[] = [
       clearcoat: 0.11,
       clearcoatRoughness: 0.49,
       envMapIntensity: 1.10,
+    },
+  },
+  {
+    key: 'allied_airbase',
+    label: 'Allied Strategic Airbase',
+    url: new URL(
+      '../../../../packages/assets/game/buildings/allies/compressed/strategic-airbase.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/buildings/allies/derived/strategic-airbase.shadow.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/buildings/allies/derived/strategic-airbase.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 86,
+      },
+    ],
+    widthScale: 0.90,
+    depthScale: 0.90,
+    heightScale: 0.72,
+    creaseAngle: 42,
+    lodCreaseAngle: 44,
+    shadowInset: 0.94,
+    proceduralParts: 'none',
+    style: {
+      color: [0.94, 0.97, 1.00],
+      metalness: 0.16,
+      roughness: 0.58,
+      normalScale: 1.28,
+      ambient: [0.13, 0.27, 0.46],
+      ambientIntensity: 0.10,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.50,
+      envMapIntensity: 1.10,
+    },
+  },
+  {
+    key: 'soviet_airbase',
+    label: 'Soviet Heavy Aviation Works',
+    url: new URL(
+      '../../../../packages/assets/game/buildings/soviets/compressed/heavy-aviation-works.glb', import.meta.url,
+    ).href,
+    shadowUrl: new URL(
+      '../../../../packages/assets/game/buildings/soviets/derived/heavy-aviation-works.shadow.glb', import.meta.url,
+    ).href,
+    lods: [
+      {
+        url: new URL(
+          '../../../../packages/assets/game/buildings/soviets/derived/heavy-aviation-works.lod1.glb', import.meta.url,
+        ).href,
+        minDistance: 86,
+      },
+      {
+        url: new URL(
+          '../../../../packages/assets/game/buildings/soviets/derived/heavy-aviation-works.lod2.glb', import.meta.url,
+        ).href,
+        minDistance: 126,
+      },
+    ],
+    widthScale: 0.90,
+    depthScale: 0.90,
+    heightScale: 0.68,
+    creaseAngle: 42,
+    lodCreaseAngle: 44,
+    shadowInset: 0.94,
+    proceduralParts: 'none',
+    style: {
+      // Meshy's natural atlas is intentionally gunmetal-dark. Lift its diffuse
+      // response to the established Soviet olive range so the four bays stay
+      // readable at RTS distance without flattening the red service accents.
+      color: [0.78, 0.80, 0.68],
+      metalness: 0.24,
+      roughness: 0.68,
+      normalScale: 1.30,
+      ambient: [0.26, 0.23, 0.14],
+      ambientIntensity: 0.10,
+      clearcoat: 0.04,
+      clearcoatRoughness: 0.72,
+      envMapIntensity: 0.82,
     },
   },
 ];

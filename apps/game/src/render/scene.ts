@@ -676,7 +676,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   syncSkyUniforms();
   bakeEnvironment();
 
-  const unsubscribe = onConfigChanged((changed) => {
+  const unsubscribe = onConfigChanged((changed, meta) => {
     const lighting =
       touched(changed, 'sun') ||
       touched(changed, 'sky') ||
@@ -684,7 +684,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
       touched(changed, 'renderer.shadows');
     if (!lighting) return;
     // Only the sky/sun affect the IBL; a shadow-bias tweak must not cost a bake.
-    const needsBake = touched(changed, 'sun') || touched(changed, 'sky');
+    const needsBake = !meta.transient && (touched(changed, 'sun') || touched(changed, 'sky'));
     refreshLighting(needsBake);
   });
 

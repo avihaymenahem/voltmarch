@@ -407,6 +407,7 @@ uniform float uVignette;
 uniform float uVignetteSoftness;
 uniform float uGrain;
 uniform float uGrainSize;
+// Positive = rain, negative = snow. Magnitude is light..heavy intensity.
 uniform float uRain;
 uniform float uCA;
 uniform float uSharpen;
@@ -553,6 +554,31 @@ float rainLayer(
   return line * head * tail * occupied * (0.45 + random * 0.55);
 }
 
+float snowLayer(
+  vec2 pixel,
+  float spacing,
+  float speed,
+  float drift,
+  float density
+) {
+  // One soft flake per occupied cell, with a slow lateral oscillation. Two
+  // calls at different scales create depth without a particle draw or buffer.
+  vec2 moving = vec2(
+    pixel.x + sin(uTime * 0.72 + pixel.y * 0.012) * drift,
+    pixel.y - uTime * speed
+  );
+  vec2 grid = moving / spacing;
+  vec2 cell = floor(grid);
+  vec2 local = fract(grid) - 0.5;
+  float random = hash21(cell + vec2(41.0, 19.0));
+  vec2 centre = (vec2(
+    hash21(cell + vec2(7.0, 31.0)),
+    hash21(cell + vec2(29.0, 5.0))
+  ) - 0.5) * 0.46;
+  float flake = 1.0 - smoothstep(0.025, 0.078, length(local - centre));
+  return flake * step(1.0 - density, random) * (0.55 + random * 0.45);
+}
+
 /* ---------------- grain --------------------------------------------------- */
 
 float hash13(vec3 p) {
@@ -669,23 +695,38 @@ void main() {
     col *= mix(1.0, v, uVignette);
   }
 
+  float rainAmount = max(uRain, 0.0);
+  float snowAmount = max(-uRain, 0.0);
+
   /* --- rain: screen-space streaks plus a restrained cool, wet grade ------ */
-  if (uRain > 0.0001) {
+  if (rainAmount > 0.0001) {
     float wetLuma = luma(col);
     vec3 wet = mix(vec3(wetLuma), col, 0.82) * vec3(0.92, 0.96, 1.02);
-    col = mix(col, wet, uRain * 0.22);
-    col *= 1.0 - uRain * 0.06;
+    col = mix(col, wet, rainAmount * 0.16);
+    col *= 1.0 - rainAmount * 0.03;
+  }
+  if (snowAmount > 0.0001) {
+    float snowLuma = luma(col);
+    vec3 snowAir = mix(vec3(snowLuma), col, 0.88) * vec3(0.98, 1.0, 1.03);
+    col = mix(col, snowAir, snowAmount * 0.12);
   }
 
   /* --- display encode ---------------------------------------------------- */
   vec3 outCol = linearToSrgb(col);
 
-  if (uRain > 0.0001) {
+  if (rainAmount > 0.0001) {
     vec2 pixel = vUv / uTexel;
     float streak = rainLayer(pixel, 30.0, 120.0, 980.0, 0.18, 0.31) * 0.085;
     streak += rainLayer(pixel + vec2(71.0, 29.0), 20.0, 82.0, 760.0, 0.09, 0.24)
-      * 0.038 * smoothstep(0.42, 0.90, uRain);
-    outCol += vec3(0.68, 0.78, 0.90) * streak * uRain;
+      * 0.038 * smoothstep(0.42, 0.90, rainAmount);
+    outCol += vec3(0.68, 0.78, 0.90) * streak * rainAmount;
+  }
+  if (snowAmount > 0.0001) {
+    vec2 pixel = vUv / uTexel;
+    float flakes = snowLayer(pixel, 34.0, 78.0, 20.0, 0.34) * 0.12;
+    flakes += snowLayer(pixel + vec2(83.0, 47.0), 18.0, 132.0, 11.0, 0.20)
+      * 0.055 * smoothstep(0.42, 0.90, snowAmount);
+    outCol += vec3(0.91, 0.95, 1.0) * flakes * snowAmount;
   }
 
   /* --- film grain (display space, mid-weighted) -------------------------- */
@@ -1003,7 +1044,7 @@ export interface PostChain {
   isPassEnabled(id: PassId): boolean;
   /** Re-read RENDER_CONFIG.post into every pass uniform. Cheap; no rebuilds. */
   syncConfig(): void;
-  /** Screen-space rain intensity, 0 (clear) through 1 (heavy). */
+  /** Screen-space precipitation: +rain, -snow; magnitude 0 (clear)..1 (heavy). */
   setWeatherIntensity(intensity: number): void;
   setSize(width: number, height: number): void;
   dispose(): void;
@@ -1148,7 +1189,7 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
     },
 
     setWeatherIntensity(intensity: number): void {
-      weatherIntensity = THREE.MathUtils.clamp(intensity, 0, 1);
+      weatherIntensity = THREE.MathUtils.clamp(intensity, -1, 1);
       chain.setWeatherIntensity(weatherIntensity);
     },
 
@@ -2654,7 +2695,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
     syncConfig,
     setWeatherIntensity(intensity: number) {
-      weatherIntensity = THREE.MathUtils.clamp(intensity, 0, 1);
+      weatherIntensity = THREE.MathUtils.clamp(intensity, -1, 1);
       if (gradeUniforms) gradeUniforms.uRain.value = weatherIntensity;
     },
     setSize,

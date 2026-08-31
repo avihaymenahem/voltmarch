@@ -265,6 +265,9 @@ protocol.registerSchemesAsPrivileged([
  * runtime. Without it the game is a black page.
  *
  * `connect-src` allows ws:/wss: because the multiplayer relay is a WebSocket.
+ * The one HTTPS origin is the project's validated News & Events JSON feed;
+ * outbound actions still open in the system browser through the window-open
+ * policy below rather than navigating this document.
  * `blob:` is also required by the WebGPU texture worker's generated module;
  * without it Chromium creates the worker but blocks its first fetch. `data:`
  * is limited to locally bundled payloads here: Vite inlines sub-4K GLBs as
@@ -283,7 +286,7 @@ const CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "media-src 'self' blob:",
-  "connect-src 'self' data: blob: ws: wss:",
+  "connect-src 'self' data: blob: ws: wss: https://voltmarch.com",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",

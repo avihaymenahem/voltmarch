@@ -115,6 +115,10 @@ tank. Both elevate, so both are also anti-air.
 | Interceptor Autocannon | Interceptor | 24 x3 | Autocannon | 21 | 0.76 s | 95 | 0.9 | yes |
 | Kestrel Pod | Kestrel Gunship | 44 x2 | Rocket | 22 | 2.06 s | 43 | 1.8 | yes |
 | Hornet Arc | Swarmhornet | 44 | Tesla | 17 | 1.50 s | 29 | – | yes |
+| Albatross Heavy Bomb | Albatross Heavy Bomber | 500 | High Explosive | 2 | 0.10 s | 5000 | 6.0 | no |
+| Molot Demolition Bomb | Molot Heavy Bomber | 650 | High Explosive | 2 | 0.10 s | 6500 | 7.5 | no |
+| Ecliptic Sun Charge | Ecliptic Heavy Bomber | 575 | Prism | 2 | 0.10 s | 5750 | 5.0 | no |
+| Scrapvulture Slag Cask | Scrapvulture Heavy Bomber | 480 | High Explosive | 2 | 0.10 s | 4800 | 8.0 | no |
 | Tesla Coil (bolt) | War Commissar | 120 | Tesla | 30 | 2.40 s | 50 | – | yes |
 
 ### Naval
@@ -160,14 +164,15 @@ turret and never pull the trigger.
 **Can hit air:** every rifle and carbine — which includes all four swimmer
 infantry — the Arc Prod, the Javelin, the Flak Trooper, the Sunlancer, the IFV
 chaingun and the Hydrofoil that shares it, the Sandskiff's repeater, the coil the
-Arcspitter and the Scrap Skimmer share, all four aircraft, the Dreadnought and
+Arcspitter and the Scrap Skimmer share, all four tactical aircraft, the Dreadnought and
 the Sunmonitor, and the AA Battery, Refractor Tower, Tesla Coil, Helios Spire
 and Arc Pylon.
 
 **Cannot:** every tank cannon — including the one the Picket Boat carries to
 sea — every artillery piece, the flamethrower, the torpedo, the naval deck guns,
 the Mirror Battery on both the Corvette and the Sun Cutter, the siege beams, the
-emplaced MG, the Glaive Post and the Spitpost.
+emplaced MG, the Glaive Post and the Spitpost. Strategic bombers also cannot
+fight aircraft; each carries one ground-only payload and returns home after release.
 
 That gap is the point of owning aircraft: an armoured column with no escort
 genuinely cannot answer one.

@@ -20,8 +20,8 @@ function glbJson(file: string): Record<string, any> {
 }
 
 describe('the Allied imported building roster', () => {
-  it('ships sixteen one-material KTX2 PBR replacements within their geometry gates', () => {
-    expect(manifest.assets).toHaveLength(16);
+  it('ships seventeen one-material KTX2 PBR replacements within their geometry gates', () => {
+    expect(manifest.assets).toHaveLength(17);
     expect(compression.rows).toHaveLength(manifest.assets.length);
     expect(optimization.rows).toHaveLength(manifest.assets.length);
 
@@ -31,9 +31,11 @@ describe('the Allied imported building roster', () => {
       const sourceRow = optimization.rows.find((row: any) => row.key === asset.key);
       expect(fs.existsSync(source), asset.key).toBe(true);
       expect(fs.existsSync(promoted), asset.key).toBe(true);
-      const [minimum, maximum] = asset.class === 'defence' || asset.class === 'utility'
-        ? [8_000, 14_000]
-        : [24_000, 40_000];
+      const [minimum, maximum] = asset.class === 'airbase'
+        ? [70_000, 100_000]
+        : asset.class === 'defence' || asset.class === 'utility'
+          ? [8_000, 14_000]
+          : [24_000, 40_000];
       expect(sourceRow.source.triangles, asset.key).toBeGreaterThanOrEqual(minimum);
       expect(sourceRow.source.triangles, asset.key).toBeLessThanOrEqual(maximum);
 
@@ -58,7 +60,8 @@ describe('the Allied imported building roster', () => {
       if (asset.lods === true) expect(['candidate', 'blocked'], `${row.key} LOD1`).toContain(lod1.status);
       else expect(lod1, `${row.key} intentionally has no distance LOD`).toBeUndefined();
       expect(shadow.status, `${row.key} shadow`).toBe('candidate');
-      expect(shadow.triangles, `${row.key} shadow`).toBeLessThanOrEqual(3_000);
+      const shadowCeiling = asset.class === 'airbase' ? 3_200 : 3_000;
+      expect(shadow.triangles, `${row.key} shadow`).toBeLessThanOrEqual(shadowCeiling);
 
       for (const output of [lod1, shadow].filter((candidate) => candidate?.status === 'candidate')) {
         const file = path.resolve(output.file);

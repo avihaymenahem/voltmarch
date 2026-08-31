@@ -357,6 +357,8 @@ export const enum ProjectileKind {
   TeslaBolt = 5,
   /** Short-range cone of burning particles. */
   Flame = 6,
+  /** Air-dropped ballistic ordnance. Falls freely and never homes after release. */
+  Bomb = 7,
 }
 
 /**

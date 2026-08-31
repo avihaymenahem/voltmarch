@@ -677,6 +677,9 @@ const COLUMNS: readonly ColumnSpec[] = [
   col(91, ColType.U8, (s) => s.animClip),
   col(92, ColType.F32, (s) => s.animTime),
   col(93, ColType.F32, (s) => s.emissive),
+  // Strategic-air-wing state. Append-only ids: older saves omit it and load
+  // the zero value, which means "not managed by an airbase".
+  col(94, ColType.U16, (s) => s.sortieData),
 ];
 
 /** Columns that hold an `EntityId` and must be remapped, not copied. */
@@ -691,6 +694,7 @@ const REF_COLUMNS: readonly { id: number; of: (s: EntityStore) => Int32Array }[]
   // copy would resolve, after the generation bump, against whatever unit
   // recycled the slot — a squad that reappears inside a stranger's building.
   { id: 205, of: (s) => s.garrisonId },
+  { id: 206, of: (s) => s.sortieHostId },
 ];
 
 /** `kind` is written separately: `alloc` needs it before any column lands. */

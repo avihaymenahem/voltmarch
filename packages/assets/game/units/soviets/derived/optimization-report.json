@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-vehicles",
-  "generatedAt": "2026-08-30T01:30:30.963Z",
+  "generatedAt": "2026-08-30T20:47:07.792Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-vehicles.json",
   "rows": [
@@ -688,6 +688,59 @@
             6
           ],
           "occupiedCells": 96
+        }
+      ]
+    },
+    {
+      "key": "soviet_molot",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/soviets/molot-heavy-bomber.glb",
+        "triangles": 32784,
+        "fileBytes": 3816020
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/molot-heavy-bomber.lod1.glb",
+          "triangles": 14752,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00122,
+          "boundsDriftRatio": 0.00064,
+          "fileBytes": 417648,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/molot-heavy-bomber.lod2.glb",
+          "triangles": 5900,
+          "triangleRatio": 0.18,
+          "boundsDriftMeters": 0.00152,
+          "boundsDriftRatio": 0.00108,
+          "fileBytes": 192920,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/soviets/derived/molot-heavy-bomber.shadow.glb",
+          "triangles": 984,
+          "triangleRatio": 0.03,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 14608,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 82
         }
       ]
     }

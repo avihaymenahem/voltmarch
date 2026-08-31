@@ -1483,6 +1483,7 @@ export const MERIDIAN_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   pactShip({ key: 'meridian_argosy', name: 'Argosy', length: 13.2, beam: 6.0, height: 3.6, armament: 'ramp', heavy: true }),
 
   pactFlyer('meridian_kestrel', 'Kestrel Gunship', 10.5, 11.0, 2.9),
+  pactFlyer('meridian_ecliptic', 'Ecliptic Heavy Bomber', 17.0, 19.0, 4.5),
 
   pactInfantry({ key: 'meridian_tidewalker', name: 'Tidewalker', weapon: 'carbine', pack: 'gills' }),
 ];
@@ -1507,6 +1508,7 @@ export const MERIDIAN_UNIT_MODELS: Readonly<Record<string, string>> = {
   mrdZenith: 'meridian_zenith',
   mrdCarryall: 'meridian_carryall',
   mrdKestrel: 'meridian_kestrel',
+  mrdEcliptic: 'meridian_ecliptic',
   mrdCorvette: 'meridian_corvette',
   mrdMonitor: 'meridian_monitor',
   mrdCutter: 'meridian_cutter',
@@ -1648,6 +1650,7 @@ export async function buildAndRegisterMeridianUnits(
   const importedKeys = [
     'meridian_solarch', 'meridian_skiff', 'meridian_zenith',
     'meridian_collector', 'meridian_carryall', 'meridian_kestrel',
+    'meridian_ecliptic',
     'meridian_cutter', 'meridian_corvette', 'meridian_monitor',
     'meridian_lighter', 'meridian_argosy',
   ] as const;

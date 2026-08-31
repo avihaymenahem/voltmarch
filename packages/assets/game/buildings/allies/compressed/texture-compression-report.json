@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-buildings",
-  "generatedAt": "2026-08-26T23:40:43.135Z",
+  "generatedAt": "2026-08-30T19:45:14.375Z",
   "encoder": "Basis Universal 1.16.x",
   "profiles": {
     "color": "ETC1S q255 comp2 + sRGB mips",
@@ -1064,16 +1064,82 @@
           "compressedGpuBytes4bpp": 174763
         }
       ]
+    },
+    {
+      "key": "allied_airbase",
+      "source": "packages/assets/game/buildings/allies/strategic-airbase.glb",
+      "output": "packages/assets/game/buildings/allies/compressed/strategic-airbase.glb",
+      "sourceFileBytes": 11832544,
+      "outputFileBytes": 7326692,
+      "transferRatio": 0.6192,
+      "sourceTextureBytes": 7096272,
+      "ktx2TextureBytes": 2590224,
+      "sourceGpuBytesRGBA8": 50331644,
+      "compressedGpuBytes8bpp": 8388607,
+      "compressedGpuBytes4bpp": 4194305,
+      "textures": [
+        {
+          "index": 0,
+          "roles": [
+            "normal"
+          ],
+          "codec": "uastc",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 4312577,
+          "ktx2Bytes": 1324577,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        },
+        {
+          "index": 1,
+          "roles": [
+            "base"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 2048,
+          "sourceHeight": 2048,
+          "width": 2048,
+          "height": 2048,
+          "opaque": true,
+          "sourceBytes": 2333649,
+          "ktx2Bytes": 1016785,
+          "sourceGpuBytesRGBA8": 22369620,
+          "compressedGpuBytes8bpp": 5592405,
+          "compressedGpuBytes4bpp": 2796203
+        },
+        {
+          "index": 2,
+          "roles": [
+            "metalRough"
+          ],
+          "codec": "etc1s",
+          "sourceWidth": 1024,
+          "sourceHeight": 1024,
+          "width": 1024,
+          "height": 1024,
+          "opaque": true,
+          "sourceBytes": 450046,
+          "ktx2Bytes": 248862,
+          "sourceGpuBytesRGBA8": 5592404,
+          "compressedGpuBytes8bpp": 1398101,
+          "compressedGpuBytes4bpp": 699051
+        }
+      ]
     }
   ],
   "totals": {
-    "sourceFileBytes": 73905476,
-    "outputFileBytes": 57461044,
-    "transferRatio": 0.7775,
-    "sourceTextureBytes": 43951872,
-    "ktx2TextureBytes": 27506879,
-    "sourceGpuBytesRGBA8": 654311360,
-    "compressedGpuBytes8bpp": 109051888,
-    "compressedGpuBytes4bpp": 54525968
+    "sourceFileBytes": 85738020,
+    "outputFileBytes": 64787736,
+    "transferRatio": 0.7556,
+    "sourceTextureBytes": 51048144,
+    "ktx2TextureBytes": 30097103,
+    "sourceGpuBytesRGBA8": 704643004,
+    "compressedGpuBytes8bpp": 117440495,
+    "compressedGpuBytes4bpp": 58720273
   }
 }

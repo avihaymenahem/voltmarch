@@ -2408,6 +2408,15 @@ before touching it. The workspace boundary is structural, not a convention.
   diagnostic export several times per second. Browser and development builds state their limits
   instead of presenting updater actions that cannot work.
 
+- **NEWS & EVENTS IS REMOTE-FIRST AND OFFLINE-SAFE.** The title screen's two community controls live
+  in the open top-right battlefield corner: Support opens the stable Discord invite, while News &
+  Events opens `Settings → Updates` directly. That tab fetches the bounded plain-JSON document at
+  `https://voltmarch.com/news.json` only when opened, validates every field and outbound URL, and
+  renders through text nodes. A bundled latest-release row is the disconnected fallback. The launch
+  site's `_headers` grants only that JSON cross-origin access with a five-minute cache, and the
+  desktop CSP admits only `https://voltmarch.com` for HTTPS connections; do not widen either to a
+  general remote-content channel.
+
 - **DISCORD ANNOUNCEMENTS ARE DOWNSTREAM OF VERIFIED DEPLOYMENTS, NOT ANOTHER PUBLISHER.** The
   `announce` job in `.github/workflows/deploy-relay.yml` runs only after the public relay smoke
   check, waits for the complete four-file Windows updater release, and checks whether Pages

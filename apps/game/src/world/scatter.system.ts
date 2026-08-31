@@ -69,6 +69,9 @@ import {
   markArtAssetFamilyReady, markContentProviderReady,
   requestArtAssetFamily,
 } from '../core/content-closure';
+import {
+  activeTimeOfDayCycle, cycleLightAnchorCeiling, timeOfDayForMood,
+} from './time-of-day';
 
 declare const globalThis: { __vmScatter?: Scatter } & typeof window;
 
@@ -166,6 +169,14 @@ export default defineSystem({
     }
 
     const plan = plannedScenario();
+    const timeOfDay = timeOfDayForMood(flag('art') ?? plan.preset.mood);
+    const timeCycle = activeTimeOfDayCycle(
+      plan.preset.timeOfDayCycle,
+      plan.name,
+      flag('daycycle'),
+      flag('shot') !== null,
+      flag('backdrop') === '1',
+    );
     const spec = activeScenario();
     const titleBackdrop = flag('backdrop') === '1';
     const titleView = titleBackdrop ? visibleGround(TITLE_BACKDROP_CAMERA_DISTANCE) : null;
@@ -205,6 +216,12 @@ export default defineSystem({
       focusBoost: titleBackdrop ? 0.48 : plan.start === 'mcv' ? 0.55 : 0.18,
       focusClumpGapScale: titleBackdrop ? 0.55 : plan.start === 'mcv' ? 0.55 : 1,
       openingCenters: plan.start === 'mcv' ? plannedStartPoints() : [],
+      // A cycling map admits its complete bounded lamp set once. One material
+      // uniform fades those pools over time; no instance buffers are repacked.
+      localLightPoolGain: timeCycle === null ? timeOfDay.localLightPoolGain : 1,
+      localLightMaxAnchors: timeCycle === null
+        ? timeOfDay.localLightMaxAnchors
+        : cycleLightAnchorCeiling(),
       foliagePresentation,
     });
 

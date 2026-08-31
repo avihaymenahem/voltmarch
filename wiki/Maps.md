@@ -114,7 +114,8 @@ centre contiguous. Small basins at the lowest 13 %.
 
 **Plays like:** the chokepoint map. It carried 221 ramp cells on the shipped seed against Airbase
 Flats' 97 — more than twice as many carved passes. Every push has to funnel, and a defence sited on
-a pass is worth three sited in the open.
+a pass is worth three sited in the open. Dynamic weather becomes snowfall here rather than rain;
+light and heavy events are presentation-only and do not change movement or visibility.
 
 ### Urban — Industrial Grid
 
@@ -124,7 +125,11 @@ a pass is worth three sited in the open.
 
 Only **two** terraces at a 5.0 m step, and relief 0.14 — the flattest ground in the game. Urban
 coverage 0.95, so roads, hardstanding and paving are nearly continuous. The shipped seed carried
-**320 ramp cells**, the most of any map. No water.
+**320 ramp cells**, the most of any map. No water. It is also the first battlefield with a dynamic
+presentation clock: an eight-minute day/dusk/night/dawn shift driven by simulation time. Pausing
+freezes the light and changing game speed advances it proportionally; it does not alter visibility,
+AI, commands or replay checksums. At night the elevated moon is deliberately restrained and the
+working street lamps, vehicle panels and building emissives carry the local contrast.
 
 **Plays like:** an open field with furniture. Almost nothing is impassable for terrain reasons, so
 positioning is about your own walls and buildings rather than about the land. Poorest ore in the

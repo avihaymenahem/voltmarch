@@ -1579,7 +1579,12 @@ describe('the wiki is right about which stance chases', () => {
 
   it('the aircraft band the pages quote is derived from the real airframes', () => {
     const stop = approachStopFrac();
-    const air = UNITS.filter((u) => u.locomotor === 5 && u.weapons.length > 0);
+    const strategic = new Set([
+      'alliedAlbatross', 'sovietMolot', 'mrdEcliptic', 'rclScrapvulture',
+    ]);
+    const air = UNITS.filter(
+      (u) => u.locomotor === 5 && u.weapons.length > 0 && !strategic.has(u.key),
+    );
     expect(air.length, 'four airframes, one per army — air-layer.spec.ts pins that').toBe(4);
 
     const envelopes = air.map((u) => WEAPONS[u.weapons[0]].range * stop + GUARD_LEASH);

@@ -109,7 +109,7 @@ import { armCalibration, disarmCalibration } from '../render/calibration.system'
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
 
-import { applySettings, SettingsScreen } from './Settings';
+import { applySettings, SettingsScreen, type TabId } from './Settings';
 import { MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
 import { MultiplayerSetup } from './MultiplayerSetup';
@@ -2609,8 +2609,8 @@ export class Shell {
   }
 
   /** Open the options. `returnTo` is where Back goes. */
-  openSettings(returnTo: ShellState = 'menu'): void {
-    this.show(new SettingsScreen(this, returnTo), 'settings');
+  openSettings(returnTo: ShellState = 'menu', initialTab: TabId = 'graphics'): void {
+    this.show(new SettingsScreen(this, returnTo, initialTab), 'settings');
   }
 
 

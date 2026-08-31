@@ -128,7 +128,7 @@ import {
   AI_SAVING, AI_SUPERWEAPON,
   AI_UPGRADE, BUILD_ROLE_NAMES, EXTRA_PRODUCERS, isOpeningEconomyRole, openingHoldFor,
   BuildCatalog, BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
-  classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
+  classifyThreat, difficultyProfile, isStrategicBomberKey, openingFor, personalityProfile, pickUnit,
   powerPlanFor, prereqsMet, superweaponPlanFor, upgradePlanFor,
 } from './AIStrategy';
 import type {
@@ -3862,7 +3862,7 @@ export class AiBrain {
       // real reason underneath it. The AI still declines the entry; it just
       // does not report having done so.
       const capped = this.oracle.atCap !== undefined && this.oracle.atCap(me, entry.defId);
-      if (!capped) {
+      if (!capped && !isStrategicBomberKey(entry.key)) {
         this.noteUnavailable(`${entry.key}: ${why === '' ? 'unavailable' : why}`);
       }
       return false;

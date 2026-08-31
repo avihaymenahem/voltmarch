@@ -89,6 +89,17 @@
       "class": "standard",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "reclaim_scrapvulture",
+      "file": "scrapvulture-heavy-bomber.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "lod1": { "ratio": 0.45, "error": 0.012, "maxRatio": 0.55, "stripShadingAttributes": true, "preserveBounds": true },
+        "lod2": { "ratio": 0.35, "error": 0.006, "maxRatio": 0.42, "stripShadingAttributes": true, "preserveBounds": true }
+      }
     }
   ]
 }

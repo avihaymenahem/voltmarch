@@ -475,8 +475,11 @@ describe('the structure roster stays within its measured geometry budget', () =>
    * repeated. The exact full-roster result is pinned so later art work cannot
    * hide unrelated growth inside this approval.
    */
-  const BASELINE_TRIANGLES = 190_224;
-  const BASELINE_PARTS = 140;
+  // Re-measured after the 976-triangle Strategic Airbase joined the roster.
+  // The Soviet aviation fallback reuses the compact two-part airbase greybox;
+  // imported PBR art replaces it as soon as streaming completes.
+  const BASELINE_TRIANGLES = 196_032;
+  const BASELINE_PARTS = 146;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
    *

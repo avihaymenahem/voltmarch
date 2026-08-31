@@ -641,6 +641,38 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
       turretTurnRate: 340, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
       canTargetGround: false,
       muzzleFx: FxKind.MuzzleFlashFlak, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
+
+  // One trigger pull, one bomb. `BomberSortieSystem` owns the return/rearm
+  // cycle; the weapon row owns only a successful release and its payload.
+  /* 41 */ wpn('albatrossBomb', 'Albatross Heavy Bomb', 500, WarheadClass.HighExplosive, 2.0, 0.1,
+    ProjectileKind.Bomb, 18,
+    { splashRadius: 6.0, splashFalloff: 0.18, turretTurnRate: 360,
+      canTargetAir: false, canTargetGround: true,
+      muzzleFx: FxKind.None, travelFx: FxKind.None, impactFx: FxKind.ExplosionLarge }),
+
+  // Soviet strategic doctrine trades precision for a larger demolition wave.
+  // The sortie controller still guarantees exactly one release before RTB.
+  /* 42 */ wpn('molotBomb', 'Molot Demolition Bomb', 650, WarheadClass.HighExplosive, 2.0, 0.1,
+    ProjectileKind.Bomb, 17,
+    { splashRadius: 7.5, splashFalloff: 0.22, turretTurnRate: 360,
+      canTargetAir: false, canTargetGround: true,
+      muzzleFx: FxKind.None, travelFx: FxKind.None, impactFx: FxKind.ExplosionLarge }),
+
+  // Meridian concentrates the sortie into a smaller, armour-cutting solar
+  // charge instead of copying the broad Allied/Soviet demolition pattern.
+  /* 43 */ wpn('eclipticCharge', 'Ecliptic Sun Charge', 575, WarheadClass.Prism, 2.0, 0.1,
+    ProjectileKind.Bomb, 19,
+    { splashRadius: 5.0, splashFalloff: 0.15, turretTurnRate: 360,
+      canTargetAir: false, canTargetGround: true,
+      muzzleFx: FxKind.None, travelFx: FxKind.None, impactFx: FxKind.ExplosionLarge }),
+
+  // The Scrapvulture drops a rough slag cask: less exact centre damage than
+  // the other strategic bombers, but the widest pressure wave of the four.
+  /* 44 */ wpn('scrapvultureCask', 'Scrapvulture Slag Cask', 480, WarheadClass.HighExplosive, 2.0, 0.1,
+    ProjectileKind.Bomb, 16,
+    { splashRadius: 8.0, splashFalloff: 0.28, turretTurnRate: 360,
+      canTargetAir: false, canTargetGround: true,
+      muzzleFx: FxKind.None, travelFx: FxKind.None, impactFx: FxKind.ExplosionLarge }),
 ];
 
 /**
@@ -2132,6 +2164,55 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('arcProd')], hasTurret: false, crushableBy: 1, amphibious: true,
     flags: RCL_FOOT | EntityFlag.CanAttack,
   }),
+
+  // APPENDED: replay files persist raw def indices. This is a strategic
+  // one-pass aircraft, not the repeat-fire Petrel that precedes it.
+  unit({
+    key: 'alliedAlbatross', name: 'Albatross Heavy Bomber',
+    blurb: 'Carries one heavy bomb, then returns to its airbase to rearm.',
+    faction: Faction.Allies, kind: EntityKind.Vehicle,
+    cost: 2000, buildTime: 26, tab: BuildTab.Vehicles,
+    prereqs: ['alliedAirbase'], sortOrder: 47,
+    model: 'allied_albatross',
+    maxHp: 320, armor: ArmorClass.Light, maxSpeed: 10.0, turnRate: 2.2,
+    locomotor: Locomotor.Air, radius: 5.85, sight: 34,
+    weapons: [w('albatrossBomb')], hasTurret: false,
+  }),
+  unit({
+    key: 'sovietMolot', name: 'Molot Heavy Bomber',
+    blurb: 'Drops one demolition bomb, then returns to its Works to rearm.',
+    faction: Faction.Soviets, kind: EntityKind.Vehicle,
+    cost: 2200, buildTime: 28, tab: BuildTab.Vehicles,
+    prereqs: ['sovietAviationWorks'], sortOrder: 48,
+    model: 'soviet_molot',
+    maxHp: 390, armor: ArmorClass.Light, maxSpeed: 9.2, turnRate: 1.9,
+    locomotor: Locomotor.Air, radius: 5.85, sight: 34,
+    weapons: [w('molotBomb')], hasTurret: false,
+  }),
+  unit({
+    key: 'mrdEcliptic', name: 'Ecliptic Heavy Bomber',
+    blurb: 'Focuses one sun charge, then returns to its Aerodrome to rearm.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
+    cost: 2400, buildTime: 29, tab: BuildTab.Vehicles,
+    prereqs: ['mrdSolarAerodrome'], sortOrder: 49,
+    model: 'meridian_ecliptic',
+    maxHp: 300, armor: ArmorClass.Light, maxSpeed: 10.6, turnRate: 2.3,
+    locomotor: Locomotor.Air, radius: 6.21, sight: 36,
+    weapons: [w('eclipticCharge')], hasTurret: false, crushableBy: 0,
+    flags: MRD_GUNNER,
+  }),
+  unit({
+    key: 'rclScrapvulture', name: 'Scrapvulture Heavy Bomber',
+    blurb: 'Drops one wide slag cask, then returns to its Roost to rearm.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 2100, buildTime: 27, tab: BuildTab.Vehicles,
+    prereqs: ['rclCarrionRoost'], sortOrder: 50,
+    model: 'reclaim_scrapvulture',
+    maxHp: 360, armor: ArmorClass.Light, maxSpeed: 9.6, turnRate: 2.0,
+    locomotor: Locomotor.Air, radius: 5.94, sight: 32,
+    weapons: [w('scrapvultureCask')], hasTurret: false, crushableBy: 0,
+    flags: RCL_GUNNER,
+  }),
 ];
 
 /* ==========================================================================
@@ -2882,6 +2963,48 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Neutral, cost: 700, buildTime: 20, tab: BuildTab.Structures,
     prereqs: [], sortOrder: 903, model: 'civ_mine', dim: CIV.civOreMine,
     maxHp: 700, power: 0, sight: 12,
+  }),
+
+  // APPENDED: one base is both the only compatible producer and four-bay
+  // home for the strategic bomber. The compact 6x6 footprint keeps the four
+  // visible service bays from swallowing an ordinary player's base quadrant.
+  building({
+    key: 'alliedAirbase', name: 'Strategic Airbase',
+    blurb: 'Builds and rearms up to four Albatross heavy bombers.',
+    faction: Faction.Allies, cost: 3000, buildTime: 30, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 88, model: 'allied_airbase', dim: B.airbase,
+    maxHp: 1400, power: -80, sight: 28,
+    produces: ['alliedAlbatross'], producesTab: BuildTab.Vehicles,
+    exitClearance: 2,
+  }),
+  building({
+    key: 'sovietAviationWorks', name: 'Heavy Aviation Works',
+    blurb: 'Builds and rearms up to four Molot heavy bombers.',
+    faction: Faction.Soviets, cost: 3000, buildTime: 32, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 89, model: 'soviet_airbase', dim: B.airbase,
+    maxHp: 1750, power: -100, sight: 28,
+    produces: ['sovietMolot'], producesTab: BuildTab.Vehicles,
+    exitClearance: 2,
+  }),
+  building({
+    key: 'mrdSolarAerodrome', name: 'Solar Aerodrome',
+    blurb: 'Builds and rearms up to four Ecliptic heavy bombers.',
+    faction: FACTION_MERIDIAN, cost: 3000, buildTime: 31, tab: BuildTab.Structures,
+    prereqs: ['mrdReliquary'], sortOrder: 92, model: 'meridian_aerodrome', dim: B.airbase,
+    maxHp: 1450, power: -90, sight: 30,
+    produces: ['mrdEcliptic'], producesTab: BuildTab.Vehicles,
+    exitClearance: 2,
+    flags: mrdFlags(-90, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
+  }),
+  building({
+    key: 'rclCarrionRoost', name: 'Carrion Roost',
+    blurb: 'Builds and rearms up to four Scrapvulture heavy bombers.',
+    faction: FACTION_RECLAIM, cost: 3000, buildTime: 31, tab: BuildTab.Structures,
+    prereqs: ['rclCrucible'], sortOrder: 91, model: 'reclaim_airbase', dim: B.airbase,
+    maxHp: 1600, power: -90, sight: 28,
+    produces: ['rclScrapvulture'], producesTab: BuildTab.Vehicles,
+    exitClearance: 2,
+    flags: rclFlags(-90, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
   }),
 ];
 

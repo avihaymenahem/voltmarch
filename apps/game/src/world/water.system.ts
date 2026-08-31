@@ -49,6 +49,7 @@ import {
 import { getTerrain } from './Terrain';
 import { Water, getWater, setActiveWater } from './Water';
 import type { WaterLightRig } from './WaterMaterial';
+import { waterPaletteForTimeOfDay } from './time-of-day';
 
 /* -------------------------------------------------------------------------- */
 /* URL overrides — a critic must be able to A/B every water knob from the bar. */
@@ -154,7 +155,7 @@ export default defineSystem({
     water = new Water({
       scene: sceneRig.scene,
       bedHeight: (x, z) => terrain.heightAt(x, z),
-      palette: query('water') ?? terrain.biomeKey,
+      palette: waterPaletteForTimeOfDay(query('water'), terrain.biomeKey, query('art')),
       anisotropy: handle.capabilities.anisotropy,
       fields,
       fieldsKey,

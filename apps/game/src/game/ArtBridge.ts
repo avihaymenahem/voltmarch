@@ -22,7 +22,7 @@
 
 import type { ArtDirection, DeepPartial as CoreDeepPartial } from '../core/types';
 import { CAMERA, DEFAULT_ART, MAP_SIZE, MOODS } from '../core/config';
-import { hexToInt } from '../core/math';
+import { clamp01, hexToInt, mixInt } from '../core/math';
 import { configureRender, type RenderConfig, type DeepPartial, type ToneMappingMode } from '../render/renderer';
 
 /* -------------------------------------------------------------------------- */
@@ -229,12 +229,116 @@ export function artPatch(art: ArtDirection): DeepPartial<RenderConfig> {
   };
 }
 
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Compass interpolation across the short arc, so north never causes a spin. */
+function lerpDegrees(a: number, b: number, t: number): number {
+  const delta = ((b - a + 540) % 360) - 180;
+  return (a + delta * t + 360) % 360;
+}
+
+function lerpHex(a: string, b: string, t: number): number {
+  return mixInt(hexToInt(a), hexToInt(b), t);
+}
+
+/**
+ * Uniform-only subset of `artPatch`, interpolated for the live time-of-day
+ * clock. Terrain, faction identity and gameplay silhouettes never move.
+ */
+export function blendedArtPatch(
+  from: ArtDirection, to: ArtDirection, amount: number,
+): DeepPartial<RenderConfig> {
+  const t = clamp01(amount);
+  const sunA = from.sun, sunB = to.sun;
+  const atmA = from.atmosphere, atmB = to.atmosphere;
+  const toneA = from.tone, toneB = to.tone;
+  const bloomA = from.bloom, bloomB = to.bloom;
+  const fogStart = lerp(atmA.fogStart, atmB.fogStart, t);
+  const fogDensity = lerp(atmA.fogDensity, atmB.fogDensity, t);
+  const nearestTone = t < 0.5 ? toneA : toneB;
+
+  return {
+    renderer: {
+      exposure: lerp(toneA.exposure, toneB.exposure, t),
+      shadows: {
+        mapSize: t < 0.5 ? sunA.cascadeResolution : sunB.cascadeResolution,
+        bias: lerp(sunA.shadowBias, sunB.shadowBias, t),
+        normalBias: lerp(sunA.shadowNormalBias, sunB.shadowNormalBias, t),
+        farExtent: lerp(sunA.cascadeFar, sunB.cascadeFar, t),
+        intensity: lerp(sunA.shadowIntensity, sunB.shadowIntensity, t),
+        radius: lerp(sunA.shadowSoftness, sunB.shadowSoftness, t),
+      },
+    },
+    sun: {
+      azimuth: lerpDegrees(sunA.azimuthDeg, sunB.azimuthDeg, t),
+      elevation: lerp(sunA.elevationDeg, sunB.elevationDeg, t),
+      color: lerpHex(sunA.color, sunB.color, t),
+      intensity: lerp(sunA.intensity, sunB.intensity, t),
+    },
+    sky: {
+      zenith: lerpHex(atmA.skyZenith, atmB.skyZenith, t),
+      horizon: lerpHex(atmA.skyHorizon, atmB.skyHorizon, t),
+      ground: lerpHex(atmA.skyGround, atmB.skyGround, t),
+      sunDiskSize: lerp(atmA.sunDiskDeg, atmB.sunDiskDeg, t),
+      hazeWidth: lerp(atmA.hazeWidthDeg, atmB.hazeWidthDeg, t),
+      hemiSky: lerpHex(atmA.hemiSky, atmB.hemiSky, t),
+      hemiSkyIntensity: lerp(atmA.hemiSkyIntensity, atmB.hemiSkyIntensity, t),
+      hemiGround: lerpHex(atmA.hemiGround, atmB.hemiGround, t),
+      hemiGroundIntensity: lerp(atmA.hemiGroundIntensity, atmB.hemiGroundIntensity, t),
+      envIntensity: lerp(atmA.envIntensity, atmB.envIntensity, t),
+    },
+    fog: {
+      color: lerpHex(atmA.fogColor, atmB.fogColor, t),
+      start: fogStart,
+      end: fogEndFromDensity(fogStart, fogDensity),
+      aerialPerspective: lerp(atmA.aerialPerspective, atmB.aerialPerspective, t),
+    },
+    post: {
+      bloom: {
+        threshold: lerp(bloomA.threshold, bloomB.threshold, t),
+        strength: lerp(bloomA.strength, bloomB.strength, t),
+        radius: lerp(bloomA.radius, bloomB.radius, t),
+        emissiveBoost: lerp(bloomA.emissiveBoost, bloomB.emissiveBoost, t),
+      },
+      grade: {
+        mode: toneMode(nearestTone.mode),
+        exposure: lerp(toneA.exposure, toneB.exposure, t),
+        contrast: lerp(toneA.contrast, toneB.contrast, t),
+        saturation: lerp(toneA.saturation, toneB.saturation, t),
+        shadowSaturation: lerp(toneA.shadowSaturation, toneB.shadowSaturation, t),
+        shadowTint: lerpHex(toneA.shadowTint, toneB.shadowTint, t),
+        midTint: lerpHex(toneA.midTint, toneB.midTint, t),
+        highlightTint: lerpHex(toneA.highlightTint, toneB.highlightTint, t),
+        lift: lerpHex(toneA.lift, toneB.lift, t),
+        gain: lerpHex(toneA.gain, toneB.gain, t),
+        vignette: lerp(toneA.vignette, toneB.vignette, t),
+        vignetteSoftness: lerp(toneA.vignetteSoftness, toneB.vignetteSoftness, t),
+        grain: lerp(toneA.grain, toneB.grain, t),
+        grainSize: lerp(toneA.grainSize, toneB.grainSize, t),
+        chromaticAberration: lerp(
+          toneA.chromaticAberration, toneB.chromaticAberration, t,
+        ),
+        sharpen: lerp(toneA.sharpen, toneB.sharpen, t),
+      },
+    },
+  };
+}
+
 /**
  * Push an art bible into the live render config.
  * Returns the dotted paths that actually changed (empty on a no-op).
  */
 export function pushArt(art: ArtDirection): ReadonlyArray<string> {
   return configureRender(artPatch(art));
+}
+
+/** Push a time-of-day interpolation without permitting texture/pipeline work. */
+export function pushArtBlend(
+  from: ArtDirection, to: ArtDirection, amount: number,
+): ReadonlyArray<string> {
+  return configureRender(blendedArtPatch(from, to, amount), { transient: true });
 }
 
 /** Push the core camera constants. Call once, before `createCameraRig`. */

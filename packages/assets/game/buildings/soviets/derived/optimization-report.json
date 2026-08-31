@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "soviet-buildings",
-  "generatedAt": "2026-08-23T08:51:10.929Z",
+  "generatedAt": "2026-08-30T20:47:07.962Z",
   "write": true,
   "sourceManifest": "tools/asset-families/soviet-buildings.json",
   "rows": [
@@ -860,6 +860,59 @@
             14
           ],
           "occupiedCells": 208
+        }
+      ]
+    },
+    {
+      "key": "soviet_airbase",
+      "class": "airbase",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/buildings/soviets/heavy-aviation-works.glb",
+        "triangles": 49516,
+        "fileBytes": 5821408
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/soviets/derived/heavy-aviation-works.lod1.glb",
+          "triangles": 22262,
+          "triangleRatio": 0.4496,
+          "boundsDriftMeters": 0.00017,
+          "boundsDriftRatio": 0.00053,
+          "fileBytes": 777380,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/soviets/derived/heavy-aviation-works.lod2.glb",
+          "triangles": 10418,
+          "triangleRatio": 0.2104,
+          "boundsDriftMeters": 0.01479,
+          "boundsDriftRatio": 0.01208,
+          "fileBytes": 448656,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/soviets/derived/heavy-aviation-works.shadow.glb",
+          "triangles": 3072,
+          "triangleRatio": 0.062,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 43844,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            16
+          ],
+          "occupiedCells": 256
         }
       ]
     }

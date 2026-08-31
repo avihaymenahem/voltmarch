@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "allied-vehicles",
-  "generatedAt": "2026-08-30T01:50:05.771Z",
+  "generatedAt": "2026-08-30T19:44:35.492Z",
   "write": true,
   "sourceManifest": "tools/asset-families/allied-vehicles.json",
   "rows": [
@@ -248,6 +248,61 @@
             16
           ],
           "occupiedCells": 118
+        }
+      ]
+    },
+    {
+      "key": "allied_albatross",
+      "class": "hero",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/units/allies/albatross-heavy-bomber.glb",
+        "triangles": 49025,
+        "fileBytes": 8480504
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/albatross-heavy-bomber.lod1.glb",
+          "triangles": 22061,
+          "triangleRatio": 0.45,
+          "boundsDriftMeters": 0.00279,
+          "boundsDriftRatio": 0.0017,
+          "fileBytes": 829020,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "blocked",
+          "blockers": [
+            "simplifier floor 43.0% exceeds 30.0% ceiling"
+          ],
+          "file": "packages/assets/game/units/allies/derived/albatross-heavy-bomber.lod2.glb",
+          "triangles": 21087,
+          "triangleRatio": 0.4301,
+          "boundsDriftMeters": 0.00279,
+          "boundsDriftRatio": 0.00171,
+          "fileBytes": 0,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/units/allies/derived/albatross-heavy-bomber.shadow.glb",
+          "triangles": 1320,
+          "triangleRatio": 0.0269,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 19312,
+          "geometryOnly": true,
+          "grid": [
+            16,
+            15
+          ],
+          "occupiedCells": 110
         }
       ]
     },

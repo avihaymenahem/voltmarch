@@ -321,7 +321,12 @@ export interface NodePath {
   createContactShadowMaterial(): THREE.Material;
   createDecalMaterial(
     atlas: THREE.Texture, atlasCols: number, tileInset: number,
-  ): { material: THREE.Material; setTime(t: number): void; dispose(): void };
+  ): {
+    material: THREE.Material;
+    setTime(t: number): void;
+    setLightPoolGain(gain: number): void;
+    dispose(): void;
+  };
 
   /* -- art -------------------------------------------------------------- */
   createUnitMaterial(atlas: UnitMaterialTextures, name: string): THREE.Material;

@@ -111,6 +111,16 @@
       "class": "standard",
       "lods": true,
       "movingParts": false
+    },
+    {
+      "key": "soviet_molot",
+      "file": "molot-heavy-bomber.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false,
+      "profiles": {
+        "shadow": { "ratio": 0.08, "error": 0.06, "maxRatio": 0.2, "maxTriangles": 2200 }
+      }
     }
   ]
 }

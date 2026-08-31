@@ -56,6 +56,13 @@
       "movingParts": false
     },
     {
+      "key": "allied_albatross",
+      "file": "albatross-heavy-bomber.glb",
+      "class": "hero",
+      "lods": true,
+      "movingParts": false
+    },
+    {
       "key": "allied_hydrofoil",
       "file": "hydrofoil.glb",
       "class": "standard",

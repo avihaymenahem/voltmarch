@@ -25,7 +25,7 @@ describe('architecture showcase roster', () => {
   });
 
   it('keeps a fixed six-by-three role grid without duplicate structures', () => {
-    const expectedCounts = [18, 18, 15, 15];
+    const expectedCounts = [18, 18, 16, 16];
     for (let i = 0; i < ARCHITECTURE_SHOWCASE_LANES.length; i++) {
       const keys = ARCHITECTURE_SHOWCASE_LANES[i].buildings.filter(
         (key): key is string => key !== null,

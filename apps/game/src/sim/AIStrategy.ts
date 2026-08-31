@@ -958,6 +958,25 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Allies, [0.6, 1.3, 1.5, 1.4, 1.2], 1),
   fighter('mig', BuildRole.Skirmisher, EntityKind.Vehicle, 1000, ['warFactory', 'radar'],
     Faction.Soviets, [1.2, 1.6, 0.7, 0.3, 1.9], 1),
+
+  // A separate four-slot strategic wing. Appended so the ordinary Allied War
+  // Factory and Prism Tank remain the first role matches for legacy plans.
+  structure('alliedAirbase', BuildRole.WarFactory, 3000, -80, B.airbase, ['battleLab'],
+    Faction.Allies),
+  fighter('alliedAlbatross', BuildRole.Siege, EntityKind.Vehicle, 2000, ['alliedAirbase'],
+    Faction.Allies, [0.2, 0.4, 1.7, 2.0, 0.0], 0.45),
+  structure('sovietAviationWorks', BuildRole.WarFactory, 3000, -100, B.airbase, ['battleLab'],
+    Faction.Soviets),
+  fighter('sovietMolot', BuildRole.Siege, EntityKind.Vehicle, 2200, ['sovietAviationWorks'],
+    Faction.Soviets, [0.1, 0.3, 1.9, 2.2, 0.0], 0.40),
+  structure('mrdSolarAerodrome', BuildRole.WarFactory, 3000, -90, B.airbase, ['mrdReliquary'],
+    Faction.Meridian),
+  fighter('mrdEcliptic', BuildRole.Siege, EntityKind.Vehicle, 2400, ['mrdSolarAerodrome'],
+    Faction.Meridian, [0.1, 0.3, 2.0, 2.3, 0.0], 0.38),
+  structure('rclCarrionRoost', BuildRole.WarFactory, 3000, -90, B.airbase, ['rclCrucible'],
+    Faction.Reclaim),
+  fighter('rclScrapvulture', BuildRole.Siege, EntityKind.Vehicle, 2100, ['rclCarrionRoost'],
+    Faction.Reclaim, [0.2, 0.5, 1.6, 1.9, 0.0], 0.42),
 ];
 
 /**
@@ -2991,6 +3010,12 @@ export function pickUnit(
 /** Normalise a content key so 'War Factory', 'war_factory' and 'warFactory' match. */
 export function normKey(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Strategic aircraft are an optional late-tech branch, never a reason to report the whole AI blocked. */
+export function isStrategicBomberKey(key: string): boolean {
+  return key === 'alliedAlbatross' || key === 'sovietMolot'
+    || key === 'mrdEcliptic' || key === 'rclScrapvulture';
 }
 
 /**

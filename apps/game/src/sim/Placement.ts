@@ -60,7 +60,7 @@ import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { clampWorld, footprintOriginCell, hexToInt, isInMap, worldToCell } from '../core/math';
 import type { CameraRig } from '../render/camera';
-import { resolveKindPreviewParts } from '../render/RenderBridge';
+import { kindMeshRegistryVersion, resolveKindPreviewParts } from '../render/RenderBridge';
 // Pure data, no imports of its own, and already read by `src/ui/Sidebar.ts` for
 // exactly this reason: the key the engine listens for and the key the help
 // screen promises must be ONE array. This module already reaches into
@@ -817,6 +817,15 @@ export class PlacementController {
   /** Real building silhouette, rebuilt only when a different item is picked up. */
   private readonly previewRoot: THREE.Group;
   private readonly previewMat: THREE.MeshStandardMaterial;
+  /**
+   * Imported structures may replace their synchronous procedural fallback
+   * while a finished building is already on the cursor. Keep the preview tied
+   * to the bridge generation it resolved from so that replacement can refresh
+   * the hologram instead of leaving the fallback frozen until cancellation.
+   */
+  private previewRegistryVersion = kindMeshRegistryVersion();
+  private previewFaction = -1;
+  private previewDefId = -1;
   /* THE FACING MARKER. See the block comment above `FACING_BAND_DEPTH`: on 35
    * of the 41 buildings the footprint does not change with a turn, so this pair
    * is the ONLY thing on screen that says which way the structure is holding.
@@ -1376,6 +1385,10 @@ export class PlacementController {
         return;
       }
     }
+    if (kindMeshRegistryVersion() !== this.previewRegistryVersion
+      && this.previewFaction >= 0 && this.previewDefId >= -1) {
+      this.rebuildPreview(this.previewFaction, this.previewDefId);
+    }
     this.updateCursor();
     this.updateMeshes();
   }
@@ -1500,6 +1513,8 @@ export class PlacementController {
   /** Rebuild the borrowed real-model silhouette when the carried item changes. */
   private rebuildPreview(faction: number, defId: number): void {
     this.previewRoot.clear();
+    this.previewFaction = faction;
+    this.previewDefId = defId;
     const paletteKey = FACTION_PALETTE_KEYS[faction] ?? 'neutral';
     this.gridMat.color.set(FACTION_PALETTE[paletteKey].hudAccent);
     const parts = resolveKindPreviewParts(EntityKind.Building, faction, defId);
@@ -1515,6 +1530,7 @@ export class PlacementController {
       mesh.frustumCulled = false;
       this.previewRoot.add(mesh);
     }
+    this.previewRegistryVersion = kindMeshRegistryVersion();
   }
 
   /** Push the current footprint into the placement meshes. */

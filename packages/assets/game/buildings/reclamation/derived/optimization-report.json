@@ -1,7 +1,7 @@
 {
   "version": 1,
   "family": "reclamation-buildings",
-  "generatedAt": "2026-08-24T01:16:22.262Z",
+  "generatedAt": "2026-08-30T21:26:35.694Z",
   "write": true,
   "sourceManifest": "tools/asset-families/reclamation-buildings.json",
   "rows": [
@@ -803,6 +803,59 @@
             15
           ],
           "occupiedCells": 197
+        }
+      ]
+    },
+    {
+      "key": "reclaim_airbase",
+      "class": "landmark",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/buildings/reclamation/carrion-roost.glb",
+        "triangles": 49598,
+        "fileBytes": 6042012
+      },
+      "outputs": [
+        {
+          "profile": "lod1",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/reclamation/derived/carrion-roost.lod1.glb",
+          "triangles": 23760,
+          "triangleRatio": 0.4791,
+          "boundsDriftMeters": 0.00112,
+          "boundsDriftRatio": 0.0017,
+          "fileBytes": 851808,
+          "geometryOnly": true
+        },
+        {
+          "profile": "lod2",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/reclamation/derived/carrion-roost.lod2.glb",
+          "triangles": 11854,
+          "triangleRatio": 0.239,
+          "boundsDriftMeters": 0.00673,
+          "boundsDriftRatio": 0.00954,
+          "fileBytes": 511088,
+          "geometryOnly": true
+        },
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/buildings/reclamation/derived/carrion-roost.shadow.glb",
+          "triangles": 2592,
+          "triangleRatio": 0.0523,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 37124,
+          "geometryOnly": true,
+          "grid": [
+            14,
+            16
+          ],
+          "occupiedCells": 216
         }
       ]
     }

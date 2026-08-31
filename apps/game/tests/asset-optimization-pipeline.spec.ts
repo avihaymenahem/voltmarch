@@ -54,7 +54,7 @@ function readGlbJson(file: string): GlbJson {
 
 describe('reusable asset optimization pipeline', () => {
   it('audits every Soviet imported building without replacing LOD0', () => {
-    expect(manifest.assets).toHaveLength(16);
+    expect(manifest.assets).toHaveLength(17);
     expect(report.family).toBe('soviet-buildings');
     expect(report.write).toBe(true);
     expect(report.rows.map((row) => row.key)).toEqual(manifest.assets.map((asset) => asset.key));
@@ -102,6 +102,8 @@ describe('reusable asset optimization pipeline', () => {
       'soviet_power:lod1',
       'soviet_power:lod2',
       'soviet_flametower:lod1',
+      'soviet_airbase:lod1',
+      'soviet_airbase:lod2',
     ]);
 
     for (const row of report.rows) {

@@ -1,6 +1,7 @@
-/** Deterministic presentation-only rain scheduling. No simulation RNG is consumed. */
+/** Deterministic presentation-only precipitation scheduling. No simulation RNG is consumed. */
 
 export type RainKind = 'clear' | 'light' | 'heavy';
+export type Precipitation = 'none' | 'rain' | 'snow';
 
 export interface WeatherFrame {
   readonly kind: RainKind;
@@ -70,16 +71,24 @@ export function weatherAt(seed: number, seconds: number): WeatherFrame {
   const local = safeTime - cycle * CYCLE_SECONDS;
   const cycleSeed = mix32((seed + Math.imul(cycle + 1, 0x6d2b79f5)) >>> 0);
 
-  // A quarter of cycles stay dry, which keeps weather random rather than
-  // turning it into an always-on overlay with occasional intensity changes.
-  if (unit(cycleSeed, 1) < 0.25) return { kind: 'clear', intensity: 0, lightning: 0 };
+  // One of the first two windows is always a heavy event, selected from the
+  // match seed. This keeps storms uncommon without allowing an ordinary match
+  // to run for ten minutes and never expose the heavy presentation path.
+  const forcedHeavySlot = mix32(seed) & 1;
+  const forcedHeavy = cycle % 3 === forcedHeavySlot;
+
+  // Non-forced windows retain dry variety rather than turning weather into an
+  // always-on overlay with occasional intensity changes.
+  if (!forcedHeavy && unit(cycleSeed, 1) < 0.25) {
+    return { kind: 'clear', intensity: 0, lightning: 0 };
+  }
 
   const start = 12 + unit(cycleSeed, 2) * 16;
   const duration = 84 + unit(cycleSeed, 3) * 30;
   const end = Math.min(CYCLE_SECONDS - 8, start + duration);
   if (local < start || local >= end) return { kind: 'clear', intensity: 0, lightning: 0 };
 
-  const kind: RainKind = unit(cycleSeed, 4) < 0.32 ? 'heavy' : 'light';
+  const kind: RainKind = forcedHeavy || unit(cycleSeed, 4) < 0.38 ? 'heavy' : 'light';
   const fade = kind === 'heavy' ? 6 : 4;
   const envelope = Math.min(
     smooth01((local - start) / fade),
@@ -90,4 +99,10 @@ export function weatherAt(seed: number, seconds: number): WeatherFrame {
     intensity: envelope * (kind === 'heavy' ? 1 : 0.38),
     lightning: envelope > 0.35 ? lightningAt(cycleSeed, local, kind) : 0,
   };
+}
+
+/** Snow biomes reuse the same bounded scheduler but never receive rain. */
+export function precipitationForBiome(kind: RainKind, biome: string | null): Precipitation {
+  if (kind === 'clear') return 'none';
+  return biome === 'snow' ? 'snow' : 'rain';
 }
