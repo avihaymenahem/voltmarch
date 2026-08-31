@@ -22,6 +22,9 @@
  * ============================================================================
  */
 
+import {
+  setAudioParamValue,
+} from './AudioParamGuard';
 import { AUDIO_BARK, AUDIO_DUCK } from '../core/config';
 import { EntityKind, Faction } from '../core/types';
 import { AudioEngine, makeRng, normalizeBuffer, type Rng01 } from './AudioEngine';
@@ -1616,7 +1619,7 @@ export class BarkDirector {
     if (x !== undefined) {
       const s = this.engine.spatial(x, y ?? 0, z ?? 0);
       const p = this.engine.ctx.createStereoPanner();
-      p.pan.value = s.pan * 0.7;
+      setAudioParamValue(p.pan, s.pan * 0.7);
       p.connect(this.engine.busInput('voice'));
       through = p;
     }

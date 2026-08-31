@@ -51,6 +51,11 @@
 // TYPE-ONLY, deliberately. `AudioEngine.ts` imports this module to bake, so a
 // runtime import back would close a cycle; the two helpers it would buy are
 // four lines, and four lines is cheaper than a load-order hazard.
+import {
+  linearRampAudioParamToValueAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
 import type { BakeKit } from './AudioEngine';
 import { mapConcurrent } from '../core/async-pool';
 
@@ -459,11 +464,11 @@ export function sampleInto(
   if (detuneCents !== 0) {
     // `detune` is not implemented on AudioBufferSourceNode everywhere; the
     // equivalent rate change always is.
-    src.playbackRate.value = Math.pow(2, detuneCents / 1200);
+    setAudioParamValue(src.playbackRate, Math.pow(2, detuneCents / 1200));
   }
   const g = kit.oc.createGain();
   const level = db <= -200 ? 0 : Math.pow(10, db / 20);
-  g.gain.value = level;
+  setAudioParamValue(g.gain, level);
 
   /*
    * ALWAYS fade the last few milliseconds.
@@ -484,8 +489,8 @@ export function sampleInto(
   const end = buf.duration / (src.playbackRate.value || 1);
   const fade = Math.min(0.02, end * 0.25);
   if (end > fade * 2) {
-    g.gain.setValueAtTime(level, end - fade);
-    g.gain.linearRampToValueAtTime(0, end);
+    setAudioParamValueAtTime(g.gain, level, end - fade);
+    linearRampAudioParamToValueAtTime(g.gain, 0, end);
   }
 
   src.connect(g).connect(kit.out);

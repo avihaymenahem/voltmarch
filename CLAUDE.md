@@ -2610,6 +2610,10 @@ before touching it. The workspace boundary is structural, not a convention.
   query paths.
 - **The AI issues the same commands the player does**, through `channels.command`. It must never
   reach into entity state directly.
+- **Every `AudioParam` write passes through `audio/AudioParamGuard.ts`.** Web Audio throws
+  synchronously on NaN/Infinity; the guard repairs values, automation times and time constants,
+  caps warnings and counts every repair. A source-boundary test forbids direct writes elsewhere in
+  `src/audio`. Preserve this seam when extracting `@voltmarch/audio-runtime`.
 - **Completed speech must release its mixer slot before director callbacks run.** `AudioEngine`
   owns `AudioBufferSourceNode.onended`; EVA and bark directors subscribe through
   `PlayedBufferVoice.onEnded`. Assigning `played.source.onended` in either caller overwrites the

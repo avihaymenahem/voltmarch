@@ -16,6 +16,14 @@
  * ============================================================================
  */
 
+import {
+  cancelAudioParamScheduledValues,
+  finiteAudioNumber,
+  linearRampAudioParamToValueAtTime,
+  setAudioParamTargetAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
 import type { AudioEngine, MusicTrackSnapshot } from './AudioEngine';
 import { MusicDirector } from './Music';
 
@@ -100,7 +108,7 @@ export class TrackMusic {
 
       const source = this.engine.ctx.createMediaElementSource(element);
       const gain = this.engine.ctx.createGain();
-      gain.gain.value = 1;
+      setAudioParamValue(gain.gain, 1);
       source.connect(gain).connect(this.engine.musicOut());
       this.element = element;
       this.gain = gain;
@@ -173,9 +181,9 @@ export class TrackMusic {
       element.load();
 
       const t = this.engine.now();
-      gain.gain.cancelScheduledValues(t);
-      gain.gain.setValueAtTime(fadeInSec > 0 ? 0.0001 : 1, t);
-      if (fadeInSec > 0) gain.gain.linearRampToValueAtTime(1, t + fadeInSec);
+      cancelAudioParamScheduledValues(gain.gain, t);
+      setAudioParamValueAtTime(gain.gain, fadeInSec > 0 ? 0.0001 : 1, t);
+      if (fadeInSec > 0) linearRampAudioParamToValueAtTime(gain.gain, 1, t + fadeInSec);
       this.emitTrack();
       this.ensurePlaying();
     };
@@ -186,9 +194,9 @@ export class TrackMusic {
     }
 
     const t = this.engine.now();
-    gain.gain.cancelScheduledValues(t);
-    gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t);
-    gain.gain.setTargetAtTime(0.0001, t, SWITCH_FADE_SEC / 3);
+    cancelAudioParamScheduledValues(gain.gain, t);
+    setAudioParamValueAtTime(gain.gain, Math.max(0.0001, gain.gain.value), t);
+    setAudioParamTargetAtTime(gain.gain, 0.0001, t, SWITCH_FADE_SEC / 3);
     this.switchTimer = setTimeout(load, SWITCH_FADE_SEC * 1000 + 30);
   }
 
@@ -234,9 +242,9 @@ export class TrackMusic {
     const gain = this.gain;
     if (element === null || gain === null) return;
     const t = this.engine.now();
-    gain.gain.cancelScheduledValues(t);
-    gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t);
-    gain.gain.linearRampToValueAtTime(0, t + fadeSec);
+    cancelAudioParamScheduledValues(gain.gain, t);
+    setAudioParamValueAtTime(gain.gain, Math.max(0.0001, gain.gain.value), t);
+    linearRampAudioParamToValueAtTime(gain.gain, 0, t + fadeSec);
     setTimeout(() => { try { element.pause(); } catch { /* gone */ } }, fadeSec * 1000 + 60);
   }
 
@@ -254,13 +262,14 @@ export class TrackMusic {
   }
 
   setCombatHeat(h: number): void {
-    this.heatRaw = h < 0 ? 0 : h > 1 ? 1 : h;
+    const safe = finiteAudioNumber(h, 0);
+    this.heatRaw = safe < 0 ? 0 : safe > 1 ? 1 : safe;
     this.fallback?.setCombatHeat(this.heatRaw);
   }
 
   primeHeat(h: number): void {
-    this.heatRaw = h;
-    this.fallback?.primeHeat(h);
+    this.heatRaw = finiteAudioNumber(h, 0);
+    this.fallback?.primeHeat(this.heatRaw);
   }
 
   // The original cues are complete compositions, not intensity stems. Match

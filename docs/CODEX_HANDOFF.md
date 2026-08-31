@@ -248,6 +248,10 @@ dozer into its imported shell.
   chatter, economy-state chatter or duplicated “unit ready” announcements.
 - Effects, voices and ambience must survive rematch/retry and long sessions; stale match-end timers
   must not mute non-music buses in the next match.
+- Every `AudioParam` value and automation write under `src/audio` routes through
+  `AudioParamGuard.ts`; its source gate forbids direct writes elsewhere. Invalid values, automation
+  times and time constants are repaired before Web Audio can throw, with capped warnings and
+  cumulative counters. Carry that boundary unchanged into the Batch 12 package extraction.
 - `AudioEngine.playBuffer` owns `source.onended` so every completed speech source releases its shared
   voice-budget slot. EVA and bark directors attach completion work through `PlayedBufferVoice.onEnded`;
   replacing the engine callback recreates the long-session total-voice-loss bug.

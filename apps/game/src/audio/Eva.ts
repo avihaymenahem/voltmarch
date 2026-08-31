@@ -41,6 +41,12 @@
  * ============================================================================
  */
 
+import {
+  exponentialRampAudioParamToValueAtTime,
+  linearRampAudioParamToValueAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
 import { AUDIO_DUCK, AUDIO_EVA } from '../core/config';
 import { EvaLine } from '../core/types';
 import {
@@ -354,17 +360,17 @@ export function buildRadioChain(ac: BaseAudioContext, p: VoiceProfile): Chain {
   const drive = shaper(ac, p.drive, '2x', 2048);
 
   const comp = ac.createDynamicsCompressor();
-  comp.threshold.value = AUDIO_EVA.compThreshold;
-  comp.knee.value = AUDIO_EVA.compKnee;
-  comp.ratio.value = AUDIO_EVA.compRatio;
-  comp.attack.value = AUDIO_EVA.compAttack;
-  comp.release.value = AUDIO_EVA.compRelease;
+  setAudioParamValue(comp.threshold, AUDIO_EVA.compThreshold);
+  setAudioParamValue(comp.knee, AUDIO_EVA.compKnee);
+  setAudioParamValue(comp.ratio, AUDIO_EVA.compRatio);
+  setAudioParamValue(comp.attack, AUDIO_EVA.compAttack);
+  setAudioParamValue(comp.release, AUDIO_EVA.compRelease);
 
   // The carrier artefact, in front of the drive so the shaper works on it too.
   const vocode = gain(ac, 1 - VOCODE_DEPTH);
   const carrier = ac.createOscillator();
   carrier.type = 'sine';
-  carrier.frequency.value = VOCODE_HZ;
+  setAudioParamValue(carrier.frequency, VOCODE_HZ);
   const depth = gain(ac, VOCODE_DEPTH);
   carrier.connect(depth).connect(vocode.gain);
   carrier.start(0);
@@ -384,7 +390,7 @@ export function buildRadioChain(ac: BaseAudioContext, p: VoiceProfile): Chain {
 
   /* 7 — parallel slap delay. Short, quiet, and the reason it sounds "sent". */
   const dly = ac.createDelay(0.5);
-  dly.delayTime.value = AUDIO_EVA.slapMs / 1000;
+  setAudioParamValue(dly.delayTime, AUDIO_EVA.slapMs / 1000);
   const fb = gain(ac, AUDIO_EVA.slapFeedback);
   const slapWet = gain(ac, dbToGain(AUDIO_EVA.slapWetDb));
   tail.connect(dly);
@@ -464,7 +470,7 @@ export function renderUtterance(
   saw1.type = 'sawtooth';
   const saw2 = oc.createOscillator();
   saw2.type = 'sawtooth';
-  saw2.detune.value = AUDIO_EVA.detuneCents;
+  setAudioParamValue(saw2.detune, AUDIO_EVA.detuneCents);
   const saw2g = gain(oc, dbToGain(AUDIO_EVA.detuneDb));
   saw1.connect(glottal);
   saw2.connect(saw2g).connect(glottal);
@@ -473,8 +479,8 @@ export function renderUtterance(
 
   // F0 contour: baseline, +-4 Hz per voiced phone, then a linear terminal fall.
   const fallStart = Math.max(speechStart, speechEnd - AUDIO_EVA.terminalFallMs / 1000);
-  saw1.frequency.setValueAtTime(p.f0, 0);
-  saw2.frequency.setValueAtTime(p.f0, 0);
+  setAudioParamValueAtTime(saw1.frequency, p.f0, 0);
+  setAudioParamValueAtTime(saw2.frequency, p.f0, 0);
 
   const shape = biquad(oc, 'lowpass', 2600, 0.5);
   const glottalDrive = shaper(oc, 3, '2x', 1024);
@@ -486,7 +492,7 @@ export function renderUtterance(
     const bg = gain(oc, dbToGain(p.engineBleedDb));
     const bo = oc.createOscillator();
     bo.type = 'sawtooth';
-    bo.frequency.value = p.engineBleedHz ?? 90;
+    setAudioParamValue(bo.frequency, p.engineBleedHz ?? 90);
     const blp = biquad(oc, 'lowpass', 700, 1.2);
     bo.connect(blp).connect(bg).connect(master);
     bo.start(0); bo.stop(totalDur + 0.02);
@@ -497,9 +503,9 @@ export function renderUtterance(
     const burstAt = Math.max(0, speechStart - AUDIO_EVA.preRollMs / 1000);
     const bg = gain(oc, dbToGain(-20));
     const bp = biquad(oc, 'bandpass', 1400, 4);
-    bg.gain.setValueAtTime(0.0001, burstAt);
-    bg.gain.linearRampToValueAtTime(dbToGain(-20), burstAt + 0.001);
-    bg.gain.exponentialRampToValueAtTime(0.0001, burstAt + 0.021);
+    setAudioParamValueAtTime(bg.gain, 0.0001, burstAt);
+    linearRampAudioParamToValueAtTime(bg.gain, dbToGain(-20), burstAt + 0.001);
+    exponentialRampAudioParamToValueAtTime(bg.gain, 0.0001, burstAt + 0.021);
     noiseInto(oc, burstAt, 0.024, rng).connect(bp);
     bp.connect(bg).connect(master);
 
@@ -515,12 +521,12 @@ export function renderUtterance(
     const t = speechEnd + AUDIO_EVA.postRollMs / 1000;
     const bg = gain(oc, dbToGain(-22));
     const bp = biquad(oc, 'bandpass', 1100, 3);
-    bg.gain.setValueAtTime(0.0001, t);
-    bg.gain.linearRampToValueAtTime(dbToGain(-22), t + 0.001);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.034);
+    setAudioParamValueAtTime(bg.gain, 0.0001, t);
+    linearRampAudioParamToValueAtTime(bg.gain, dbToGain(-22), t + 0.001);
+    exponentialRampAudioParamToValueAtTime(bg.gain, 0.0001, t + 0.034);
     // 45 ms exponential hiss tail after the key-up.
-    bg.gain.setValueAtTime(dbToGain(-30), t + 0.034);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.079);
+    setAudioParamValueAtTime(bg.gain, dbToGain(-30), t + 0.034);
+    exponentialRampAudioParamToValueAtTime(bg.gain, 0.0001, t + 0.079);
     noiseInto(oc, t, 0.085, rng).connect(bp);
     bp.connect(bg).connect(master);
   }
@@ -620,10 +626,10 @@ export function renderUtterance(
     const lo = speechStart + (speechEnd - speechStart) / 3;
     const hi = speechStart + (2 * (speechEnd - speechStart)) / 3;
     const t = rand(rng, lo, Math.max(lo + 0.01, hi));
-    master.gain.setValueAtTime(1, t);
-    master.gain.linearRampToValueAtTime(0, t + 0.002);
-    master.gain.setValueAtTime(0, t + 0.011);
-    master.gain.linearRampToValueAtTime(1, t + 0.013);
+    setAudioParamValueAtTime(master.gain, 1, t);
+    linearRampAudioParamToValueAtTime(master.gain, 0, t + 0.002);
+    setAudioParamValueAtTime(master.gain, 0, t + 0.011);
+    linearRampAudioParamToValueAtTime(master.gain, 1, t + 0.013);
   }
 }
 
@@ -639,10 +645,10 @@ function setF0(
     const k = Math.min(1, (t - fallStart) / Math.max(1e-4, speechEnd - fallStart));
     return f - AUDIO_EVA.terminalFallHz * k;
   };
-  a.frequency.setValueAtTime(targetAt(at), at);
-  a.frequency.linearRampToValueAtTime(targetAt(end), end);
-  b.frequency.setValueAtTime(targetAt(at), at);
-  b.frequency.linearRampToValueAtTime(targetAt(end), end);
+  setAudioParamValueAtTime(a.frequency, targetAt(at), at);
+  linearRampAudioParamToValueAtTime(a.frequency, targetAt(end), end);
+  setAudioParamValueAtTime(b.frequency, targetAt(at), at);
+  linearRampAudioParamToValueAtTime(b.frequency, targetAt(end), end);
 }
 
 /**
@@ -674,12 +680,12 @@ function formant(
   const moving = hzFrom > 0 && Math.abs(hzFrom - hz) > 25;
   const f = biquad(oc, 'bandpass', moving ? hzFrom : hz, q);
   if (moving) {
-    f.frequency.setValueAtTime(hzFrom, at);
-    f.frequency.linearRampToValueAtTime(hz, at + glide);
+    setAudioParamValueAtTime(f.frequency, hzFrom, at);
+    linearRampAudioParamToValueAtTime(f.frequency, hz, at + glide);
   } else {
-    f.frequency.setValueAtTime(hz, at);
+    setAudioParamValueAtTime(f.frequency, hz, at);
   }
-  if (hzB > 0) f.frequency.linearRampToValueAtTime(hzB, at + dur);
+  if (hzB > 0) linearRampAudioParamToValueAtTime(f.frequency, hzB, at + dur);
   const g = gain(oc, level);
   src.connect(f).connect(g).connect(dst);
 }
@@ -689,10 +695,10 @@ function phoneEnv(param: AudioParam, at: number, dur: number, peak: number, p: V
   const a = (AUDIO_EVA.attackMs * p.rate) / 1000;
   const r = (AUDIO_EVA.releaseMs * p.rate) / 1000;
   const hold = Math.max(0.002, dur - a - r);
-  param.setValueAtTime(0, at);
-  param.linearRampToValueAtTime(peak, at + a);
-  param.setValueAtTime(peak, at + a + hold);
-  param.linearRampToValueAtTime(0, at + a + hold + r);
+  setAudioParamValueAtTime(param, 0, at);
+  linearRampAudioParamToValueAtTime(param, peak, at + a);
+  setAudioParamValueAtTime(param, peak, at + a + hold);
+  linearRampAudioParamToValueAtTime(param, 0, at + a + hold + r);
 }
 
 /**
@@ -1223,9 +1229,9 @@ export class EvaAnnouncer {
     src.buffer = e.white;
     const bp = biquad(ctx, 'bandpass', hz, q);
     const g = gain(ctx, 0);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(dbToGain(db), t + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    setAudioParamValueAtTime(g.gain, 0.0001, t);
+    linearRampAudioParamToValueAtTime(g.gain, dbToGain(db), t + 0.001);
+    exponentialRampAudioParamToValueAtTime(g.gain, 0.0001, t + dur);
     src.connect(bp).connect(g).connect(e.busInput('voice'));
     src.start(t, 0, dur + 0.01);
     src.stop(t + dur + 0.02);

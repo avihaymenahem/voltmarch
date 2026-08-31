@@ -992,6 +992,7 @@ function updateCounters(): void {
   if (e === null) return;
   debug.setCounter('audioVoices', e.stats.oneShots);
   debug.setCounter('audioLoops', e.stats.loops);
+  debug.setCounter('audioParamRepairs', e.stats.paramRepairs);
   debug.setCounter('musicLayer', music?.currentLayer ?? 0);
   debug.setCounter('combatHeat', Math.round((music?.intensity ?? 0) * 100));
 }

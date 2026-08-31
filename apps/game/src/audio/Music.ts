@@ -26,6 +26,15 @@
  * ============================================================================
  */
 
+import {
+  cancelAudioParamScheduledValues,
+  exponentialRampAudioParamToValueAtTime,
+  finiteAudioNumber,
+  linearRampAudioParamToValueAtTime,
+  setAudioParamTargetAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
 import { AUDIO_BUS_DB, AUDIO_MUSIC } from '../core/config';
 import {
   biquad, dbToGain, gain, makeRng, makeWhiteNoise, shaper, type Rng01,
@@ -131,9 +140,9 @@ class ChainPool {
     for (const it of this.items) {
       if (it.freeAt <= when) {
         it.freeAt = until;
-        it.amp.gain.cancelScheduledValues(when);
-        it.amp.gain.setValueAtTime(0, when);
-        it.filter.frequency.cancelScheduledValues(when);
+        cancelAudioParamScheduledValues(it.amp.gain, when);
+        setAudioParamValueAtTime(it.amp.gain, 0, when);
+        cancelAudioParamScheduledValues(it.filter.frequency, when);
         return it;
       }
     }
@@ -302,10 +311,10 @@ export class MusicDirector {
     this.mode = 'stopped';
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
     const t = this.host.now();
-    this.bus.gain.cancelScheduledValues(t);
-    this.bus.gain.setValueAtTime(Math.max(0.0001, this.bus.gain.value), t);
-    this.bus.gain.exponentialRampToValueAtTime(0.0001, t + fadeSec);
-    this.bus.gain.setValueAtTime(0, t + fadeSec);
+    cancelAudioParamScheduledValues(this.bus.gain, t);
+    setAudioParamValueAtTime(this.bus.gain, Math.max(0.0001, this.bus.gain.value), t);
+    exponentialRampAudioParamToValueAtTime(this.bus.gain, 0.0001, t + fadeSec);
+    setAudioParamValueAtTime(this.bus.gain, 0, t + fadeSec);
   }
 
   pause(): void {
@@ -313,8 +322,8 @@ export class MusicDirector {
     this.paused = true;
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
     const t = this.host.now();
-    this.bus.gain.cancelScheduledValues(t);
-    this.bus.gain.setTargetAtTime(0.0001, t, 0.035);
+    cancelAudioParamScheduledValues(this.bus.gain, t);
+    setAudioParamTargetAtTime(this.bus.gain, 0.0001, t, 0.035);
   }
 
   resume(): void {
@@ -344,7 +353,8 @@ export class MusicDirector {
 
   /** Raw combat heat, 0..1. Smoothing and the layer decision live here. */
   setCombatHeat(h: number): void {
-    this.heat = h < 0 ? 0 : h > 1 ? 1 : h;
+    const safe = finiteAudioNumber(h, 0);
+    this.heat = safe < 0 ? 0 : safe > 1 ? 1 : safe;
   }
 
   /**
@@ -353,7 +363,8 @@ export class MusicDirector {
    * feature, and snapping the arrangement mid-bar sounds like a bug.
    */
   primeHeat(h: number): void {
-    const v = h < 0 ? 0 : h > 1 ? 1 : h;
+    const safe = finiteAudioNumber(h, 0);
+    const v = safe < 0 ? 0 : safe > 1 ? 1 : safe;
     this.heat = v;
     this.heatSmoothed = v;
     const up = AUDIO_MUSIC.layerUp;
@@ -400,9 +411,9 @@ export class MusicDirector {
       if (k >= 1) clearInterval(iv);
     }, 40);
     const t = this.host.now();
-    this.bus.gain.cancelScheduledValues(t);
-    this.bus.gain.setValueAtTime(Math.max(0.0001, this.bus.gain.value), t);
-    this.bus.gain.exponentialRampToValueAtTime(0.0001, t + 3);
+    cancelAudioParamScheduledValues(this.bus.gain, t);
+    setAudioParamValueAtTime(this.bus.gain, Math.max(0.0001, this.bus.gain.value), t);
+    exponentialRampAudioParamToValueAtTime(this.bus.gain, 0.0001, t + 3);
     setTimeout(() => this.stop(0.1), 3100);
   }
 
@@ -525,8 +536,8 @@ export class MusicDirector {
     const db = AUDIO_MUSIC.layerDb[Math.min(AUDIO_MUSIC.layerDb.length - 1, layer)];
     const t = this.host.now();
     // The music STRIP gain belongs to the user's slider; the layer level is ours.
-    this.bus.gain.cancelScheduledValues(t);
-    this.bus.gain.setTargetAtTime(dbToGain(db - AUDIO_BUS_DB.music), t, immediate ? 0.05 : this.barSec / 3);
+    cancelAudioParamScheduledValues(this.bus.gain, t);
+    setAudioParamTargetAtTime(this.bus.gain, dbToGain(db - AUDIO_BUS_DB.music), t, immediate ? 0.05 : this.barSec / 3);
   }
 
   /** Equal-power crossfade of one stem over a bar. */
@@ -537,15 +548,15 @@ export class MusicDirector {
     s.active = on;
     const t = this.host.now();
     const dur = immediate ? 0.05 : this.barSec * AUDIO_MUSIC.fadeBars;
-    s.bus.gain.cancelScheduledValues(t);
-    s.bus.gain.setValueAtTime(s.bus.gain.value, t);
+    cancelAudioParamScheduledValues(s.bus.gain, t);
+    setAudioParamValueAtTime(s.bus.gain, s.bus.gain.value, t);
     // Equal power: sqrt of the linear ramp, approximated with a 4-point curve.
     const steps = 8;
     const from = s.bus.gain.value;
     for (let i = 1; i <= steps; i++) {
       const k = i / steps;
       const v = Math.sqrt(from * from * (1 - k) + s.target * s.target * k);
-      s.bus.gain.linearRampToValueAtTime(v, t + dur * k);
+      linearRampAudioParamToValueAtTime(s.bus.gain, v, t + dur * k);
     }
   }
 
@@ -576,13 +587,13 @@ export class MusicDirector {
     const accent = BASS_ACCENT[stepInBar];
     const peak = dbToGain(-8) * accent;
 
-    chain.filter.frequency.setValueAtTime(1600, when);
-    chain.filter.frequency.exponentialRampToValueAtTime(380, when + 0.055);
-    chain.amp.gain.setValueAtTime(0.0001, when);
-    chain.amp.gain.linearRampToValueAtTime(peak, when + 0.002);
-    chain.amp.gain.setValueAtTime(peak, when + 0.097);
-    chain.amp.gain.linearRampToValueAtTime(0.0001, when + 0.105);
-    chain.amp.gain.setValueAtTime(0, when + 0.106);
+    setAudioParamValueAtTime(chain.filter.frequency, 1600, when);
+    exponentialRampAudioParamToValueAtTime(chain.filter.frequency, 380, when + 0.055);
+    setAudioParamValueAtTime(chain.amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(chain.amp.gain, peak, when + 0.002);
+    setAudioParamValueAtTime(chain.amp.gain, peak, when + 0.097);
+    linearRampAudioParamToValueAtTime(chain.amp.gain, 0.0001, when + 0.105);
+    setAudioParamValueAtTime(chain.amp.gain, 0, when + 0.106);
 
     const drive = shaper(ctx, 5, '2x', 1024);
     drive.connect(chain.filter);
@@ -615,19 +626,19 @@ export class MusicDirector {
     const chain = pool.acquire(when - 0.001, when + 0.3);
     if (chain === null) return;
     const peak = dbToGain(-5);
-    chain.amp.gain.setValueAtTime(0.0001, when);
-    chain.amp.gain.linearRampToValueAtTime(peak, when + 0.001);
-    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
-    chain.amp.gain.setValueAtTime(0, when + 0.225);
+    setAudioParamValueAtTime(chain.amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(chain.amp.gain, peak, when + 0.001);
+    exponentialRampAudioParamToValueAtTime(chain.amp.gain, 0.0001, when + 0.22);
+    setAudioParamValueAtTime(chain.amp.gain, 0, when + 0.225);
 
     // 165 -> 48 Hz in 38 ms. The steeper and faster that sweep, the more the
     // ear reads an IMPACT rather than a pitch: a kick that glides slowly is a
     // tom, and one that does not glide at all is a sine beep.
     const o = this.host.ctx.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(165, when);
-    o.frequency.exponentialRampToValueAtTime(48, when + 0.038);
-    o.detune.value = this.detuneCents;
+    setAudioParamValueAtTime(o.frequency, 165, when);
+    exponentialRampAudioParamToValueAtTime(o.frequency, 48, when + 0.038);
+    setAudioParamValue(o.detune, this.detuneCents);
     o.connect(chain.filter);
     o.start(when);
     o.stop(when + 0.28);
@@ -652,11 +663,11 @@ export class MusicDirector {
     const d = dbToGain(PUMP.depthDb);
     const hold = PUMP.holdMs / 1000;
     const rel = PUMP.releaseMs / 1000;
-    g.cancelScheduledValues(when);
-    g.setValueAtTime(1, when);
-    g.linearRampToValueAtTime(d, when + 0.004);
-    g.setValueAtTime(d, when + hold);
-    g.linearRampToValueAtTime(1, when + hold + rel);
+    cancelAudioParamScheduledValues(g, when);
+    setAudioParamValueAtTime(g, 1, when);
+    linearRampAudioParamToValueAtTime(g, d, when + 0.004);
+    setAudioParamValueAtTime(g, d, when + hold);
+    linearRampAudioParamToValueAtTime(g, 1, when + hold + rel);
   }
 
   /** Closed hat on every off-8th, but only in sections B and C. */
@@ -673,10 +684,10 @@ export class MusicDirector {
     if (chain === null) return;
     // Accent the downbeats: an unaccented hat is a metronome.
     const peak = dbToGain(stepInBar % 4 === 0 ? -15 : -19);
-    chain.amp.gain.setValueAtTime(0.0001, when);
-    chain.amp.gain.linearRampToValueAtTime(peak, when + 0.001);
-    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.026);
-    chain.amp.gain.setValueAtTime(0, when + 0.028);
+    setAudioParamValueAtTime(chain.amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(chain.amp.gain, peak, when + 0.001);
+    exponentialRampAudioParamToValueAtTime(chain.amp.gain, 0.0001, when + 0.026);
+    setAudioParamValueAtTime(chain.amp.gain, 0, when + 0.028);
     this.noiseHit(when, 0.028, 'bandpass', 9500, 2, 1, chain.filter);
     this.noiseHit(when, 0.028, 'highpass', 6000, 0.7, dbToGain(-6), chain.filter);
   }
@@ -703,10 +714,10 @@ export class MusicDirector {
 
     const chain = pool.acquire(when - 0.001, when + 0.16);
     if (chain === null) return;
-    chain.amp.gain.setValueAtTime(0.0001, when);
-    chain.amp.gain.linearRampToValueAtTime(level, when + 0.001);
-    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.11);
-    chain.amp.gain.setValueAtTime(0, when + 0.115);
+    setAudioParamValueAtTime(chain.amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(chain.amp.gain, level, when + 0.001);
+    exponentialRampAudioParamToValueAtTime(chain.amp.gain, 0.0001, when + 0.11);
+    setAudioParamValueAtTime(chain.amp.gain, 0, when + 0.115);
 
     // Body: a 190 Hz triangle. Wires: BP 900 + HP 4200 summed. Rim: a 4 ms crack.
     this.osc('triangle', 190, when, 0.09, chain.filter, 0.8);
@@ -741,12 +752,12 @@ export class MusicDirector {
     // amp envelope and its oscillators are per-note.
     const peak = 0.9;
     const amp = rig.amp;
-    amp.gain.cancelScheduledValues(when);
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 0.004);
-    amp.gain.setValueAtTime(peak, when + dur * 0.8);
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-    amp.gain.setValueAtTime(0, when + dur + 0.005);
+    cancelAudioParamScheduledValues(amp.gain, when);
+    setAudioParamValueAtTime(amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(amp.gain, peak, when + 0.004);
+    setAudioParamValueAtTime(amp.gain, peak, when + dur * 0.8);
+    exponentialRampAudioParamToValueAtTime(amp.gain, 0.0001, when + dur);
+    setAudioParamValueAtTime(amp.gain, 0, when + dur + 0.005);
 
     const f = hz(AUDIO_MUSIC.rootHz, root, 1);
     this.osc('sawtooth', f, when, dur + 0.02, rig.input, 1, -11);
@@ -772,9 +783,9 @@ export class MusicDirector {
     const amp = gain(ctx, 0);
     drive.connect(hp).connect(cab).connect(lp).connect(pres).connect(scoop).connect(amp);
 
-    const left = ctx.createStereoPanner(); left.pan.value = -0.55;
-    const right = ctx.createStereoPanner(); right.pan.value = 0.55;
-    const dly = ctx.createDelay(0.05); dly.delayTime.value = 0.011;
+    const left = ctx.createStereoPanner(); setAudioParamValue(left.pan, -0.55);
+    const right = ctx.createStereoPanner(); setAudioParamValue(right.pan, 0.55);
+    const dly = ctx.createDelay(0.05); setAudioParamValue(dly.delayTime, 0.011);
     const lg = gain(ctx, dbToGain(-11));
     const rg = gain(ctx, dbToGain(-11));
     amp.connect(left).connect(lg).connect(stem.bus);
@@ -794,14 +805,14 @@ export class MusicDirector {
     const ctx = this.host.ctx;
     const stem = this.stems.get('anvil')!;
     const pan = ctx.createStereoPanner();
-    pan.pan.value = barInSection === 3 ? -0.3 : 0.3;
+    setAudioParamValue(pan.pan, barInSection === 3 ? -0.3 : 0.3);
     const amp = gain(ctx, 0);
     amp.connect(pan).connect(stem.bus);
     const peak = dbToGain(-14);
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 0.001);
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.62);
-    amp.gain.setValueAtTime(0, when + 0.63);
+    setAudioParamValueAtTime(amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(amp.gain, peak, when + 0.001);
+    exponentialRampAudioParamToValueAtTime(amp.gain, 0.0001, when + 0.62);
+    setAudioParamValueAtTime(amp.gain, 0, when + 0.63);
     for (const f of [1873, 2790, 4310]) this.noiseHit(when, 0.64, 'bandpass', f, 22, 0.5, amp);
     amp.connect(this.reverbIn);
     setTimeout(() => { try { amp.disconnect(); pan.disconnect(); } catch { /* gone */ } }, 1200);
@@ -832,23 +843,23 @@ export class MusicDirector {
     const amp = gain(ctx, 0);
     lp.connect(amp);
     // Widened with a 15 ms L/R delay.
-    const left = ctx.createStereoPanner(); left.pan.value = -0.4;
-    const right = ctx.createStereoPanner(); right.pan.value = 0.4;
-    const dly = ctx.createDelay(0.05); dly.delayTime.value = 0.015;
+    const left = ctx.createStereoPanner(); setAudioParamValue(left.pan, -0.4);
+    const right = ctx.createStereoPanner(); setAudioParamValue(right.pan, 0.4);
+    const dly = ctx.createDelay(0.05); setAudioParamValue(dly.delayTime, 0.015);
     amp.connect(left).connect(stem.bus);
     amp.connect(dly).connect(right).connect(stem.bus);
     amp.connect(this.reverbIn);
 
-    lp.frequency.setValueAtTime(400, when);
-    lp.frequency.exponentialRampToValueAtTime(3200, when + 0.03);
-    lp.frequency.exponentialRampToValueAtTime(1400, when + 0.26);
+    setAudioParamValueAtTime(lp.frequency, 400, when);
+    exponentialRampAudioParamToValueAtTime(lp.frequency, 3200, when + 0.03);
+    exponentialRampAudioParamToValueAtTime(lp.frequency, 1400, when + 0.26);
 
     const peak = dbToGain(-13);
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 0.012);
-    amp.gain.exponentialRampToValueAtTime(peak * 0.7, when + 0.052);
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.28);
-    amp.gain.setValueAtTime(0, when + 0.29);
+    setAudioParamValueAtTime(amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(amp.gain, peak, when + 0.012);
+    exponentialRampAudioParamToValueAtTime(amp.gain, peak * 0.7, when + 0.052);
+    exponentialRampAudioParamToValueAtTime(amp.gain, 0.0001, when + 0.28);
+    setAudioParamValueAtTime(amp.gain, 0, when + 0.29);
 
     const base = hz(AUDIO_MUSIC.rootHz, chordRoot, 2);
     const cents = [0, 6, -5, 8, -7];
@@ -872,9 +883,9 @@ export class MusicDirector {
     const lp = biquad(ctx, 'lowpass', 500, 8);
     const lfo = ctx.createOscillator();
     lfo.type = 'triangle';
-    lfo.frequency.value = 0.5;
+    setAudioParamValue(lfo.frequency, 0.5);
     const depth = gain(ctx, 2000);
-    lp.frequency.value = 2500;
+    setAudioParamValue(lp.frequency, 2500);
     lfo.connect(depth).connect(lp.frequency);
     lfo.start(when);
     lfo.stop(when + dur + 0.1);
@@ -882,11 +893,11 @@ export class MusicDirector {
     const amp = gain(ctx, 0);
     lp.connect(amp).connect(stem.bus);
     const peak = dbToGain(-17);
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 0.4);
-    amp.gain.setValueAtTime(peak, when + dur - 0.3);
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-    amp.gain.setValueAtTime(0, when + dur + 0.01);
+    setAudioParamValueAtTime(amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(amp.gain, peak, when + 0.4);
+    setAudioParamValueAtTime(amp.gain, peak, when + dur - 0.3);
+    exponentialRampAudioParamToValueAtTime(amp.gain, 0.0001, when + dur);
+    setAudioParamValueAtTime(amp.gain, 0, when + dur + 0.01);
 
     const note = (barInSection / 2) % 2 === 0 ? hz(AUDIO_MUSIC.rootHz, E, 3) : hz(AUDIO_MUSIC.rootHz, B, 2);
     this.osc('sawtooth', note, when, dur + 0.05, lp, 1);
@@ -925,11 +936,11 @@ export class MusicDirector {
     // there: the idle bed measured -44.7 dB RMS against a -21.6 dB peak, i.e.
     // inaudible, and the menu and every lull in a match were effectively silent.
     const peak = dbToGain(-13);
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 0.9);
-    amp.gain.setValueAtTime(peak, when + Math.max(1.0, dur - 0.6));
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.5);
-    amp.gain.setValueAtTime(0, when + dur + 0.55);
+    setAudioParamValueAtTime(amp.gain, 0.0001, when);
+    linearRampAudioParamToValueAtTime(amp.gain, peak, when + 0.9);
+    setAudioParamValueAtTime(amp.gain, peak, when + Math.max(1.0, dur - 0.6));
+    exponentialRampAudioParamToValueAtTime(amp.gain, 0.0001, when + dur + 0.5);
+    setAudioParamValueAtTime(amp.gain, 0, when + dur + 0.55);
 
     const triad = major ? MAJOR_TRIAD : MINOR_TRIAD;
     for (const s of triad) {
@@ -953,8 +964,8 @@ export class MusicDirector {
     const ctx = this.host.ctx;
     const o = ctx.createOscillator();
     o.type = type;
-    o.frequency.value = freq;
-    o.detune.value = detune + this.detuneCents;
+    setAudioParamValue(o.frequency, freq);
+    setAudioParamValue(o.detune, detune + this.detuneCents);
     let out: AudioNode = o;
     if (level !== 1) {
       const g = gain(ctx, level);
@@ -1028,7 +1039,7 @@ export async function renderMusicOffline(
 ): Promise<MusicDirector> {
   const trim = oc.createGain();
   // The music strip's own -9 dB trim, so the offline level matches the game's.
-  trim.gain.value = dbToGain(AUDIO_BUS_DB.music);
+  setAudioParamValue(trim.gain, dbToGain(AUDIO_BUS_DB.music));
   trim.connect(oc.destination);
 
   const host = new OfflineMusicHost(oc, trim);

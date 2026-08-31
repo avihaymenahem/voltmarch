@@ -30,6 +30,16 @@
  */
 
 import {
+  audioParamGuardStats,
+  cancelAudioParamScheduledValues,
+  exponentialRampAudioParamToValueAtTime,
+  finiteAudioNumber,
+  linearRampAudioParamToValueAtTime,
+  setAudioParamTargetAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
+import {
   AUDIO_BUS_DB,
   AUDIO_CROWD,
   AUDIO_CULL_DB,
@@ -55,16 +65,22 @@ import { SampleBank, sampleInto, variantDetune } from './Samples';
 
 /** dBFS -> linear amplitude. -Infinity maps to exactly 0. */
 export function dbToGain(db: number): number {
-  return db <= -200 ? 0 : Math.pow(10, db / 20);
+  if (db === -Infinity || db <= -200) return 0;
+  const safeDb = finiteAudioNumber(db, -200);
+  return Math.pow(10, safeDb / 20);
 }
 
 /** Linear amplitude -> dBFS. 0 maps to -200 rather than -Infinity. */
 export function gainToDb(g: number): number {
-  return g <= 1e-10 ? -200 : 20 * Math.log10(g);
+  const safeGain = finiteAudioNumber(g, 0);
+  return safeGain <= 1e-10 ? -200 : 20 * Math.log10(safeGain);
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
+  const safeLo = Number.isFinite(lo) ? lo : 0;
+  const safeHi = Number.isFinite(hi) ? hi : safeLo;
+  const safe = finiteAudioNumber(v, safeLo);
+  return safe < safeLo ? safeLo : safe > safeHi ? safeHi : safe;
 }
 
 /**
@@ -207,7 +223,8 @@ export function noiseSrc(kit: BakeKit, buf: AudioBuffer, when: number, dur: numb
 /** A gain node preset to a linear value. */
 export function gain(oc: BaseAudioContext, v: number): GainNode {
   const g = oc.createGain();
-  g.gain.value = v;
+  // Invalid level input fails silent, never at Web Audio's unity default.
+  setAudioParamValue(g.gain, v, 0);
   return g;
 }
 
@@ -217,9 +234,9 @@ export function biquad(
 ): BiquadFilterNode {
   const f = oc.createBiquadFilter();
   f.type = type;
-  f.frequency.value = freq;
-  f.Q.value = q;
-  f.gain.value = gainDb;
+  setAudioParamValue(f.frequency, freq, 350);
+  setAudioParamValue(f.Q, q, 1);
+  setAudioParamValue(f.gain, gainDb, 0);
   return f;
 }
 
@@ -229,7 +246,7 @@ export function osc(
 ): OscillatorNode {
   const o = oc.createOscillator();
   o.type = type;
-  o.frequency.value = freq;
+  setAudioParamValue(o.frequency, freq, 0);
   o.start(when);
   o.stop(when + dur + 0.02);
   return o;
@@ -265,10 +282,10 @@ export function env(
   const d = Math.max(0.002, decayMs / 1000);
   const top = Math.max(1e-5, peak * p.value);
   const floor = Math.min(1e-5, top * 1e-4);
-  p.setValueAtTime(floor, when);
-  p.linearRampToValueAtTime(top, when + a);
-  p.exponentialRampToValueAtTime(floor, when + a + d);
-  p.setValueAtTime(0, when + a + d);
+  setAudioParamValueAtTime(p, floor, when);
+  linearRampAudioParamToValueAtTime(p, top, when + a);
+  exponentialRampAudioParamToValueAtTime(p, floor, when + a + d);
+  setAudioParamValueAtTime(p, 0, when + a + d);
 }
 
 /**
@@ -288,12 +305,12 @@ export function envSustain(
   const top = Math.max(1e-5, peak * p.value);
   const sus = Math.max(1e-5, top * sustain);
   const floor = Math.min(1e-5, top * 1e-4);
-  p.setValueAtTime(floor, when);
-  p.linearRampToValueAtTime(top, when + a);
-  p.exponentialRampToValueAtTime(sus, when + a + d);
-  p.setValueAtTime(sus, when + a + d + h);
-  p.exponentialRampToValueAtTime(floor, when + a + d + h + r);
-  p.setValueAtTime(0, when + a + d + h + r);
+  setAudioParamValueAtTime(p, floor, when);
+  linearRampAudioParamToValueAtTime(p, top, when + a);
+  exponentialRampAudioParamToValueAtTime(p, sus, when + a + d);
+  setAudioParamValueAtTime(p, sus, when + a + d + h);
+  exponentialRampAudioParamToValueAtTime(p, floor, when + a + d + h + r);
+  setAudioParamValueAtTime(p, 0, when + a + d + h + r);
 }
 
 /** Exponential (or linear) parameter sweep, guarded against zero targets. */
@@ -301,9 +318,12 @@ export function sweep(
   p: AudioParam, when: number, from: number, to: number, ms: number, exponential = true,
 ): void {
   const t = Math.max(0.001, ms / 1000);
-  p.setValueAtTime(Math.max(0.0001, from), when);
-  if (exponential) p.exponentialRampToValueAtTime(Math.max(0.0001, to), when + t);
-  else p.linearRampToValueAtTime(to, when + t);
+  setAudioParamValueAtTime(p, Math.max(0.0001, from), when);
+  if (exponential) {
+    exponentialRampAudioParamToValueAtTime(p, Math.max(0.0001, to), when + t);
+  } else {
+    linearRampAudioParamToValueAtTime(p, to, when + t);
+  }
 }
 
 /** `y = tanh(kx) / tanh(k)` transfer curve. The radio character, and the master clip. */
@@ -463,7 +483,7 @@ export function ringMod(
   input.connect(dry).connect(output);
   // wet path: multiply by the carrier
   const mul = gain(oc, 0);
-  mul.gain.value = 0;
+  setAudioParamValue(mul.gain, 0);
   const c = osc(oc, 'sine', carrierHz, when, dur);
   c.connect(mul.gain);
   const wetGain = gain(oc, wet);
@@ -688,12 +708,16 @@ export class LoopVoice {
   setGain(v: number, ms = 60): void {
     if (this.disposed) return;
     const t = this.engine.now();
-    this.amp.gain.setTargetAtTime(Math.max(0, v), t, Math.max(0.005, ms / 3000));
+    setAudioParamTargetAtTime(
+      this.amp.gain, Math.max(0, v), t, Math.max(0.005, ms / 3000), 0,
+    );
   }
 
   setPan(v: number, ms = 50): void {
     if (this.disposed || this.panner === null) return;
-    this.panner.pan.setTargetAtTime(clamp(v, -1, 1), this.engine.now(), Math.max(0.005, ms / 3000));
+    setAudioParamTargetAtTime(
+      this.panner.pan, clamp(v, -1, 1), this.engine.now(), Math.max(0.005, ms / 3000), 0,
+    );
   }
 
   /** Reposition a moving loop: applies pan, distance gain and the tone filters. */
@@ -710,7 +734,11 @@ export class LoopVoice {
     const t = this.engine.now();
     for (const s of this.sources) {
       const n = s as unknown as { detune?: AudioParam };
-      if (n.detune) n.detune.setTargetAtTime(clamp(cents, -1200, 1200), t, Math.max(0.005, ms / 3000));
+      if (n.detune) {
+        setAudioParamTargetAtTime(
+          n.detune, clamp(cents, -1200, 1200), t, Math.max(0.005, ms / 3000), 0,
+        );
+      }
     }
   }
 
@@ -720,7 +748,11 @@ export class LoopVoice {
     const t = this.engine.now();
     for (const s of this.sources) {
       const n = s as unknown as { playbackRate?: AudioParam };
-      if (n.playbackRate) n.playbackRate.setTargetAtTime(Math.max(0.06, rate), t, Math.max(0.005, ms / 3000));
+      if (n.playbackRate) {
+        setAudioParamTargetAtTime(
+          n.playbackRate, Math.max(0.06, rate), t, Math.max(0.005, ms / 3000), 1,
+        );
+      }
     }
   }
 
@@ -735,10 +767,10 @@ export class LoopVoice {
     this.disposed = true;
     const t = this.engine.now();
     const fade = Math.max(0.01, fadeMs / 1000);
-    this.amp.gain.cancelScheduledValues(t);
-    this.amp.gain.setValueAtTime(Math.max(0.0001, this.amp.gain.value), t);
-    this.amp.gain.exponentialRampToValueAtTime(0.0001, t + fade);
-    this.amp.gain.setValueAtTime(0, t + fade);
+    cancelAudioParamScheduledValues(this.amp.gain, t);
+    setAudioParamValueAtTime(this.amp.gain, Math.max(0.0001, this.amp.gain.value), t);
+    exponentialRampAudioParamToValueAtTime(this.amp.gain, 0.0001, t + fade);
+    setAudioParamValueAtTime(this.amp.gain, 0, t + fade);
     for (const s of this.sources) {
       try { s.stop(t + fade + 0.02); } catch { /* already stopped */ }
     }
@@ -837,6 +869,11 @@ export class AudioEngine {
     oneShots: 0, loops: 0, stolen: 0, culled: 0, crowded: 0,
     baked: 0, bakeMs: 0, bytes: 0,
     deferredAccepted: 0, deferredFlushed: 0, deferredBakeFailed: 0, deferredOverflow: 0,
+    get paramRepairs(): number {
+      return audioParamGuardStats.repairedValues
+        + audioParamGuardStats.repairedTimes
+        + audioParamGuardStats.repairedTimeConstants;
+    },
   };
 
   /* ---------------------------------------------------------------------- */
@@ -869,11 +906,11 @@ export class AudioEngine {
     /* -- master chain: duck -> limiter -> soft clip -> ceiling ------------- */
     this.masterDuck = gain(ctx, 1);
     this.limiter = ctx.createDynamicsCompressor();
-    this.limiter.threshold.value = AUDIO_LIMITER.threshold;
-    this.limiter.knee.value = AUDIO_LIMITER.knee;
-    this.limiter.ratio.value = AUDIO_LIMITER.ratio;
-    this.limiter.attack.value = AUDIO_LIMITER.attack;
-    this.limiter.release.value = AUDIO_LIMITER.release;
+    setAudioParamValue(this.limiter.threshold, AUDIO_LIMITER.threshold);
+    setAudioParamValue(this.limiter.knee, AUDIO_LIMITER.knee);
+    setAudioParamValue(this.limiter.ratio, AUDIO_LIMITER.ratio);
+    setAudioParamValue(this.limiter.attack, AUDIO_LIMITER.attack);
+    setAudioParamValue(this.limiter.release, AUDIO_LIMITER.release);
 
     this.clipper = shaper(ctx, AUDIO_SOFTCLIP_K, '4x', AUDIO_SOFTCLIP_POINTS);
     this.master = gain(ctx, this.muted ? 0 : AUDIO_MASTER_GAIN);
@@ -884,11 +921,11 @@ export class AudioEngine {
     /* -- five strips ------------------------------------------------------ */
     // SFX alone gets a glue compressor between its duck and the master bus.
     this.sfxGlue = ctx.createDynamicsCompressor();
-    this.sfxGlue.threshold.value = SFX_GLUE.threshold;
-    this.sfxGlue.knee.value = SFX_GLUE.knee;
-    this.sfxGlue.ratio.value = SFX_GLUE.ratio;
-    this.sfxGlue.attack.value = SFX_GLUE.attack;
-    this.sfxGlue.release.value = SFX_GLUE.release;
+    setAudioParamValue(this.sfxGlue.threshold, SFX_GLUE.threshold);
+    setAudioParamValue(this.sfxGlue.knee, SFX_GLUE.knee);
+    setAudioParamValue(this.sfxGlue.ratio, SFX_GLUE.ratio);
+    setAudioParamValue(this.sfxGlue.attack, SFX_GLUE.attack);
+    setAudioParamValue(this.sfxGlue.release, SFX_GLUE.release);
     const glueMakeup = gain(ctx, dbToGain(SFX_GLUE.makeupDb));
     this.sfxGlue.connect(glueMakeup).connect(this.masterDuck);
 
@@ -996,13 +1033,13 @@ export class AudioEngine {
     const strip = this.strips.get(name);
     if (strip === undefined) return;
     const v = Math.pow(clamp(percent, 0, 100) / 100, 2.2) * dbToGain(AUDIO_BUS_DB[name]);
-    strip.level.gain.setTargetAtTime(v, this.now(), 0.02);
+    setAudioParamTargetAtTime(strip.level.gain, v, this.now(), 0.02, 0);
   }
 
   setMasterVolume(percent: number): void {
     if (this.muted) return;
     const v = Math.pow(clamp(percent, 0, 100) / 100, 2.2) * AUDIO_MASTER_GAIN;
-    this.master.gain.setTargetAtTime(v, this.now(), 0.02);
+    setAudioParamTargetAtTime(this.master.gain, v, this.now(), 0.02, 0);
   }
 
   /**
@@ -1039,7 +1076,9 @@ export class AudioEngine {
     for (const f of strip.factors.values()) product *= f;
     if (Math.abs(product - strip.applied) < 1e-4) return;
     strip.applied = product;
-    strip.duck.gain.setTargetAtTime(product, this.now(), Math.max(0.005, ms / 3000));
+    setAudioParamTargetAtTime(
+      strip.duck.gain, product, this.now(), Math.max(0.005, ms / 3000), 1,
+    );
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1057,10 +1096,13 @@ export class AudioEngine {
    */
   spatial(x: number, y: number, z: number): Readonly<SpatialResult> {
     const out = this.spatialOut;
-    this.resolver(x, y, z, out);
+    this.resolver(
+      finiteAudioNumber(x, 0), finiteAudioNumber(y, 0), finiteAudioNumber(z, 0), out,
+    );
     const D = AUDIO_DISTANCE;
-    const zoom = out[2] > 0 ? out[2] : 1;
-    const tiles = Math.max(0, out[1]) / D.tileMetres;
+    const rawZoom = finiteAudioNumber(out[2], 1);
+    const zoom = rawZoom > 0 ? rawZoom : 1;
+    const tiles = Math.max(0, finiteAudioNumber(out[1], 0)) / D.tileMetres;
     const dz = tiles * zoom;
 
     const r = this.spatialResult;
@@ -1075,7 +1117,7 @@ export class AudioEngine {
 
     let send = D.sendNearDb + (D.sendFarDb - D.sendNearDb) * clamp(tiles / D.sendFarTiles, 0, 1);
     // Upper third of the playfield reads as further away: more room, same level.
-    if (out[3] > 1 - D.upperFrac) send += D.upperSendBoostDb;
+    if (finiteAudioNumber(out[3], 0) > 1 - D.upperFrac) send += D.upperSendBoostDb;
     r.sendDb = send;
 
     // Wide shots: trim the punch, lift the air.
@@ -1389,8 +1431,8 @@ export class AudioEngine {
     const spec = baked.spec;
     const ctx = this.ctx;
 
-    let g = dbToGain(spec.db) * (opts?.gain ?? 1);
-    let pan = opts?.pan ?? 0;
+    let g = dbToGain(spec.db) * finiteAudioNumber(opts?.gain ?? 1, 0);
+    let pan = finiteAudioNumber(opts?.pan ?? 0, 0);
     let lpHz = 0;
     let hpHz = 0;
     let sendDb = spec.sendDb ?? -200;
@@ -1411,13 +1453,17 @@ export class AudioEngine {
 
     if (!this.claimVoice(spec.category, g)) return false;
 
-    const when = this.now() + Math.max(0, opts?.delay ?? 0);
+    const when = this.now() + Math.max(0, finiteAudioNumber(opts?.delay ?? 0, 0));
     const src = ctx.createBufferSource();
     src.buffer = baked.buffers[baked.cursor % baked.buffers.length];
     baked.cursor++;
     const jitter = spec.rateJitter ?? 0;
-    src.playbackRate.value = opts?.rate ?? (jitter > 0 ? 1 + (Math.random() * 2 - 1) * jitter : 1);
-    if (opts?.detune) src.detune.value = opts.detune;
+    setAudioParamValue(
+      src.playbackRate,
+      opts?.rate ?? (jitter > 0 ? 1 + (Math.random() * 2 - 1) * jitter : 1),
+      1,
+    );
+    if (opts?.detune) setAudioParamValue(src.detune, opts.detune, 0);
 
     const amp = gain(ctx, g);
     let tail: AudioNode = amp;
@@ -1444,7 +1490,7 @@ export class AudioEngine {
     let out: AudioNode = tail;
     if (spec.positional !== false) {
       const p = ctx.createStereoPanner();
-      p.pan.value = clamp(pan, -1, 1);
+      setAudioParamValue(p.pan, clamp(pan, -1, 1), 0);
       tail.connect(p);
       out = p;
     }
@@ -1479,8 +1525,8 @@ export class AudioEngine {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    if (opts?.rate) src.playbackRate.value = opts.rate;
-    if (opts?.detune) src.detune.value = opts.detune;
+    if (opts?.rate) setAudioParamValue(src.playbackRate, opts.rate, 1);
+    if (opts?.detune) setAudioParamValue(src.detune, opts.detune, 0);
     const amp = gain(ctx, dbToGain(db) * (opts?.gain ?? 1));
     src.connect(amp);
     if (through !== null) amp.connect(through);
@@ -1567,10 +1613,10 @@ export class AudioEngine {
     const t = this.now();
     const r = Math.max(0.001, rampMs / 1000);
     try {
-      v.amp.gain.cancelScheduledValues(t);
-      v.amp.gain.setValueAtTime(Math.max(0.0001, v.amp.gain.value), t);
-      v.amp.gain.exponentialRampToValueAtTime(0.0001, t + r);
-      v.amp.gain.setValueAtTime(0, t + r);
+      cancelAudioParamScheduledValues(v.amp.gain, t);
+      setAudioParamValueAtTime(v.amp.gain, Math.max(0.0001, v.amp.gain.value), t);
+      exponentialRampAudioParamToValueAtTime(v.amp.gain, 0.0001, t + r);
+      setAudioParamValueAtTime(v.amp.gain, 0, t + r);
       v.src.stop(t + r + 0.002);
     } catch { /* the source may already have ended */ }
   }
@@ -1652,7 +1698,7 @@ export class AudioEngine {
     this.convolverA.buffer = ir;
     this.convolverB.buffer = ir;
     this.theatre = theatre;
-    this.reverbReturn.gain.value = dbToGain(AUDIO_REVERB[theatre].returnDb);
+    setAudioParamValue(this.reverbReturn.gain, dbToGain(AUDIO_REVERB[theatre].returnDb), 0);
     const wide = await this.makeImpulse(theatre, WIDE_RT_SCALE);
     if (wide !== null) this.wideConv.buffer = wide;
   }
@@ -1672,19 +1718,19 @@ export class AudioEngine {
     const fade = AUDIO_REVERB_CROSSFADE_SEC;
     if (this.convUsingA) {
       this.convolverB.buffer = ir;
-      this.convGainB.gain.setValueAtTime(this.convGainB.gain.value, t);
-      this.convGainB.gain.linearRampToValueAtTime(1, t + fade);
-      this.convGainA.gain.setValueAtTime(this.convGainA.gain.value, t);
-      this.convGainA.gain.linearRampToValueAtTime(0, t + fade);
+      setAudioParamValueAtTime(this.convGainB.gain, this.convGainB.gain.value, t);
+      linearRampAudioParamToValueAtTime(this.convGainB.gain, 1, t + fade);
+      setAudioParamValueAtTime(this.convGainA.gain, this.convGainA.gain.value, t);
+      linearRampAudioParamToValueAtTime(this.convGainA.gain, 0, t + fade);
     } else {
       this.convolverA.buffer = ir;
-      this.convGainA.gain.setValueAtTime(this.convGainA.gain.value, t);
-      this.convGainA.gain.linearRampToValueAtTime(1, t + fade);
-      this.convGainB.gain.setValueAtTime(this.convGainB.gain.value, t);
-      this.convGainB.gain.linearRampToValueAtTime(0, t + fade);
+      setAudioParamValueAtTime(this.convGainA.gain, this.convGainA.gain.value, t);
+      linearRampAudioParamToValueAtTime(this.convGainA.gain, 1, t + fade);
+      setAudioParamValueAtTime(this.convGainB.gain, this.convGainB.gain.value, t);
+      linearRampAudioParamToValueAtTime(this.convGainB.gain, 0, t + fade);
     }
     this.convUsingA = !this.convUsingA;
-    this.reverbReturn.gain.setTargetAtTime(dbToGain(AUDIO_REVERB[theatre].returnDb), t, 0.4);
+    setAudioParamTargetAtTime(this.reverbReturn.gain, dbToGain(AUDIO_REVERB[theatre].returnDb), t, 0.4);
   }
 
   /**
@@ -1755,8 +1801,8 @@ export class AudioEngine {
       const damp = biquad(oc, 'lowpass', cfg.dampHz, 0.7);
       const g = gain(oc, b === 1 ? 0.9 : 0.75);
       const decay = Math.max(0.05, rt * IR_BAND_DECAY[b]);
-      g.gain.setValueAtTime(g.gain.value, 0);
-      g.gain.exponentialRampToValueAtTime(0.0001, decay);
+      setAudioParamValueAtTime(g.gain, g.gain.value, 0);
+      exponentialRampAudioParamToValueAtTime(g.gain, 0.0001, decay);
       src.connect(f).connect(damp).connect(g).connect(oc.destination);
     }
 

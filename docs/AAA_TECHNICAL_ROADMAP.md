@@ -410,7 +410,10 @@ facades and pre/post production chunk evidence.
    `docs/reviews/batch11-gltf-runtime-package.md`.
 2. **Next:** `@voltmarch/audio-runtime`: WebAudio lifecycle, buses and buffer utilities shared by
    the game and browser audio probe. First break the `AudioEngine`/`Samples` cycle. Keep game recipes,
-   EVA, barks, music policy, positional adapter and `audio.system.ts` local.
+   EVA, barks, music policy, positional adapter and `audio.system.ts` local. The pre-extraction
+   runtime hardening is complete: one `AudioParamGuard` now owns every parameter value/automation
+   write, repairs non-finite values/times before Web Audio can throw, and is enforced by a
+   source-boundary test. Move that seam rather than duplicating it during extraction.
 3. `@voltmarch/procedural-kernels`: pure surface, terrain and water typed-array kernels plus data
    protocol, shared by the worker, main-thread fallback and benchmark/visual tools. This is the
    natural future WASM ABI host.

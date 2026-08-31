@@ -23,6 +23,14 @@
  * ============================================================================
  */
 
+import {
+  cancelAudioParamScheduledValues,
+  exponentialRampAudioParamToValueAtTime,
+  linearRampAudioParamToValueAtTime,
+  setAudioParamTargetAtTime,
+  setAudioParamValue,
+  setAudioParamValueAtTime,
+} from './AudioParamGuard';
 import { FxKind, FX_KIND_COUNT } from '../core/types';
 import { AUDIO_AMBIENCE } from '../core/config';
 import {
@@ -377,9 +385,9 @@ function renderTeslaCharge(kit: BakeKit): void {
   sweep(bp.frequency, 0, 300, 2000, 700);
   const rm = ringMod(oc, 3000, 0, dur, 0.25);
   const g = gain(oc, 1);
-  g.gain.setValueAtTime(dbToGain(-30), 0);
-  g.gain.exponentialRampToValueAtTime(dbToGain(-9), dur);
-  g.gain.exponentialRampToValueAtTime(0.0001, dur + 0.05);
+  setAudioParamValueAtTime(g.gain, dbToGain(-30), 0);
+  exponentialRampAudioParamToValueAtTime(g.gain, dbToGain(-9), dur);
+  exponentialRampAudioParamToValueAtTime(g.gain, 0.0001, dur + 0.05);
 
   // 7 Hz flutter rising to 19 Hz — the instability that sells the charge.
   const flutter = osc(oc, 'sine', 7, 0, dur);
@@ -394,9 +402,9 @@ function renderTeslaCharge(kit: BakeKit): void {
   {
     const sg = gain(oc, 1);
     const slp = biquad(oc, 'lowpass', 180, 1.4);
-    sg.gain.setValueAtTime(dbToGain(-34), 0);
-    sg.gain.exponentialRampToValueAtTime(dbToGain(-15), dur);
-    sg.gain.exponentialRampToValueAtTime(0.0001, dur + 0.06);
+    setAudioParamValueAtTime(sg.gain, dbToGain(-34), 0);
+    exponentialRampAudioParamToValueAtTime(sg.gain, dbToGain(-15), dur);
+    exponentialRampAudioParamToValueAtTime(sg.gain, 0.0001, dur + 0.06);
     noiseSrc(kit, kit.pink, 0, dur + 0.05).connect(slp).connect(sg).connect(kit.out);
   }
 
@@ -484,13 +492,13 @@ function renderTeslaDischarge(kit: BakeKit): void {
     const hp = biquad(oc, 'highpass', 2000, 0.8);
     const start = 0.2;
     const steps = Math.floor(0.3 * 60);
-    g.gain.setValueAtTime(0, start);
+    setAudioParamValueAtTime(g.gain, 0, start);
     for (let s = 0; s < steps; s++) {
       const t = start + s / 60;
       const open = rng() > 0.42 ? lvl * (1 - s / steps) : 0;
-      g.gain.setValueAtTime(open, t);
+      setAudioParamValueAtTime(g.gain, open, t);
     }
-    g.gain.setValueAtTime(0, start + steps / 60);
+    setAudioParamValueAtTime(g.gain, 0, start + steps / 60);
     noiseSrc(kit, kit.white, start, 0.32).connect(hp).connect(g).connect(rm.input);
   }
 
@@ -571,9 +579,9 @@ function renderDog(kit: BakeKit): void {
     const t = b * rand(rng, 0.19, 0.24);
     const r = rand(rng, 0.92, 1.10);
     const bp = biquad(oc, 'bandpass', 700 * r, 1.6);
-    bp.frequency.setValueAtTime(700 * r, t);
-    bp.frequency.linearRampToValueAtTime(1800 * r, t + 0.06);
-    bp.frequency.linearRampToValueAtTime(500 * r, t + 0.18);
+    setAudioParamValueAtTime(bp.frequency, 700 * r, t);
+    linearRampAudioParamToValueAtTime(bp.frequency, 1800 * r, t + 0.06);
+    linearRampAudioParamToValueAtTime(bp.frequency, 500 * r, t + 0.18);
     const g = gain(oc, dbToGain(-6));
     envSustain(g.gain, t, 4, 1.0, 40, 0.4, 40, 140);
     for (const f of [340, 510, 680]) osc(oc, 'sawtooth', f * r, t, 0.22).connect(bp);
@@ -1005,7 +1013,7 @@ function renderEngine(kit: BakeKit, heavy: boolean): void {
   // Two saws a fifth apart, detuned +9 cents. That beat is the diesel wobble.
   const a = osc(oc, 'sawtooth', base, 0, dur);
   const b = osc(oc, 'sawtooth', base * 1.5, 0, dur);
-  b.detune.value = 9;
+  setAudioParamValue(b.detune, 9);
   a.connect(lp);
   const bg = gain(oc, 0.7);
   b.connect(bg).connect(lp);
@@ -1025,9 +1033,9 @@ function renderEngine(kit: BakeKit, heavy: boolean): void {
       // Deterministic per-cylinder variation, and it has to LOOP: the level of
       // pulse 0 must equal the level the loop point lands on.
       const v = 0.55 + 0.45 * Math.abs(Math.sin(i * 2.399));
-      pg.gain.setValueAtTime(0.0001, t);
-      pg.gain.linearRampToValueAtTime(peak * v, t + 0.0008);
-      pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.009);
+      setAudioParamValueAtTime(pg.gain, 0.0001, t);
+      linearRampAudioParamToValueAtTime(pg.gain, peak * v, t + 0.0008);
+      exponentialRampAudioParamToValueAtTime(pg.gain, 0.0001, t + 0.009);
     }
     noiseSrc(kit, kit.white, 0, dur).connect(pbp).connect(pg).connect(kit.out);
   }
@@ -1102,7 +1110,7 @@ function renderChime(kit: BakeKit): void {
   bus.connect(kit.out);
   // 90 ms delay at feedback 0.2, wet -20 dB. One tap is enough at this length.
   const dly = oc.createDelay(0.5);
-  dly.delayTime.value = 0.09;
+  setAudioParamValue(dly.delayTime, 0.09);
   const fb = gain(oc, 0.2);
   const wet = gain(oc, dbToGain(-20));
   bus.connect(dly).connect(fb).connect(dly);
@@ -1149,15 +1157,15 @@ function renderError(kit: BakeKit): void {
   bp.connect(drive).connect(g).connect(kit.out);
   const a = osc(oc, 'square', 110, 0, 0.32);
   const b = osc(oc, 'square', 110, 0, 0.32);
-  b.detune.value = -12;
+  setAudioParamValue(b.detune, -12);
   a.connect(bp); b.connect(bp);
   // Three 55 ms pulses with 45 ms gaps, written straight onto the output gain.
   for (let i = 0; i < 3; i++) {
     const t = i * 0.1;
-    g.gain.setValueAtTime(0, t);
-    g.gain.setValueAtTime(dbToGain(-11), t + 0.002);
-    g.gain.setValueAtTime(dbToGain(-11), t + 0.055);
-    g.gain.setValueAtTime(0, t + 0.057);
+    setAudioParamValueAtTime(g.gain, 0, t);
+    setAudioParamValueAtTime(g.gain, dbToGain(-11), t + 0.002);
+    setAudioParamValueAtTime(g.gain, dbToGain(-11), t + 0.055);
+    setAudioParamValueAtTime(g.gain, 0, t + 0.057);
   }
 }
 
@@ -1431,9 +1439,9 @@ export class AmbienceRig {
     // Two cutoff LFOs at 0.05 and 0.13 Hz, per the desert row of the table.
     const mid = (cfg.lpMinHz + cfg.lpMaxHz) * 0.5;
     const span = (cfg.lpMaxHz - cfg.lpMinHz) * 0.5;
-    lp.frequency.value = mid;
-    const lfoA = ctx.createOscillator(); lfoA.frequency.value = 0.05;
-    const lfoB = ctx.createOscillator(); lfoB.frequency.value = 0.13;
+    setAudioParamValue(lp.frequency, mid);
+    const lfoA = ctx.createOscillator(); setAudioParamValue(lfoA.frequency, 0.05);
+    const lfoB = ctx.createOscillator(); setAudioParamValue(lfoB.frequency, 0.13);
     const depthA = gain(ctx, span * 0.72);
     const depthB = gain(ctx, span * 0.28);
     lfoA.connect(depthA).connect(lp.frequency);
@@ -1441,7 +1449,7 @@ export class AmbienceRig {
     lfoA.start(); lfoB.start();
 
     // Gain LFO at 0.06 Hz, depth 0.35 — gusts you feel before you hear.
-    const lfoG = ctx.createOscillator(); lfoG.frequency.value = 0.06;
+    const lfoG = ctx.createOscillator(); setAudioParamValue(lfoG.frequency, 0.06);
     const depthG = gain(ctx, 0.35);
     lfoG.connect(depthG).connect(loop.amp.gain);
     lfoG.start();
@@ -1460,7 +1468,7 @@ export class AmbienceRig {
     if (theatre === 'snow') {
       const wg = gain(ctx, dbToGain(-34));
       const bp = biquad(ctx, 'bandpass', 1250, 7);
-      const wander = ctx.createOscillator(); wander.frequency.value = 0.11;
+      const wander = ctx.createOscillator(); setAudioParamValue(wander.frequency, 0.11);
       const wd = gain(ctx, 180);
       wander.connect(wd).connect(bp.frequency);
       wander.start();
@@ -1497,9 +1505,9 @@ export class AmbienceRig {
       const lp = this.windLp;
       if (loop !== null && lp !== null && loop.alive) {
         const t = this.engine.now();
-        lp.frequency.cancelScheduledValues(t);
-        lp.frequency.setTargetAtTime(1400, t, 0.8);
-        lp.frequency.setTargetAtTime(lp.frequency.value, t + 2.5, 1.4);
+        cancelAudioParamScheduledValues(lp.frequency, t);
+        setAudioParamTargetAtTime(lp.frequency, 1400, t, 0.8);
+        setAudioParamTargetAtTime(lp.frequency, lp.frequency.value, t + 2.5, 1.4);
         loop.setGain(dbToGain(cfg.db + 5), 900);
         setTimeout(() => loop.alive && loop.setGain(dbToGain(cfg.db), 1600), 2500);
       }
@@ -1533,7 +1541,7 @@ export class AmbienceRig {
     for (const f of [50.0, 50.6, 75.0]) {
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
-      o.frequency.value = f;
+      setAudioParamValue(o.frequency, f);
       o.connect(lp);
       o.start();
       this.humOscs.push(o);
@@ -1554,7 +1562,7 @@ export class AmbienceRig {
     // 1.6 Hz flutter. The player hears the brownout before EVA announces it.
     const t = this.engine.now();
     for (const o of this.humOscs) {
-      o.detune.setTargetAtTime(lowPower ? AUDIO_AMBIENCE.humSagCents : 0, t, AUDIO_AMBIENCE.humSagSec / 3);
+      setAudioParamTargetAtTime(o.detune, lowPower ? AUDIO_AMBIENCE.humSagCents : 0, t, AUDIO_AMBIENCE.humSagSec / 3);
     }
   }
 
@@ -1590,7 +1598,7 @@ export class AmbienceRig {
     // Two slow sines gate the level: the swell, not individual waves.
     for (const [f, d] of [[0.35, 0.35], [0.9, 0.25]] as const) {
       const lfo = ctx.createOscillator();
-      lfo.frequency.value = f;
+      setAudioParamValue(lfo.frequency, f);
       const depth = gain(ctx, d);
       lfo.connect(depth).connect(loop.amp.gain);
       lfo.start();
