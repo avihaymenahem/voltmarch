@@ -37,3 +37,10 @@ footer links in `public/index.html` aligned if either destination changes.
 ## Key art
 
 `public/assets/hero-1920.webp`, `hero-1100.webp`, and `og-voltmarch.webp` are delivery derivatives of an original poster generated for VOLTMARCH with OpenAI's built-in image-generation tool on 24 August 2026. The final prompt intentionally reserves the left side for live HTML copy and forbids baked text, logos, watermarks, UI, screenshots, and recognizable third-party designs.
+
+## Field archive
+
+The interactive archive on the home page is generated from `marketing/social-cards/manifest.json`.
+During each website build, all card masters are validated and converted to 720-pixel-wide WebP
+delivery assets under `dist/cards/`. The originals remain untouched; Cloudflare Pages serves and
+caches the optimized derivatives alongside the site. Do not hand-edit `dist/cards/`.

@@ -28,7 +28,7 @@
   <div class="noise" aria-hidden="true"></div>
   <header class="site-header" data-header>
     <a class="brand" href="#top" aria-label="VOLTMARCH home"><img src="/assets/logo.webp" alt="VOLTMARCH" width="720" height="215"></a>
-    <nav aria-label="Primary navigation"><a href="#intel">Intel</a><a href="#factions">Factions</a><a href="#enlist">Updates</a><a href="https://discord.gg/pvJGJyafU3" target="_blank" rel="noopener noreferrer">Discord</a><a href="https://github.com/avihaymenahem/voltmarch" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
+    <nav aria-label="Primary navigation"><a href="#intel">Intel</a><a href="#factions">Factions</a><a href="#archive">Archive</a><a href="#enlist">Updates</a><a href="https://discord.gg/pvJGJyafU3" target="_blank" rel="noopener noreferrer">Discord</a><a href="https://github.com/avihaymenahem/voltmarch" target="_blank" rel="noopener noreferrer">GitHub</a></nav>
     <a class="header-cta" href="#enlist"><span>Join command</span><i aria-hidden="true"></i></a>
   </header>
   <main id="main">
@@ -70,6 +70,42 @@
         <article class="faction-card faction-card--meridian reveal"><span class="faction-number">03</span><div class="faction-sigil" aria-hidden="true"><b>M</b></div><div><small>Energy / Control</small><h3>Meridian Pact</h3><p>Solar warfare and geometry as a weapon: unusual lines, punishing zones and calculated escalation.</p></div></article>
         <article class="faction-card faction-card--reclamation reveal"><span class="faction-number">04</span><div class="faction-sigil" aria-hidden="true"><b>R</b></div><div><small>Salvage / Attrition</small><h3>Reclamation Directorate</h3><p>Nothing is wasted. Improvised war machines, recovered strength and victories assembled from the wreckage.</p></div></article>
       </div>
+    </section>
+    <section class="archive section-shell" id="archive" aria-labelledby="archive-title" data-card-archive data-faction="allies">
+      <div class="section-kicker"><span>03</span><i></i><b>Field archive</b></div>
+      <div class="archive-heading reveal"><div><p class="eyebrow"><span></span> Declassified war materiel</p><h2 id="archive-title">Know every piece<br><em>on the board.</em></h2></div><p>Explore the complete VOLTMARCH faction roster as collectible field cards. Filter by doctrine or asset class, then cycle through every unit, vessel, aircraft and military structure.</p></div>
+      <div class="archive-console reveal" aria-busy="true">
+        <div class="archive-filters" aria-label="Card archive filters">
+          <fieldset><legend>Faction</legend><div class="filter-row" data-faction-filters>
+            <button type="button" data-filter="faction" data-value="all" aria-pressed="true">All factions</button>
+            <button type="button" data-filter="faction" data-value="allies" aria-pressed="false">Allies</button>
+            <button type="button" data-filter="faction" data-value="soviets" aria-pressed="false">Soviets</button>
+            <button type="button" data-filter="faction" data-value="meridian-pact" aria-pressed="false">Meridian Pact</button>
+            <button type="button" data-filter="faction" data-value="reclamation" aria-pressed="false">Reclamation</button>
+          </div></fieldset>
+          <fieldset><legend>Asset class</legend><div class="filter-row" data-type-filters>
+            <button type="button" data-filter="type" data-value="all" aria-pressed="true">All types</button>
+            <button type="button" data-filter="type" data-value="infantry" aria-pressed="false">Infantry</button>
+            <button type="button" data-filter="type" data-value="vehicles" aria-pressed="false">Vehicles</button>
+            <button type="button" data-filter="type" data-value="aircraft" aria-pressed="false">Aircraft</button>
+            <button type="button" data-filter="type" data-value="ships" aria-pressed="false">Ships</button>
+            <button type="button" data-filter="type" data-value="buildings" aria-pressed="false">Buildings</button>
+            <button type="button" data-filter="type" data-value="defences" aria-pressed="false">Defences</button>
+          </div></fieldset>
+        </div>
+        <div class="archive-body">
+          <div class="card-stage" data-card-stage tabindex="0" aria-label="Collectible card slideshow. Use left and right arrow keys to navigate.">
+            <div class="card-scan" aria-hidden="true"></div>
+            <img data-card-image src="/assets/logo.webp" alt="Loading the VOLTMARCH field archive" width="720" height="1278">
+            <button class="slide-arrow slide-arrow--previous" type="button" data-slide-previous aria-label="Previous card"><span aria-hidden="true">←</span></button>
+            <button class="slide-arrow slide-arrow--next" type="button" data-slide-next aria-label="Next card"><span aria-hidden="true">→</span></button>
+            <button class="slide-toggle" type="button" data-slide-toggle aria-pressed="true"><span data-play-icon aria-hidden="true">Ⅱ</span><span class="sr-only" data-play-label>Pause rotation</span></button>
+            <span class="card-position" data-card-position>Loading archive…</span>
+          </div>
+        </div>
+        <p class="archive-error" data-archive-error role="status"></p>
+      </div>
+      <noscript><p class="archive-noscript">Enable JavaScript to browse the interactive field archive.</p></noscript>
     </section>
     <section class="campaign section-shell" aria-labelledby="campaign-title"><div class="campaign-panel reveal"><div class="campaign-code" aria-hidden="true"><span>THEATRE // CONTINENTAL</span><strong>37</strong><i>AUTHORED OPERATIONS</i></div><div class="campaign-copy"><p class="eyebrow"><span></span> The war remembers</p><h2 id="campaign-title">A campaign built<br>for commanders.</h2><p>Four perspectives. Mission briefings, command transmissions, optional objectives and medals that track how cleanly you got the job done.</p></div></div></section>
     <section class="enlist" id="enlist" aria-labelledby="enlist-title"><div class="enlist-lines" aria-hidden="true"></div><div class="enlist-inner reveal"><p class="eyebrow"><span></span> Priority transmission</p><h2 id="enlist-title">Be there when<br><em>the line opens.</em></h2><p>Join the command list for release news, faction reveals and major playtest calls.</p><form class="signup-form signup-form--footer" data-signup-form novalidate><label class="sr-only" for="footer-email">Email address</label><div class="signup-control"><span class="signup-icon" aria-hidden="true">@</span><input id="footer-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" placeholder="YOUR EMAIL ADDRESS" required><input class="honeypot" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true"><input name="source" type="hidden" value="footer"><button type="submit"><span>Join command</span><b aria-hidden="true">↗</b></button></div><p class="form-note">By joining, you agree to receive VOLTMARCH updates. Read our <a href="/privacy.html">privacy note</a>.</p><p class="form-status" data-form-status aria-live="polite"></p></form></div></section>

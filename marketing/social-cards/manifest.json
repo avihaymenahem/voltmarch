@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedCount": 133,
+  "expectedCount": 139,
   "generatedAt": "2026-08-31",
   "generator": "OpenAI ImageGen",
   "rosterSources": [
@@ -8,9 +8,9 @@
     "apps/game/src/data/Defs.ts"
   ],
   "qa": {
-    "imageCount": 133,
-    "portraitImages": 133,
-    "uniqueFileHashes": 133,
+    "imageCount": 139,
+    "portraitImages": 139,
+    "uniqueFileHashes": 139,
     "missingOutputs": 0,
     "undersizedOutputs": 0,
     "rightSideGuttersRepaired": 36,
@@ -909,6 +909,54 @@
       "status": "generated"
     },
     {
+      "key": "meridian_ecliptic",
+      "name": "Ecliptic Heavy Bomber",
+      "faction": "meridian-pact",
+      "type": "aircraft",
+      "route": "AIR",
+      "gameplayKey": "mrdEcliptic",
+      "blurb": "Focuses one sun charge, then returns to its Aerodrome to rearm.",
+      "stats": {
+        "hp": 300,
+        "cost": 2400,
+        "buildTime": 29,
+        "armor": 1,
+        "speed": 10.6,
+        "sight": 36,
+        "damage": 575,
+        "range": 2,
+        "cooldown": 0.1
+      },
+      "reference": "docs/concepts/meshy/meridian-ecliptic-heavy-bomber-v1/ecliptic-meshy-reference.png",
+      "collectorId": "MRD-AIR-002",
+      "rarity": "RARE",
+      "output": "meridian-pact/aircraft/meridian-ecliptic.png",
+      "status": "generated"
+    },
+    {
+      "key": "meridian_solar_aerodrome",
+      "name": "Solar Aerodrome",
+      "faction": "meridian-pact",
+      "type": "buildings",
+      "route": "BLD",
+      "gameplayKey": "mrdSolarAerodrome",
+      "blurb": "Builds and rearms up to four Ecliptic heavy bombers.",
+      "stats": {
+        "hp": 1450,
+        "cost": 3000,
+        "buildTime": 31,
+        "armor": 4,
+        "sight": 30,
+        "power": -90,
+        "footprint": "6x6"
+      },
+      "reference": "docs/concepts/meshy/meridian-solar-aerodrome-v1/solar-aerodrome-meshy-reference.png",
+      "collectorId": "MRD-BLD-013",
+      "rarity": "EPIC",
+      "output": "meridian-pact/buildings/meridian-solar-aerodrome.png",
+      "status": "generated"
+    },
+    {
       "key": "meridian_chapterhouse",
       "name": "Chapterhouse",
       "faction": "meridian-pact",
@@ -1645,6 +1693,54 @@
       "status": "generated"
     },
     {
+      "key": "reclaim_scrapvulture",
+      "name": "Scrapvulture Heavy Bomber",
+      "faction": "reclamation",
+      "type": "aircraft",
+      "route": "AIR",
+      "gameplayKey": "rclScrapvulture",
+      "blurb": "Drops one wide slag cask, then returns to its Roost to rearm.",
+      "stats": {
+        "hp": 360,
+        "cost": 2100,
+        "buildTime": 27,
+        "armor": 1,
+        "speed": 9.6,
+        "sight": 32,
+        "damage": 480,
+        "range": 2,
+        "cooldown": 0.1
+      },
+      "reference": "docs/concepts/meshy/reclamation-scrapvulture-heavy-bomber-v1/scrapvulture-meshy-reference.png",
+      "collectorId": "RCL-AIR-002",
+      "rarity": "RARE",
+      "output": "reclamation/aircraft/reclaim-scrapvulture.png",
+      "status": "generated"
+    },
+    {
+      "key": "reclaim_carrion_roost",
+      "name": "Carrion Roost",
+      "faction": "reclamation",
+      "type": "buildings",
+      "route": "BLD",
+      "gameplayKey": "rclCarrionRoost",
+      "blurb": "Builds and rearms up to four Scrapvulture heavy bombers.",
+      "stats": {
+        "hp": 1600,
+        "cost": 3000,
+        "buildTime": 31,
+        "armor": 4,
+        "sight": 28,
+        "power": -90,
+        "footprint": "6x6"
+      },
+      "reference": "docs/concepts/meshy/reclamation-carrion-roost-v1/carrion-roost-meshy-reference.png",
+      "collectorId": "RCL-BLD-013",
+      "rarity": "EPIC",
+      "output": "reclamation/buildings/reclaim-carrion-roost.png",
+      "status": "generated"
+    },
+    {
       "key": "reclaim_breakeryard",
       "name": "Breaker Yard",
       "faction": "reclamation",
@@ -2356,6 +2452,54 @@
       "collectorId": "SOV-AIR-001",
       "rarity": "RARE",
       "output": "soviets/aircraft/soviet-mig.png",
+      "status": "generated"
+    },
+    {
+      "key": "soviet_molot",
+      "name": "Molot Heavy Bomber",
+      "faction": "soviets",
+      "type": "aircraft",
+      "route": "AIR",
+      "gameplayKey": "sovietMolot",
+      "blurb": "Drops one demolition bomb, then returns to its Works to rearm.",
+      "stats": {
+        "hp": 390,
+        "cost": 2200,
+        "buildTime": 28,
+        "armor": 1,
+        "speed": 9.2,
+        "sight": 34,
+        "damage": 650,
+        "range": 2,
+        "cooldown": 0.1
+      },
+      "reference": "docs/concepts/meshy/soviet-molot-heavy-bomber-v1/molot-meshy-reference.png",
+      "collectorId": "SOV-AIR-002",
+      "rarity": "RARE",
+      "output": "soviets/aircraft/soviet-molot.png",
+      "status": "generated"
+    },
+    {
+      "key": "soviet_heavy_aviation_works",
+      "name": "Heavy Aviation Works",
+      "faction": "soviets",
+      "type": "buildings",
+      "route": "BLD",
+      "gameplayKey": "sovietAviationWorks",
+      "blurb": "Builds and rearms up to four Molot heavy bombers.",
+      "stats": {
+        "hp": 1750,
+        "cost": 3000,
+        "buildTime": 32,
+        "armor": 4,
+        "sight": 28,
+        "power": -100,
+        "footprint": "6x6"
+      },
+      "reference": "docs/concepts/meshy/soviet-heavy-aviation-works-v1/heavy-aviation-works-meshy-reference.png",
+      "collectorId": "SOV-BLD-014",
+      "rarity": "EPIC",
+      "output": "soviets/buildings/soviet-heavy-aviation-works.png",
       "status": "generated"
     },
     {

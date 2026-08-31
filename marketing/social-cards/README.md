@@ -37,5 +37,6 @@ and a short in-world line. The official logo source is
 The approved master is `allies/aircraft/allied-albatross.png`. It is the layout and finish
 reference for the full set, not a source for copying the Albatross silhouette into other cards.
 
-`manifest.json` is the roster and generation ledger. Its expected count is 133 cards: 36 Allies,
-36 Soviets, 31 Meridian Pact, and 30 Reclamation.
+`manifest.json` is the roster and generation ledger. Its expected count is 139 cards: 36 Allies,
+38 Soviets, 33 Meridian Pact, and 32 Reclamation. Every faction includes its dedicated strategic
+bomber and four-bay bomber base.

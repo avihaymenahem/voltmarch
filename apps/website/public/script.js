@@ -54,4 +54,139 @@
       }
     });
   });
+
+  const archive = document.querySelector('[data-card-archive]');
+  if (archive) {
+    const consoleNode = archive.querySelector('.archive-console');
+    const stage = archive.querySelector('[data-card-stage]');
+    const image = archive.querySelector('[data-card-image]');
+    const position = archive.querySelector('[data-card-position]');
+    const toggle = archive.querySelector('[data-slide-toggle]');
+    const playIcon = archive.querySelector('[data-play-icon]');
+    const playLabel = archive.querySelector('[data-play-label]');
+    const error = archive.querySelector('[data-archive-error]');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const factionLabels = {
+      allies: 'Allied Forces',
+      soviets: 'Soviet Union',
+      'meridian-pact': 'Meridian Pact',
+      reclamation: 'Reclamation Directorate',
+    };
+    const typeLabels = {
+      infantry: 'Infantry', vehicles: 'Vehicle', aircraft: 'Aircraft', ships: 'Naval vessel',
+      buildings: 'Production structure', defences: 'Defensive structure',
+    };
+    let cards = [];
+    let filteredCards = [];
+    let currentIndex = 0;
+    let factionFilter = 'all';
+    let typeFilter = 'all';
+    let playing = !prefersReducedMotion;
+    let pointerInside = false;
+
+    const setPlaying = (nextPlaying) => {
+      playing = nextPlaying;
+      toggle?.setAttribute('aria-pressed', String(playing));
+      if (playIcon) playIcon.textContent = playing ? 'Ⅱ' : '▶';
+      if (playLabel) playLabel.textContent = playing ? 'Pause rotation' : 'Resume rotation';
+    };
+
+    const preloadNeighbor = (offset) => {
+      if (filteredCards.length < 2) return;
+      const candidate = filteredCards[(currentIndex + offset + filteredCards.length) % filteredCards.length];
+      const preload = new Image();
+      preload.src = candidate.image;
+    };
+
+    const renderCard = (direction = 0) => {
+      if (!filteredCards.length) return;
+      currentIndex = (currentIndex + filteredCards.length) % filteredCards.length;
+      const card = filteredCards[currentIndex];
+      archive.dataset.faction = card.faction;
+      stage?.querySelectorAll('.card-image-outgoing').forEach((outgoing) => outgoing.remove());
+      if (direction && image.dataset.ready === 'true') {
+        const outgoing = image.cloneNode();
+        outgoing.removeAttribute('data-card-image');
+        outgoing.removeAttribute('alt');
+        outgoing.setAttribute('aria-hidden', 'true');
+        outgoing.className = `card-image-outgoing card-image-outgoing--${direction > 0 ? 'forward' : 'backward'}`;
+        stage?.append(outgoing);
+        window.setTimeout(() => outgoing.remove(), 520);
+      }
+      image.classList.remove('card-image-entering--forward', 'card-image-entering--backward');
+      stage?.classList.add('is-changing');
+      image.onload = () => {
+        stage?.classList.remove('is-changing');
+        image.dataset.ready = 'true';
+        if (!direction) return;
+        void image.offsetWidth;
+        image.classList.add(`card-image-entering--${direction > 0 ? 'forward' : 'backward'}`);
+      };
+      image.src = card.image;
+      image.alt = `${card.name}, ${factionLabels[card.faction]} ${typeLabels[card.type]} collectible card`;
+      image.width = card.width;
+      image.height = card.height;
+      if (position) position.textContent = `${String(currentIndex + 1).padStart(3, '0')} / ${String(filteredCards.length).padStart(3, '0')}`;
+      preloadNeighbor(1);
+      preloadNeighbor(-1);
+    };
+
+    const move = (direction) => {
+      if (!filteredCards.length) return;
+      currentIndex += direction;
+      renderCard(direction);
+    };
+
+    const applyFilters = () => {
+      filteredCards = cards.filter((card) => (
+        (factionFilter === 'all' || card.faction === factionFilter)
+        && (typeFilter === 'all' || card.type === typeFilter)
+      ));
+      currentIndex = 0;
+      renderCard(cards.length === filteredCards.length ? 0 : 1);
+    };
+
+    archive.querySelectorAll('[data-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        const value = button.dataset.value;
+        archive.querySelectorAll(`[data-filter="${filter}"]`).forEach((candidate) => {
+          candidate.setAttribute('aria-pressed', String(candidate === button));
+        });
+        if (filter === 'faction') factionFilter = value;
+        if (filter === 'type') typeFilter = value;
+        applyFilters();
+      });
+    });
+    archive.querySelectorAll('[data-slide-previous]').forEach((button) => button.addEventListener('click', () => move(-1)));
+    archive.querySelectorAll('[data-slide-next]').forEach((button) => button.addEventListener('click', () => move(1)));
+    toggle?.addEventListener('click', () => setPlaying(!playing));
+    stage?.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      move(event.key === 'ArrowLeft' ? -1 : 1);
+    });
+    stage?.addEventListener('pointerenter', () => { pointerInside = true; });
+    stage?.addEventListener('pointerleave', () => { pointerInside = false; });
+    setPlaying(playing);
+    window.setInterval(() => {
+      if (playing && !pointerInside && document.visibilityState === 'visible') move(1);
+    }, 6500);
+
+    fetch('/cards/manifest.json', { headers: { accept: 'application/json' } })
+      .then((response) => {
+        if (!response.ok) throw new Error('The field archive is temporarily unavailable.');
+        return response.json();
+      })
+      .then((manifest) => {
+        if (!Array.isArray(manifest.cards) || !manifest.cards.length) throw new Error('No field cards were received.');
+        cards = manifest.cards;
+        consoleNode?.setAttribute('aria-busy', 'false');
+        applyFilters();
+      })
+      .catch((requestError) => {
+        consoleNode?.setAttribute('aria-busy', 'false');
+        if (error) error.textContent = requestError instanceof Error ? requestError.message : 'The field archive is temporarily unavailable.';
+      });
+  }
 })();
