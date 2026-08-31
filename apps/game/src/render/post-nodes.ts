@@ -62,6 +62,7 @@ import {
   DoubleSide,
   HalfFloatType,
   MeshBasicNodeMaterial,
+  NodeUpdateType,
   RGBAFormat,
   RenderPipeline,
   UnsignedByteType,
@@ -99,6 +100,7 @@ const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 /** An `RTTNode` — see the identical alias and reasoning in `nodes/ao-node.ts`. */
 type RttNode = TextureNode & {
   setResolutionScale(scale: number): void;
+  updateBeforeType: string;
   readonly renderTarget: { texture: { name: string }; dispose(): void };
 };
 
@@ -178,6 +180,8 @@ export interface PostGraph {
   readonly bloom: BloomNodes | null;
   /** Full-resolution HDR materialisation sampled by BloomNode's half-res high pass. */
   readonly bloomInput: RttNode | null;
+  /** True when the grade composite samples bloom's existing HDR materialisation. */
+  readonly reusesBloomInput: boolean;
   readonly gradeUniforms: GradeNodeUniforms | null;
   /** Experimental motion-aware AA, enabled only by `?aa=traa|taau` on WebGPU. */
   readonly temporalAa: TemporalAaNodeLike | null;
@@ -215,6 +219,8 @@ export interface BuildPostGraphOptions {
   temporalAa?: TemporalAaMode | false;
   /** Input-buffer scale for TAAU. Ignored by TRAA and clamped to 50-100%. */
   temporalScale?: number;
+  /** Reversible frame-graph control. False reproduces the pre-Batch-9 graph. */
+  reuseBloomInput?: boolean;
 }
 
 /**
@@ -232,6 +238,17 @@ export function requestedTemporalAa(search: string): TemporalAaMode | null {
 export function requestedTemporalScale(search: string): number {
   const raw = Number(new URLSearchParams(search).get('taauScale') ?? 0.75);
   return Number.isFinite(raw) ? Math.max(0.5, Math.min(1, raw)) : 0.75;
+}
+
+/**
+ * Batch-9 A/B control for the redundant HDR expression evaluation.
+ *
+ * The optimized graph is the default. `?postreuse=legacy` keeps an exact
+ * same-build rollback arm for visual and timing gates without persisting a
+ * player-facing setting.
+ */
+export function requestedBloomInputReuse(search: string): boolean {
+  return new URLSearchParams(search).get('postreuse')?.toLowerCase() !== 'legacy';
 }
 
 /**
@@ -340,6 +357,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
   const temporalScale = temporalMode === 'taau'
     ? Math.max(0.5, Math.min(1, options.temporalScale ?? 0.75))
     : 1;
+  const reuseBloomInput = options.reuseBloomInput ?? true;
   const want = enabledPasses(cfg);
   const built: Partial<Record<PassId, true>> = { render: true };
   const failures: Partial<Record<PassId, string>> = {};
@@ -565,8 +583,21 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
       stencilBuffer: false,
     }) as unknown as RttNode;
     bloomInput.renderTarget.texture.name = 'PostBloomInput';
+    // This texture now has two consumers. RTTNode's default RENDER cadence
+    // would redraw it once inside each nested post render; FRAME cadence keeps
+    // the shared materialisation genuinely shared while still refreshing it
+    // for every presented frame.
+    if (reuseBloomInput) bloomInput.updateBeforeType = NodeUpdateType.FRAME;
     bloom = createBloomNodes(bloomInput, cfg.bloom);
-    composited = (lit as unknown as { add(n: Node<'vec4'>): Node<'vec4'> }).add(bloom.node);
+    /*
+     * Bloom already paid to materialise `lit` at full resolution. Reusing that
+     * exact half-float texture here stops the grade-input pass from evaluating
+     * the scene/AO/atmosphere expression a second time. The legacy arm remains
+     * URL-selectable until the visual and timing gates have been repeated on a
+     * representative device matrix.
+     */
+    const hdrForComposite = reuseBloomInput ? bloomInput : lit;
+    composited = (hdrForComposite as unknown as { add(n: Node<'vec4'>): Node<'vec4'> }).add(bloom.node);
     built.bloom = true;
   }
 
@@ -642,6 +673,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     ssgiFailure,
     bloom,
     bloomInput,
+    reusesBloomInput: bloomInput !== null && reuseBloomInput,
     gradeUniforms,
     temporalAa,
     temporalInput,
@@ -783,6 +815,9 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const temporalScale = requestedTemporalScale(
     typeof location === 'undefined' ? '' : location.search,
   );
+  const reuseBloomInput = requestedBloomInputReuse(
+    typeof location === 'undefined' ? '' : location.search,
+  );
 
   /*
    * `getDrawingBufferSize` TAKES A `Vector2`, NOT A DUCK. It calls `target.set(
@@ -809,6 +844,7 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
     ssgiPreset,
     temporalAa: temporalAa ?? false,
     temporalScale,
+    reuseBloomInput,
   });
 
   const pipeline = new RenderPipeline(renderer, graph.output);
@@ -845,6 +881,7 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
           ssgiPreset,
           temporalAa: temporalAa ?? false,
           temporalScale,
+          reuseBloomInput,
         });
         if (graph.gradeUniforms !== null) {
           graph.gradeUniforms.time.value = elapsed;

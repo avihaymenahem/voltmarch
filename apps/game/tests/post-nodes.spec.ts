@@ -42,6 +42,7 @@ import {
   DepthTexture,
   HalfFloatType,
   LinearFilter,
+  NodeUpdateType,
   PerspectiveCamera,
   RGBAFormat,
   Scene,
@@ -92,6 +93,7 @@ import {
   demoteSmaaMaskTargets,
   enabledPasses,
   postGraphSignature,
+  requestedBloomInputReuse,
   requestedTemporalAa,
   requestedTemporalScale,
   taauSharpen,
@@ -809,7 +811,30 @@ describe('the assembled node chain', () => {
     const g = graphFor(postConfigCopy());
     expect(g.bloomInput).not.toBeNull();
     expect(g.bloomInput!.renderTarget.texture.name).toBe('PostBloomInput');
+    expect(g.reusesBloomInput).toBe(true);
+    expect((g.bloomInput as unknown as { updateBeforeType: string }).updateBeforeType)
+      .toBe(NodeUpdateType.FRAME);
     g.dispose();
+  });
+
+  it('reuses bloom HDR by default and keeps a same-build legacy control', () => {
+    expect(requestedBloomInputReuse('')).toBe(true);
+    expect(requestedBloomInputReuse('?postreuse=on')).toBe(true);
+    expect(requestedBloomInputReuse('?gpu=webgpu&postreuse=LEGACY')).toBe(false);
+
+    const legacy = buildPostGraph({
+      scene: new Scene(),
+      camera: new PerspectiveCamera(),
+      cfg: postConfigCopy(),
+      width: 2560,
+      height: 1440,
+      reuseBloomInput: false,
+    });
+    expect(legacy.bloomInput).not.toBeNull();
+    expect(legacy.reusesBloomInput).toBe(false);
+    expect((legacy.bloomInput as unknown as { updateBeforeType: string }).updateBeforeType)
+      .toBe(NodeUpdateType.RENDER);
+    legacy.dispose();
   });
 
   it('every combination of toggles still produces a graph', () => {
@@ -942,7 +967,7 @@ describe('the assembled node chain', () => {
    * stage as the output, and each is compiled and read. The stages themselves
    * are unchanged — only which one is last.
    */
-  it('the composite folds AO and bloom into ONE expression', () => {
+  it('the composite reuses bloom HDR instead of reevaluating AO and atmosphere', () => {
     /*
      * The WebGL chain spends two full-screen passes here that this one does not:
      * `GTAOPass`'s copy-then-blend (measured at 6.02 ms for the pair, half of it
@@ -960,13 +985,22 @@ describe('the assembled node chain', () => {
     const g = graphFor(cfg);
     const src = compileFragmentNode(g.output).fragment;
 
-    // Scene colour + AO + bloom, then exactly two reads from the tiny cloud
-    // coverage texture. Atmosphere stays fused here: five samples, one shader,
-    // no atmosphere render target or draw.
-    expect(src.match(/textureSample\(/g)?.length, 'scene, AO, bloom, two cloud reads').toBe(5);
-    expect(src, 'GTAOBlendShader semantics').toMatch(/mix\(\s*1\.0,/);
-    expect(src, "bloom's additive composite").toMatch(/\)\s*\+\s*nodeVar\d+\s*\)/);
+    // The candidate samples the already-materialised HDR colour plus bloom.
+    // AO and the two cloud taps ran exactly once while producing that texture.
+    expect(src.match(/textureSample\(/g)?.length, 'materialised HDR + bloom').toBe(2);
+    expect(src, "bloom's additive composite").toMatch(/nodeVar\d+\s*\+\s*nodeVar\d+/);
     g.dispose();
+
+    // Same-build rollback: the old graph re-evaluated scene colour, AO and
+    // both atmosphere taps in this composite, for five texture samples total.
+    const legacy = buildPostGraph({
+      scene: new Scene(), camera: new PerspectiveCamera(), cfg,
+      width: 2560, height: 1440, reuseBloomInput: false,
+    });
+    const legacySrc = compileFragmentNode(legacy.output).fragment;
+    expect(legacySrc.match(/textureSample\(/g)?.length).toBe(5);
+    expect(legacySrc, 'GTAOBlendShader semantics').toMatch(/mix\(\s*1\.0,/);
+    legacy.dispose();
   });
 
   it('the grade sits on top of the composite, with its curve intact', () => {

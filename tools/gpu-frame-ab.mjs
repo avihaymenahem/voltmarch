@@ -59,7 +59,9 @@ import { chromium } from 'playwright';
 import { build, serve } from './lib/serve.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -104,6 +106,9 @@ const FOLIAGE_COMPUTE = flag('foliage-compute', '');
 const FOLIAGE_COMPUTE_AUDIT = argv.includes('--foliage-compute-audit');
 const CAMERA_PATH = flag('camera-path', 'static').toLowerCase();
 const GPU_TIMESTAMPS = argv.includes('--gpu-timestamps');
+const GPU_PASSES = argv.includes('--gpu-passes');
+const POST_REUSE = flag('post-reuse', 'on').toLowerCase();
+const BASE_WEAR = flag('base-wear', 'context').toLowerCase();
 const ART = flag('art', '');
 const BACKEND = flag('backend', 'both');
 const AA = flag('aa', '').toLowerCase();
@@ -127,7 +132,52 @@ if (!['', 'cpu', 'gpu'].includes(FOLIAGE_COMPUTE)) {
 if (!['static', 'pan', 'band-churn'].includes(CAMERA_PATH)) {
   throw new Error(`--camera-path must be static, pan or band-churn; received "${CAMERA_PATH}"`);
 }
+if (!['on', 'legacy'].includes(POST_REUSE)) {
+  throw new Error(`--post-reuse must be on or legacy; received "${POST_REUSE}"`);
+}
+if (!['context', 'legacy', 'off'].includes(BASE_WEAR)) {
+  throw new Error(`--base-wear must be context, legacy or off; received "${BASE_WEAR}"`);
+}
+if (GPU_PASSES && GPU_TIMESTAMPS) {
+  throw new Error('--gpu-passes and --gpu-timestamps both resolve Three\'s render query pool; choose one');
+}
 const FACTION_KEYS = ['allies', 'soviets', 'meridian', 'reclaim'];
+const GIT_COMMIT = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+
+function workingTreeEvidence() {
+  const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+    cwd: ROOT, encoding: 'utf8',
+  }).trim().split(/\r?\n/).filter(Boolean);
+  const hash = createHash('sha256');
+  hash.update(execFileSync('git', ['diff', '--binary', 'HEAD', '--', '.'], { cwd: ROOT }));
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], {
+    cwd: ROOT,
+  }).toString('utf8').split('\0').filter(Boolean).sort();
+  for (const path of untracked) {
+    hash.update(path);
+    hash.update(readFileSync(join(ROOT, path)));
+  }
+  return { dirty: status.length > 0, status, sha256: hash.digest('hex') };
+}
+
+function builtCodeFingerprint() {
+  const dist = join(ROOT, 'apps', 'game', 'dist');
+  if (!existsSync(dist)) return null;
+  const files = ['index.html'];
+  const assets = join(dist, 'assets');
+  if (existsSync(assets)) {
+    for (const file of readdirSync(assets)) {
+      if (/\.(?:js|css)$/.test(file)) files.push(join('assets', file));
+    }
+  }
+  files.sort();
+  const hash = createHash('sha256');
+  for (const path of files) {
+    hash.update(path);
+    hash.update(readFileSync(join(dist, path)));
+  }
+  return hash.digest('hex');
+}
 
 if (!noBuild) await build(ROOT, { log: console.log });
 const server = await serve({ root: ROOT, mode: 'preview', portHint: 4373, log: console.log });
@@ -178,7 +228,11 @@ async function measure(gpu) {
 
   try {
     const page = await browser.newPage({
-      viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1,
+      // Captures are promotion evidence, so present one CSS pixel per requested
+      // render pixel. Non-capture benchmarks retain the small control viewport;
+      // `__VM.setSize` below still pins their drawing buffers exactly.
+      viewport: CAPTURE ? { width: W, height: H } : { width: 1280, height: 720 },
+      deviceScaleFactor: 1,
     });
     page.setDefaultTimeout(180_000);
     const errors = [];
@@ -199,6 +253,8 @@ async function measure(gpu) {
     if (FOLIAGE) qs.set('foliage', FOLIAGE);
     if (FOLIAGE_COMPUTE) qs.set('foliagecompute', FOLIAGE_COMPUTE);
     if (ART) qs.set('art', ART);
+    if (POST_REUSE === 'legacy') qs.set('postreuse', 'legacy');
+    if (BASE_WEAR !== 'context') qs.set('basewear', BASE_WEAR);
     await page.goto(`${server.origin}?${qs}`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
     await page.evaluate(() => window.__VM.ready());
@@ -328,6 +384,7 @@ async function measure(gpu) {
 
       const wall = [];
       const gpuStats = [];
+      const gpuPassSamples = [];
       const shadowUpdates = [];
       for (let b = 0; b < opts.blocks; b++) {
         const beforeUpdates = vm.rendererHandle.shadowScheduleStats.updates;
@@ -346,6 +403,56 @@ async function measure(gpu) {
         const t1 = performance.now();
         wall.push((t1 - t0) / opts.frames);
         gpuStats.push({ frameMs: s.frameMs, cpuMs: s.cpuMs, drawCalls: s.drawCalls, triangles: s.triangles });
+      }
+
+      /*
+       * Per-pass timestamps need an ordinary complete frame as their newest
+       * context. `flush()` deliberately calls vm.screenshot(), whose capture
+       * frame can contain only the final full-screen pipeline triangle; reading
+       * the timer after it reports grade alone. Reset the timer cadence, submit
+       * groups of fifteen real frames, yield for Three's async map, and copy the
+       * snapshot before any screenshot/capture work can replace it.
+       */
+      if (opts.gpuPasses) {
+        // Keep timestamp writes entirely out of the wall-time blocks above.
+        // Visibility keeps perf.system from deactivating the timer each frame;
+        // the harness already hides the UI root, so this paints no panel.
+        globalThis.__vmPerf?.setVisible(true);
+        let revision = globalThis.__vmPerf?.timer?.passSnapshot?.revision ?? -1;
+        /*
+         * Enabling timestamp writes changes the command stream and the first
+         * resolved snapshot can be either the pre-enable capture frame or a
+         * cold instrumented frame. Prime one complete group and discard it so
+         * neither case enters the reported distribution.
+         */
+        presentFrames(30);
+        {
+          const deadline = performance.now() + 5_000;
+          let nextRevision = revision;
+          while (nextRevision <= revision && performance.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            nextRevision = globalThis.__vmPerf?.timer?.passSnapshot?.revision ?? revision;
+          }
+          if (nextRevision <= revision) {
+            throw new Error('WebGPU pass timer did not publish its priming snapshot');
+          }
+          revision = nextRevision;
+        }
+        for (let sampleIndex = 0; sampleIndex < 5; sampleIndex++) {
+          presentFrames(15);
+          let nextRevision = revision;
+          const deadline = performance.now() + 5_000;
+          while (nextRevision <= revision && performance.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            nextRevision = globalThis.__vmPerf?.timer?.passSnapshot?.revision ?? revision;
+          }
+          if (nextRevision <= revision) {
+            throw new Error('WebGPU pass timer did not publish a fresh snapshot after 15 frames');
+          }
+          revision = nextRevision;
+          gpuPassSamples.push({ revision, ...vm.stats().gpuPasses });
+        }
+        globalThis.__vmPerf?.setVisible(false);
       }
 
       /*
@@ -494,6 +601,12 @@ async function measure(gpu) {
         const v = [...a].sort((x, y) => x - y);
         return v[Math.min(v.length - 1, Math.ceil(v.length * p) - 1)];
       };
+      const gpuPasses = {};
+      for (const id of ['total', 'shadow', 'scene', 'water', 'particles', 'ao', 'gi', 'bloom', 'grade', 'smaa', 'ui']) {
+        const values = gpuPassSamples.map((sample) => sample[id])
+          .filter((value) => Number.isFinite(value));
+        gpuPasses[id] = values.length > 0 ? median(values) : null;
+      }
       return {
         backend: vm.rendererHandle.backend,
         gpu: vm.rendererHandle.capabilities.gpu,
@@ -536,7 +649,10 @@ async function measure(gpu) {
           },
         },
         cameraPath: opts.cameraPath,
+        structureWear: globalThis.__vmStructureWear ?? null,
         gpuTimestamps,
+        gpuPasses,
+        gpuPassSamples,
         cadenceSamples,
         shadowUpdates,
         shadowOnly,
@@ -558,8 +674,25 @@ async function measure(gpu) {
       w: W, h: H, frames: FRAMES, blocks: BLOCKS, warmup: WARMUP, settle: SETTLE,
       match: MATCH, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET, distance: DISTANCE,
       cameraPath: CAMERA_PATH, gpuTimestamps: GPU_TIMESTAMPS,
+      gpuPasses: GPU_PASSES,
       foliageComputeAudit: FOLIAGE_COMPUTE_AUDIT,
     });
+    const source = workingTreeEvidence();
+    result.evidence = {
+      commit: GIT_COMMIT,
+      sourceDirty: source.dirty,
+      sourceStatus: source.status,
+      sourceFingerprintSha256: source.sha256,
+      builtCodeFingerprintSha256: builtCodeFingerprint(),
+      browser: browser.version(),
+      scene: SCENE,
+      seed: SEED,
+      requestedBackend: gpu,
+      postReuse: POST_REUSE,
+      postReuseApplied: gpu === 'webgpu',
+      baseWear: BASE_WEAR,
+      command: process.argv.slice(2),
+    };
     if (CAPTURE) {
       // Texture workers complete on wall time, while the deterministic frame
       // driver above can advance several seconds of presentation almost
@@ -631,6 +764,7 @@ console.log(`camera path: ${CAMERA_PATH}`);
 if (FOLIAGE) console.log(`foliage presentation: ${FOLIAGE}`);
 if (FOLIAGE_COMPUTE) console.log(`foliage compute: ${FOLIAGE_COMPUTE}`);
 if (ART) console.log(`art preset: ${ART}`);
+console.log(`post HDR input reuse: ${POST_REUSE}`);
 if (MATCH) {
   console.log(`load: ${sample.units} drawn units · peak ${sample.ramp?.peak ?? sample.units} · ${(sample.ramp?.ticks ?? 0) / 30}s simulated`);
   if (UNIT_TARGET > 0 && sample.units < UNIT_TARGET) {
