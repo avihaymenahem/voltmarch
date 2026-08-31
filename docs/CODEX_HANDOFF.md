@@ -68,7 +68,7 @@ Verify rather than trusting that sentence after time has passed.
 | Third-party rights | root `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/` |
 | Campaign implementation contract | `docs/campaign/CAMPAIGN_BUILD_SPEC.md` and `wiki/Campaign.md` |
 | Graphics measurements and rejected approaches | `docs/RENDER_FINDINGS.md`, `docs/SPEC_DRIFT_AUDIT.md` |
-| Cross-cutting AAA technical roadmap and ordered batches | `docs/AAA_TECHNICAL_ROADMAP.md` |
+| Cross-cutting AAA technical roadmap and ordered batches | `docs/AAA_TECHNICAL_ROADMAP.md`; Batches 9-10 evidence in `docs/reviews/batch9-10-framegraph-visual-depth.md` |
 | Boot phase definitions and current browser/Electron baselines | `docs/BOOT_BASELINE.md`, compact reports in `artifacts/perf/boot-baseline-*.json` |
 | Rejected Chrono Miner offline runtime-cook proof | `docs/RUNTIME_ASSET_COOK_POC.md`, `tools/asset-cooks/` |
 
@@ -310,7 +310,7 @@ This is an index, not a duplicate checklist:
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   proof. A reproducible six-file Allied candidate saves 43.34% of its source bytes but missed the
   complete family-ready p95 gate on both renderers, so those source GLBs remain the default.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-8 have completed their bounded
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-10 have completed their bounded
   implementation/decision passes on local
   `main`: boot telemetry/baselines, static title policy, one honestly rejected
   offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
@@ -322,9 +322,16 @@ This is an index, not a duplicate checklist:
   mixed WebGPU compile/first-paint attribution. Batch 8 retains a correct 0.560 MiB tree/bush
   indirect-compute lab arm but rejects it as the default: CPU upload/event falls 44.83%, while
   corrected compaction-event p95 regresses 50%, moving whole-frame wall time regresses 11.42% and
-  static wall time regresses 27.27%; CPU remains authoritative/default. Continue at
-  Batch 9 (timestamp-led GPU/frame-graph optimization). Do not expand the compute pilot, promote
-  either rejected cook or infer that package extraction is itself a boot optimization.
+  static wall time regresses 27.27%; CPU remains authoritative/default. Batch 9 reuses the
+  full-resolution HDR bloom input in grade, removes four AO-accounted draws and improves measured
+  native-WebGPU median 6.96%/8.25%/13.57% at 1080p/1440p/4K; retain `?postreuse=legacy` until AMD,
+  Intel and packaged-Electron validation closes. Batch 10 replaces random base grime with
+  deterministic role/biome/exit-aligned wear through the existing one-draw decal pool: the fixed
+  fixture moves 41 -> 14 live marks and leaves 318 rather than 291 static slots with identical
+  WebGL/WebGPU accepted-mark fingerprints and exact paired GPU/wall median parity. Continue at Batch
+  11's narrow Game/Asset-Lab GLTF runtime
+  extraction. Do not expand the compute pilot, promote either rejected cook, create generic
+  `core`/`engine` packages or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

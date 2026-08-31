@@ -101,7 +101,7 @@ Baseline and phase telemetry
 
 ## Implementation checkpoint - 2026-08-31
 
-The first eight batches have completed their bounded implementation/decision pass on local `main`:
+The first ten batches have completed their bounded implementation/decision pass on local `main`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -190,10 +190,29 @@ The first eight batches have completed their bounded implementation/decision pas
    path survives only behind
    `?gpu=webgpu&foliagecompute=gpu`. See
    `docs/reviews/batch8-webgpu-foliage-compute.md`.
+9. **GPU/frame-graph optimization: implemented and promoted with rollback.** Native WebGPU now
+   materialises the full-resolution HDR bloom input once per frame and reuses it for grade
+   composition instead of recursively evaluating scene/AO/atmosphere twice. Draws fall 149 -> 145
+   and AO-accounted draws 8 -> 4 with no new program or render target. Median GPU time improves
+   6.96% at 1080p, 8.25% at 1440p and 13.57% at 4K on the measured NVIDIA Ampere cell. A native
+   2560x1440 dynamic comparison is byte-stable across repeated candidate processes and has
+   0.00173/255 mean candidate/control delta; two isolated pixels reach delta 18, so AMD, Intel and
+   packaged-Electron validation remains open. `?postreuse=legacy` restores the old graph.
+10. **AAA visual-depth pass: implemented for contextual structure wear.** Generic random building
+    grime is replaced by deterministic biome/role/exit-aligned service, egress, runoff and perimeter
+    descriptors consumed identically by WebGL and WebGPU. The measured fixture accepts 14 marks
+    instead of 41, leaves 318 rather than 291 static-decal slots, and changes no draw, program or
+    submitted-triangle counter. Final same-source native-WebGPU and wall medians are exact ties;
+    this is runtime parity, not a speed claim. The path adds no material or texture, never consumes
+    the protected final 128 of 384 static slots, and retains
+    `?basewear=legacy|off`. Exact evidence is in
+    `docs/reviews/batch9-10-framegraph-visual-depth.md`.
 
-The next move is Batch 9's timestamp-led GPU/frame-graph optimization. Batch 8 must not expand to
-neutral props unless a redesigned or denser-scene arm wins whole-frame. Package extraction and
-conditional WASM work remain behind the evidence and dependency gates above.
+The next move is Batch 11's narrow package extraction, beginning with the real Game/Asset Lab
+`@voltmarch/gltf-runtime` seam and pre/post chunk evidence. In parallel, close Batch 9's AMD,
+Intel/iGPU and packaged-Electron validation cells. Batch 8 must not expand to neutral props unless a
+redesigned or denser-scene arm wins whole-frame, and conditional WASM work remains behind a measured
+top-kernel gate.
 
 ## Batch 1 - current baseline and phase instrumentation
 

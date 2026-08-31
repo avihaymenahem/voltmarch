@@ -45,13 +45,13 @@ import { defineSystem } from '../core/loop';
 import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '../core/types';
 import {
   AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS,
-  MCV_START_SCATTER_CLEAR_RADIUS, SCATTER_SEED,
+  DECAL_POOL_STATIC, MCV_START_SCATTER_CLEAR_RADIUS, SCATTER_SEED,
   TITLE_BACKDROP_CAMERA_DISTANCE, TITLE_BACKDROP_SCATTER_CLEAR_RADIUS,
 } from '../core/config';
 import { clamp, Rng, TAU } from '../core/math';
 import { ctx } from '../game/context';
 import {
-  activeScenario, plannedScenario, plannedStartPoints, visibleGround,
+  activeScenario, plannedScenario, plannedStartPoints, resolveDefBinding, visibleGround,
 } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
@@ -64,7 +64,11 @@ import { ENVIRONMENT_ASSET_KEYS } from './EnvironmentAssetCatalog';
 import {
   installImportedEntityProps, installProceduralEntityProps,
 } from './entity-props.system';
-import { DecalKind, groundDecals } from './Decals';
+import { DecalKind, groundDecals, type DecalField } from './Decals';
+import {
+  planStructureWear, requestedStructureWearMode, structureWearFingerprint,
+  type StructureWearMark, type StructureWearSource,
+} from './structure-wear';
 import {
   contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
   markArtAssetFamilyReady, markContentProviderReady,
@@ -74,7 +78,19 @@ import {
   activeTimeOfDayCycle, cycleLightAnchorCeiling, timeOfDayForMood,
 } from './time-of-day';
 
-declare const globalThis: { __vmScatter?: Scatter } & typeof window;
+interface StructureWearRuntimeStats {
+  readonly mode: 'context' | 'legacy' | 'off';
+  readonly sources: number;
+  readonly planned: number;
+  readonly spawned: number;
+  readonly fingerprint: number;
+  readonly reserve: number;
+}
+
+declare const globalThis: {
+  __vmScatter?: Scatter;
+  __vmStructureWear?: StructureWearRuntimeStats;
+} & typeof window;
 
 let scatter: Scatter | null = null;
 /** Invalidates an authored-family handoff when the owning world is replaced. */
@@ -92,6 +108,88 @@ function numFlag(name: string, fallback: number): number {
   if (q === null) return fallback;
   const n = Number(q);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function paintLegacyBaseWear(
+  decals: DecalField,
+  store: ReturnType<typeof ctx>['world']['store'],
+  terrain: NonNullable<ReturnType<typeof getTerrain>>,
+  seed: number,
+): number {
+  const wearRng = new Rng((seed ^ 0x6b512d09) >>> 0);
+  let baseWear = 0;
+  const maxBaseWear = 112;
+  for (let n = 0; n < store.count; n++) {
+    const i = store.alive[n];
+    if ((store.flags[i] & EntityFlag.Alive) === 0
+      || store.kind[i] !== EntityKind.Building
+      || baseWear >= maxBaseWear) continue;
+
+    const angle = wearRng.next() * TAU;
+    const distance = Math.max(store.radius[i], 5) + wearRng.range(2.5, 6.0);
+    const x = clamp(store.posX[i] + Math.cos(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
+    const z = clamp(store.posZ[i] + Math.sin(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    if (terrain.isWater(cx, cz) || terrain.isCliff(cx, cz)) continue;
+
+    if (wearRng.next() < 0.76) {
+      decals.spawn(
+        DecalKind.Dust, x, z,
+        wearRng.range(3.0, 5.8), wearRng.range(5.8, 10.5),
+        angle + wearRng.range(-0.45, 0.45), 0, wearRng.range(0.18, 0.30),
+      );
+      baseWear++;
+    }
+    if (baseWear < maxBaseWear && wearRng.next() < 0.48) {
+      decals.spawn(
+        DecalKind.Grime,
+        x + Math.cos(angle) * wearRng.range(-1.0, 1.4),
+        z + Math.sin(angle) * wearRng.range(-1.0, 1.4),
+        wearRng.range(2.2, 4.5), wearRng.range(3.8, 7.2),
+        angle + wearRng.range(-0.7, 0.7), 0, wearRng.range(0.20, 0.36),
+      );
+      baseWear++;
+    }
+    if (baseWear < maxBaseWear && wearRng.next() < 0.24) {
+      decals.spawn(
+        DecalKind.Rust, x, z,
+        wearRng.range(1.3, 2.6), wearRng.range(2.4, 4.8),
+        angle + wearRng.range(-0.25, 0.25), 0, wearRng.range(0.30, 0.46),
+      );
+      baseWear++;
+    }
+    if (baseWear < maxBaseWear && wearRng.next() < 0.12) {
+      decals.oil(x, z, wearRng.range(1.0, 2.0), angle, wearRng.range(0.20, 0.34));
+      baseWear++;
+    }
+  }
+  return baseWear;
+}
+
+function structureWearPlacementIsClear(
+  item: StructureWearMark,
+  terrain: NonNullable<ReturnType<typeof getTerrain>>,
+): boolean {
+  const radius = Math.hypot(item.halfX, item.halfZ);
+  const minCellX = Math.max(0, Math.floor((item.x - radius) / CELL));
+  const maxCellX = Math.min(MAP_CELLS - 1, Math.floor((item.x + radius) / CELL));
+  const minCellZ = Math.max(0, Math.floor((item.z - radius) / CELL));
+  const maxCellZ = Math.min(MAP_CELLS - 1, Math.floor((item.z + radius) / CELL));
+  const cellPadding = CELL * Math.SQRT2 * 0.5;
+  const cos = Math.cos(item.yaw);
+  const sin = Math.sin(item.yaw);
+  for (let cz = minCellZ; cz <= maxCellZ; cz++) {
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      const dx = (cx + 0.5) * CELL - item.x;
+      const dz = (cz + 0.5) * CELL - item.z;
+      const localX = dx * cos - dz * sin;
+      const localZ = dx * sin + dz * cos;
+      if (Math.abs(localX) > item.halfX + cellPadding
+        || Math.abs(localZ) > item.halfZ + cellPadding) continue;
+      if (terrain.isWater(cx, cz) || terrain.isCliff(cx, cz) || terrain.isOccupied(cx, cz)) return false;
+    }
+  }
+  return true;
 }
 
 async function promoteImportedFoliage(
@@ -152,7 +250,7 @@ export default defineSystem({
   order: 20000,
   renderPhase: RenderPhase.Terrain,
 
-  init(): void {
+  async init(): Promise<void> {
     if (flag('scatter') === 'off') {
       console.info('%c[scatter]%c disabled by ?scatter=off', 'color:#7fd', 'color:inherit');
       return;
@@ -337,76 +435,83 @@ export default defineSystem({
       ? scatter.paintGroundStories(decals, spec?.ore ?? [])
       : null;
 
-    /* -- base weathering ------------------------------------------------- *
-     * A pristine pad ending exactly at a pristine wall reads like a low-poly
-     * model placed on top of the world. Dress the OUTSIDE of footprints with
-     * broad disturbed dust, service grime, occasional rust runoff and rarer
-     * oil. These are authored shapes rather than texture noise and all share
-     * the existing pooled decal mesh: one draw, no extra material per asset,
-     * no new geometry and a hard cap that leaves most slots for combat FX.   */
-    const wearRng = new Rng((plan.seed ^ 0x6b512d09) >>> 0);
+    /* -- structure wear -------------------------------------------------- *
+     * Every mark now names a cause: factory egress, refinery service, oxide
+     * runoff or defensive perimeter. The pure planner is shared by both
+     * renderers; this integration only clamps and rejects illegal terrain.
+     * The fixed decal mesh remains one draw/material; contextual wear never
+     * consumes its protected final 128 static slots for combat damage.       */
+    const wearMode = requestedStructureWearMode();
     let baseWear = 0;
-    const maxBaseWear = 112;
-    if (decals !== null) {
+    let wearStats: StructureWearRuntimeStats = {
+      mode: wearMode, sources: 0, planned: 0, spawned: 0, fingerprint: 0,
+      reserve: decals === null ? DECAL_POOL_STATIC : DECAL_POOL_STATIC - decals.stats().live,
+    };
+    if (decals !== null && wearMode === 'legacy') {
+      baseWear = paintLegacyBaseWear(decals, store, terrain, plan.seed);
+      wearStats = {
+        mode: wearMode,
+        sources: 0,
+        planned: 112,
+        spawned: baseWear,
+        fingerprint: 0,
+        reserve: Math.max(0, DECAL_POOL_STATIC - decals.stats().live),
+      };
+    } else if (decals !== null && wearMode === 'context') {
+      const binding = await resolveDefBinding();
+      const sources: StructureWearSource[] = [];
       for (let n = 0; n < store.count; n++) {
         const i = store.alive[n];
-        if ((store.flags[i] & EntityFlag.Alive) === 0
-          || store.kind[i] !== EntityKind.Building
-          || baseWear >= maxBaseWear) continue;
-
-        const angle = wearRng.next() * TAU;
-        const distance = Math.max(store.radius[i], 5) + wearRng.range(2.5, 6.0);
-        const x = clamp(store.posX[i] + Math.cos(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
-        const z = clamp(store.posZ[i] + Math.sin(angle) * distance, CELL, MAP_CELLS * CELL - CELL);
-        const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
-        if (terrain.isWater(cx, cz) || terrain.isCliff(cx, cz)) continue;
-
-        if (wearRng.next() < 0.76) {
-          decals.spawn(
-            DecalKind.Dust,
-            x, z,
-            wearRng.range(3.0, 5.8),
-            wearRng.range(5.8, 10.5),
-            angle + wearRng.range(-0.45, 0.45),
-            0,
-            wearRng.range(0.18, 0.30),
-          );
-          baseWear++;
-        }
-
-        if (baseWear < maxBaseWear && wearRng.next() < 0.48) {
-          decals.spawn(
-            DecalKind.Grime,
-            x + Math.cos(angle) * wearRng.range(-1.0, 1.4),
-            z + Math.sin(angle) * wearRng.range(-1.0, 1.4),
-            wearRng.range(2.2, 4.5),
-            wearRng.range(3.8, 7.2),
-            angle + wearRng.range(-0.7, 0.7),
-            0,
-            wearRng.range(0.20, 0.36),
-          );
-          baseWear++;
-        }
-
-        if (baseWear < maxBaseWear && wearRng.next() < 0.24) {
-          decals.spawn(
-            DecalKind.Rust,
-            x, z,
-            wearRng.range(1.3, 2.6),
-            wearRng.range(2.4, 4.8),
-            angle + wearRng.range(-0.25, 0.25),
-            0,
-            wearRng.range(0.30, 0.46),
-          );
-          baseWear++;
-        }
-
-        if (baseWear < maxBaseWear && wearRng.next() < 0.12) {
-          decals.oil(x, z, wearRng.range(1.0, 2.0), angle, wearRng.range(0.20, 0.34));
-          baseWear++;
-        }
+        if ((store.flags[i] & EntityFlag.Alive) === 0 || store.kind[i] !== EntityKind.Building) continue;
+        const def = binding.tables?.buildings[store.defId[i]];
+        sources.push({
+          id: i,
+          key: def?.key ?? `building-${store.defId[i]}`,
+          x: store.posX[i],
+          z: store.posZ[i],
+          yaw: store.yaw[i],
+          halfWidth: def === undefined ? store.radius[i] : def.footprintW * CELL * 0.5,
+          halfDepth: def === undefined ? store.radius[i] : def.footprintH * CELL * 0.5,
+          exitOffsetX: def?.exitOffsetX ?? 0,
+          exitOffsetZ: def?.exitOffsetZ ?? store.radius[i] + 3,
+          produces: def?.produces.length ?? 0,
+          producesTab: def?.producesTab ?? -1,
+          power: def?.power ?? 0,
+          storage: def?.storage ?? 0,
+          weapons: def?.weapons.length ?? 0,
+          buildRadius: def?.buildRadius ?? 0,
+        });
       }
+      const existing = decals.stats().live;
+      const maxMarks = Math.min(48, Math.max(0, DECAL_POOL_STATIC - 128 - existing));
+      const wearPlan = planStructureWear(sources, {
+        seed: (plan.seed ^ 0x6b512d09) >>> 0,
+        biome: terrain.biomeKey,
+        maxMarks,
+      });
+      const spawned: StructureWearMark[] = [];
+      for (const item of wearPlan.marks) {
+        const x = clamp(item.x, CELL, MAP_CELLS * CELL - CELL);
+        const z = clamp(item.z, CELL, MAP_CELLS * CELL - CELL);
+        const actual = x === item.x && z === item.z ? item : { ...item, x, z };
+        if (!structureWearPlacementIsClear(actual, terrain)) continue;
+        decals.spawn(
+          actual.kind, actual.x, actual.z, actual.halfX, actual.halfZ,
+          actual.yaw, 0, actual.strength,
+        );
+        spawned.push(actual);
+      }
+      baseWear = spawned.length;
+      wearStats = {
+        mode: wearMode,
+        sources: wearPlan.sources,
+        planned: wearPlan.marks.length,
+        spawned: baseWear,
+        fingerprint: structureWearFingerprint(spawned),
+        reserve: Math.max(0, DECAL_POOL_STATIC - decals.stats().live),
+      };
     }
+    globalThis.__vmStructureWear = wearStats;
 
     setActiveScatter(scatter);
     globalThis.__vmScatter = scatter;
@@ -519,6 +624,7 @@ export default defineSystem({
 
   dispose(): void {
     foliageLoadGeneration++;
+    delete globalThis.__vmStructureWear;
     if (scatter === null) return;
     scatter.dispose();
     if (getScatter() === scatter) setActiveScatter(null);

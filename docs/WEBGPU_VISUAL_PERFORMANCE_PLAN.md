@@ -142,8 +142,33 @@ CPU compaction is therefore the default. The pilot is retained only behind
 `?gpu=webgpu&foliagecompute=gpu`; WebGL, WebGPU fallback, TRAA/TAAU and legacy scatter batching force
 CPU. Do not expand to neutral props until a redesigned or denser-scene arm produces a material
 whole-frame win. Exact evidence and the industry mapping are in
-`docs/reviews/batch8-webgpu-foliage-compute.md`. The next mainline slice is Batch 9's timestamp-led
-GPU/frame-graph optimization.
+`docs/reviews/batch8-webgpu-foliage-compute.md`.
+
+### Frame-graph and contextual-depth checkpoint
+
+Batch 9 follows timestamp evidence instead of adding another post effect. Native WebGPU's existing
+full-resolution half-float bloom input is now produced once per frame and reused when composing the
+grade input. This removes the second recursive scene/AO dependency traversal: total draws move
+149 -> 145, AO-accounted draws 8 -> 4 and programs remain 307. Median total GPU time improves
+6.96% at 1080p, 8.25% at 1440p and 13.57% at 4K on the measured NVIDIA Ampere device. Native
+2560x1440 dynamic captures are byte-stable between fresh candidate processes; candidate/control
+mean RGB delta is 0.00173/255 and p99 is zero, with two isolated pixels at a maximum delta of 18.
+The optimization is default-on with `?postreuse=legacy`; AMD, Intel/iGPU and packaged-Electron
+validation remain required before removing that rollback.
+
+Batch 10 spends no new pass or material on visual depth. A pure deterministic planner maps live
+building definition attributes and local exits to economy/production/command/power/defence/utility
+wear recipes, then both renderers consume the same descriptor fingerprint through the existing
+static decal field. In the fixed Allied fixture, contextual wear accepts 14 legal marks versus 41
+legacy marks, leaves 318 versus 291 pool slots and preserves all draw/program/submitted-triangle
+counters. The final corrected fixture actually accepts 14 of 36 planned descriptors; full-rectangle
+terrain legality rejects the remainder. Same-source timestamp and wall medians tie exactly, so the
+batch claims runtime parity rather than a frame-time improvement. `?basewear=legacy|off` is retained.
+Exact commands, captures, caveats and industry mapping are in
+`docs/reviews/batch9-10-framegraph-visual-depth.md`.
+
+The next mainline slice is Batch 11's narrow Game/Asset-Lab GLTF runtime extraction, while the
+representative-device frame-graph matrix closes in parallel.
 
 ### Pipeline attribution checkpoint
 

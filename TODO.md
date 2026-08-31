@@ -71,6 +71,13 @@ with no number is untracked, and that is itself the bug.
 
 ## WebGPU visual performance
 
+- **Frame-graph representative-device closure.** *(untracked — Batch 9 follow-up owned by
+  `docs/reviews/batch9-10-framegraph-visual-depth.md`)* The bloom-input reuse is default-on after
+  improving median GPU time 6.96%/8.25%/13.57% at 1080p/1440p/4K on NVIDIA Ampere, with
+  `?postreuse=legacy` retained. Repeat the native 1440p dynamic visual and timestamp cells on AMD,
+  Intel/iGPU and packaged Electron WebGPU. The corrected native comparison has 0.00173/255 mean and
+  zero p99 delta but two isolated pixels reach 18; do not remove the rollback until the device
+  matrix and moving-emissive review remain stable.
 - **GPU foliage expansion remains promotion-gated.** *(untracked — implementation order is owned by
   `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md`)* The 1,648-instance tree/bush indirect pilot now proves
   immutable source upload, stable-ID/LOD/clearing parity, no steady readback and bounded storage, but
@@ -93,6 +100,17 @@ with no number is untracked, and that is itself the bug.
   the mixed compile span and first-paint submission. Exercise VFX, LOD, construction and weather
   after reveal and require zero unexpected new pipelines, then run 10-20 same-process matches and
   prove program/pipeline counts and renderer RSS plateau before changing cache retention or keys.
+
+---
+
+## Package boundaries
+
+- **Batch 11 — extract the narrow GLTF runtime seam.** *(untracked — order and gates owned by
+  `docs/AAA_TECHNICAL_ROADMAP.md`)* Game and Asset Lab are the two real consumers. Extract only the
+  renderer-injected GLTF/Meshopt/KTX2 lifecycle into `@voltmarch/gltf-runtime`, preserve one exact
+  Three peer and validated fallbacks, and record pre/post production chunk count, bytes and complete
+  asset-readiness timing. Do not create generic `core` or `engine` packages and do not call the move
+  a boot optimization unless the emitted graph or measured readiness improves.
 
 ---
 
