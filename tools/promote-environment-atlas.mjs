@@ -59,7 +59,10 @@ try {
     if (!metadata.width || !metadata.height) throw new Error(`${spec.source} has no dimensions`);
     const png = path.join(temporary, `${spec.role}.png`);
     const encoded = path.join(temporary, spec.output);
-    await sharp(source).png().toFile(png);
+    // GLB UVs follow the ordinary TextureLoader convention, whose image rows
+    // are vertically flipped at upload. Compressed KTX2 uploads cannot use
+    // UNPACK_FLIP_Y, so bake the same orientation into the encoded mip chain.
+    await sharp(source).flip().png().toFile(png);
     // Basis' UASTC RDO output varies with worker scheduling. One encoder thread
     // makes the tracked delivery byte-for-byte reproducible across clean cooks.
     const args = [
@@ -77,7 +80,7 @@ try {
     } else if (spec.codec === 'etc1s-linear') {
       args.push('-q', '255', '-comp_level', '2', '-linear', '-mip_linear');
     } else {
-      args.push('-q', '255', '-comp_level', '2', '-mip_srgb');
+      args.push('-q', '240', '-comp_level', '2', '-mip_srgb');
     }
     await run(basisExecutable(), args, { windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
     await run(basisExecutable(), ['-validate', '-file', encoded], {

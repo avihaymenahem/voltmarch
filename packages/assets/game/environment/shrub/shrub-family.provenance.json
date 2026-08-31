@@ -2,8 +2,9 @@
   "version": 1,
   "family": "temperate-shrub-v1",
   "generatedAt": "2026-08-29",
+  "updatedAt": "2026-09-01",
   "source": {
-    "geometryMethod": "deterministic local alpha-card and closed-proxy generator",
+    "geometryMethod": "deterministic local alpha-card and silhouette-specific closed-proxy generator",
     "geometryTool": "tools/build-shrub-family.mjs",
     "textureMethod": "two ImageGen transparent foliage sources conditioned into one shared PBR atlas",
     "textureTool": "tools/build-shrub-pbr.mjs",
@@ -63,17 +64,22 @@
     {"key":"bush","role":"lod0","file":"bush-v1.glb","bytes":3956,"triangles":28,"sha256":"75d5f4e0701950ae6f4e69e6a7274d6184e4185c8fb65438bde7a7af1d6e89cf"},
     {"key":"bush","role":"lod1","file":"derived/bush-v1.lod1.glb","bytes":2844,"triangles":16,"sha256":"e00e7330acd1645ccafbf7d99ff7357ad4965d92dcbe02a6e61916d8b040fc0c"},
     {"key":"bush","role":"lod2-emergency","file":"derived/bush-v1.lod2.glb","bytes":1900,"triangles":6,"sha256":"1a923d11b6d81bc2b9c6739cabdaed8050cb859e0896b4d5d67bf579276740a8"},
-    {"key":"bush","role":"shadow","file":"derived/bush-v1.shadow.glb","bytes":2412,"triangles":48,"sha256":"336e158cc89ab93dfe26a9e60883bf6ed856ad94b48608572f9c80285851ede6"},
+    {"key":"bush","role":"shadow","file":"derived/bush-v1.shadow.glb","bytes":2560,"triangles":48,"sha256":"7d97c83b94fcb9b91b65f4394d01ccba5bcb590049ac9913fd0f769a163d99af"},
     {"key":"hedge","role":"lod0","file":"hedge-v1.glb","bytes":2456,"triangles":12,"sha256":"56c8da1960980f42999646f0877ddf59d60f9c485f4641b22cfc075040c44944"},
     {"key":"hedge","role":"lod1","file":"derived/hedge-v1.lod1.glb","bytes":2280,"triangles":10,"sha256":"2e91821622c061daf3ea78d9087a87acb708f82e3a4fecf43fe3f1db4f12e932"},
     {"key":"hedge","role":"lod2-emergency","file":"derived/hedge-v1.lod2.glb","bytes":2280,"triangles":10,"sha256":"301a699e420f5df8e1fbe58066937744c9631cdbfa25c718b8a2ffe5334c2d83"},
     {"key":"hedge","role":"shadow","file":"derived/hedge-v1.shadow.glb","bytes":2124,"triangles":12,"sha256":"3a4ddf30502266d3ed496504b22c28712c2ade862c580fc6f9dd8758630193fe"}
   ],
-  "shippingFamilyBytes": 596579,
+  "deliveryFileCount": 8,
+  "deliveryBytes": 20400,
+  "deliveryAggregateSha256": "d3262d0e72c3d93d87234ffb7651a920e74dcb840db9984fe7fa39c2537b0efc",
+  "deliveryAggregateMethod": "sha256 of the concatenated lowercase SHA256 hex digests of all 8 GLBs sorted by absolute path",
+  "shippingFamilyBytes": 596727,
   "reviews": [
     {"file":"review/bush-v1.pbr-cardinals.png","sha256":"d40e43b982cc3b8b102db93da95b2f2467de6b1b41f44edae1d72a021b4bf648"},
     {"file":"review/hedge-v1.pbr-cardinals.png","sha256":"0e6c69de41bd507030e24fa212249f84d5d9a96c802221d4f06cb133f454e997"},
-    {"file":"review/live-electron-webgpu.png","sha256":"9d3f7ef2c1595bd114b6f53eec0b7cdc3750cc92807deecb10e5b4c344fa1c7b","note":"Live Electron/WebGPU roadside proof after aligning the hedge local +X long axis with the road tangent."}
+    {"file":"review/live-electron-webgpu.png","sha256":"9d3f7ef2c1595bd114b6f53eec0b7cdc3750cc92807deecb10e5b4c344fa1c7b","note":"Live Electron/WebGPU roadside proof after aligning the hedge local +X long axis with the road tangent."},
+    {"file":"review/bush-shadow-webgpu.png","sha256":"b96c3b461be7bc65583f6f2723b721301a55502ddc0205aaa2294f556d0a9bf9","note":"Live WebGPU overhead proof that the 48-triangle bush caster resolves as three compact overlapping foliage masses attached to each plant, without the rejected broad octagon or pill silhouette."}
   ],
   "rejections": [
     {
@@ -95,6 +101,10 @@
     {
       "delivery": "generic local-Z street yaw applied to the hedge",
       "reason": "The imported hedge's long axis is local +X, so the generic street transform exposed its narrow end and made it read as a post. Production placement applies a hedge-only quarter turn while preserving positions, stable keys, counts and save fingerprints."
+    },
+    {
+      "delivery": "single broad bush ellipsoid and first two-lobe replacement",
+      "reason": "The broad proxy projected as an unrelated regular octagon, while two touching lobes still formed a long pill. The accepted 48-triangle delivery uses three compact, lightly overlapping closed masses that follow the irregular crown footprint."
     }
   ]
 }

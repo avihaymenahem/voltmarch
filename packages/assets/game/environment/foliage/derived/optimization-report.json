@@ -17,14 +17,16 @@
       "outputs": [
         {
           "profile": "lod1",
-          "status": "candidate",
-          "blockers": [],
-          "file": "packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.lod1.glb",
+          "status": "rejected-visual",
+          "blockers": [
+            "runtime review: stripped TEXCOORD_0/material caused a pale, barkless normal-distance swap"
+          ],
+          "file": null,
           "triangles": 802,
           "triangleRatio": 0.2385,
           "boundsDriftMeters": 0.16499,
           "boundsDriftRatio": 0.02931,
-          "fileBytes": 39376,
+          "fileBytes": 0,
           "geometryOnly": true
         },
         {
@@ -55,7 +57,7 @@
           "selectionNote": "uses the visually accepted LOD1 silhouette; the lower direct caster was rejected"
         }
       ],
-      "selectedFarDelivery": {
+      "selectedEmergencyDelivery": {
         "method": "crossed vertex-colour silhouette",
         "file": "packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.lod2.glb",
         "triangles": 384,

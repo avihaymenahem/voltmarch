@@ -28,8 +28,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDesktopRenderer } from './renderer-build.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+// Exercise the renderer the desktop release actually packages. A generic root
+// build deliberately has no deployment relay define; smoking those bytes would
+// make Multiplayer fail for the wrong reason and would not test the artifact
+// desktop.yml publishes.
+const rendererStatus = buildDesktopRenderer();
+if (rendererStatus !== 0) process.exit(rendererStatus);
 
 // Playwright lives in the ROOT node_modules (it is a devDependency of the game,
 // used by tools/shoot.mjs); electron lives in DESKTOP's, because putting it in
@@ -64,6 +72,13 @@ async function launch(extraArgs = []) {
   const page = await app.firstWindow();
   const messages = [];
   page.on('console', (m) => messages.push(m.text()));
+  page.on('pageerror', (error) => messages.push(`[pageerror] ${error.message}`));
+  page.on('requestfailed', (request) => {
+    const kind = request.resourceType();
+    if (kind === 'document' || kind === 'script') {
+      messages.push(`[requestfailed:${kind}] ${request.url()} — ${request.failure()?.errorText ?? 'unknown'}`);
+    }
+  });
   return { app, page, messages };
 }
 
@@ -73,9 +88,26 @@ async function launch(extraArgs = []) {
 console.log('\n=== run 1 ===');
 const { app, page, messages } = await launch();
 
-// 1. The app:// scheme works at all: the document parsed and the module script ran.
-await page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
-check(true, 'app:// scheme serves index.html and the ES module bundle parsed');
+// 1. The app:// scheme works at all: the document parsed, the module script ran,
+// the preload bridge arrived and the product menu mounted. The menu no longer
+// boots a hidden game behind itself, so __VM is deliberately absent here.
+await page.waitForFunction(() => (
+  window.voltmarch?.bridge !== undefined && document.querySelector('.vm-menu-foot') !== null
+), null, { timeout: 60_000 }).catch(async (error) => {
+  const snapshot = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title,
+    readyState: document.readyState,
+    text: document.body?.innerText.slice(0, 1_000) ?? '',
+  })).catch((snapshotError) => ({ snapshotError: snapshotError.message }));
+  const diagnostic = messages.slice(-30).join('\n        ');
+  await app.close().catch(() => {});
+  throw new Error(
+    `${error.message}\n        renderer snapshot: ${JSON.stringify(snapshot)}\n` +
+    `        recent renderer console:\n        ${diagnostic}`,
+  );
+});
+check(true, 'app:// scheme serves index.html, preload bridge and product menu');
 
 // 2. Secure context — WebGPU is [SecureContext]-gated, so `secure: true` on the
 //    scheme is what keeps ?gpu=webgpu reachable at all.
@@ -120,66 +152,28 @@ const updates = await page.evaluate(() => window.voltmarch.updateState());
 check(updates.mode === 'development', 'dev updater is exposed but network-disabled',
   `${updates.mode}/${updates.status}`);
 
-// 4. The engine actually reached a running state.
-await page.evaluate(() => window.__VM.ready());
-check(true, '__VM.ready() resolved');
-
-// The shipped scene must use the authored environment by default, and terrain
-// must not compile while its 4K detail sampler is still the neutral 1x1 guard.
-// `__VM.ready()` covers renderer readiness; the title theatre boots behind it,
-// so wait for the owning systems to publish their persistent evidence instead
-// of racing their async asset loads.
-await page.waitForFunction(() => (
-  'importedFoliageFamilies' in window.__VM.counters &&
-  'terrainDetailPixels' in window.__VM.counters
-), null, { timeout: 60_000 }).catch(() => { /* the checks below report both values */ });
-const authoredEnvironment = await page.evaluate(() => ({
-  importedFoliageFamilies: window.__VM.counters.importedFoliageFamilies ?? 0,
-  terrainDetailPixels: window.__VM.counters.terrainDetailPixels ?? 0,
-}));
-check(authoredEnvironment.importedFoliageFamilies > 0,
-  'ordinary launch loads the imported PBR foliage presentation',
-  `${authoredEnvironment.importedFoliageFamilies} audited families`);
-check(authoredEnvironment.terrainDetailPixels === 4096 * 4096,
-  'terrain material is built only after the 4K detail mask is ready',
-  `${authoredEnvironment.terrainDetailPixels} decoded pixels`);
-
-// 5. The adapter, read rather than assumed — and cross-checked against the
-//    main process's own getGPUInfo, because two independent reads agreeing is
-//    the standard this project holds itself to.
-const rendererGpu = await page.evaluate(() => {
-  const info = window.__VM.gpuInfo?.();
-  return info ? { adapter: info.adapter ?? null, backend: info.backend ?? null } : null;
-});
+// 4. Read the main process adapter rather than assuming Chromium honoured the
+// high-performance switch. Run 3 cross-checks it against the live renderer.
 const mainGpu = await app.evaluate(async ({ app: a }) => {
   const info = await a.getGPUInfo('complete');
   const active = (info.gpuDevice ?? []).find((d) => d.active);
   return active ? { vendorId: active.vendorId, deviceId: active.deviceId } : null;
 });
-console.log(`        renderer: ${JSON.stringify(rendererGpu)}`);
 console.log(`        main:     ${JSON.stringify(mainGpu)}`);
 check(mainGpu !== null, 'main process reports an active adapter');
 // 0x10de NVIDIA, 0x1002 AMD, 0x8086 Intel.
 check(mainGpu?.vendorId === 0x10de, 'active adapter is the DISCRETE GPU (0x10de)',
   mainGpu ? `got 0x${mainGpu.vendorId.toString(16)}` : '');
 
-// 6. The texture worker did not silently die. It fails via an error EVENT, not
-//    a constructor throw, so the console is the only witness.
-const workerDead = messages.some((m) => /worker unavailable|texture worker failed/i.test(m));
-check(!workerDead, 'texture worker did not disable itself');
-
-// 7. The packaged renderer carries the production relay and the relay accepts
+// 5. The packaged renderer carries the production relay and the relay accepts
 //    app://voltmarch. This is the exact route a local desktop player uses.
 await page.waitForFunction(() => {
   const button = [...document.querySelectorAll('button')]
     .find((node) => node.textContent?.includes('Multiplayer'));
   return button !== undefined && !button.disabled;
-// A cold Windows profile must initialise the selected GPU, compile the first
-// WebGPU pipelines and generate the procedural title theatre before the menu
-// mounts. Ten seconds made this a race against shader compilation rather than
-// a relay test on real hardware. The engine readiness assertion above retains
-// its own hard deadline; this allowance only waits for the menu entry that
-// performs the production handshake.
+// A cold Windows profile still has native/profile work to complete before the
+// menu entry performs its production handshake. Wait for that contract rather
+// than turning a relay probe into a race against process startup.
 }, null, { timeout: 60_000 }).catch(() => { /* reported below */ });
 const multiplayer = await page.evaluate(() => {
   const button = [...document.querySelectorAll('button')]
@@ -190,7 +184,7 @@ const multiplayer = await page.evaluate(() => {
 check(multiplayer.found && multiplayer.enabled,
   'packaged desktop reaches the production multiplayer relay', multiplayer.text);
 
-// 8. No CSP violations — the header is delivered by the protocol handler, and
+// 6. No CSP violations — the header is delivered by the protocol handler, and
 //    index.html's inline boot script is exactly what would trip a strict one.
 const csp = messages.filter((m) => /Content Security Policy/i.test(m));
 check(csp.length === 0, 'no CSP violations', csp[0] ?? '');
@@ -202,7 +196,9 @@ await app.close();
  * -------------------------------------------------------------------------- */
 console.log('\n=== run 2 (relaunch) ===');
 const second = await launch();
-await second.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
+await second.page.waitForFunction(() => (
+  window.voltmarch?.bridge !== undefined && document.querySelector('.vm-menu-foot') !== null
+), null, { timeout: 60_000 });
 
 const persisted = await second.page.evaluate(async () => {
   const out = { keyValue: false, saveFile: false };
@@ -233,9 +229,32 @@ await second.app.close();
  * refuse.
  * -------------------------------------------------------------------------- */
 console.log('\n=== run 3 (live WebGPU renderer) ===');
-const third = await launch(['--webgpu']);
+const third = await launch(['--webgpu', '--vm-skipmenu=1']);
 await third.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
 await third.page.evaluate(() => window.__VM.ready());
+check(true, '__VM.ready() resolved after a real match boot');
+
+// The shipped scene must use the authored environment by default, and terrain
+// must not compile while its 4K detail sampler is still the neutral 1x1 guard.
+await third.page.waitForFunction(() => (
+  (window.__VM.counters.importedFoliageFamilies ?? 0) > 0 &&
+  (window.__VM.counters.terrainDetailPixels ?? 0) > 0
+), null, { timeout: 60_000 }).catch(() => { /* the checks below report both values */ });
+const authoredEnvironment = await third.page.evaluate(() => ({
+  importedFoliageFamilies: window.__VM.counters.importedFoliageFamilies ?? 0,
+  terrainDetailPixels: window.__VM.counters.terrainDetailPixels ?? 0,
+}));
+check(authoredEnvironment.importedFoliageFamilies > 0,
+  'match boot loads the imported PBR foliage presentation',
+  `${authoredEnvironment.importedFoliageFamilies} audited families`);
+check(authoredEnvironment.terrainDetailPixels === 4096 * 4096,
+  'terrain material is built only after the 4K detail mask is ready',
+  `${authoredEnvironment.terrainDetailPixels} decoded pixels`);
+
+// A module worker that dies reports an error event rather than throwing from
+// its constructor, so the live renderer console is the only honest witness.
+const workerDead = third.messages.some((m) => /worker unavailable|texture worker failed/i.test(m));
+check(!workerDead, 'texture worker did not disable itself');
 
 const nodeGpu = await third.page.evaluate(() => {
   const info = window.__VM.gpuInfo?.();
@@ -283,7 +302,7 @@ await third.app.close();
  * API: what has to work is the thing a player clicks.
  * -------------------------------------------------------------------------- */
 console.log('\n=== run 4 (profile export under app://) ===');
-const fourth = await launch();
+const fourth = await launch(['--vm-skipmenu=1']);
 await fourth.page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
 await fourth.page.evaluate(() => window.__VM.ready());
 
@@ -389,7 +408,7 @@ await fourth.app.close();
  * -------------------------------------------------------------------------- */
 console.log(String.fromCharCode(10) + '=== run 5 (minimise out of fullscreen) ===');
 const fifth = await launch();
-await fifth.page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
+await fifth.page.waitForFunction(() => window.voltmarch?.bridge !== undefined, null, { timeout: 60_000 });
 
 const bridgeVersion = await fifth.page.evaluate(() => window.voltmarch?.bridge ?? null);
 check(bridgeVersion !== null, 'the preload bridge is exposed at all', `bridge=${bridgeVersion}`);

@@ -103,7 +103,7 @@ describe('core/config compatibility facade', () => {
     expect(exportedTypeScriptSurface()).toEqual(
       [...snapshot].sort((a, b) => a.name.localeCompare(b.name)),
     );
-  }, 15_000);
+  });
 
   it('re-exports every runtime value with referential identity', () => {
     const direct = new Map<string, unknown>();

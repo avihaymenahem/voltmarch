@@ -2,9 +2,9 @@
   "version": 1,
   "family": "extended-foliage-v1-pbr",
   "encoder": "Basis Universal 1.16.x",
-  "sourceBytes": 573010,
-  "outputBytes": 509145,
-  "transferRatio": 0.8885,
+  "sourceBytes": 585055,
+  "outputBytes": 517476,
+  "transferRatio": 0.8845,
   "sourceGpuBytesRGBA8": 8388604,
   "compressedGpuBytes8bpp": 2097151,
   "rows": [
@@ -17,10 +17,10 @@
         1024,
         1024
       ],
-      "sourceBytes": 504182,
-      "outputBytes": 296440,
-      "sourceSha256": "300dc81d11f9b9e57b0d4b543b0ab3fd55f3c4013b3095f22cddf6e5167c4f56",
-      "outputSha256": "14ba2946ce0690ae3da44f2076ddabbd4f11111ad30d803767887561f82a4c71",
+      "sourceBytes": 513520,
+      "outputBytes": 295489,
+      "sourceSha256": "dc3864bf471ad630550ee733375445dda5bf788ef3ae7379114e383115e510f1",
+      "outputSha256": "9d5aa9dad939fa49c0b5c56a7470934b17789f855a0c953c15e8161ecef71be4",
       "sourceGpuBytesRGBA8": 5592404,
       "compressedGpuBytes8bpp": 1398101
     },
@@ -33,10 +33,10 @@
         512,
         512
       ],
-      "sourceBytes": 33283,
-      "outputBytes": 179964,
-      "sourceSha256": "b385e88ff86d9ace4de85c400b08279397e1ecd8b23e5075fa58671a2a06123b",
-      "outputSha256": "5d341d2cb22f053f58ac5fa0a065f1177690637eb724ce42cb681ca9e17d1e4a",
+      "sourceBytes": 35004,
+      "outputBytes": 188808,
+      "sourceSha256": "5306b23efa6f0b88164a73456f5a33d3d771d1cf84e1a31162199d8d75994326",
+      "outputSha256": "c5de2af08580c19e40e0d7db368a89ab8d7f5e2d50506a0e3e0acb7e377d821a",
       "sourceGpuBytesRGBA8": 1398100,
       "compressedGpuBytes8bpp": 349525
     },
@@ -49,10 +49,10 @@
         512,
         512
       ],
-      "sourceBytes": 35545,
-      "outputBytes": 32741,
-      "sourceSha256": "d5977ea8ae5e9bc8403273000d521af18de42b00298546f3f1aecb4018e5c93e",
-      "outputSha256": "dfea85d9b380f873ba22a81f16f188d6677e5fc1bb455b08741cdebd42a4bd2a",
+      "sourceBytes": 36531,
+      "outputBytes": 33179,
+      "sourceSha256": "53327ee0b99dbf2d195b5763c3c1e95e4fc076b337f8cff3b5cf0d92d76f98fa",
+      "outputSha256": "0f299f4ade2b467e76630448764b1dc1d87ad506fc97a7205e73d3319da44b44",
       "sourceGpuBytesRGBA8": 1398100,
       "compressedGpuBytes8bpp": 349525
     }

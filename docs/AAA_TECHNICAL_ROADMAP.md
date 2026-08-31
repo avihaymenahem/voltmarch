@@ -131,7 +131,7 @@ The first eleven batches have completed their bounded implementation/decision pa
    rise by exactly two and shadow draws do not change. A final 20 x 60-frame dense bracket improves
    flushed within-backend wall medians 34.61 -> 32.85 ms on WebGL and 1.625 -> 1.580 ms on WebGPU;
    deterministic bootstrap 95% upper bounds are -4.82% and +0.05%, below the +3% regression limit.
-   The deterministic KTX2 atlas is 509,145 bytes versus 573,010 source
+   The deterministic KTX2 atlas is 517,476 bytes versus 585,055 source
    bytes and reduces the conservative mip-residency estimate 8,388,604 -> 2,097,151 bytes. Exact
    measurements, raw reports and 12 tree-focused noon/dusk cross-backend captures are stored with
    the asset review. They also expose far-range card groupings and dusk-readability defects in other

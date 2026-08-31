@@ -73,7 +73,7 @@ import { clamp, clamp01, Rng, srgbToLinear, TAU } from '../core/math';
 import { linearColorTriple } from '../core/assets';
 import { applyShroudTint } from '../render/FogOfWar';
 import { SurfaceId, type BiomeName } from './Biomes';
-import { PROP_WIND } from './prop-wind';
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
 /* ==========================================================================
  * 1. COLOUR
@@ -887,17 +887,20 @@ export class PropMesh {
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.posArr), 3));
     g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(this.nrmArr), 3));
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.colArr), 3));
-    g.setAttribute('aSway', new THREE.BufferAttribute(new Float32Array(this.swyArr), 1));
     // WebGPU guarantees only eight vertex-buffer slots. Instanced props use
-    // position, normal, colour, sway, matrix, instance colour and wind phase;
-    // keeping emissive and gloss as separate scalar buffers made nine. Pack
-    // the two independent surface masks into one vec2 with no precision loss.
-    const surface = new Float32Array(this.emtArr.length * 2);
+    // position, normal, colour, matrix, instance colour and wind phase. Pack
+    // sway, the two surface masks and a zero-phase fallback into one float4.
+    // Scatter replaces the fallback with its InstancedBufferAttribute; plain
+    // scenario props retain zero, matching the non-instanced WebGL contract.
+    const runtime = new THREE.InterleavedBuffer(new Float32Array(this.emtArr.length * 4), 4);
     for (let i = 0; i < this.emtArr.length; i++) {
-      surface[i * 2] = this.emtArr[i];
-      surface[i * 2 + 1] = this.glsArr[i];
+      runtime.array[i * 4] = this.swyArr[i];
+      runtime.array[i * 4 + 1] = this.emtArr[i];
+      runtime.array[i * 4 + 2] = this.glsArr[i];
     }
-    g.setAttribute('aSurface', new THREE.BufferAttribute(surface, 2));
+    g.setAttribute('aSway', new THREE.InterleavedBufferAttribute(runtime, 1, 0));
+    g.setAttribute('aSurface', new THREE.InterleavedBufferAttribute(runtime, 2, 1));
+    g.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, new THREE.InterleavedBufferAttribute(runtime, 1, 3));
     const count = this.posArr.length / 3;
     g.setIndex(count > 65535
       ? new THREE.BufferAttribute(new Uint32Array(this.idxArr), 1)
@@ -2270,12 +2273,12 @@ export const PROP_DEFS: readonly PropDef[] = [
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
     mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
     urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false,
-    castsShadow: false, build: buildGrassGold },
+    build: buildGrassGold },
   { key: 'grassTuftGreen', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
     mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
     urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false,
-    castsShadow: false, build: buildGrassGreen },
+    build: buildGrassGreen },
 
   /* --- rock --------------------------------------------------------------
    * BIOME WEIGHTS CUT 35%, and the clump sizes with them.

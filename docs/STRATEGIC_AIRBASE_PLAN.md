@@ -348,6 +348,10 @@ GLB with 22,262- and 10,418-triangle colour LODs plus a 3,072-triangle shadow pr
 atlases retain gunmetal, olive and restrained red breakup; runtime family gains lift readability without
 washing the whole model in faction colour. The Soviet catalogue uses the same four-slot, one-base cap,
 free-flight, single-release, return/landing and 300-tick rearm contract as the Allied POC.
+Live sortie review on 2026-09-01 found the imported Molot tail aligned with authoritative movement:
+its cockpit points along source -X, so runtime conditioning now rotates +90° rather than -90° to map
+the nose onto gameplay +Z. The correction is render-only and is pinned by a focused spec plus the
+native-WebGPU `07h-soviet-aviation-works` fixture; sortie state, steering and replay data are unchanged.
 
 Completed for Meridian and Reclamation on 2026-08-31 from four dedicated ImageGen references. The
 19,904-triangle Ecliptic ships with 8,956- and 3,582-triangle colour LODs plus a 1,188-triangle shadow

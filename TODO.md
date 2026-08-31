@@ -51,7 +51,9 @@ with no number is untracked, and that is itself the bug.
   an explicit `?foliage=procedural` request. `debrisPile` reuses the approved rounded rock-cluster
   family, so the old rectangular block rocks are gone. Extended vegetation shares one alpha PBR atlas;
   the remaining yard/street/civic set—including barrels, cafe umbrellas and all three cars—ships
-  one-primitive static GLBs, topology-safe reduced LODs, 12-triangle casters and one shared PBR atlas.
+  one-primitive static GLBs, topology-safe reduced LODs and one shared PBR atlas. Compact static props
+  use 12-triangle casters; the component-separated tent and barrel compositions use audited 84- and
+  128-triangle proxies so their shadows cannot collapse into giant AABBs.
   Finish only the engine acceptance work in `docs/FOLIAGE_ENGINE_PLAN.md` Gate 3/4: camera-band LOD
   bucket repacking, authored PBR wind/depth parity, shared KTX2 promotion, dense-copse WebGL/WebGPU
   timings and clearing/save restoration. Keep dormant procedural failure builders until those gates pass.

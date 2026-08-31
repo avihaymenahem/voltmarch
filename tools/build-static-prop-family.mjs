@@ -39,6 +39,18 @@ await build({
   format: 'esm',
   outfile: bundle,
   loader: { '.png': 'empty' },
+  plugins: [{
+    name: 'static-prop-url-stubs',
+    setup(context) {
+      context.onResolve({ filter: /^@terrain-detail-mask\?url$/ }, () => ({
+        path: 'terrain-detail-mask-url', namespace: 'static-prop-stub',
+      }));
+      context.onLoad({ filter: /.*/, namespace: 'static-prop-stub' }, () => ({
+        contents: "export default '';",
+        loader: 'js',
+      }));
+    },
+  }],
   logLevel: 'warning',
 });
 const module = await import(`${pathToFileURL(bundle).href}?v=${Date.now()}`);
@@ -138,6 +150,143 @@ function boxData(source) {
   return { positions, normals, colours, uvs, indices };
 }
 
+function shadowGeometry() {
+  return { positions: [], normals: [], colours: [], uvs: [], indices: [] };
+}
+
+function appendShadowVertex(target, position, normal) {
+  const index = target.positions.length / 3;
+  target.positions.push(...position);
+  target.normals.push(...normal);
+  target.colours.push(0.5, 0.5, 0.5);
+  target.uvs.push(0, 0);
+  return index;
+}
+
+function appendShadowTriangle(target, a, b, c, normal) {
+  const base = target.positions.length / 3;
+  appendShadowVertex(target, a, normal);
+  appendShadowVertex(target, b, normal);
+  appendShadowVertex(target, c, normal);
+  target.indices.push(base, base + 1, base + 2);
+}
+
+function appendShadowQuad(target, a, b, c, d, normal) {
+  const base = target.positions.length / 3;
+  appendShadowVertex(target, a, normal);
+  appendShadowVertex(target, b, normal);
+  appendShadowVertex(target, c, normal);
+  appendShadowVertex(target, d, normal);
+  target.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+}
+
+function appendShadowBox(target, { x, y, z, width, height, depth, yaw = 0 }) {
+  const hx = width * 0.5;
+  const hy = height * 0.5;
+  const hz = depth * 0.5;
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const point = (px, py, pz) => [
+    x + px * cs + pz * sn,
+    y + py,
+    z - px * sn + pz * cs,
+  ];
+  const direction = (nx, ny, nz) => [nx * cs + nz * sn, ny, -nx * sn + nz * cs];
+  const faces = [
+    [[-hx,-hy,hz],[hx,-hy,hz],[hx,hy,hz],[-hx,hy,hz],[0,0,1]],
+    [[hx,-hy,-hz],[-hx,-hy,-hz],[-hx,hy,-hz],[hx,hy,-hz],[0,0,-1]],
+    [[hx,-hy,hz],[hx,-hy,-hz],[hx,hy,-hz],[hx,hy,hz],[1,0,0]],
+    [[-hx,-hy,-hz],[-hx,-hy,hz],[-hx,hy,hz],[-hx,hy,-hz],[-1,0,0]],
+    [[-hx,hy,hz],[hx,hy,hz],[hx,hy,-hz],[-hx,hy,-hz],[0,1,0]],
+    [[-hx,-hy,-hz],[hx,-hy,-hz],[hx,-hy,hz],[-hx,-hy,hz],[0,-1,0]],
+  ];
+  for (const [a, b, c, d, normal] of faces) {
+    appendShadowQuad(target, point(...a), point(...b), point(...c), point(...d), direction(...normal));
+  }
+}
+
+function appendShadowCylinder(target, { x, z, radius, height, sides }) {
+  for (let side = 0; side < sides; side++) {
+    const a0 = side / sides * Math.PI * 2;
+    const a1 = (side + 1) / sides * Math.PI * 2;
+    const b0 = [x + Math.cos(a0) * radius, 0, z + Math.sin(a0) * radius];
+    const b1 = [x + Math.cos(a1) * radius, 0, z + Math.sin(a1) * radius];
+    const t0 = [b0[0], height, b0[2]];
+    const t1 = [b1[0], height, b1[2]];
+    const mid = (a0 + a1) * 0.5;
+    appendShadowQuad(target, b0, t0, t1, b1, [Math.cos(mid), 0, Math.sin(mid)]);
+    appendShadowTriangle(target, t0, [x, height, z], t1, [0, 1, 0]);
+    appendShadowTriangle(target, b0, b1, [x, 0, z], [0, -1, 0]);
+  }
+}
+
+function typedShadowData(target) {
+  return {
+    positions: new Float32Array(target.positions),
+    normals: new Float32Array(target.normals),
+    colours: new Float32Array(target.colours),
+    uvs: new Float32Array(target.uvs),
+    indices: new Uint32Array(target.indices),
+  };
+}
+
+function tentShadowData() {
+  const target = shadowGeometry();
+  const sides = 12;
+  const baseRadius = 2.0;
+  const shoulderRadius = 1.84;
+  const shoulderY = 1.53;
+  const apex = [0, 3.638, 0];
+  for (let side = 0; side < sides; side++) {
+    const a0 = side / sides * Math.PI * 2;
+    const a1 = (side + 1) / sides * Math.PI * 2;
+    const b0 = [Math.cos(a0) * baseRadius, 0, Math.sin(a0) * baseRadius];
+    const b1 = [Math.cos(a1) * baseRadius, 0, Math.sin(a1) * baseRadius];
+    const s0 = [Math.cos(a0) * shoulderRadius, shoulderY, Math.sin(a0) * shoulderRadius];
+    const s1 = [Math.cos(a1) * shoulderRadius, shoulderY, Math.sin(a1) * shoulderRadius];
+    const mid = (a0 + a1) * 0.5;
+    appendShadowQuad(target, b0, s0, s1, b1, [Math.cos(mid), 0.1, Math.sin(mid)]);
+    appendShadowTriangle(target, s0, apex, s1, [Math.cos(mid), 0.7, Math.sin(mid)]);
+    appendShadowTriangle(target, b0, b1, [0, 0, 0], [0, -1, 0]);
+  }
+  // The three supply boxes are separate silhouettes. Keeping them separate is
+  // what prevents their combined AABB from becoming one six-metre square.
+  for (let index = 0; index < 3; index++) {
+    const yaw = index / 3 * Math.PI * 2 + 0.4;
+    appendShadowBox(target, {
+      x: Math.cos(yaw) * 2.55, y: 0.42, z: Math.sin(yaw) * 2.55,
+      width: 1.4, height: 0.8, depth: 0.8, yaw,
+    });
+  }
+  return typedShadowData(target);
+}
+
+function barrelShadowData() {
+  const target = shadowGeometry();
+  // PropLibrary seed 7 authors four upright drums at these stable centres.
+  // Keeping four separate radial casters preserves the visible gaps between
+  // them instead of filling the complete group AABB with one opaque wedge.
+  const bodies = [
+    [0, 0],
+    [-0.0872, 0.9187],
+    [-0.6599, 0.1115],
+    [-0.2564, -0.8304],
+  ];
+  for (const [x, z] of bodies) {
+    appendShadowCylinder(target, {
+      x, z, radius: 0.42, height: 1.05,
+      sides: 8,
+    });
+  }
+  return typedShadowData(target);
+}
+
+function shadowData(key, source) {
+  if (key === 'haystack') return tentShadowData();
+  if (key === 'barrel') return barrelShadowData();
+  return boxData(source);
+}
+
 function documentFor(name, data, textured = true) {
   const document = new Document();
   const buffer = document.createBuffer(`${name}.buffer`);
@@ -196,7 +345,7 @@ for (const key of keys) {
     report.push(await writeDocument(`derived/${name}.lod1.glb`, await simplifiedDocument(`${name}.lod1`, data, 0.58, 0.03)));
     report.push(await writeDocument(`derived/${name}.lod2.glb`, await simplifiedDocument(`${name}.lod2`, data, 0.30, 0.08)));
   }
-  report.push(await writeDocument(`derived/${name}.shadow.glb`, documentFor(`${name}.shadow`, boxData(entry.geometry), false)));
+  report.push(await writeDocument(`derived/${name}.shadow.glb`, documentFor(`${name}.shadow`, shadowData(key, entry.geometry), false)));
 }
 
 library.dispose();

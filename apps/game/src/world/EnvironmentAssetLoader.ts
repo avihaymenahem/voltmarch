@@ -19,7 +19,7 @@ import {
 import type { EnvironmentGeometryFamily } from './FoliageEngine';
 import { propDef, propPalette, type PropDef, type PropGeometry } from './PropLibrary';
 import type { BiomeName } from './Biomes';
-import { PROP_WIND } from './prop-wind';
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
 const loader = createRuntimeGLTFLoader();
 let foliageKtx2Loader: KTX2Loader | null = null;
@@ -126,7 +126,17 @@ export function createEnvironmentMaterial(
   };
   material.customProgramCacheKey = () => 'vm.environment-pbr.shroud-wind.v1';
   material.userData.vmFoliageSetTime = (time: number): void => { uTime.value = time; };
-  const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  // WebGL does not inherit the colour material's cutout state when a custom
+  // depth material is installed. Carry the same atlas mask into the shadow
+  // pass or every foliage card casts a detached solid rectangle. WebGPU reads
+  // the node material's mask directly and reaches the same alpha-test contract.
+  const depthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    map: params.map,
+    alphaMap: params.alphaMap,
+    alphaTest: params.alphaTest ?? 0,
+    side: params.side ?? THREE.FrontSide,
+  });
   depthMaterial.name = `${material.name}.depth`;
   depthMaterial.onBeforeCompile = (shader) => {
     shader.uniforms.uWindTime = uTime;
@@ -151,10 +161,6 @@ const PROP_SURFACE_DELIVERY_URLS = Object.fromEntries(
 const DELIVERY_URLS: Readonly<Record<string, string>> = Object.freeze({
   'temperate-broadleaf-v1.glb': new URL(
     '../../../../packages/assets/game/environment/foliage/temperate-broadleaf-v1.glb',
-    import.meta.url,
-  ).href,
-  'derived/temperate-broadleaf-v1.lod1.glb': new URL(
-    '../../../../packages/assets/game/environment/foliage/derived/temperate-broadleaf-v1.lod1.glb',
     import.meta.url,
   ).href,
   'derived/temperate-broadleaf-v1.lod2.glb': new URL(
@@ -625,9 +631,9 @@ function floatAttribute(
  * Instanced props add three runtime vertex buffers (`instanceMatrix`,
  * `instanceColor`, and `aSwayPhase`). Imported textured geometry already owns
  * position, normal, UV, and colour buffers, so keeping `aSway` and `aSurface`
- * separate would require nine buffers and exceed WebGPU's guaranteed limit of
- * eight. They are independent shader attributes but share one interleaved
- * float3 buffer here, preserving their values while spending one slot.
+ * separate would exceed WebGPU's guaranteed limit of eight. Sway, surface and
+ * the non-instanced zero-phase fallback are independent shader attributes but
+ * share one interleaved float4 buffer, preserving their values in one slot.
  */
 export function addEnvironmentRuntimeAttributes(
   geometry: THREE.BufferGeometry,
@@ -655,17 +661,24 @@ export function addEnvironmentRuntimeAttributes(
   const box = geometry.boundingBox;
   if (box === null) throw new Error('[foliage] imported geometry has no bounds');
   const height = Math.max(0.001, box.max.y - box.min.y);
-  const runtime = new THREE.InterleavedBuffer(new Float32Array(position.count * 3), 3);
+  const runtime = new THREE.InterleavedBuffer(new Float32Array(position.count * 4), 4);
   for (let i = 0; i < position.count; i++) {
     const relativeHeight = (position.getY(i) - box.min.y) / height;
     // Keep the trunk rooted. The authored PBR LOD currently uses an ordinary
     // MeshStandardMaterial, but retaining the attribute makes the family
     // immediately compatible with the shared wind shader derivatives.
-    runtime.array[i * 3] = wind ? THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72) : 0;
-    runtime.array[i * 3 + 2] = 0.9;
+    runtime.array[i * 4] = wind ? THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72) : 0;
+    runtime.array[i * 4 + 2] = 0.9;
   }
   geometry.setAttribute('aSway', new THREE.InterleavedBufferAttribute(runtime, 1, 0));
   geometry.setAttribute('aSurface', new THREE.InterleavedBufferAttribute(runtime, 2, 1));
+  // Plain scenario props use the same node material without Scatter's
+  // InstancedBufferAttribute. Zero matches the non-instanced WebGL phase;
+  // Scatter replaces this attribute on its clone without adding a buffer slot.
+  geometry.setAttribute(
+    PROP_WIND_PHASE_ATTRIBUTE,
+    new THREE.InterleavedBufferAttribute(runtime, 1, 3),
+  );
 }
 
 function tintRockGeometry(
@@ -895,6 +908,10 @@ async function loadFamily(
   const lod0Material: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined = key === 'tree'
     ? 'embedded'
     : mineralVisibleMaterial ?? visibleMaterial;
+  // Broadleaf normal-distance rungs deliberately point at the same authored
+  // PBR delivery. Matching the material mode lets the request cache return one
+  // decoded geometry/material object for all three normal camera bands.
+  const normalLodMaterial = key === 'tree' ? lod0Material : visibleMaterial;
   type AuthoredMaterial = Parameters<typeof loadDelivery>[3];
   const deliveryPromises = new Map<string, Promise<PropGeometry>>();
   const request = (
@@ -916,8 +933,8 @@ async function loadFamily(
   };
   const settled = await Promise.allSettled([
     request(files.lod0, 'lod0', lod0Material),
-    request(files.lod1, 'lod1', visibleMaterial),
-    request(files.lod2, 'lod2', visibleMaterial),
+    request(files.lod1, 'lod1', normalLodMaterial),
+    request(files.lod2, 'lod2', normalLodMaterial),
     request(files.shadow, 'shadow', undefined),
     request(files.emergency, 'emergency', visibleMaterial),
   ]);

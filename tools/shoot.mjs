@@ -354,6 +354,13 @@ const SHOTS = [
     camera: { distance: 62, pitchDeg: 48.4558 },
   },
   {
+    name: '07h-soviet-aviation-works',
+    caption: 'Soviet Heavy Aviation Works and four Molots — pad heading and imported nose orientation.',
+    flags: { shot: 'soviet-aviation-works', seed: 7 },
+    pose: [['focusOn', MAP_CENTER, MAP_CENTER, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
+  },
+  {
     name: '07b-meridian-base',
     caption: 'Meridian Pact base. Bone ceramic, aged brass and teal energy surfaces under gameplay light.',
     flags: { shot: 'meridian-base', seed: 7 },

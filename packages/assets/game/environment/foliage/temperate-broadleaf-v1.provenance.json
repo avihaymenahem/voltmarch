@@ -36,7 +36,7 @@
   },
   "deliveries": [
     {
-      "role": "lod0",
+      "role": "lod0-through-far-normal",
       "file": "temperate-broadleaf-v1.glb",
       "bytes": 1364600,
       "triangles": 3363,
@@ -44,14 +44,6 @@
       "sha256": "26a2a449a750e6549eff1e8de83555639cf5f243ff44e8676a3087c48397e1ce",
       "textures": ["base:1024x1024", "normal:1024x1024", "metallicRoughness:512x512"],
       "singleSided": true
-    },
-    {
-      "role": "lod1-and-far-normal",
-      "file": "derived/temperate-broadleaf-v1.lod1.glb",
-      "bytes": 39376,
-      "triangles": 802,
-      "sha256": "628e41372e33882b7a674e9eac7adda0b41b4ca3f228e7dd89f2a4b038adcfd7",
-      "geometryOnly": true
     },
     {
       "role": "lod2-emergency",
@@ -72,7 +64,7 @@
       "method": "LOD1 silhouette reuse after lower automatic caster collapsed"
     }
   ],
-  "shippingFamilyBytes": 1474492,
+  "shippingFamilyBytes": 1435116,
   "shippingBudgetBytes": 1572864,
   "rejections": [
     {
@@ -81,7 +73,11 @@
     },
     {
       "delivery": "crossed silhouette normal LOD2",
-      "reason": "Live WebGPU gameplay review exposed tall vertical card slabs at the 116 m camera transition. The accepted 802-triangle LOD1 now occupies the far normal band; this derivative remains emergency-only."
+      "reason": "Live WebGPU gameplay review exposed tall vertical card slabs at the 116 m camera transition. The authored PBR source now occupies the far normal band; this derivative remains emergency-only."
+    },
+    {
+      "delivery": "802-triangle geometry-only normal LOD1",
+      "reason": "Runtime review exposed the missing TEXCOORD_0 and material payload: the generic Scatter material replaced the authored leaf and bark atlas at the camera transition. The derivative remains caster-only; all normal bands alias the authored PBR source."
     }
   ],
   "review": {

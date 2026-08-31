@@ -1871,14 +1871,21 @@ An organic 60 Hz WebGPU boot (not the deterministic harness) then scheduled 74 s
 across 121 presented frames over two seconds—39% fewer—while 31 camera/projection changes correctly
 forced immediate updates; the browser reported no page exceptions.
 
-### Low ground cover no longer submits imperceptible shadow draws
+### Small ground cover uses explicit shadow policy and silhouette-matched casters
 
-**Measured 2026-08-29; enabled by default on WebGPU and WebGL.** Scatter definitions now author
-whether a prop type casts. Only the two grass-tuft types and the 0.8 m flower bed opt out; trees,
-shrubs, rocks, debris, street furniture and every unit/structure retain their existing shadows.
-This is an explicit authoring flag rather than a height heuristic because a bench, drum or low rock
-still needs a contact shadow to read as a solid object. `?scattershadow=legacy` restores the previous
-all-types behavior for same-build A/B measurements.
+**Updated 2026-09-01; enabled by default on WebGPU and WebGL.** Scatter definitions author whether a
+prop type casts. Live overhead review rejected the 2026-08-29 decision to opt both grass-tuft types
+out: neighbouring clumps visibly alternated between present and missing shadows. Both grass
+identities now submit narrow 1.55 by 0.38 m, 24-triangle closed casters. Bush keeps its 48-triangle
+budget but uses three compact overlapping masses instead of a broad octagon or two-lobe pill. Only
+the 0.8 m flower bed opts out; trees, shrubs, grass, rocks, debris, street furniture and every
+unit/structure retain shadows. This remains an explicit authoring flag rather than a height heuristic
+because a bench, drum or low rock needs contact shadow to read as a solid object.
+
+The fixed Soviet-base result below is retained as a historical measurement of the superseded
+three-type filter, not as a performance claim for the current one-type policy. At that time,
+`?scattershadow=legacy` restored all three types for a same-build A/B. The current switch restores
+the flower bed only and therefore cannot reproduce that old comparison.
 
 On the fixed Soviet-base WebGPU fixture at 1920x1080, five blocks of 120 actually submitted frames
 reduced total/shadow draws from 153/54 to 150/51, shadow triangles from 710,028 to 673,692
@@ -1892,6 +1899,12 @@ and resident terrain-detail artwork. The filtered and legacy screenshots were by
 0 changed pixels out of 921,600. An earlier cold first-process pair was rejected because the 4K
 terrain-detail image was still the neutral placeholder in one arm; `gpu-frame-ab.mjs --capture`
 now gives that asynchronous decode a real-time completion window before its final frame.
+
+The accepted 2026-09-01 allied-base seed-7 WebGPU review at 1040x720 is a visual/content proof, not
+an A/B benchmark: 144 total draws (50 shadow), 1,439,867 total triangles (345,692 shadow), 368
+foliage instances, and 14 colour plus 13 shadow foliage draws. The foliage shadow pass submitted
+55,702 triangles. Grass casters are present and narrow; bush, field-tent and barrel shadows remain
+attached to their visible component silhouettes without changing the family-level draw count.
 
 ### Ground decals follow the terrain triangles that are actually drawn
 

@@ -189,7 +189,9 @@ function buildHedge(detail) {
   return target;
 }
 
-function appendEllipsoid(target, radiusX, radiusZ, height, rings, segments) {
+function appendEllipsoid(target, {
+  x = 0, z = 0, radiusX, radiusZ, height, rings, segments,
+}) {
   const ringVertices = [];
   for (let ring = 1; ring < rings; ring++) {
     const phi = -Math.PI * 0.5 + Math.PI * ring / rings;
@@ -197,11 +199,15 @@ function appendEllipsoid(target, radiusX, radiusZ, height, rings, segments) {
     for (let segment = 0; segment < segments; segment++) {
       const theta = segment / segments * TAU;
       const position = [
-        Math.cos(phi) * Math.cos(theta) * radiusX,
+        x + Math.cos(phi) * Math.cos(theta) * radiusX,
         (Math.sin(phi) * 0.5 + 0.5) * height,
-        Math.cos(phi) * Math.sin(theta) * radiusZ,
+        z + Math.cos(phi) * Math.sin(theta) * radiusZ,
       ];
-      const normal = [position[0] / radiusX, (position[1] - height * 0.5) / (height * 0.5), position[2] / radiusZ];
+      const normal = [
+        (position[0] - x) / radiusX,
+        (position[1] - height * 0.5) / (height * 0.5),
+        (position[2] - z) / radiusZ,
+      ];
       const normalLength = Math.hypot(...normal);
       const index = target.positions.length / 3;
       target.positions.push(...position);
@@ -212,11 +218,11 @@ function appendEllipsoid(target, radiusX, radiusZ, height, rings, segments) {
     ringVertices.push(row);
   }
   const bottom = target.positions.length / 3;
-  target.positions.push(0, 0, 0);
+  target.positions.push(x, 0, z);
   target.normals.push(0, -1, 0);
   target.colours.push(0.9, 0.9, 0.9);
   const top = target.positions.length / 3;
-  target.positions.push(0, height, 0);
+  target.positions.push(x, height, z);
   target.normals.push(0, 1, 0);
   target.colours.push(1, 1, 1);
   for (let segment = 0; segment < segments; segment++) {
@@ -251,7 +257,21 @@ function appendBox(target, width, height, depth) {
 
 function buildBushShadow() {
   const target = geometry();
-  appendEllipsoid(target, 0.9, 0.82, 1.65, 4, 8);
+  // Three compact, lightly overlapping lobes follow the upright card clusters
+  // without merging into the old detached octagonal puddle. Instance yaw
+  // rotates this deliberately asymmetric silhouette with each placement.
+  appendEllipsoid(target, {
+    x: -0.32, z: 0.12, radiusX: 0.27, radiusZ: 0.23,
+    height: 1.45, rings: 2, segments: 8,
+  });
+  appendEllipsoid(target, {
+    x: 0, z: -0.12, radiusX: 0.29, radiusZ: 0.24,
+    height: 1.48, rings: 2, segments: 8,
+  });
+  appendEllipsoid(target, {
+    x: 0.34, z: 0.09, radiusX: 0.25, radiusZ: 0.21,
+    height: 1.32, rings: 2, segments: 8,
+  });
   return target;
 }
 

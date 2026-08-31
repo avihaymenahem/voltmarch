@@ -2,10 +2,11 @@
   "version": 1,
   "family": "extended-foliage-v1",
   "generatedAt": "2026-08-30",
+  "updatedAt": "2026-09-01",
   "runtimeStatus": {
-    "treeAutumn": "procedural-live-fallback",
-    "conifer": "procedural-live-fallback",
-    "palm": "procedural-live-fallback",
+    "treeAutumn": "authored",
+    "conifer": "authored",
+    "palm": "authored",
     "grassTuft": "authored",
     "grassTuftGreen": "authored"
   },
@@ -31,34 +32,42 @@
     "alphaToCoverage": false,
     "doubleSided": true,
     "metalness": 0,
-    "atlasLayout": "2x2: autumn branch, conifer branch, palm fronds, grass tuft; opaque bark swatch in guarded atlas corner",
+    "atlasLayout": "2x2: autumn branch, composed conifer crown with bounded asymmetric tier profiles plus dedicated fissured bark plate and recessed opaque caster swatch, palm fronds, grass tuft; autumn and palm trunks use mip-safe opaque point samples while the conifer trunk spans its non-overlapping bark plate",
+    "ktx2Orientation": "The encoded mip chains are vertically flipped at cook time to reproduce ordinary TextureLoader upload orientation for GLB UVs; compressed KTX2 uploads cannot apply UNPACK_FLIP_Y at runtime.",
     "maps": [
-      {"role":"baseColorAlpha","file":"material/extended-foliage-v1.base.webp","dimensions":[1024,1024],"bytes":504182,"sha256":"300dc81d11f9b9e57b0d4b543b0ab3fd55f3c4013b3095f22cddf6e5167c4f56"},
-      {"role":"normal","file":"material/extended-foliage-v1.normal.jpg","dimensions":[512,512],"bytes":33283,"sha256":"b385e88ff86d9ace4de85c400b08279397e1ecd8b23e5075fa58671a2a06123b"},
-      {"role":"metallicRoughness","file":"material/extended-foliage-v1.mr.jpg","dimensions":[512,512],"bytes":35545,"sha256":"d5977ea8ae5e9bc8403273000d521af18de42b00298546f3f1aecb4018e5c93e"}
+      {"role":"baseColorAlpha","file":"material/extended-foliage-v1.base.webp","dimensions":[1024,1024],"bytes":513520,"sha256":"dc3864bf471ad630550ee733375445dda5bf788ef3ae7379114e383115e510f1"},
+      {"role":"normal","file":"material/extended-foliage-v1.normal.jpg","dimensions":[512,512],"bytes":35004,"sha256":"5306b23efa6f0b88164a73456f5a33d3d771d1cf84e1a31162199d8d75994326"},
+      {"role":"metallicRoughness","file":"material/extended-foliage-v1.mr.jpg","dimensions":[512,512],"bytes":36531,"sha256":"53327ee0b99dbf2d195b5763c3c1e95e4fc076b337f8cff3b5cf0d92d76f98fa"}
     ]
   },
   "deliveries": [
-    {"key":"treeAutumn","triangles":{"lod0":54,"lod1":48,"lod2Emergency":44,"shadow":40}},
-    {"key":"conifer","triangles":{"lod0":82,"lod1":64,"lod2Emergency":52,"shadow":40}},
-    {"key":"palm","triangles":{"lod0":170,"lod1":168,"lod2Emergency":166,"shadow":36}},
+    {"key":"treeAutumn","triangles":{"lod0":68,"lod1":58,"lod2Emergency":50,"shadow":48}},
+    {"key":"conifer","triangles":{"lod0":46,"lod1":44,"lod2Emergency":42,"shadow":48}},
+    {"key":"palm","triangles":{"lod0":170,"lod1":168,"lod2Emergency":166,"shadow":44}},
     {"key":"grassTuft","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}},
     {"key":"grassTuftGreen","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}}
   ],
   "deliveryFileCount": 20,
-  "deliveryBytes": 68760,
-  "deliveryAggregateSha256": "86026fbcd35312a8c12672e3cd25c3b69d8c640c061153438623be40c20a034e",
-  "shippingFamilyBytes": 641770,
+  "deliveryBytes": 75436,
+  "deliveryAggregateSha256": "ec0a634c4932cbf939006879bca2e91ac96bd172e9d100ea8449b3836e11f977",
+  "shippingFamilyBytes": 660491,
   "reviews": [
-    {"file":"review/autumn-webgpu.png","sha256":"c0c5a87134f93486ab68758fb7111ebd93072b6a773fdf6b4b642b5d8e153513","note":"WebGPU cardinal proof of the halo-free alpha silhouette and corrected medium-brown trunk."},
-    {"file":"review/conifer-webgpu.png","sha256":"926b55006dd83a97692ed5b25b3d0ed2afc8e3740c4104972355cfc3893181de","note":"WebGPU halo-free proof after increasing LOD0 branch density from the rejected sparse first pass."},
-    {"file":"review/palm-webgpu.png","sha256":"ae878d40e9603e68018464a93ba04ed43dafc7aa9b3b35924c3c50c60ccf7e02","note":"WebGPU proof of the halo-free radial frond read and segmented grounded trunk."},
-    {"file":"review/grass-webgpu.png","sha256":"9ab789ff9b34955dbec08f680155d4b1f31d69a695232416fb2fdfadce001994","note":"WebGPU proof of halo-free realistic alpha grass at an eight-triangle LOD0."}
+    {"file":"review/autumn-webgpu.png","sha256":"ea5616545f7957a83b6fda042f2f8afae8036d10fe2e0fea4df175ac527cd63b","note":"WebGPU cardinal proof that the layered autumn crown retains a grounded medium-brown trunk in every view."},
+    {"file":"review/autumn-top-webgpu.png","sha256":"43e2c901bd9d608c8a1684544e6bd23d2d11ebe2fb949712d5cb3d3ad13590ec","note":"Native-WebGPU overhead proof that smaller offset crown clusters replace the rejected single radial sunflower card."},
+    {"file":"review/conifer-webgpu.png","sha256":"ef76c26be43995838b9318839b727462d8a8cf0a60dbc8e2384ecd15ac1dd2bd","note":"Native-WebGPU cardinal proof of the richer coherent pine silhouette, bounded branch/needle variation and separate fissured brown bark plate in every view."},
+    {"file":"review/palm-webgpu.png","sha256":"c66e3a414953d94589c0132d1f7a12439b9a3fc8b552c299150f1adda72ee24f","note":"WebGPU proof of the halo-free radial frond read and segmented grounded trunk."},
+    {"file":"review/grass-webgpu.png","sha256":"9ab789ff9b34955dbec08f680155d4b1f31d69a695232416fb2fdfadce001994","note":"WebGPU proof of halo-free realistic alpha grass at an eight-triangle LOD0."},
+    {"file":"review/grass-shadow-webgpu.png","sha256":"b2ad1256c8bad113aadbbafea218aa0accab40784cb2a5c5e8b558bf078827fd","note":"Live WebGPU overhead proof that both stable grass identities submit consistent narrow 24-triangle casters matching their blade clumps instead of broad oval patches."}
   ],
   "rejections": [
-    {"delivery":"first trunk-atlas mapping","reason":"Transparent atlas pixels made trunks render nearly black; an opaque guarded bark swatch and point UV mapping replaced it."},
-    {"delivery":"first conifer LOD0","reason":"Nine cards exposed too much pole-like trunk in cardinal review; the accepted LOD0 uses fifteen cards while remaining only 82 triangles."},
+    {"delivery":"corner bark swatch trunk mapping","reason":"The 8 px opaque swatch passed close LOD0 review but averaged into transparent texels in distant mips, erasing trunks. Autumn and palm now use 33+ texels of opaque guard; conifer uses a dedicated fissured bark plate."},
+    {"delivery":"centre-crossed autumn crown","reason":"Large cards all crossed the trunk centre and one full-width horizontal card projected the complete branch texture as a flat sunflower from above. The accepted crown uses layered offset tilted and recessed top clusters with dedicated overhead review."},
+    {"delivery":"first conifer LOD0","reason":"Nine cards exposed too much pole-like trunk; the later 15-card candidate improved isolated cardinals but was ultimately rejected by live gameplay review."},
+    {"delivery":"all-horizontal conifer candidate","reason":"WebGL cardinal review showed sparse edge-on branch discs."},
+    {"delivery":"dull shelf-whorl conifer candidate","reason":"Fixed whorls removed random yaw but still read as disconnected dark shelves around a flat pole. The accepted crown is one deterministic descending branch composition crossed only for camera coverage."},
+    {"delivery":"conifer bark plate inside crown UV","reason":"The first textured-bark pass let foliage cards sample the new brown tile as obvious rectangular holes. Accepted bark and crown rectangles are disjoint and regression-tested."},
+    {"delivery":"unconditioned KTX2 atlas orientation","reason":"The compressed mip chain was vertically opposite the GLB UV convention: conifer crowns sampled the grass cell and bark sampled transparency, producing random hanging sprays and missing trunks. The deterministic cook now bakes TextureLoader-equivalent vertical orientation into every KTX2 mip."},
     {"delivery":"soft alpha-to-coverage foliage edges","reason":"Partial-alpha source texels produced bright strokes around leaf and grass silhouettes in the live WebGPU scene. Production uses a strict 0.85 mask without alpha-to-coverage."},
-    {"delivery":"autumn/conifer/palm live runtime promotion","reason":"Gameplay camera angles exposed shredded radial cards and sparse pole-like silhouettes that isolated cardinal review missed. The packaged files remain production candidates, but runtime is pinned to the existing procedural families until replacements pass WebGPU scene review."}
+    {"delivery":"broad grass caster with per-type shadow opt-out","reason":"The old 1.9 by 0.8 closed proxy projected as a detached oval, and disabling both grass identities created visibly inconsistent missing shadows among neighbouring clumps. Both types now cast the same narrow 1.55 by 0.38, 24-triangle proxy; only flowerBed retains the explicit low-cover opt-out."}
   ]
 }

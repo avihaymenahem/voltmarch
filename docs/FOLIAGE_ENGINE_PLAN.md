@@ -1,6 +1,6 @@
 # VOLTMARCH foliage engine and environment-asset migration
 
-Status: broadleaf CPU pilot passed; per-family visual/performance acceptance for the 32-family catalogue remains · owner: world/art pipeline · opened 2026-08-29
+Status: full 32-family catalogue integrated; broadleaf CPU pilot passed; remaining per-family performance acceptance is tracked in Gate 4 · owner: world/art pipeline · opened 2026-08-29
 
 ## Decision
 
@@ -253,8 +253,8 @@ task `01a04ee7-71ee-7606-b7c6-8d0f2572306d` cost 10 credits, preserved that topo
 base-colour, normal and metallic/roughness maps with baked lighting removed. Local conditioning
 made the material single-sided and resized it to 1K base, 1K normal and 512 packed MR.
 
-The shipping family is 1,038,948 bytes: 3,363-triangle PBR LOD0, 802-triangle geometry-only LOD1,
-384-triangle crossed vertex-colour LOD2/emergency and an 802-triangle geometry-only caster. Direct
+The originally reviewed family contained a 3,363-triangle PBR LOD0, 802-triangle geometry-only LOD1,
+384-triangle crossed vertex-colour emergency delivery and an 802-triangle geometry-only caster. Direct
 387/376-triangle simplification candidates passed numerical bounds gates but failed cardinal review
 as collapsed slabs; neither ships. The deliberate far derivative preserves crown/trunk masses without
 a texture sampler, while the caster reuses the visually accepted LOD1 silhouette.
@@ -296,15 +296,13 @@ colour/`castShadowPositionNode` use the same authored wind contract. Clearing us
 envelope—including its spatial scan reach—rather than active LOD bounds, and a grazing-footprint test
 locks procedural/imported/emergency save outcomes together.
 
-WebGPU vertex-layout repair, 2026-08-31: the authored textured broadleaf originally reached ten
-vertex-buffer bindings after instancing—position, normal, tangent, UV, colour, sway, surface,
-instance matrix, instance colour and wind phase—while WebGPU guarantees only eight. Its LOD0 render
-pipeline could therefore fail while the cheaper geometry-only rungs survived, leaving only coarse
-tree silhouettes in an ordinary match. The runtime now removes the redundant authored tangent and
-stores the independent sway/surface attributes in one interleaved buffer, reducing the same draw to
-exactly eight bindings without changing values or instance identity. A fresh native-WebGPU dusk
-capture renders all three buckets at 328/27/13 instances; the focused 74-test vertex-layout,
-foliage, wind and node-material suite plus the production build pass.
+WebGPU vertex-layout repair, 2026-08-31: authored textured foliage originally reached ten
+vertex-buffer bindings after instancing, above WebGPU's guaranteed limit of eight. Runtime
+conditioning now removes the redundant authored tangent and stores sway, surface and the plain-mesh
+zero-phase fallback in one interleaved float4 buffer. Scatter replaces that fallback with its
+instanced phase without adding a slot. The resulting layout is exactly eight bindings and is locked
+by a focused regression test; removing that conditioning can make LOD0 disappear while a cheaper
+geometry-only rung survives.
 
 ### Gate 4 — acceptance
 
@@ -348,30 +346,40 @@ wall median 5.10% on WebGL and 2.77% on WebGPU. A deterministic 200,000-resample
 regression ceiling. Tree-focused 24/62/116 m noon/dusk captures now live
 beside the asset on both backends. They approve the broadleaf silhouette; they also record remaining
 catalogue defects—vertical card groupings at far range, weak dusk interior readability, and broader
-  renderer-parity differences—so those later family gates remain open.
+renderer-parity differences—so those later family gates remain open.
 
-Live-game correction, 2026-08-31 (WebGPU authority): the gameplay camera rejected the crossed-card
-far broadleaf and the ultra-low-card autumn/conifer/palm families visible in the acceptance evidence.
-The normal broadleaf chain now shares the accepted 802-triangle LOD1 across the medium and far bands;
-the 384-triangle crossed derivative is loaded independently and is reachable only through explicit
-emergency presentation. Sharing the repeated file removes the duplicate decode and collapses the
-normal colour presentation from three tree buckets to two. Autumn broadleaf, conifer and palm remain
-packaged production candidates but are marked procedural-only at runtime until replacements pass live
-camera review.
+Live-camera correction, 2026-08-31: both reduced colour derivatives are rejected. The crossed-card
+far broadleaf produced vertical slabs, while the 802-triangle geometry-only rung had stripped every UV
+and material reference; Scatter therefore substituted its generic material at the camera transition,
+making trees look pale and barkless. Close, medium and far normal presentation now aliases one decode
+of the approved 3,363-triangle PBR source, with no material or silhouette swap. The 802-triangle mesh is
+caster-only and the 384-triangle crossed derivative loads only for explicit emergency presentation.
+The active shipping set is 1,435,116 bytes because the repeated normal rungs do not duplicate files.
 
-On the same seed-7 368-prop fixture this quality rollback changes the prior imported result from
-328/27/13 to 328/40/0 LOD0/1/2 instances and removes one colour draw (16 -> 15) plus three compiled
-programs (307 -> 304). The honest geometry cost is 94,076 -> 165,624 colour triangles (+76.1%) and
-51,498 -> 117,850 shadow triangles (+128.8%): broadleaf itself adds only 5,434 colour triangles; the
-rest buys back the accepted procedural autumn/conifer silhouettes and their matching casters. A fresh
-8-frame x 2-block native-WebGPU run records 4.65 ms minimum / 4.669 ms median wall time at 1280x720,
-but it is an absolute smoke measurement rather than a timing A/B. New 24/62/116 m captures show no
-vertical slabs or shredded cards. Gate 4 remains open for a true silhouette-preserving broadleaf LOD2
-and authored replacements for the three quarantined tree families.
+The same review initially quarantined autumn broadleaf, conifer and palm after exposing missing
+trunks, disconnected pine sprays and apparently free shadows. The source audit found four coupled
+causes: an 8 px corner bark swatch disappeared into transparent lower mips; the conifer generator
+jittered branch cards independently; the runtime KTX2 mip chain was vertically opposite the GLB UV
+convention; tree and palm casters filled the complete ground-to-crown volume; and WebGL custom depth
+materials omitted the foliage alpha mask. The corrected family uses mip-safe opaque trunk UVs, a
+dedicated fissured conifer bark plate, coherent layered whole-pine crowns with bounded tier/card
+profile variation, a vertically conditioned KTX2,
+separate trunk-plus-crown proxies and
+the same alpha-test/map/side contract in WebGL colour and depth passes. Autumn/conifer/palm shadow
+budgets are now 48/48/44 triangles, and conifer colour rungs are 46/44/42 triangles. Fresh local
+WebGL and native-WebGPU cardinal renders, the focused 29-test foliage/layout suite, TypeScript and
+the production build are the acceptance evidence for re-integration; no paid asset generation was
+used for this correction.
+
+A follow-up top-down art gate rejected the first repaired autumn crown: all large vertical cards
+still crossed the trunk centre and one full-width horizontal card projected the complete branch
+texture as a flat sunflower. The accepted 68/58/50-triangle family uses 12/8/5 smaller offset,
+tilted crown clusters plus 4/3/2 recessed top clusters. Dedicated WebGL and native-WebGPU overhead
+reviews now sit beside the cardinal sheets so this camera-specific silhouette cannot pass unnoticed.
 
 The shared extended-foliage atlas is a deterministic single-thread Basis cook. Three consecutive
-clean recooks reproduce its tracked report and source hashes. Output is 509,145 bytes versus 573,010
-source bytes (-11.14% transfer); the conservative RGBA8 mip estimate falls from 8,388,604 to
+clean recooks reproduce its tracked report and source hashes. Output is 517,476 bytes versus 585,055
+source bytes (-11.55% transfer); the conservative RGBA8 mip estimate falls from 8,388,604 to
 2,097,151 bytes at 8 bpp. Normal-map UASTC RDO was explicitly rejected after anonymous review proved
 its output nondeterministic; the accepted normal is un-RDO UASTC. Runtime and visual evidence lives
 in `review/gate4-runtime-report.json` beside this family, and the exact cook evidence lives in
@@ -381,10 +389,8 @@ in `review/gate4-runtime-report.json` beside this family, and the exact cook evi
 
 Migrate by reusable family, not by one-off asset:
 
-1. Foliage family: broadleaf, two grass identities, bush and hedge are integrated. Broadleaf currently
-   has two accepted normal colour rungs; its old crossed derivative is emergency-only. Autumn
-   broadleaf, conifer and palm are packaged but quarantined to procedural runtime presentation after
-   live-camera rejection. Grass keeps the shared ImageGen-derived 1024/512/512 alpha PBR atlas;
+1. Foliage family: broadleaf, autumn broadleaf, conifer, palm, two grass identities, bush and hedge
+   are integrated. Autumn/conifer/palm/grass share one ImageGen-derived 1024/512/512 alpha PBR atlas;
    bush/hedge share their separate continuous-shrub atlas.
 2. Mineral/debris family: boulder and rock cluster are integrated. `debrisPile` deliberately resolves
    to the same approved rounded rock-cluster family, removing the old single rectangular blocks from
@@ -411,10 +417,12 @@ texture-free. Focused tests, TypeScript, the production Vite bundle, cardinal re
 Electron/WebGPU skirmish passed. Legacy rock builders remain until camera-band LOD dispatch and the
 full Gate 4 performance/save acceptance remove the procedural escape path.
 
-Shrub checkpoint, 2026-08-29: `bush` and `hedge` now keep their stable Scatter identities while the
+Shrub checkpoint, updated 2026-09-01: `bush` and `hedge` now keep their stable Scatter identities while the
 imported presentation loads through the same atomic family catalogue. Bush deliveries are
-28/16/6 triangles with a 48-triangle closed caster; hedge deliveries are 12/10/10 with a 12-triangle
-box caster. Both keys share one cached alpha-tested, vertex-tinted PBR material. The atlas was built
+28/16/6 triangles with a 48-triangle three-lobe closed caster; hedge deliveries are 12/10/10 with a
+12-triangle box caster. The three compact overlapping bush masses replace the rejected broad octagon
+and first two-lobe pill while keeping the triangle budget unchanged. Both keys share one cached
+alpha-tested, vertex-tinted PBR material. The atlas was built
 from separate ImageGen branch-cluster and continuous-hedge sources, with semi-transparent fringe
 decontamination before WebP delivery. Focused tests, TypeScript, lint, production build and final
 cardinal review pass. A live Electron/WebGPU roadside review also caught the imported hedge's local
@@ -435,17 +443,27 @@ flower canopy uses measured source-alpha bounds instead of extra geometry. Cardi
 Electron/WebGPU reviews pass, the complete shipping family is 360,201 bytes, and Meshy spend was
 zero. Procedural builders remain failure fallbacks until the complete Gate 4 runtime acceptance.
 
-Full-catalogue checkpoint, 2026-08-30: `EnvironmentAssetCatalog` covers all 32 stable Scatter keys,
+Full-catalogue checkpoint, updated 2026-09-01: `EnvironmentAssetCatalog` covers all 32 stable Scatter keys,
 and a focused test compares that set directly with `PROP_KEYS`. Five additional vegetation identities
 ship compact card/trunk LOD families through one shared ImageGen PBR atlas. Nineteen manufactured yard,
 street and civic identities ship offline-baked one-primitive GLBs, topology-safe reduced LOD1/LOD2
-deliveries and 12-triangle caster proxies through one cached prop-surface PBR atlas. WebGL and WebGPU
+deliveries and closed caster proxies through one cached prop-surface PBR atlas. Compact single-mass
+props remain on the 12-triangle box path; the field tent uses an 84-triangle round shelter plus three
+supply-box casters, and the four-barrel composition uses four closed cylinders totalling 128 triangles.
+Their prior single AABBs joined separated parts into giant square and wedge shadows. WebGL and WebGPU
 cardinal reviews cover the previously easy-to-miss barrels, cafe umbrella set and all three cars.
 The earlier live Electron/WebGPU catalogue review reported 32 registered imported families, 4,894
 seeded props, 18 biome-selected types, 13 visible colour draws and zero empty coverage patches. The
 Gate 3/4 work above replaces its eager imported boot with immediate deterministic fallback plus an
 atomic presentation handoff, adds broadleaf camera-band dispatch and completes wind/depth,
 clearing/save and dense-frame acceptance. Asset delivery did not remove the procedural failure arm.
+
+Small-cover shadow correction, 2026-09-01: both grass identities again cast consistently. Their
+24-triangle closed proxies were narrowed from 1.9 by 0.8 m to 1.55 by 0.38 m so the projected shape
+tracks the blade clump rather than an unrelated oval. Only `flowerBed` retains an explicit Scatter
+shadow opt-out. Live native-WebGPU overhead reviews for grass, bush, tent and barrels are stored with
+their families, and focused tests enforce the authored triangle ceilings and the two static-prop
+exceptions. No paid generation or external asset acquisition was used for these corrections.
 
 ## Explicit non-goals for the POC
 

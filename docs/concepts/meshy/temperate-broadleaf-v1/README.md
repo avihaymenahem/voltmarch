@@ -1,6 +1,6 @@
 # Temperate broadleaf V1 concept source
 
-Status: Meshy geometry captured; local LOD2 rejected · content key: `tree` · created 2026-08-29
+Status: Meshy geometry captured; reduced normal LODs rejected · content key: `tree` · created 2026-08-29
 
 ## Role and fit contract
 
@@ -95,8 +95,10 @@ route:
   metallic/roughness maps. The normal map's channel deviation rose from about 2.3 to 8.6, making
   the material respond to grazing light instead of reading as flat paint.
 
-The tracked family adds an 802-triangle LOD1, 384-triangle vertex-colour crossed silhouette for
-LOD2/emergency and the accepted 802-triangle silhouette as caster. Lower direct simplifications were
-rejected after cardinal review because they collapsed into slabs. The complete family is integrated
-behind `?foliage=imported`; exact hashes, sizes and rejection history live in
+The tracked family keeps the 3,363-triangle textured source through every normal camera band, aliases
+those bands to one runtime decode, uses the 802-triangle geometry only as its caster, and reserves the
+384-triangle vertex-colour crossed silhouette for explicit emergency presentation. Lower direct
+simplifications collapsed into slabs; the former 802-triangle normal rung also stripped its atlas UVs
+and became pale and barkless at runtime. The complete family is integrated behind
+`?foliage=imported`; exact hashes, sizes and rejection history live in
 `packages/assets/game/environment/foliage/temperate-broadleaf-v1.provenance.json`.

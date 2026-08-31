@@ -2,8 +2,9 @@
   "version": 1,
   "family": "prop-surface-v1",
   "generatedAt": "2026-08-30",
+  "updatedAt": "2026-09-01",
   "source": {
-    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and closed caster generation; the field tent uses a 32-segment smooth canvas silhouette and preserves that approved 264-triangle topology across colour LODs",
+    "geometryMethod": "offline bake of reviewed PropLibrary silhouettes followed by topology-safe position simplification and silhouette-specific closed caster generation; the field tent uses a 32-segment smooth canvas silhouette, preserves that approved 264-triangle topology across colour LODs and casts with a separate round shelter plus three box proxies; the four-barrel composition casts with four separate closed cylinders",
     "geometryTool": "tools/build-static-prop-family.mjs",
     "textureMethod": "Meshy 6 exact-geometry 4K PBR retexture conditioned into the canvas cell beside three approved ImageGen/reused realistic surfaces; all four are normalized into one colour-preserving runtime atlas",
     "textureTool": "tools/extract-glb-textures.mjs + tools/build-prop-surface-pbr.mjs",
@@ -34,7 +35,7 @@
     ]
   },
   "triangles": {
-    "haystack":[264,264,264,12],"containerStack":[2376,1378,712,12],"barrel":[1524,882,456,12],
+    "haystack":[264,264,264,84],"containerStack":[2376,1378,712,12],"barrel":[1524,882,456,128],
     "streetLamp":[308,178,92,12],"streetLampTwin":[492,284,146,12],"bench":[396,224,118,12],
     "carSedan":[496,286,148,12],"carVan":[496,286,148,12],"carPickup":[584,338,174,12],
     "trafficLight":[472,273,140,12],"fence":[176,102,52,12],"railing":[1012,586,302,12],
@@ -44,10 +45,10 @@
   },
   "triangleArrayOrder": ["lod0","lod1","lod2Emergency","shadow"],
   "deliveryFileCount": 76,
-  "deliveryBytes": 4339264,
-  "deliveryAggregateSha256": "ec055db36f6a4a29c62cc595c1a95d845a1775ccacd6d1a8dde9ba209b6903b8",
+  "deliveryBytes": 4358244,
+  "deliveryAggregateSha256": "efde17097418c9ba85128f5279685c2350b91a92d2ed5a1f10c15d2a439b28f2",
   "deliveryAggregateMethod": "sha256 of the concatenated lowercase SHA256 hex digests of all 76 GLBs sorted by absolute path",
-  "shippingFamilyBytes": 4461488,
+  "shippingFamilyBytes": 4480468,
   "reviews": [
     {"file":"review/barrel-webgpu.png","sha256":"37922886b9ee8384e06f1416a24e2c4e411b86a75e968d894766919ffefd150d","note":"WebGPU proof of the imported PBR barrel stack."},
     {"file":"review/umbrella-webgpu.png","sha256":"801db99532041b918c3b82562ed70c96d8903bd1383ac3d2528c9cbb469ba83a","note":"WebGPU proof of the complete umbrella, table and chair composition."},
@@ -57,12 +58,15 @@
     {"file":"review/tent-webgl.png","sha256":"de760e1d9f86f634c02dc6bd7404a9054f0fcd985ee43c2edaa91c843f744765","note":"WebGL front/right/back/left proof of the Meshy-conditioned olive canvas tent and timber supply boxes."},
     {"file":"review/tent-webgpu.png","sha256":"b20f40cd87892a7ba35387587f1a4712fdd7135e939c91bf3ffb2a8c6a0fe455","note":"WebGPU front/right/back/left parity proof of the tent material."},
     {"file":"review/tent-top-webgl.png","sha256":"c3b3734f45cf7d2ec4029c6cc3003b963b5cd6b19e218ab7a59893e8569e746d","note":"WebGL top-down RTS-distance material read."},
-    {"file":"review/tent-top-webgpu.png","sha256":"d1ac3e517b7bc4d557fcfba9012df2a2e68f3ef66d64e8cc2d1fffeaf8116041","note":"WebGPU top-down RTS-distance parity proof."}
+    {"file":"review/tent-top-webgpu.png","sha256":"d1ac3e517b7bc4d557fcfba9012df2a2e68f3ef66d64e8cc2d1fffeaf8116041","note":"WebGPU top-down RTS-distance parity proof."},
+    {"file":"review/tent-shadow-webgpu.png","sha256":"1ff97dcdce7c5f3c62e7f27893d01b5bfac4ef203cd0137cc2795fb7221fbdc4","note":"Live WebGPU overhead proof that the internal haystack identity's field tent casts one round tapered shelter mass plus three detached supply-box shadows instead of one six-metre square."},
+    {"file":"review/barrel-shadow-webgpu.png","sha256":"6e903ba07a7a9402bada9ba4777ec02c175b57e415e2cdc041f1f0e157274f0e","note":"Live WebGPU overhead proof that the four-barrel composition casts four compact rounded masses instead of one rectangular bounding-box wedge."}
   ],
   "rejections": [
     {"delivery":"topology-locked first LOD pass","reason":"UV, normal and colour seams prevented any index reduction; it was rejected because LOD1 and LOD2 retained full LOD0 triangle counts."},
     {"delivery":"non-topological sloppy simplification","reason":"It reached low counts but folded barrel and car surfaces and disconnected umbrella furniture; all such files were overwritten."},
     {"delivery":"accepted simplification","reason":"Position-topology simplification with permissive seam handling retained connected silhouettes in cardinal review while reducing the larger LOD1/LOD2 deliveries."},
-    {"delivery":"haystack LOD1/LOD2 simplification","reason":"Rejected after gameplay-distance review exposed a large chord cut into the round wall. The 264-triangle approved source topology is retained for both colour LOD names; the 12-triangle closed caster remains the shadow delivery."}
+    {"delivery":"haystack LOD1/LOD2 simplification","reason":"Rejected after gameplay-distance review exposed a large chord cut into the round wall. The 264-triangle approved source topology is retained for both colour LOD names; the silhouette-specific 84-triangle caster remains the shadow delivery."},
+    {"delivery":"single AABB caster for every static prop","reason":"A single 12-triangle bounding box joined the field tent and its supply boxes into an enormous square, and joined four barrels into a rectangular wedge. Production keeps the 12-triangle path for compact single-mass props but uses audited per-component closed casters for these two compositions."}
   ]
 }

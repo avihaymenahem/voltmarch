@@ -80,6 +80,11 @@ const STATIC_PROP_LOD_FLOORS: Readonly<Record<string, number>> = Object.freeze({
   haystack: 264,
 });
 
+const STATIC_PROP_SHADOW_CEILINGS: Readonly<Record<string, number>> = Object.freeze({
+  haystack: 84,
+  barrel: 128,
+});
+
 const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.map(([
   key, family, radius, height, triangles, file,
 ]) => [key, Object.freeze({
@@ -95,7 +100,7 @@ const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.m
     lod0Triangles: triangles,
     lod1Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.86),
     lod2Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
-    shadowTriangles: 12,
+    shadowTriangles: STATIC_PROP_SHADOW_CEILINGS[key] ?? 12,
     emergencyTriangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
     shippingBytes: 1_048_576,
   }),
@@ -126,19 +131,20 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       budget: Object.freeze({
         rawTriangles: 12_000,
         lod0Triangles: 3_500,
-        lod1Triangles: 900,
-        // Live WebGPU review rejected the 384-triangle crossed-card silhouette.
-        // LOD1 is deliberately retained through the far camera band until a
-        // silhouette-preserving derivative passes gameplay review.
-        lod2Triangles: 900,
+        // The former 802-triangle normal rung stripped the authored atlas and
+        // visibly turned pale at the camera transition. Keep the approved PBR
+        // mesh through both normal bands until a textured derivative passes
+        // live review; the loader aliases the repeated file into one decode.
+        lod1Triangles: 3_500,
+        lod2Triangles: 3_500,
         shadowTriangles: 900,
         emergencyTriangles: 400,
         shippingBytes: 1_572_864,
       }),
       deliveries: Object.freeze({
         lod0: 'temperate-broadleaf-v1.glb',
-        lod1: 'derived/temperate-broadleaf-v1.lod1.glb',
-        lod2: 'derived/temperate-broadleaf-v1.lod1.glb',
+        lod1: 'temperate-broadleaf-v1.glb',
+        lod2: 'temperate-broadleaf-v1.glb',
         shadow: 'derived/temperate-broadleaf-v1.shadow.glb',
         emergency: 'derived/temperate-broadleaf-v1.lod2.glb',
       }),
@@ -146,13 +152,12 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     treeAutumn: Object.freeze({
       key: 'treeAutumn',
       family: 'canopy',
-      stage: 'production',
+      stage: 'integrated',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 4.8, height: 10.6 }),
       wind: 'canopy',
-      runtimePresentation: 'procedural',
-      budget: Object.freeze({ rawTriangles: 54, lod0Triangles: 64, lod1Triangles: 56, lod2Triangles: 48, shadowTriangles: 48, emergencyTriangles: 48, shippingBytes: 786_432 }),
+      budget: Object.freeze({ rawTriangles: 68, lod0Triangles: 68, lod1Triangles: 58, lod2Triangles: 50, shadowTriangles: 48, emergencyTriangles: 50, shippingBytes: 786_432 }),
       deliveries: Object.freeze({
         lod0: 'tree-autumn-v1.glb', lod1: 'derived/tree-autumn-v1.lod1.glb',
         lod2: 'derived/tree-autumn-v1.lod2.glb', shadow: 'derived/tree-autumn-v1.shadow.glb',
@@ -162,13 +167,12 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     conifer: Object.freeze({
       key: 'conifer',
       family: 'canopy',
-      stage: 'production',
+      stage: 'integrated',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 3.9, height: 11.4 }),
       wind: 'canopy',
-      runtimePresentation: 'procedural',
-      budget: Object.freeze({ rawTriangles: 82, lod0Triangles: 90, lod1Triangles: 70, lod2Triangles: 60, shadowTriangles: 48, emergencyTriangles: 60, shippingBytes: 131_072 }),
+      budget: Object.freeze({ rawTriangles: 46, lod0Triangles: 46, lod1Triangles: 44, lod2Triangles: 42, shadowTriangles: 48, emergencyTriangles: 42, shippingBytes: 131_072 }),
       deliveries: Object.freeze({
         lod0: 'conifer-v1.glb', lod1: 'derived/conifer-v1.lod1.glb',
         lod2: 'derived/conifer-v1.lod2.glb', shadow: 'derived/conifer-v1.shadow.glb',
@@ -178,12 +182,11 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
     palm: Object.freeze({
       key: 'palm',
       family: 'canopy',
-      stage: 'production',
+      stage: 'integrated',
       materialFamily: 'extended-foliage-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 4.7, height: 8.4 }),
       wind: 'canopy',
-      runtimePresentation: 'procedural',
       budget: Object.freeze({ rawTriangles: 170, lod0Triangles: 180, lod1Triangles: 176, lod2Triangles: 172, shadowTriangles: 44, emergencyTriangles: 172, shippingBytes: 196_608 }),
       deliveries: Object.freeze({
         lod0: 'palm-v1.glb', lod1: 'derived/palm-v1.lod1.glb',
@@ -199,7 +202,7 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 1.3, height: 2.15 }),
       wind: 'grass',
-      budget: Object.freeze({ rawTriangles: 8, lod0Triangles: 10, lod1Triangles: 8, lod2Triangles: 6, shadowTriangles: 28, emergencyTriangles: 6, shippingBytes: 65_536 }),
+      budget: Object.freeze({ rawTriangles: 8, lod0Triangles: 8, lod1Triangles: 6, lod2Triangles: 4, shadowTriangles: 24, emergencyTriangles: 4, shippingBytes: 65_536 }),
       deliveries: Object.freeze({
         lod0: 'grass-tuft-v1.glb', lod1: 'derived/grass-tuft-v1.lod1.glb',
         lod2: 'derived/grass-tuft-v1.lod2.glb', shadow: 'derived/grass-tuft-v1.shadow.glb',
@@ -214,7 +217,7 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 1.3, height: 2.15 }),
       wind: 'grass',
-      budget: Object.freeze({ rawTriangles: 8, lod0Triangles: 10, lod1Triangles: 8, lod2Triangles: 6, shadowTriangles: 28, emergencyTriangles: 6, shippingBytes: 65_536 }),
+      budget: Object.freeze({ rawTriangles: 8, lod0Triangles: 8, lod1Triangles: 6, lod2Triangles: 4, shadowTriangles: 24, emergencyTriangles: 4, shippingBytes: 65_536 }),
       deliveries: Object.freeze({
         lod0: 'grass-tuft-green-v1.glb', lod1: 'derived/grass-tuft-green-v1.lod1.glb',
         lod2: 'derived/grass-tuft-green-v1.lod2.glb', shadow: 'derived/grass-tuft-green-v1.shadow.glb',

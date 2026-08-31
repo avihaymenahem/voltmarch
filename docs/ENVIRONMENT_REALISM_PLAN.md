@@ -75,15 +75,24 @@ The first static composition slice is live, with one important correction from i
 - the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
   repeated roadside cars/planters/benches were reduced so limited prop diversity is not amplified by
   uniform spacing;
-- all 32 stable Scatter identities have asset manifests. World reveal uses deterministic procedural
-  geometry immediately, then atomically promotes only live-review-approved families without changing
-  placement or saved felling state. Autumn broadleaf, conifer and palm are explicitly held on their
-  procedural presentation after WebGPU gameplay angles rejected their ultra-low-card candidates;
+- all 32 stable Scatter identities now resolve through audited imported families. World reveal uses
+  deterministic procedural geometry immediately, then atomically promotes Scatter plus
+  scenario-spawned trees, bushes, rocks, barrels and crates to the same loaded PBR families without
+  changing placement or saved felling state;
 - the old rectangular `debrisPile` blocks are removed from imported presentation; that identity now
   reuses the approved rounded and striated rock-cluster LOD/caster family;
-- autumn tree, conifer, palm and both grass tufts have one packaged ImageGen-derived alpha PBR atlas;
-  only the grass identities currently promote from it. The remaining yard, street and civic props
-  share a separate neutral PBR atlas and offline static GLBs;
+- autumn tree, conifer, palm and both grass tufts share one ImageGen-derived alpha PBR atlas. The
+  tree trunks use mip-safe opaque atlas samples; autumn crowns use layered offset clusters instead
+  of one radial top card; conifers use a dedicated fissured bark plate and layered whole-crown cards
+  with bounded tier reach, handedness, offset and needle-tone variation instead of identical stamps
+  or disconnected shelf whorls. Their KTX2 mip chain is vertically conditioned to match the
+  GLB UV convention so crown and bark remain on their intended atlas regions. Tree and palm shadows use separate
+  trunk/crown proxies; WebGL shadow depth carries the same alpha cutout as colour. Both grass
+  identities use consistent narrow closed casters, and the bush caster follows its crown with three
+  compact masses. The remaining yard, street and civic props share a separate neutral PBR atlas and
+  offline static GLBs. Compact single-mass props keep 12-triangle box casters, while the field tent
+  separates its shelter and supply boxes and the barrel stack separates all four drums; barrels,
+  cafe umbrellas and sedan/van/pickup families have explicit WebGL/WebGPU cardinal proofs;
 - civilian apartments are six separately scattered, mirrored strongpoints hidden until scouted;
   Oil Derrick, Hospital and Ore Mine counts are unchanged.
 
@@ -161,8 +170,8 @@ Meshy's arbitrary material stack. Per-instance hue/value variation remains avail
 | Umbrella/table/bench | local authored kit; Meshy only if silhouette review fails | 300–900 | 120–350 | 80–200 | shared civic trim/vertex colour |
 | Crates/pallets/barrels | local modular kit | 150–700 per composition | 80–250 | 60–160 | shared yard trim/vertex colour |
 | Crate stack/flower box pilot | deterministic local box kit; ImageGen surface/canopy | 16–60 | 14–60 | 12–24 | one shared 1K/512/512 alpha PBR atlas; forged-iron mask is metallic, timber/soil/flowers remain dielectric |
-| Autumn/conifer/palm/grass | compact authored card/trunk families | 8–170 | 4–168 | 24–40 | one shared ImageGen alpha-tested 1K/512/512 PBR atlas |
-| Remaining yard/street/civic props | offline bake of reviewed authored silhouettes | 164–2,376 | topology-safe ~30–58% far deliveries | 12 | one shared ImageGen-derived metal/wood/hay/stone 1K/512/512 PBR atlas |
+| Autumn/conifer/palm/grass | compact authored card/trunk families | 8–170 | 4–168 | 24–48 | one shared ImageGen alpha-tested 1K/512/512 PBR atlas |
+| Remaining yard/street/civic props | offline bake of reviewed authored silhouettes | 164–2,376 | topology-safe ~30–58% far deliveries | 12–128 | one shared ImageGen-derived metal/wood/hay/stone 1K/512/512 PBR atlas; 84-triangle tent and 128-triangle barrel casters preserve separated component silhouettes |
 | Bush/clipped hedge | deterministic local cards; separate ImageGen branch/panel sources | 12–28 | 10–16 | 12–48 | one shared alpha-tested 1K/512/512 PBR atlas plus biome vertex tint |
 | Boulder/rock cluster | deterministic local closed family; shared ImageGen-refined surface | 450–576 | 224–240 | 144–150 | one shared 1K/512/512 PBR set plus biome vertex tint; no unique map |
 | Ore shards/field clutter | local authored gameplay kit | 150–800 per cluster | 60–250 | 40–140 | shared ore material/emissive mask |

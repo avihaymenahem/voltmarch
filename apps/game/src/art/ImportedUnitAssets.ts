@@ -456,7 +456,10 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
     hullName: 'Hull',
     target: [12.6, 3.8, 13.0],
     sourceLongAxis: 'x',
-    yawDeg: -90,
+    // The accepted hull's cockpit/nose points along source -X. Rotate that
+    // onto gameplay +Z; -90 instead mapped the tail forward and made every
+    // Molot sortie appear to fly backwards without affecting simulation yaw.
+    yawDeg: 90,
     baseColorGain: 1.10,
     roughnessGain: 1.20,
     normalScale: 1.16,

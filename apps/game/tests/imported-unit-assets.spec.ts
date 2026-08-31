@@ -81,6 +81,12 @@ function triangles(json: GlbJson): number {
 }
 
 describe('imported unit shipping budgets', () => {
+  it('maps the Soviet Molot nose onto gameplay forward', () => {
+    const molot = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'soviet_molot');
+    expect(molot?.sourceLongAxis).toBe('x');
+    expect(molot?.yawDeg).toBe(90);
+  });
+
   it('keeps dark Reclamation paint diffuse and readable at RTS distance', () => {
     expect(RECLAIM_IMPORTED_UNIT_READABILITY).toEqual({
       baseColorGainMin: 1.82,

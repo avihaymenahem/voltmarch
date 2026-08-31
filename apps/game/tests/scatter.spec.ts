@@ -858,7 +858,7 @@ describe('Scatter — chunk culling', () => {
     expect(usesLegacyScatterShadows('?scattershadow=legacy')).toBe(true);
 
     const noShadow = PROP_DEFS.filter((def) => def.castsShadow === false).map((def) => def.key);
-    expect(noShadow).toEqual(['grassTuft', 'grassTuftGreen', 'flowerBed']);
+    expect(noShadow).toEqual(['flowerBed']);
   });
 
   it('shows more of the map from higher up', () => {

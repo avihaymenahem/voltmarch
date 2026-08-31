@@ -48,7 +48,7 @@
       "key": "tree",
       "file": "temperate-broadleaf-v1.glb",
       "class": "foliage",
-      "lods": true,
+      "lods": false,
       "movingParts": false
     }
   ]

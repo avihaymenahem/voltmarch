@@ -80,25 +80,18 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
-## What's new in 3.15.0
+## What's new in 3.15.1
 
-- **A fully authored battlefield:** all 32 foliage and neutral-prop families now use optimized PBR
-  assets, including trees, shrubs, rocks, crates, street furniture, cars, umbrellas and tents, with deterministic
-  placement, shared materials, LODs and shadow proxies.
-- **The completed current army roster:** the remaining Soviet, Allied, Meridian and Reclamation units
-  now ship through the same audited model pipeline, including construction vehicles, aircraft,
-  commanders and naval support hulls.
-- **More cinematic WebGPU presentation:** restrained cloud shadow, far haze and ambient dust add depth
-  without hiding orders or shroud; terrain decals follow the drawn surface instead of flickering.
-- **Reliable battlefield control:** right-click once again owns contextual orders rather than camera
-  drag, pointer confinement is on by default on Windows, placement and sell modes cancel cleanly, and
-  selection overlays stay visible at HUD and screen edges.
-- **Fairer recovery and skirmish pacing:** Easy AI now runs a genuinely smaller, slower economy and
-  attack schedule, land units stay out of water, and a player with survivors and 3,000 credits can
-  requisition a replacement construction vehicle after losing the entire production chain.
-- **Faster, clearer transitions:** bounded asset/audio preparation reduces visible stalls, tactical
-  loading screens use map and faction context, and title-to-battlefield presentation crossfades rather
-  than exposing a hard scene swap.
+- **Repaired trees at every tactical distance:** broadleaf LODs retain their approved PBR bark and
+  crown, autumn trees no longer collapse into a radial sunflower, and conifers keep visible trunks
+  with coherent but naturally varied foliage.
+- **Shadows follow what casts them:** tree, palm, bush and grass proxies remain attached to their
+  visible plants, while field tents, supply boxes and barrel groups no longer project giant joined
+  rectangles. Both grass identities cast consistently again.
+- **Correct Soviet bomber heading:** the imported Molot now maps its source nose onto gameplay
+  forward, so attack and return flights no longer appear tail-first.
+- **Stronger regression coverage:** audited asset budgets, generator provenance and native-WebGPU
+  review fixtures now pin the repaired silhouettes, LOD material contract and component shadows.
 
 ## Play VOLTMARCH
 
@@ -107,7 +100,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.15.0**. The
+The browser build and Windows release share the same game. The current release is **3.15.1**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

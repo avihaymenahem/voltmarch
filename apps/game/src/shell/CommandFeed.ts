@@ -40,17 +40,17 @@ export const COMMAND_FEED_URL = 'https://voltmarch.com/news.json';
 
 export const OFFLINE_COMMAND_FEED: CommandFeed = {
   version: 1,
-  updatedAt: '2026-08-30T15:45:57Z',
+  updatedAt: '2026-08-31T21:27:53Z',
   items: [
     {
-      id: 'update-3-15-0',
+      id: 'update-3-15-1',
       kind: 'update',
-      title: 'VOLTMARCH 3.15.0 is live',
-      summary: 'The authored environment catalogue, imported unit wave, cinematic atmosphere, '
-        + 'terrain and input fixes are now deployed.',
-      date: '2026-08-30',
+      title: 'VOLTMARCH 3.15.1 is live',
+      summary: 'Foliage LODs, bark and component shadows are repaired, and Soviet Molot bombers '
+        + 'now face their flight direction.',
+      date: '2026-09-01',
       actionLabel: 'Read release notes',
-      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.15.0',
+      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.15.1',
     },
   ],
 };

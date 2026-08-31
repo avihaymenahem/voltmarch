@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-08-31
+Last refreshed: 2026-09-01
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.15.0**.
-- The `v3.15.0` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.15.1**.
+- The `v3.15.1` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -44,6 +44,13 @@ project decision obsolete.
 - Easy skirmish now uses a 0.65 harvest multiplier, 28 APM, a 6:40 first-push floor and no advanced
   tactics. A player who loses both yard and factory may buy the normal 3,000-credit/32-second MCV
   through one off-map recovery queue if any owned rendezvous asset survives.
+- Release 3.15.1 repairs the environment presentation regressions found in live overhead
+  review: broadleaf LODs no longer fall back to pale geometry-only trees; autumn and conifer crowns
+  keep visible bark and coherent silhouettes; foliage depth uses the same alpha contract on both
+  renderers; and bush, grass, field-tent and barrel casters follow their visible components instead
+  of disappearing or projecting detached boxes. The Soviet Molot's imported source -X nose is also
+  mapped onto gameplay +Z so sorties no longer appear to fly tail-first. Palm presentation remains
+  the accepted baseline.
 
 The repository should be clean and `origin/main` should match the working branch at this handoff.
 Verify rather than trusting that sentence after time has passed.
@@ -63,6 +70,7 @@ Verify rather than trusting that sentence after time has passed.
 | Windows signing, SmartScreen, checksums and antivirus disputes | `docs/DESKTOP_DISTRIBUTION.md` |
 | Model conditioning, LOD, texture and shadow budgets | `docs/ASSET_OPTIMIZATION_PIPELINE.md` |
 | Environment dirt/decals/props/atmosphere rollout | `docs/ENVIRONMENT_REALISM_PLAN.md` |
+| Future stable indirect lighting, authored map composition and material cohesion phases 2–4 | `docs/REALISM_PHASES_2_TO_4_PLAN.md` |
 | Audio inventory and remaining voice work | `docs/VOICEOVER_PLAN.md` and `docs/voice/` |
 | Soundtrack rights and masters | `docs/MUSIC_PROVENANCE.md` |
 | Third-party rights | root `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/` |
@@ -302,7 +310,9 @@ This is an index, not a duplicate checklist:
   path is observable in ordinary matches. Industrial
   Grid is the deterministic eight-minute day/night pilot; it animates existing uniforms and one
   pooled lamp-decal gain only, with runtime PMREM rebakes explicitly forbidden after a measured
-  ~90 ms WebGPU hitch. Correlation, biome aging and destruction continuity remain open.
+  ~90 ms WebGPU hitch. Correlation, biome aging and destruction continuity remain open. The ordered,
+  separately gated next phases for stable indirect lighting, semantic place composition and causal
+  material cohesion live in `docs/REALISM_PHASES_2_TO_4_PLAN.md`; that plan is not release authority.
 - **Strategic air wing:** `docs/STRATEGIC_AIRBASE_PLAN.md` — all four faction-specific airbase/heavy-
   bomber pairs now have conditioned ImageGen-to-Meshy PBR assets, KTX2/LOD/shadow derivatives,
   procedural fallbacks, catalogue bindings and deterministic fixtures. Each base costs 3,000 credits,

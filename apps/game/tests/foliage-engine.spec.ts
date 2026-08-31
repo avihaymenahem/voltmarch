@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import sharp from 'sharp';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
@@ -8,7 +9,10 @@ import {
   ENVIRONMENT_ASSET_CATALOG,
   environmentAssetManifest,
 } from '../src/world/EnvironmentAssetCatalog';
-import { FOLIAGE_ALPHA_TEST } from '../src/world/EnvironmentAssetLoader';
+import {
+  FOLIAGE_ALPHA_TEST,
+  createEnvironmentMaterial,
+} from '../src/world/EnvironmentAssetLoader';
 import {
   FoliageEngine,
   resolveFoliagePresentation,
@@ -66,20 +70,66 @@ function family(base: PropGeometry) {
   };
 }
 
+function glbFloatAttribute(file: string, semantic: string): number[] {
+  const bytes = readFileSync(file);
+  const jsonLength = bytes.readUInt32LE(12);
+  const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString('utf8').trim()) as {
+    meshes: { primitives: { attributes: Record<string, number> }[] }[];
+    accessors: {
+      bufferView: number; byteOffset?: number; componentType: number; count: number; type: string;
+    }[];
+    bufferViews: { byteOffset?: number; byteStride?: number }[];
+  };
+  const accessor = gltf.accessors[gltf.meshes[0].primitives[0].attributes[semantic]];
+  expect(accessor.componentType).toBe(5126);
+  const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[accessor.type];
+  expect(components).toBeDefined();
+  const view = gltf.bufferViews[accessor.bufferView];
+  const binHeader = 20 + jsonLength;
+  const binStart = binHeader + 8;
+  const stride = view.byteStride ?? components! * Float32Array.BYTES_PER_ELEMENT;
+  const start = binStart + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const result: number[] = [];
+  for (let row = 0; row < accessor.count; row++) {
+    for (let column = 0; column < components!; column++) {
+      result.push(bytes.readFloatLE(start + row * stride + column * Float32Array.BYTES_PER_ELEMENT));
+    }
+  }
+  return result;
+}
+
 describe('environment asset catalogue', () => {
   it('uses a hard foliage cutout threshold that rejects bright source fringes', () => {
     expect(FOLIAGE_ALPHA_TEST).toBe(0.85);
   });
 
+  it('carries foliage cutouts into the WebGL wind shadow material', () => {
+    const map = new THREE.Texture();
+    const alphaMap = new THREE.Texture();
+    const material = createEnvironmentMaterial({
+      map,
+      alphaMap,
+      alphaTest: FOLIAGE_ALPHA_TEST,
+      side: THREE.DoubleSide,
+    }, true);
+    const depth = material.userData.vmFoliageDepthMaterial as THREE.MeshDepthMaterial;
+    expect(depth).toBeInstanceOf(THREE.MeshDepthMaterial);
+    expect(depth.map).toBe(map);
+    expect(depth.alphaMap).toBe(alphaMap);
+    expect(depth.alphaTest).toBe(FOLIAGE_ALPHA_TEST);
+    expect(depth.side).toBe(THREE.DoubleSide);
+    depth.dispose();
+    material.dispose();
+    map.dispose();
+    alphaMap.dispose();
+  });
+
   it('covers every stable Scatter prop identity with an asset-engine manifest', () => {
     expect(Object.keys(ENVIRONMENT_ASSET_CATALOG).sort()).toEqual([...PROP_KEYS].sort());
-    const liveReviewRejected = new Set(['treeAutumn', 'conifer', 'palm']);
     for (const key of PROP_KEYS) {
       const manifest = environmentAssetManifest(key);
-      expect(manifest?.stage, key).toBe(liveReviewRejected.has(key) ? 'production' : 'integrated');
-      expect(manifest?.runtimePresentation, key).toBe(
-        liveReviewRejected.has(key) ? 'procedural' : undefined,
-      );
+      expect(manifest?.stage, key).toBe('integrated');
+      expect(manifest?.runtimePresentation, key).toBeUndefined();
       expect(manifest?.deliveries, key).toBeDefined();
     }
   });
@@ -101,20 +151,25 @@ describe('environment asset catalogue', () => {
     expect(tree?.wind).toBe('canopy');
     expect(tree?.deliveries).toEqual({
       lod0: 'temperate-broadleaf-v1.glb',
-      lod1: 'derived/temperate-broadleaf-v1.lod1.glb',
-      lod2: 'derived/temperate-broadleaf-v1.lod1.glb',
+      lod1: 'temperate-broadleaf-v1.glb',
+      lod2: 'temperate-broadleaf-v1.glb',
       shadow: 'derived/temperate-broadleaf-v1.shadow.glb',
       emergency: 'derived/temperate-broadleaf-v1.lod2.glb',
     });
     expect(tree?.budget).toEqual({
       rawTriangles: 12_000,
       lod0Triangles: 3_500,
-      lod1Triangles: 900,
-      lod2Triangles: 900,
+      lod1Triangles: 3_500,
+      lod2Triangles: 3_500,
       shadowTriangles: 900,
       emergencyTriangles: 400,
       shippingBytes: 1_572_864,
     });
+    expect(new Set([
+      tree?.deliveries?.lod0,
+      tree?.deliveries?.lod1,
+      tree?.deliveries?.lod2,
+    ])).toEqual(new Set(['temperate-broadleaf-v1.glb']));
 
     const bush = environmentAssetManifest('bush');
     const hedge = environmentAssetManifest('hedge');
@@ -424,6 +479,36 @@ describe('broadleaf camera-band LOD pilot', () => {
     source.dispose();
   }, 20_000);
 
+  it('keeps an independent caster for every imported bush instance', () => {
+    const source = new PropLibrary({ biome: 'temperate', seed: 11, keys: ['bush'] });
+    const deliveries = family(source.get('bush')!);
+    const scene = new THREE.Scene();
+    const terrain = new Terrain({
+      scene, seed: 0x51a0, biome: 'temperate', anisotropy: 1,
+    });
+    const scatter = new Scatter({
+      scene, terrain, biome: 'temperate', seed: 0xb057, urban: 0,
+      densityScale: 1, preferred: ['bush'], maxTypes: 18,
+      foliagePresentation: 'imported',
+      importedFoliage: new Map([['bush', deliveries]]),
+    });
+    scatter.generate();
+    scatter.update(camera(40), 0);
+
+    const colour = scene.children.flatMap((root) => root.children)
+      .find((object) => object.name === 'prop.bush.lod0') as THREE.InstancedMesh;
+    const shadow = scene.children.flatMap((root) => root.children)
+      .find((object) => object.name === 'prop.bush.shadow') as THREE.InstancedMesh;
+    expect(colour.count).toBeGreaterThan(0);
+    expect(shadow.count).toBe(colour.count);
+    expect(shadow.castShadow).toBe(true);
+    expect(shadow.userData.vmShadowOnly).toBe(true);
+    expect(shadow.instanceMatrix.array).toEqual(colour.instanceMatrix.array);
+
+    scatter.dispose();
+    source.dispose();
+  }, 20_000);
+
   it('promotes a generated procedural fallback without resurrecting felled props', () => {
     const source = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['tree'] });
     const deliveries = family(source.get('tree')!);
@@ -506,10 +591,11 @@ describe('foliage production profile', () => {
       }
       triangles[file] = count;
     }
+    expect(shippingBytes).toBe(1_435_116);
     expect(shippingBytes).toBeLessThanOrEqual(tree.budget.shippingBytes);
     expect(triangles[tree.deliveries!.lod0]).toBe(3_363);
-    expect(triangles[tree.deliveries!.lod1]).toBe(802);
-    expect(triangles[tree.deliveries!.lod2]).toBe(802);
+    expect(triangles[tree.deliveries!.lod1]).toBe(3_363);
+    expect(triangles[tree.deliveries!.lod2]).toBe(3_363);
     expect(triangles[tree.deliveries!.emergency]).toBe(384);
     expect(triangles[tree.deliveries!.shadow]).toBe(802);
   });
@@ -654,9 +740,9 @@ describe('foliage production profile', () => {
     const repo = join(import.meta.dirname, '..', '..', '..');
     const root = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage');
     const expected = {
-      treeAutumn: [54, 48, 44, 40],
-      conifer: [82, 64, 52, 40],
-      palm: [170, 168, 166, 36],
+      treeAutumn: [68, 58, 50, 48],
+      conifer: [46, 44, 42, 48],
+      palm: [170, 168, 166, 44],
       grassTuft: [8, 6, 4, 24],
       grassTuftGreen: [8, 6, 4, 24],
     } as const;
@@ -677,6 +763,173 @@ describe('foliage production profile', () => {
       });
       expect(triangles).toEqual(expected[key]);
     }
+  });
+
+  it('keeps small-foliage casters compact instead of projecting detached blobs', () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const bounds = (positions: number[]) => {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      const zs: number[] = [];
+      for (let index = 0; index < positions.length; index += 3) {
+        xs.push(positions[index]);
+        ys.push(positions[index + 1]);
+        zs.push(positions[index + 2]);
+      }
+      return {
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys),
+        depth: Math.max(...zs) - Math.min(...zs),
+        radius: Math.max(...xs.map((x, index) => Math.hypot(x, zs[index]))),
+      };
+    };
+
+    const bush = bounds(glbFloatAttribute(join(
+      repo, 'packages', 'assets', 'game', 'environment', 'shrub',
+      'derived', 'bush-v1.shadow.glb',
+    ), 'POSITION'));
+    expect(bush.width).toBeLessThanOrEqual(1.25);
+    expect(bush.depth).toBeLessThanOrEqual(0.95);
+    expect(bush.height).toBeLessThanOrEqual(1.50);
+
+    const extended = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage');
+    for (const file of [
+      'derived/grass-tuft-v1.shadow.glb',
+      'derived/grass-tuft-green-v1.shadow.glb',
+    ]) {
+      const grass = bounds(glbFloatAttribute(join(extended, file), 'POSITION'));
+      expect(grass.radius, file).toBeLessThanOrEqual(0.24);
+      expect(grass.height, file).toBeLessThanOrEqual(1.56);
+    }
+  });
+
+  it('keeps the autumn crown clustered instead of projecting one radial flower card', () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const file = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage', 'tree-autumn-v1.glb');
+    const positions = glbFloatAttribute(file, 'POSITION');
+    const trunkVertices = 20;
+    const canopyQuadCount = (positions.length / 3 - trunkVertices) / 4;
+    expect(canopyQuadCount).toBe(16);
+
+    let offsetClusters = 0;
+    for (let quad = 0; quad < canopyQuadCount; quad++) {
+      const firstVertex = trunkVertices + quad * 4;
+      const points = Array.from({ length: 4 }, (_, corner) => {
+        const offset = (firstVertex + corner) * 3;
+        return [positions[offset], positions[offset + 2]] as const;
+      });
+      const centreX = points.reduce((sum, point) => sum + point[0], 0) / 4;
+      const centreZ = points.reduce((sum, point) => sum + point[1], 0) / 4;
+      if (Math.hypot(centreX, centreZ) > 0.65) offsetClusters++;
+      const maximumFootprint = Math.max(...points.flatMap((a) => (
+        points.map((b) => Math.hypot(a[0] - b[0], a[1] - b[1]))
+      )));
+      // The rejected full-width horizontal card had a roughly nine-metre XZ
+      // diagonal and made the complete branch texture read as a sunflower.
+      expect(maximumFootprint).toBeLessThan(5.5);
+    }
+    expect(offsetClusters).toBeGreaterThanOrEqual(12);
+  });
+
+  it('keeps every authored tree trunk inside a mip-safe opaque atlas region', async () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const root = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage');
+    const atlas = await sharp(join(root, 'material', 'extended-foliage-v1.base.webp'))
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const pointMappedTrunks = [
+      ['tree-autumn-v1.glb', 20],
+      ['palm-v1.glb', 90],
+    ] as const;
+
+    for (const [file, vertexCount] of pointMappedTrunks) {
+      const uv = glbFloatAttribute(join(root, file), 'TEXCOORD_0');
+      const u = uv[0];
+      const v = uv[1];
+      for (let vertex = 0; vertex < vertexCount; vertex++) {
+        expect(uv[vertex * 2], `${file} trunk u`).toBeCloseTo(u, 5);
+        expect(uv[vertex * 2 + 1], `${file} trunk v`).toBeCloseTo(v, 5);
+      }
+      const cx = Math.round(u * (atlas.info.width - 1));
+      const cy = Math.round((1 - v) * (atlas.info.height - 1));
+      // A 33x33 opaque guard survives five atlas mip reductions. The former
+      // 8x8 corner swatch passed a base-level alpha check and then vanished.
+      for (let y = cy - 16; y <= cy + 16; y++) {
+        for (let x = cx - 16; x <= cx + 16; x++) {
+          const alpha = atlas.data[(y * atlas.info.width + x) * 4 + 3];
+          expect(alpha, `${file} opaque guard at ${x},${y}`).toBeGreaterThanOrEqual(217);
+        }
+      }
+    }
+
+    const coniferUv = glbFloatAttribute(join(root, 'conifer-v1.glb'), 'TEXCOORD_0');
+    const coniferTrunkVertices = 90;
+    const barkSamples = new Set<string>();
+    for (let vertex = 0; vertex < coniferTrunkVertices; vertex++) {
+      const u = coniferUv[vertex * 2];
+      const v = coniferUv[vertex * 2 + 1];
+      expect(u, 'conifer bark u').toBeGreaterThanOrEqual(526 / 1024 - 1e-6);
+      expect(u, 'conifer bark u').toBeLessThanOrEqual(602 / 1024 + 1e-6);
+      expect(v, 'conifer bark v').toBeGreaterThanOrEqual(1 - 130 / 1024 - 1e-6);
+      expect(v, 'conifer bark v').toBeLessThanOrEqual(1 - 14 / 1024 + 1e-6);
+      barkSamples.add(`${u.toFixed(5)},${v.toFixed(5)}`);
+      const x = Math.round(u * (atlas.info.width - 1));
+      const y = Math.round((1 - v) * (atlas.info.height - 1));
+      const offset = (y * atlas.info.width + x) * 4;
+      expect(atlas.data[offset + 3], `conifer bark alpha at ${x},${y}`).toBe(255);
+      expect(atlas.data[offset], `conifer bark red at ${x},${y}`).toBeGreaterThan(atlas.data[offset + 1]);
+      expect(atlas.data[offset + 1], `conifer bark green at ${x},${y}`).toBeGreaterThan(atlas.data[offset + 2]);
+    }
+    // Unlike the other mip-safe point-mapped trunks, the conifer deliberately
+    // spans a fissured bark plate instead of tinting one needle texel brown.
+    expect(barkSamples.size).toBeGreaterThanOrEqual(5);
+
+    const coniferCrownVertices = 16;
+    for (let vertex = coniferTrunkVertices;
+      vertex < coniferTrunkVertices + coniferCrownVertices; vertex++) {
+      const u = coniferUv[vertex * 2];
+      const v = coniferUv[vertex * 2 + 1];
+      expect(u, 'conifer crown u').toBeGreaterThanOrEqual(720 / 1024 - 1e-6);
+      expect(u, 'conifer crown u').toBeLessThanOrEqual(1006 / 1024 + 1e-6);
+      expect(v, 'conifer crown v').toBeGreaterThanOrEqual(1 - 494 / 1024 - 1e-6);
+      expect(v, 'conifer crown v').toBeLessThanOrEqual(1 - 18 / 1024 + 1e-6);
+    }
+    for (let vertex = coniferTrunkVertices + coniferCrownVertices;
+      vertex < coniferUv.length / 2; vertex++) {
+      const u = coniferUv[vertex * 2];
+      const v = coniferUv[vertex * 2 + 1];
+      expect(u, 'conifer branch u').toBeGreaterThanOrEqual(528 / 1024 - 1e-6);
+      expect(u, 'conifer branch u').toBeLessThanOrEqual(696 / 1024 + 1e-6);
+      expect(v, 'conifer branch v').toBeGreaterThanOrEqual(1 - 486 / 1024 - 1e-6);
+      expect(v, 'conifer branch v').toBeLessThanOrEqual(1 - 152 / 1024 + 1e-6);
+    }
+  });
+
+  it('keeps the conifer crown coherent without repeating identical card profiles', () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const file = join(
+      repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage', 'conifer-v1.glb',
+    );
+    const positions = glbFloatAttribute(file, 'POSITION');
+    const colours = glbFloatAttribute(file, 'COLOR_0');
+    const trunkVertices = 90;
+    const crownCards = 4;
+    const widths = new Set<string>();
+    const heights = new Set<string>();
+    const tones = new Set<string>();
+    for (let card = 0; card < crownCards; card++) {
+      const first = trunkVertices + card * 4;
+      const a = first * 3;
+      const b = (first + 1) * 3;
+      const c = (first + 2) * 3;
+      widths.add(Math.hypot(
+        positions[b] - positions[a], positions[b + 2] - positions[a + 2],
+      ).toFixed(2));
+      heights.add((positions[c + 1] - positions[a + 1]).toFixed(2));
+      tones.add(`${colours[a].toFixed(2)},${colours[a + 1].toFixed(2)},${colours[a + 2].toFixed(2)}`);
+    }
+    expect(widths.size).toBeGreaterThanOrEqual(3);
+    expect(heights.size).toBeGreaterThanOrEqual(3);
+    expect(tones.size).toBe(crownCards);
   });
 
   it('ships every remaining manufactured prop as one static asset-engine primitive', () => {
@@ -705,7 +958,27 @@ describe('foliage production profile', () => {
         const primitive = gltf.meshes[0].primitives[0];
         expect(primitive.attributes.COLOR_0).toBeTypeOf('number');
         if (i < 3) expect(primitive.attributes.TEXCOORD_0).toBeTypeOf('number');
+        const triangles = gltf.accessors[primitive.indices].count / 3;
+        const ceilings = [
+          manifest.budget.lod0Triangles, manifest.budget.lod1Triangles,
+          manifest.budget.lod2Triangles, manifest.budget.shadowTriangles,
+        ];
+        expect(triangles, `${key}.${i}`).toBeLessThanOrEqual(ceilings[i]);
       }
     }
+  });
+
+  it('uses silhouette casters for the field tent and barrel group', () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const root = join(repo, 'packages', 'assets', 'game', 'environment', 'prop-surface', 'derived');
+    const triangles = (file: string) => {
+      const bytes = readFileSync(join(root, file));
+      const jsonLength = bytes.readUInt32LE(12);
+      const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString('utf8').trim());
+      const primitive = gltf.meshes[0].primitives[0];
+      return gltf.accessors[primitive.indices].count / 3;
+    };
+    expect(triangles('haystack-v1.shadow.glb')).toBe(84);
+    expect(triangles('barrel-v1.shadow.glb')).toBe(128);
   });
 });

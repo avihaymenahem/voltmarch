@@ -86,13 +86,33 @@ describe('WebGPU vertex layout regressions', () => {
         const prop = library.get(key);
         expect(prop, `${biome}/${key} exists`).toBeDefined();
         const geometry = prop!.geometry;
+        const sway = geometry.getAttribute('aSway');
         const surface = geometry.getAttribute('aSurface');
+        const phase = geometry.getAttribute('aSwayPhase');
         expect(surface, `${biome}/${key} packs emit and gloss`).toBeDefined();
         expect(surface.itemSize, `${biome}/${key} aSurface width`).toBe(2);
+        expect(sway, `${biome}/${key} sway`).toBeInstanceOf(THREE.InterleavedBufferAttribute);
+        expect(surface, `${biome}/${key} surface`).toBeInstanceOf(THREE.InterleavedBufferAttribute);
+        expect(phase, `${biome}/${key} plain-mesh phase`).toBeInstanceOf(
+          THREE.InterleavedBufferAttribute,
+        );
+        expect((sway as THREE.InterleavedBufferAttribute).data)
+          .toBe((surface as THREE.InterleavedBufferAttribute).data);
+        expect((sway as THREE.InterleavedBufferAttribute).data)
+          .toBe((phase as THREE.InterleavedBufferAttribute).data);
+        expect(phase.getX(0), `${biome}/${key} plain-mesh phase value`).toBe(0);
         expect(geometry.getAttribute('aEmit'), `${biome}/${key} legacy aEmit`).toBeUndefined();
         expect(geometry.getAttribute('aGloss'), `${biome}/${key} legacy aGloss`).toBeUndefined();
 
-        const slots = Object.keys(geometry.attributes).length + runtimeInstanceBuffers.length;
+        const vertexBuffers = new Set<unknown>();
+        for (const attribute of Object.values(geometry.attributes)) {
+          vertexBuffers.add(attribute instanceof THREE.InterleavedBufferAttribute
+            ? attribute.data
+            : attribute);
+        }
+        // Scatter replaces the zero phase with the instanced phase buffer.
+        for (const name of runtimeInstanceBuffers) vertexBuffers.add(name);
+        const slots = vertexBuffers.size;
         expect(
           slots,
           `${biome}/${key} uses ${slots}/${guaranteedWebGpuVertexBufferSlots} slots`,
@@ -129,12 +149,16 @@ describe('WebGPU vertex layout regressions', () => {
     expect(geometry.getAttribute('tangent')).toBeUndefined();
     const sway = geometry.getAttribute('aSway');
     const surface = geometry.getAttribute('aSurface');
+    const phase = geometry.getAttribute('aSwayPhase');
     expect(sway).toBeInstanceOf(THREE.InterleavedBufferAttribute);
     expect(surface).toBeInstanceOf(THREE.InterleavedBufferAttribute);
     expect((sway as THREE.InterleavedBufferAttribute).data)
       .toBe((surface as THREE.InterleavedBufferAttribute).data);
+    expect((sway as THREE.InterleavedBufferAttribute).data)
+      .toBe((phase as THREE.InterleavedBufferAttribute).data);
     expect(surface.itemSize).toBe(2);
     expect(surface.getY(0)).toBeCloseTo(0.9);
+    expect(phase.getX(0)).toBe(0);
 
     const vertexBuffers = new Set<unknown>();
     for (const attribute of Object.values(geometry.attributes)) {
