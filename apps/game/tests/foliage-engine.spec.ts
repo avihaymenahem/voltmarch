@@ -14,7 +14,10 @@ import {
   resolveFoliagePresentation,
 } from '../src/world/FoliageEngine';
 import { PROP_KEYS, PropLibrary, type PropGeometry } from '../src/world/PropLibrary';
-import { streetPropYaw } from '../src/world/Scatter';
+import {
+  FOLIAGE_LOD, Scatter, foliageLodForDistanceSquared, stablePropVisualRadius, streetPropYaw,
+} from '../src/world/Scatter';
+import { Terrain } from '../src/world/Terrain';
 
 function candidate(base: PropGeometry, name: string): PropGeometry {
   const geometry = new THREE.BufferGeometry();
@@ -195,6 +198,12 @@ describe('FoliageEngine presentation boundary', () => {
     expect(fallback.count).toBe(0);
     expect(fallback.totalTriangles).toBe(0);
     engine.register('tree', deliveries);
+    expect(engine.renderFamily('tree')).toMatchObject({
+      lod0: deliveries.lod0,
+      lod1: deliveries.lod1,
+      lod2: deliveries.lod2,
+      shadow: deliveries.shadow,
+    });
     expect(engine.resolution('tree')).toMatchObject({
       requested: 'imported',
       source: 'imported',
@@ -241,6 +250,12 @@ describe('FoliageEngine presentation boundary', () => {
         presentation === 'imported' ? deliveries.lod0 : deliveries.emergency,
       );
       expect(resolution?.geometry.def).toBe(base.def);
+      expect(engine.renderFamily('tree')?.shadow).toBe(deliveries.shadow);
+      if (presentation === 'emergency') {
+        expect(engine.renderFamily('tree')?.lod0).toBe(deliveries.emergency);
+        expect(engine.renderFamily('tree')?.lod1).toBe(deliveries.emergency);
+        expect(engine.renderFamily('tree')?.lod2).toBe(deliveries.emergency);
+      }
 
       engine.dispose();
       fallback.dispose();
@@ -259,6 +274,178 @@ describe('FoliageEngine presentation boundary', () => {
     engine.dispose();
     fallback.dispose();
   });
+});
+
+describe('broadleaf camera-band LOD pilot', () => {
+  function scatterRig(presentation: 'procedural' | 'imported' | 'emergency', deliveries: ReturnType<typeof family>) {
+    const scene = new THREE.Scene();
+    const terrain = new Terrain({
+      scene, seed: 0x7e44a1, biome: 'temperate', anisotropy: 1,
+    });
+    const scatter = new Scatter({
+      scene, terrain, biome: 'temperate', seed: 0x5ca77e, urban: 0,
+      densityScale: 1, preferred: ['tree'], maxTypes: 1,
+      foliagePresentation: presentation,
+      importedFoliage: new Map([['tree', deliveries]]),
+    });
+    scatter.generate();
+    return { scene, scatter };
+  }
+
+  function camera(y: number): THREE.OrthographicCamera {
+    const result = new THREE.OrthographicCamera(-400, 400, 400, -400, 1, 2000);
+    result.position.set(256, y, 256);
+    result.lookAt(256, 0, 256);
+    result.updateProjectionMatrix();
+    result.updateMatrixWorld();
+    return result;
+  }
+
+  it('keeps placement identity while dispatching the imported tree across real LOD buckets', () => {
+    const source = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['tree'] });
+    const deliveries = family(source.get('tree')!);
+    const procedural = scatterRig('procedural', deliveries);
+    const imported = scatterRig('imported', deliveries);
+    const emergency = scatterRig('emergency', deliveries);
+
+    expect(imported.scatter.placementFingerprint).toBe(procedural.scatter.placementFingerprint);
+    expect(emergency.scatter.placementFingerprint).toBe(procedural.scatter.placementFingerprint);
+
+    // Exercise a footprint grazing the stable manifest envelope. Imported LOD0
+    // is narrower than the procedural crown, so consulting geometry here would
+    // produce different felling masks despite identical placement identity.
+    procedural.scatter.update(camera(40), 0);
+    const parityPositions = new Float32Array(procedural.scatter.propCount * 4);
+    expect(procedural.scatter.positions(parityPositions)).toBeGreaterThan(0);
+    const px = parityPositions[0], pz = parityPositions[2];
+    let placementScale = 0;
+    procedural.scene.traverse((object) => {
+      const mesh = object as THREE.InstancedMesh;
+      if (mesh.name !== 'prop.tree.lod0') return;
+      const matrix = mesh.instanceMatrix.array as Float32Array;
+      for (let i = 0; i < mesh.count; i++) {
+        if (Math.abs(matrix[i * 16 + 12] - px) > 1e-4
+          || Math.abs(matrix[i * 16 + 14] - pz) > 1e-4) continue;
+        placementScale = Math.hypot(matrix[i * 16], matrix[i * 16 + 1], matrix[i * 16 + 2]);
+        break;
+      }
+    });
+    expect(placementScale).toBeGreaterThan(0);
+    const stableRadius = stablePropVisualRadius(source.get('tree')!.def, placementScale);
+    expect(stableRadius).toBeCloseTo(4.5 * placementScale, 5);
+    const edgeX = px + stableRadius - 0.01;
+    const parityRemoved = [procedural, imported, emergency].map(({ scatter }) => (
+      scatter.clearFootprint(edgeX - 0.002, pz - 0.002, edgeX + 0.002, pz + 0.002, 0)
+    ));
+    expect(parityRemoved[0]).toBeGreaterThan(0);
+    expect(parityRemoved).toEqual([parityRemoved[0], parityRemoved[0], parityRemoved[0]]);
+
+    imported.scatter.update(camera(40), 0);
+    const near = [
+      imported.scatter.visibleLod0, imported.scatter.visibleLod1, imported.scatter.visibleLod2,
+    ];
+    const visibleChunks = imported.scatter.visibleChunks;
+    imported.scatter.update(camera(88), 0.1);
+    const far = [
+      imported.scatter.visibleLod0, imported.scatter.visibleLod1, imported.scatter.visibleLod2,
+    ];
+    expect(imported.scatter.visibleChunks).toBe(visibleChunks);
+    expect(imported.scatter.uploadBytes, 'camera-band change did not repack').toBeGreaterThan(0);
+    expect(far).not.toEqual(near);
+    expect(far[0] + far[1] + far[2]).toBe(imported.scatter.visibleInstances);
+
+    const colour = imported.scene.children.flatMap((root) => root.children)
+      .filter((object) => object.name.startsWith('prop.tree.lod')) as THREE.InstancedMesh[];
+    const shadow = imported.scene.children.flatMap((root) => root.children)
+      .find((object) => object.name === 'prop.tree.shadow') as THREE.InstancedMesh;
+    expect(colour.map((mesh) => mesh.name)).toEqual([
+      'prop.tree.lod0', 'prop.tree.lod1', 'prop.tree.lod2',
+    ]);
+    expect(colour.every((mesh) => mesh.castShadow === false)).toBe(true);
+    expect(shadow.userData.vmShadowOnly).toBe(true);
+    expect(shadow.castShadow).toBe(true);
+    expect(colour.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(imported.scatter.propCount);
+    expect(shadow.count).toBe(imported.scatter.propCount);
+
+    // Runtime removals repack every active colour bucket and the independent
+    // caster, while the save mask remains valid across presentation modes.
+    const positions = new Float32Array(imported.scatter.propCount * 4);
+    expect(imported.scatter.positions(positions)).toBeGreaterThan(0);
+    const crushed = imported.scatter.crushDisc(positions[0], positions[2], 8);
+    expect(crushed).toBeGreaterThan(0);
+    imported.scatter.update(camera(88), 0.2);
+    expect(colour.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(imported.scatter.propCount);
+    expect(shadow.count).toBe(imported.scatter.propCount);
+
+    const mask = new Uint8Array(imported.scatter.felledMaskBytes);
+    expect(imported.scatter.felledMask(mask)).toBe(mask.length);
+    expect(emergency.scatter.applyFelledMask(mask)).toBe(crushed);
+    emergency.scatter.update(camera(88), 0.2);
+    const emergencyMeshes = emergency.scene.children.flatMap((root) => root.children)
+      .filter((object) => object.name.startsWith('prop.tree.')) as THREE.InstancedMesh[];
+    expect(emergencyMeshes.every((mesh) => mesh.count === emergency.scatter.propCount)).toBe(true);
+
+    expect(imported.scatter.clearFootprint(-32, -32, 544, 544, 0)).toBeGreaterThan(0);
+    imported.scatter.update(camera(88), 0.3);
+    expect(colour.every((mesh) => mesh.count === 0)).toBe(true);
+    expect(shadow.count).toBe(0);
+
+    for (const id of [0, 1, 1234]) {
+      expect(foliageLodForDistanceSquared(FOLIAGE_LOD.lod1Metres ** 2, id))
+        .toBe(foliageLodForDistanceSquared(FOLIAGE_LOD.lod1Metres ** 2, id));
+    }
+
+    procedural.scatter.dispose();
+    imported.scatter.dispose();
+    emergency.scatter.dispose();
+    source.dispose();
+  }, 20_000);
+
+  it('promotes a generated procedural fallback without resurrecting felled props', () => {
+    const source = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['tree'] });
+    const deliveries = family(source.get('tree')!);
+    const scene = new THREE.Scene();
+    const terrain = new Terrain({
+      scene, seed: 0x7e44a1, biome: 'temperate', anisotropy: 1,
+    });
+    const scatter = new Scatter({
+      scene, terrain, biome: 'temperate', seed: 0x5ca77e, urban: 0,
+      densityScale: 1, preferred: ['tree'], maxTypes: 1,
+      foliagePresentation: 'imported',
+    });
+    scatter.generate();
+    scatter.update(camera(40), 0);
+
+    const fingerprint = scatter.placementFingerprint;
+    const positions = new Float32Array(scatter.propCount * 4);
+    expect(scatter.positions(positions)).toBeGreaterThan(0);
+    const felled = scatter.crushDisc(positions[0], positions[2], 8);
+    expect(felled).toBeGreaterThan(0);
+    const surviving = scatter.propCount;
+    const beforeMask = new Uint8Array(scatter.felledMaskBytes);
+    scatter.felledMask(beforeMask);
+
+    expect(scatter.foliage.resolution('tree')?.source).toBe('procedural');
+    expect(scatter.installImportedFoliage(new Map([['tree', deliveries]]))).toBe(1);
+    scatter.update(camera(40), 0.1);
+
+    const afterMask = new Uint8Array(scatter.felledMaskBytes);
+    scatter.felledMask(afterMask);
+    expect(scatter.placementFingerprint).toBe(fingerprint);
+    expect(scatter.propCount).toBe(surviving);
+    expect(scatter.clearedProps).toBe(felled);
+    expect(afterMask).toEqual(beforeMask);
+    expect(scatter.foliage.resolution('tree')?.source).toBe('imported');
+    const colour = scene.children.flatMap((root) => root.children)
+      .filter((object) => object.name.startsWith('prop.tree.lod')) as THREE.InstancedMesh[];
+    expect(colour.map((mesh) => mesh.name)).toEqual([
+      'prop.tree.lod0', 'prop.tree.lod1', 'prop.tree.lod2',
+    ]);
+    expect(colour.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(surviving);
+
+    scatter.dispose();
+    source.dispose();
+  }, 20_000);
 });
 
 describe('foliage production profile', () => {

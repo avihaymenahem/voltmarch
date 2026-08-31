@@ -54,8 +54,11 @@ import {
 } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
-import { resolveFoliagePresentation } from './FoliageEngine';
-import { loadImportedFoliage } from './EnvironmentAssetLoader';
+import { resolveFoliagePresentation, type FoliagePresentation } from './FoliageEngine';
+import {
+  acquireEnvironmentKTX2Loader, disposeImportedFoliage, loadImportedFoliage,
+  type EnvironmentKTX2Lease,
+} from './EnvironmentAssetLoader';
 import { ENVIRONMENT_ASSET_KEYS } from './EnvironmentAssetCatalog';
 import {
   installImportedEntityProps, installProceduralEntityProps,
@@ -65,6 +68,8 @@ import { DecalKind, groundDecals } from './Decals';
 declare const globalThis: { __vmScatter?: Scatter } & typeof window;
 
 let scatter: Scatter | null = null;
+/** Invalidates an authored-family handoff when the owning world is replaced. */
+let foliageLoadGeneration = 0;
 /** Frozen shots get a fixed wind phase so two captures are pixel-identical. */
 let frozenWind = false;
 
@@ -80,19 +85,63 @@ function numFlag(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+async function promoteImportedFoliage(
+  target: Scatter,
+  renderer: unknown,
+  biome: Parameters<typeof loadImportedFoliage>[0],
+  presentation: Exclude<FoliagePresentation, 'procedural'>,
+  generation: number,
+  debug: ReturnType<typeof ctx>['debug'],
+): Promise<void> {
+  let ktx2Lease: EnvironmentKTX2Lease | null = null;
+  let families: Awaited<ReturnType<typeof loadImportedFoliage>> | null = null;
+  let adopted = false;
+  try {
+    ktx2Lease = acquireEnvironmentKTX2Loader(renderer);
+    families = await loadImportedFoliage(biome);
+    if (foliageLoadGeneration !== generation || scatter !== target) {
+      disposeImportedFoliage(families);
+      families = null;
+      return;
+    }
+    const installed = target.installImportedFoliage(families);
+    adopted = true;
+    installImportedEntityProps(families);
+    debug.setCounter('importedFoliageFamilies', installed);
+    console.info(
+      `%c[foliage]%c promoted ${installed} audited ${presentation} families after world reveal`,
+      'color:#7fd', 'color:inherit',
+    );
+  } catch (error) {
+    if (families !== null && !adopted) {
+      // A validation failure happens before registerFamilies adopts anything;
+      // a later rebuild failure happens after it. Detect the latter so shared
+      // textures are never disposed out from under the live engine.
+      adopted = [...families.keys()].some((key) => {
+        const source = target.foliage.resolution(key)?.source;
+        return source === 'imported' || source === 'emergency';
+      });
+      if (!adopted) disposeImportedFoliage(families);
+    }
+    console.warn('[foliage] authored promotion unavailable; keeping procedural presentation', error);
+  } finally {
+    ktx2Lease?.release();
+  }
+}
+
 export default defineSystem({
   id: 'world.scatter',
   phase: Phase.Cleanup,
   order: 20000,
   renderPhase: RenderPhase.Terrain,
 
-  async init(): Promise<void> {
+  init(): void {
     if (flag('scatter') === 'off') {
       console.info('%c[scatter]%c disabled by ?scatter=off', 'color:#7fd', 'color:inherit');
       return;
     }
 
-    const { world, sceneRig, debug } = ctx();
+    const { world, sceneRig, handle, debug } = ctx();
     const terrain = getTerrain();
     if (terrain === null) {
       // Terrain owns the heightfield, the surface splat and the pass grid.
@@ -118,31 +167,11 @@ export default defineSystem({
           };
 
     const foliagePresentation = resolveFoliagePresentation(flag('foliage'));
-    let importedFoliage;
-    if (foliagePresentation !== 'procedural') {
-      try {
-        importedFoliage = await loadImportedFoliage(terrain.biomeKey);
-        console.info(
-          `%c[foliage]%c loaded ${importedFoliage.size} audited ${foliagePresentation} families`,
-          'color:#7fd', 'color:inherit',
-        );
-        const entityOverrides = installImportedEntityProps(importedFoliage);
-        if (entityOverrides > 0) {
-          console.info(
-            `%c[foliage]%c rebound ${entityOverrides} entity-prop bridge entries to imported PBR`,
-            'color:#7fd', 'color:inherit',
-          );
-        }
-      } catch (error) {
-        // The presentation switch is diagnostic/rollout state, never a reason
-        // to lose trees or delay the rest of world boot indefinitely.
-        console.warn('[foliage] imported family unavailable; using procedural tree', error);
-        installProceduralEntityProps();
-      }
-    } else {
-      installProceduralEntityProps();
-    }
-    debug.setCounter('importedFoliageFamilies', importedFoliage?.size ?? 0);
+    const foliageGeneration = ++foliageLoadGeneration;
+    // World reveal always has an immediate deterministic presentation. The
+    // authored family handoff below changes GPU resources, never placement.
+    installProceduralEntityProps();
+    debug.setCounter('importedFoliageFamilies', 0);
 
     scatter = new Scatter({
       scene: sceneRig.scene,
@@ -163,7 +192,6 @@ export default defineSystem({
       focusClumpGapScale: titleBackdrop ? 0.55 : plan.start === 'mcv' ? 0.55 : 1,
       openingCenters: plan.start === 'mcv' ? plannedStartPoints() : [],
       foliagePresentation,
-      importedFoliage,
     });
 
     /* -- masks ------------------------------------------------------------ *
@@ -332,6 +360,16 @@ export default defineSystem({
 
     setActiveScatter(scatter);
     globalThis.__vmScatter = scatter;
+    if (foliagePresentation !== 'procedural') {
+      void promoteImportedFoliage(
+        scatter,
+        handle.node ?? handle.webgl,
+        terrain.biomeKey,
+        foliagePresentation,
+        foliageGeneration,
+        debug,
+      );
+    }
     // `flag('shot')`, not just `spec.frozen`. The intent above — "two captures
     // are pixel-identical" — was only ever honoured for the FROZEN fixtures,
     // and the three that advance their sim (`battle`, `economy`, `naval`) are
@@ -387,10 +425,10 @@ export default defineSystem({
      * One type is one COLOUR draw. The shadow draw is real and it is also
      * budgeted elsewhere, but it is not what `MAX_DRAW_CALLS` counts.
      */
-    if (s.types > MAX_DRAW_CALLS * 0.4) {
+    if (s.drawCalls > MAX_DRAW_CALLS * 0.4) {
       console.warn(
-        `[scatter] ${s.types} prop types = ${s.types} colour draws of the ${MAX_DRAW_CALLS} ` +
-        `colour-pass budget (and ${s.types} more in the shadow pass). ` +
+        `[scatter] ${s.drawCalls} active LOD colour draws of the ${MAX_DRAW_CALLS} ` +
+        `colour-pass budget (and ${s.shadowDrawCalls} active proxy shadow draws). ` +
         'Lower SCATTER_LIMITS.maxTypes if the frame is tight.',
       );
     }
@@ -411,11 +449,24 @@ export default defineSystem({
     if (scatter === null) return;
     const { cameraRig, debug } = ctx();
     scatter.update(cameraRig.camera, frozenWind ? 12.34 : r.time);
+    // Scalar reads only: stats() returns a report object and is forbidden in
+    // the frame loop's allocation-free hot path.
     debug.setCounter('propsDrawn', scatter.visibleInstances);
     debug.setCounter('propChunks', scatter.visibleChunks);
+    debug.setCounter('propLod0', scatter.visibleLod0);
+    debug.setCounter('propLod1', scatter.visibleLod1);
+    debug.setCounter('propLod2', scatter.visibleLod2);
+    debug.setCounter('propTriangles', scatter.visibleTriangles);
+    debug.setCounter('propShadowTriangles', scatter.visibleShadowTriangles);
+    debug.setCounter('propColourDraws', scatter.drawCalls);
+    debug.setCounter('propShadowDraws', scatter.shadowDrawCalls);
+    debug.setCounter('propUploadKB', scatter.uploadBytes / 1024);
+    debug.setCounter('propCullMs', scatter.cullMs);
+    debug.setCounter('propUploadMs', scatter.uploadMs);
   },
 
   dispose(): void {
+    foliageLoadGeneration++;
     if (scatter === null) return;
     scatter.dispose();
     if (getScatter() === scatter) setActiveScatter(null);

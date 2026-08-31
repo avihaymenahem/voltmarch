@@ -284,22 +284,24 @@ dozer into its imported shell.
 This is an index, not a duplicate checklist:
 
 - **Engineering backlog:** `TODO.md` — currently multiplayer seat/topology follow-ups, 3–4 player PvP,
-  LAN/self-hosting, desktop distribution/signing, final foliage runtime acceptance and the bounded
-  WebGPU visual-performance experiments below.
+  LAN/self-hosting, desktop distribution/signing and the bounded WebGPU visual-performance
+  experiments below.
 - **Asset conversion:** `docs/ASSET_CONVERSION_MAP.md` — continue imported assets only through the
   approved pipeline; do not infer completion from concept folders alone.
 - **Environment realism:** `docs/ENVIRONMENT_REALISM_PLAN.md` — contextual dirt/leaf/rust/gravel
-  composition, physical geometry debris, the completed authored prop-family catalogue and bounded
-  atmosphere. Dynamic rain/lightning, cloud cover, far haze and ambient dust are shipped; correlation,
-  biome aging and destruction continuity remain open.
+  composition, physical geometry debris, the delivered authored prop-family catalogue and bounded
+  atmosphere. The broadleaf CPU pilot passes, but per-family visual/performance acceptance (including
+  far card groupings and dusk readability), correlation, biome aging and destruction continuity remain open.
 - **WebGPU visual performance:** `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` — desktop rendering is the
   product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   POC; do not roll compression across every family until cold-load timing and image parity pass.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-3 are implemented on the
-  dedicated roadmap branch: boot telemetry/baselines, static title policy and one honestly rejected
-  offline runtime-cook proof. Continue at Batch 4 (foliage Gate 3/4); do not promote the rejected
-  Float32 cooked delivery or infer that package extraction is itself a boot optimization.
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-5 are implemented on the
+  dedicated roadmap branch: boot telemetry/baselines, static title policy, one honestly rejected
+  offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
+  not blanket approval of the remaining foliage catalogue. Continue
+  at Batch 6 (generated content dependency closure). Do not promote the rejected Float32 cooked
+  delivery or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

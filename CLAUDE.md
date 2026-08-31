@@ -341,10 +341,17 @@ the build.
   `apps/game/src/` keep stable internal imports without duplicating ownership.
 
 - **`apps/game/src/core/`** is frozen infrastructure: `types.ts` (every shared type, `SystemModule` is the
-  plugin contract), `config.ts` (all tunables and the art direction), `world.ts` (`EntityStore`, a
+  plugin contract), `config.ts` (the stable compatibility facade over domain slices in `config/`),
+  `world.ts` (`EntityStore`, a
   fixed-capacity SoA of parallel typed arrays with generation-stamped handles), `loop.ts`
   (fixed 30 Hz sim decoupled from render, plus `SystemRegistry`), `events.ts`, `math.ts` (seeded
   RNG), `assets.ts` (procedural texture factory).
+- **Dependency architecture is executable.** `npm run check:dependencies` validates all npm
+  workspace dependency sections, the allowed `apps/game/src` layer edges, static/dynamic/type imports
+  and static Vite globs. `tools/dependency-architecture-cycles.json` is an honest debt baseline: a
+  known SCC may shrink or disappear, but adding a member or merging SCCs fails. Never hide an edge by
+  making a glob pattern/options computed; the scanner fails closed. New package work must narrow this
+  graph, not copy a current SCC into a public package.
 - **A module joins the game by existing.** Drop a `*.system.ts` anywhere under `apps/game/src/` that
   default-exports a `SystemModule`; `apps/game/src/game/Systems.ts` discovers it by glob and logs what
   registered. Never edit `Bootstrap.ts` or `Systems.ts` to register something.
@@ -2560,12 +2567,18 @@ before touching it. The workspace boundary is structural, not a convention.
   is deleted now, along with `shadowResolution`, `lodBias`, `lodDistances`, `cascadeNear`,
   `shadowColor`, `bloom.mips` and `lensDirt`.
 
-  **THERE IS ONE LOD, AND IT IS TERRAIN-ONLY.** This said "there is still no LOD system" until the
-  `terrain-halfres-lod` branch landed. `buildTerrainChunks` now emits a SECOND index over the same
+  **LOD POLICY IS LOCAL, NOT A GENERIC ENGINE SERVICE.** Terrain and the broadleaf foliage pilot are
+  the two current owners. `buildTerrainChunks` emits a SECOND index over the same
   vertices for chunks with no relief worth drawing at 1 m, bounded by `TERRAIN_LOD_MAX_ERROR`
-  (0.15 m). It is not a distance LOD and there is still no `lodDistances` — a chunk is decimated on
-  its own FLATNESS, once, at generation, and never switches at runtime. Do not write code that
-  assumes a general LOD system, a distance ladder, or per-frame selection.
+  (0.15 m). It is not a distance LOD: a chunk is decimated on its own FLATNESS, once, at generation,
+  and never switches at runtime.
+
+  `Scatter` separately owns the broadleaf `tree` camera-band policy: 72 m / 116 m thresholds with a
+  stable stochastic transition and an 8 m invalidation band, at most three colour buckets and one
+  independent shadow-only proxy. It reclassifies only when visible chunks or the camera band change,
+  uses preallocated update ranges, and keeps placement/clearing/save authority on the CPU. Do not
+  generalize those thresholds to every prop or create a second WebGPU policy; a future compute pilot
+  must reproduce `foliageLodForDistanceSquared` and never read visibility back.
 
   Its one real risk is a T-junction crack, and it is excluded structurally rather than looked for:
   every boundary edge of a coarse chunk spans exactly one grid step, so it draws the same polyline

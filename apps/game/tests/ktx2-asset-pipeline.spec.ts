@@ -55,7 +55,7 @@ describe('the imported Soviet family ships through KTX2/Basis', () => {
     expect(sharedLoader).toContain('new KTX2Loader().setWorkerLimit(2)');
     expect(sharedLoader).toContain("declare const __BASIS_TRANSCODER_PATH__: string");
     expect(sharedLoader).toContain("if (__BASIS_TRANSCODER_PATH__ !== '')");
-    expect(sharedLoader).toContain('loader.setTranscoderPath(__BASIS_TRANSCODER_PATH__)');
+    expect(sharedLoader).toContain('candidate.setTranscoderPath(__BASIS_TRANSCODER_PATH__)');
     const vite = fs.readFileSync(path.join(root, 'apps/game/vite.config.ts'), 'utf8');
     expect(vite).toContain("'node_modules/three/examples/jsm/libs/basis'");
     expect(vite).toContain("command === 'serve' ? BASIS_DEV_PATH : ''");

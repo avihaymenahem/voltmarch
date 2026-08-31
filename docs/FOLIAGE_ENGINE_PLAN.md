@@ -1,6 +1,6 @@
 # VOLTMARCH foliage engine and environment-asset migration
 
-Status: all 32 Scatter identities are the production default; runtime LOD dispatch and final performance/save acceptance remain · owner: world/art pipeline · opened 2026-08-29
+Status: broadleaf CPU pilot passed; per-family visual/performance acceptance for the 32-family catalogue remains · owner: world/art pipeline · opened 2026-08-29
 
 ## Decision
 
@@ -206,8 +206,8 @@ Also record felling, save/load restoration and the placement fingerprint.
 Engineering checkpoint, 2026-08-29: the fixed temperate seed-7 procedural `tree` contains 4,520
 triangles, 9,780 vertices and 13,560 indices. Its measured XZ radius is 4.656 m, height is 8.930 m
 and three-dimensional sphere radius is 5.051 m. The focused scatter, clearing, wind-phase and WebGPU
-vertex-layout suite passes unchanged through the new presentation boundary. Renderer screenshots,
-dense-copse frame timings and the recorded placement fingerprint remain open before Gate 0 closes.
+vertex-layout suite passes unchanged through the new presentation boundary. Gate 4's 2026-08-31
+checkpoint below supplies the paired runtime/capture evidence that was still open at this baseline.
 
 ### Gate 1 — concept and paid geometry
 
@@ -276,19 +276,25 @@ The first integration must prove:
 - saved felling masks apply to the same placement fingerprint;
 - shroud/fog tinting remains correct.
 
-Integration checkpoint, updated 2026-08-30: the complete family is registered atomically through
-`EnvironmentAssetCatalog` and `FoliageEngine`; `Scatter` remains placement and save authority. Normal
-boots load the audited family and its PBR materials. `?foliage=imported` remains an explicit diagnostic
-alias for that production route, while `?foliage=procedural` and any load/audit error instantiate the
-dormant procedural presentation.
-A live WebGL match reports `tree source=imported, 3,363 tris, ... PBR=yes` with no new console errors.
-The first loader fault found during browser validation—interleaved quantized LOD attributes passed to
-the index weld—was corrected by promoting them to writable Float32 attributes before indexing.
+Integration checkpoint, updated 2026-08-31: the complete family is registered atomically through
+`EnvironmentAssetCatalog` and `FoliageEngine`; `Scatter` remains placement and save authority. World
+generation and reveal now build the deterministic procedural presentation immediately and do not
+await imported I/O. The renderer-configured shared KTX2/GLTF load runs behind a generation guard,
+validates the full handoff before adoption, and rebuilds only presentation buffers. A compact felled
+mask is captured and replayed during that handoff, so live clears/crushes that occur while loading are
+not resurrected. A torn-down world disposes a late family instead of publishing it.
 
-This checkpoint proves the asset-pipeline and close-tree presentation seam. Non-blocking background
-replacement, camera-band LOD bucket repacking, matching authored wind on the PBR shader, KTX2 family-
-atlas conversion and WebGPU/dense-copse performance acceptance remain Gate 3/4 rollout work before
-the procedural builder is deleted.
+A missing delivery now aliases the requested rung toward the nearest cheaper packaged delivery and
+then the nearest surviving higher-detail delivery; losing every visible rung keeps the complete
+procedural family. Rejected shared material promises cannot escape cleanup and abandon successful
+sibling families. `?foliage=procedural`, `?foliage=imported` and `?foliage=emergency` remain exact A/B
+arms over the same placement identity.
+
+Broadleaf colour now uses three allocation-free camera-band buckets with stable stochastic transition
+bands. One independent, filtered proxy owns shadow submission. WebGL colour/depth and WebGPU
+colour/`castShadowPositionNode` use the same authored wind contract. Clearing uses the manifest crown
+envelope—including its spatial scan reach—rather than active LOD bounds, and a grazing-footprint test
+locks procedural/imported/emergency save outcomes together.
 
 ### Gate 4 — acceptance
 
@@ -299,17 +305,48 @@ The pilot passes only when all of the following are true:
   in a model viewer;
 - the same seed produces the same placement fingerprint and clearing/save behavior;
 - normal-game colour draws rise by no more than two and shadow draws by no more than one;
-- at equal visible tree counts, median CPU and GPU frame cost do not regress by more than 3%; the
-  dense-copse stress case must improve visible triangle count and remain within the same frame-time
-  envelope;
+- at equal visible tree counts, the within-backend median of flushed per-block wall averages does not
+  regress by more than 3%; the dense-copse stress case must improve visible triangle count and keep
+  the upper bound of a deterministic 95% bootstrap interval below that +3% ceiling. This is the
+  acceptance clock because WebGL GPU queries and WebGPU timestamp queries are different, optional
+  instruments; HUD CPU/frame values remain diagnostics and are not mislabelled as GPU duration;
 - no frame-loop allocation, per-instance material, per-instance loader, double-sided default,
   texture-colour-space warning or WebGPU vertex-layout warning is introduced;
 - `npm run typecheck`, focused environment/asset tests and `npm run build` pass;
 - screenshots, metrics, task IDs, source hashes and rejection notes are stored beside the asset.
 
 Passing Gate 4 promotes the imported broadleaf and its emergency derivative. The later family rollout
-has now produced and registered every catalogue delivery, but does not waive the same runtime
-performance, save/clearing and visual acceptance gates.
+has produced and registered every catalogue delivery, but does not waive the same runtime
+performance, save/clearing and visual acceptance gates. In particular, this checkpoint is not a
+blanket visual approval for the other 31 identities.
+
+Acceptance checkpoint, 2026-08-31: the broadleaf CPU pilot passes. The same seed-7 normal fixture
+keeps 368 visible props. Imported camera-band dispatch produces 328/27/13 instances in LOD0/1/2;
+colour triangles fall 449,980 -> 94,076 (-79.1%) and shadow triangles fall 400,904 -> 51,498
+(-87.2%). Foliage colour draws move 14 -> 16, exactly the +2 ceiling, while 11 shadow draws remain
+unchanged. The 120-frame x 10-block WebGL bracket improves median wall time 36.01 -> 35.00 ms;
+the shorter cross-backend bracket changes 36.62 -> 36.03 ms on WebGL and 1.645 -> 1.627 ms on
+WebGPU. These timings are headless development signals on the recorded adapters, not target-machine
+promises.
+
+The denser 116 m stress bracket holds 878 instances and 47 chunks in both arms. The final timing
+sample uses the median of 20 per-block 60-frame wall averages, one identical GPU flush per block. Imported LOD
+749/22/107 cuts colour triangles 1,127,804 -> 143,082 (-87.31%) and shadow triangles
+1,020,440 -> 133,108 (-86.96%). It adds one colour draw, no shadow draw, and improves the within-arm
+wall median 5.10% on WebGL and 2.77% on WebGPU. A deterministic 200,000-resample bootstrap puts the
+95% delta intervals at [-5.31%, -4.82%] and [-4.61%, +0.05%], respectively—both below the +3%
+regression ceiling. Tree-focused 24/62/116 m noon/dusk captures now live
+beside the asset on both backends. They approve the broadleaf silhouette; they also record remaining
+catalogue defects—vertical card groupings at far range, weak dusk interior readability, and broader
+renderer-parity differences—so those later family gates remain open.
+
+The shared extended-foliage atlas is a deterministic single-thread Basis cook. Three consecutive
+clean recooks reproduce its tracked report and source hashes. Output is 509,145 bytes versus 573,010
+source bytes (-11.14% transfer); the conservative RGBA8 mip estimate falls from 8,388,604 to
+2,097,151 bytes at 8 bpp. Normal-map UASTC RDO was explicitly rejected after anonymous review proved
+its output nondeterministic; the accepted normal is un-RDO UASTC. Runtime and visual evidence lives
+in `review/gate4-runtime-report.json` beside this family, and the exact cook evidence lives in
+`material/extended-foliage-v1.ktx2-report.json`.
 
 ## Rollout after the POC
 
@@ -329,10 +366,11 @@ Migrate by reusable family, not by one-off asset:
 5. Civic family: cafe umbrella/table/chairs, flower bed, both statues and water tower are integrated.
 
 Each family keeps the same promotion gate: one anchor first, shared atlas/material decision and a
-measured batch. Catalogue coverage is now exact and test-enforced against `PROP_KEYS`. Successful
-imported boots construct zero Scatter `PropLibrary` archetypes and bind scenario-spawned props to the
-same loaded families; the procedural builders remain dormant source-level failure fallbacks and are
-instantiated only when imported loading fails or `?foliage=procedural` is explicitly selected.
+measured batch. Catalogue coverage is now exact and test-enforced against `PROP_KEYS`. Imported boots
+use procedural geometry only as the immediate non-blocking presentation and then bind Scatter plus
+scenario-spawned props to the same loaded families. Those fallback resources remain owned until world
+teardown; they are no longer on the loading critical path, and deleting them would weaken load-failure
+behavior.
 
 Mineral checkpoint, 2026-08-29: `boulder` and `rockCluster` keep their stable Scatter identities and
 procedural failure fallback. LOD0 is 576/450 triangles, LOD1 is 224/240, LOD2 is 100/120 and the
@@ -372,10 +410,11 @@ ship compact card/trunk LOD families through one shared ImageGen PBR atlas. Nine
 street and civic identities ship offline-baked one-primitive GLBs, topology-safe reduced LOD1/LOD2
 deliveries and 12-triangle caster proxies through one cached prop-surface PBR atlas. WebGL and WebGPU
 cardinal reviews cover the previously easy-to-miss barrels, cafe umbrella set and all three cars.
-Live Electron/WebGPU reports 32 registered imported families, 4,894 seeded props, 18 biome-selected
-types, 13 visible colour draws, zero empty coverage patches and a zero-count procedural Scatter
-library. Runtime camera-band LOD bucket dispatch, authored PBR wind/depth parity and final dense-copse
-performance plus clearing/save acceptance remain open; asset delivery and eager-fallback removal do not.
+The earlier live Electron/WebGPU catalogue review reported 32 registered imported families, 4,894
+seeded props, 18 biome-selected types, 13 visible colour draws and zero empty coverage patches. The
+Gate 3/4 work above replaces its eager imported boot with immediate deterministic fallback plus an
+atomic presentation handoff, adds broadleaf camera-band dispatch and completes wind/depth,
+clearing/save and dense-frame acceptance. Asset delivery did not remove the procedural failure arm.
 
 ## Explicit non-goals for the POC
 

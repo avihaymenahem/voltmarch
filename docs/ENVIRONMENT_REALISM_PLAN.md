@@ -1,6 +1,6 @@
 # VOLTMARCH environment realism and prop renewal
 
-Status: authored catalogue and first atmosphere slice shipped; composition/aging acceptance remains · owner: world/art pipeline · updated 2026-08-30
+Status: authored catalogue delivered; broadleaf CPU pilot passed; catalogue visual acceptance and composition/aging remain · owner: world/art pipeline · updated 2026-08-31
 
 ## Intent
 
@@ -9,11 +9,12 @@ turning environmental dressing into the dominant GPU cost. The target is authore
 clean gameplay lanes surrounded by clustered evidence of traffic, industry, weather, and civilian
 life.
 
-The current baseline is asset-driven: all 32 stable Scatter identities resolve to audited authored
-LOD/caster families and shared PBR atlases, while placement is still chunk-culled and static/transient
-ground marks remain pooled into two bounded decal draws. Dormant procedural builders exist only for
-explicit diagnostics and load failure. The direction keeps those placement, batching and budget
-contracts; it does not replace them with thousands of independent runtime objects or unique 2K textures.
+The current delivery catalogue is asset-driven: all 32 stable Scatter identities have authored
+LOD/caster families and shared PBR atlases. A world still reveals immediately with deterministic
+procedural fallbacks, then promotes to authored geometry after asynchronous GLTF/KTX2 readiness.
+Placement remains chunk-culled and static/transient ground marks remain pooled into two bounded decal
+draws. The direction keeps those placement, batching and budget contracts; it does not replace them
+with thousands of independent runtime objects or unique 2K textures.
 
 ## What remains
 
@@ -23,9 +24,10 @@ contracts; it does not replace them with thousands of independent runtime object
 - More context-specific contact variation. Continuous terrain-space dust, grit and sparse cracks are
   live without added draws; mud, leaf litter and loose gravel still need geometry or broad material
   composition that cannot read as repeated circular stamps.
-- Final foliage-engine acceptance. Asset delivery now covers every stable Scatter identity; the
-  remaining work is camera-band LOD dispatch, wind/depth parity, dense-scene performance and saved
-  clearing restoration before dormant failure builders can be deleted.
+- Catalogue foliage acceptance. The broadleaf CPU pilot has camera-band LOD, wind/depth parity,
+  dense-scene performance and saved-clearing coverage. Other families still require the same
+  close/normal/far moving visual and performance gate; current evidence records far-range card
+  groupings and weak dusk canopy readability. Procedural failure builders therefore remain.
 - Biome aging. The same object should collect dust in desert, damp grime in temperate maps, exposed
   rust around salt water, and dirty snow at roadsides without requiring a unique material per object.
 - Destruction continuity. Scorch, craters, tracks, and construction clearing exist; persistent small
@@ -73,9 +75,10 @@ The first static composition slice is live, with one important correction from i
 - the approved imported wreck is conditioned as a reusable debris family with procedural fallback;
   repeated roadside cars/planters/benches were reduced so limited prop diversity is not amplified by
   uniform spacing;
-- all 32 stable Scatter identities now resolve through audited imported families. The successful
-  imported path constructs zero procedural Scatter archetypes, while scenario-spawned trees, bushes,
-  rocks, barrels and crates bind to the same loaded PBR geometry/materials;
+- all 32 stable Scatter identities now resolve through audited imported families. World reveal uses
+  deterministic procedural geometry immediately, then atomically promotes Scatter plus
+  scenario-spawned trees, bushes, rocks, barrels and crates to the same loaded PBR families without
+  changing placement or saved felling state;
 - the old rectangular `debrisPile` blocks are removed from imported presentation; that identity now
   reuses the approved rounded and striated rock-cluster LOD/caster family;
 - autumn tree, conifer, palm and both grass tufts share one ImageGen-derived alpha PBR atlas. The

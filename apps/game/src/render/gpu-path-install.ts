@@ -47,7 +47,9 @@ import {
 import { createTerrainNodeMaterials } from '../world/TerrainNodeMaterial';
 import { createWaterNodeMaterial } from '../world/WaterNodeMaterial';
 import { createRoadNodeMaterials } from '../world/RoadNodeMaterial';
-import { createPropNodeMaterials } from '../world/PropNodeMaterial';
+import {
+  createEnvironmentPropNodeMaterials, createPropNodeMaterials,
+} from '../world/PropNodeMaterial';
 import { createUnitNodeMaterial } from '../art/UnitNodeMaterial';
 import { createPadNodeMaterial, createStructureNodeMaterial } from '../art/StructureNodeMaterial';
 import {
@@ -346,6 +348,16 @@ export function install(): void {
         // See `PropMaterialSetLike.depthMaterial`: the node path's wind reaches
         // the shadow pass through `castShadowPositionNode`, which
         // `createPropNodeMaterials` already set.
+        depthMaterial: null,
+        setTime: (t) => set.setTime(t),
+        dispose: () => set.dispose(),
+      };
+    },
+
+    createEnvironmentPropMaterials(params) {
+      const set = createEnvironmentPropNodeMaterials(params);
+      return {
+        material: set.material,
         depthMaterial: null,
         setTime: (t) => set.setTime(t),
         dispose: () => set.dispose(),

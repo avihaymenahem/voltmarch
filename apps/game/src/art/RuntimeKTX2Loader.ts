@@ -12,9 +12,9 @@ export function acquireRuntimeKTX2Loader(renderer: unknown): KTX2Loader {
   consumers++;
   if (loader !== null) return loader;
 
-  loader = new KTX2Loader().setWorkerLimit(2);
-  const load = loader.load.bind(loader);
-  loader.load = (url, onLoad, onProgress, onError) => {
+  const candidate = new KTX2Loader().setWorkerLimit(2);
+  const load = candidate.load.bind(candidate);
+  candidate.load = (url, onLoad, onProgress, onError) => {
     const finish = beginBootSpan('texture', 'ktx2-ready', { asset: bootAssetLabel(url) });
     try {
       return load(
@@ -35,9 +35,16 @@ export function acquireRuntimeKTX2Loader(renderer: unknown): KTX2Loader {
     }
   };
   if (__BASIS_TRANSCODER_PATH__ !== '') {
-    loader.setTranscoderPath(__BASIS_TRANSCODER_PATH__);
+    candidate.setTranscoderPath(__BASIS_TRANSCODER_PATH__);
   }
-  loader.detectSupport(renderer as unknown as THREE.WebGLRenderer);
+  try {
+    candidate.detectSupport(renderer as unknown as THREE.WebGLRenderer);
+  } catch (error) {
+    candidate.dispose();
+    consumers = Math.max(0, consumers - 1);
+    throw error;
+  }
+  loader = candidate;
   return loader;
 }
 

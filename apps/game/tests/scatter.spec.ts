@@ -771,13 +771,18 @@ describe('Scatter — chunk culling', () => {
 
     let shortened = 0;
     for (const m of meshes) {
-      const col = m.instanceColor!;
+      const shadowOnly = m.userData.vmShadowOnly === true;
+      const col = m.instanceColor;
       if (m.count === 0) {
         expect(m.instanceMatrix.updateRanges.length, m.name).toBe(0);
         continue;
       }
       expect(m.instanceMatrix.updateRanges, m.name).toEqual([{ start: 0, count: m.count * 16 }]);
-      expect(col.updateRanges, m.name).toEqual([{ start: 0, count: m.count * 3 }]);
+      if (shadowOnly) {
+        expect(col, `${m.name} must not upload a colour column`).toBeNull();
+      } else {
+        expect(col!.updateRanges, m.name).toEqual([{ start: 0, count: m.count * 3 }]);
+      }
       if (m.count < m.instanceMatrix.count) shortened++;
     }
     expect(shortened, 'no mesh drew less than its capacity — the view was too wide')
@@ -790,7 +795,7 @@ describe('Scatter — chunk culling', () => {
     const identity = probe.instanceMatrix.updateRanges[0];
     for (const m of meshes) {
       m.instanceMatrix.clearUpdateRanges();
-      m.instanceColor!.clearUpdateRanges();
+      m.instanceColor?.clearUpdateRanges();
     }
     const wide = new THREE.PerspectiveCamera(34, 16 / 9, 1, 900);
     wide.position.set(256, 400, 256);
@@ -819,11 +824,16 @@ describe('Scatter — chunk culling', () => {
       if (!m.name.startsWith('prop.')) return;
       const bs = m.geometry.boundingSphere;
       expect(bs, `${m.name} has no bounding sphere to gate on`).not.toBeNull();
-      const def = PROP_DEFS.find((candidate) => `prop.${candidate.key}` === m.name);
+      const key = m.name.slice('prop.'.length).split('.')[0];
+      const def = PROP_DEFS.find((candidate) => candidate.key === key);
       expect(def, `${m.name} has no prop definition`).toBeDefined();
-      expect(m.castShadow, m.name).toBe(
-        def!.castsShadow !== false && bs!.radius >= SCATTER_SHADOW_MIN_RADIUS,
-      );
+      const shouldCast = def!.castsShadow !== false && bs!.radius >= SCATTER_SHADOW_MIN_RADIUS;
+      if (m.userData.vmShadowOnly === true) {
+        expect(m.castShadow, m.name).toBe(true);
+        expect(shouldCast, `${m.name} bypassed the caster gate`).toBe(true);
+      } else {
+        expect(m.castShadow, `${m.name} would double-cast with its proxy`).toBe(false);
+      }
       checked++;
     });
     expect(checked).toBeGreaterThan(0);

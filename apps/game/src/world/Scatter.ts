@@ -102,6 +102,7 @@
 
 import * as THREE from 'three';
 import { nodePath, type PropMaterialSetLike } from '../render/gpu-path';
+import { SHADOW_ONLY_TAG } from '../render/shadow-only';
 
 import {
   CELL, MAP_CELLS, MAP_SIZE, MAP_CELL_COUNT,
@@ -131,8 +132,10 @@ import {
  */
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 import {
-  FoliageEngine, type EnvironmentGeometryFamily, type FoliagePresentation,
+  FoliageEngine, type EnvironmentGeometryFamily, type EnvironmentRenderFamily,
+  type FoliagePresentation,
 } from './FoliageEngine';
+import { environmentAssetManifest } from './EnvironmentAssetCatalog';
 
 /**
  * Same-build A/B switch for the retired WebGPU BatchedMesh scatter path.
@@ -173,6 +176,35 @@ export function streetPropYaw(
 /** Chunks per axis. 512 / 32 = 16, so 256 chunks. */
 export const CHUNK_N = Math.max(1, Math.round(MAP_SIZE / SCATTER_CHUNK_METRES));
 export const CHUNK_COUNT = CHUNK_N * CHUNK_N;
+
+/** Camera-space LOD thresholds and the coarse repack cadence, in metres. */
+export const FOLIAGE_LOD = Object.freeze({
+  lod1Metres: 72,
+  lod2Metres: 116,
+  transitionBandMetres: 12,
+  cameraBandMetres: 8,
+});
+
+/**
+ * Stable per-placement transition. The band distributes changes across a
+ * copse without alpha blending, while the placement index makes the result
+ * independent of frame rate and prior camera motion.
+ */
+export function foliageLodForDistanceSquared(distanceSquared: number, stableId: number): 0 | 1 | 2 {
+  let hash = Math.imul((stableId ^ 0x7f4a7c15) >>> 0, 0x9e3779b1) >>> 0;
+  hash ^= hash >>> 16;
+  const signed = ((hash & 0xffff) / 0xffff) * 2 - 1;
+  const lod1 = FOLIAGE_LOD.lod1Metres + signed * FOLIAGE_LOD.transitionBandMetres * 0.5;
+  const lod2 = FOLIAGE_LOD.lod2Metres + signed * FOLIAGE_LOD.transitionBandMetres * 0.5;
+  if (distanceSquared >= lod2 * lod2) return 2;
+  if (distanceSquared >= lod1 * lod1) return 1;
+  return 0;
+}
+
+/** Presentation-independent visual envelope used by clearing and save masks. */
+export function stablePropVisualRadius(def: PropDef, scale: number): number {
+  return (environmentAssetManifest(def.key)?.metres.radius ?? def.radius) * scale;
+}
 
 /** Coverage raster resolution. 512 / 2 = 256 cells per axis. */
 export const COVER_N = Math.max(1, Math.round(MAP_SIZE / SCATTER_COVERAGE.gridMetres));
@@ -419,6 +451,15 @@ export interface ScatterStats {
   readonly visibleInstances: number;
   readonly visibleChunks: number;
   readonly drawCalls: number;
+  readonly shadowDrawCalls: number;
+  readonly visibleLod0: number;
+  readonly visibleLod1: number;
+  readonly visibleLod2: number;
+  readonly visibleTriangles: number;
+  readonly visibleShadowTriangles: number;
+  readonly uploadBytes: number;
+  readonly cullMs: number;
+  readonly uploadMs: number;
   readonly generateMs: number;
   readonly propsPerHectare: number;
   readonly adornedFraction: number;
@@ -604,8 +645,13 @@ interface ScatterType {
   /** Index into PROP_DEFS. This is what a Placement stores, so trimming a
    *  type can never shift a surviving instance onto the wrong mesh. */
   readonly defIndex: number;
-  readonly geo: PropGeometry;
+  geo: PropGeometry;
+  renderFamily: EnvironmentRenderFamily;
+  lodEnabled: boolean;
+  /** LOD0 alias retained for the diagnostic BatchedMesh arm. */
   mesh: THREE.InstancedMesh | null;
+  lodMeshes: [THREE.InstancedMesh | null, THREE.InstancedMesh | null, THREE.InstancedMesh | null];
+  shadowMesh: THREE.InstancedMesh | null;
   /** Legacy WebGPU benchmark batch; null on the normal InstancedMesh path. */
   batch: THREE.BatchedMesh | null;
   /** Chunk-sorted instance index -> BatchedMesh instance id. */
@@ -655,6 +701,8 @@ interface ScatterType {
   instOf: Int32Array;
   /** Instances currently uploaded. */
   drawCount: number;
+  lodDrawCount: Int32Array;
+  shadowDrawCount: number;
   /**
    * The one `{start, count}` this type ever hands three, per attribute.
    *
@@ -665,6 +713,11 @@ interface ScatterType {
   rangeMatrix: { start: number; count: number };
   rangeColor: { start: number; count: number };
   rangePhase: { start: number; count: number };
+  lodRangeMatrix: readonly { start: number; count: number }[];
+  lodRangeColor: readonly { start: number; count: number }[];
+  lodRangePhase: readonly { start: number; count: number }[];
+  shadowRangeMatrix: { start: number; count: number };
+  shadowRangePhase: { start: number; count: number };
 }
 
 /* A placed prop, before chunk sorting. Kept as parallel arrays to stay flat. */
@@ -878,6 +931,17 @@ export class Scatter {
   };
   visibleInstances = 0;
   visibleChunks = 0;
+  visibleLod0 = 0;
+  visibleLod1 = 0;
+  visibleLod2 = 0;
+  visibleTriangles = 0;
+  visibleShadowTriangles = 0;
+  uploadBytes = 0;
+  cullMs = 0;
+  uploadMs = 0;
+  private cameraBandX = 0x7fffffff;
+  private cameraBandY = 0x7fffffff;
+  private cameraBandZ = 0x7fffffff;
   lastReport: CoverageReport | null = null;
 
   /* ---- clearing bookkeeping ---------------------------------------------- */
@@ -1342,8 +1406,9 @@ export class Scatter {
     const preferred = this.opts.preferred ?? [];
     for (let i = 0; i < PROP_DEFS.length; i++) {
       const def = PROP_DEFS[i];
-      const geo = this.foliage.get(def.key);
-      if (geo === undefined) continue;
+      const renderFamily = this.foliage.renderFamily(def.key);
+      if (renderFamily === undefined) continue;
+      const geo = renderFamily.lod0;
       const biomeW = def.biome[this.opts.biome];
       if (biomeW <= 0) continue;
       // Affinity: a def with urban 1.0 wants urban 1.0 and vice versa.
@@ -1354,13 +1419,24 @@ export class Scatter {
       const pref = preferenceRank(def, preferred);
       if (pref >= 0) w *= preferenceMultiplier(pref);
       if (w <= 1e-3) continue;
+      // Gate 3 is deliberately a broadleaf pilot: at most two additional
+      // colour submissions, rather than multiplying every vegetation and rock
+      // archetype by three before the frame budget has been measured live.
+      const lodEnabled = def.key === 'tree'
+        && (renderFamily.lod1 !== renderFamily.lod0 || renderFamily.lod2 !== renderFamily.lod0);
       avail.push({
-        def, defIndex: i, geo, mesh: null, batch: null, batchInstances: EMPTY_I32, count: 0,
+        def, defIndex: i, geo, renderFamily, lodEnabled,
+        mesh: null, lodMeshes: [null, null, null], shadowMesh: null,
+        batch: null, batchInstances: EMPTY_I32, count: 0,
         srcMatrix: EMPTY_F32, srcColor: EMPTY_F32, srcPhase: EMPTY_F32,
         chunkStart: EMPTY_I32, chunkLive: EMPTY_I32, instOf: EMPTY_I32,
-        drawCount: 0,
+        drawCount: 0, lodDrawCount: new Int32Array(3), shadowDrawCount: 0,
         rangeMatrix: { start: 0, count: 0 }, rangeColor: { start: 0, count: 0 },
         rangePhase: { start: 0, count: 0 },
+        lodRangeMatrix: [{ start: 0, count: 0 }, { start: 0, count: 0 }, { start: 0, count: 0 }],
+        lodRangeColor: [{ start: 0, count: 0 }, { start: 0, count: 0 }, { start: 0, count: 0 }],
+        lodRangePhase: [{ start: 0, count: 0 }, { start: 0, count: 0 }, { start: 0, count: 0 }],
+        shadowRangeMatrix: { start: 0, count: 0 }, shadowRangePhase: { start: 0, count: 0 },
       });
       weights.push(w);
     }
@@ -1593,6 +1669,48 @@ export class Scatter {
     this.buildInstances();
     this.lastReport = this.validateCoverage();
     this.finishTiming(t0);
+  }
+
+  /**
+   * Adopt authored families after placement has completed, then rebuild only
+   * presentation buffers. Placement order, fingerprint, clear/crush state and
+   * save-mask identity remain untouched while asset I/O stays off world boot.
+   */
+  installImportedFoliage(
+    families: ReadonlyMap<string, EnvironmentGeometryFamily>,
+  ): number {
+    if (this.foliage.presentation === 'procedural' || families.size === 0) return 0;
+
+    const fingerprint = this.placementFingerprint;
+    const previousCleared = this.clearedProps;
+    const mask = new Uint8Array(this.felledMaskBytes);
+    this.felledMask(mask);
+
+    // registerFamilies validates every resource before adopting the first one.
+    const installed = this.foliage.registerFamilies(families);
+    this.disposeMeshes();
+    for (let i = 0; i < this.types.length; i++) {
+      const type = this.types[i];
+      const renderFamily = this.foliage.renderFamily(type.def.key);
+      if (renderFamily === undefined) continue;
+      type.renderFamily = renderFamily;
+      type.geo = renderFamily.lod0;
+      type.lodEnabled = type.def.key === 'tree'
+        && (renderFamily.lod1 !== renderFamily.lod0 || renderFamily.lod2 !== renderFamily.lod0);
+    }
+
+    this.maxPropReach = 0;
+    this.buildInstances();
+    // buildInstances deliberately starts from a live presentation; replay the
+    // compact state itself rather than any history of clear/crush operations.
+    this.clearedProps = 0;
+    this.applyFelledMask(mask);
+    this.clearedProps = previousCleared;
+    this.chunkVisiblePrev.fill(255);
+    if (this.placementFingerprint !== fingerprint) {
+      throw new Error('[foliage] presentation promotion changed placement identity');
+    }
+    return installed;
   }
 
   private finishTiming(t0: number): void {
@@ -2301,7 +2419,12 @@ export class Scatter {
       const type = this.types[s];
       const list = perType[s];
       type.count = list.length;
-      if (list.length === 0) { type.mesh = null; continue; }
+      if (list.length === 0) {
+        type.mesh = null;
+        type.lodMeshes = [null, null, null];
+        type.shadowMesh = null;
+        continue;
+      }
 
       // Counting sort by chunk.
       const counts = new Int32Array(CHUNK_COUNT + 1);
@@ -2349,8 +2472,13 @@ export class Scatter {
       type.chunkStart = start;
       type.chunkLive = live;
       type.instOf = instOf;
-      const reach = type.geo.boundRadius
-        * (type.def.scaleMax ?? SCATTER_JITTER.scaleMax);
+      // This reach determines which spatial cells clearing scans. It is part
+      // of gameplay/save identity just like visualRadius(), so an imported
+      // crown may never shrink the scan window around the same placement.
+      const reach = stablePropVisualRadius(
+        type.def,
+        type.def.scaleMax ?? SCATTER_JITTER.scaleMax,
+      );
       if (reach > this.maxPropReach) this.maxPropReach = reach;
 
       if (this.batchedNodePath) {
@@ -2359,51 +2487,57 @@ export class Scatter {
         continue;
       }
 
-      const meshMaterial = type.geo.material ?? this.materials.material;
-      const mesh = new THREE.InstancedMesh(type.geo.geometry, meshMaterial, list.length);
-      mesh.name = `prop.${type.def.key}`;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
-      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-      /*
-       * The wind phase, as a real per-instance attribute.
-       *
-       * ON THE TYPE'S OWN GEOMETRY, which is safe because `Scatter` builds its
-       * own `PropLibrary` (see the constructor) and there is exactly one
-       * `InstancedMesh` per type — `entity-props.system.ts` has a separate
-       * library and therefore separate geometries. An instanced attribute is
-       * sized by the instance count, so a geometry shared between two meshes of
-       * different populations would read past the end of one of them.
-       */
-      const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
-      phaseAttr.setUsage(THREE.DynamicDrawUsage);
-      type.geo.geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
-      // Per TYPE, not per instance: an InstancedMesh is one submission, so the
-      // shadow pass either gets all 735 grass tufts of the stock temperate
-      // layout or none of them.
-      mesh.castShadow = typeCastsShadow(type.def, type.geo, this.legacyShadows);
-      mesh.receiveShadow = true;
-      // Assigned either way. It is inert while `castShadow` is false, and
-      // leaving it wired means flipping the gate back on for one type never
-      // silently loses the wind animation from its depth pass.
-      /*
-       * NULL ON THE NODE PATH, AND THE WIND STILL REACHES THE SHADOW MAP.
-       * `PropNodeMaterial` sets `castShadowPositionNode`, which the node
-       * renderer harvests onto the shadow pass's override material — so a
-       * swaying canopy casts a swaying shadow with no second material and no
-       * extra upload. `docs/RENDER_FINDINGS.md` §7e.
-       */
-      if (type.geo.material === undefined && this.materials.depthMaterial !== null) {
-        mesh.customDepthMaterial = this.materials.depthMaterial;
+      const deliveries: readonly PropGeometry[] = type.lodEnabled
+        ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
+        : [type.renderFamily.lod0];
+      for (let lod = 0; lod < deliveries.length; lod++) {
+        const delivery = deliveries[lod];
+        const geometry = delivery.geometry.clone();
+        geometry.name = `${delivery.geometry.name}.bucket${lod}`;
+        const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
+        phaseAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
+        const meshMaterial = delivery.material ?? this.materials.material;
+        const mesh = new THREE.InstancedMesh(geometry, meshMaterial, list.length);
+        mesh.name = `prop.${type.def.key}.lod${lod}`;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
+        mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        // Colour buckets never cast: the independent proxy below is the sole
+        // caster geometry, preventing both double shadows and a hidden LOD0
+        // shadow cost after colour has switched to LOD1/2.
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        mesh.count = 0;
+        type.lodMeshes[lod] = mesh;
+        this.root.add(mesh);
       }
-      // We cull by chunk on the CPU; three's own test would use a bounding
-      // sphere spanning the whole map and never reject anything.
-      mesh.frustumCulled = false;
-      mesh.matrixAutoUpdate = false;
-      mesh.count = 0;
-      type.mesh = mesh;
+      type.mesh = type.lodMeshes[0];
       type.drawCount = 0;
-      this.root.add(mesh);
+
+      if (typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows)) {
+        const geometry = type.renderFamily.shadow.geometry.clone();
+        geometry.name = `${type.renderFamily.shadow.geometry.name}.caster`;
+        const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
+        phaseAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
+        const shadow = new THREE.InstancedMesh(geometry, this.materials.material, list.length);
+        shadow.name = `prop.${type.def.key}.shadow`;
+        shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        shadow.userData[SHADOW_ONLY_TAG] = true;
+        shadow.castShadow = true;
+        shadow.receiveShadow = false;
+        shadow.frustumCulled = false;
+        shadow.matrixAutoUpdate = false;
+        shadow.count = 0;
+        if (this.materials.depthMaterial !== null) {
+          shadow.customDepthMaterial = this.materials.depthMaterial;
+        }
+        type.shadowMesh = shadow;
+        this.root.add(shadow);
+      }
     }
 
     if (this.batchedNodePath) this.buildNodeBatches();
@@ -2448,8 +2582,22 @@ export class Scatter {
    * is why the range objects live on `ScatterType`.
    */
   update(camera: THREE.Camera, timeSeconds: number): void {
+    const cullStart = typeof performance !== 'undefined' ? performance.now() : 0;
     this.materials.setTime(timeSeconds);
-    if (this.types.length === 0) return;
+    this.foliage.setTime(timeSeconds);
+    if (this.types.length === 0) {
+      this.cullMs = 0;
+      this.uploadMs = 0;
+      this.uploadBytes = 0;
+      this.visibleInstances = 0;
+      this.visibleChunks = 0;
+      this.visibleLod0 = 0;
+      this.visibleLod1 = 0;
+      this.visibleLod2 = 0;
+      this.visibleTriangles = 0;
+      this.visibleShadowTriangles = 0;
+      return;
+    }
 
     camera.updateMatrixWorld();
     this.viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -2476,13 +2624,23 @@ export class Scatter {
       visible += v;
     }
 
-    let changed = false;
+    const bandX = Math.floor(camera.position.x / FOLIAGE_LOD.cameraBandMetres);
+    const bandY = Math.floor(camera.position.y / FOLIAGE_LOD.cameraBandMetres);
+    const bandZ = Math.floor(camera.position.z / FOLIAGE_LOD.cameraBandMetres);
+    const bandChanged = bandX !== this.cameraBandX
+      || bandY !== this.cameraBandY || bandZ !== this.cameraBandZ;
+    this.cameraBandX = bandX;
+    this.cameraBandY = bandY;
+    this.cameraBandZ = bandZ;
+    let changed = bandChanged;
     for (let c = 0; c < CHUNK_COUNT; c++) {
       if (this.chunkVisible[c] !== this.chunkVisiblePrev[c]) { changed = true; break; }
     }
-    if (!changed) return;
+    this.cullMs = typeof performance !== 'undefined' ? performance.now() - cullStart : 0;
+    if (!changed) { this.uploadMs = 0; this.uploadBytes = 0; return; }
     this.chunkVisiblePrev.set(this.chunkVisible);
     this.visibleChunks = visible;
+    const uploadStart = typeof performance !== 'undefined' ? performance.now() : 0;
 
     if (this.batchedNodePath) {
       let instances = 0;
@@ -2506,73 +2664,114 @@ export class Scatter {
         instances += drawn;
       }
       this.visibleInstances = instances;
+      this.uploadMs = typeof performance !== 'undefined' ? performance.now() - uploadStart : 0;
       return;
     }
 
     let instances = 0;
+    let lod0Instances = 0, lod1Instances = 0, lod2Instances = 0;
+    let visibleTriangles = 0, visibleShadowTriangles = 0, uploadBytes = 0;
     for (let s = 0; s < this.types.length; s++) {
       const type = this.types[s];
-      const mesh = type.mesh;
-      if (mesh === null) continue;
-      const dstM = mesh.instanceMatrix.array as Float32Array;
-      const dstC = (mesh.instanceColor as THREE.InstancedBufferAttribute).array as Float32Array;
-      const phaseAttr = mesh.geometry.getAttribute(
-        PROP_WIND_PHASE_ATTRIBUTE,
-      ) as THREE.InstancedBufferAttribute;
-      const dstP = phaseAttr.array as Float32Array;
+      const mesh0 = type.lodMeshes[0];
+      if (mesh0 === null) continue;
+      type.lodDrawCount.fill(0);
       const srcM = type.srcMatrix, srcC = type.srcColor, srcP = type.srcPhase;
       const start = type.chunkStart;
       const liveIn = type.chunkLive;
-      let w = 0;
+      let shadowCount = 0;
+      const shadow = type.shadowMesh;
+      const shadowM = shadow?.instanceMatrix.array as Float32Array | undefined;
+      const shadowPhase = shadow?.geometry.getAttribute(
+        PROP_WIND_PHASE_ATTRIBUTE,
+      ) as THREE.InstancedBufferAttribute | undefined;
+      const shadowP = shadowPhase?.array as Float32Array | undefined;
       for (let c = 0; c < CHUNK_COUNT; c++) {
         if (this.chunkVisible[c] === 0) continue;
         // The LIVE half of the chunk's slice. Felled props were swapped into
         // the tail, past `a + liveIn[c]`, and are simply never read again.
         const a = start[c], b = a + liveIn[c];
         if (a === b) continue;
-        // Manual copies: `subarray()` would allocate a view every chunk, and
-        // this runs on a camera pan.
-        let sm = a * 16, dm = w * 16;
         for (let i = a; i < b; i++) {
+          const sm = i * 16;
+          let lod: 0 | 1 | 2 = 0;
+          if (type.lodEnabled) {
+            const dx = camera.position.x - srcM[sm + 12];
+            const dy = camera.position.y - srcM[sm + 13];
+            const dz = camera.position.z - srcM[sm + 14];
+            lod = foliageLodForDistanceSquared(
+              dx * dx + dy * dy + dz * dz,
+              type.instOf[i],
+            );
+          }
+          const mesh = type.lodMeshes[lod]!;
+          const w = type.lodDrawCount[lod]++;
+          const dstM = mesh.instanceMatrix.array as Float32Array;
+          const dstC = (mesh.instanceColor as THREE.InstancedBufferAttribute).array as Float32Array;
+          const phaseAttr = mesh.geometry.getAttribute(
+            PROP_WIND_PHASE_ATTRIBUTE,
+          ) as THREE.InstancedBufferAttribute;
+          const dstP = phaseAttr.array as Float32Array;
+          const dm = w * 16;
           for (let k = 0; k < 16; k++) dstM[dm + k] = srcM[sm + k];
-          sm += 16; dm += 16;
-        }
-        let sc = a * 3, dc = w * 3;
-        for (let i = a; i < b; i++) {
+          const sc = i * 3, dc = w * 3;
           dstC[dc] = srcC[sc]; dstC[dc + 1] = srcC[sc + 1]; dstC[dc + 2] = srcC[sc + 2];
-          sc += 3; dc += 3;
+          dstP[w] = srcP[i];
+
+          if (shadowM !== undefined && shadowP !== undefined) {
+            const shadowOffset = shadowCount * 16;
+            for (let k = 0; k < 16; k++) shadowM[shadowOffset + k] = srcM[sm + k];
+            shadowP[shadowCount++] = srcP[i];
+          }
         }
-        // Same repack, one float wide. It rides the SAME cursor as the matrix
-        // and the colour, so instance k of the packed buffer is one prop in all
-        // three columns — a phase that drifted out of step with the transform
-        // would sway the wrong trees and look exactly like a placement bug.
-        for (let i = a, dp = w; i < b; i++, dp++) dstP[dp] = srcP[i];
-        w += b - a;
       }
-      mesh.count = w;
-      type.drawCount = w;
-      instances += w;
-      if (w > 0) {
-        // Upload the PREFIX, not the capacity. Both buffers are allocated at
-        // the type's full population (`list.length`) and a bare
-        // `needsUpdate = true` makes three `bufferSubData` the entire array, so
-        // a camera that pans one 32 m chunk into view re-sent every matrix of
-        // every type. MEASURED on the stock temperate layout — 4131 props, well
-        // under the 9000 ceiling, which is a CAP and not the live budget: 307 kB
-        // per repack before, and after, from the RA3 camera rig, 40 kB at 40 m /
-        // 53 kB at 60 m / 84 kB at 90 m, i.e. 13-28%. The saving is
-        // (1 - visible fraction), and it lands only on the frames where the
-        // visible CHUNK SET actually flips — at `SCATTER_CHUNK_METRES` = 32 that
-        // is a minority of pan frames. A few hundred kB, not a frame-rate fix.
-        //
-        // The repack cursor `w` writes from index 0 upward with no gaps, so
-        // [0, w) is exactly what changed.
-        markRange(mesh.instanceMatrix, type.rangeMatrix, w * 16);
-        markRange(mesh.instanceColor as THREE.InstancedBufferAttribute, type.rangeColor, w * 3);
-        markRange(phaseAttr, type.rangePhase, w);
+      let drawn = 0;
+      for (let lod = 0; lod < 3; lod++) {
+        const mesh = type.lodMeshes[lod];
+        if (mesh === null) continue;
+        const count = type.lodDrawCount[lod];
+        mesh.count = count;
+        drawn += count;
+        if (count === 0) continue;
+        const phaseAttr = mesh.geometry.getAttribute(
+          PROP_WIND_PHASE_ATTRIBUTE,
+        ) as THREE.InstancedBufferAttribute;
+        markRange(mesh.instanceMatrix, type.lodRangeMatrix[lod], count * 16);
+        markRange(
+          mesh.instanceColor as THREE.InstancedBufferAttribute,
+          type.lodRangeColor[lod],
+          count * 3,
+        );
+        markRange(phaseAttr, type.lodRangePhase[lod], count);
+        uploadBytes += count * (16 + 3 + 1) * 4;
+        const triangles = lod === 0 ? type.renderFamily.lod0.triangles
+          : lod === 1 ? type.renderFamily.lod1.triangles : type.renderFamily.lod2.triangles;
+        visibleTriangles += count * triangles;
       }
+      if (shadow !== null) {
+        shadow.count = shadowCount;
+        if (shadowCount > 0) {
+          markRange(shadow.instanceMatrix, type.shadowRangeMatrix, shadowCount * 16);
+          markRange(shadowPhase!, type.shadowRangePhase, shadowCount);
+          uploadBytes += shadowCount * (16 + 1) * 4;
+          visibleShadowTriangles += shadowCount * type.renderFamily.shadow.triangles;
+        }
+      }
+      type.drawCount = drawn;
+      type.shadowDrawCount = shadowCount;
+      instances += drawn;
+      lod0Instances += type.lodDrawCount[0];
+      lod1Instances += type.lodDrawCount[1];
+      lod2Instances += type.lodDrawCount[2];
     }
     this.visibleInstances = instances;
+    this.visibleLod0 = lod0Instances;
+    this.visibleLod1 = lod1Instances;
+    this.visibleLod2 = lod2Instances;
+    this.visibleTriangles = visibleTriangles;
+    this.visibleShadowTriangles = visibleShadowTriangles;
+    this.uploadBytes = uploadBytes;
+    this.uploadMs = typeof performance !== 'undefined' ? performance.now() - uploadStart : 0;
   }
 
   /* ======================================================================
@@ -2935,10 +3134,12 @@ export class Scatter {
 
   /** The disc a prop actually occupies on screen: canopy, not trunk. */
   private visualRadius(p: Placement): number {
-    const type = p.slot >= 0 ? this.types[p.slot] : undefined;
-    if (type !== undefined) return type.geo.boundRadius * p.scale;
     const def = PROP_DEFS[p.defIndex];
-    return (def === undefined ? 1 : def.radius) * p.scale;
+    if (def === undefined) return p.scale;
+    // Clearing is gameplay/save state, so it must never consult whichever
+    // presentation geometry is active. The manifest fit is the stable canopy
+    // envelope shared by procedural, imported, emergency and future LODs.
+    return stablePropVisualRadius(def, p.scale);
   }
 
   /**
@@ -3129,11 +3330,12 @@ export class Scatter {
     const last = base + type.chunkLive[c] - 1;
     const i = p.inst;
     if (i !== last && last >= base) {
-      const m = type.srcMatrix, col = type.srcColor;
+      const m = type.srcMatrix, col = type.srcColor, phase = type.srcPhase;
       const dm = i * 16, sm = last * 16;
       for (let k = 0; k < 16; k++) m[dm + k] = m[sm + k];
       const dc = i * 3, sc = last * 3;
       col[dc] = col[sc]; col[dc + 1] = col[sc + 1]; col[dc + 2] = col[sc + 2];
+      phase[i] = phase[last];
       const movedIndex = type.instOf[last];
       type.instOf[i] = movedIndex;
       const moved = this.placements[movedIndex];
@@ -3285,7 +3487,18 @@ export class Scatter {
       return n;
     }
     let n = 0;
-    for (let i = 0; i < this.types.length; i++) if (this.types[i].drawCount > 0) n++;
+    for (let i = 0; i < this.types.length; i++) {
+      const type = this.types[i];
+      for (let lod = 0; lod < 3; lod++) if (type.lodDrawCount[lod] > 0) n++;
+    }
+    return n;
+  }
+
+  get shadowDrawCalls(): number {
+    let n = 0;
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i].shadowDrawCount > 0) n++;
+    }
     return n;
   }
 
@@ -3298,6 +3511,15 @@ export class Scatter {
       visibleInstances: this.visibleInstances,
       visibleChunks: this.visibleChunks,
       drawCalls: this.drawCalls,
+      shadowDrawCalls: this.shadowDrawCalls,
+      visibleLod0: this.visibleLod0,
+      visibleLod1: this.visibleLod1,
+      visibleLod2: this.visibleLod2,
+      visibleTriangles: this.visibleTriangles,
+      visibleShadowTriangles: this.visibleShadowTriangles,
+      uploadBytes: this.uploadBytes,
+      cullMs: this.cullMs,
+      uploadMs: this.uploadMs,
       generateMs: this.generateMs,
       propsPerHectare: r ? r.propsPerHectare : 0,
       adornedFraction: r ? r.adornedFraction : 0,
@@ -3316,14 +3538,26 @@ export class Scatter {
     }
     this.nodeBatches.length = 0;
     for (let i = 0; i < this.types.length; i++) {
-      const m = this.types[i].mesh;
-      if (m !== null) {
-        this.root.remove(m);
-        m.dispose();
+      const type = this.types[i];
+      for (let lod = 0; lod < 3; lod++) {
+        const mesh = type.lodMeshes[lod];
+        if (mesh === null) continue;
+        this.root.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.dispose();
       }
-      this.types[i].mesh = null;
-      this.types[i].batch = null;
-      this.types[i].batchInstances = EMPTY_I32;
+      if (type.shadowMesh !== null) {
+        this.root.remove(type.shadowMesh);
+        type.shadowMesh.geometry.dispose();
+        type.shadowMesh.dispose();
+      }
+      type.mesh = null;
+      type.lodMeshes = [null, null, null];
+      type.shadowMesh = null;
+      type.batch = null;
+      type.batchInstances = EMPTY_I32;
+      type.lodDrawCount.fill(0);
+      type.shadowDrawCount = 0;
     }
   }
 

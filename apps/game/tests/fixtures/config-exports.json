@@ -1,0 +1,2138 @@
+[
+  {
+    "name": "ABILITIES",
+    "kind": "value"
+  },
+  {
+    "name": "ABILITY_FX",
+    "kind": "value"
+  },
+  {
+    "name": "AbilityDef",
+    "kind": "type"
+  },
+  {
+    "name": "AbilityId",
+    "kind": "value"
+  },
+  {
+    "name": "AI_BUILD",
+    "kind": "value"
+  },
+  {
+    "name": "AI_CADENCE",
+    "kind": "value"
+  },
+  {
+    "name": "AI_DIFFICULTY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_ECONOMY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_MEMORY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_MILITARY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_PERSONALITY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_PRODUCTION_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "AI_REBUILD",
+    "kind": "value"
+  },
+  {
+    "name": "AI_RECOVERY",
+    "kind": "value"
+  },
+  {
+    "name": "AI_REPAIR",
+    "kind": "value"
+  },
+  {
+    "name": "AI_ROSTER_CAP",
+    "kind": "value"
+  },
+  {
+    "name": "AI_SCOUT",
+    "kind": "value"
+  },
+  {
+    "name": "AI_SKILL",
+    "kind": "value"
+  },
+  {
+    "name": "AI_SQUAD_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "AI_SQUAD_MAX",
+    "kind": "value"
+  },
+  {
+    "name": "AI_SQUAD_MIN",
+    "kind": "value"
+  },
+  {
+    "name": "AI_STRATEGY_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "AI_THREAT_CLASS_COUNT",
+    "kind": "value"
+  },
+  {
+    "name": "AIR_CLIMB_LAMBDA",
+    "kind": "value"
+  },
+  {
+    "name": "AIR_CRUISE_ALTITUDE",
+    "kind": "value"
+  },
+  {
+    "name": "ARMOR_MATRIX",
+    "kind": "value"
+  },
+  {
+    "name": "ARRIVE_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_AMBIENCE",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_BARK",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_BUS_DB",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_CROWD",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_CULL_DB",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_DISTANCE",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_DUCK",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_EVA",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_LIMITER",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_MASTER_GAIN",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_MAX_LOOPS",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_MAX_ONESHOTS",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_MUSIC",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_MUTE_IN_SHOT_MODE",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_REVERB",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_REVERB_CROSSFADE_SEC",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_SAMPLE_RATE",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_SOFTCLIP_K",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_SOFTCLIP_POINTS",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_STEAL_RAMP_MS",
+    "kind": "value"
+  },
+  {
+    "name": "AUDIO_VOICE_CAPS",
+    "kind": "value"
+  },
+  {
+    "name": "AUTO_BASE_APRON_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "BASE_STORAGE",
+    "kind": "value"
+  },
+  {
+    "name": "BUILD_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "BUILD_TAB_ORDER",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_ANIM",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_DIMENSIONS",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_FOOTPRINTS",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_GEOMETRY",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_GREEBLE",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_PAD",
+    "kind": "value"
+  },
+  {
+    "name": "BUILDING_VALIDATION",
+    "kind": "value"
+  },
+  {
+    "name": "BURN_DPS",
+    "kind": "value"
+  },
+  {
+    "name": "BURN_HP_THRESHOLD",
+    "kind": "value"
+  },
+  {
+    "name": "CAMERA",
+    "kind": "value"
+  },
+  {
+    "name": "CAMERA_NAV",
+    "kind": "value"
+  },
+  {
+    "name": "CELL",
+    "kind": "value"
+  },
+  {
+    "name": "CLIFF_SLOPE",
+    "kind": "value"
+  },
+  {
+    "name": "COMBAT_DAMAGE",
+    "kind": "value"
+  },
+  {
+    "name": "COMBAT_PROJECTILES",
+    "kind": "value"
+  },
+  {
+    "name": "COMBAT_TARGETING",
+    "kind": "value"
+  },
+  {
+    "name": "COMBAT_WEAPONS",
+    "kind": "value"
+  },
+  {
+    "name": "CONSTRUCTION_RISE_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_CAPACITY",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_CORE",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_LIFT",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_MIN_FOOTPRINT",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_PEAK_ALPHA",
+    "kind": "value"
+  },
+  {
+    "name": "CONTACT_DARKEN_RADIUS_SCALE",
+    "kind": "value"
+  },
+  {
+    "name": "CONTROL_GROUP_COUNT",
+    "kind": "value"
+  },
+  {
+    "name": "CRATER_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "CRATER_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "CREDITS_TICKER_RATE",
+    "kind": "value"
+  },
+  {
+    "name": "CREDITS_TICKER_SNAP",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_ATLAS_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_DARKEN_FLOOR",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_GRID",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_LIFT",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_POOL",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_POOL_STATIC",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_POOL_TRACKS",
+    "kind": "value"
+  },
+  {
+    "name": "DECAL_SWEEP_PER_FRAME",
+    "kind": "value"
+  },
+  {
+    "name": "DEFAULT_ART",
+    "kind": "value"
+  },
+  {
+    "name": "DEFAULT_QUALITY_TIER",
+    "kind": "value"
+  },
+  {
+    "name": "DEFAULT_SEED",
+    "kind": "value"
+  },
+  {
+    "name": "DEFAULT_SPEED_INDEX",
+    "kind": "value"
+  },
+  {
+    "name": "DOUBLE_CLICK_MS",
+    "kind": "value"
+  },
+  {
+    "name": "DOUBLE_CLICK_SLOP_PX",
+    "kind": "value"
+  },
+  {
+    "name": "DRAG_THRESHOLD_PX",
+    "kind": "value"
+  },
+  {
+    "name": "FACTION_PALETTE",
+    "kind": "value"
+  },
+  {
+    "name": "FACTORY_SPEED_BONUS",
+    "kind": "value"
+  },
+  {
+    "name": "FACTORY_SPEED_CAP",
+    "kind": "value"
+  },
+  {
+    "name": "FLOWFIELD_BUDGET_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "FLOWFIELD_CACHE_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "FLOWFIELD_GOAL_BUCKET",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_CLOAK_REVEAL_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_CONCEAL_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_DEFAULT_SIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_DITHER",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_EDGE_WARP",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_ENABLED_DEFAULT",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_EXPLORED_ALPHA",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_EXPLORED_LEVEL",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_MAX_DETECTORS",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_MESH_LIFT",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_MESH_SAMPLES_PER_CELL",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_MIN_SIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_RADAR_DETECT_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_REVEAL_IN_SHOT_MODE",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_REVEAL_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_SIGHT_SCALE",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_STRUCTURE_SIGHT_BONUS",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_UNEXPLORED_ALPHA",
+    "kind": "value"
+  },
+  {
+    "name": "FOG_UPLOAD_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "FUNDS_EVA_COOLDOWN",
+    "kind": "value"
+  },
+  {
+    "name": "GAME_SPEEDS",
+    "kind": "value"
+  },
+  {
+    "name": "GROUND_OVERLAY_DEPTH_BIAS_FACTOR",
+    "kind": "value"
+  },
+  {
+    "name": "GROUND_OVERLAY_DEPTH_BIAS_UNITS",
+    "kind": "value"
+  },
+  {
+    "name": "GROUP_DOUBLE_TAP_MS",
+    "kind": "value"
+  },
+  {
+    "name": "GUARD_LEASH",
+    "kind": "value"
+  },
+  {
+    "name": "HARVEST_ARRIVE_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVEST_FX_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "HARVEST_RATE",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_CAPACITY",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_DOCK_CLEARANCE",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_DOCK_FALLBACK_TRIES",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_DOCK_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_DOCK_STANDDOWN",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_FORCE_DRIVE_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_FORCE_DRIVE_TRIES",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_LEASH_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_LEASH_PATIENCE",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_NAV_GIVEUP_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_NAV_GIVEUP_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_NAV_PARK_GRACE",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_QUEUE_GAP",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_STUCK_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_TARGET_ROUNDTRIP",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_UNREACHABLE_BAN_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "HARVESTER_UNREACHABLE_BAN_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_CAMEO",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_COMMAND_BAR",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_DESIGN_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_GRID",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_INTERACTION",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_MINIMAP_SHROUD",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_MINIMAP_SURFACE",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_MINIMAP_WATER",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_OVERLAY",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_RADAR",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_SKIN_ALLIES",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_SKIN_SOVIETS",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_STACK",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_SUPERWEAPON",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_TEXT_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_UI_SCALE_BASE_HEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_UI_SCALE_MAX",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_UI_SCALE_MIN",
+    "kind": "value"
+  },
+  {
+    "name": "HUD_UI_SCALE_STEPS",
+    "kind": "value"
+  },
+  {
+    "name": "HudFactionSkin",
+    "kind": "type"
+  },
+  {
+    "name": "INCOME_SMOOTHING",
+    "kind": "value"
+  },
+  {
+    "name": "INCOME_WINDOW_TICKS",
+    "kind": "value"
+  },
+  {
+    "name": "INFANTRY_LEGIBILITY",
+    "kind": "value"
+  },
+  {
+    "name": "infantryLegibilityScale",
+    "kind": "value"
+  },
+  {
+    "name": "INSTANCE_BATCH_GROWTH",
+    "kind": "value"
+  },
+  {
+    "name": "INSTANCE_BATCH_INITIAL_CAPACITY",
+    "kind": "value"
+  },
+  {
+    "name": "INSTANCE_BATCH_MAX_CAPACITY",
+    "kind": "value"
+  },
+  {
+    "name": "INSTANCE_BOUNDS_PADDING",
+    "kind": "value"
+  },
+  {
+    "name": "LAYERS",
+    "kind": "value"
+  },
+  {
+    "name": "LIGHT_POOL_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "MANHOLE_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "MAP_CELL_COUNT",
+    "kind": "value"
+  },
+  {
+    "name": "MAP_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "MAP_PRESET_DEFAULT",
+    "kind": "value"
+  },
+  {
+    "name": "MAP_PRESETS",
+    "kind": "value"
+  },
+  {
+    "name": "MAP_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "MapPreset",
+    "kind": "type"
+  },
+  {
+    "name": "MARQUEE_FILL",
+    "kind": "value"
+  },
+  {
+    "name": "MARQUEE_GLOW",
+    "kind": "value"
+  },
+  {
+    "name": "MARQUEE_MIN_PX",
+    "kind": "value"
+  },
+  {
+    "name": "MARQUEE_STROKE",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_DRAW_CALLS",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_ENTITIES",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_FRAME_DT",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_PLAYERS",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_PROJECTILES",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_QUERY_RESULTS",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_QUEUE_DEPTH",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_SELECTION",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_SUBSTEPS",
+    "kind": "value"
+  },
+  {
+    "name": "MAX_WAYPOINTS",
+    "kind": "value"
+  },
+  {
+    "name": "MCV_START_SCATTER_CLEAR_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "MIN_CHAMFER",
+    "kind": "value"
+  },
+  {
+    "name": "MINIMAP_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "MOODS",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_AIR_BANK",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_AIR_TURN_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_DECEL_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_DUST_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_FOOT_TURN_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_HOVER_DRIFT",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_HOVER_TURN_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_MAX_TILT",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_MIN_FX_SPEED",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_NAVAL_BOB",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_NAVAL_BOB_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_NAVAL_HEEL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_NAVAL_TURN_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_TILT_LAMBDA",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_TRACK_CORNER_BRAKE",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_TREAD_GAUGE_FRAC",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_TREAD_SPACING",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_TURN_IN_PLACE_ANGLE",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_WAKE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_WHEEL_CORNER_BRAKE",
+    "kind": "value"
+  },
+  {
+    "name": "MOVE_WHEEL_MIN_TURN_FRAC",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_ARRIVE_SLACK",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_COST_RAMP",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_COST_ROAD",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_COST_ROUGH",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_COST_WALL_HUG",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_DIRECT_RANGE",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_DIRECT_RECHECK_TICKS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FIELD_EXPANDERS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FORMATION_GAP",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FORMATION_GOAL_EPS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FORMATION_MAX_OFFSET",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FORMATION_MIN_SPACING",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_FORMATION_SPACING",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_MIN_APPROACH_SPEED",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_MIN_CORRIDOR_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_MIN_EXPANDER_BUDGET",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_REPATH_TICKS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_SLOWDOWN_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_SNAP_SEARCH_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_STUCK_GIVEUP_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_STUCK_MAX_NUDGES",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_STUCK_MOVED_EPSILON",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_STUCK_TICKS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_WEDGE_MAX_NUDGES",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_WEDGE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_WEDGE_SAMPLE_TICKS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_WEDGE_SEARCH_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "NAV_WEDGE_STRIKES",
+    "kind": "value"
+  },
+  {
+    "name": "NAVAL_BUILDING_DIMENSIONS",
+    "kind": "value"
+  },
+  {
+    "name": "NAVAL_MIN_SEA_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "NAVAL_UNIT_DIMENSIONS",
+    "kind": "value"
+  },
+  {
+    "name": "OIL_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "OIL_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_ATTACK_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_MARKER_POOL",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_MARKER_POP",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_MARKER_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_MARKER_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_MOVE_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "ORDER_SPECIAL_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_CELL_JITTER",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_CELL_MAX",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_CELL_MIN",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_CLAIM_TTL",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_CRYSTAL_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_DENSITY_STEPS",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_FIELD_DEFAULT_RICHNESS",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_FIELD_FALLOFF",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_MIN_CLAIM",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_REGROW_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_REGROW_NODE_BONUS",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_REGROW_RATE",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_REGROW_SPREAD",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_SCORING_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_SEARCH_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "ORE_VALUE",
+    "kind": "value"
+  },
+  {
+    "name": "OVERLAY_LIFT",
+    "kind": "value"
+  },
+  {
+    "name": "PICK_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "PICK_SCREEN_RADIUS_PX",
+    "kind": "value"
+  },
+  {
+    "name": "PICK_WORLD_SLOP",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEHOLDER_BODY_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEHOLDER_HAZARD_COLOR",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEHOLDER_MIN_RISE",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEHOLDER_SELECT_EMISSIVE",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEHOLDER_STRIPE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "PLACEMENT",
+    "kind": "value"
+  },
+  {
+    "name": "placementPadWeight",
+    "kind": "value"
+  },
+  {
+    "name": "POWER_BLACKOUT_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "POWER_EVA_COOLDOWN",
+    "kind": "value"
+  },
+  {
+    "name": "POWER_FULL_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "POWER_RECOMPUTE_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "POWER_SHED_ORDER",
+    "kind": "value"
+  },
+  {
+    "name": "PRODUCTION",
+    "kind": "value"
+  },
+  {
+    "name": "PROP_EMISSIVE_GAIN",
+    "kind": "value"
+  },
+  {
+    "name": "PROP_LIGHT_ANIM",
+    "kind": "value"
+  },
+  {
+    "name": "PROP_MATERIAL",
+    "kind": "value"
+  },
+  {
+    "name": "QUALITY_PRESETS",
+    "kind": "value"
+  },
+  {
+    "name": "QualitySettings",
+    "kind": "type"
+  },
+  {
+    "name": "RA3_ALLIED_PAD",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_ALLIED_STRUCTURE",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_ALLIES",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_NEUTRAL",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_PAD_PALETTE",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_SOVIET_PAD",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_SOVIET_STRUCTURE",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_SOVIETS",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_STRUCTURE_PALETTE",
+    "kind": "value"
+  },
+  {
+    "name": "RA3_UNIT_PALETTE",
+    "kind": "value"
+  },
+  {
+    "name": "REFINERY_STORAGE",
+    "kind": "value"
+  },
+  {
+    "name": "RELAX_DAMPING",
+    "kind": "value"
+  },
+  {
+    "name": "RELAX_ITERATIONS",
+    "kind": "value"
+  },
+  {
+    "name": "RELAX_MAX_PUSH",
+    "kind": "value"
+  },
+  {
+    "name": "RENDER_ORDER",
+    "kind": "value"
+  },
+  {
+    "name": "REPAIR_COST_PER_HP",
+    "kind": "value"
+  },
+  {
+    "name": "REPAIR_DEPOT",
+    "kind": "value"
+  },
+  {
+    "name": "REPAIR_RATE",
+    "kind": "value"
+  },
+  {
+    "name": "RETALIATE_MEMORY",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_ARM_MERGE_RADIANS",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_ARTERIAL_LANES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_BEND_MIN_LEG",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_BEND_RADIUS_MAX",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_BEND_RADIUS_MIN",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_COLORS",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CONFORM_MAX_SPANS",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CONFORM_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CORNER_RADIUS_MAX",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CORNER_RADIUS_MIN",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CROSSWALK_DEPTH",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CROSSWALK_PERIOD",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_CROSSWALK_START",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_EDGE_TOLERANCE",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_END_FADE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_KERB_HEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_KERB_RED_RUN",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_KERB_TOP",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_KERB_YELLOW_RUN",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_LANE_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_LATTICE_JITTER",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_LATTICE_N",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MANHOLE_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MAP_MARGIN",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MASK_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MAX_SLOPE",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MIN_AXIS_DEGREES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_MOVE_COST",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_NORMAL_SCALE",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_OIL_PER_JUNCTION",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_PAVEMENT_SKIRT",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_PAVEMENT_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_ROUGHNESS",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_ROUTE_SIMPLIFY",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_SAMPLE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_SLAB_JOINT",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_SLAB_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_STOPBAR_GAP",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_STOPBAR_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_STRAIGHT_RUN_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_STREET_KEEP",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_STREET_LANES",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_SURFACE_LIFT",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_WAYPOINT_SPACING",
+    "kind": "value"
+  },
+  {
+    "name": "ROAD_WIDTH_CHANGE_PER_METRE",
+    "kind": "value"
+  },
+  {
+    "name": "ROUGH_SLOPE",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_CHUNK_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_CLUSTER",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_COVERAGE",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_DENSITY",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_JITTER",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_LIMITS",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_SEED",
+    "kind": "value"
+  },
+  {
+    "name": "SCATTER_WIND",
+    "kind": "value"
+  },
+  {
+    "name": "SCENARIO_DEFAULT",
+    "kind": "value"
+  },
+  {
+    "name": "SCENARIO_SCATTER",
+    "kind": "value"
+  },
+  {
+    "name": "SCORCH_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "SCORCH_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "SeaIsland",
+    "kind": "type"
+  },
+  {
+    "name": "SeaShoal",
+    "kind": "type"
+  },
+  {
+    "name": "SeaSpec",
+    "kind": "type"
+  },
+  {
+    "name": "SELL_REFUND",
+    "kind": "value"
+  },
+  {
+    "name": "SEPARATION_NEIGHBOURS",
+    "kind": "value"
+  },
+  {
+    "name": "SILO_EVA_COOLDOWN",
+    "kind": "value"
+  },
+  {
+    "name": "SILO_STORAGE",
+    "kind": "value"
+  },
+  {
+    "name": "SIM_DT",
+    "kind": "value"
+  },
+  {
+    "name": "SIM_HZ",
+    "kind": "value"
+  },
+  {
+    "name": "SMOKE_HP_THRESHOLD",
+    "kind": "value"
+  },
+  {
+    "name": "SPATIAL_CELL",
+    "kind": "value"
+  },
+  {
+    "name": "SPATIAL_DIM",
+    "kind": "value"
+  },
+  {
+    "name": "SQUISH_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "SQUISH_HALF_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "SQUISH_LIFE_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "STANCE_CHASE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "STANCE_RETURN_SLACK",
+    "kind": "value"
+  },
+  {
+    "name": "STANCE_RETURNS",
+    "kind": "value"
+  },
+  {
+    "name": "START_CREDITS",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_AVOID_LOOKAHEAD",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_AVOID_SIDE",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_AVOID_WEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_FLOW_WEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_NUDGE_WEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_PASS_COS",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_PASS_STALL_FRAC",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_PASS_WEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_QUEUE_BRAKE",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_QUEUE_COS",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_QUEUE_MIN_FRAC",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_QUEUE_RANGE_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_SEPARATION_RANGE_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_SEPARATION_WEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "STEER_STATIC_PUSH_MUL",
+    "kind": "value"
+  },
+  {
+    "name": "STORAGE_BASE",
+    "kind": "value"
+  },
+  {
+    "name": "STOREY",
+    "kind": "value"
+  },
+  {
+    "name": "STRUCTURE_MATERIAL",
+    "kind": "value"
+  },
+  {
+    "name": "TANK_LENGTH_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "TARGETING_SLICE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_BORDER_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_BUILD_FLATNESS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_CHUNK_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_DEFAULT_BIOME",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_GRID",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_GROUND_NORMAL_CLAMP",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_ISLAND_MIN_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_LAYER_TEXTURE_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_LOD_MAX_ERROR",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MAIN_REGION_SHARE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MAJOR_ENFORCE_PASSES",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MAJOR_MAX_RAMPS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MAX_HEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MAX_RAMPS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MIN_HEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_MIN_REGION_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_PRUNE_REGION_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_CORE_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_FORCED_CORE_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_FORCED_HALF_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_HALF_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_MAX_GRADE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_MAX_LENGTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_RAMP_MAX_LINK_CELLS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_BEACH_GRADE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_BEACH_RUN",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_BLUFF_GRADE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_FLOOR",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_SHOAL_MIN_DEPTH",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEA_START_CLEARANCE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SEED",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SHADOW_CLIFF_FRACTION",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_SPLAT_PER_CELL",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_APRON_GRADE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_DRY_MARGIN",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_EDGE_WOBBLE",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_ENFORCE_PASSES",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_FLAT_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_GUARD_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_MAX_RAMPS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_POSITIONS",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_SWELL",
+    "kind": "value"
+  },
+  {
+    "name": "TERRAIN_START_WOBBLE_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "TITLE_BACKDROP_CAMERA_DISTANCE",
+    "kind": "value"
+  },
+  {
+    "name": "TITLE_BACKDROP_SCATTER_CLEAR_RADIUS",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_GAUGE_FRACTION",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_HALF_LENGTH",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_HALF_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_INTERVAL_METRES",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_LIFE_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "TREAD_PAVING_FALLOFF",
+    "kind": "value"
+  },
+  {
+    "name": "TYRE_DARKEN",
+    "kind": "value"
+  },
+  {
+    "name": "TYRE_HALF_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "UNDER_ATTACK_COOLDOWN",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_DIMENSIONS",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_GAIT",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_GEOMETRY",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_GREEBLE",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_LADDER",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_MATERIAL",
+    "kind": "value"
+  },
+  {
+    "name": "UNIT_VALIDATION",
+    "kind": "value"
+  },
+  {
+    "name": "UnitPalette",
+    "kind": "type"
+  },
+  {
+    "name": "UNLOAD_SECONDS",
+    "kind": "value"
+  },
+  {
+    "name": "VETERANCY_DAMAGE",
+    "kind": "value"
+  },
+  {
+    "name": "VETERANCY_HP",
+    "kind": "value"
+  },
+  {
+    "name": "VETERANCY_KILLS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_ATLAS_COLS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_ATLAS_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_BEAM",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_BUILDING_LIFE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_EXPLOSION",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_GLARE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_GROUND",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_GUNS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHT_DECAY",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHT_INTENSITY_SCALE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHT_MERGE_CEIL",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHT_POOL",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHT_POOL_BY_TIER",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIGHTS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_LIT_PRESSURE_CUTOFF",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_ADDITIVE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_BEAMS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_BOLTS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_DEBRIS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_LIT",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_MAX_TRACERS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_PX_REFERENCE_HEIGHT",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_RAMP",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_RAMP_WIDTH",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_RAMPS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_RIBBON_VERTS",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_SMOKE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_TESLA",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_TILE",
+    "kind": "value"
+  },
+  {
+    "name": "VFX_TRAIL",
+    "kind": "value"
+  },
+  {
+    "name": "VfxRampStop",
+    "kind": "type"
+  },
+  {
+    "name": "VISION_REGROW_DELAY",
+    "kind": "value"
+  },
+  {
+    "name": "VISION_TICK_INTERVAL",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_FIELD",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_FOAM",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_GLINT",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_LEVEL",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_LOOK",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_MESH",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_PALETTE_BY_BIOME",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_PALETTES",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_SEED",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_SHORE",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_SSR",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_TEXTURE_SIZE",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_WAKE",
+    "kind": "value"
+  },
+  {
+    "name": "WATER_WAVES",
+    "kind": "value"
+  },
+  {
+    "name": "WaterPalette",
+    "kind": "type"
+  },
+  {
+    "name": "WaterRampStop",
+    "kind": "type"
+  }
+]

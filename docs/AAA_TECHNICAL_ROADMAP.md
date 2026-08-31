@@ -86,9 +86,22 @@ Baseline and phase telemetry
 | 11 | Narrow package extraction | Shared GLTF, audio and generation boundaries have real consumers and preserve lazy chunks. |
 | 12 | Conditional WASM/simulation work | A specific kernel is a top bottleneck and beats startup/marshalling end to end. |
 
+### AAA practice mapped to this stack
+
+| Native-engine discipline | What the industry gets from it | VOLTMARCH adaptation |
+| --- | --- | --- |
+| Asset Manager / addressable dependency closure | A loading screen knows the complete content set before play and can stream lower-priority content later. | Generate the reachable match closure from faction, scenario, replay and effect registries; reject post-reveal misses in development. Do not treat a Vite chunk name as an asset contract. |
+| Authored LOD/HLOD and independent caster meshes | Stable silhouettes spend geometry by screen value while shadows use cheaper topology. | Keep CPU chunk culling and stable camera-band buckets as the WebGL/reference policy; use a separate shadow-only proxy and later make WebGPU compaction reproduce the same decision. |
+| Cooked texture/mesh delivery | Offline, versioned work replaces repeated runtime conditioning and provides deterministic size/quality gates. | Promote only deterministic KTX2/Meshopt/cooked outputs that improve total readiness, retain source hashes and keep a tested fallback. The rejected Chrono Miner cook remains the counterexample. |
+| PSO/shader precaching | Expected material variants compile behind a controlled loading boundary instead of hitching on first use. | Continue awaited renderer preparation under the curtain, measure actual variants, and canonicalize only proven duplicates. Browser caches are evidence axes, not assumptions. |
+| Job systems with explicit ownership | Coarse jobs run over stable data layouts without ad-hoc shared mutation. | Retain typed-array worker protocols, transfer-owned results and deterministic JS fallback. Add permits only after simultaneous worker pressure is measured on 2/4/8-core targets. |
+| Engine modules / assembly definitions | One-way ownership and constrained public APIs keep iteration and build graphs reviewable. | Freeze today’s honest app graph first, shrink its SCCs, then extract only seams with two real consumers. Do not create generic `core` or `engine` packages around existing cycles. |
+| GPU-driven visibility and indirect submission | Render-owned instance selection avoids CPU submission scaling in dense scenes. | Batch 8 may upload immutable prop data once and compact visibility/LOD on WebGPU with no readback. Placement, destruction and save identity remain CPU authoritative. |
+| Virtualized geometry, Lumen and virtual shadow maps | Native engines combine platform-specific streaming, residency, temporal reconstruction and renderer integration. | Do not clone them in Three.js. Use bounded LODs, measured contact/SSGI, stable fitted shadows and later temporal pilots with motion/reactive masks. |
+
 ## Implementation checkpoint - 2026-08-31
 
-The first three batches are complete on `codex/aaa-roadmap-batches-1-3`:
+The first five batches are complete on `codex/aaa-roadmap-batches-1-3`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -107,9 +120,34 @@ The first three batches are complete on `codex/aaa-roadmap-batches-1-3`:
    about 263 ms of warm conditioning but grew the family by 2,593,352 bytes (71.03%) and worsened
    the complete request window by 226.20 ms. The runtime route and shipping outputs were rolled
    back; source/control/procedural fallbacks remain. See `docs/RUNTIME_ASSET_COOK_POC.md`.
+4. **Foliage Gate 3/4: complete for the broadleaf CPU pilot; catalogue rollout remains gated.** World reveal no longer awaits the
+   imported catalogue: deterministic procedural geometry is placed immediately and the same
+   placement/felling mask is promoted after the renderer-configured shared KTX2/GLTF load. Missing
+   LODs alias the nearest valid packaged rung; a missing visible family keeps the procedural
+   presentation. Broadleaf colour uses three stable camera-band buckets, while one independent
+   proxy owns shadows. WebGL and WebGPU colour/depth wind share the authored deformation contract.
+   At the normal 1920x1080 seed-7 fixture, 368 visible props are identical while colour triangles
+   fall 449,980 -> 94,076 (-79.1%) and shadow triangles 400,904 -> 51,498 (-87.2%); colour draws
+   rise by exactly two and shadow draws do not change. A final 20 x 60-frame dense bracket improves
+   flushed within-backend wall medians 34.61 -> 32.85 ms on WebGL and 1.625 -> 1.580 ms on WebGPU;
+   deterministic bootstrap 95% upper bounds are -4.82% and +0.05%, below the +3% regression limit.
+   The deterministic KTX2 atlas is 509,145 bytes versus 573,010 source
+   bytes and reduces the conservative mip-residency estimate 8,388,604 -> 2,097,151 bytes. Exact
+   measurements, raw reports and 12 tree-focused noon/dusk cross-backend captures are stored with
+   the asset review. They also expose far-range card groupings and dusk-readability defects in other
+   families; completion here does not approve the remaining catalogue.
+5. **Dependency architecture Stage 0: complete.** Eight workspace packages are cycle-free. The
+   app scanner resolves static imports, type imports, dynamic imports and Vite eager/lazy globs;
+   its honest baseline currently contains 1,286 cross-layer edges, 1,796 runtime edges, 433
+   type-only edges and five known file SCCs. SCCs may shrink or disappear but cannot gain members or
+   merge. The former 8,513-line `core/config.ts` is now a 31-line compatibility facade over 24
+   acyclic domain slices. Tests freeze all 534 TypeScript exports (523 values, 11 types), runtime
+   referential identity and SHA-256 of the canonical value graph. An isolated production-build A/B
+   retained 16 JS chunks and every logical boundary; gzip rose 1,703 bytes (0.0998%). The tracked
+   control is `docs/reviews/config-stage0-bundle-shape.json`.
 
-No later batch has been started by this implementation branch. The rejection is a successful gate:
-it prevents a locally faster conditioning step from becoming a globally slower shipping format.
+No Batch 6 work has started. The next move is generated content dependency closure; package
+extraction, GPU compaction and WASM remain behind the evidence and dependency gates above.
 
 ## Batch 1 - current baseline and phase instrumentation
 

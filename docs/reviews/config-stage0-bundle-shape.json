@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "captured": "2026-08-31",
+  "method": "historical isolated A/B captured on 2026-08-31 from fresh production builds with only the core/config Stage 0 split toggled in the same working tree; later Batch 4 source changes alter current whole-build totals but not this recorded isolation",
+  "before": {
+    "jsChunks": 16,
+    "rawBytes": 5580203,
+    "gzipBytes": 1707080,
+    "brotliBytes": 1403736
+  },
+  "after": {
+    "jsChunks": 16,
+    "rawBytes": 5582456,
+    "gzipBytes": 1708783,
+    "brotliBytes": 1404672
+  },
+  "delta": {
+    "jsChunks": 0,
+    "rawBytes": 2253,
+    "gzipBytes": 1703,
+    "brotliBytes": 936,
+    "gzipPercent": 0.0998
+  },
+  "boundaries": {
+    "logicalChunkImportsChanged": false,
+    "textureWorkerChanged": false,
+    "basisTranscoderChanged": false
+  },
+  "currentShapeCommand": "node tools/report-bundle-shape.mjs",
+  "replayRequirement": "Replaying this isolated A/B requires the recorded pre-split monolith and split tree at the same source revision; the current-shape command does not claim to reconstruct the historical control."
+}

@@ -19,6 +19,7 @@ import { FxKind } from '../src/core/types';
 import { Terrain } from '../src/world/Terrain';
 import { Scatter, PROP_CLEAR_MARGIN, isCrushableFamily, setActiveScatter } from '../src/world/Scatter';
 import { PROP_DEFS } from '../src/world/PropLibrary';
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from '../src/world/prop-wind';
 import { clearPropsUnder } from '../src/world/scatter-clear.system';
 
 /** A generated map with props on it. Seeds are fixed, so this is repeatable. */
@@ -94,12 +95,31 @@ function uploadedTranslations(scene: THREE.Scene): number[][] {
   scene.traverse((o) => {
     const m = o as THREE.InstancedMesh;
     if (!(m as { isInstancedMesh?: boolean }).isInstancedMesh) return;
+    if (m.userData.vmShadowOnly === true) return;
     const arr = m.instanceMatrix.array as Float32Array;
     for (let i = 0; i < m.count; i++) {
       out.push([arr[i * 16 + 12], arr[i * 16 + 13], arr[i * 16 + 14]]);
     }
   });
   return out;
+}
+
+/** Colour LOD buckets and shadow proxies must keep phase paired with matrix. */
+function expectUploadedPhases(scene: THREE.Scene): void {
+  let checked = 0;
+  scene.traverse((o) => {
+    const mesh = o as THREE.InstancedMesh;
+    if (mesh.isInstancedMesh !== true || !mesh.name.startsWith('prop.')) return;
+    const phase = mesh.geometry.getAttribute(PROP_WIND_PHASE_ATTRIBUTE);
+    const matrix = mesh.instanceMatrix.array as Float32Array;
+    for (let i = 0; i < mesh.count; i++) {
+      const want = matrix[i * 16 + 12] * PROP_WIND.phaseX
+        + matrix[i * 16 + 14] * PROP_WIND.phaseZ;
+      expect(phase.getX(i), `${mesh.name} phase ${i}`).toBeCloseTo(want, 4);
+      checked++;
+    }
+  });
+  expect(checked).toBeGreaterThan(0);
 }
 
 let live: Scatter[] = [];
@@ -258,6 +278,7 @@ describe('Scatter.clearFootprint — instance buffers', () => {
     // No duplicates: a bad swap shows up as two instances at one position.
     const seen = new Set(uploaded.map((t) => `${t[0].toFixed(3)}|${t[2].toFixed(3)}`));
     expect(seen.size).toBe(uploaded.length);
+    expectUploadedPhases(scene);
   });
 });
 

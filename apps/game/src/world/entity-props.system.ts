@@ -129,6 +129,9 @@ export function installImportedEntityProps(
       material,
       castShadow: true,
       receiveShadow: true,
+      customDepthMaterial: material.userData.vmFoliageDepthMaterial instanceof THREE.Material
+        ? material.userData.vmFoliageDepthMaterial
+        : undefined,
     };
     registerKindMesh(fallback.kind, FACTION_ANY, mesh, defId, true);
     registrations++;
@@ -142,9 +145,10 @@ export function installImportedEntityProps(
 }
 
 /**
- * Build the legacy entity-prop meshes only when the imported catalogue could
- * not be loaded (or when `?foliage=procedural` was explicitly requested).
- * Normal imported boots therefore allocate no duplicate local prop geometry.
+ * Build the immediate entity-prop fallback before the authored catalogue is
+ * ready (and retain it for `?foliage=procedural` or load failure). Imported
+ * registration replaces the bridge entries atomically; this library stays
+ * owned until system teardown so no in-flight entity can reference disposal.
  */
 export function installProceduralEntityProps(): number {
   if (materials === null) return 0;

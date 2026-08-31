@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "family": "extended-foliage-v1-pbr",
+  "encoder": "Basis Universal 1.16.x",
+  "sourceBytes": 573010,
+  "outputBytes": 509145,
+  "transferRatio": 0.8885,
+  "sourceGpuBytesRGBA8": 8388604,
+  "compressedGpuBytes8bpp": 2097151,
+  "rows": [
+    {
+      "role": "base",
+      "source": "extended-foliage-v1.base.webp",
+      "output": "extended-foliage-v1.base.ktx2",
+      "codec": "etc1s-srgb",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "sourceBytes": 504182,
+      "outputBytes": 296440,
+      "sourceSha256": "300dc81d11f9b9e57b0d4b543b0ab3fd55f3c4013b3095f22cddf6e5167c4f56",
+      "outputSha256": "14ba2946ce0690ae3da44f2076ddabbd4f11111ad30d803767887561f82a4c71",
+      "sourceGpuBytesRGBA8": 5592404,
+      "compressedGpuBytes8bpp": 1398101
+    },
+    {
+      "role": "normal",
+      "source": "extended-foliage-v1.normal.jpg",
+      "output": "extended-foliage-v1.normal.ktx2",
+      "codec": "uastc-normal",
+      "dimensions": [
+        512,
+        512
+      ],
+      "sourceBytes": 33283,
+      "outputBytes": 179964,
+      "sourceSha256": "b385e88ff86d9ace4de85c400b08279397e1ecd8b23e5075fa58671a2a06123b",
+      "outputSha256": "5d341d2cb22f053f58ac5fa0a065f1177690637eb724ce42cb681ca9e17d1e4a",
+      "sourceGpuBytesRGBA8": 1398100,
+      "compressedGpuBytes8bpp": 349525
+    },
+    {
+      "role": "metalRough",
+      "source": "extended-foliage-v1.mr.jpg",
+      "output": "extended-foliage-v1.mr.ktx2",
+      "codec": "etc1s-linear",
+      "dimensions": [
+        512,
+        512
+      ],
+      "sourceBytes": 35545,
+      "outputBytes": 32741,
+      "sourceSha256": "d5977ea8ae5e9bc8403273000d521af18de42b00298546f3f1aecb4018e5c93e",
+      "outputSha256": "dfea85d9b380f873ba22a81f16f188d6677e5fc1bb455b08741cdebd42a4bd2a",
+      "sourceGpuBytesRGBA8": 1398100,
+      "compressedGpuBytes8bpp": 349525
+    }
+  ]
+}

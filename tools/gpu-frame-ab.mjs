@@ -45,7 +45,8 @@
  *   * WARMUP FRAMES ARE THROWN AWAY. A first frame is a shader compile; three
  *     of this project's five worst measurements were a compile mistaken for a
  *     regression.
- *   * BLOCKS, AND THE REPORTED FIGURE IS THE MIN OF THE PER-BLOCK MEDIANS.
+ *   * BLOCKS. Each block reports elapsed wall time / submitted frames; the
+ *     summary keeps both the minimum and the median of those block averages.
  *     Another process on this box can only push a block upward.
  *   * THE SIZE IS PINNED WITH `__VM.setSize` — one drawing-buffer pixel per
  *     requested pixel, `resolutionScale` bypassed, `AdaptiveResolution` inert.
@@ -76,6 +77,14 @@ const WARMUP = Number(flag('warmup', '30'));
 const SETTLE = Number(flag('settle', '4'));
 const JSON_OUT = flag('json', '');
 const CAPTURE = flag('capture', '');
+const DISTANCE = Number(flag('distance', '62'));
+const FOCUS_TREE = argv.includes('--focus-tree');
+const CAPTURE_DISTANCES = flag('capture-distances', '')
+  .split(',').filter(Boolean).map(Number);
+if (!Number.isFinite(DISTANCE) || DISTANCE <= 0
+  || CAPTURE_DISTANCES.some((distance) => !Number.isFinite(distance) || distance <= 0)) {
+  throw new Error('--distance and --capture-distances must contain positive metre values');
+}
 const noBuild = argv.includes('--no-build');
 const MATCH = argv.includes('--match');
 const ARMIES = Math.max(2, Math.min(4, Number(flag('armies', '4'))));
@@ -90,6 +99,8 @@ const SHADOW_PROXY = flag('shadow-proxy', 'filtered');
 const SCATTER_BATCH = flag('scatter-batch', 'instanced');
 const SCATTER_SHADOW = flag('scatter-shadow', 'filtered');
 const SHADOW_CADENCE = flag('shadow-cadence', 'adaptive');
+const FOLIAGE = flag('foliage', '');
+const ART = flag('art', '');
 const BACKEND = flag('backend', 'both');
 const AA = flag('aa', '').toLowerCase();
 const TAAU_SCALE = flag('taau-scale', '');
@@ -175,6 +186,8 @@ async function measure(gpu) {
     if (SCATTER_BATCH === 'legacy') qs.set('scatterbatch', 'legacy');
     if (SCATTER_SHADOW === 'legacy') qs.set('scattershadow', 'legacy');
     if (SHADOW_CADENCE !== 'adaptive') qs.set('shadowcadence', SHADOW_CADENCE);
+    if (FOLIAGE) qs.set('foliage', FOLIAGE);
+    if (ART) qs.set('art', ART);
     await page.goto(`${server.origin}?${qs}`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
     await page.evaluate(() => window.__VM.ready());
@@ -193,6 +206,14 @@ async function measure(gpu) {
       const c = document.getElementById('loading');
       return c === null || c.hidden === true;
     }, null, { timeout: 120_000 });
+    if (FOLIAGE && FOLIAGE !== 'procedural') {
+      // Imported presentation deliberately does not hold the loading curtain.
+      // An A/B that starts timing the immediate fallback is mislabeled, so the
+      // diagnostic harness waits for the generation-guarded resource handoff.
+      await page.waitForFunction(() => (
+        (window.__VM?.stats().counters.importedFoliageFamilies ?? 0) > 0
+      ), null, { timeout: 120_000 });
+    }
 
     const backend = await page.evaluate(() => window.__VM.rendererHandle.backend);
     if (backend !== gpu) {
@@ -207,7 +228,7 @@ async function measure(gpu) {
       vm.setUiVisible(false);
       vm.pause();
       vm.setSize(opts.w, opts.h);
-      vm.focusOn(256, 256, 62);
+      vm.focusOn(256, 256, opts.distance);
       let ramp = null;
       if (opts.match) {
         let done = 0;
@@ -353,6 +374,20 @@ async function measure(gpu) {
         programs: s.programs,
         entities: s.counters.entities,
         units: s.counters.units,
+        foliage: {
+          instances: s.counters.propsDrawn ?? 0,
+          chunks: s.counters.propChunks ?? 0,
+          lod0: s.counters.propLod0 ?? 0,
+          lod1: s.counters.propLod1 ?? 0,
+          lod2: s.counters.propLod2 ?? 0,
+          colourTriangles: s.counters.propTriangles ?? 0,
+          shadowTriangles: s.counters.propShadowTriangles ?? 0,
+          colourDraws: s.counters.propColourDraws ?? 0,
+          shadowDraws: s.counters.propShadowDraws ?? 0,
+          uploadKB: s.counters.propUploadKB ?? 0,
+          cullMs: s.counters.propCullMs ?? 0,
+          uploadMs: s.counters.propUploadMs ?? 0,
+        },
         cadenceSamples,
         shadowUpdates,
         shadowOnly,
@@ -372,7 +407,7 @@ async function measure(gpu) {
       };
     }, {
       w: W, h: H, frames: FRAMES, blocks: BLOCKS, warmup: WARMUP, settle: SETTLE,
-      match: MATCH, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET,
+      match: MATCH, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET, distance: DISTANCE,
     });
     if (CAPTURE) {
       // Texture workers complete on wall time, while the deterministic frame
@@ -381,11 +416,39 @@ async function measure(gpu) {
       // then submit a fresh frame so the capture never compares a placeholder
       // terrain texture in one arm with a resident texture in the other.
       await page.waitForTimeout(15_000);
-      await page.evaluate(async () => {
-        await window.__VM.advanceFrames(2);
-        await window.__VM.waitFrames(3);
-      });
-      await page.screenshot({ path: join(ROOT, `${CAPTURE}.${gpu}.png`) });
+      const distances = CAPTURE_DISTANCES.length > 0 ? CAPTURE_DISTANCES : [null];
+      for (const distance of distances) {
+        await page.evaluate(async ({ captureDistance, focusTree }) => {
+          let focusX = 256;
+          let focusZ = 256;
+          if (focusTree) {
+            // `Scatter`'s TS-private columns remain ordinary fields in the
+            // debug build. Pick the live broadleaf nearest map centre so this
+            // framing works on both InstancedMesh and WebGPU BatchedMesh paths.
+            const scatter = globalThis.__vmScatter;
+            const tree = scatter?.types?.find((type) => type.def.key === 'tree');
+            let bestDistance = Number.POSITIVE_INFINITY;
+            for (const placement of scatter?.placements ?? []) {
+              if (!placement.alive || placement.defIndex !== tree?.defIndex) continue;
+              const dx = placement.x - 256;
+              const dz = placement.z - 256;
+              const distance = dx * dx + dz * dz;
+              if (distance >= bestDistance) continue;
+              bestDistance = distance;
+              focusX = placement.x;
+              focusZ = placement.z;
+            }
+            if (!Number.isFinite(bestDistance)) {
+              throw new Error('--focus-tree found no live broadleaf placement');
+            }
+          }
+          if (captureDistance !== null) window.__VM.focusOn(focusX, focusZ, captureDistance);
+          await window.__VM.advanceFrames(2);
+          await window.__VM.waitFrames(3);
+        }, { captureDistance: distance, focusTree: FOCUS_TREE });
+        const rung = distance === null ? '' : `.d${distance}`;
+        await page.screenshot({ path: join(ROOT, `${CAPTURE}${rung}.${gpu}.png`) });
+      }
     }
     return result;
   } finally {
@@ -412,6 +475,9 @@ console.log(`${MATCH ? `live ${ARMIES}-army match` : `scene ${SCENE}`} seed ${SE
 console.log(`camera instance culling: ${RENDER_CULL ? 'on' : 'off'}`);
 console.log(`shadow cadence: ${SHADOW_CADENCE}`);
 console.log(`scatter shadows: ${SCATTER_SHADOW}`);
+console.log(`camera distance: ${DISTANCE} m`);
+if (FOLIAGE) console.log(`foliage presentation: ${FOLIAGE}`);
+if (ART) console.log(`art preset: ${ART}`);
 if (MATCH) {
   console.log(`load: ${sample.units} drawn units · peak ${sample.ramp?.peak ?? sample.units} · ${(sample.ramp?.ticks ?? 0) / 30}s simulated`);
   if (UNIT_TARGET > 0 && sample.units < UNIT_TARGET) {

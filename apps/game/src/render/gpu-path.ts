@@ -328,6 +328,9 @@ export interface NodePath {
   createStructureMaterial(atlas: GreebleAtlas, name: string, coat?: StructureCoat): THREE.Material;
   createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Material;
   createPropMaterials(): PropMaterialSetLike;
+  createEnvironmentPropMaterials(
+    params: THREE.MeshStandardMaterialParameters,
+  ): PropMaterialSetLike;
   /**
    * A `MeshStandardNodeMaterial` carrying the shroud self-tint and nothing else
    * — the node twin of the three one-line `applyShroudTint` sites

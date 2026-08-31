@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "captured": "2026-08-31",
+  "decision": {
+    "broadleafCpuPilot": "passed",
+    "fullCatalogAcceptance": "open",
+    "scope": "The tree broadleaf proves non-blocking promotion, CPU camera-band LOD, one shadow proxy, KTX2 atlas delivery, clearing/save identity and the normal/dense performance envelope. It does not approve all 32 authored families."
+  },
+  "fixture": {
+    "scene": "allied-base",
+    "seed": 7,
+    "resolution": "1920x1080",
+    "denseCameraDistanceMetres": 116,
+    "denseFramesPerBlock": 60,
+    "denseBlocks": 20,
+    "webglAdapter": "ANGLE D3D11 / AMD Radeon(TM) Graphics",
+    "webgpuAdapter": "Nvidia Ampere",
+    "warning": "Backend wall times are compared only within one adapter/backend arm, never against each other. WebGL GPU queries and WebGPU timestamp queries are different optional instruments, so acceptance uses an identical end-to-end wall clock with one GPU flush per block; HUD CPU/frame values are diagnostic, not GPU duration.",
+    "sampling": {
+      "primaryStatistic": "median of 20 per-block 60-frame wall averages",
+      "framesPerBlock": 60,
+      "warmupFrames": 30,
+      "errorBound": "deterministic nonparametric percentile bootstrap of the candidate/baseline median ratio",
+      "bootstrapSeed": "0x5ca77e",
+      "bootstrapResamples": 200000,
+      "confidence": 0.95,
+      "acceptance": "upper confidence bound must be <= +3%"
+    }
+  },
+  "denseCopse": {
+    "invariants": {
+      "visibleInstances": 878,
+      "visibleChunks": 47,
+      "steadyStateUploadKilobytes": 0
+    },
+    "webgl": {
+      "procedural": {
+        "lodInstances": [878, 0, 0],
+        "colourTriangles": 1127804,
+        "shadowTriangles": 1020440,
+        "colourDraws": 16,
+        "shadowDraws": 13,
+        "wallMinMs": 34.47,
+        "wallMedianMs": 34.6108333333085,
+        "cpuMs": 1.5
+      },
+      "imported": {
+        "lodInstances": [749, 22, 107],
+        "colourTriangles": 143082,
+        "shadowTriangles": 133108,
+        "colourDraws": 17,
+        "shadowDraws": 13,
+        "wallMinMs": 32.71833333348234,
+        "wallMedianMs": 32.84666666674117,
+        "cpuMs": 1.5
+      },
+      "delta": {
+        "colourTrianglesPercent": -87.31,
+        "shadowTrianglesPercent": -86.96,
+        "totalFrameTrianglesPercent": -59.75,
+        "wallMedianPercent": -5.0971516622500435,
+        "wallMedianDeltaBootstrap95Percent": [-5.309223814833308, -4.82142427096125],
+        "colourDraws": 1,
+        "shadowDraws": 0
+      }
+    },
+    "webgpu": {
+      "procedural": {
+        "lodInstances": [878, 0, 0],
+        "colourTriangles": 1127804,
+        "shadowTriangles": 1020440,
+        "colourDraws": 16,
+        "shadowDraws": 13,
+        "wallMinMs": 1.5183333332339923,
+        "wallMedianMs": 1.6249999998758238,
+        "cpuMs": 0.1
+      },
+      "imported": {
+        "lodInstances": [749, 22, 107],
+        "colourTriangles": 143082,
+        "shadowTriangles": 133108,
+        "colourDraws": 17,
+        "shadowDraws": 13,
+        "wallMinMs": 1.5299999999503295,
+        "wallMedianMs": 1.5799999998261531,
+        "cpuMs": 0.1
+      },
+      "delta": {
+        "colourTrianglesPercent": -87.31,
+        "shadowTrianglesPercent": -86.96,
+        "totalFrameTrianglesPercent": -59.88,
+        "wallMedianPercent": -2.769230772499043,
+        "wallMedianDeltaBootstrap95Percent": [-4.607594948433058, 0.0522739044118703],
+        "colourDraws": 1,
+        "shadowDraws": 0
+      }
+    }
+  },
+  "normalFixture": {
+    "visibleInstances": 368,
+    "proceduralLodInstances": [368, 0, 0],
+    "importedLodInstances": [328, 27, 13],
+    "colourTriangles": { "procedural": 449980, "imported": 94076, "deltaPercent": -79.1 },
+    "shadowTriangles": { "procedural": 400904, "imported": 51498, "deltaPercent": -87.2 },
+    "colourDraws": { "procedural": 14, "imported": 16 },
+    "shadowDraws": { "procedural": 11, "imported": 11 },
+    "historicalWallSignal": {
+      "webgl120FramesX10BlocksMedianMs": { "procedural": 36.0079166666915, "imported": 35 },
+      "webgpu60FramesX5BlocksMedianMs": { "procedural": 1.6450000000496705, "imported": 1.6266666665673255 },
+      "note": "Retained as an earlier diagnostic bracket; final acceptance statistics are the 20-block dense run above."
+    }
+  },
+  "visualReview": {
+    "fixture": "Tree-focused allied-base captures at 1280x720, 24/62/116 m, noon/dusk, both backends",
+    "broadleafVerdict": "The imported tree is materially less blob-like than the procedural broadleaf and keeps a coherent silhouette through the three CPU LOD rungs on both backends.",
+    "knownOpenCatalogDefects": [
+      "Other authored foliage families show conspicuous vertical card sheets and hard rectangular groupings at far distance.",
+      "Dusk collapses too much interior canopy detail on several non-pilot families.",
+      "WebGL terrain/splat seams and WebGPU foundation/lighting differences remain broader renderer-parity work.",
+      "Still captures do not substitute for a moving transition-pop and wind review during each later family gate."
+    ],
+    "rawReports": [
+      "gate4-noon/runtime.json",
+      "gate4-dusk/runtime.json"
+    ],
+    "captures": [
+      { "path": "gate4-noon/foliage.d24.webgl.png", "bytes": 1250694, "sha256": "7ee632be1fda225938f8d18d545152631acf0d7f918ef47cfd0d13859863987f" },
+      { "path": "gate4-noon/foliage.d24.webgpu.png", "bytes": 1299012, "sha256": "75699a4a468f01895cda596311df5ccca906d0e2e77ba05e5d79daccccdc5475" },
+      { "path": "gate4-noon/foliage.d62.webgl.png", "bytes": 1390705, "sha256": "4040a2f3514514d7a1c070f32ea6e95508ac76e57cf343df0dfefa7dbaeed3f2" },
+      { "path": "gate4-noon/foliage.d62.webgpu.png", "bytes": 1430968, "sha256": "617426e68a147d1fe78d13224f43d2903edd744d46062a849ada4c2661b639c7" },
+      { "path": "gate4-noon/foliage.d116.webgl.png", "bytes": 1448557, "sha256": "14aa09cad14f0c7c37aab1b75fed1bf625252298cfb8e395e84b37edbd433baf" },
+      { "path": "gate4-noon/foliage.d116.webgpu.png", "bytes": 1514910, "sha256": "672aa500e5e214af6bacc344c44d4534a63af88b4932e615a25886ddeb3dec2e" },
+      { "path": "gate4-dusk/foliage.d24.webgl.png", "bytes": 1099625, "sha256": "83cf19916838da9f65f1a34505030a9a49028a2c9dc38a1ee97284fbaf0a0d86" },
+      { "path": "gate4-dusk/foliage.d24.webgpu.png", "bytes": 1149039, "sha256": "582c66fbb3da4b424c36ed8772e7237e09e81ba2039dc88d82e49fb282bfb05c" },
+      { "path": "gate4-dusk/foliage.d62.webgl.png", "bytes": 1191755, "sha256": "35c07c1e774e2174204705e4e1196dbf3893aab6ed2272bb7ee238017acb08cd" },
+      { "path": "gate4-dusk/foliage.d62.webgpu.png", "bytes": 1220045, "sha256": "2a19087bf81db6b2778c364ebcda860fd6d57723c52756f4480f1933bf8a351b" },
+      { "path": "gate4-dusk/foliage.d116.webgl.png", "bytes": 1256830, "sha256": "a7fecd97945fbb1610ac7ed7f9a8f17ec2d6835875c2db9077b5113117312145" },
+      { "path": "gate4-dusk/foliage.d116.webgpu.png", "bytes": 1296862, "sha256": "cfb229fce5891f4ca783b7dc31d8440157a458ae2f390a353371e1d861d0c0c6" }
+    ]
+  },
+  "validation": {
+    "placementAndSave": "Same fingerprint, stable manifest clearing envelope and byte-identical felled mask across procedural/imported/emergency; promotion after felling does not resurrect props.",
+    "loaderLifecycle": "Every overlapping world promotion owns an idempotent KTX2 lease; stale-generation release cannot terminate replacement workers.",
+    "atlasReport": "../material/extended-foliage-v1.ktx2-report.json",
+    "denseRawReports": [
+      { "path": "gate4-procedural-dense.json", "bytes": 32004, "sha256": "bae97bb92bfdd615b7fffae09752018a8c24aad006ccc14ee30fba413a6af6ba" },
+      { "path": "gate4-imported-dense.json", "bytes": 31877, "sha256": "3ac47e4ac0da4c03bb91b78cfa856c4459d1a93bebebba12aad813fc55475ab2" }
+    ]
+  },
+  "commands": {
+    "denseImported": "node tools/gpu-frame-ab.mjs --no-build --scene allied-base --seed 7 --size 1920x1080 --frames 60 --blocks 20 --warmup 30 --distance 116 --foliage imported --art noon --json packages/assets/game/environment/extended-foliage/review/gate4-imported-dense.json",
+    "denseProcedural": "node tools/gpu-frame-ab.mjs --no-build --scene allied-base --seed 7 --size 1920x1080 --frames 60 --blocks 20 --warmup 30 --distance 116 --foliage procedural --art noon --json packages/assets/game/environment/extended-foliage/review/gate4-procedural-dense.json",
+    "compareDense": "node tools/compare-gpu-frame-ab.mjs packages/assets/game/environment/extended-foliage/review/gate4-procedural-dense.json packages/assets/game/environment/extended-foliage/review/gate4-imported-dense.json",
+    "visual": "node tools/gpu-frame-ab.mjs --no-build --scene allied-base --seed 7 --size 1280x720 --frames 8 --blocks 1 --warmup 12 --distance 62 --foliage imported --art <noon|dusk> --focus-tree --capture <gate-directory>/foliage --capture-distances 24,62,116 --json <gate-directory>/runtime.json"
+  }
+}

@@ -331,6 +331,22 @@ export function createPropNodeMaterials(): PropNodeMaterialSet {
   };
 }
 
+/** Authored PBR surface with the same model-space wind and shroud contract. */
+export function createEnvironmentPropNodeMaterials(
+  params: THREE.MeshStandardMaterialParameters,
+): PropNodeMaterialSet {
+  const uniforms = createUniforms();
+  const material = new PropStandardNodeMaterial(uniforms);
+  material.setValues(params);
+  material.castShadowPositionNode = propShadowPosition(uniforms);
+  return {
+    material,
+    uniforms,
+    setTime(t: number): void { uniforms.uWindTime.value = t; },
+    dispose(): void { material.dispose(); },
+  };
+}
+
 /** Convenience for the spec and for anything that only wants the material. */
 export function createPropNodeMaterial(): MeshPhysicalNodeMaterial {
   return createPropNodeMaterials().material;

@@ -6,6 +6,10 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { linearColorTriple } from '../core/assets';
 import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
 import { createRuntimeGLTFLoader } from '../art/RuntimeGLTFLoader';
+import {
+  acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader,
+} from '../art/RuntimeKTX2Loader';
+import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { applyShroudTint } from '../render/FogOfWar';
 import { nodePath } from '../render/gpu-path';
 import {
@@ -14,8 +18,11 @@ import {
 import type { EnvironmentGeometryFamily } from './FoliageEngine';
 import { propDef, propPalette, type PropDef, type PropGeometry } from './PropLibrary';
 import type { BiomeName } from './Biomes';
+import { PROP_WIND } from './prop-wind';
 
 const loader = createRuntimeGLTFLoader();
+let foliageKtx2Loader: KTX2Loader | null = null;
+let foliageKtx2Leases = 0;
 const textureLoader = new THREE.TextureLoader();
 const loadTextureAsync = textureLoader.loadAsync.bind(textureLoader);
 textureLoader.loadAsync = async (url, onProgress) => {
@@ -32,6 +39,39 @@ textureLoader.loadAsync = async (url, onProgress) => {
 export const FOLIAGE_ALPHA_TEST = 0.85;
 type EnvironmentMaterial = THREE.Material;
 
+export interface EnvironmentKTX2Lease {
+  readonly loader: KTX2Loader;
+  release(): void;
+}
+
+/**
+ * Borrow the process-wide two-worker transcoder pool for one foliage promotion.
+ *
+ * Every overlapping world generation owns a distinct lease even though all of
+ * them share one loader. An old generation can therefore finish and release
+ * without clearing the pointer or terminating workers under its replacement.
+ */
+export function acquireEnvironmentKTX2Loader(renderer: unknown): EnvironmentKTX2Lease {
+  const acquired = acquireRuntimeKTX2Loader(renderer);
+  if (foliageKtx2Loader !== null && foliageKtx2Loader !== acquired) {
+    releaseRuntimeKTX2Loader();
+    throw new Error('[foliage] runtime KTX2 loader changed while a lease was active');
+  }
+  foliageKtx2Loader = acquired;
+  foliageKtx2Leases++;
+  let active = true;
+  return {
+    loader: acquired,
+    release(): void {
+      if (!active) return;
+      active = false;
+      foliageKtx2Leases = Math.max(0, foliageKtx2Leases - 1);
+      releaseRuntimeKTX2Loader();
+      if (foliageKtx2Leases === 0) foliageKtx2Loader = null;
+    },
+  };
+}
+
 /**
  * Authored environment surfaces still stand above the depth-tested shroud
  * carpet, exactly like the procedural prop material. Build them through the
@@ -40,13 +80,62 @@ type EnvironmentMaterial = THREE.Material;
  */
 export function createEnvironmentMaterial(
   params: THREE.MeshStandardMaterialParameters,
+  wind = false,
 ): EnvironmentMaterial {
   const np = nodePath();
-  if (np !== null) return np.createShroudTintedStandard(params);
+  if (np !== null) {
+    if (!wind) return np.createShroudTintedStandard(params);
+    const set = np.createEnvironmentPropMaterials(params);
+    set.material.userData.vmFoliageSetTime = set.setTime;
+    return set.material;
+  }
 
   const material = new THREE.MeshStandardMaterial(params);
-  material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-  material.customProgramCacheKey = () => 'vm.environment-pbr.shroud.v1';
+  if (!wind) {
+    material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+    material.customProgramCacheKey = () => 'vm.environment-pbr.shroud.v1';
+    return material;
+  }
+  const uTime = { value: 0 };
+  const uFreq = { value: PROP_WIND.radiansPerSecond };
+  const windPars = 'attribute float aSway;\nuniform float uWindTime;\nuniform float uWindFreq;';
+  const windBody = /* glsl */`
+  {
+    #ifdef USE_INSTANCING
+      float swayPhase = instanceMatrix[3].x * ${PROP_WIND.phaseX}
+        + instanceMatrix[3].z * ${PROP_WIND.phaseZ};
+    #else
+      float swayPhase = 0.0;
+    #endif
+    float w = uWindTime * uWindFreq + swayPhase;
+    float sx = sin(w) * ${PROP_WIND.harmonicA}
+      + sin(w * ${PROP_WIND.xRateB} + swayPhase * ${PROP_WIND.xPhaseB}) * ${PROP_WIND.harmonicB};
+    float sz = cos(w * ${PROP_WIND.zRateA} + swayPhase * ${PROP_WIND.zPhaseA}) * ${PROP_WIND.harmonicA}
+      + cos(w * ${PROP_WIND.zRateB}) * ${PROP_WIND.harmonicB};
+    transformed.x += sx * aSway;
+    transformed.z += sz * aSway * ${PROP_WIND.zAmplitude};
+  }`;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindTime = uTime;
+    shader.uniforms.uWindFreq = uFreq;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${windPars}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${windBody}`);
+    applyShroudTint(shader);
+  };
+  material.customProgramCacheKey = () => 'vm.environment-pbr.shroud-wind.v1';
+  material.userData.vmFoliageSetTime = (time: number): void => { uTime.value = time; };
+  const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  depthMaterial.name = `${material.name}.depth`;
+  depthMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindTime = uTime;
+    shader.uniforms.uWindFreq = uFreq;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${windPars}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${windBody}`);
+  };
+  depthMaterial.customProgramCacheKey = () => 'vm.environment-pbr.depth-wind.v1';
+  material.userData.vmFoliageDepthMaterial = depthMaterial;
   return material;
 }
 const PROP_SURFACE_DELIVERY_MODULES = import.meta.glob<string>(
@@ -277,15 +366,15 @@ const BOX_PROP_TEXTURE_URLS = Object.freeze({
 });
 const EXTENDED_FOLIAGE_TEXTURE_URLS = Object.freeze({
   base: new URL(
-    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.base.webp',
+    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.base.ktx2',
     import.meta.url,
   ).href,
   normal: new URL(
-    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.normal.jpg',
+    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.normal.ktx2',
     import.meta.url,
   ).href,
   mr: new URL(
-    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.mr.jpg',
+    '../../../../packages/assets/game/environment/extended-foliage/material/extended-foliage-v1.mr.ktx2',
     import.meta.url,
   ).href,
 });
@@ -371,7 +460,7 @@ function createShrubMaterial(): Promise<EnvironmentMaterial> {
       side: THREE.DoubleSide,
       dithering: true,
       envMapIntensity: 0.28,
-    });
+    }, true);
   });
 }
 
@@ -411,11 +500,33 @@ function createBoxPropMaterial(): Promise<EnvironmentMaterial> {
   });
 }
 
+/** Atomic atlas barrier: either every map is ready or every partial map is retired. */
+export async function settleEnvironmentAtlas(
+  loads: readonly Promise<THREE.CompressedTexture>[],
+): Promise<readonly THREE.CompressedTexture[]> {
+  const settled = await Promise.allSettled(loads);
+  const failed = settled.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') {
+    for (const result of settled) {
+      if (result.status === 'fulfilled') result.value.dispose();
+    }
+    throw failed.reason;
+  }
+  return settled.map((result) => {
+    if (result.status !== 'fulfilled') throw new Error('[foliage] unreachable atlas state');
+    return result.value;
+  });
+}
+
 function createExtendedFoliageMaterial(): Promise<EnvironmentMaterial> {
-  return Promise.all([
-    textureLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.base),
-    textureLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.normal),
-    textureLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.mr),
+  if (foliageKtx2Loader === null) {
+    return Promise.reject(new Error('[foliage] KTX2 loader was not acquired before family boot'));
+  }
+  const atlasLoader = foliageKtx2Loader;
+  return settleEnvironmentAtlas([
+    atlasLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.base),
+    atlasLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.normal),
+    atlasLoader.loadAsync(EXTENDED_FOLIAGE_TEXTURE_URLS.mr),
   ]).then(([base, normal, mr]) => {
     base.colorSpace = THREE.SRGBColorSpace;
     normal.colorSpace = THREE.NoColorSpace;
@@ -443,7 +554,7 @@ function createExtendedFoliageMaterial(): Promise<EnvironmentMaterial> {
       side: THREE.DoubleSide,
       dithering: true,
       envMapIntensity: 0.28,
-    });
+    }, true);
   });
 }
 
@@ -507,7 +618,7 @@ function floatAttribute(
   return result;
 }
 
-function addRuntimeAttributes(geometry: THREE.BufferGeometry): void {
+function addRuntimeAttributes(geometry: THREE.BufferGeometry, wind: boolean): void {
   const position = floatAttribute(geometry, 'position', 3);
   if (position === undefined) throw new Error('[foliage] imported geometry has no positions');
   if (floatAttribute(geometry, 'normal', 3) === undefined) geometry.computeVertexNormals();
@@ -532,7 +643,7 @@ function addRuntimeAttributes(geometry: THREE.BufferGeometry): void {
     // Keep the trunk rooted. The authored PBR LOD currently uses an ordinary
     // MeshStandardMaterial, but retaining the attribute makes the family
     // immediately compatible with the shared wind shader derivatives.
-    sway[i] = THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72);
+    sway[i] = wind ? THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72) : 0;
     surface[i * 2 + 1] = 0.9;
   }
   geometry.setAttribute('aSway', new THREE.BufferAttribute(sway, 1));
@@ -611,7 +722,7 @@ function pbrMaterial(source: THREE.Material, key: string): EnvironmentMaterial {
     side: THREE.FrontSide,
     dithering: true,
     envMapIntensity: 0.55,
-  });
+  }, true);
   for (const texture of [
     source.map, source.normalMap, source.metalnessMap, source.roughnessMap,
   ]) {
@@ -659,7 +770,10 @@ async function loadDelivery(
     unindexed.dispose();
   }
   geometry.name = `foliage.${def.key}.${name}`;
-  addRuntimeAttributes(geometry);
+  addRuntimeAttributes(
+    geometry,
+    def.family === 'canopy' || def.family === 'shrub' || def.family === 'grass',
+  );
   if (def.family === 'rock') tintRockGeometry(geometry, biome, authoredMaterial === 'mineral');
   if (def.family === 'shrub') tintShrubGeometry(
     geometry,
@@ -780,23 +894,93 @@ async function loadFamily(
       mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
     ),
   ]);
-  const failed = settled.find((result) => result.status === 'rejected');
-  if (failed?.status === 'rejected') {
-    for (const result of settled) {
-      if (result.status !== 'fulfilled') continue;
-      disposeDelivery(
-        result.value,
-        mineralMaterial ?? shrubMaterial ?? boxPropMaterial ?? extendedFoliageMaterial
-          ?? propSurfaceMaterial,
-      );
+  const available = settled.map((result) => (
+    result.status === 'fulfilled' ? result.value : undefined
+  ));
+  if (available.slice(0, 3).every((delivery) => delivery === undefined)) {
+    const preservedMaterial = mineralMaterial ?? shrubMaterial ?? boxPropMaterial
+      ?? extendedFoliageMaterial ?? propSurfaceMaterial;
+    for (const delivery of available) {
+      if (delivery !== undefined) disposeDelivery(delivery, preservedMaterial);
     }
-    throw failed.reason;
+    const reasons = settled
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => String(result.reason));
+    throw new Error(`[foliage] ${key} has no loadable visible delivery: ${reasons.join('; ')}`);
   }
-  const [lod0, lod1, lod2, shadow] = settled.map((result) => {
-    if (result.status !== 'fulfilled') throw new Error('[foliage] unreachable load state');
-    return result.value;
-  });
-  return { lod0, lod1, lod2, shadow, emergency: lod2 };
+
+  type VisibleDelivery = 'lod0' | 'lod1' | 'lod2';
+  type AnyDelivery = VisibleDelivery | 'shadow';
+  const names: readonly AnyDelivery[] = ['lod0', 'lod1', 'lod2', 'shadow'];
+  const choose = (preference: readonly number[]): { geometry: PropGeometry; source: AnyDelivery } => {
+    for (const index of preference) {
+      const geometry = available[index];
+      if (geometry !== undefined) return { geometry, source: names[index] };
+    }
+    throw new Error(`[foliage] ${key} has no usable packaged delivery`);
+  };
+  // Prefer the requested rung, then a cheaper rung, then the nearest more
+  // expensive rung. The shadow proxy similarly falls toward the cheapest
+  // visible delivery instead of removing the complete family.
+  const lod0 = choose([0, 1, 2]);
+  const lod1 = choose([1, 2, 0]);
+  const lod2 = choose([2, 1, 0]);
+  const shadow = choose([3, 2, 1, 0]);
+  const degraded = settled.some((result) => result.status === 'rejected');
+  if (degraded) {
+    console.warn(
+      `[foliage] ${key} degraded packaged family: `
+      + `lod0=${lod0.source}, lod1=${lod1.source}, lod2=${lod2.source}, shadow=${shadow.source}`,
+    );
+  }
+  return {
+    lod0: lod0.geometry,
+    lod1: lod1.geometry,
+    lod2: lod2.geometry,
+    shadow: shadow.geometry,
+    emergency: lod2.geometry,
+    deliverySources: degraded ? {
+      lod0: lod0.source as VisibleDelivery,
+      lod1: lod1.source as VisibleDelivery,
+      lod2: lod2.source as VisibleDelivery,
+      shadow: shadow.source,
+      emergency: lod2.source as VisibleDelivery,
+    } : undefined,
+  };
+}
+
+/** Dispose a load that completed after its owning world was torn down. */
+export function disposeImportedFoliage(
+  families: ReadonlyMap<string, EnvironmentGeometryFamily>,
+): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  for (const family of families.values()) {
+    for (const delivery of [
+      family.lod0, family.lod1, family.lod2, family.shadow, family.emergency,
+    ]) {
+      if (!geometries.has(delivery.geometry)) {
+        delivery.geometry.dispose();
+        geometries.add(delivery.geometry);
+      }
+      if (delivery.material !== undefined && !materials.has(delivery.material)) {
+        disposeMaterial(delivery.material);
+        materials.add(delivery.material);
+      }
+    }
+  }
+}
+
+async function disposeResolvedMaterial(
+  promise: Promise<EnvironmentMaterial> | undefined,
+): Promise<void> {
+  if (promise === undefined) return;
+  try {
+    disposeMaterial(await promise);
+  } catch {
+    // A rejected shared promise owns no material. Its per-family warning is the
+    // useful diagnostic; cleanup must not reject and abandon loaded siblings.
+  }
 }
 
 /** Load each promoted family atomically; one missing prop never removes siblings. */
@@ -840,31 +1024,26 @@ export async function loadImportedFoliage(
     environmentAssetManifest(family.lod0.def.key)?.materialFamily === 'mineral-rock-v1-pbr'
   ))
     && mineralMaterialPromise !== undefined) {
-    const unusedMaterial = await mineralMaterialPromise;
-    disposeMaterial(unusedMaterial);
+    await disposeResolvedMaterial(mineralMaterialPromise);
   }
   if (![...families.values()].some((family) => family.lod0.def.family === 'shrub')
     && shrubMaterialPromise !== undefined) {
-    const unusedMaterial = await shrubMaterialPromise;
-    disposeMaterial(unusedMaterial);
+    await disposeResolvedMaterial(shrubMaterialPromise);
   }
   if (![...families.values()].some((family) => (
     environmentAssetManifest(family.lod0.def.key)?.materialFamily === 'box-prop-v1-pbr'
   )) && boxPropMaterialPromise !== undefined) {
-    const unusedMaterial = await boxPropMaterialPromise;
-    disposeMaterial(unusedMaterial);
+    await disposeResolvedMaterial(boxPropMaterialPromise);
   }
   if (![...families.values()].some((family) => (
     environmentAssetManifest(family.lod0.def.key)?.materialFamily === 'extended-foliage-v1-pbr'
   )) && extendedFoliageMaterialPromise !== undefined) {
-    const unusedMaterial = await extendedFoliageMaterialPromise;
-    disposeMaterial(unusedMaterial);
+    await disposeResolvedMaterial(extendedFoliageMaterialPromise);
   }
   if (![...families.values()].some((family) => (
     environmentAssetManifest(family.lod0.def.key)?.materialFamily === 'prop-surface-v1-pbr'
   )) && propSurfaceMaterialPromise !== undefined) {
-    const unusedMaterial = await propSurfaceMaterialPromise;
-    disposeMaterial(unusedMaterial);
+    await disposeResolvedMaterial(propSurfaceMaterialPromise);
   }
   return families;
 }

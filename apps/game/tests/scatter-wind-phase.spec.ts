@@ -45,7 +45,8 @@ function meshes(scene: THREE.Scene): THREE.InstancedMesh[] {
   const out: THREE.InstancedMesh[] = [];
   scene.traverse((o) => {
     const m = o as THREE.InstancedMesh;
-    if (m.isInstancedMesh === true && m.name.startsWith('prop.')) out.push(m);
+    if (m.isInstancedMesh === true && m.name.startsWith('prop.')
+      && m.userData.vmShadowOnly !== true) out.push(m);
   });
   return out;
 }

@@ -43,21 +43,6 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
-## Environment assets
-
-- **Foliage engine final runtime acceptance.** Asset rollout is complete for all 32 stable Scatter
-  identities and exact registry/catalogue equality is test-enforced. The imported path now starts with
-  zero procedural Scatter archetypes; dormant builders are created only after an asset-load failure or
-  an explicit `?foliage=procedural` request. `debrisPile` reuses the approved rounded rock-cluster
-  family, so the old rectangular block rocks are gone. Extended vegetation shares one alpha PBR atlas;
-  the remaining yard/street/civic set—including barrels, cafe umbrellas and all three cars—ships
-  one-primitive static GLBs, topology-safe reduced LODs, 12-triangle casters and one shared PBR atlas.
-  Finish only the engine acceptance work in `docs/FOLIAGE_ENGINE_PLAN.md` Gate 3/4: camera-band LOD
-  bucket repacking, authored PBR wind/depth parity, shared KTX2 promotion, dense-copse WebGL/WebGPU
-  timings and clearing/save restoration. Keep dormant procedural failure builders until those gates pass.
-
----
-
 ## WebGPU visual performance
 
 - **Compute-driven foliage visibility and LOD compaction.** *(untracked — implementation order is
