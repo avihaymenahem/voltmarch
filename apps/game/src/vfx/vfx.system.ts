@@ -47,6 +47,10 @@ import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
 import {
+  contentClosureEpoch, declareContentDelivery, markContentProviderReady, requestContentDelivery,
+  setContentDeliveryState,
+} from '../core/content-closure';
+import {
   MAX_ENTITIES, VFX_BUILDING_LIFE, VFX_EXPLOSION, VFX_GROUND, VFX_LIGHT_POOL, VFX_LIGHT_POOL_BY_TIER,
   VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE, WATER_LEVEL,
 } from '../core/config';
@@ -692,6 +696,16 @@ export default defineSystem({
 
   init(): void {
     const { sceneRig, cameraRig, world, channels } = ctx();
+    const closureEpoch = contentClosureEpoch();
+
+    const poolDeliveries = [
+      'pool/vfx/particles', 'pool/vfx/lights', 'pool/vfx/beams',
+      'pool/vfx/tracers', 'pool/vfx/ramps',
+    ];
+    for (const key of poolDeliveries) {
+      declareContentDelivery({ key, owner: 'vfx', critical: true });
+      requestContentDelivery(key, 'vfx', closureEpoch);
+    }
 
     // ORDER MATTERS: the pool is a prerequisite for the first effect, not
     // polish (bible §14 R6). Nothing else may be constructed before it.
@@ -806,6 +820,9 @@ export default defineSystem({
     probePending = true;
 
     installGlobal();
+
+    for (const key of poolDeliveries) setContentDeliveryState(key, 'ready', closureEpoch);
+    markContentProviderReady('vfx', closureEpoch);
 
     console.info(
       `%c[vfx]%c ${sprites.additive.capacity} additive + ${sprites.lit.capacity} lit + ` +

@@ -73,6 +73,11 @@ import {
 import type { EntityId } from '../core/types';
 import { clamp01, hexToLinearRgb, lerpAngle } from '../core/math';
 import type { EntityStore } from '../core/world';
+import {
+  declareContentDelivery,
+  requestContentDelivery,
+  setContentDeliveryState,
+} from '../core/content-closure';
 
 import { InstanceBatcher, type BatchPartSpec, type InstanceBatch } from './InstanceBatcher';
 import { applyShroudTint } from './FogOfWar';
@@ -228,6 +233,39 @@ export interface KindPreviewPart {
 }
 
 const entries: ModelEntry[] = [];
+const unresolvedContentBindings = new Map<
+  string,
+  { kind: EntityKind; faction: number; defId: number }
+>();
+
+function contentBindingKey(kind: EntityKind, faction: number, defId: number): string {
+  return `render-binding/${kind}/${faction}/${defId}`;
+}
+
+/**
+ * Record an unacceptable RenderBridge fallback. A positive def must have an
+ * effective exact-def registration even when a generic -1 mesh keeps rendering
+ * usable; a negative def records only when no generic registration exists.
+ */
+function recordMissingContentBinding(kind: EntityKind, faction: number, defId: number): void {
+  const key = contentBindingKey(kind, faction, defId);
+  if (!unresolvedContentBindings.has(key)) {
+    unresolvedContentBindings.set(key, { kind, faction, defId });
+    declareContentDelivery({ key, owner: 'render.bridge', critical: true });
+  }
+  requestContentDelivery(key, 'render.bridge');
+}
+
+function settleContentBindings(): void {
+  for (const [key, query] of unresolvedContentBindings) {
+    const resolved = query.defId >= 0
+      ? resolveExactRegisteredModelEntry(query.kind, query.faction, query.defId)
+      : resolveRegisteredModelEntry(query.kind, query.faction, query.defId);
+    if (resolved === null) continue;
+    setContentDeliveryState(key, 'ready');
+    unresolvedContentBindings.delete(key);
+  }
+}
 /** Packed key -> entry. See `packKey`. */
 const byKey = new Map<number, ModelEntry>();
 /** KindMesh identity -> entry, so one mesh shared by two factions is one batch. */
@@ -432,6 +470,7 @@ export function registerKindMesh(
   }
   byKey.set(key, entry);
   registryVersion++;
+  if (unresolvedContentBindings.size > 0) settleContentBindings();
 }
 
 /**
@@ -447,6 +486,7 @@ export function clearKindMeshes(): void {
   entries.length = 0;
   byKey.clear();
   byMesh.clear();
+  unresolvedContentBindings.clear();
   placeholders.fill(null);
 
   // The placeholder box geometries and material are ours, so we own their GPU
@@ -620,7 +660,68 @@ function placeholderEntry(kind: EntityKind): ModelEntry {
 
 /** Most-specific-first model lookup, shared by entities and placement ghosts. */
 function resolveModelEntry(kind: EntityKind, faction: number, defId: number): ModelEntry {
-  return resolveRegisteredModelEntry(kind, faction, defId) ?? placeholderEntry(kind);
+  // A generic model remains a valid visual fallback, but it is not proof that
+  // the requested positive def was ever registered. Record that content miss
+  // before falling through to the generic entry so reveal cannot silently bless
+  // a whole roster drawn as its faction default.
+  if (defId >= 0 && resolveExactRegisteredModelEntry(kind, faction, defId) === null) {
+    recordMissingContentBinding(kind, faction, defId);
+  }
+  const registered = resolveRegisteredModelEntry(kind, faction, defId);
+  if (registered !== null) return registered;
+  if (defId < 0) recordMissingContentBinding(kind, faction, defId);
+  return placeholderEntry(kind);
+}
+
+/** True only when the bridge can answer without manufacturing hazard art. */
+export function hasRegisteredKindMesh(kind: EntityKind, faction: number, defId: number): boolean {
+  return resolveRegisteredModelEntry(kind, faction, defId) !== null;
+}
+
+/** One positive-def binding that a content provider promises to publish. */
+export interface ExactKindMeshBinding {
+  readonly kind: EntityKind;
+  readonly faction: number;
+  readonly defId: number;
+}
+
+/**
+ * True only when the requested positive def has its own registration.
+ *
+ * A positive-def FACTION_ANY registration qualifies because it is the exact
+ * effective binding for a single-faction def. Per-faction and wildcard -1
+ * defaults deliberately do not qualify.
+ */
+export function hasExactRegisteredKindMesh(
+  kind: EntityKind,
+  faction: number,
+  defId: number,
+): boolean {
+  return resolveExactRegisteredModelEntry(kind, faction, defId) !== null;
+}
+
+/**
+ * Non-vacuous provider proof: every promised positive def/faction pair exists.
+ */
+export function proveExactKindMeshBindings(
+  bindings: readonly ExactKindMeshBinding[],
+): boolean {
+  return bindings.length > 0 && bindings.every(({ kind, faction, defId }) => (
+    hasExactRegisteredKindMesh(kind, faction, defId)
+  ));
+}
+
+/** Positive-def lookup without accepting either generic -1 fallback. */
+function resolveExactRegisteredModelEntry(
+  kind: EntityKind,
+  faction: number,
+  defId: number,
+): ModelEntry | null {
+  if (defId < 0) return null;
+  let e = byKey.get(packKey(kind, faction, defId));
+  if (e !== undefined) return e;
+  e = byKey.get(packKey(kind, FACTION_ANY, defId));
+  return e ?? null;
 }
 
 /** Most-specific-first lookup without manufacturing placeholder art. */

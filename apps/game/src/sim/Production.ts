@@ -59,6 +59,7 @@ import type {
 import { PerEntityI16, type World } from '../core/world';
 import type { Channels } from '../core/events';
 import { clampWorld, footprintOriginCell, isInMap, worldToCell } from '../core/math';
+import { SHARED_POOL_FACTIONS } from '../core/content-roster';
 
 import {
   FALLBACK_BUILDINGS, FALLBACK_UNITS, activeScenario, entityKeyOf, resolveDefBinding,
@@ -696,7 +697,7 @@ const CONTENT: readonly ContentSpec[] = [
    * THE MERIDIAN PACT — a self-contained tech tree.
    *
    * Every number is verbatim from `src/data/Defs.ts`. The Pact shares NOTHING
-   * with the Neutral pool (see SHARED_POOL_FACTIONS below): it has its own
+   * with the Neutral pool (see `core/content-roster.ts`): it has its own
    * construction yard, its own power, its own refinery, its own harvester and
    * its own MCV, and mixing the shared rows in would give a Pact player two
    * of each in the same tab.
@@ -834,7 +835,7 @@ const CONTENT: readonly ContentSpec[] = [
    *
    * Every number is verbatim from `src/data/Defs.ts`. Like the Pact this
    * faction draws nothing from the `Faction.Neutral` pool (see
-   * SHARED_POOL_FACTIONS below) — it has its own yard, power, refinery,
+   * `core/content-roster.ts`) — it has its own yard, power, refinery,
    * harvester and MCV.
    *
    * READ THE PREREQ COLUMN, because it is the whole faction: `rclSpitter` and
@@ -1029,8 +1030,8 @@ const CONTENT: readonly ContentSpec[] = [
 
   /* -- THE REPAIR DEPOTS ----------------------------------------------------
    * Three rows for four armies: the first is `Faction.Neutral`, which in this
-   * table means the two original armies share it — see SHARED_POOL_FACTIONS
-   * below.
+   * table means the two original armies share it — see
+   * `core/content-roster.ts`.
    *
    * The pad radius, the rate and the price are NOT here. They are
    * `REPAIR_DEPOT` in `core/config.ts`, read by `RepairSell.tickDepots`, which
@@ -1175,7 +1176,7 @@ const CONTENT: readonly ContentSpec[] = [
    * catalogues.
    *
    * There is no `Faction.Neutral` row here on purpose — Neutral means "the two
-   * ORIGINAL armies share it" (see SHARED_POOL_FACTIONS), so a Neutral upgrade
+   * ORIGINAL armies share it" (see `core/content-roster.ts`), so a Neutral upgrade
    * would be invisible to the Pact and the Reclamation.
    * --------------------------------------------------------------------- */
 
@@ -1451,8 +1452,6 @@ const PLAYABLE_FACTIONS: readonly Faction[] = [
  * thing". The Meridian Pact and the Reclamation are complete parallel trees
  * down to their own construction yards, so neither is in this list.
  */
-const SHARED_POOL_FACTIONS: readonly Faction[] = [Faction.Allies, Faction.Soviets];
-
 /** The Soviet naval yard is called a Sub Pen but services the same queue. */
 const NAVAL_PREREQ_ALIASES: Readonly<Record<string, string>> = {
   navalYard: 'subPen',

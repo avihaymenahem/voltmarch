@@ -627,6 +627,14 @@ export interface PlayOptions {
   pan?: number;
 }
 
+interface DeferredPlay {
+  readonly x?: number;
+  readonly y?: number;
+  readonly z?: number;
+  readonly options?: PlayOptions;
+  readonly dueAt: number;
+}
+
 /**
  * A caller-controlled voice played from an already-rendered buffer.
  *
@@ -792,8 +800,15 @@ export class AudioEngine {
 
   /** Baked one-shots by id. */
   private readonly sounds = new Map<string, BakedSound>();
+  /** Stable recipe registry; registration remains idempotent while a bake is in flight. */
+  private readonly registered = new Map<string, SoundSpec>();
   /** Registered but not yet baked. */
   private readonly pending: SoundSpec[] = [];
+  /** One bake per semantic id, shared by background and first-use preparation. */
+  private readonly bakeJobs = new Map<string, Promise<boolean>>();
+  /** Accepted first-use events waiting for their registered recipe to finish baking. */
+  private readonly deferredPlays = new Map<string, DeferredPlay[]>();
+  private deferredPlayCount = 0;
 
   private readonly voices: Voice[] = [];
   private readonly categoryCount = new Map<VoiceCategory, number>();
@@ -821,6 +836,7 @@ export class AudioEngine {
   readonly stats = {
     oneShots: 0, loops: 0, stolen: 0, culled: 0, crowded: 0,
     baked: 0, bakeMs: 0, bytes: 0,
+    deferredAccepted: 0, deferredFlushed: 0, deferredBakeFailed: 0, deferredOverflow: 0,
   };
 
   /* ---------------------------------------------------------------------- */
@@ -954,6 +970,10 @@ export class AudioEngine {
     for (const v of this.voices.slice()) this.killVoice(v, 0);
     this.voices.length = 0;
     this.sounds.clear();
+    this.registered.clear();
+    this.pending.length = 0;
+    this.deferredPlays.clear();
+    this.deferredPlayCount = 0;
     void this.ctx.close().catch(() => { /* already closed */ });
   }
 
@@ -1069,7 +1089,8 @@ export class AudioEngine {
 
   /** Register a recipe. Nothing is rendered until `bakeAll` runs. */
   register(spec: SoundSpec): void {
-    if (this.sounds.has(spec.id)) return;
+    if (this.registered.has(spec.id)) return;
+    this.registered.set(spec.id, spec);
     this.pending.push(spec);
   }
 
@@ -1097,18 +1118,10 @@ export class AudioEngine {
   async bakeAll(sliceMs = 12): Promise<void> {
     if (this.pending.length === 0) return;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-    this.ensureNoiseBeds();
-    // Decode BEFORE the first bake. Doing it concurrently would make the source
-    // of a given sound depend on which promise settled first, so a sound could
-    // come out synthesised on a fast connection and recorded on a slow one —
-    // non-determinism that no test would catch and every player would hear.
-    await this.samples.load(this.ctx);
-
     let sliceStart = t0;
     const queue = this.pending.splice(0, this.pending.length);
     for (const spec of queue) {
-      const baked = await this.bakeOne(spec);
-      this.sounds.set(spec.id, baked);
+      await this.ensureBaked(spec);
       const nowMs = typeof performance !== 'undefined' ? performance.now() : 0;
       // Yielding exists to keep the loading screen painting. A hidden tab is
       // painting nothing AND throttles every timer to ~1 s, which turned a
@@ -1124,8 +1137,81 @@ export class AudioEngine {
 
   /** Bake (or re-bake) a single registered spec on demand. */
   async bake(spec: SoundSpec): Promise<void> {
-    this.ensureNoiseBeds();
-    this.sounds.set(spec.id, await this.bakeOne(spec));
+    if (!this.registered.has(spec.id)) this.registered.set(spec.id, spec);
+    await this.ensureBaked(spec);
+  }
+
+  private ensureBaked(spec: SoundSpec): Promise<boolean> {
+    if ((this.sounds.get(spec.id)?.buffers.length ?? 0) > 0) return Promise.resolve(true);
+    const active = this.bakeJobs.get(spec.id);
+    if (active !== undefined) return active;
+    const job = (async (): Promise<boolean> => {
+      // Every caller shares SampleBank's in-flight decode promise. A first-use
+      // request can no longer race the background bank and synthesize a
+      // different result merely because decode has not settled yet.
+      await this.samples.load(this.ctx);
+      if (this.disposed) return false;
+      this.ensureNoiseBeds();
+      const baked = await this.bakeOne(spec);
+      if (this.disposed || baked.buffers.length === 0) return false;
+      this.sounds.set(spec.id, baked);
+      this.flushDeferredPlays(spec.id);
+      return true;
+    })().catch((error: unknown) => {
+      console.warn(`[audio] on-demand bake failed for "${spec.id}"`, error);
+      return false;
+    }).finally(() => {
+      if (this.bakeJobs.get(spec.id) === job) this.bakeJobs.delete(spec.id);
+      if (!this.sounds.has(spec.id)) this.rejectDeferredPlays(spec.id);
+    });
+    this.bakeJobs.set(spec.id, job);
+    return job;
+  }
+
+  private deferPlay(
+    id: string, x?: number, y?: number, z?: number, options?: PlayOptions,
+  ): boolean {
+    const spec = this.registered.get(id);
+    if (spec === undefined) return false;
+    // Bound both a burst from one weapon and the whole bank. Overflow is loud
+    // and measured; it is never confused with an unregistered silent miss.
+    const queue = this.deferredPlays.get(id) ?? [];
+    if (queue.length >= 16 || this.deferredPlayCount >= 64) {
+      this.stats.deferredOverflow++;
+      console.warn(`[audio] deferred first-use queue full for "${id}"`);
+      return false;
+    }
+    const copied = options === undefined ? undefined : { ...options };
+    queue.push({
+      x, y, z, options: copied,
+      dueAt: this.now() + Math.max(0, copied?.delay ?? 0),
+    });
+    this.deferredPlays.set(id, queue);
+    this.deferredPlayCount++;
+    this.stats.deferredAccepted++;
+    void this.ensureBaked(spec);
+    return true;
+  }
+
+  private flushDeferredPlays(id: string): void {
+    const queue = this.deferredPlays.get(id);
+    if (queue === undefined) return;
+    this.deferredPlays.delete(id);
+    this.deferredPlayCount -= queue.length;
+    for (const event of queue) {
+      const options = event.options === undefined ? {} : { ...event.options };
+      options.delay = Math.max(0, event.dueAt - this.now());
+      if (this.play(id, event.x, event.y, event.z, options)) this.stats.deferredFlushed++;
+    }
+  }
+
+  private rejectDeferredPlays(id: string): void {
+    const queue = this.deferredPlays.get(id);
+    if (queue === undefined) return;
+    this.deferredPlays.delete(id);
+    this.deferredPlayCount -= queue.length;
+    this.stats.deferredBakeFailed += queue.length;
+    console.warn(`[audio] ${queue.length} deferred play(s) rejected after "${id}" failed to bake`);
   }
 
   private ensureNoiseBeds(): void {
@@ -1252,7 +1338,9 @@ export class AudioEngine {
     // a two-minute battle detonating in one frame. Drop instead.
     if (this.muted || this.disposed || this.ctx.state !== 'running') return false;
     const baked = this.sounds.get(id);
-    if (baked === undefined || baked.buffers.length === 0) return false;
+    if (baked === undefined || baked.buffers.length === 0) {
+      return this.deferPlay(id, x, y, z, opts);
+    }
     const spec = baked.spec;
     const positional = spec.positional !== false && x !== undefined;
 

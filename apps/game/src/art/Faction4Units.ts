@@ -83,6 +83,10 @@ import { UNIT_LADDER, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId } from '../core/types';
 import { mapConcurrent } from '../core/async-pool';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, requestArtAssetFamily,
+} from '../core/content-closure';
 import { GreebleFactory } from './Greeble';
 import {
   MassRole, taperOutline,
@@ -1628,8 +1632,7 @@ export interface ReclaimBuildReport {
  * The per-KIND defaults go on at `Faction.Reclaim`, which is now a REAL slot
  * rather than the wildcard: `RenderBridge.factionSlot()` is derived from
  * `FACTION_COUNT`, and `FACTION_COUNT` went 4 -> 5 with this faction, so slot 4
- * is its own. That is a change in behaviour from the Meridian pass, where slot
- * 3 folded onto the wildcard — and it is the correct one, because a
+ * is its own, just like Meridian's slot 3. That is required because a
  * `(kind, Reclaim, -1)` default must not become the last-resort entry for
  * everybody.
  */
@@ -1638,6 +1641,7 @@ export async function buildAndRegisterReclaimUnits(
   unitId: Readonly<Record<string, number>>,
   immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<ReclaimBuildReport> {
+  const closureEpoch = contentClosureEpoch();
   const models: UnitModel[] = [];
   const failed: string[] = [];
 
@@ -1662,13 +1666,28 @@ export async function buildAndRegisterReclaimUnits(
     family.key === 'reclaim_picker'
     || family.key === 'reclaim_dredger'
     || family.key === 'reclaim_baron');
+  const infantryDependencies = new Map(infantryFamilies.map((family) => [
+    family.key,
+    family.roles.flatMap((role) => declareArtAssetFamily({
+      domain: 'unit', faction: Faction.Reclaim, key: role.modelKey,
+      owner: 'art.faction4:infantry', fallback: 'validated procedural Reclamation unit model',
+    })),
+  ]));
+  for (const family of infantryFamilies) {
+    if (family.roles.every((role) => reclaimUnitLibrary.get(role.modelKey) !== undefined)) {
+      markArtAssetFamilyFallbackReady(infantryDependencies.get(family.key) ?? [], closureEpoch);
+    }
+  }
   const loadInfantry = (progressive = false) => mapConcurrent(
     infantryFamilies, progressive ? 1 : importedUnitConcurrency(), async (infantryFamily) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = infantryDependencies.get(infantryFamily.key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction4:infantry', closureEpoch);
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => reclaimUnitLibrary.get(key),
       );
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
       console.info(`[units] imported shared ${infantryFamily.label} body for ${variants.size} roles`);
       return variants;
     } catch (error) {
@@ -1687,9 +1706,23 @@ export async function buildAndRegisterReclaimUnits(
     'reclaim_scrapper', 'reclaim_crawler', 'reclaim_hornet',
     'reclaim_skimmer', 'reclaim_scow', 'reclaim_hulk', 'reclaim_hauler',
   ] as const;
+  const importedDependencies = new Map<string, readonly string[]>(importedKeys.map((key) => [
+    key,
+    declareArtAssetFamily({
+      domain: 'unit', faction: Faction.Reclaim, key,
+      owner: 'art.faction4:vehicle', fallback: 'validated procedural Reclamation unit model',
+    }),
+  ]));
+  for (const key of importedKeys) {
+    if (reclaimUnitLibrary.get(key) !== undefined) {
+      markArtAssetFamilyFallbackReady(importedDependencies.get(key) ?? [], closureEpoch);
+    }
+  }
   const loadImportedKeys = (keys: readonly string[], progressive = false) => mapConcurrent(
     keys, progressive ? 1 : importedUnitConcurrency(), async (key) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = importedDependencies.get(key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction4:vehicle', closureEpoch);
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
     const model = reclaimUnitLibrary.get(key);
     if (spec === undefined || model === undefined) return null;
@@ -1697,6 +1730,7 @@ export async function buildAndRegisterReclaimUnits(
       const mesh = progressive
         ? await loadImportedUnitOverride(model, spec, true)
         : await loadImportedUnitOverride(model, spec);
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
       console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
       return [key, mesh] as const;
     } catch (error) {

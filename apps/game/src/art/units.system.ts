@@ -65,8 +65,18 @@ import {
   loadImportedInfantryFamily,
 } from './ImportedInfantryAssets';
 import { isArtFactionPlanned } from './boot-plan';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, markContentProviderReady,
+  requestArtAssetFamily,
+} from '../core/content-closure';
+import { unitProviderBindingsReady } from './provider-readiness';
 
 interface BridgeGlobal { __vmUnits?: unknown; }
+
+function originalFactionForModel(key: string): Faction {
+  return key.startsWith('soviet_') ? Faction.Soviets : Faction.Allies;
+}
 
 /**
  * Imported units that can exist in the very first visible MCV-opening frame.
@@ -218,7 +228,7 @@ type SharedModels = PerArmy<string | typeof OWN_ROSTER>;
  * are complete parallel trees down to their own construction yards: their
  * barracks builds `mrdArtificer` / `rclTinker`, their factory builds
  * `mrdCarryall` / `rclCrawler`, and neither can reach a `Faction.Neutral` def
- * at all. `src/sim/Production.ts#SHARED_POOL_FACTIONS` is the sim-side
+ * at all. `src/core/content-roster.ts#SHARED_POOL_FACTIONS` is the sim-side
  * statement of the same fact, and `src/game/Scenarios.ts#FACTION_KEY_MAP` the
  * scenario-side one.
  */
@@ -229,6 +239,12 @@ export const SHARED_CONTENT_TO_MODEL: Readonly<Record<string, SharedModels>> = {
   mcv:         ['allied_dozer',      'soviet_dozer',      OWN_ROSTER,  OWN_ROSTER],
   transport:   ['allied_transport',  'soviet_transport',  OWN_ROSTER,  OWN_ROSTER],
 };
+
+function unitKindFor(contentKey: string, model: UnitModel): EntityKind {
+  return model.cls === 'infantry' || INFANTRY_CONTENT.has(contentKey)
+    ? EntityKind.Infantry
+    : EntityKind.Vehicle;
+}
 
 /**
  * THE TRIPWIRE FOR THE CLASS OF BUG, not for the one instance of it.
@@ -374,6 +390,7 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { sceneRig, loop } = ctx();
+    const closureEpoch = contentClosureEpoch();
     const size = atlasSizeFor(loop.quality);
     const t0 = Date.now();
 
@@ -421,12 +438,30 @@ export default defineSystem({
       return isArtFactionPlanned(faction)
         && (plannedSea || family.roles.every((role) => !SEA_ONLY_IMPORT_KEYS.has(role.modelKey)));
     });
+    const infantryDependencies = new Map(sharedArmyInfantry.map((family) => [
+      family.key,
+      family.roles.flatMap((role) => declareArtAssetFamily({
+        domain: 'unit',
+        faction: originalFactionForModel(role.modelKey),
+        key: role.modelKey,
+        owner: 'art.units:infantry',
+        fallback: 'validated procedural unit model',
+      })),
+    ]));
+    for (const family of sharedArmyInfantry) {
+      if (family.roles.every((role) => unitLibrary.get(role.modelKey) !== undefined)) {
+        markArtAssetFamilyFallbackReady(infantryDependencies.get(family.key) ?? [], closureEpoch);
+      }
+    }
     const infantryResults = await mapConcurrent(
       sharedArmyInfantry,
       importedUnitConcurrency(),
       async (family) => {
+      const dependencyKeys = infantryDependencies.get(family.key) ?? [];
+      requestArtAssetFamily(dependencyKeys, 'art.units:infantry', closureEpoch);
       try {
         const variants = await loadImportedInfantryFamily(family, (key) => unitLibrary.get(key));
+        markArtAssetFamilyReady(dependencyKeys, closureEpoch);
         console.info(`[units] imported shared ${family.label} body for ${variants.size} roles`);
         return variants;
       } catch (error) {
@@ -447,6 +482,21 @@ export default defineSystem({
           ? isArtFactionPlanned(Faction.Soviets)
           : false;
     });
+    const importedDependencies = new Map(importedSpecs.map((spec) => [
+      spec.key,
+      declareArtAssetFamily({
+        domain: 'unit',
+        faction: originalFactionForModel(spec.key),
+        key: spec.key,
+        owner: 'art.units:vehicle',
+        fallback: 'validated procedural unit model',
+      }),
+    ]));
+    for (const spec of importedSpecs) {
+      if (unitLibrary.get(spec.key) !== undefined) {
+        markArtAssetFamilyFallbackReady(importedDependencies.get(spec.key) ?? [], closureEpoch);
+      }
+    }
     const loadSpecs = async (
       specs: typeof importedSpecs,
       progressive = false,
@@ -459,6 +509,8 @@ export default defineSystem({
         progressive ? 1 : importedUnitConcurrency(),
         async (spec) => {
         if (progressive) await waitForBattlefieldIdle();
+        const dependencyKeys = importedDependencies.get(spec.key) ?? [];
+        requestArtAssetFamily(dependencyKeys, 'art.units:vehicle', closureEpoch);
         const model = unitLibrary.get(spec.key);
         if (model === undefined) {
           console.error(`[units] imported override ${spec.key} has no procedural fallback`);
@@ -469,6 +521,7 @@ export default defineSystem({
             key: spec.key,
             mesh: await loadImportedUnitOverride(model, spec, progressive),
           };
+          markArtAssetFamilyReady(dependencyKeys, closureEpoch);
           console.info(`[units] imported ${spec.label} with articulated LOD/shadow path`);
           return result;
         } catch (error) {
@@ -544,9 +597,7 @@ export default defineSystem({
       const mesh = meshFor(modelKey);
       const model = unitLibrary.get(modelKey);
       if (mesh === null || model === undefined) return;
-      const kind = model.cls === 'infantry' || INFANTRY_CONTENT.has(contentKey)
-        ? EntityKind.Infantry
-        : EntityKind.Vehicle;
+      const kind = unitKindFor(contentKey, model);
       register(kind, faction, modelKey, defId);
     };
 
@@ -627,6 +678,20 @@ export default defineSystem({
         `(scorecard #34 wants 28-36%), gen ${m.atlas.metrics.generateMs} ms`);
     }
     for (const f of failed) console.error(`[units] REJECTED ${f}`);
+
+    const proceduralRosterReady = (faction: Faction): boolean => (
+      unitProviderBindingsReady(binding.tables, faction)
+      && UNIT_MASS_LISTS.filter((list) => (
+        list.faction === (faction === Faction.Allies ? 'allies' : 'soviets')
+      ))
+        .every((list) => unitLibrary.get(list.key) !== undefined)
+    );
+    if (isArtFactionPlanned(Faction.Allies) && proceduralRosterReady(Faction.Allies)) {
+      markContentProviderReady('art-unit/1', closureEpoch);
+    }
+    if (isArtFactionPlanned(Faction.Soviets) && proceduralRosterReady(Faction.Soviets)) {
+      markContentProviderReady('art-unit/2', closureEpoch);
+    }
 
     if (paradeRequested()) paradeRoot = buildParade(sceneRig.scene, built);
   },

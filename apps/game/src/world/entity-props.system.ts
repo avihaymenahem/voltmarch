@@ -68,6 +68,12 @@ import {
 import { isBiomeName, type BiomeName } from './Biomes';
 import { getTerrain } from './Terrain';
 import type { EnvironmentGeometryFamily } from './FoliageEngine';
+import { isArtFactionPlanned } from '../art/boot-plan';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, markContentProviderReady,
+  requestArtAssetFamily,
+} from '../core/content-closure';
 
 /* ==========================================================================
  * CONTENT KEY -> PROP LIBRARY ARCHETYPE
@@ -105,6 +111,8 @@ let library: PropLibrary | null = null;
 let wreckSet: WreckSet | null = null;
 let importedWreckSet: ImportedWreckSet | null = null;
 let importedWreckEpoch = 0;
+let neutralPropDependencyKeys: readonly string[] = [];
+let neutralPropDependencyEpoch = 0;
 
 /**
  * Rebind scenario/pickup entities to Scatter's already-loaded asset families.
@@ -152,6 +160,11 @@ export function installImportedEntityProps(
  */
 export function installProceduralEntityProps(): number {
   if (materials === null) return 0;
+  neutralPropDependencyEpoch = contentClosureEpoch();
+  neutralPropDependencyKeys = declareArtAssetFamily({
+    domain: 'neutral-prop', key: 'scenario-props', owner: 'art.entityProps',
+    fallback: 'procedural biome prop library',
+  });
   const biome = activeBiome();
   library ??= new PropLibrary({
     biome,
@@ -184,6 +197,12 @@ export function installProceduralEntityProps(): number {
     `[props] ${registrations} lazy procedural entity-prop fallback(s) ready `
     + `(${library.count} archetypes, ${library.totalTriangles} triangles)`,
   );
+  const expectedRegistrations = Object.keys(LIBRARY_KEY).length
+    + (Object.hasOwn(LIBRARY_KEY, 'crate') ? 1 : 0);
+  if (registrations === expectedRegistrations) {
+    markArtAssetFamilyFallbackReady(neutralPropDependencyKeys, neutralPropDependencyEpoch);
+    markContentProviderReady('neutral-props', neutralPropDependencyEpoch);
+  }
   return registrations;
 }
 
@@ -199,6 +218,7 @@ export default defineSystem({
 
   init(): void {
     const { debug } = ctx();
+    const closureEpoch = contentClosureEpoch();
     const assetEpoch = ++importedWreckEpoch;
     const biome = activeBiome();
     const palette = propPalette(biome);
@@ -213,6 +233,16 @@ export default defineSystem({
     // deaths bind more specifically by EntityStore faction below.
     wreckSet = buildWreckSet(palette);
 
+    const trackedWreckFactions = [
+      Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim, Faction.Neutral,
+    ].filter((faction) => faction === Faction.Neutral || isArtFactionPlanned(faction));
+    const wreckDependencies = new Map(trackedWreckFactions.map((faction) => [
+      faction,
+      declareArtAssetFamily({
+        domain: 'wreck', faction, key: 'vehicle-and-rubble-classes', owner: 'art.entityProps',
+        fallback: 'procedural faction wreck and rubble set',
+      }),
+    ]));
     let registered = 0;
 
     const register = (
@@ -264,6 +294,15 @@ export default defineSystem({
     }
 
     debug.counters.entityPropModels = registered;
+    const expectedWreckRegistrations = wreckFactions.length
+      * (WRECK_CLASSES.length + RUBBLE_SIZES.length)
+      + WRECK_CLASSES.length + RUBBLE_SIZES.length + 2;
+    if (registered === expectedWreckRegistrations) {
+      for (const keys of wreckDependencies.values()) {
+        markArtAssetFamilyFallbackReady(keys, closureEpoch);
+      }
+      markContentProviderReady('art-wrecks', closureEpoch);
+    }
     console.info(
       `%c[props]%c ${registered} wreck registration(s) on the ${biome} palette ` +
       `(${wreckSet.triangles} wreck tris; model props await imported catalogue)`,
@@ -273,12 +312,21 @@ export default defineSystem({
     // Load the authored conventional tank hulk after the match is already
     // interactive. Procedural class/faction wrecks stay registered until this
     // resolves and remain the permanent fallback on any asset failure.
+    const authoredWreckDependencies = [
+      ...(wreckDependencies.get(Faction.Allies) ?? []),
+      ...(wreckDependencies.get(Faction.Soviets) ?? []),
+      ...(wreckDependencies.get(Faction.Neutral) ?? []),
+    ];
+    requestArtAssetFamily(
+      authoredWreckDependencies, 'art.entityProps:authored-wreck', closureEpoch,
+    );
     void loadImportedWreckSet().then((imported) => {
       if (assetEpoch !== importedWreckEpoch) {
         imported.dispose();
         return;
       }
       importedWreckSet = imported;
+      markArtAssetFamilyReady(authoredWreckDependencies, closureEpoch);
       let overrides = 0;
       for (const cls of IMPORTED_WRECK_CLASSES) {
         registerKindMesh(
@@ -327,5 +375,7 @@ export default defineSystem({
     library = null;
     materials?.dispose();
     materials = null;
+    neutralPropDependencyKeys = [];
+    neutralPropDependencyEpoch = 0;
   },
 });

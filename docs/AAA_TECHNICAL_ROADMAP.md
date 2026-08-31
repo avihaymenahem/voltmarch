@@ -101,7 +101,7 @@ Baseline and phase telemetry
 
 ## Implementation checkpoint - 2026-08-31
 
-The first five batches are complete on `codex/aaa-roadmap-batches-1-3`:
+The first six batches are complete on `codex/aaa-roadmap-batches-1-3`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -138,16 +138,31 @@ The first five batches are complete on `codex/aaa-roadmap-batches-1-3`:
    families; completion here does not approve the remaining catalogue.
 5. **Dependency architecture Stage 0: complete.** Eight workspace packages are cycle-free. The
    app scanner resolves static imports, type imports, dynamic imports and Vite eager/lazy globs;
-   its honest baseline currently contains 1,286 cross-layer edges, 1,796 runtime edges, 433
+   its honest baseline currently contains 1,305 cross-layer edges, 1,824 runtime edges, 430
    type-only edges and five known file SCCs. SCCs may shrink or disappear but cannot gain members or
    merge. The former 8,513-line `core/config.ts` is now a 31-line compatibility facade over 24
    acyclic domain slices. Tests freeze all 534 TypeScript exports (523 values, 11 types), runtime
    referential identity and SHA-256 of the canonical value graph. An isolated production-build A/B
    retained 16 JS chunks and every logical boundary; gzip rose 1,703 bytes (0.0998%). The tracked
    control is `docs/reviews/config-stage0-bundle-shape.json`.
+6. **Generated content dependency closure: complete.** The shell now derives semantic match roots
+   from the resolved scenario, occupied faction union, map/naval policy, replay header and every
+   armed campaign trigger branch. Art providers publish only after complete procedural roster or
+   geometry registration succeeds; authored LOD0 promotion cannot overstate LOD/shadow/construction
+   readiness. The pre-reveal RenderBridge pass turns any missing positive-def binding into an exact
+   critical miss even when a generic faction mesh remains available for rendering, and each art
+   provider proves its complete promised definition/faction set. Any later undeclared/not-ready
+   request throws in development while packaged fallbacks remain available in production. Campaign
+   and replay parsing have explicit validation latches that are republished only after Bootstrap
+   opens the fresh runtime epoch, stale asynchronous completions are epoch-guarded, and
+   registered-but-unbaked SFX now
+   share one bake and preserve accepted first-use events. A production four-army MCV fixture proved
+   565 semantic deliveries with zero misses before `game.ready`. Focused closure/audio tests,
+   typecheck, production build and the cross-cutting monorepo gate (7,003 passing game tests) cover
+   the implementation.
 
-No Batch 6 work has started. The next move is generated content dependency closure; package
-extraction, GPU compaction and WASM remain behind the evidence and dependency gates above.
+The next move is Batch 7's packaged compression and pipeline evidence. Package extraction, GPU
+compaction and WASM remain behind the evidence and dependency gates above.
 
 ## Batch 1 - current baseline and phase instrumentation
 
@@ -226,13 +241,31 @@ keeping the original runtime path. A microbenchmark alone is not a promotion.
 
 ## Later performance and loading work
 
-### Generated dependency closure
+### Generated dependency closure - complete
 
 Extend the existing occupied-faction boot plan. Include opening units/buildings, campaign and replay
 triggers, reinforcements, construction states, wrecks, neutral props, effect pools, audio, LODs and
 shadow proxies. Add a development miss tripwire and conservative packaged fallback. A manifest does
 not itself remove parse cost and must be paired with cooked delivery before post-reveal loading can
 return.
+
+Implemented contract:
+
+- semantic keys only; no Vite filename or chunk identity enters the plan;
+- exact opening/transitive/campaign/replay roots wait on explicit providers and validation latches;
+- procedural fallback state is published only after its runtime model/geometry registration exists;
+- generic faction meshes remain packaged visual fallbacks but cannot satisfy a positive definition;
+  every art-provider latch proves its full planned definition/faction binding set;
+- authored promotion conservatively upgrades LOD0 only unless another part is independently proven;
+- the first hazard fallback during the existing under-curtain render is a reveal failure, while a
+  post-reveal development miss throws at the central RenderBridge lookup;
+- background SFX preparation accepts registered first-use events, deduplicates concurrent bakes and
+  flushes with the original deadline rather than silently dropping the sound;
+- late asset/audio completion from a disposed battlefield cannot satisfy the next boot's closure.
+
+This does not make the current runtime-import path cooked or cheap. Batch 7 still owns the packaged
+Meshopt/texture/pipeline experiments needed before more authored families may safely return to
+post-reveal delivery.
 
 ### Texture and geometry compression
 

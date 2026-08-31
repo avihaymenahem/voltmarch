@@ -339,6 +339,8 @@ export class SampleBank {
 
   /** True once `load` has run, whatever the outcome. */
   private done = false;
+  /** Shared decode barrier; concurrent bakers must observe one complete bank. */
+  private preparation: Promise<void> | null = null;
 
   get ready(): boolean { return this.done; }
 
@@ -368,10 +370,11 @@ export class SampleBank {
    * `baseUrl` exists for the measurement harness, which serves `public/` from a
    * temporary origin. In the game it is left at the document-relative default.
    */
-  async load(ctx: BaseAudioContext, baseUrl = ''): Promise<void> {
-    if (this.done) return;
-    this.done = true;
-    if (typeof fetch !== 'function') return;
+  load(ctx: BaseAudioContext, baseUrl = ''): Promise<void> {
+    if (this.done) return Promise.resolve();
+    if (this.preparation !== null) return this.preparation;
+    this.preparation = (async (): Promise<void> => {
+      if (typeof fetch !== 'function') return;
 
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     const ids = Object.keys(this.manifest);
@@ -408,12 +411,14 @@ export class SampleBank {
 
     const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
     this.stats.ms = t1 - t0;
-    if (this.stats.missing.length > 0) {
-      console.warn(
-        `[audio] ${this.stats.missing.length} sample famil(y/ies) unavailable, `
-        + `falling back to the synthesised recipe: ${this.stats.missing.join(', ')}`,
-      );
-    }
+      if (this.stats.missing.length > 0) {
+        console.warn(
+          `[audio] ${this.stats.missing.length} sample famil(y/ies) unavailable, `
+          + `falling back to the synthesised recipe: ${this.stats.missing.join(', ')}`,
+        );
+      }
+    })().finally(() => { this.done = true; });
+    return this.preparation;
   }
 
   private async loadOne(

@@ -49,7 +49,9 @@
 import './shell.css';
 
 import type { BootOptions, GameHandle, MatchPresentation } from '../game/Bootstrap';
-import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
+import {
+  plannedOperation, plannedScenario, resetScenarioPlan, setPlannedArmies,
+} from '../game/Scenarios';
 import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS, TITLE_BACKDROP_CAMERA_DISTANCE } from '../core/config';
@@ -114,7 +116,7 @@ import { MultiplayerSetup } from './MultiplayerSetup';
 import {
   ReplayBar, ReplaysScreen, replayBuildWarning, replayMap, currentPlayback,
 } from './Replays';
-import type { ReplayFile } from '../game/Replay';
+import { parseReplay, type ReplayFile } from '../game/Replay';
 import { preparePlayback } from '../game/Playback';
 import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
@@ -203,10 +205,54 @@ import {
 import * as progression from './progression-link';
 import { DesktopUpdatePrompt } from './DesktopUpdatePrompt';
 import { setPlannedArtFactions } from '../art/boot-plan';
+import {
+  markContentProviderReady, plannedCampaignContentHint, setContentClosureSeed,
+} from '../core/content-closure';
 import { loadingFactionTheme } from './loading-theme';
 import { MenuDecisionScreen } from './MenuDecision';
 
-/* ==========================================================================
+/* -------------------------------------------------------------------------- */
+/* Replay validation provenance                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Files selected through the replay browser have already passed `parseReplay`,
+ * but `startReplay` is also called directly by the end screen and is a public
+ * shell seam. A TypeScript annotation is not validation at runtime: a caller
+ * can hand it an object with an empty player table or malformed command stream.
+ *
+ * Re-parse at that boundary and retain provenance on the exact cloned object
+ * the shell adopts. The WeakSet is deliberately not a property serialized into
+ * replay files, and a copied/unvalidated object cannot inherit the proof.
+ */
+const validatedReplayStarts = new WeakSet<ReplayFile>();
+
+export function validateReplayForStart(file: ReplayFile): ReplayFile {
+  let encoded: string | undefined;
+  try {
+    encoded = JSON.stringify(file);
+  } catch {
+    throw new Error('This recording cannot be played because it is not serializable.');
+  }
+  if (encoded === undefined) {
+    throw new Error('This recording cannot be played because it is not serializable.');
+  }
+  const parsed = parseReplay(encoded);
+  if (!parsed.ok) throw new Error(`This recording cannot be played: ${parsed.reason}.`);
+  validatedReplayStarts.add(parsed.value);
+  return parsed.value;
+}
+
+/** Publish the closure latch only for the exact object validated above. */
+export function markReplayValidationProviderReady(
+  file: ReplayFile, expectedEpoch?: number,
+): boolean {
+  if (!validatedReplayStarts.has(file)) return false;
+  markContentProviderReady('replay-validation', expectedEpoch);
+  return true;
+}
+
+/* ===========================================================================
  * 1. THE STATE MACHINE
  * ========================================================================== */
 
@@ -1526,6 +1572,7 @@ export class Shell {
    */
   async startReplay(file: ReplayFile): Promise<void> {
     if (this.busy || this.disposed) throw new Error('The shell is busy.');
+    file = validateReplayForStart(file);
     const header = file.header;
 
     this.clearReplay();
@@ -3291,6 +3338,33 @@ export class Shell {
     // back to all packs rather than render hazard boxes.
     setPlannedArtFactions(artFactions.size === 0 ? null : [...artFactions]);
 
+    // Generate semantic roots only after URL plan, replay header and occupied
+    // seats have settled. Malformed legacy faction data widens to every army,
+    // exactly like the art pack gate, instead of producing an empty manifest.
+    const closureFactions = artFactions.size === 0
+      ? [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim]
+      : [...artFactions];
+    const scenarioPlan = plannedScenario();
+    const campaignContent = plannedCampaignContentHint();
+    const campaignWasValidated = this.operation !== null && campaignContent !== null;
+    const validatedReplay = this.replay?.file ?? null;
+    setContentClosureSeed({
+      mode: this.replay !== null
+        ? 'replay'
+        : this.operation !== null
+          ? 'campaign'
+          : this.pvp !== null
+            ? 'multiplayer'
+            : 'skirmish',
+      factions: closureFactions,
+      scenario: scenarioPlan.name,
+      map: scenarioPlan.map,
+      opening: plannedOperation()?.opening ?? scenarioPlan.start,
+      naval: scenarioPlan.sea !== null,
+      campaign: campaignContent,
+      ...(this.replay === null ? {} : { replayFormat: this.replay.file.header.formatVersion }),
+    });
+
     /*
      * GRAPH-SHAPING SETTINGS MUST EXIST BEFORE `bootstrap()`.
      *
@@ -3329,6 +3403,13 @@ export class Shell {
       seed,
       matchPresentation: this.matchPresentation(backdrop),
       onStage: (stage) => { this.status(stage); },
+      // Bootstrap owns the per-world epoch reset. Republish only after that
+      // boundary, using the campaign arm / exact parsed replay captured above
+      // rather than manufacturing validation from the semantic seed itself.
+      onContentClosureRuntimeReady: (epoch) => {
+        if (campaignWasValidated) markContentProviderReady('campaign-validation', epoch);
+        if (validatedReplay !== null) markReplayValidationProviderReady(validatedReplay, epoch);
+      },
     };
 
     /*

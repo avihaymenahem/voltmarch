@@ -19,16 +19,24 @@
 
 import { defineSystem } from '../core/loop';
 import { BUILDING_GREEBLE, QUALITY_PRESETS, UNIT_GREEBLE } from '../core/config';
-import type { QualityTier } from '../core/types';
+import { Faction, type QualityTier } from '../core/types';
 import { ctx } from '../game/context';
 import { plannedScenario, resolveDefBinding } from '../game/Scenarios';
 import { formatStats } from './MassList';
 import { formatStructureStats } from './BuildingFactory';
-import { buildAndRegisterReclaimUnits, disposeReclaimUnits } from './Faction4Units';
-import { buildAndRegisterReclaimStructures, disposeReclaimBuildings } from './Faction4Buildings';
+import {
+  buildAndRegisterReclaimUnits, disposeReclaimUnits, RECLAIM_UNIT_MASS_LISTS,
+} from './Faction4Units';
+import {
+  buildAndRegisterReclaimStructures, disposeReclaimBuildings,
+  RECLAIM_STRUCTURE_MASS_LISTS,
+} from './Faction4Buildings';
 import { isArtFactionPlanned } from './boot-plan';
-import { Faction } from '../core/types';
 import { liveAssetStreamingEnabled, scheduleBattlefieldWork } from '../core/battlefield-ready';
+import { contentClosureEpoch, markContentProviderReady } from '../core/content-closure';
+import {
+  buildingProviderBindingsReady, unitProviderBindingsReady,
+} from './provider-readiness';
 
 const MCV_UNIT_IMPORTS: ReadonlySet<string> = new Set(['reclaim_crawler']);
 const MCV_STRUCTURE_IMPORTS: ReadonlySet<string> = new Set(['reclaim_foundry']);
@@ -51,6 +59,7 @@ export default defineSystem({
       return;
     }
     const { loop } = ctx();
+    const closureEpoch = contentClosureEpoch();
     const t0 = Date.now();
 
     // One binding resolve for both halves. `resolveDefBinding` is memoised, so
@@ -110,6 +119,17 @@ export default defineSystem({
       console.warn(
         '[reclaim] no Reclamation def ids resolved, so the army art is built but nothing on the ' +
         'map can reference it. src/data/Defs.ts is what publishes those keys.');
+    }
+
+    if (units.failed.length === 0
+      && unitProviderBindingsReady(binding.tables, Faction.Reclaim)
+      && units.models.length === RECLAIM_UNIT_MASS_LISTS.length) {
+      markContentProviderReady('art-unit/4', closureEpoch);
+    }
+    if (structures.failed.length === 0
+      && buildingProviderBindingsReady(binding.tables, Faction.Reclaim)
+      && structures.models.length === RECLAIM_STRUCTURE_MASS_LISTS.length) {
+      markContentProviderReady('art-building/4', closureEpoch);
     }
   },
 

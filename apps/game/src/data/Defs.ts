@@ -2667,7 +2667,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
    * that is what the service implements: the Soviets get the missile and the
    * Field, the Allies get the Displacement Ring and the storm. The Pact and the
    * Reclamation are complete parallel trees that never draw from the
-   * `Faction.Neutral` pool (`SHARED_POOL_FACTIONS` in Production.ts), so each
+   * `Faction.Neutral` pool (`SHARED_POOL_FACTIONS` in core/content-roster.ts), so each
    * needs a row of its own — a Neutral superweapon would put a Soviet silo in
    * an Allied sidebar and none in either new army's.
    *

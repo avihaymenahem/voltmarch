@@ -56,6 +56,11 @@ import { prepareWorldWorkers } from '../core/workers/world-warm';
 import { prepareTextureWorkers } from '../core/workers/texture-warm.system';
 import { markBattlefieldReady, resetBattlefieldReady } from '../core/battlefield-ready';
 import {
+  contentClosureEpoch, contentClosureReport, ensureContentClosureSeed, markContentClosureRevealed,
+  resetContentClosureRuntime,
+} from '../core/content-closure';
+import { plannedScenario } from './Scenarios';
+import {
   annotateBootRun,
   beginBootSpan,
   bootTelemetryReport,
@@ -80,6 +85,13 @@ export interface BootOptions {
   matchPresentation?: MatchPresentation;
   /** Human-readable boot phase. Presentation only; never read by simulation. */
   onStage?: (stage: BootStage) => void;
+  /**
+   * Synchronous boundary after Bootstrap opens a fresh content-closure epoch.
+   * Callers may republish provenance-backed validation latches here; publishing
+   * them before bootstrap is deliberately ineffective because the old world's
+   * runtime state must be discarded.
+   */
+  onContentClosureRuntimeReady?: (epoch: number) => void;
 }
 
 /** Stable match identity shown in the top-centre command node. */
@@ -157,8 +169,32 @@ function devBuild(): boolean {
 /* bootstrap                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Start the closure lifetime owned by one battlefield. Kept as a named
+ * boundary so shell validation provenance is republished after, never around,
+ * the mandatory per-world reset.
+ */
+export function beginContentClosureRuntime(
+  publishValidatedProviders?: (epoch: number) => void,
+): number {
+  resetContentClosureRuntime();
+  const epoch = contentClosureEpoch();
+  publishValidatedProviders?.(epoch);
+  return epoch;
+}
+
 export function bootstrap(options: BootOptions): GameHandle {
   resetBattlefieldReady();
+  const directPlan = plannedScenario();
+  ensureContentClosureSeed({
+    mode: options.shot ? 'fixture' : 'skirmish',
+    factions: [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim],
+    scenario: directPlan.name,
+    map: directPlan.map,
+    opening: directPlan.start,
+    naval: directPlan.sea !== null,
+  });
+  beginContentClosureRuntime(options.onContentClosureRuntimeReady);
   // One page can build a title theatre, a match, a replay and another match.
   // System modules are evaluated only once, so module-scope worker warmup
   // cannot describe those later worlds. Re-arm against the settled scenario
@@ -288,6 +324,7 @@ export function bootstrap(options: BootOptions): GameHandle {
       },
       restart: (s?: number) => loop.resetMatch(s ?? seed),
       bootReport: bootTelemetryReport,
+      contentClosure: contentClosureReport,
     },
   });
 
@@ -550,6 +587,17 @@ export function bootstrap(options: BootOptions): GameHandle {
       // — this paint must not be the one thing that smuggles wall-clock time
       // into a capture.
       renderOnce(shotMode ? 0 : 1 / 60);
+      const closureReady = markContentClosureRevealed();
+      const closure = contentClosureReport();
+      console.info(
+        `[content-closure] ${closure.deliveries.length} semantic deliveries, `
+        + `${closure.misses.length} miss(es), reveal ${closureReady ? 'ready' : 'degraded'}`,
+      );
+      if (!closureReady && devBuild()) {
+        throw new Error(
+          `[content-closure] reveal refused: ${closure.misses.length} semantic dependency miss(es)`,
+        );
+      }
       markBattlefieldReady();
       markBootPhase('app', 'game.ready', { backend: handle.backend });
       const totalMs = now() - bootStarted;

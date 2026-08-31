@@ -12,11 +12,11 @@
  * screenshot and never throws — it just makes one word sound like mush.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { EvaLine, FX_KIND_COUNT, EntityKind, Faction } from '../src/core/types';
 import { AudioEngine, dbToGain, gainToDb, makeRng } from '../src/audio/AudioEngine';
-import { FX_SOUND, SFX } from '../src/audio/Weapons';
+import { collectSfxBank, FX_SOUND, SFX } from '../src/audio/Weapons';
 import { EVA_LINES, EVA_LINE_ID, PHONES, parsePhonemes, utteranceSeconds, EVA_PROFILE } from '../src/audio/Eva';
 import { BARKS, barkClassFor, recordedVoiceKeyFor, type BarkClass } from '../src/audio/Barks';
 
@@ -49,6 +49,50 @@ describe('AudioEngine — graceful degradation', () => {
       expect(v).toBeLessThan(1);
     }
     expect(makeRng(1)()).not.toBe(makeRng(2)());
+  });
+
+  it('accepts a registered first-use event while its sound is still baking', () => {
+    const spec = collectSfxBank()[0];
+    const ensureBaked = vi.fn(() => new Promise<boolean>(() => {}));
+    const fake = Object.assign(Object.create(AudioEngine.prototype) as object, {
+      muted: false,
+      disposed: false,
+      ctx: { state: 'running', currentTime: 10 },
+      sounds: new Map(),
+      registered: new Map([[spec.id, spec]]),
+      deferredPlays: new Map(),
+      deferredPlayCount: 0,
+      ensureBaked,
+      stats: { deferredAccepted: 0, deferredOverflow: 0 },
+    }) as unknown as AudioEngine;
+
+    expect(fake.play(spec.id, 4, 0, 8, { gain: 0.5, delay: 0.2 })).toBe(true);
+
+    const state = fake as unknown as {
+      deferredPlayCount: number;
+      deferredPlays: Map<string, Array<{ dueAt: number; options?: { gain?: number } }>>;
+    };
+    expect(state.deferredPlayCount).toBe(1);
+    expect(state.deferredPlays.get(spec.id)?.[0]).toEqual(expect.objectContaining({ dueAt: 10.2 }));
+    expect(state.deferredPlays.get(spec.id)?.[0]?.options?.gain).toBe(0.5);
+    expect(ensureBaked).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps registration idempotent while a background bake is in flight', () => {
+    const spec = collectSfxBank()[0];
+    const fake = Object.assign(Object.create(AudioEngine.prototype) as object, {
+      sounds: new Map(), registered: new Map(), pending: [],
+    }) as unknown as AudioEngine;
+
+    fake.register(spec);
+    fake.register(spec);
+
+    const state = fake as unknown as {
+      registered: Map<string, unknown>;
+      pending: unknown[];
+    };
+    expect(state.registered.size).toBe(1);
+    expect(state.pending).toHaveLength(1);
   });
 });
 

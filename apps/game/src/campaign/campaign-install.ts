@@ -65,6 +65,7 @@ import type { ScenarioBuilder, StartCondition } from '../game/Scenarios';
 import { ctx } from '../game/context';
 import { NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
+import { setCampaignContentHint } from '../core/content-closure';
 
 import { medalFor, newOperationState, runDirector } from './Director';
 import { LAYOUTS, operationById } from './index';
@@ -304,6 +305,17 @@ export function armOperation(operationId: string, difficulty: number): Operation
   const session = new Session(op, difficulty);
   armed = session;
 
+  // This chunk already owns the complete operation table. Gather every branch
+  // here so the entry chunk never has to import or understand campaign data.
+  const effects = op.triggers.flatMap((trigger) => trigger.then);
+  setCampaignContentHint({
+    operation: op.id,
+    layout: op.layout,
+    reinforcementUnits: effects.flatMap((effect) => effect.do === 'spawnUnits' ? [effect.key] : []),
+    evaLines: effects.flatMap((effect) => effect.do === 'eva' ? [effect.line] : []),
+    effectKinds: effects.map((effect) => effect.do),
+  });
+
   setPlannedOperation({
     id: op.id,
     preset: op.map.preset,
@@ -333,6 +345,7 @@ export function armOperation(operationId: string, difficulty: number): Operation
  */
 export function disarmOperation(): void {
   armed = null;
+  setCampaignContentHint(null);
   endOperationSession();
   setPlannedOperation(null);
   setCampaignLayout(null);

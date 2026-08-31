@@ -296,11 +296,14 @@ This is an index, not a duplicate checklist:
   product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   POC; do not roll compression across every family until cold-load timing and image parity pass.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-5 are implemented on the
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-6 are implemented on the
   dedicated roadmap branch: boot telemetry/baselines, static title policy, one honestly rejected
   offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
-  not blanket approval of the remaining foliage catalogue. Continue
-  at Batch 6 (generated content dependency closure). Do not promote the rejected Float32 cooked
+  generated match-content closure now gates reveal on complete definition/faction provider proofs;
+  generic meshes cannot mask an exact RenderBridge miss, direct replay starts are revalidated, and
+  registered first-use SFX no longer disappear during background baking. This is not
+  blanket approval of the remaining foliage catalogue. Continue at Batch 7 (packaged compression
+  and pipeline gates). Do not promote the rejected Float32 cooked
   delivery or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.

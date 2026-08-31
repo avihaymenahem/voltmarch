@@ -28,6 +28,10 @@ import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
 import {
+  contentClosureEpoch, declareContentDelivery, markContentProviderReady, plannedCampaignContentHint,
+  requestContentDelivery, setContentDeliveryState,
+} from '../core/content-closure';
+import {
   BuildTab, EntityFlag, EntityKind, Faction, FxKind, OrderKind, RenderPhase,
   type EntityId, type IAudio, type PlayerId, type RenderContext,
 } from '../core/types';
@@ -361,6 +365,29 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { world, debug } = ctx();
+    const closureEpoch = contentClosureEpoch();
+
+    // Sound preparation is explicit in the closure even though the full bank
+    // stays off the boot critical path. Readiness is published only after the
+    // registered first-use queue (SFX) or on-demand synthesizer (voice) exists.
+    const audioDeliveries = ['audio/sfx/procedural-bank', 'audio/eva/common/voice-bank'];
+    for (const key of audioDeliveries) {
+      declareContentDelivery({
+        key,
+        owner: 'audio',
+        critical: false,
+        fallback: 'live/on-demand procedural audio, or intentional silence without WebAudio',
+      });
+    }
+    const campaignEvaDeliveries = (plannedCampaignContentHint()?.evaLines ?? []).map(
+      (line) => `audio/eva/campaign/${line}`,
+    );
+    for (const key of campaignEvaDeliveries) {
+      declareContentDelivery({
+        key, owner: 'audio:campaign-eva', critical: false,
+        fallback: 'on-demand EVA synthesis and subtitle, or intentional silence without WebAudio',
+      });
+    }
 
     const muted = (shotMode() && AUDIO_MUTE_IN_SHOT_MODE) || flag('audio') === 'off';
     const firstAudioBoot = !battlefieldAudioPrepared;
@@ -368,6 +395,10 @@ export default defineSystem({
     engine = applicationAudio?.engine ?? null;
     music = applicationAudio?.music ?? null;
     if (engine === null) {
+      for (const key of [...audioDeliveries, ...campaignEvaDeliveries]) {
+        setContentDeliveryState(key, 'fallback-ready', closureEpoch);
+      }
+      markContentProviderReady('audio', closureEpoch);
       console.info('[audio] WebAudio unavailable — running silent');
       return;
     }
@@ -378,6 +409,11 @@ export default defineSystem({
     // `engine` is module state, so TypeScript cannot preserve the narrowing
     // across the first-boot branch even though its null arm returned above.
     if (liveEngine === null) return;
+
+    // `AudioEngine.play` now accepts a registered-but-unbaked event, shares the
+    // in-flight bake, and flushes it once without replaying its original delay.
+    // That is a real fallback contract, unlike the old optimistic state write.
+    setContentDeliveryState(audioDeliveries[0], 'fallback-ready', closureEpoch);
 
     liveEngine.setPanResolver(makeResolver());
 
@@ -401,6 +437,10 @@ export default defineSystem({
       onSubtitle: subtitle('UNIT'),
     });
     ambience = new AmbienceRig(liveEngine);
+    setContentDeliveryState(audioDeliveries[1], 'fallback-ready', closureEpoch);
+    for (const key of campaignEvaDeliveries) {
+      setContentDeliveryState(key, 'fallback-ready', closureEpoch);
+    }
 
     /* -- the IAudio port --------------------------------------------------- */
     const port: IAudio = {
@@ -463,8 +503,10 @@ export default defineSystem({
       const evaRef = eva;
       const barkRef = barks;
       if (firstAudioBoot && battlefieldAudioPreparation === null) {
+        requestContentDelivery(audioDeliveries[0], 'audio:sfx-bake', closureEpoch);
         battlefieldAudioPreparation = (async (): Promise<void> => {
           await liveEngine.bakeAll();
+          setContentDeliveryState(audioDeliveries[0], 'ready', closureEpoch);
           await liveEngine.initReverb('temperate');
           battlefieldAudioPrepared = true;
           const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -479,8 +521,16 @@ export default defineSystem({
       }
       const bankReady = battlefieldAudioPreparation ?? Promise.resolve();
       void bankReady.then(async (): Promise<void> => {
+        requestContentDelivery(audioDeliveries[1], 'audio:voice-bake', closureEpoch);
+        for (const key of campaignEvaDeliveries) {
+          requestContentDelivery(key, 'audio:voice-bake', closureEpoch);
+        }
         const voiceStarted = typeof performance !== 'undefined' ? performance.now() : 0;
         await evaRef.bakeAll();
+        setContentDeliveryState(audioDeliveries[1], 'ready', closureEpoch);
+        for (const key of campaignEvaDeliveries) {
+          setContentDeliveryState(key, 'ready', closureEpoch);
+        }
         await barkRef.prebake(['allied_infantry', 'soviet_infantry', 'allied_vehicle', 'soviet_vehicle']);
         const voiceEnded = typeof performance !== 'undefined' ? performance.now() : 0;
         console.info(`[audio] voices ready (+${Math.round(voiceEnded - voiceStarted)} ms in the background)`);
@@ -503,6 +553,9 @@ export default defineSystem({
       stolen: engine?.stats.stolen ?? 0,
       culled: engine?.stats.culled ?? 0,
       crowded: engine?.stats.crowded ?? 0,
+      audioDeferred: engine?.stats.deferredAccepted ?? 0,
+      audioDeferredFlushed: engine?.stats.deferredFlushed ?? 0,
+      audioDeferredFailed: engine?.stats.deferredBakeFailed ?? 0,
       layer: music?.currentLayer ?? 0,
       heat: music?.intensity ?? 0,
       rawHeat: music?.rawHeat ?? 0,
@@ -518,6 +571,7 @@ export default defineSystem({
       matchArmed: matchStartAt >= 0,
       bootLine: bootLineFired,
     }));
+    markContentProviderReady('audio', closureEpoch);
   },
 
   frame(r: RenderContext): void {

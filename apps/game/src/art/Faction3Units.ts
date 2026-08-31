@@ -104,6 +104,10 @@ import { UNIT_LADDER, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId } from '../core/types';
 import { mapConcurrent } from '../core/async-pool';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, requestArtAssetFamily,
+} from '../core/content-closure';
 import { GreebleFactory } from './Greeble';
 import { MassRole, type MassDef, type SocketSpec, type UnitMassList } from './MassList';
 import { UnitLibrary, type UnitModel } from './UnitFactory';
@@ -1572,18 +1576,18 @@ export interface MeridianBuildReport {
  * on `src/game/**`, which is the same discipline `sim/AIStrategy.ts` follows
  * with `DefLookup`.
  *
- * REGISTRATION FACTION. Every model goes on at `FACTION_ANY`, not at
- * `Faction.Meridian`, and that is correct rather than a shortcut:
- * `RenderBridge.factionSlot()` packs 0..2 and folds everything else onto the
- * wildcard slot, so a faction-3 registration IS a FACTION_ANY registration —
- * and it is also the honest description, because each of these defIds belongs
- * to exactly one army and can never be resolved for another.
+ * REGISTRATION FACTION. Per-definition models go on at `FACTION_ANY` because
+ * each defId belongs to exactly one army; the per-kind fallback goes on the
+ * real `Faction.Meridian` slot. `RenderBridge.factionSlot()` is derived from
+ * `FACTION_COUNT`, so slot 3 has been distinct from the wildcard since the
+ * Meridian faction became part of the shipped roster.
  */
 export async function buildAndRegisterMeridianUnits(
   atlasSize: number,
   unitId: Readonly<Record<string, number>>,
   immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<MeridianBuildReport> {
+  const closureEpoch = contentClosureEpoch();
   const models: UnitModel[] = [];
   const failed: string[] = [];
 
@@ -1606,13 +1610,28 @@ export async function buildAndRegisterMeridianUnits(
     family.key === 'meridian_wayfarer'
       || family.key === 'meridian_hierarch'
       || family.key === 'meridian_tidewalker');
+  const infantryDependencies = new Map(infantryFamilies.map((family) => [
+    family.key,
+    family.roles.flatMap((role) => declareArtAssetFamily({
+      domain: 'unit', faction: Faction.Meridian, key: role.modelKey,
+      owner: 'art.faction3:infantry', fallback: 'validated procedural Pact unit model',
+    })),
+  ]));
+  for (const family of infantryFamilies) {
+    if (family.roles.every((role) => meridianUnitLibrary.get(role.modelKey) !== undefined)) {
+      markArtAssetFamilyFallbackReady(infantryDependencies.get(family.key) ?? [], closureEpoch);
+    }
+  }
   const loadInfantry = (progressive = false) => mapConcurrent(
     infantryFamilies, progressive ? 1 : importedUnitConcurrency(), async (infantryFamily) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = infantryDependencies.get(infantryFamily.key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction3:infantry', closureEpoch);
     try {
       const variants = await loadImportedInfantryFamily(
         infantryFamily, (key) => meridianUnitLibrary.get(key),
       );
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
       console.info(`[units] imported shared ${infantryFamily.label} body for ${variants.size} roles`);
       return variants;
     } catch (error) {
@@ -1632,9 +1651,23 @@ export async function buildAndRegisterMeridianUnits(
     'meridian_cutter', 'meridian_corvette', 'meridian_monitor',
     'meridian_lighter', 'meridian_argosy',
   ] as const;
+  const importedDependencies = new Map<string, readonly string[]>(importedKeys.map((key) => [
+    key,
+    declareArtAssetFamily({
+      domain: 'unit', faction: Faction.Meridian, key,
+      owner: 'art.faction3:vehicle', fallback: 'validated procedural Pact unit model',
+    }),
+  ]));
+  for (const key of importedKeys) {
+    if (meridianUnitLibrary.get(key) !== undefined) {
+      markArtAssetFamilyFallbackReady(importedDependencies.get(key) ?? [], closureEpoch);
+    }
+  }
   const loadImportedKeys = (keys: readonly string[], progressive = false) => mapConcurrent(
     keys, progressive ? 1 : importedUnitConcurrency(), async (key) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = importedDependencies.get(key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction3:vehicle', closureEpoch);
     const spec = IMPORTED_UNIT_SPECS.find((candidate) => candidate.key === key);
     const model = meridianUnitLibrary.get(key);
     if (spec === undefined || model === undefined) return null;
@@ -1642,6 +1675,7 @@ export async function buildAndRegisterMeridianUnits(
       const mesh = progressive
         ? await loadImportedUnitOverride(model, spec, true)
         : await loadImportedUnitOverride(model, spec);
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
       console.info(`[units] imported ${spec.label} with LOD and shadow proxy`);
       return [key, mesh] as const;
     } catch (error) {
@@ -1694,13 +1728,8 @@ export async function buildAndRegisterMeridianUnits(
   // (a scenario placement, a debug spawn) draws Pact art instead of the
   // bridge's hazard box.
   //
-  // These land on the WILDCARD slot, because `factionSlot()` folds 3 onto it —
-  // i.e. they become the bridge's LAST-RESORT entry for the kind. That is the
-  // right place for them and it takes nothing away from the other two armies:
-  // resolution tries (kind, faction, defId), then (kind, ANY, defId), then
-  // (kind, faction, -1) — and `units.system.ts` registers a (kind, faction, -1)
-  // default for Allies, Soviets AND Neutral, so all three are answered before
-  // the chain ever reaches here.
+  // These land on Meridian's real faction slot. They answer malformed/debug
+  // `defId = -1` only for Meridian and cannot become another army's fallback.
   const wayfarer = meshFor('meridian_wayfarer');
   const solarch = meshFor('meridian_solarch');
   if (wayfarer !== null) {

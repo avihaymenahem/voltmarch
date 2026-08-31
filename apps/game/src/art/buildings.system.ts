@@ -92,8 +92,22 @@ import {
 } from './BuildingFactory';
 import { STRUCTURE_FEATURE } from './structure-anim';
 import { isArtFactionPlanned } from './boot-plan';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, markContentProviderReady,
+  requestArtAssetFamily,
+} from '../core/content-closure';
+import { buildingProviderBindingsReady } from './provider-readiness';
 
 interface BuildingGlobal { __vmBuildings?: unknown; }
+
+function originalFactionForModel(key: string): Faction {
+  return key.startsWith('soviet_')
+    ? Faction.Soviets
+    : key.startsWith('allied_')
+      ? Faction.Allies
+      : Faction.Neutral;
+}
 
 /**
  * Content key -> one model PER ARMY, for the keys whose def is faction-neutral.
@@ -1977,6 +1991,7 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { sceneRig, loop, world, debug } = ctx();
+    const closureEpoch = contentClosureEpoch();
     configureImportedStructureTextureLoader();
     const size = atlasSizeFor(loop.quality);
     const t0 = Date.now();
@@ -2027,6 +2042,21 @@ export default defineSystem({
           ? isArtFactionPlanned(Faction.Soviets)
           : true;
     });
+    const importedDependencies = new Map(importedSpecs.map((spec) => [
+      spec.key,
+      declareArtAssetFamily({
+        domain: 'building',
+        faction: originalFactionForModel(spec.key),
+        key: spec.key,
+        owner: 'art.buildings:structure',
+        fallback: 'validated procedural structure with construction shader',
+      }),
+    ]));
+    for (const spec of importedSpecs) {
+      if (buildingLibrary.get(spec.key) !== undefined) {
+        markArtAssetFamilyFallbackReady(importedDependencies.get(spec.key) ?? [], closureEpoch);
+      }
+    }
     const loadSpecs = (
       specs: readonly ImportedStructureSpec[],
       progressive = false,
@@ -2035,12 +2065,16 @@ export default defineSystem({
       progressive ? 1 : importedStructureConcurrency(),
       async (spec) => {
         if (progressive) await waitForBattlefieldIdle();
+        const dependencyKeys = importedDependencies.get(spec.key) ?? [];
+        requestArtAssetFamily(dependencyKeys, 'art.buildings:structure', closureEpoch);
         const model = buildingLibrary.get(spec.key);
         if (model === undefined) return null;
         try {
-          return [spec.key, await loadImportedStructureOverride(
+          const result = [spec.key, await loadImportedStructureOverride(
             model, spec, undefined, progressive,
           )] as const;
+          markArtAssetFamilyReady(dependencyKeys, closureEpoch);
+          return result;
         } catch (error) {
           // An optional art asset must never make the match unbootable. The
           // validated procedural structure remains the exact fallback.
@@ -2218,6 +2252,20 @@ export default defineSystem({
 
     debug.counters.structModels = built.length;
     debug.counters.structDraws = parts;
+
+    const proceduralRosterReady = (faction: Faction): boolean => (
+      buildingProviderBindingsReady(binding.tables, faction)
+      && STRUCTURE_MASS_LISTS.filter((list) => (
+        list.faction === (faction === Faction.Allies ? 'allies' : 'soviets')
+      ))
+        .every((list) => buildingLibrary.get(list.key) !== undefined)
+    );
+    if (isArtFactionPlanned(Faction.Allies) && proceduralRosterReady(Faction.Allies)) {
+      markContentProviderReady('art-building/1', closureEpoch);
+    }
+    if (isArtFactionPlanned(Faction.Soviets) && proceduralRosterReady(Faction.Soviets)) {
+      markContentProviderReady('art-building/2', closureEpoch);
+    }
 
     if (paradeRequested()) paradeRoot = buildParade(sceneRig.scene, built);
   },

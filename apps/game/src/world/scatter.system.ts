@@ -64,6 +64,11 @@ import {
   installImportedEntityProps, installProceduralEntityProps,
 } from './entity-props.system';
 import { DecalKind, groundDecals } from './Decals';
+import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, markContentProviderReady,
+  requestArtAssetFamily,
+} from '../core/content-closure';
 
 declare const globalThis: { __vmScatter?: Scatter } & typeof window;
 
@@ -92,11 +97,16 @@ async function promoteImportedFoliage(
   presentation: Exclude<FoliagePresentation, 'procedural'>,
   generation: number,
   debug: ReturnType<typeof ctx>['debug'],
+  dependencies: ReadonlyMap<string, readonly string[]>,
+  closureEpoch: number,
 ): Promise<void> {
   let ktx2Lease: EnvironmentKTX2Lease | null = null;
   let families: Awaited<ReturnType<typeof loadImportedFoliage>> | null = null;
   let adopted = false;
   try {
+    for (const keys of dependencies.values()) {
+      requestArtAssetFamily(keys, 'world.scatter', closureEpoch);
+    }
     ktx2Lease = acquireEnvironmentKTX2Loader(renderer);
     families = await loadImportedFoliage(biome);
     if (foliageLoadGeneration !== generation || scatter !== target) {
@@ -105,6 +115,9 @@ async function promoteImportedFoliage(
       return;
     }
     const installed = target.installImportedFoliage(families);
+    for (const key of families.keys()) {
+      markArtAssetFamilyReady(dependencies.get(key) ?? [], closureEpoch);
+    }
     adopted = true;
     installImportedEntityProps(families);
     debug.setCounter('importedFoliageFamilies', installed);
@@ -142,6 +155,7 @@ export default defineSystem({
     }
 
     const { world, sceneRig, handle, debug } = ctx();
+    const closureEpoch = contentClosureEpoch();
     const terrain = getTerrain();
     if (terrain === null) {
       // Terrain owns the heightfield, the surface splat and the pass grid.
@@ -262,6 +276,22 @@ export default defineSystem({
     }
 
     scatter.generate();
+    const environmentDependencies = new Map(ENVIRONMENT_ASSET_KEYS.map((key) => [
+      key,
+      declareArtAssetFamily({
+        domain: 'environment', map: plan.map, key, owner: 'world.scatter',
+        fallback: 'deterministic procedural environment family',
+      }),
+    ]));
+    let environmentFallbacksReady = true;
+    for (const key of ENVIRONMENT_ASSET_KEYS) {
+      if (scatter.foliage.resolution(key) === undefined) {
+        environmentFallbacksReady = false;
+        continue;
+      }
+      markArtAssetFamilyFallbackReady(environmentDependencies.get(key) ?? [], closureEpoch);
+    }
+    if (environmentFallbacksReady) markContentProviderReady('environment', closureEpoch);
     for (const key of ENVIRONMENT_ASSET_KEYS) {
       const presentation = scatter.foliage.resolution(key);
       if (presentation === undefined || presentation.source === 'procedural') continue;
@@ -368,6 +398,8 @@ export default defineSystem({
         foliagePresentation,
         foliageGeneration,
         debug,
+        environmentDependencies,
+        closureEpoch,
       );
     }
     // `flag('shot')`, not just `spec.frozen`. The intent above — "two captures

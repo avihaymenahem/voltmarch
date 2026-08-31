@@ -89,6 +89,10 @@ import {
 import { mapConcurrent } from '../core/async-pool';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, requestArtAssetFamily,
+} from '../core/content-closure';
+import {
   configureImportedStructureTextureLoader,
   loadImportedStructureOverride,
   type ImportedStructureSpec,
@@ -1885,9 +1889,8 @@ export interface ReclaimStructureReport {
  * these defIds belongs to exactly one army and can never resolve for another.
  * The per-KIND default goes on at `Faction.Reclaim`, which is a REAL slot
  * rather than the wildcard: `RenderBridge.factionSlot()` is derived from
- * `FACTION_COUNT`, and `FACTION_COUNT` is 5, so slot 4 is this faction's own.
- * That is a change in behaviour from the Meridian pass, where slot 3 folded
- * onto the wildcard — and it is the correct one, because a
+ * `FACTION_COUNT`, and `FACTION_COUNT` is 5, so slot 4 is this faction's own,
+ * just like Meridian's slot 3. That is required because a
  * `(Building, Reclaim, -1)` default must not become the last-resort entry for
  * everybody.
  */
@@ -1896,6 +1899,7 @@ export async function buildAndRegisterReclaimStructures(
   buildingId: Readonly<Record<string, number>>,
   immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<ReclaimStructureReport> {
+  const closureEpoch = contentClosureEpoch();
   const palettes: StructurePalettes = {
     structure: RECLAIM_STRUCTURE_PALETTE,
     pad: RECLAIM_PAD_PALETTE,
@@ -1938,18 +1942,35 @@ export async function buildAndRegisterReclaimStructures(
 
   configureImportedStructureTextureLoader();
   const importedMeshes = new Map<string, KindMesh>();
+  const importedDependencies = new Map(RECLAIM_IMPORTED_STRUCTURE_SPECS.map((spec) => [
+    spec.key,
+    declareArtAssetFamily({
+      domain: 'building', faction: Faction.Reclaim, key: spec.key,
+      owner: 'art.faction4:structure',
+      fallback: 'validated procedural Reclamation structure with construction shader',
+    }),
+  ]));
+  for (const spec of RECLAIM_IMPORTED_STRUCTURE_SPECS) {
+    if (reclaimBuildingLibrary.get(spec.key) !== undefined) {
+      markArtAssetFamilyFallbackReady(importedDependencies.get(spec.key) ?? [], closureEpoch);
+    }
+  }
   const loadSpecs = (
     specs: readonly ImportedStructureSpec[],
     progressive = false,
   ) => mapConcurrent(specs, progressive ? 1 : 3, async (spec) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = importedDependencies.get(spec.key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction4:structure', closureEpoch);
     const model = reclaimBuildingLibrary.get(spec.key);
     if (model === undefined) return null;
     try {
-      return [spec.key, await loadImportedStructureOverride(
+      const result = [spec.key, await loadImportedStructureOverride(
         model, spec, reclaimBuildingLibrary.depthMaterial(),
         progressive,
       )] as const;
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
+      return result;
     } catch (error) {
       failed.push(`${spec.key} imported override: ${String(error)}`);
       return null;

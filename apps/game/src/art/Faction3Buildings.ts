@@ -65,6 +65,10 @@ import {
 import { mapConcurrent } from '../core/async-pool';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
 import {
+  contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
+  markArtAssetFamilyReady, requestArtAssetFamily,
+} from '../core/content-closure';
+import {
   configureImportedStructureTextureLoader,
   loadImportedStructureOverride,
   type ImportedStructureSpec,
@@ -1525,15 +1529,17 @@ export interface MeridianStructureReport {
  * `buildingId` is `resolveDefBinding().buildingId` — content key -> def index.
  * Passing it in keeps this module free of any dependency on `src/game/**`.
  *
- * Everything registers at `FACTION_ANY` for the same reason the units do:
- * `RenderBridge.factionSlot()` folds any faction above 2 onto the wildcard
- * slot, and each of these defIds belongs to exactly one army anyway.
+ * Per-definition models register at `FACTION_ANY` because each defId belongs
+ * to exactly one army. The per-kind fallback uses the real Meridian slot;
+ * `RenderBridge.factionSlot()` is derived from `FACTION_COUNT`, so faction 3
+ * is not the wildcard.
  */
 export async function buildAndRegisterMeridianStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
   immediateImportedKeys?: ReadonlySet<string>,
 ): Promise<MeridianStructureReport> {
+  const closureEpoch = contentClosureEpoch();
   const palettes: StructurePalettes = {
     structure: MERIDIAN_STRUCTURE_PALETTE,
     pad: MERIDIAN_PAD_PALETTE,
@@ -1569,18 +1575,35 @@ export async function buildAndRegisterMeridianStructures(
 
   configureImportedStructureTextureLoader();
   const importedMeshes = new Map<string, KindMesh>();
+  const importedDependencies = new Map(MERIDIAN_IMPORTED_STRUCTURE_SPECS.map((spec) => [
+    spec.key,
+    declareArtAssetFamily({
+      domain: 'building', faction: Faction.Meridian, key: spec.key,
+      owner: 'art.faction3:structure',
+      fallback: 'validated procedural Pact structure with construction shader',
+    }),
+  ]));
+  for (const spec of MERIDIAN_IMPORTED_STRUCTURE_SPECS) {
+    if (meridianBuildingLibrary.get(spec.key) !== undefined) {
+      markArtAssetFamilyFallbackReady(importedDependencies.get(spec.key) ?? [], closureEpoch);
+    }
+  }
   const loadSpecs = (
     specs: readonly ImportedStructureSpec[],
     progressive = false,
   ) => mapConcurrent(specs, progressive ? 1 : 3, async (spec) => {
     if (progressive) await waitForBattlefieldIdle();
+    const dependencyKeys = importedDependencies.get(spec.key) ?? [];
+    requestArtAssetFamily(dependencyKeys, 'art.faction3:structure', closureEpoch);
     const model = meridianBuildingLibrary.get(spec.key);
     if (model === undefined) return null;
     try {
-      return [spec.key, await loadImportedStructureOverride(
+      const result = [spec.key, await loadImportedStructureOverride(
         model, spec, meridianBuildingLibrary.depthMaterial(),
         progressive,
       )] as const;
+      markArtAssetFamilyReady(dependencyKeys, closureEpoch);
+      return result;
     } catch (error) {
       failed.push(`${spec.key} imported override: ${String(error)}`);
       return null;
@@ -1631,9 +1654,8 @@ export async function buildAndRegisterMeridianStructures(
   // the least damaging choice for the same reason `buildings.system.ts` picks
   // the barracks: 2x2 is the modal footprint and it is the plainest silhouette
   // in the roster, so a base of them reads as a base rather than as eight
-  // Conclaves. It lands on the wildcard slot (`factionSlot()` folds 3 onto it)
-  // and is therefore the LAST-RESORT entry — the Allied, Soviet and Neutral
-  // (kind, faction, -1) defaults are all resolved before the chain reaches it.
+  // Conclaves. It lands on Meridian's own slot, so it cannot become a
+  // last-resort fallback for Allied, Soviet, Neutral or Reclamation art.
   const fallback = meshFor('meridian_chapterhouse');
   if (fallback !== null) {
     registerKindMesh(EntityKind.Building, 3 as Faction, fallback, -1);
