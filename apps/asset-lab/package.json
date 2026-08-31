@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@voltmarch/assets": "*",
+    "@voltmarch/gltf-runtime": "*",
     "three": "0.185.1"
   },
   "devDependencies": {

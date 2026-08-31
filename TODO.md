@@ -100,17 +100,21 @@ with no number is untracked, and that is itself the bug.
   the mixed compile span and first-paint submission. Exercise VFX, LOD, construction and weather
   after reveal and require zero unexpected new pipelines, then run 10-20 same-process matches and
   prove program/pipeline counts and renderer RSS plateau before changing cache retention or keys.
+  Include fresh Meridian boot, retained-renderer dispose/reboot and a development teardown during
+  `compileAsync()` with fatal-console capture. A stale HMR window exposed a disposed-depth-texture
+  context once; fresh isolated Electron/WebGPU passed, so this is a lifecycle regression gate rather
+  than a material fix.
 
 ---
 
 ## Package boundaries
 
-- **Batch 11 — extract the narrow GLTF runtime seam.** *(untracked — order and gates owned by
-  `docs/AAA_TECHNICAL_ROADMAP.md`)* Game and Asset Lab are the two real consumers. Extract only the
-  renderer-injected GLTF/Meshopt/KTX2 lifecycle into `@voltmarch/gltf-runtime`, preserve one exact
-  Three peer and validated fallbacks, and record pre/post production chunk count, bytes and complete
-  asset-readiness timing. Do not create generic `core` or `engine` packages and do not call the move
-  a boot optimization unless the emitted graph or measured readiness improves.
+- **Batch 12 — extract the narrow audio runtime seam.** *(untracked — order and gates owned by
+  `docs/AAA_TECHNICAL_ROADMAP.md`)* Break the `AudioEngine`/`Samples` cycle first, then extract only
+  WebAudio lifecycle, buses and buffer utilities shared by Game and the browser audio probe into
+  `@voltmarch/audio-runtime`. Keep recipes, EVA, barks, music policy, positional integration and
+  `audio.system.ts` local. Require pre/post graph, production closure, audio-readiness and accepted
+  first-use-event evidence; package movement alone is not a boot optimization.
 
 ---
 

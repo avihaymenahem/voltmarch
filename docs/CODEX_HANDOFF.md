@@ -310,7 +310,7 @@ This is an index, not a duplicate checklist:
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   proof. A reproducible six-file Allied candidate saves 43.34% of its source bytes but missed the
   complete family-ready p95 gate on both renderers, so those source GLBs remain the default.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-10 have completed their bounded
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-11 have completed their bounded
   implementation/decision passes on local
   `main`: boot telemetry/baselines, static title policy, one honestly rejected
   offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
@@ -328,10 +328,14 @@ This is an index, not a duplicate checklist:
   Intel and packaged-Electron validation closes. Batch 10 replaces random base grime with
   deterministic role/biome/exit-aligned wear through the existing one-draw decal pool: the fixed
   fixture moves 41 -> 14 live marks and leaves 318 rather than 291 static slots with identical
-  WebGL/WebGPU accepted-mark fingerprints and exact paired GPU/wall median parity. Continue at Batch
-  11's narrow Game/Asset-Lab GLTF runtime
-  extraction. Do not expand the compute pilot, promote either rejected cook, create generic
-  `core`/`engine` packages or infer that package extraction is itself a boot optimization.
+  WebGL/WebGPU accepted-mark fingerprints and exact paired GPU/wall median parity. Batch 11 extracts
+  the shared Game/Asset-Lab GLTF/Meshopt/KTX2 lifecycle into narrow `/gltf` and `/ktx2` package
+  subpaths while retaining Game telemetry and content policy. JS chunk counts and runtime requests
+  are unchanged; removing Asset Lab's redundant Basis copy cuts its deployment by 585,853 bytes.
+  Timing is mixed/noisy and makes no boot claim. Continue at Batch 12's narrow audio-runtime seam,
+  first breaking the `AudioEngine`/`Samples` cycle. Do not expand the compute pilot, promote either
+  rejected cook, create generic `core`/`engine` packages or infer that package extraction is itself
+  a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the
@@ -347,7 +351,11 @@ This is an index, not a duplicate checklist:
 - Use a separate worktree for invasive or long-running rounds so other programs/tasks are not
   interrupted.
 - Keep only one browser/game instance unless the test itself requires more; stale Electron/browser
-  processes have previously caused 100% GPU usage and misleading failures.
+  processes have previously caused 100% GPU usage and misleading failures. Restart desktop dev after
+  workspace dependency or renderer-topology edits: teardown during Three r185's yielding
+  `compileAsync()` can leave queued dev work pointing at a disposed depth texture and report an
+  undefined WebGPU depth-stencil format even when a fresh isolated Electron smoke passes. The open
+  pipeline-retention gate owns fresh boot, retained-renderer reboot and teardown-during-compile arms.
 - When asked to open desktop dev mode, use the actual Electron desktop path and WebGPU, not a locked
   screenshot fixture. Confirm camera and live 3D updates rather than only confirming that HUD input
   reacts.

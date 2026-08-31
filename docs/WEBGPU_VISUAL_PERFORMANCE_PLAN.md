@@ -167,7 +167,13 @@ batch claims runtime parity rather than a frame-time improvement. `?basewear=leg
 Exact commands, captures, caveats and industry mapping are in
 `docs/reviews/batch9-10-framegraph-visual-depth.md`.
 
-The next mainline slice is Batch 11's narrow Game/Asset-Lab GLTF runtime extraction, while the
+Batch 11 extracts Game and Asset Lab's shared GLTF/Meshopt/KTX2 lifecycle into narrow package
+subpaths without changing the visual graph. Game and Asset Lab chunk counts are unchanged, KTX2
+traffic is exact parity and Asset Lab deployment falls 585,853 bytes after removing a redundant
+Basis copy. Mixed readiness timings are observational, not a boot-speed claim. Exact architecture,
+bundle and review evidence is in `docs/reviews/batch11-gltf-runtime-package.md`.
+
+The next mainline slice is Batch 12's narrow Game/audio-probe runtime extraction, while the
 representative-device frame-graph matrix closes in parallel.
 
 ### Pipeline attribution checkpoint

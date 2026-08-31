@@ -101,7 +101,7 @@ Baseline and phase telemetry
 
 ## Implementation checkpoint - 2026-08-31
 
-The first ten batches have completed their bounded implementation/decision pass on local `main`:
+The first eleven batches have completed their bounded implementation/decision pass on local `main`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -207,12 +207,21 @@ The first ten batches have completed their bounded implementation/decision pass 
     the protected final 128 of 384 static slots, and retains
     `?basewear=legacy|off`. Exact evidence is in
     `docs/reviews/batch9-10-framegraph-visual-depth.md`.
+11. **Shared GLTF runtime seam: extracted with runtime parity.** Game and Asset Lab now consume the
+    narrow `@voltmarch/gltf-runtime/gltf` and `/ktx2` subpaths while Game keeps telemetry and content
+    policy local. One exact Three 0.185.1 peer, matching Meshopt decoder, renderer-first KTX2 support
+    detection and a reference-counted two-worker pool are enforced by package and integration tests.
+    Game and Asset Lab JS chunk counts are unchanged; compressed JS changes are +187 and +158 gzip
+    bytes. Removing Asset Lab's redundant copied Basis directory cuts the deployment by 585,853
+    bytes, while index/infantry critical transfer changes only +177/+23 bytes and KTX2 traffic is
+    exact parity. Mixed timing cells are observational and support no boot-speed claim. See
+    `docs/reviews/batch11-gltf-runtime-package.md`.
 
-The next move is Batch 11's narrow package extraction, beginning with the real Game/Asset Lab
-`@voltmarch/gltf-runtime` seam and pre/post chunk evidence. In parallel, close Batch 9's AMD,
-Intel/iGPU and packaged-Electron validation cells. Batch 8 must not expand to neutral props unless a
-redesigned or denser-scene arm wins whole-frame, and conditional WASM work remains behind a measured
-top-kernel gate.
+The next move is Batch 12's narrow `@voltmarch/audio-runtime` extraction shared by Game and the
+browser audio probe, beginning by breaking the `AudioEngine`/`Samples` cycle. In parallel, close
+Batch 9's AMD, Intel/iGPU and packaged-Electron validation cells. Batch 8 must not expand to neutral
+props unless a redesigned or denser-scene arm wins whole-frame, and conditional WASM work remains
+behind a measured top-kernel gate.
 
 ## Batch 1 - current baseline and phase instrumentation
 
@@ -394,12 +403,14 @@ facades and pre/post production chunk evidence.
 
 ### First justified packages
 
-1. `@voltmarch/gltf-runtime`: shared GLTF/Meshopt/KTX2 lifecycle for Game and Asset Lab. Inject the
-   renderer, transcoder URL and worker limit; keep one exact Three peer. Share geometry helpers only
-   after equality fixtures prove identical semantics.
-2. `@voltmarch/audio-runtime`: WebAudio lifecycle, buses and buffer utilities shared by the game and
-   browser audio probe. First break the `AudioEngine`/`Samples` cycle. Keep game recipes, EVA, barks,
-   music policy, positional adapter and `audio.system.ts` local.
+1. **Complete:** `@voltmarch/gltf-runtime` now owns the shared GLTF/Meshopt/KTX2 lifecycle for Game
+   and Asset Lab behind explicit `/gltf` and `/ktx2` exports. It injects renderer, transcoder URL and
+   worker limit, retains one exact Three peer and leaves geometry/content policy with callers. The
+   extraction preserves runtime traffic and removes 585,853 deployed Asset Lab bytes; see
+   `docs/reviews/batch11-gltf-runtime-package.md`.
+2. **Next:** `@voltmarch/audio-runtime`: WebAudio lifecycle, buses and buffer utilities shared by
+   the game and browser audio probe. First break the `AudioEngine`/`Samples` cycle. Keep game recipes,
+   EVA, barks, music policy, positional adapter and `audio.system.ts` local.
 3. `@voltmarch/procedural-kernels`: pure surface, terrain and water typed-array kernels plus data
    protocol, shared by the worker, main-thread fallback and benchmark/visual tools. This is the
    natural future WASM ABI host.

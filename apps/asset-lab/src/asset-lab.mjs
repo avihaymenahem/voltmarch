@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { createGltfLoader } from '@voltmarch/gltf-runtime/gltf';
+import { createKtx2LoaderPool } from '@voltmarch/gltf-runtime/ktx2';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildAssetCatalog, catalogSummary } from './catalog.mjs';
 import { boundedPixelRatio, disableThreeWebGlFallback, installGpuFailureBoundary, withTimeout } from './webgpu-safety.mjs';
@@ -30,6 +29,10 @@ ui['file-total'].textContent = summary.files.toLocaleString();
 
 let renderer;
 let ktx2Loader;
+const ktx2Pool = createKtx2LoaderPool({
+  transcoderPath: __ASSET_LAB_BASIS_PATH__,
+  workerLimit: 2,
+});
 let scene;
 let camera;
 let controls;
@@ -81,9 +84,7 @@ async function start() {
   renderer.shadowMap.enabled = true;
   renderer.info.autoReset = false;
   ui.backend.textContent = forceWebGl ? 'WEBGL2 · EXPLICIT COMPARISON' : 'WEBGPU · PRIMARY';
-  ktx2Loader = new KTX2Loader().setWorkerLimit(2);
-  ktx2Loader.setTranscoderPath(__ASSET_LAB_BASIS_PATH__);
-  ktx2Loader.detectSupport(renderer);
+  ktx2Loader = ktx2Pool.acquire(renderer);
 
   const gpuDevice = renderer.backend?.device;
   const gpuGuard = installGpuFailureBoundary(gpuDevice, reportFatal);
@@ -279,9 +280,7 @@ async function loadFile(file) {
 }
 
 function createLoader() {
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  loader.setKTX2Loader(ktx2Loader);
-  return loader;
+  return createGltfLoader({ ktx2Loader });
 }
 
 function showGltf(gltf, byteLength) {
@@ -556,7 +555,7 @@ function disposeScene(root) {
 if (import.meta.hot) import.meta.hot.dispose(() => {
   cancelAnimationFrame(raf);
   controls?.dispose();
-  ktx2Loader?.dispose();
+  ktx2Pool.dispose();
   renderer?.dispose();
   disposeScene(displayRoot);
 });

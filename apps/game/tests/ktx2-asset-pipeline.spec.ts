@@ -48,18 +48,20 @@ describe('the imported Soviet family ships through KTX2/Basis', () => {
   it('keeps the matching Three transcoder and loader wired into WebGL and WebGPU', () => {
     const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/buildings.system.ts'), 'utf8');
     const sharedLoader = fs.readFileSync(path.join(root, 'apps/game/src/art/RuntimeKTX2Loader.ts'), 'utf8');
+    const sharedPool = fs.readFileSync(path.join(root, 'packages/gltf-runtime/src/ktx2.ts'), 'utf8');
     expect(runtime).toContain("from './RuntimeKTX2Loader'");
     expect(runtime).toContain('handle.node ?? handle.webgl');
-    expect(sharedLoader).toContain("from 'three/examples/jsm/loaders/KTX2Loader.js'");
-    expect(sharedLoader).toContain('.detectSupport(renderer');
-    expect(sharedLoader).toContain('new KTX2Loader().setWorkerLimit(2)');
+    expect(sharedLoader).toContain("from '@voltmarch/gltf-runtime/ktx2'");
+    expect(sharedLoader).toContain('createKtx2LoaderPool({');
+    expect(sharedPool).toContain("from 'three/examples/jsm/loaders/KTX2Loader.js'");
+    expect(sharedPool).toContain('candidate.detectSupport(renderer');
+    expect(sharedPool).toContain('new KTX2Loader().setWorkerLimit(options.workerLimit)');
     expect(sharedLoader).toContain("declare const __BASIS_TRANSCODER_PATH__: string");
-    expect(sharedLoader).toContain("if (__BASIS_TRANSCODER_PATH__ !== '')");
-    expect(sharedLoader).toContain('candidate.setTranscoderPath(__BASIS_TRANSCODER_PATH__)');
+    expect(sharedLoader).toContain('transcoderPath: __BASIS_TRANSCODER_PATH__');
     const vite = fs.readFileSync(path.join(root, 'apps/game/vite.config.ts'), 'utf8');
     expect(vite).toContain("'node_modules/three/examples/jsm/libs/basis'");
     expect(vite).toContain("command === 'serve' ? BASIS_DEV_PATH : ''");
-    expect(sharedLoader).toContain('consumers++');
+    expect(sharedPool).toContain('consumers++');
     expect(fs.existsSync(path.join(root, 'apps/game/public/basis'))).toBe(false);
     for (const asset of manifest.assets) {
       expect(runtime, asset.key).toContain(`soviets/compressed/${asset.file}`);

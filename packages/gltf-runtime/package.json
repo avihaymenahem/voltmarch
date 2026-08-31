@@ -1,0 +1,36 @@
+{
+  "name": "@voltmarch/gltf-runtime",
+  "private": true,
+  "license": "UNLICENSED",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./gltf": {
+      "types": "./src/gltf.ts",
+      "import": "./src/gltf.ts",
+      "default": "./dist/gltf.js"
+    },
+    "./ktx2": {
+      "types": "./src/ktx2.ts",
+      "import": "./src/ktx2.ts",
+      "default": "./dist/ktx2.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "cd ../.. && vitest run packages/gltf-runtime/test"
+  },
+  "peerDependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.3",
+    "three": "0.185.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

@@ -19,6 +19,7 @@
   "dependencies": {
     "@voltmarch/assets": "*",
     "@voltmarch/game-types": "*",
+    "@voltmarch/gltf-runtime": "*",
     "@voltmarch/protocol": "*",
     "three": "0.185.1"
   },

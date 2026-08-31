@@ -1,5 +1,5 @@
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { createGltfLoader } from '@voltmarch/gltf-runtime/gltf';
+import type { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
 
 /**
@@ -11,7 +11,7 @@ import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
  * when EXT_meshopt_compression first reaches that family.
  */
 export function createRuntimeGLTFLoader(): GLTFLoader {
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const loader = createGltfLoader();
   const loadAsync = loader.loadAsync.bind(loader);
   loader.loadAsync = async (url, onProgress) => {
     const finish = beginBootSpan('gltf', 'load-parse-decode', { asset: bootAssetLabel(url) });

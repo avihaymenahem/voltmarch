@@ -30,8 +30,11 @@ describe('the Meshopt WebAssembly loading POC', () => {
 
   it('installs one shared decoder policy in every shipping GLB loader', () => {
     const helper = fs.readFileSync(path.join(root, 'apps/game/src/art/RuntimeGLTFLoader.ts'), 'utf8');
-    expect(helper).toContain("from 'three/examples/jsm/libs/meshopt_decoder.module.js'");
-    expect(helper).toContain('new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)');
+    const shared = fs.readFileSync(path.join(root, 'packages/gltf-runtime/src/gltf.ts'), 'utf8');
+    expect(helper).toContain("from '@voltmarch/gltf-runtime/gltf'");
+    expect(helper).toContain('createGltfLoader()');
+    expect(shared).toContain("from 'three/examples/jsm/libs/meshopt_decoder.module.js'");
+    expect(shared).toContain('new GLTFLoader(options.manager).setMeshoptDecoder(MeshoptDecoder)');
 
     for (const relative of [
       'apps/game/src/art/ImportedUnitAssets.ts',
