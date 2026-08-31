@@ -6,6 +6,7 @@ import {
   removeStaleTangentAttribute,
 } from '../src/art/geometry-attributes';
 import { BIOME_NAMES } from '../src/world/Biomes';
+import { addEnvironmentRuntimeAttributes } from '../src/world/EnvironmentAssetLoader';
 import { PropLibrary } from '../src/world/PropLibrary';
 
 describe('WebGPU vertex layout regressions', () => {
@@ -98,5 +99,53 @@ describe('WebGPU vertex layout regressions', () => {
         ).toBeLessThanOrEqual(guaranteedWebGpuVertexBufferSlots);
       }
     }
+  });
+
+  it('packs textured authored foliage into WebGPU guaranteed vertex-buffer capacity', () => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.5, 0, 0,
+      0.5, 0, 0,
+      0, 1, 0,
+    ], 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute([
+      0, 0, 1,
+      0, 0, 1,
+      0, 0, 1,
+    ], 3));
+    geometry.setAttribute('tangent', new THREE.Float32BufferAttribute([
+      1, 0, 0, 1,
+      1, 0, 0, 1,
+      1, 0, 0, 1,
+    ], 4));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute([
+      0, 0,
+      1, 0,
+      0.5, 1,
+    ], 2));
+
+    addEnvironmentRuntimeAttributes(geometry, true);
+
+    expect(geometry.getAttribute('tangent')).toBeUndefined();
+    const sway = geometry.getAttribute('aSway');
+    const surface = geometry.getAttribute('aSurface');
+    expect(sway).toBeInstanceOf(THREE.InterleavedBufferAttribute);
+    expect(surface).toBeInstanceOf(THREE.InterleavedBufferAttribute);
+    expect((sway as THREE.InterleavedBufferAttribute).data)
+      .toBe((surface as THREE.InterleavedBufferAttribute).data);
+    expect(surface.itemSize).toBe(2);
+    expect(surface.getY(0)).toBeCloseTo(0.9);
+
+    const vertexBuffers = new Set<unknown>();
+    for (const attribute of Object.values(geometry.attributes)) {
+      vertexBuffers.add(attribute instanceof THREE.InterleavedBufferAttribute
+        ? attribute.data
+        : attribute);
+    }
+    // Scatter adds these as three independent instanced buffers at runtime.
+    for (const name of ['instanceMatrix', 'instanceColor', 'aSwayPhase']) {
+      vertexBuffers.add(name);
+    }
+    expect(vertexBuffers.size).toBe(8);
   });
 });

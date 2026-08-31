@@ -296,6 +296,16 @@ colour/`castShadowPositionNode` use the same authored wind contract. Clearing us
 envelope—including its spatial scan reach—rather than active LOD bounds, and a grazing-footprint test
 locks procedural/imported/emergency save outcomes together.
 
+WebGPU vertex-layout repair, 2026-08-31: the authored textured broadleaf originally reached ten
+vertex-buffer bindings after instancing—position, normal, tangent, UV, colour, sway, surface,
+instance matrix, instance colour and wind phase—while WebGPU guarantees only eight. Its LOD0 render
+pipeline could therefore fail while the cheaper geometry-only rungs survived, leaving only coarse
+tree silhouettes in an ordinary match. The runtime now removes the redundant authored tangent and
+stores the independent sway/surface attributes in one interleaved buffer, reducing the same draw to
+exactly eight bindings without changing values or instance identity. A fresh native-WebGPU dusk
+capture renders all three buckets at 328/27/13 instances; the focused 74-test vertex-layout,
+foliage, wind and node-material suite plus the production build pass.
+
 ### Gate 4 — acceptance
 
 The pilot passes only when all of the following are true:

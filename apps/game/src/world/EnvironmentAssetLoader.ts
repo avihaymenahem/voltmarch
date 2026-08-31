@@ -6,6 +6,7 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { linearColorTriple } from '../core/assets';
 import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
 import { createRuntimeGLTFLoader } from '../art/RuntimeGLTFLoader';
+import { removeStaleTangentAttribute } from '../art/geometry-attributes';
 import {
   acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader,
 } from '../art/RuntimeKTX2Loader';
@@ -618,11 +619,29 @@ function floatAttribute(
   return result;
 }
 
-function addRuntimeAttributes(geometry: THREE.BufferGeometry, wind: boolean): void {
+/**
+ * Canonicalise an authored environment primitive for WebGPU submission.
+ *
+ * Instanced props add three runtime vertex buffers (`instanceMatrix`,
+ * `instanceColor`, and `aSwayPhase`). Imported textured geometry already owns
+ * position, normal, UV, and colour buffers, so keeping `aSway` and `aSurface`
+ * separate would require nine buffers and exceed WebGPU's guaranteed limit of
+ * eight. They are independent shader attributes but share one interleaved
+ * float3 buffer here, preserving their values while spending one slot.
+ */
+export function addEnvironmentRuntimeAttributes(
+  geometry: THREE.BufferGeometry,
+  wind: boolean,
+): void {
   const position = floatAttribute(geometry, 'position', 3);
   if (position === undefined) throw new Error('[foliage] imported geometry has no positions');
   if (floatAttribute(geometry, 'normal', 3) === undefined) geometry.computeVertexNormals();
   floatAttribute(geometry, 'uv', 2);
+  // Three derives the normal-map tangent frame from derivatives when this is
+  // absent. The embedded broadleaf tangent is therefore redundant, and after
+  // world-space conditioning it is also the one extra vertex buffer that
+  // would push that family beyond WebGPU's hardware limit.
+  removeStaleTangentAttribute(geometry);
 
   if (geometry.getAttribute('color') === undefined) {
     const colours = new Float32Array(position.count * 3);
@@ -636,18 +655,17 @@ function addRuntimeAttributes(geometry: THREE.BufferGeometry, wind: boolean): vo
   const box = geometry.boundingBox;
   if (box === null) throw new Error('[foliage] imported geometry has no bounds');
   const height = Math.max(0.001, box.max.y - box.min.y);
-  const sway = new Float32Array(position.count);
-  const surface = new Float32Array(position.count * 2);
+  const runtime = new THREE.InterleavedBuffer(new Float32Array(position.count * 3), 3);
   for (let i = 0; i < position.count; i++) {
     const relativeHeight = (position.getY(i) - box.min.y) / height;
     // Keep the trunk rooted. The authored PBR LOD currently uses an ordinary
     // MeshStandardMaterial, but retaining the attribute makes the family
     // immediately compatible with the shared wind shader derivatives.
-    sway[i] = wind ? THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72) : 0;
-    surface[i * 2 + 1] = 0.9;
+    runtime.array[i * 3] = wind ? THREE.MathUtils.smoothstep(relativeHeight, 0.18, 0.72) : 0;
+    runtime.array[i * 3 + 2] = 0.9;
   }
-  geometry.setAttribute('aSway', new THREE.BufferAttribute(sway, 1));
-  geometry.setAttribute('aSurface', new THREE.BufferAttribute(surface, 2));
+  geometry.setAttribute('aSway', new THREE.InterleavedBufferAttribute(runtime, 1, 0));
+  geometry.setAttribute('aSurface', new THREE.InterleavedBufferAttribute(runtime, 2, 1));
 }
 
 function tintRockGeometry(
@@ -770,7 +788,7 @@ async function loadDelivery(
     unindexed.dispose();
   }
   geometry.name = `foliage.${def.key}.${name}`;
-  addRuntimeAttributes(
+  addEnvironmentRuntimeAttributes(
     geometry,
     def.family === 'canopy' || def.family === 'shrub' || def.family === 'grass',
   );
