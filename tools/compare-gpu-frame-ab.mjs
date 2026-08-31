@@ -7,8 +7,11 @@ if (!baselinePath || !candidatePath) {
   throw new Error('usage: node tools/compare-gpu-frame-ab.mjs <baseline.json> <candidate.json>');
 }
 
-const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
-const candidate = JSON.parse(readFileSync(candidatePath, 'utf8'));
+const readReports = (paths) => paths.split(',').map((path) => (
+  JSON.parse(readFileSync(path.trim(), 'utf8'))
+));
+const baselines = readReports(baselinePath);
+const candidates = readReports(candidatePath);
 const RESAMPLES = 200_000;
 const SEED = 0x5ca77e;
 
@@ -61,9 +64,9 @@ function compareBlocks(before, after) {
 
 const result = {};
 for (const backend of ['webgl', 'webgpu']) {
-  const before = baseline[backend]?.wallPerFrameBlocks;
-  const after = candidate[backend]?.wallPerFrameBlocks;
-  if (!Array.isArray(before) || !Array.isArray(after)) continue;
+  const before = baselines.flatMap((report) => report[backend]?.wallPerFrameBlocks ?? []);
+  const after = candidates.flatMap((report) => report[backend]?.wallPerFrameBlocks ?? []);
+  if (before.length === 0 && after.length === 0) continue;
   result[backend] = compareBlocks(before, after);
 }
 if (Object.keys(result).length === 0) throw new Error('reports share no WebGL/WebGPU block arrays');

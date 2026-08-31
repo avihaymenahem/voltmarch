@@ -113,19 +113,37 @@ The production build and a real NVIDIA Ampere WebGPU boot compiled and presented
 short smoke run is a correctness gate, not a performance claim. Fixed-seed visual review at player
 resolution remains the acceptance step for tuning cloud strength and haze distance.
 
-The next mainline visual-performance slice is **compute-driven foliage visibility and LOD
-compaction**. Scatter already stores instances chunk-sorted, performs 256 CPU AABB tests, then
-repacks and uploads each visible type prefix when the chunk set changes. The WebGPU slice should:
+### Compute-driven foliage checkpoint
 
-1. upload the immutable chunk-sorted transforms, colours, phases, live flags and chunk ranges once;
-2. compute chunk/instance visibility and LOD with hysteresis entirely in GPU storage buffers;
-3. compact LOD0/1/2 instance streams and write indirect instance counts without CPU readback;
-4. keep authoritative placement, destruction and save identity on the CPU; and
-5. prove the result first on trees and shrubs before expanding to neutral props.
+Batch 8 implements and rejects default promotion of the bounded tree/bush compute pilot. The
+dynamically loaded WebGPU controller uploads 1,648 chunk-sorted source records with immutable render
+columns and mutable live flags, compacts
+tree LOD0/1/2/shadow plus bush colour/shadow into storage-instanced streams, and writes six indexed-
+indirect instance counts with a reset plus compaction dispatch. CPU placement, 256 chunk AABB tests,
+clearing, crushing, save identity and felled masks remain authoritative; one 256-word broad-phase
+visibility table and stable live-flag changes are the only event uploads into the pilot. There is no
+steady-state readback. `foliageComputeAudit()` is an explicit harness-only readback seam.
 
-Three r185 exposes storage-instanced and indirect-storage buffer attributes plus indexed indirect
-draws, so the required primitives exist without dropping below the renderer. The current CPU path
-remains the deterministic rollback arm while this is measured.
+Correctness passes at 24 -> 62 -> 116 -> 62 -> 24 m: all five GPU stable-ID/LOD sets match the CPU
+reference exactly with zero duplicates or invalid/dead IDs. Clearing one visible pilot prop preserves
+the placement fingerprint, storage allocation and immutable upload total and again matches the CPU.
+Storage is 587,624 bytes (0.560 MiB) against a hard 4 MiB ceiling.
+
+Performance does not pass promotion. Across two fresh CPU and two fresh compute processes in ABBA
+order (40 x 60-frame blocks per arm, after 120 warmup frames), static wall/frame moves 2.038 ->
+2.594 ms (+27.27%, bootstrap 95% interval [+9.27%, +67.65%]) and the deterministic moving-camera
+fixture moves 1.730 -> 1.928 ms (+11.42%, [+4.22%, +19.22%]). After independent review corrected
+the event scope to include the candidate's residual non-pilot CPU work, compaction-event p95 moves
+0.20 -> 0.30 ms (+50%). CPU upload p95 still falls 110,628 -> 61,036 bytes (-44.83%), but lower
+traffic does not repay dispatch/storage/fixed-command cost. Compute GPU timestamps were unavailable
+on this Chrome/device cell, so no combined GPU-time claim is made.
+
+CPU compaction is therefore the default. The pilot is retained only behind
+`?gpu=webgpu&foliagecompute=gpu`; WebGL, WebGPU fallback, TRAA/TAAU and legacy scatter batching force
+CPU. Do not expand to neutral props until a redesigned or denser-scene arm produces a material
+whole-frame win. Exact evidence and the industry mapping are in
+`docs/reviews/batch8-webgpu-foliage-compute.md`. The next mainline slice is Batch 9's timestamp-led
+GPU/frame-graph optimization.
 
 ### Pipeline attribution checkpoint
 

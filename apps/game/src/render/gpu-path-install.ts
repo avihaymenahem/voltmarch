@@ -56,6 +56,7 @@ import {
   createVfxAdditiveNodeMaterial, createVfxDebrisNodeMaterial, createVfxLitNodeMaterial,
   createVfxRibbonNodeMaterial,
 } from '../vfx/vfx-node-materials';
+import { createFoliageComputeController } from './FoliageComputeNodeController';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -145,6 +146,13 @@ function disableThreeFallback(renderer: object): boolean {
 async function createNodeRenderer(
   canvas: HTMLCanvasElement, antialias: boolean,
 ): Promise<NodeRendererLike> {
+  const search = typeof location === 'undefined' ? '' : location.search;
+  const params = new URLSearchParams(search);
+  const temporalAa = params.get('aa')?.toLowerCase();
+  const foliageComputeRequested = params.get('foliagecompute')?.toLowerCase() === 'gpu'
+    && temporalAa !== 'traa'
+    && temporalAa !== 'taau'
+    && params.get('scatterbatch')?.toLowerCase() !== 'legacy';
   const renderer = new WebGPURenderer({
     canvas,
     antialias,
@@ -161,6 +169,15 @@ async function createNodeRenderer(
     // Requests the optional device feature at boot. The perf panel disables
     // writes while hidden and enables them only during an active sample.
     trackTimestamp: true,
+    /*
+     * The bounded foliage lab binds sixteen storage buffers in its compute
+     * stage. Request the higher limit only for the explicit non-temporal lab
+     * URL: ordinary WebGPU boot must retain the baseline device contract. The
+     * request fails cleanly before world construction on adapters below 16.
+     */
+    ...(foliageComputeRequested
+      ? { requiredLimits: { maxStorageBuffersPerShaderStage: 16 } }
+      : {}),
   });
   disableThreeFallback(renderer);
   await renderer.init();
@@ -363,6 +380,8 @@ export function install(): void {
         dispose: () => set.dispose(),
       };
     },
+
+    createFoliageComputeController,
 
     createShroudTintedStandard: (params) => createShroudTintedStandardNodeMaterial(params),
 

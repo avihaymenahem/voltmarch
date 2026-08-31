@@ -80,7 +80,7 @@ Baseline and phase telemetry
 | 5 | Dependency architecture Stage 0 | Internal layer/cycle rules and domain config slices preserve bundles and determinism. |
 | 6 | Generated content dependency closure | All immediately reachable match content is ready before reveal; misses trip in development. |
 | 7 | Compression and pipeline gates | Terrain-mask format, Meshopt family and pipeline-variant experiments have packaged evidence. |
-| 8 | GPU-driven foliage pilot | Same LOD policy, immutable upload, indirect counts, no readback and a material dense-frame win. |
+| 8 | GPU-driven foliage pilot | Correctness/rollback infrastructure retained; promotion rejected after dense-frame regressions. |
 | 9 | GPU/frame-graph optimization | Timestamp-led pass changes retain image quality and readability. |
 | 10 | AAA visual-depth pass | Environment states, contextual composition, material consistency, then measured shadow/temporal pilots. |
 | 11 | Narrow package extraction | Shared GLTF, audio and generation boundaries have real consumers and preserve lazy chunks. |
@@ -101,7 +101,7 @@ Baseline and phase telemetry
 
 ## Implementation checkpoint - 2026-08-31
 
-The first seven batches are complete on local `main`:
+The first eight batches have completed their bounded implementation/decision pass on local `main`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -176,9 +176,24 @@ The first seven batches are complete on local `main`:
    observed 69 node calls (56 misses), 90 pipeline lookups, 74 new pipelines and 53 GPU promises.
    A separate first-paint-submit span captures the substantial work after compile without claiming
    a GPU-completion fence. See `docs/reviews/batch7-compression-pipeline-gates.md`.
+8. **GPU-driven foliage pilot: implemented, validated and rejected as the default.** A dynamically
+   loaded native-WebGPU controller uploads 1,648 tree/bush records with immutable render columns and
+   mutable live flags, then uses one indirect-
+   count reset and one per-type/per-chunk compaction dispatch to write six colour/LOD/shadow streams.
+   CPU placement, 256 broad-phase chunk AABB tests, clearing, crushing, saves and felled masks remain
+   authoritative; there is no steady readback, and WebGL/temporal modes retain CPU compaction. Five
+   approach/recede samples match CPU stable IDs and LODs exactly, with zero duplicates/invalid IDs;
+   a live clear preserves fingerprint/storage and parity. The 0.560 MiB pilot cuts CPU upload p95
+   110,628 -> 61,036 bytes (-44.83%), but corrected all-family event p95 regresses 0.20 -> 0.30 ms
+   (+50%). It also fails the whole-frame gate decisively: static wall/frame is +27.27% and moving
+   wall/frame +11.42%, with both 95% intervals entirely above zero. CPU remains default; the bounded
+   path survives only behind
+   `?gpu=webgpu&foliagecompute=gpu`. See
+   `docs/reviews/batch8-webgpu-foliage-compute.md`.
 
-The next move is Batch 8's WebGPU compute-driven foliage pilot. Package extraction and conditional
-WASM work remain behind the evidence and dependency gates above.
+The next move is Batch 9's timestamp-led GPU/frame-graph optimization. Batch 8 must not expand to
+neutral props unless a redesigned or denser-scene arm wins whole-frame. Package extraction and
+conditional WASM work remain behind the evidence and dependency gates above.
 
 ## Batch 1 - current baseline and phase instrumentation
 

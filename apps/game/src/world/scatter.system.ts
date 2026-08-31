@@ -37,6 +37,7 @@
  *   ?foliage=procedural   force the legacy geometry for exact A/B captures
  *   ?foliage=imported     request the audited tree, falling back if unavailable
  *   ?foliage=emergency    force the packaged emergency derivative
+ *   ?foliagecompute=cpu   same-build rollback for WebGPU compaction
  * ============================================================================
  */
 
@@ -223,6 +224,8 @@ export default defineSystem({
         ? timeOfDay.localLightMaxAnchors
         : cycleLightAnchorCeiling(),
       foliagePresentation,
+      rendererBackend: handle.backend,
+      nodeRenderer: handle.node,
     });
 
     /* -- masks ------------------------------------------------------------ *

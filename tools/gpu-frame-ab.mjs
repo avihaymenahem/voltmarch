@@ -100,6 +100,10 @@ const SCATTER_BATCH = flag('scatter-batch', 'instanced');
 const SCATTER_SHADOW = flag('scatter-shadow', 'filtered');
 const SHADOW_CADENCE = flag('shadow-cadence', 'adaptive');
 const FOLIAGE = flag('foliage', '');
+const FOLIAGE_COMPUTE = flag('foliage-compute', '');
+const FOLIAGE_COMPUTE_AUDIT = argv.includes('--foliage-compute-audit');
+const CAMERA_PATH = flag('camera-path', 'static').toLowerCase();
+const GPU_TIMESTAMPS = argv.includes('--gpu-timestamps');
 const ART = flag('art', '');
 const BACKEND = flag('backend', 'both');
 const AA = flag('aa', '').toLowerCase();
@@ -116,6 +120,12 @@ if (!['adaptive', 'legacy', 'half'].includes(SHADOW_CADENCE)) {
 }
 if (!['filtered', 'legacy'].includes(SCATTER_SHADOW)) {
   throw new Error(`--scatter-shadow must be filtered or legacy; received "${SCATTER_SHADOW}"`);
+}
+if (!['', 'cpu', 'gpu'].includes(FOLIAGE_COMPUTE)) {
+  throw new Error(`--foliage-compute must be cpu or gpu; received "${FOLIAGE_COMPUTE}"`);
+}
+if (!['static', 'pan', 'band-churn'].includes(CAMERA_PATH)) {
+  throw new Error(`--camera-path must be static, pan or band-churn; received "${CAMERA_PATH}"`);
 }
 const FACTION_KEYS = ['allies', 'soviets', 'meridian', 'reclaim'];
 
@@ -187,6 +197,7 @@ async function measure(gpu) {
     if (SCATTER_SHADOW === 'legacy') qs.set('scattershadow', 'legacy');
     if (SHADOW_CADENCE !== 'adaptive') qs.set('shadowcadence', SHADOW_CADENCE);
     if (FOLIAGE) qs.set('foliage', FOLIAGE);
+    if (FOLIAGE_COMPUTE) qs.set('foliagecompute', FOLIAGE_COMPUTE);
     if (ART) qs.set('art', ART);
     await page.goto(`${server.origin}?${qs}`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
@@ -253,13 +264,49 @@ async function measure(gpu) {
       await vm.advanceFrames(Math.round(opts.settle * 60));
 
       const flush = () => vm.screenshot();
-      const presentFrames = (count) => {
+      let cameraFrame = 0;
+      let lastComputeDispatches = globalThis.__vmScatter?.computeController?.dispatches ?? 0;
+      const foliageCompactionMs = [];
+      const foliageUploadBytes = [];
+      const presentFrames = (count, collectFoliage = false) => {
         // `advanceFrames(n)` advances n presentation steps but deliberately
         // draws only the last one. That is ideal for fixture settling and was
         // disastrously wrong for timing: the old harness divided one draw plus
         // one readback by n. Drive one step per call so every timed frame is
         // actually submitted.
-        for (let i = 0; i < count; i++) vm.advanceFrames(1);
+        for (let i = 0; i < count; i++) {
+          if (opts.cameraPath === 'pan') {
+            // 30 m out-and-back triangle wave at exactly 0.5 m per frame.
+            // This crosses 8 m LOD bands and 32 m chunk edges deterministically.
+            const phase = cameraFrame % 120;
+            const offset = (phase <= 60 ? phase : 120 - phase) * 0.5 - 15;
+            vm.focusOn(256 + offset, 256, opts.distance);
+          } else if (opts.cameraPath === 'band-churn') {
+            // Diagnostic only: force the 8 m CPU cadence boundary each frame.
+            vm.focusOn(cameraFrame % 2 === 0 ? 255.9 : 256.1, 256, opts.distance);
+          }
+          cameraFrame++;
+          vm.advanceFrames(1);
+          if (collectFoliage) {
+            const scatter = globalThis.__vmScatter;
+            const dispatches = scatter?.computeController?.dispatches ?? 0;
+            const gpuEvent = scatter?.computeMode === 'gpu' && dispatches > lastComputeDispatches;
+            const cpuEvent = scatter?.computeMode !== 'gpu' && (scatter?.uploadBytes ?? 0) > 0;
+            // Keep both arms at the same scope. The pilot still pays Scatter's
+            // CPU compaction/upload cost for the 30 non-owned families, so its
+            // event is that residual work plus the compute submission.
+            const eventMs = scatter?.computeMode === 'gpu'
+              ? (scatter.computeSubmitMs ?? 0) + (scatter.uploadMs ?? 0)
+              : scatter?.uploadMs;
+            if ((gpuEvent || cpuEvent) && typeof eventMs === 'number') {
+              foliageCompactionMs.push(eventMs);
+              foliageUploadBytes.push(scatter?.uploadBytes ?? 0);
+            }
+            lastComputeDispatches = dispatches;
+          } else {
+            lastComputeDispatches = globalThis.__vmScatter?.computeController?.dispatches ?? 0;
+          }
+        }
       };
 
       // Warmup — thrown away. A first frame through a new pipeline is a shader
@@ -285,7 +332,7 @@ async function measure(gpu) {
       for (let b = 0; b < opts.blocks; b++) {
         const beforeUpdates = vm.rendererHandle.shadowScheduleStats.updates;
         const t0 = performance.now();
-        presentFrames(opts.frames);
+        presentFrames(opts.frames, true);
         shadowUpdates.push(vm.rendererHandle.shadowScheduleStats.updates - beforeUpdates);
         /*
          * STATS BEFORE THE FLUSH. `screenshot()` RENDERS ITS OWN FRAME — that
@@ -311,6 +358,85 @@ async function measure(gpu) {
       await vm.advanceFrames(2);
       await vm.waitFrames(3);
       const s = vm.stats();
+      const scatterStats = globalThis.__vmScatter?.stats?.() ?? null;
+      let foliageComputeAudit = null;
+      if (opts.foliageComputeAudit) {
+        const samples = [];
+        for (const distance of [24, 62, 116, 62, 24]) {
+          vm.focusOn(256, 256, distance);
+          vm.advanceFrames(2);
+          const audit = await globalThis.__vmScatter?.foliageComputeAudit?.() ?? null;
+          samples.push(audit === null ? { distance, available: false } : {
+            distance,
+            available: true,
+            matchesCpuReference: audit.matchesCpuReference,
+            duplicateIds: audit.duplicateIds,
+            invalidIds: audit.invalidIds,
+            gpuVisible: audit.gpu.visibleInstances,
+            gpuLods: [audit.gpu.visibleLod0, audit.gpu.visibleLod1, audit.gpu.visibleLod2],
+            gpuTriangles: audit.gpu.visibleTriangles,
+            gpuShadowTriangles: audit.gpu.visibleShadowTriangles,
+            commandCounts: audit.gpu.commands.map((command) => ({
+              key: command.key, pass: command.pass, count: command.instanceCount,
+            })),
+          });
+        }
+        const scatter = globalThis.__vmScatter;
+        let clearing = null;
+        const target = scatter?.placements?.find((placement) => (
+          placement.alive === true && placement.slot >= 0
+          && scatter.types?.[placement.slot]?.computeOwned === true
+          && scatter.chunkVisible?.[placement.chunk] !== 0
+        ));
+        if (scatter !== undefined && target !== undefined) {
+          const before = scatter.stats();
+          const fingerprint = scatter.placementFingerprint;
+          const removed = scatter.clearFootprint(
+            target.x - 0.001, target.z - 0.001, target.x + 0.001, target.z + 0.001, 0,
+          );
+          vm.advanceFrames(2);
+          const afterAudit = await scatter.foliageComputeAudit();
+          const after = scatter.stats();
+          clearing = {
+            removed,
+            liveDelta: before.props - after.props,
+            fingerprintUnchanged: scatter.placementFingerprint === fingerprint,
+            storageBytesUnchanged: before.computeStorageBytes === after.computeStorageBytes,
+            initialUploadBytesUnchanged:
+              before.computeInitialUploadBytes === after.computeInitialUploadBytes,
+            matchesCpuReference: afterAudit?.matchesCpuReference ?? false,
+            duplicateIds: afterAudit?.duplicateIds ?? -1,
+            invalidIds: afterAudit?.invalidIds ?? -1,
+          };
+        }
+        foliageComputeAudit = {
+          approachRecede: [24, 62, 116, 62, 24],
+          allMatch: samples.every((sample) => sample.available && sample.matchesCpuReference),
+          samples,
+          clearing,
+        };
+      }
+      let gpuTimestamps = null;
+      if (opts.gpuTimestamps && vm.rendererHandle.backend === 'webgpu') {
+        const renderer = vm.rendererHandle.node;
+        try {
+          renderer.backend.trackTimestamp = true;
+          presentFrames(4);
+          await flush();
+          const renderMs = await renderer.resolveTimestampsAsync('render');
+          const computeMs = await renderer.resolveTimestampsAsync('compute');
+          gpuTimestamps = {
+            renderMs: Number.isFinite(renderMs) ? renderMs : null,
+            computeMs: Number.isFinite(computeMs) ? computeMs : null,
+            combinedMs: Number.isFinite(renderMs) && Number.isFinite(computeMs)
+              ? renderMs + computeMs : null,
+          };
+        } catch (error) {
+          gpuTimestamps = { error: String(error) };
+        } finally {
+          renderer.backend.trackTimestamp = false;
+        }
+      }
       const shadowOnly = [];
       const drawableRows = [];
       let drawableCount = 0;
@@ -363,6 +489,11 @@ async function measure(gpu) {
         const v = [...a].sort((x, y) => x - y);
         return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
       };
+      const percentile = (a, p) => {
+        if (a.length === 0) return 0;
+        const v = [...a].sort((x, y) => x - y);
+        return v[Math.min(v.length - 1, Math.ceil(v.length * p) - 1)];
+      };
       return {
         backend: vm.rendererHandle.backend,
         gpu: vm.rendererHandle.capabilities.gpu,
@@ -387,7 +518,25 @@ async function measure(gpu) {
           uploadKB: s.counters.propUploadKB ?? 0,
           cullMs: s.counters.propCullMs ?? 0,
           uploadMs: s.counters.propUploadMs ?? 0,
+          compute: scatterStats === null ? null : {
+            mode: scatterStats.computeMode,
+            sourceInstances: scatterStats.computeSourceInstances,
+            storageBytes: scatterStats.computeStorageBytes,
+            initialUploadBytes: scatterStats.computeInitialUploadBytes,
+            dispatches: scatterStats.computeDispatches,
+            submitMs: scatterStats.computeSubmitMs,
+          },
+          audit: foliageComputeAudit,
+          compactionEvents: {
+            count: foliageCompactionMs.length,
+            p50Ms: percentile(foliageCompactionMs, 0.5),
+            p95Ms: percentile(foliageCompactionMs, 0.95),
+            maxMs: percentile(foliageCompactionMs, 1),
+            cpuUploadBytesP95: percentile(foliageUploadBytes, 0.95),
+          },
         },
+        cameraPath: opts.cameraPath,
+        gpuTimestamps,
         cadenceSamples,
         shadowUpdates,
         shadowOnly,
@@ -408,6 +557,8 @@ async function measure(gpu) {
     }, {
       w: W, h: H, frames: FRAMES, blocks: BLOCKS, warmup: WARMUP, settle: SETTLE,
       match: MATCH, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET, distance: DISTANCE,
+      cameraPath: CAMERA_PATH, gpuTimestamps: GPU_TIMESTAMPS,
+      foliageComputeAudit: FOLIAGE_COMPUTE_AUDIT,
     });
     if (CAPTURE) {
       // Texture workers complete on wall time, while the deterministic frame
@@ -476,7 +627,9 @@ console.log(`camera instance culling: ${RENDER_CULL ? 'on' : 'off'}`);
 console.log(`shadow cadence: ${SHADOW_CADENCE}`);
 console.log(`scatter shadows: ${SCATTER_SHADOW}`);
 console.log(`camera distance: ${DISTANCE} m`);
+console.log(`camera path: ${CAMERA_PATH}`);
 if (FOLIAGE) console.log(`foliage presentation: ${FOLIAGE}`);
+if (FOLIAGE_COMPUTE) console.log(`foliage compute: ${FOLIAGE_COMPUTE}`);
 if (ART) console.log(`art preset: ${ART}`);
 if (MATCH) {
   console.log(`load: ${sample.units} drawn units · peak ${sample.ramp?.peak ?? sample.units} · ${(sample.ramp?.ticks ?? 0) / 30}s simulated`);

@@ -136,6 +136,88 @@ export interface PropMaterialSetLike {
   dispose(): void;
 }
 
+/** One indexed delivery consumed by the WebGPU foliage compaction pilot. */
+export interface FoliageComputeDeliverySpec {
+  readonly geometry: THREE.BufferGeometry;
+  readonly material: THREE.Material;
+  readonly triangles: number;
+}
+
+/**
+ * One CPU-authoritative foliage identity copied into immutable GPU source
+ * storage. `chunkRanges` stores `(start,end)` pairs into these source columns;
+ * only `live` may change after construction.
+ */
+export interface FoliageComputeBatchSpec {
+  readonly key: string;
+  readonly matrices: Float32Array;
+  /** RGBA storage layout; A is deliberately unused so WGSL never pads RGB behind our back. */
+  readonly colours: Float32Array;
+  readonly phases: Float32Array;
+  readonly stableIds: Uint32Array;
+  readonly live: Uint32Array;
+  readonly chunkRanges: Uint32Array;
+  readonly colour: readonly FoliageComputeDeliverySpec[];
+  readonly shadow: FoliageComputeDeliverySpec | null;
+}
+
+/** Complete world-level input to the two-dispatch WebGPU foliage pilot. */
+export interface FoliageComputeSpec {
+  readonly batches: readonly FoliageComputeBatchSpec[];
+  /** Four floats per chunk: minimum XYZ plus padding. */
+  readonly chunkMins: Float32Array;
+  /** Four floats per chunk: maximum XYZ plus padding. */
+  readonly chunkMaxs: Float32Array;
+  readonly chunkCount: number;
+  readonly lod1Metres: number;
+  readonly lod2Metres: number;
+  readonly transitionBandMetres: number;
+  readonly windPhaseAttribute: string;
+}
+
+export interface FoliageComputeAuditCommand {
+  readonly key: string;
+  readonly pass: 'lod0' | 'lod1' | 'lod2' | 'shadow';
+  readonly indexCount: number;
+  readonly instanceCount: number;
+  readonly firstIndex: number;
+  readonly baseVertex: number;
+  readonly firstInstance: number;
+  readonly capacity: number;
+  readonly triangles: number;
+  readonly stableIds: readonly number[];
+}
+
+export interface FoliageComputeAudit {
+  readonly commands: readonly FoliageComputeAuditCommand[];
+  readonly visibleInstances: number;
+  readonly visibleLod0: number;
+  readonly visibleLod1: number;
+  readonly visibleLod2: number;
+  readonly visibleTriangles: number;
+  readonly visibleShadowTriangles: number;
+}
+
+/** GPU-owned render presentation; simulation never receives this object. */
+export interface FoliageComputeControllerLike {
+  readonly objects: readonly THREE.Object3D[];
+  readonly colourDraws: number;
+  readonly shadowDraws: number;
+  /** Complete initialization payload, including mutable live/indirect seed words. */
+  readonly initialUploadBytes: number;
+  readonly storageBytes: number;
+  readonly dispatchesPerUpdate: number;
+  readonly sourceInstances: number;
+  readonly lastSubmitMs: number;
+  readonly lastCpuUploadBytes: number;
+  readonly dispatches: number;
+  /** CPU still owns the 256 broad-phase AABB flags in the bounded pilot. */
+  update(camera: THREE.Camera, dirty: boolean, visibleChunks?: Uint8Array): void;
+  setLive(key: string, sourceIndex: number, live: boolean): void;
+  audit(): Promise<FoliageComputeAudit>;
+  dispose(): void;
+}
+
 /** The two things `RibbonBatch` and `BeamSystem.pxToMetres` reach through. */
 export interface RibbonMaterialSetLike {
   readonly material: THREE.Material;
@@ -261,6 +343,17 @@ export interface NodeRendererLike {
   ): Promise<ArrayBufferView>;
   getMaxAnisotropy(): number;
   compile(scene: THREE.Object3D, camera: THREE.Camera): unknown;
+  /** Synchronous after the renderer's boot-time `init()` has resolved. */
+  hasFeature(name: string): boolean;
+  /** Synchronous after the renderer's boot-time `init()` has resolved. */
+  compute(computeNodes: unknown | readonly unknown[], dispatchSize?: unknown): void;
+  /** Harness-only storage readback. Never used in the steady-state frame path. */
+  getArrayBufferAsync(
+    attribute: THREE.BufferAttribute,
+    target?: null,
+    offset?: number,
+    count?: number,
+  ): Promise<ArrayBuffer>;
   dispose(): void;
 }
 
@@ -336,6 +429,10 @@ export interface NodePath {
   createEnvironmentPropMaterials(
     params: THREE.MeshStandardMaterialParameters,
   ): PropMaterialSetLike;
+  createFoliageComputeController(
+    renderer: NodeRendererLike,
+    spec: FoliageComputeSpec,
+  ): FoliageComputeControllerLike;
   /**
    * A `MeshStandardNodeMaterial` carrying the shroud self-tint and nothing else
    * — the node twin of the three one-line `applyShroudTint` sites

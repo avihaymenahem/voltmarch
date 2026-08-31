@@ -310,7 +310,8 @@ This is an index, not a duplicate checklist:
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
   proof. A reproducible six-file Allied candidate saves 43.34% of its source bytes but missed the
   complete family-ready p95 gate on both renderers, so those source GLBs remain the default.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-7 are implemented on local
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-8 have completed their bounded
+  implementation/decision passes on local
   `main`: boot telemetry/baselines, static title policy, one honestly rejected
   offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
   generated match-content closure now gates reveal on complete definition/faction provider proofs;
@@ -318,9 +319,12 @@ This is an index, not a duplicate checklist:
   registered first-use SFX no longer disappear during background baking. Batch 7 promotes the
   deterministic terrain ETC1S KTX2 (-71.30% transfer, -87.50% estimated full-mip residency) with
   fresh-Electron boot parity, rejects the six-file Meshopt default on latency, and adds opt-in
-  mixed WebGPU compile/first-paint attribution. This is not blanket approval of the remaining
-  foliage catalogue. Continue at Batch 8 (compute-driven foliage visibility/LOD compaction). Do
-  not promote either rejected cook or infer that package extraction is itself a boot optimization.
+  mixed WebGPU compile/first-paint attribution. Batch 8 retains a correct 0.560 MiB tree/bush
+  indirect-compute lab arm but rejects it as the default: CPU upload/event falls 44.83%, while
+  corrected compaction-event p95 regresses 50%, moving whole-frame wall time regresses 11.42% and
+  static wall time regresses 27.27%; CPU remains authoritative/default. Continue at
+  Batch 9 (timestamp-led GPU/frame-graph optimization). Do not expand the compute pilot, promote
+  either rejected cook or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

@@ -71,11 +71,14 @@ with no number is untracked, and that is itself the bug.
 
 ## WebGPU visual performance
 
-- **Compute-driven foliage visibility and LOD compaction.** *(untracked — implementation order is
-  owned by `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md`)* Prove immutable instance upload, GPU visibility,
-  hysteretic LOD selection and indirect counts on trees/shrubs before expanding to neutral props.
-  Placement, clearing and save identity stay authoritative on CPU and the current path remains the
-  rollback arm.
+- **GPU foliage expansion remains promotion-gated.** *(untracked — implementation order is owned by
+  `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md`)* The 1,648-instance tree/bush indirect pilot now proves
+  immutable source upload, stable-ID/LOD/clearing parity, no steady readback and bounded storage, but
+  remains lab-only behind `?foliagecompute=gpu`: upload/event falls 44.83%, but corrected compaction
+  p95 regresses 50%, moving whole-frame wall time regresses 11.42% and static wall time regresses
+  27.27%, with both bootstrap intervals entirely above zero. Do not expand to
+  neutral props or temporal modes until a lower-dispatch/stable-output design produces a material
+  whole-frame win. CPU placement, chunk broad phase, clearing and save identity remain authoritative.
 - **Temporal reconstruction quality gate.** *(untracked)* TRAA and 75%/85% TAAU are lab-only URL
   paths. The short TAAU run saved 5.8–11.1% wall time but both scales lost infantry and panel-line
   definition. Do not promote either until edge-aware reconstruction/sharpening and moving-camera

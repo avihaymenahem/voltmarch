@@ -101,7 +101,14 @@
  */
 
 import * as THREE from 'three';
-import { nodePath, type PropMaterialSetLike } from '../render/gpu-path';
+import {
+  nodePath,
+  type FoliageComputeAudit,
+  type FoliageComputeBatchSpec,
+  type FoliageComputeControllerLike,
+  type NodeRendererLike,
+  type PropMaterialSetLike,
+} from '../render/gpu-path';
 import { SHADOW_ONLY_TAG } from '../render/shadow-only';
 
 import {
@@ -149,6 +156,29 @@ export function usesLegacyScatterBatch(nodeBackend: boolean, search: string): bo
 /** Same-build visual/performance A/B for authored low-cover shadow filtering. */
 export function usesLegacyScatterShadows(search: string): boolean {
   return new URLSearchParams(search).get('scattershadow') === 'legacy';
+}
+
+export type FoliageComputeMode = 'cpu' | 'gpu';
+
+/** The two accepted anchors: one tall canopy and one alpha-tested low shrub. */
+export function isFoliageComputePilotKey(key: string): boolean {
+  return key === 'tree' || key === 'bush';
+}
+
+/**
+ * Same-build rollback policy. Temporal modes retain CPU compaction because
+ * atomic append order does not provide stable previous-frame output slots.
+ */
+export function resolveFoliageComputeMode(
+  liveBackend: 'webgl' | 'webgl2-fallback' | 'webgpu' | undefined,
+  search: string,
+): FoliageComputeMode {
+  if (liveBackend !== 'webgpu') return 'cpu';
+  const params = new URLSearchParams(search);
+  const aa = params.get('aa')?.toLowerCase();
+  if (aa === 'traa' || aa === 'taau') return 'cpu';
+  const requested = params.get('foliagecompute')?.toLowerCase();
+  return requested === 'gpu' ? 'gpu' : 'cpu';
 }
 
 /**
@@ -460,10 +490,32 @@ export interface ScatterStats {
   readonly uploadBytes: number;
   readonly cullMs: number;
   readonly uploadMs: number;
+  readonly computeMode: FoliageComputeMode;
+  readonly computeSourceInstances: number;
+  readonly computeStorageBytes: number;
+  readonly computeInitialUploadBytes: number;
+  readonly computeDispatches: number;
+  readonly computeSubmitMs: number;
   readonly generateMs: number;
   readonly propsPerHectare: number;
   readonly adornedFraction: number;
   readonly emptyPatches: number;
+}
+
+export interface ScatterFoliageComputeAudit {
+  readonly gpu: FoliageComputeAudit;
+  readonly expected: readonly {
+    readonly key: string;
+    readonly pass: 'lod0' | 'lod1' | 'lod2' | 'shadow';
+    readonly instanceCount: number;
+    readonly stableIds: readonly number[];
+  }[];
+  readonly matchesCpuReference: boolean;
+  readonly duplicateIds: number;
+  readonly invalidIds: number;
+  readonly placementFingerprint: number;
+  readonly liveProps: number;
+  readonly readbackOnly: true;
 }
 
 export interface ScatterOptions {
@@ -500,6 +552,9 @@ export interface ScatterOptions {
   readonly foliagePresentation?: FoliagePresentation;
   /** Complete, already-audited authored families. Partial loading is rejected. */
   readonly importedFoliage?: ReadonlyMap<string, EnvironmentGeometryFamily>;
+  /** Actual initialized backend and renderer; omitted by deterministic unit fixtures. */
+  readonly rendererBackend?: 'webgl' | 'webgl2-fallback' | 'webgpu';
+  readonly nodeRenderer?: NodeRendererLike | null;
   /** The box a scenario actually photographs. Density is boosted inside it. */
   readonly focus?: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
   readonly focusBoost?: number;
@@ -722,6 +777,8 @@ interface ScatterType {
   lodRangePhase: readonly { start: number; count: number }[];
   shadowRangeMatrix: { start: number; count: number };
   shadowRangePhase: { start: number; count: number };
+  /** True when the WebGPU pilot owns this type's colour/shadow presentation. */
+  computeOwned: boolean;
 }
 
 /* A placed prop, before chunk sorting. Kept as parallel arrays to stay flat. */
@@ -738,6 +795,8 @@ interface Placement {
   slot: number;
   /** Instance index inside that type's chunk-sorted arrays. */
   inst: number;
+  /** Immutable generation-time source slot used only by GPU live flags. */
+  computeInst: number;
   /** Chunk this instance sorted into. */
   chunk: number;
   /** False once felled. The record stays so every stored index holds. */
@@ -852,6 +911,8 @@ export class Scatter {
   private readonly opts: ScatterOptions;
   private readonly batchedNodePath: boolean;
   private readonly legacyShadows: boolean;
+  private computeMode: FoliageComputeMode;
+  private computeController: FoliageComputeControllerLike | null = null;
 
   private types: ScatterType[] = [];
   private placements: Placement[] = [];
@@ -912,6 +973,8 @@ export class Scatter {
   private readonly frustum = new THREE.Frustum();
   private readonly viewProj = new THREE.Matrix4();
   private readonly probe = new THREE.Box3();
+  /** Camera position captured for the most recent compute dispatch. */
+  private readonly computeCameraPosition = new THREE.Vector3();
 
   /* ---- coverage scratch ------------------------------------------------- */
 
@@ -943,6 +1006,7 @@ export class Scatter {
   uploadBytes = 0;
   cullMs = 0;
   uploadMs = 0;
+  computeSubmitMs = 0;
   private cameraBandX = 0x7fffffff;
   private cameraBandY = 0x7fffffff;
   private cameraBandZ = 0x7fffffff;
@@ -998,6 +1062,15 @@ export class Scatter {
     this.legacyShadows = usesLegacyScatterShadows(
       typeof location === 'undefined' ? '' : location.search,
     );
+    this.computeMode = resolveFoliageComputeMode(
+      options.rendererBackend,
+      typeof location === 'undefined' ? '' : location.search,
+    );
+    if (this.computeMode === 'gpu' && (np === null || options.nodeRenderer === null
+      || options.nodeRenderer === undefined)) {
+      this.computeMode = 'cpu';
+    }
+    if (this.batchedNodePath) this.computeMode = 'cpu';
     this.materials = np !== null ? np.createPropMaterials() : createPropMaterial();
     this.root.name = 'PropScatter';
     this.root.matrixAutoUpdate = false;
@@ -1205,7 +1278,7 @@ export class Scatter {
       yaw: rng.next() * TAU,
       scale, tiltX, tiltZ,
       cr: JITTER_OUT[0], cg: JITTER_OUT[1], cb: JITTER_OUT[2],
-      index: -1, slot: -1, inst: -1, chunk: -1, alive: true,
+      index: -1, slot: -1, inst: -1, computeInst: -1, chunk: -1, alive: true,
     };
     this.bucketInsert(this.placements.length, x, z);
     this.placements.push(p);
@@ -1441,6 +1514,7 @@ export class Scatter {
         lodRangeColor: [{ start: 0, count: 0 }, { start: 0, count: 0 }, { start: 0, count: 0 }],
         lodRangePhase: [{ start: 0, count: 0 }, { start: 0, count: 0 }, { start: 0, count: 0 }],
         shadowRangeMatrix: { start: 0, count: 0 }, shadowRangePhase: { start: 0, count: 0 },
+        computeOwned: false,
       });
       weights.push(w);
     }
@@ -2400,6 +2474,153 @@ export class Scatter {
    * 3.6 GPU BUILD
    * ====================================================================== */
 
+  /** Build the existing CPU-compacted presentation for one live type. */
+  private buildCpuMeshes(type: ScatterType, capacity: number): void {
+    const deliveries: readonly PropGeometry[] = type.lodEnabled
+      ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
+      : [type.renderFamily.lod0];
+    for (let lod = 0; lod < deliveries.length; lod++) {
+      const delivery = deliveries[lod];
+      const geometry = delivery.geometry.clone();
+      geometry.name = `${delivery.geometry.name}.bucket${lod}`;
+      const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+      phaseAttr.setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
+      const meshMaterial = delivery.material ?? this.materials.material;
+      const mesh = new THREE.InstancedMesh(geometry, meshMaterial, capacity);
+      mesh.name = `prop.${type.def.key}.lod${lod}`;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      mesh.matrixAutoUpdate = false;
+      mesh.count = 0;
+      type.lodMeshes[lod] = mesh;
+      this.root.add(mesh);
+    }
+    type.mesh = type.lodMeshes[0];
+    type.drawCount = 0;
+
+    if (typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows)) {
+      const geometry = type.renderFamily.shadow.geometry.clone();
+      geometry.name = `${type.renderFamily.shadow.geometry.name}.caster`;
+      const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+      phaseAttr.setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
+      const shadow = new THREE.InstancedMesh(geometry, this.materials.material, capacity);
+      shadow.name = `prop.${type.def.key}.shadow`;
+      shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      shadow.userData[SHADOW_ONLY_TAG] = true;
+      shadow.castShadow = true;
+      shadow.receiveShadow = false;
+      shadow.frustumCulled = false;
+      shadow.matrixAutoUpdate = false;
+      shadow.count = 0;
+      if (this.materials.depthMaterial !== null) shadow.customDepthMaterial = this.materials.depthMaterial;
+      type.shadowMesh = shadow;
+      this.root.add(shadow);
+    }
+  }
+
+  /** Freeze the pilot's source columns before clearing can swap CPU live slots. */
+  private computeSpec(type: ScatterType): FoliageComputeBatchSpec {
+    const count = type.instOf.length;
+    const colours = new Float32Array(count * 4);
+    const stableIds = new Uint32Array(count);
+    const live = new Uint32Array(count);
+    const chunkRanges = new Uint32Array(CHUNK_COUNT * 2);
+    for (let i = 0; i < count; i++) {
+      const source = i * 3, target = i * 4;
+      colours[target] = type.srcColor[source];
+      colours[target + 1] = type.srcColor[source + 1];
+      colours[target + 2] = type.srcColor[source + 2];
+      colours[target + 3] = 1;
+      stableIds[i] = type.instOf[i];
+      live[i] = 1;
+    }
+    for (let chunk = 0; chunk < CHUNK_COUNT; chunk++) {
+      chunkRanges[chunk * 2] = type.chunkStart[chunk];
+      chunkRanges[chunk * 2 + 1] = type.chunkStart[chunk + 1];
+    }
+    const deliveries: readonly PropGeometry[] = type.lodEnabled
+      ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
+      : [type.renderFamily.lod0];
+    return {
+      key: type.def.key,
+      matrices: type.srcMatrix.slice(),
+      colours,
+      phases: type.srcPhase.slice(),
+      stableIds,
+      live,
+      chunkRanges,
+      colour: deliveries.map((delivery) => ({
+        geometry: delivery.geometry,
+        material: delivery.material ?? this.materials.material,
+        triangles: delivery.triangles,
+      })),
+      shadow: typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows) ? {
+        geometry: type.renderFamily.shadow.geometry,
+        material: this.materials.material,
+        triangles: type.renderFamily.shadow.triangles,
+      } : null,
+    };
+  }
+
+  private createComputePresentation(batches: readonly FoliageComputeBatchSpec[]): void {
+    const np = nodePath();
+    const renderer = this.opts.nodeRenderer;
+    if (np === null || renderer === null || renderer === undefined) {
+      this.fallbackCompute(new Error('node renderer unavailable'));
+      return;
+    }
+    const margin = SCATTER_LIMITS.shadowMarginMetres;
+    const chunkMins = new Float32Array(CHUNK_COUNT * 4);
+    const chunkMaxs = new Float32Array(CHUNK_COUNT * 4);
+    for (let chunk = 0; chunk < CHUNK_COUNT; chunk++) {
+      const offset = chunk * 4;
+      const x0 = (chunk % CHUNK_N) * SCATTER_CHUNK_METRES;
+      const z0 = ((chunk / CHUNK_N) | 0) * SCATTER_CHUNK_METRES;
+      chunkMins[offset] = x0 - margin;
+      chunkMins[offset + 1] = this.chunkMinY[chunk] - 1;
+      chunkMins[offset + 2] = z0 - margin;
+      chunkMaxs[offset] = x0 + SCATTER_CHUNK_METRES + margin;
+      chunkMaxs[offset + 1] = this.chunkMaxY[chunk] + 1;
+      chunkMaxs[offset + 2] = z0 + SCATTER_CHUNK_METRES + margin;
+    }
+    try {
+      this.computeController = np.createFoliageComputeController(renderer, {
+        batches,
+        chunkMins,
+        chunkMaxs,
+        chunkCount: CHUNK_COUNT,
+        lod1Metres: FOLIAGE_LOD.lod1Metres,
+        lod2Metres: FOLIAGE_LOD.lod2Metres,
+        transitionBandMetres: FOLIAGE_LOD.transitionBandMetres,
+        windPhaseAttribute: PROP_WIND_PHASE_ATTRIBUTE,
+      });
+      for (const object of this.computeController.objects) this.root.add(object);
+    } catch (error) {
+      this.fallbackCompute(error);
+    }
+  }
+
+  /** One-way per-world rollback; placement, clearing and save state never move. */
+  private fallbackCompute(reason: unknown): void {
+    if (this.computeMode === 'gpu') console.warn('[foliage.compute] reverting to CPU compaction', reason);
+    this.computeController?.dispose();
+    this.computeController = null;
+    this.computeMode = 'cpu';
+    for (const type of this.types) {
+      if (!type.computeOwned) continue;
+      type.computeOwned = false;
+      this.buildCpuMeshes(type, type.instOf.length);
+    }
+    this.computeSubmitMs = 0;
+    this.chunkVisiblePrev.fill(255);
+  }
+
   private buildInstances(): void {
     // Bucket placements by surviving type. `defIndex` indexes PROP_DEFS, so
     // trimming a type can never shift an instance onto the wrong mesh.
@@ -2411,7 +2632,7 @@ export class Scatter {
       // `trimTypes()` may have rebuilt the array, so stamp identity HERE — the
       // GPU buffers are about to store these indices for the rest of the match.
       p.index = i;
-      p.slot = -1; p.inst = -1; p.chunk = -1; p.alive = true;
+      p.slot = -1; p.inst = -1; p.computeInst = -1; p.chunk = -1; p.alive = true;
       const slot = slotOfDef[p.defIndex];
       if (slot < 0) continue;
       perType[slot].push(p);
@@ -2426,6 +2647,7 @@ export class Scatter {
     this.chunkMaxY.fill(-Infinity);
     this.chunkUsed.fill(0);
 
+    const computeSpecs: FoliageComputeBatchSpec[] = [];
     for (let s = 0; s < this.types.length; s++) {
       const type = this.types[s];
       const list = perType[s];
@@ -2468,7 +2690,10 @@ export class Scatter {
         phase[i] = mat[i * 16 + 12] * PROP_WIND.phaseX + mat[i * 16 + 14] * PROP_WIND.phaseZ;
         col[i * 3] = p.cr; col[i * 3 + 1] = p.cg; col[i * 3 + 2] = p.cb;
         const c = chunkOf(p.x, p.z);
-        p.slot = s; p.inst = i; p.chunk = c;
+        p.slot = s;
+        p.inst = i;
+        p.computeInst = i;
+        p.chunk = c;
         instOf[i] = p.index;
         live[c]++;
         this.chunkUsed[c] = 1;
@@ -2497,58 +2722,9 @@ export class Scatter {
         type.drawCount = 0;
         continue;
       }
-
-      const deliveries: readonly PropGeometry[] = type.lodEnabled
-        ? [type.renderFamily.lod0, type.renderFamily.lod1, type.renderFamily.lod2]
-        : [type.renderFamily.lod0];
-      for (let lod = 0; lod < deliveries.length; lod++) {
-        const delivery = deliveries[lod];
-        const geometry = delivery.geometry.clone();
-        geometry.name = `${delivery.geometry.name}.bucket${lod}`;
-        const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
-        phaseAttr.setUsage(THREE.DynamicDrawUsage);
-        geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
-        const meshMaterial = delivery.material ?? this.materials.material;
-        const mesh = new THREE.InstancedMesh(geometry, meshMaterial, list.length);
-        mesh.name = `prop.${type.def.key}.lod${lod}`;
-        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
-        mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-        // Colour buckets never cast: the independent proxy below is the sole
-        // caster geometry, preventing both double shadows and a hidden LOD0
-        // shadow cost after colour has switched to LOD1/2.
-        mesh.castShadow = false;
-        mesh.receiveShadow = true;
-        mesh.frustumCulled = false;
-        mesh.matrixAutoUpdate = false;
-        mesh.count = 0;
-        type.lodMeshes[lod] = mesh;
-        this.root.add(mesh);
-      }
-      type.mesh = type.lodMeshes[0];
-      type.drawCount = 0;
-
-      if (typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows)) {
-        const geometry = type.renderFamily.shadow.geometry.clone();
-        geometry.name = `${type.renderFamily.shadow.geometry.name}.caster`;
-        const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
-        phaseAttr.setUsage(THREE.DynamicDrawUsage);
-        geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
-        const shadow = new THREE.InstancedMesh(geometry, this.materials.material, list.length);
-        shadow.name = `prop.${type.def.key}.shadow`;
-        shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        shadow.userData[SHADOW_ONLY_TAG] = true;
-        shadow.castShadow = true;
-        shadow.receiveShadow = false;
-        shadow.frustumCulled = false;
-        shadow.matrixAutoUpdate = false;
-        shadow.count = 0;
-        if (this.materials.depthMaterial !== null) {
-          shadow.customDepthMaterial = this.materials.depthMaterial;
-        }
-        type.shadowMesh = shadow;
-        this.root.add(shadow);
-      }
+      type.computeOwned = this.computeMode === 'gpu' && isFoliageComputePilotKey(type.def.key);
+      if (type.computeOwned) computeSpecs.push(this.computeSpec(type));
+      else this.buildCpuMeshes(type, list.length);
     }
 
     if (this.batchedNodePath) this.buildNodeBatches();
@@ -2557,6 +2733,7 @@ export class Scatter {
     for (let c = 0; c < CHUNK_COUNT; c++) {
       if (this.chunkUsed[c] === 0) { this.chunkMinY[c] = 0; this.chunkMaxY[c] = 0; }
     }
+    if (computeSpecs.length > 0) this.createComputePresentation(computeSpecs);
     this.rebuildCellIndex();
     // Force a repack on the next update().
     this.chunkVisiblePrev.fill(255);
@@ -2648,6 +2825,18 @@ export class Scatter {
       if (this.chunkVisible[c] !== this.chunkVisiblePrev[c]) { changed = true; break; }
     }
     this.cullMs = typeof performance !== 'undefined' ? performance.now() - cullStart : 0;
+    if (this.computeController !== null) {
+      try {
+        if (changed) this.computeCameraPosition.copy(camera.position);
+        this.computeController.update(camera, changed, this.chunkVisible);
+        this.computeSubmitMs = this.computeController.lastSubmitMs;
+      } catch (error) {
+        this.fallbackCompute(error);
+        changed = true;
+      }
+    } else {
+      this.computeSubmitMs = 0;
+    }
     if (!changed) { this.uploadMs = 0; this.uploadBytes = 0; return; }
     this.chunkVisiblePrev.set(this.chunkVisible);
     this.visibleChunks = visible;
@@ -2684,6 +2873,7 @@ export class Scatter {
     let visibleTriangles = 0, visibleShadowTriangles = 0, uploadBytes = 0;
     for (let s = 0; s < this.types.length; s++) {
       const type = this.types[s];
+      if (type.computeOwned) continue;
       const mesh0 = type.lodMeshes[0];
       if (mesh0 === null) continue;
       type.lodDrawCount.fill(0);
@@ -2775,13 +2965,17 @@ export class Scatter {
       lod1Instances += type.lodDrawCount[1];
       lod2Instances += type.lodDrawCount[2];
     }
-    this.visibleInstances = instances;
-    this.visibleLod0 = lod0Instances;
-    this.visibleLod1 = lod1Instances;
-    this.visibleLod2 = lod2Instances;
-    this.visibleTriangles = visibleTriangles;
-    this.visibleShadowTriangles = visibleShadowTriangles;
-    this.uploadBytes = uploadBytes;
+    // Indirect counts are GPU-owned. Ordinary Three telemetry sees capacities,
+    // so never present these CPU-only partials as whole-scene values. The
+    // explicit async audit below resolves exact pilot counts outside the frame.
+    const gpuOwned = this.computeController !== null;
+    this.visibleInstances = gpuOwned ? -1 : instances;
+    this.visibleLod0 = gpuOwned ? -1 : lod0Instances;
+    this.visibleLod1 = gpuOwned ? -1 : lod1Instances;
+    this.visibleLod2 = gpuOwned ? -1 : lod2Instances;
+    this.visibleTriangles = gpuOwned ? -1 : visibleTriangles;
+    this.visibleShadowTriangles = gpuOwned ? -1 : visibleShadowTriangles;
+    this.uploadBytes = uploadBytes + (this.computeController?.lastCpuUploadBytes ?? 0);
     this.uploadMs = typeof performance !== 'undefined' ? performance.now() - uploadStart : 0;
   }
 
@@ -3329,6 +3523,13 @@ export class Scatter {
     if (s < 0) return;
     const type = this.types[s];
     const c = p.chunk;
+    if (type.computeOwned && this.computeController !== null && p.computeInst >= 0) {
+      try {
+        this.computeController.setLive(type.def.key, p.computeInst, false);
+      } catch (error) {
+        this.fallbackCompute(error);
+      }
+    }
     if (this.batchedNodePath) {
       const instanceId = type.batchInstances[p.inst];
       if (type.batch !== null && instanceId >= 0) type.batch.setVisibleAt(instanceId, false);
@@ -3485,6 +3686,78 @@ export class Scatter {
     return h >>> 0;
   }
 
+  /**
+   * Explicit harness-only readback. The frame loop never calls this method.
+   * Atomic append order is intentionally ignored; stable placement IDs are
+   * sorted and compared with the CPU authority for the last dispatched view.
+   */
+  async foliageComputeAudit(): Promise<ScatterFoliageComputeAudit | null> {
+    if (this.computeController === null) return null;
+    const expectedByCommand = new Map<string, number[]>();
+    const commandKey = (key: string, pass: string): string => `${key}:${pass}`;
+    for (const type of this.types) {
+      if (!type.computeOwned) continue;
+      const lods = type.lodEnabled ? 3 : 1;
+      for (let lod = 0; lod < lods; lod++) {
+        expectedByCommand.set(commandKey(type.def.key, `lod${lod}`), []);
+      }
+      if (typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows)) {
+        expectedByCommand.set(commandKey(type.def.key, 'shadow'), []);
+      }
+    }
+    for (const placement of this.placements) {
+      if (!placement.alive || placement.slot < 0 || this.chunkVisible[placement.chunk] === 0) continue;
+      const type = this.types[placement.slot];
+      if (!type.computeOwned) continue;
+      let lod: 0 | 1 | 2 = 0;
+      if (type.lodEnabled) {
+        const dx = this.computeCameraPosition.x - placement.x;
+        const dy = this.computeCameraPosition.y - placement.y;
+        const dz = this.computeCameraPosition.z - placement.z;
+        lod = foliageLodForDistanceSquared(dx * dx + dy * dy + dz * dz, placement.index);
+      }
+      expectedByCommand.get(commandKey(type.def.key, `lod${lod}`))!.push(placement.index);
+      expectedByCommand.get(commandKey(type.def.key, 'shadow'))?.push(placement.index);
+    }
+    const expected = Array.from(expectedByCommand, ([key, stableIds]) => {
+      stableIds.sort((a, b) => a - b);
+      const separator = key.lastIndexOf(':');
+      return {
+        key: key.slice(0, separator),
+        pass: key.slice(separator + 1) as 'lod0' | 'lod1' | 'lod2' | 'shadow',
+        instanceCount: stableIds.length,
+        stableIds,
+      };
+    });
+    const gpu = await this.computeController.audit();
+    let matchesCpuReference = gpu.commands.length === expected.length;
+    let duplicateIds = 0;
+    let invalidIds = 0;
+    for (const command of gpu.commands) {
+      const sorted = Array.from(command.stableIds).sort((a, b) => a - b);
+      for (let i = 0; i < sorted.length; i++) {
+        if (i > 0 && sorted[i] === sorted[i - 1]) duplicateIds++;
+        const placement = this.placements[sorted[i]];
+        if (placement === undefined || !placement.alive
+          || this.types[placement.slot]?.def.key !== command.key) invalidIds++;
+      }
+      const reference = expectedByCommand.get(commandKey(command.key, command.pass));
+      if (reference === undefined || reference.length !== sorted.length
+        || reference.some((id, index) => id !== sorted[index])) matchesCpuReference = false;
+    }
+    matchesCpuReference &&= duplicateIds === 0 && invalidIds === 0;
+    return {
+      gpu,
+      expected,
+      matchesCpuReference,
+      duplicateIds,
+      invalidIds,
+      placementFingerprint: this.placementHash,
+      liveProps: this.liveProps,
+      readbackOnly: true,
+    };
+  }
+
   get propCount(): number { return this.liveProps; }
   get typeCount(): number { return this.types.length; }
   get drawCalls(): number {
@@ -3502,7 +3775,7 @@ export class Scatter {
       const type = this.types[i];
       for (let lod = 0; lod < 3; lod++) if (type.lodDrawCount[lod] > 0) n++;
     }
-    return n;
+    return n + (this.computeController?.colourDraws ?? 0);
   }
 
   get shadowDrawCalls(): number {
@@ -3510,7 +3783,7 @@ export class Scatter {
     for (let i = 0; i < this.types.length; i++) {
       if (this.types[i].shadowDrawCount > 0) n++;
     }
-    return n;
+    return n + (this.computeController?.shadowDraws ?? 0);
   }
 
   stats(): ScatterStats {
@@ -3531,6 +3804,12 @@ export class Scatter {
       uploadBytes: this.uploadBytes,
       cullMs: this.cullMs,
       uploadMs: this.uploadMs,
+      computeMode: this.computeMode,
+      computeSourceInstances: this.computeController?.sourceInstances ?? 0,
+      computeStorageBytes: this.computeController?.storageBytes ?? 0,
+      computeInitialUploadBytes: this.computeController?.initialUploadBytes ?? 0,
+      computeDispatches: this.computeController?.dispatches ?? 0,
+      computeSubmitMs: this.computeSubmitMs,
       generateMs: this.generateMs,
       propsPerHectare: r ? r.propsPerHectare : 0,
       adornedFraction: r ? r.adornedFraction : 0,
@@ -3543,6 +3822,8 @@ export class Scatter {
    * ====================================================================== */
 
   private disposeMeshes(): void {
+    this.computeController?.dispose();
+    this.computeController = null;
     for (const batch of this.nodeBatches) {
       this.root.remove(batch);
       batch.dispose();
@@ -3565,6 +3846,7 @@ export class Scatter {
       type.mesh = null;
       type.lodMeshes = [null, null, null];
       type.shadowMesh = null;
+      type.computeOwned = false;
       type.batch = null;
       type.batchInstances = EMPTY_I32;
       type.lodDrawCount.fill(0);
