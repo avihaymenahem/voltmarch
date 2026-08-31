@@ -15,6 +15,7 @@
     "test:contracts": "npm test"
   },
   "devDependencies": {
+    "sharp": "^0.35.3",
     "wrangler": "^4.0.0"
   }
 }
