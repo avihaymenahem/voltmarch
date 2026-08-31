@@ -237,7 +237,12 @@ for (let run = 0; run < RUNS; run++) {
   // the exported mark set also contains the curtain-dismiss end boundary.
   await page.waitForFunction(
     () => document.getElementById('loading')?.hidden === true,
-    null, { timeout: 2_000 },
+    // The fade itself is 1.2 s, but a native WebGPU calibration probe can
+    // occupy the main thread immediately after reveal. That delayed the timer
+    // past the old 2 s harness deadline on otherwise successful 30 s boots.
+    // This wait is outside the measured `ready` boundary; extra headroom only
+    // prevents evidence collection from discarding a valid sample.
+    null, { timeout: 10_000 },
   );
   /*
    * A CHECKSUM OF WHAT IS ACTUALLY ON SCREEN.

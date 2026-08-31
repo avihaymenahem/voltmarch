@@ -1,6 +1,11 @@
 import * as THREE from 'three';
-import terrainDetailUrl from '../../../../packages/assets/game/terrain/universal-terrain-mask-4k.png?url';
+import terrainDetailUrl from '@terrain-detail-mask?url';
+import {
+  acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader,
+} from '../art/RuntimeKTX2Loader';
 import { beginBootSpan, bootAssetLabel } from '../core/boot-telemetry';
+
+declare const __TERRAIN_MASK_ARM__: 'png' | 'ktx2';
 
 /** World-space size of one repeat of the supplied tileable terrain artwork. */
 export const TERRAIN_DETAIL_TILE_METRES = 72;
@@ -26,15 +31,58 @@ export const PAVEMENT_DETAIL_ROUGHNESS = 0.30;
 let sharedMask: THREE.Texture | null = null;
 let browserLoad: Promise<THREE.Texture> | null = null;
 
-function configure(mask: THREE.Texture): THREE.Texture {
+function configure(mask: THREE.Texture, ownsMipChain: boolean): THREE.Texture {
   mask.name = 'terrain.detail.universal';
   mask.colorSpace = THREE.NoColorSpace;
   mask.wrapS = THREE.RepeatWrapping;
   mask.wrapT = THREE.RepeatWrapping;
   mask.magFilter = THREE.LinearFilter;
   mask.minFilter = THREE.LinearMipmapLinearFilter;
-  mask.generateMipmaps = true;
+  mask.generateMipmaps = !ownsMipChain;
   return mask;
+}
+
+function neutralBrowserMask(): THREE.Texture {
+  return createTerrainDetailMask();
+}
+
+async function loadPngMask(url: string): Promise<THREE.Texture> {
+  const mask = neutralBrowserMask();
+  const finish = beginBootSpan('texture', 'image-source-ready', {
+    asset: bootAssetLabel(url),
+  });
+  return new Promise<THREE.Texture>((resolve) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener('load', () => {
+      mask.image = image;
+      mask.needsUpdate = true;
+      finish();
+      resolve(mask);
+    }, { once: true });
+    image.addEventListener('error', () => {
+      finish('error');
+      console.warn(`[terrain] detail PNG failed to load; retaining neutral mask: ${url}`);
+      resolve(mask);
+    }, { once: true });
+    image.src = url;
+  });
+}
+
+async function loadKtx2Mask(url: string, renderer: unknown): Promise<THREE.Texture> {
+  let acquired = false;
+  try {
+    const loader = acquireRuntimeKTX2Loader(renderer);
+    acquired = true;
+    const mask = configure(await loader.loadAsync(url), true);
+    sharedMask = mask;
+    return mask;
+  } catch (error) {
+    console.warn('[terrain] detail KTX2 failed to load; retaining neutral mask', error);
+    return neutralBrowserMask();
+  } finally {
+    if (acquired) releaseRuntimeKTX2Loader();
+  }
 }
 
 /**
@@ -46,28 +94,17 @@ function configure(mask: THREE.Texture): THREE.Texture {
  * init therefore awaits this barrier before it constructs either renderer's
  * material set.
  */
-export function preloadTerrainDetailMask(): Promise<THREE.Texture> {
+export function preloadTerrainDetailMask(renderer?: unknown): Promise<THREE.Texture> {
   if (typeof Image === 'undefined') return Promise.resolve(createTerrainDetailMask());
   if (browserLoad !== null) return browserLoad;
 
-  const mask = createTerrainDetailMask();
-  const finish = beginBootSpan('texture', 'image-source-ready', {
-    asset: bootAssetLabel(terrainDetailUrl),
-  });
-  browserLoad = new Promise<THREE.Texture>((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.addEventListener('load', () => {
-      mask.image = image;
-      mask.needsUpdate = true;
-      finish();
-      resolve(mask);
-    }, { once: true });
-    image.addEventListener('error', () => {
-      finish('error');
-      reject(new Error(`Terrain detail mask failed to load: ${terrainDetailUrl}`));
-    }, { once: true });
-    image.src = terrainDetailUrl;
+  browserLoad = Promise.resolve().then(() => {
+    if (__TERRAIN_MASK_ARM__ === 'png') return loadPngMask(terrainDetailUrl);
+    if (renderer === undefined) {
+      console.warn('[terrain] no renderer available for KTX2 detection; retaining neutral mask');
+      return neutralBrowserMask();
+    }
+    return loadKtx2Mask(terrainDetailUrl, renderer);
   });
   return browserLoad;
 }
@@ -112,7 +149,7 @@ export function createTerrainDetailMask(): THREE.Texture {
 
   }
 
-  configure(mask);
+  configure(mask, false);
   // Upload the neutral stand-in immediately. The real browser image bumps the
   // version again from its load handler; Node's DataTexture uses this upload.
   mask.needsUpdate = true;

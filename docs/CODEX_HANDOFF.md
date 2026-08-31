@@ -308,16 +308,19 @@ This is an index, not a duplicate checklist:
 - **WebGPU visual performance:** `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` — desktop rendering is the
   product target. Use WASM for coarse CPU decode/SIMD work and WebGPU compute for render-owned
   culling, particles and temporal reconstruction. The live Chrono Miner is the one-asset Meshopt
-  POC; do not roll compression across every family until cold-load timing and image parity pass.
-- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-6 are implemented on the
-  dedicated roadmap branch: boot telemetry/baselines, static title policy, one honestly rejected
+  proof. A reproducible six-file Allied candidate saves 43.34% of its source bytes but missed the
+  complete family-ready p95 gate on both renderers, so those source GLBs remain the default.
+- **AAA technical roadmap:** `docs/AAA_TECHNICAL_ROADMAP.md` — Batches 1-7 are implemented on local
+  `main`: boot telemetry/baselines, static title policy, one honestly rejected
   offline runtime cook, broadleaf CPU foliage Gate 3/4, and dependency architecture Stage 0. This is
   generated match-content closure now gates reveal on complete definition/faction provider proofs;
   generic meshes cannot mask an exact RenderBridge miss, direct replay starts are revalidated, and
-  registered first-use SFX no longer disappear during background baking. This is not
-  blanket approval of the remaining foliage catalogue. Continue at Batch 7 (packaged compression
-  and pipeline gates). Do not promote the rejected Float32 cooked
-  delivery or infer that package extraction is itself a boot optimization.
+  registered first-use SFX no longer disappear during background baking. Batch 7 promotes the
+  deterministic terrain ETC1S KTX2 (-71.30% transfer, -87.50% estimated full-mip residency) with
+  fresh-Electron boot parity, rejects the six-file Meshopt default on latency, and adds opt-in
+  mixed WebGPU compile/first-paint attribution. This is not blanket approval of the remaining
+  foliage catalogue. Continue at Batch 8 (compute-driven foliage visibility/LOD compaction). Do
+  not promote either rejected cook or infer that package extraction is itself a boot optimization.
 - **Voice production:** `docs/VOICEOVER_PLAN.md` — resume from its explicit checkpoint; campaign voice
   work remains excluded unless the user reopens it.
 - **Campaign author decisions:** `docs/campaign/CAMPAIGN_BUILD_SPEC.md` §9. These are choices for the

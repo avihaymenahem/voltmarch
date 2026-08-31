@@ -50,4 +50,41 @@ describe('the Meshopt WebAssembly loading POC', () => {
     const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
     expect(runtime).toContain('compressed/chrono-miner.meshopt.glb');
   });
+
+  it('promotes the complete Allied land/air slice with exact structural contracts', () => {
+    const report = JSON.parse(fs.readFileSync(
+      path.join(pocDir, 'allied-land-air.meshopt-report.json'), 'utf8',
+    ));
+    expect(report.rows).toHaveLength(6);
+    expect(report.savedBytes).toBe(11_228_312);
+    expect(report.transferRatio).toBeLessThanOrEqual(0.567);
+    expect(report.geometryDriftGate.maximumRelativeBoundsDriftPercent).toBeLessThan(0.1);
+    expect(report.geometryDriftGate.unmatchedPositions).toBe(0);
+
+    for (const row of report.rows) {
+      const source = path.join(pocDir, row.file);
+      const output = path.join(pocDir, row.output);
+      expect(fs.statSync(source).size, row.key).toBe(row.sourceBytes);
+      expect(fs.statSync(output).size, row.key).toBe(row.outputBytes);
+      expect(row.outputBytes, row.key).toBeLessThan(row.sourceBytes);
+      const json = glbJson(output);
+      expect(json.extensionsRequired, row.key).toContain('EXT_meshopt_compression');
+      expect(json.extensionsRequired, row.key).toContain('KHR_mesh_quantization');
+      expect(json.extensionsRequired, row.key).toContain('KHR_texture_basisu');
+      expect(row.contract.ktx2Textures, row.key).toBeGreaterThan(0);
+    }
+  });
+
+  it('selects one packaged land/air transport arm at build time', () => {
+    const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
+    const vite = fs.readFileSync(path.join(root, 'apps/game/vite.config.ts'), 'utf8');
+    for (const stem of [
+      'guardian-tank', 'sabre-ifv', 'refractor-tank',
+      'construction-dozer', 'petrel-bomber', 'albatross-heavy-bomber',
+    ]) {
+      expect(runtime).toContain(`@allied-${stem}-runtime?url`);
+      expect(vite).toContain(`'${stem}'`);
+    }
+    expect(vite).toContain("process.env.VM_ALLIED_MESHOPT_ARM?.trim() || 'control'");
+  });
 });

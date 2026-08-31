@@ -16,6 +16,28 @@ const PKG_VERSION: string = JSON.parse(
   readFileSync(resolve(MONOREPO_ROOT, 'package.json'), 'utf8'),
 ).version;
 
+const TERRAIN_MASK_ARM = process.env.VM_TERRAIN_MASK_ARM?.trim() || 'ktx2';
+if (TERRAIN_MASK_ARM !== 'png' && TERRAIN_MASK_ARM !== 'ktx2') {
+  throw new Error(`VM_TERRAIN_MASK_ARM must be "png" or "ktx2", got "${TERRAIN_MASK_ARM}"`);
+}
+// The six-file candidate is packaged and reproducible, but remains a lab arm:
+// its 10.71 MiB transfer win did not improve family-ready p95 by the required
+// 10% on either renderer. Keep the proven current files as the shipping arm.
+const ALLIED_MESHOPT_ARM = process.env.VM_ALLIED_MESHOPT_ARM?.trim() || 'control';
+if (ALLIED_MESHOPT_ARM !== 'control' && ALLIED_MESHOPT_ARM !== 'meshopt') {
+  throw new Error(
+    `VM_ALLIED_MESHOPT_ARM must be "control" or "meshopt", got "${ALLIED_MESHOPT_ARM}"`,
+  );
+}
+const ALLIED_MESHOPT_STEMS = [
+  'guardian-tank',
+  'sabre-ifv',
+  'refractor-tank',
+  'construction-dozer',
+  'petrel-bomber',
+  'albatross-heavy-bomber',
+] as const;
+
 /**
  * Keep release notices and the pre-module shell assets single-sourced.
  * Electron embeds this same dist/ tree, while the development middleware
@@ -144,6 +166,22 @@ export default defineConfig(({ command, mode }) => ({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // A single stable import in terrain-detail-mask.ts resolves to exactly
+      // one reviewed transport arm. Unlike a conditional dynamic import this
+      // prevents Rollup from retaining the non-selected control asset.
+      '@terrain-detail-mask?url': `${resolve(
+        MONOREPO_ROOT,
+        'packages/assets/game/terrain',
+        `universal-terrain-mask-4k.${TERRAIN_MASK_ARM}`,
+      )}?url`,
+      ...Object.fromEntries(ALLIED_MESHOPT_STEMS.map((stem) => [
+        `@allied-${stem}-runtime?url`,
+        `${resolve(
+          MONOREPO_ROOT,
+          'packages/assets/game/units/allies/compressed',
+          `${stem}${ALLIED_MESHOPT_ARM === 'meshopt' ? '.meshopt' : ''}.glb`,
+        )}?url`,
+      ])),
     },
   },
 
@@ -238,6 +276,13 @@ export default defineConfig(({ command, mode }) => ({
     // is Vite's development-only route to the exact hoisted dependency; the
     // production value stays empty and cannot leak a machine path into dist.
     __BASIS_TRANSCODER_PATH__: JSON.stringify(command === 'serve' ? BASIS_DEV_PATH : ''),
+
+    // A release contains one terrain-mask transport, never both. The PNG arm
+    // is the canonical visual/performance control; KTX2 is the promoted
+    // default. Rollup eliminates the unreachable dynamic import and therefore
+    // proves the candidate's real package delta instead of hiding a second
+    // 11.5 MB copy in dist.
+    __TERRAIN_MASK_ARM__: JSON.stringify(TERRAIN_MASK_ARM),
   },
 
   esbuild: {

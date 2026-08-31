@@ -163,15 +163,18 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
 
 7. **Universal terrain detail mask** in `packages/assets/game/terrain/` — an original tileable
    8192 × 8192 grayscale master supplied by the project owner on 2026-08-27, conditioned to a
-   lossless 4096 × 4096 runtime derivative. Both terrain shader paths sample it in world space as
-   luminance and roughness variation. The terrain pass is multiplied by normalized natural splat
-   ownership (ground, dirt, sand and rock), so it cannot bleed onto hard surfaces. A separate road
-   pass reuses the same GPU texture at lower strength on asphalt and sidewalk paving before markings
-   are applied; raised kerbs remain untouched. The runtime-size decision and provenance live beside
-   the asset. In browser/Electron startup, the texture must begin on a synchronously uploadable
-   neutral 1 x 1 canvas and swap to the decoded PNG from its load handler. A pending
-   `HTMLImageElement` is not sufficient: WebGPU can create its sampler binding before a GPU texture
-   exists, then crash bind-group creation while reading `mipLevelCount`, leaving a flat-orange world.
+   lossless 4096 × 4096 canonical PNG/control. The shipping runtime is its deterministic linear
+   ETC1S KTX2 derivative with 13 explicit mips, loaded through the renderer-configured shared KTX2
+   pool; a build arm keeps PNG selectable for visual/performance A/B without bundling both. Both
+   terrain shader paths sample it in world space as luminance and roughness variation. The terrain
+   pass is multiplied by normalized natural splat ownership (ground, dirt, sand and rock), so it
+   cannot bleed onto hard surfaces. A separate road pass reuses the same GPU texture at lower
+   strength on asphalt and sidewalk paving before markings are applied; raised kerbs remain
+   untouched. The runtime-size, source/output hashes, decoded-quality gate and provenance live
+   beside the asset. A synchronously uploadable neutral 1 x 1 canvas remains the failure fallback
+   and seeds the PNG control before its load handler swaps in the decoded image. A pending
+   `HTMLImageElement` alone is not sufficient: WebGPU can create its sampler binding before a GPU
+   texture exists, then crash bind-group creation while reading `mipLevelCount`.
 
 8. **Imported faction/civilian structures, units and conventional vehicle wreckage** in
    `packages/assets/game/{buildings,units,wrecks}/` — original Meshy AI generations

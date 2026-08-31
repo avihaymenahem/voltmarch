@@ -94,6 +94,20 @@ inventing file-read timing. Compact evidence is
 `artifacts/perf/boot-baseline-electron-webgpu.json`; full raw reports remain
 under ignored `.turbo/`.
 
+### Batch 7 packaged-compression addendum (2026-08-31)
+
+The default linear terrain mask changed from a 11,489,212-byte PNG to a deterministic
+3,297,082-byte, 13-mip ETC1S KTX2. Five fresh Electron processes measured renderer-ready p50/p95
+26.617/28.507 s for KTX2 versus 26.868/28.534 s for PNG. Process-to-curtain-hidden p50/p95 was
+27.841/29.690 s versus 28.073/29.679 s. Treat the result as packaged boot parity, not a claimed
+0.8-0.9% speed-up: the host noise is comparable to the median difference and p95 is unchanged.
+
+The six-file Allied Meshopt candidate did not pass the family-latency gate. Despite saving
+11,228,312 bytes, its complete family-ready p95 was 2.010 s versus 1.937 s on WebGL (+3.81%) and
+3.067 s versus 2.969 s on native WebGPU (+3.27%). The default keeps the source GLBs. Full decisions,
+visual metrics and package/memory evidence are in
+`docs/reviews/batch7-compression-pipeline-gates.md`.
+
 ## Definitions and interpretation
 
 - `gltf.load-parse-decode` begins at `GLTFLoader.loadAsync` and ends when Three
@@ -107,7 +121,11 @@ under ignored `.turbo/`.
   decode or GPU upload fence. Neither proves that every mip reached the GPU.
 - `gpu.renderer-prepare` covers backend selection/device preparation.
   `gpu.pipeline-compile` covers the awaited Three compile with latent branches
-  exposed. The boot paint and first frames account for remaining upload/use.
+  exposed. On WebGPU this is a mixed Three span: TSL node construction, scheduler yields,
+  render-object traversal and asynchronous pipeline promises all contribute; it is not pure driver
+  compilation. With `?pipelineprofile=1`, the span detail contains diagnostic-only node-cache,
+  program/pipeline and promise attribution. `gpu.first-paint-submit` covers the synchronous boot
+  render after compile. It is CPU submit wall time, not a GPU-completion fence.
 - `registry.context-published` and `registry.systems-published` are marks;
   `registry.systems-init` and `registry.presentation-populate` are spans.
 - `app.game.ready` is recorded after the synchronous boot paint.

@@ -14,14 +14,13 @@ memory. The project should use it for coarse, typed-array-heavy jobs with few JS
 
 1. **Already shipping — Basis/KTX2 transcode.** Imported texture decode runs through a bounded
    two-worker Emscripten/WASM pool. Keep this shared rather than starting a pool per asset family.
-2. **Active POC — Meshopt geometry decode.** The nine compressed imported-art families carry about
-   200.9 MiB after subtracting KTX2 payloads. A representative Chrono Miner fell from 4,106,272 to
-   2,561,984 bytes with `EXT_meshopt_compression`, a 37.6% reduction, while retaining KTX2 and the
-   same GPU geometry. The POC installs Three's shared Meshopt decoder and routes only that asset to
-   the compressed file. On the current host, the SIMD decoder initialized in 0.315 ms, first decode
-   took 1.904 ms and the 100-sample hot median was 0.849 ms. That microbenchmark excludes transfer,
-   KTX2, scene construction and GPU upload; the production WebGPU capture and packaged desktop asset
-   checks pass, while the original GLB remains beside it as the visual/byte control.
+2. **Measured gate — Meshopt geometry decode.** The live Chrono Miner remains the one-asset proof.
+   A deterministic six-file Allied land/air arm reduced 25,905,084 to 14,676,772 bytes (-43.34%)
+   while retaining exact hierarchy, material, triangle, animation and KTX2 contracts. Complete
+   family-ready p95 nevertheless regressed 3.81% on WebGL and 3.27% on native WebGPU instead of
+   improving by the required 10%. Those six source GLBs remain the default and the candidates stay
+   reproducible lab assets. A later rollout must beat the whole request/decode/scene-construction
+   window; a decoder microbenchmark or byte saving is insufficient.
 3. **Candidate — boot-time procedural kernels.** Terrain, water and procedural texture generation
    already run in workers and operate on typed arrays. A SIMD WASM port is worthwhile only after a
    measured kernel beats the current worker including module compile, copies and startup. Current
@@ -127,6 +126,20 @@ repacks and uploads each visible type prefix when the chunk set changes. The Web
 Three r185 exposes storage-instanced and indirect-storage buffer attributes plus indexed indirect
 draws, so the required primitives exist without dropping below the renderer. The current CPU path
 remains the deterministic rollback arm while this is measured.
+
+### Pipeline attribution checkpoint
+
+The opt-in `?pipelineprofile=1` diagnostic establishes that Three r185 WebGPU `compileAsync()` is
+not one driver fence. In the fixed two-army fixture, six cache-warm pages consistently observed 69
+node calls (56 misses), 90 pipeline lookups, 74 new pipelines, 69/28 new vertex/fragment programs and
+53 asynchronous GPU pipeline promises. Median compile wall time was 8.649 s; summed node-call
+lifetimes were 1.415 s and summed promise lifetimes were 6.869 s. The first synchronous render after
+compile cost another 1.726 s median submit wall time. These attributed sums can overlap and the
+first-paint span is not a GPU-completion fence.
+
+Do not canonicalize cache keys or retain pipelines merely from these counts. First require zero
+unexpected post-reveal pipeline creation through a scripted VFX/LOD/construction/weather exercise,
+then a 10-20 same-process match soak with stable cache counts and renderer RSS.
 
 ## Acceptance gates
 

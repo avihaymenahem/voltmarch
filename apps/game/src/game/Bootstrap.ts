@@ -48,6 +48,7 @@ import {
   markBattlefieldPipelinesWarm,
   pipelineCacheStats,
 } from '../render/pipeline-retention';
+import { observePipelineCompile } from '../render/pipeline-profile';
 
 import { pushArt, pushCamera, resolveArt } from './ArtBridge';
 import { setGameContext } from './context';
@@ -549,6 +550,9 @@ export function bootstrap(options: BootOptions): GameHandle {
       });
       const nodeRenderer = handle.node;
       const cacheBefore = nodeRenderer === null ? null : pipelineCacheStats(nodeRenderer);
+      const compileObserver = nodeRenderer === null
+        ? null
+        : observePipelineCompile(nodeRenderer);
       // Three's compiler obeys Object3D.visible. That is correct for a generic
       // scene and wrong for a game warm-up: pooled explosions, muzzle flashes,
       // construction overlays, alternate LODs and shadow proxies begin hidden,
@@ -566,16 +570,32 @@ export function bootstrap(options: BootOptions): GameHandle {
       // WebGL compile() is synchronous. WebGPU aliases compile() to
       // compileAsync(), so the return MUST be awaited or the first presented
       // frame still pays for pipelines while the curtain claims they finished.
+      let compileFailed = false;
       try {
         await Promise.resolve(
           (handle.webgl ?? handle.node!).compile(sceneRig.scene, cameraRig.camera),
         );
-        finishCompile();
       } catch (err) {
-        finishCompile('error');
+        compileFailed = true;
         throw err;
       } finally {
         for (let i = 0; i < latentObjects.length; i++) latentObjects[i].visible = false;
+        const attribution = compileObserver?.finish();
+        finishCompile(compileFailed ? 'error' : 'ok', attribution?.enabled === true ? {
+          attributionSupported: attribution.supported,
+          nodeCalls: attribution.nodeCalls,
+          nodeCacheHits: attribution.nodeCacheHits,
+          nodeCacheMisses: attribution.nodeCacheMisses,
+          nodeWallMs: +attribution.nodeWallMs.toFixed(3),
+          pipelineCalls: attribution.pipelineCalls,
+          newPipelines: attribution.newPipelines,
+          newVertexPrograms: attribution.newVertexPrograms,
+          newFragmentPrograms: attribution.newFragmentPrograms,
+          gpuPromises: attribution.gpuPromises,
+          gpuPromiseWallMs: +attribution.gpuPromiseWallMs.toFixed(3),
+          gpuPromiseMaxMs: +attribution.gpuPromiseMaxMs.toFixed(3),
+          topFamilies: attribution.topFamilies,
+        } : undefined);
       }
       if (nodeRenderer !== null) markBattlefieldPipelinesWarm(nodeRenderer);
       compileMs = now() - compileStarted;
@@ -586,7 +606,16 @@ export function bootstrap(options: BootOptions): GameHandle {
       // a battlefield and not one frame of clear colour. Zero dt under `?shot=`
       // — this paint must not be the one thing that smuggles wall-clock time
       // into a capture.
-      renderOnce(shotMode ? 0 : 1 / 60);
+      const finishFirstPaint = beginBootSpan('gpu', 'first-paint-submit', {
+        backend: handle.backend,
+      });
+      try {
+        renderOnce(shotMode ? 0 : 1 / 60);
+        finishFirstPaint();
+      } catch (err) {
+        finishFirstPaint('error');
+        throw err;
+      }
       const closureReady = markContentClosureRevealed();
       const closure = contentClosureReport();
       console.info(

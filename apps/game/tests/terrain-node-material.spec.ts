@@ -53,36 +53,28 @@ const NODE_TERRAIN_SOURCE = readFileSync(
   new URL('../src/world/TerrainNodeMaterial.ts', import.meta.url), 'utf8',
 );
 const TERRAIN_DETAIL_MASK = readFileSync(
-  new URL('../../../packages/assets/game/terrain/universal-terrain-mask-4k.png', import.meta.url),
+  new URL('../../../packages/assets/game/terrain/universal-terrain-mask-4k.ktx2', import.meta.url),
 );
+const TERRAIN_DETAIL_REPORT = JSON.parse(readFileSync(
+  new URL('../../../packages/assets/game/terrain/universal-terrain-mask-4k.ktx2-report.json', import.meta.url),
+  'utf8',
+));
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('the browser terrain-detail texture is WebGPU-uploadable immediately', () => {
-  it('starts on a real neutral canvas and swaps to the decoded image later', async () => {
+  it('keeps a real neutral canvas when no renderer is available for KTX2 detection', async () => {
     const canvas = {
       width: 0,
       height: 0,
       getContext: () => ({ fillStyle: '', fillRect: vi.fn() }),
     } as unknown as HTMLCanvasElement;
-    let image: FakeImage | null = null;
-
     class FakeImage {
       decoding = '';
       src = '';
-      width = 4096;
-      height = 4096;
-      private load: (() => void) | null = null;
-
-      constructor() { image = this; }
-
-      addEventListener(type: string, listener: () => void): void {
-        if (type === 'load') this.load = listener;
-      }
-
-      finish(): void { this.load?.(); }
+      addEventListener(): void { /* the KTX2 arm never creates an Image */ }
     }
 
     vi.stubGlobal('document', { createElement: () => canvas });
@@ -98,12 +90,9 @@ describe('the browser terrain-detail texture is WebGPU-uploadable immediately', 
     expect(canvas.height).toBe(1);
     expect(placeholderVersion).toBeGreaterThan(0);
 
-    const loaded = preloadTerrainDetailMask();
-    expect(image).not.toBeNull();
-    image!.finish();
-    await expect(loaded).resolves.toBe(texture);
-    expect(texture.image).toBe(image);
-    expect(texture.version).toBeGreaterThan(placeholderVersion);
+    await expect(preloadTerrainDetailMask()).resolves.toBe(texture);
+    expect(texture.image).toBe(canvas);
+    expect(texture.version).toBe(placeholderVersion);
   });
 });
 
@@ -239,10 +228,22 @@ describe('the TSL terrain graph compiles', () => {
 
 describe('the translated shader keeps the GLSL structures', () => {
   it('ships a 4K detail mask and applies it only to natural splat ownership', () => {
-    // PNG IHDR stores width/height as big-endian uint32 values at bytes 16/20.
-    expect(TERRAIN_DETAIL_MASK.subarray(1, 4).toString()).toBe('PNG');
-    expect(TERRAIN_DETAIL_MASK.readUInt32BE(16)).toBe(4096);
-    expect(TERRAIN_DETAIL_MASK.readUInt32BE(20)).toBe(4096);
+    // KTX2 stores pixelWidth/pixelHeight at little-endian bytes 20/24 and the
+    // explicit mip count at 40. The source/output hashes and linear codec are
+    // pinned by the deterministic promotion report.
+    expect(TERRAIN_DETAIL_MASK.subarray(0, 12).toString('hex'))
+      .toBe('ab4b5458203230bb0d0a1a0a');
+    expect(TERRAIN_DETAIL_MASK.readUInt32LE(20)).toBe(4096);
+    expect(TERRAIN_DETAIL_MASK.readUInt32LE(24)).toBe(4096);
+    expect(TERRAIN_DETAIL_MASK.readUInt32LE(40)).toBe(13);
+    expect(TERRAIN_DETAIL_REPORT.codec).toBe('etc1s-linear');
+    expect(TERRAIN_DETAIL_REPORT.outputBytes).toBe(TERRAIN_DETAIL_MASK.byteLength);
+    expect(TERRAIN_DETAIL_REPORT.transferRatio).toBeLessThanOrEqual(0.287);
+    expect(TERRAIN_DETAIL_REPORT.qualityGate.psnrDb).toBeGreaterThanOrEqual(36.5);
+    expect(
+      TERRAIN_DETAIL_REPORT.compressedGpuBytesBC1
+      / TERRAIN_DETAIL_REPORT.decodedGpuBytesRGBA8,
+    ).toBeLessThan(0.126);
     expect(TERRAIN_DETAIL_STRENGTH).toBeCloseTo(0.44 * 0.95, 12);
     expect(ROAD_DETAIL_STRENGTH).toBe(0.24);
     expect(PAVEMENT_DETAIL_STRENGTH).toBe(0.30);

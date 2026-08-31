@@ -80,12 +80,16 @@ with no number is untracked, and that is itself the bug.
   paths. The short TAAU run saved 5.8–11.1% wall time but both scales lost infantry and panel-line
   definition. Do not promote either until edge-aware reconstruction/sharpening and moving-camera
   ghosting pass a fixed-seed readability scorecard.
-- **Meshopt rollout decision.** *(untracked)* The Chrono Miner POC is 37.6% smaller and its shared
-  SIMD decoder is fast in isolation. Measure packaged cold load including decoder startup, transfer,
-  scene construction, KTX2 and GPU upload before compressing another imported family. The separate
-  Float32 offline-cook proof is not that promotion evidence: it removed about 263 ms of conditioning
-  but grew the family 71.03% and worsened the warm request window by 226.20 ms, so it was rejected and
-  rolled back. Any next cook must retain compact transport and beat complete family readiness.
+- **Meshopt rollout remains latency-gated.** *(untracked)* A deterministic six-file Allied land/air
+  candidate saves 11,228,312 bytes (-43.34%) and passes structural/visual parity, but complete
+  family-ready p95 regressed 3.81% on WebGL and 3.27% on native WebGPU. The source GLBs remain the
+  default. Revisit only with an upstream worker-decode A/B, a different measured family or changed
+  delivery conditions, and require at least 10% p95 improvement including request, decode and scene
+  construction before rollout. The rejected Float32 cook remains a separate counterexample.
+- **WebGPU pipeline exercise and retention soak.** *(untracked)* The opt-in attribution now measures
+  the mixed compile span and first-paint submission. Exercise VFX, LOD, construction and weather
+  after reveal and require zero unexpected new pipelines, then run 10-20 same-process matches and
+  prove program/pipeline counts and renderer RSS plateau before changing cache retention or keys.
 
 ---
 

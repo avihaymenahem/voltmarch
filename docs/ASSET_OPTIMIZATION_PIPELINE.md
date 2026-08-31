@@ -98,6 +98,19 @@ Heliograph use 2,712/912/2,640-triangle caster proxies, while the articulated He
 rejected before texture spend because the generated connected shell violated its one-barrel contract; the
 procedural fallback remains authoritative. The isolated `?shot=meridian-final` fixture covers this gate.
 
+The universal terrain-detail mask now uses the same bounded shared transcoder rather than shipping a
+separate 4K PNG decode path. `tools/promote-terrain-mask.mjs` keeps the PNG canonical, emits one
+deterministic linear ETC1S KTX2 with 13 explicit mips and validates source/output hashes plus decoded
+quality. Transfer is 11,489,212 -> 3,297,082 bytes (-71.30%); full-mip residency is 11,184,824
+bytes on a BC1/ETC target versus 89,478,484 bytes as RGBA8 (-87.50%). The adapter chooses the
+transcode target, so an uncompressed fallback may retain the RGBA8 cost. A Vite build arm proves
+the PNG control, but only KTX2 enters the default bundle.
+
+The six-file Allied Meshopt gate is intentionally not a runtime promotion. Its reproducible
+candidate saves 11,228,312 bytes (-43.34%) and passes structure/geometry parity, but complete
+family-ready p95 regresses on WebGL and WebGPU. The source GLBs remain the shipping aliases; see
+`docs/reviews/batch7-compression-pipeline-gates.md` before revisiting geometry compression.
+
 ## Runtime promotion
 
 Static imported Soviet buildings now promote their audited geometry-only caster proxies. The proxy stays

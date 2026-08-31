@@ -20,6 +20,7 @@ interface AssetFamily {
   key: string;
   file: string;
   runtimeFile?: string;
+  runtimeAlias?: string;
   stem: string;
 }
 
@@ -29,8 +30,8 @@ const FAMILIES: readonly AssetFamily[] = [
   { name: 'Allied Chrono Miner', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_harvester', file: 'chrono-miner.glb', runtimeFile: 'chrono-miner.meshopt.glb', stem: 'chrono-miner' },
   { name: 'Meridian Sun Collector', manifest: 'meridian-vehicles.json', sourceDir: 'meridian', key: 'meridian_collector', file: 'sun-collector.glb', stem: 'sun-collector' },
   { name: 'Reclamation Scrapjaw', manifest: 'reclamation-vehicles.json', sourceDir: 'reclamation', key: 'reclaim_scrapper', file: 'scrapjaw.glb', stem: 'scrapjaw' },
-  { name: 'Allied Construction Dozer', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_dozer', file: 'construction-dozer.glb', stem: 'construction-dozer' },
-  { name: 'Allied Petrel Bomber', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_vindicator', file: 'petrel-bomber.glb', stem: 'petrel-bomber' },
+  { name: 'Allied Construction Dozer', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_dozer', file: 'construction-dozer.glb', runtimeAlias: '@allied-construction-dozer-runtime?url', stem: 'construction-dozer' },
+  { name: 'Allied Petrel Bomber', manifest: 'allied-vehicles.json', sourceDir: 'allies', key: 'allied_vindicator', file: 'petrel-bomber.glb', runtimeAlias: '@allied-petrel-bomber-runtime?url', stem: 'petrel-bomber' },
   { name: 'Soviet Sputnik Dozer', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_dozer', file: 'sputnik-dozer.glb', stem: 'sputnik-dozer' },
   { name: 'Soviet Interceptor', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_mig', file: 'interceptor.glb', stem: 'interceptor' },
   { name: 'Soviet Molot Heavy Bomber', manifest: 'soviet-vehicles.json', sourceDir: 'soviets', key: 'soviet_molot', file: 'molot-heavy-bomber.glb', stem: 'molot-heavy-bomber' },
@@ -157,7 +158,9 @@ describe('imported unit shipping budgets', () => {
       it('remains wired to the imported-unit runtime and its faction registry', () => {
         const runtime = fs.readFileSync(path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8');
         expect(runtime).toContain(`key: '${family.key}'`);
-        expect(runtime).toContain(`${family.sourceDir}/compressed/${family.runtimeFile ?? family.file}`);
+        expect(runtime).toContain(
+          family.runtimeAlias ?? `${family.sourceDir}/compressed/${family.runtimeFile ?? family.file}`,
+        );
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod1.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.lod2.glb`);
         expect(runtime).toContain(`${family.sourceDir}/derived/${family.stem}.shadow.glb`);
@@ -224,9 +227,9 @@ describe('imported unit shipping budgets', () => {
       path.join(root, 'apps/game/src/art/ImportedUnitAssets.ts'), 'utf8',
     );
     for (const contract of [
-      { key: 'allied_guardian', file: 'guardian-tank.glb', turret: 'Turret' },
-      { key: 'allied_ifv', file: 'sabre-ifv.glb', turret: 'Turret' },
-      { key: 'allied_prism', file: 'refractor-tank.glb', turret: 'Emitter' },
+      { key: 'allied_guardian', file: 'guardian-tank.glb', turret: 'Turret', runtimeAlias: '@allied-guardian-tank-runtime?url' },
+      { key: 'allied_ifv', file: 'sabre-ifv.glb', turret: 'Turret', runtimeAlias: '@allied-sabre-ifv-runtime?url' },
+      { key: 'allied_prism', file: 'refractor-tank.glb', turret: 'Emitter', runtimeAlias: '@allied-refractor-tank-runtime?url' },
     ]) {
       const sourceDir = path.join(root, 'packages/assets/game/units/allies');
       const source = glbJson(path.join(sourceDir, contract.file));
@@ -245,7 +248,7 @@ describe('imported unit shipping budgets', () => {
       const start = runtime.indexOf(`key: '${contract.key}'`);
       const section = runtime.slice(start, runtime.indexOf('\n  {', start + 8));
       expect(section).toContain(`turretName: '${contract.turret}'`);
-      expect(section).toContain(`allies/compressed/${contract.file}`);
+      expect(runtime).toContain(contract.runtimeAlias);
       expect(section).toContain(`allies/derived/${contract.file.replace(/\.glb$/, '.shadow.glb')}`);
       expect(section).not.toContain('.lod1.glb');
     }

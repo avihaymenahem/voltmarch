@@ -3,7 +3,7 @@
 Status: active implementation plan
 Baseline: `origin/main` at `871b8408`
 Research completed: 2026-08-30
-Implementation worktree: `codex/aaa-roadmap-batches-1-3`
+Implementation branch: local `main` (the temporary roadmap worktree has been retired)
 
 This document turns the performance, graphics, worker/WASM and package-boundary audit into one
 dependency-ordered delivery plan. Every workstream was checked against the current code and public
@@ -101,7 +101,7 @@ Baseline and phase telemetry
 
 ## Implementation checkpoint - 2026-08-31
 
-The first six batches are complete on `codex/aaa-roadmap-batches-1-3`:
+The first seven batches are complete on local `main`:
 
 1. **Baseline and telemetry: complete.** `?bootprofile=1` now exports bounded marks, spans,
    Resource/Navigation Timing, Long Tasks and browser/custom-protocol evidence through
@@ -160,9 +160,25 @@ The first six batches are complete on `codex/aaa-roadmap-batches-1-3`:
    565 semantic deliveries with zero misses before `game.ready`. Focused closure/audio tests,
    typecheck, production build and the cross-cutting monorepo gate (7,003 passing game tests) cover
    the implementation.
+7. **Compression and pipeline gates: complete; one promotion and one measured rejection.** The
+   universal 4096x4096 linear terrain mask now ships as a deterministic 13-mip ETC1S KTX2 through
+   the existing shared two-worker transcoder. Transfer falls 11,489,212 -> 3,297,082 bytes
+   (-71.30%); full-mip BC1/ETC target residency is 11,184,824 bytes instead of an 89,478,484-byte
+   RGBA8 allocation (-87.50%) when adapter block compression is available. Five fresh Electron
+   processes measured renderer-ready p50/p95
+   26.617/28.507 s versus 26.868/28.534 s for PNG, and process-to-curtain p50/p95
+   27.841/29.690 s versus 28.073/29.679 s: no material packaged boot regression. A deterministic
+   six-file Allied Meshopt arm saves 11,228,312 bytes (-43.34%) and preserves hierarchy, materials,
+   triangles, textures and all 587,639 compared positions within the recorded quantization bound,
+   but family-ready p95 regressed 3.81% on WebGL and 3.27% on WebGPU instead of improving by the
+   required 10%; the source GLBs remain the default. Opt-in `?pipelineprofile=1` attribution shows
+   that the WebGPU compile span mixes node building and GPU pipeline promises: the stable fixture
+   observed 69 node calls (56 misses), 90 pipeline lookups, 74 new pipelines and 53 GPU promises.
+   A separate first-paint-submit span captures the substantial work after compile without claiming
+   a GPU-completion fence. See `docs/reviews/batch7-compression-pipeline-gates.md`.
 
-The next move is Batch 7's packaged compression and pipeline evidence. Package extraction, GPU
-compaction and WASM remain behind the evidence and dependency gates above.
+The next move is Batch 8's WebGPU compute-driven foliage pilot. Package extraction and conditional
+WASM work remain behind the evidence and dependency gates above.
 
 ## Batch 1 - current baseline and phase instrumentation
 
@@ -263,24 +279,25 @@ Implemented contract:
   flushes with the original deadline rather than silently dropping the sound;
 - late asset/audio completion from a disposed battlefield cannot satisfy the next boot's closure.
 
-This does not make the current runtime-import path cooked or cheap. Batch 7 still owns the packaged
-Meshopt/texture/pipeline experiments needed before more authored families may safely return to
-post-reveal delivery.
+This does not make the current runtime-import path cooked or cheap. Batch 7 proved that smaller
+transport alone is insufficient: further Meshopt rollout requires a complete family-ready win.
 
 ### Texture and geometry compression
 
-- Inspect actual channel usage of `universal-terrain-mask-4k.png`, then test a reviewed KTX2 or
-  lower-channel linear delivery with explicit mips. Do not call it a boot fix until phase evidence
-  proves that.
-- Roll Meshopt beyond the Chrono Miner proof only after cold/warm browser and packaged family results
-  include decoder startup, scene construction, KTX2 and GPU upload.
-- Prefer the upstream Meshopt worker implementation for an A/B; do not build a second decoder pool.
+- The universal terrain mask is grayscale-identical across its three source channels and now ships
+  as deterministic linear ETC1S KTX2 with 13 explicit mips. The PNG remains the canonical source and
+  build-time control; exactly one arm enters a production bundle.
+- Six Allied land/air Meshopt candidates are retained as deterministic lab assets, but source GLBs
+  remain the shipping arm because complete family-ready p95 regressed on both renderers. Any revisit
+  must measure the whole family and may test upstream worker decode without adding a second pool.
 
 ### WebGPU pipelines and frame graph
 
-Keep under-curtain compilation. Attribute pipeline/program variants by material family and state,
-canonicalize genuine duplicates, then soak 10-20 matches/settings changes while observing process
-RSS. Do not add arbitrary eviction before Three reference and GPU-completion behavior is understood.
+Keep under-curtain compilation. The opt-in observer now attributes node cache use, program/pipeline
+creation and GPU pipeline promises by material family, while first-paint submission is timed
+separately. The next pipeline decision requires a 10-20 same-process match/settings soak with zero
+unexpected post-reveal pipelines and plateauing RSS. Do not add arbitrary eviction before Three
+reference and GPU-completion behavior is understood.
 
 Use per-pass timestamps at shipping resolutions. AO, bloom, grade materialization and antialiasing
 are strong candidates because pixel scaling is proven, but draw/shadow/instancing submission still

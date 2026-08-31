@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "family": "universal-terrain-detail-mask",
+  "role": "linear-luminance-roughness-mask",
+  "encoder": "Basis Universal 1.16.x",
+  "codec": "etc1s-linear",
+  "dimensions": [
+    4096,
+    4096
+  ],
+  "mipLevels": 13,
+  "sourceBytes": 11489212,
+  "outputBytes": 3297082,
+  "transferRatio": 0.287,
+  "sourceSha256": "ed08fc8a567d75ca253b4bfe42b10809e625b515c366e7064c07aaa60996002a",
+  "outputSha256": "66ba746d511d4f943022945fa3e9f67455b73495be274fbca5b3b9f6099580b6",
+  "decodedGpuBytesRGBA8": 89478484,
+  "decodedGpuBytesRGB8": 67108863,
+  "compressedGpuBytesBC1": 11184824,
+  "qualityGate": {
+    "transcode": "ETC1 RGB mip 0",
+    "meanAbsoluteError": 2.8551,
+    "rootMeanSquareError": 3.7423,
+    "psnrDb": 36.668,
+    "p95AbsoluteError": 8,
+    "p99AbsoluteError": 11,
+    "maxChannelError": 36,
+    "note": "Measured against the deterministic output with Basis -unpack; runtime captures remain the visual acceptance gate."
+  }
+}

@@ -7,6 +7,12 @@
  */
 
 import * as THREE from 'three';
+import alliedAlbatrossRuntimeUrl from '@allied-albatross-heavy-bomber-runtime?url';
+import alliedDozerRuntimeUrl from '@allied-construction-dozer-runtime?url';
+import alliedGuardianRuntimeUrl from '@allied-guardian-tank-runtime?url';
+import alliedPetrelRuntimeUrl from '@allied-petrel-bomber-runtime?url';
+import alliedRefractorRuntimeUrl from '@allied-refractor-tank-runtime?url';
+import alliedSabreRuntimeUrl from '@allied-sabre-ifv-runtime?url';
 import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import {
   mergeGeometries, toCreasedNormals,
@@ -296,7 +302,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_guardian',
     label: 'Allied Guardian Tank',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/guardian-tank.glb', import.meta.url).href,
+    url: alliedGuardianRuntimeUrl,
     shadowUrl: new URL(
       '../../../../packages/assets/game/units/allies/derived/guardian-tank.shadow.glb', import.meta.url,
     ).href,
@@ -314,7 +320,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_ifv',
     label: 'Allied Sabre IFV',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/sabre-ifv.glb', import.meta.url).href,
+    url: alliedSabreRuntimeUrl,
     shadowUrl: new URL(
       '../../../../packages/assets/game/units/allies/derived/sabre-ifv.shadow.glb', import.meta.url,
     ).href,
@@ -332,7 +338,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_prism',
     label: 'Allied Refractor Tank',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/refractor-tank.glb', import.meta.url).href,
+    url: alliedRefractorRuntimeUrl,
     shadowUrl: new URL(
       '../../../../packages/assets/game/units/allies/derived/refractor-tank.shadow.glb', import.meta.url,
     ).href,
@@ -350,7 +356,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_dozer',
     label: 'Allied Construction Dozer',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/construction-dozer.glb', import.meta.url).href,
+    url: alliedDozerRuntimeUrl,
     lods: [
       {
         url: new URL('../../../../packages/assets/game/units/allies/derived/construction-dozer.lod1.glb', import.meta.url).href,
@@ -376,7 +382,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_vindicator',
     label: 'Allied Petrel Bomber',
-    url: new URL('../../../../packages/assets/game/units/allies/compressed/petrel-bomber.glb', import.meta.url).href,
+    url: alliedPetrelRuntimeUrl,
     lods: [
       {
         url: new URL('../../../../packages/assets/game/units/allies/derived/petrel-bomber.lod1.glb', import.meta.url).href,
@@ -402,9 +408,7 @@ export const IMPORTED_UNIT_SPECS: readonly ImportedUnitSpec[] = [
   {
     key: 'allied_albatross',
     label: 'Allied Albatross Heavy Bomber',
-    url: new URL(
-      '../../../../packages/assets/game/units/allies/compressed/albatross-heavy-bomber.glb', import.meta.url,
-    ).href,
+    url: alliedAlbatrossRuntimeUrl,
     lods: [
       {
         url: new URL(

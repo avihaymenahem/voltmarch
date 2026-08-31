@@ -88,7 +88,8 @@ export default defineSystem({
      * how long the boot stopped here.
      */
     const [fields, layerTextures, terrainDetail] = await Promise.all([
-      prewarmedTerrain(), prewarmedTerrainTextures(), preloadTerrainDetailMask(),
+      prewarmedTerrain(), prewarmedTerrainTextures(),
+      preloadTerrainDetailMask(handle.webgl ?? handle.node!),
     ]);
 
     const detailImage = terrainDetail.image as { width?: number; height?: number } | undefined;

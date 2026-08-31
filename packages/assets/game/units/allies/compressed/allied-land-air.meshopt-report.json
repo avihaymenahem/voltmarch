@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "family": "allied-land-air-runtime",
+  "encoder": "glTF-Transform 4.4.2 / meshoptimizer high",
+  "sourceBytes": 25905084,
+  "outputBytes": 14676772,
+  "savedBytes": 11228312,
+  "transferRatio": 0.5666,
+  "geometryDriftGate": {
+    "comparedPositions": 587639,
+    "maximumNearestPositionDrift": 0.000129831,
+    "maximumRelativeBoundsDriftPercent": 0.0065,
+    "rmsDrift": 0.000060933,
+    "unmatchedPositions": 0,
+    "note": "Audited across the complete 12-asset Allied proof; deterministic output hashes bind this six-asset promoted slice to that proof."
+  },
+  "rows": [
+    {
+      "key": "allied_guardian",
+      "file": "guardian-tank.glb",
+      "output": "guardian-tank.meshopt.glb",
+      "sourceBytes": 5778044,
+      "outputBytes": 2859984,
+      "savedBytes": 2918060,
+      "transferRatio": 0.495,
+      "sourceSha256": "e7a08861b7fb7b7adef2223f2461b8d8be72f6e529be8ef2aa7ee26947320dc7",
+      "outputSha256": "27f6b085fa9e8b8f3017da31710aaa5c7ac6fffbe8f2b539292360811eb49eef",
+      "contract": {
+        "nodes": 2,
+        "meshes": 2,
+        "primitives": 2,
+        "triangles": 25348,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 3
+      }
+    },
+    {
+      "key": "allied_ifv",
+      "file": "sabre-ifv.glb",
+      "output": "sabre-ifv.meshopt.glb",
+      "sourceBytes": 4503764,
+      "outputBytes": 1917904,
+      "savedBytes": 2585860,
+      "transferRatio": 0.4258,
+      "sourceSha256": "3627a55591c9513cd33a7276b186f9383470156b1a424c3b19881dbbb5043962",
+      "outputSha256": "7df9471cf8196750d0b76453b5d3dc15bb7376d81a10a764182abae1effb76d0",
+      "contract": {
+        "nodes": 2,
+        "meshes": 2,
+        "primitives": 2,
+        "triangles": 23353,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 3
+      }
+    },
+    {
+      "key": "allied_prism",
+      "file": "refractor-tank.glb",
+      "output": "refractor-tank.meshopt.glb",
+      "sourceBytes": 5570240,
+      "outputBytes": 2806116,
+      "savedBytes": 2764124,
+      "transferRatio": 0.5038,
+      "sourceSha256": "4ae8fef4f3b4f3886d57cd36183e93f7603f1e960cb29ae541da6821b80042f8",
+      "outputSha256": "571f56efe4cdb8f0a124dd00cf9ab8b1954cc4dee6aa60f37181aea131ffe5b7",
+      "contract": {
+        "nodes": 2,
+        "meshes": 2,
+        "primitives": 2,
+        "triangles": 25231,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 3
+      }
+    },
+    {
+      "key": "allied_dozer",
+      "file": "construction-dozer.glb",
+      "output": "construction-dozer.meshopt.glb",
+      "sourceBytes": 2992824,
+      "outputBytes": 2231676,
+      "savedBytes": 761148,
+      "transferRatio": 0.7457,
+      "sourceSha256": "a13e893a51f3d34517bf9240ab2150309aa46ebdd4f01552a5b5931b6d61c925",
+      "outputSha256": "2bb889d16fd69d370a674378467b616c4dba62f514abe9a05a20125864348b31",
+      "contract": {
+        "nodes": 1,
+        "meshes": 1,
+        "primitives": 1,
+        "triangles": 19305,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 4
+      }
+    },
+    {
+      "key": "allied_vindicator",
+      "file": "petrel-bomber.glb",
+      "output": "petrel-bomber.meshopt.glb",
+      "sourceBytes": 2347136,
+      "outputBytes": 1720924,
+      "savedBytes": 626212,
+      "transferRatio": 0.7332,
+      "sourceSha256": "5c141e3989e8abb4b302b0b0ac4711888e70ec8e5eeffe9263aaa99ef5ddd8a6",
+      "outputSha256": "af3d8615a51b31d054e899ced85fb8a2238c421ca622aead586debeda3b45119",
+      "contract": {
+        "nodes": 1,
+        "meshes": 1,
+        "primitives": 1,
+        "triangles": 18056,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 4
+      }
+    },
+    {
+      "key": "allied_albatross",
+      "file": "albatross-heavy-bomber.glb",
+      "output": "albatross-heavy-bomber.meshopt.glb",
+      "sourceBytes": 4713076,
+      "outputBytes": 3140168,
+      "savedBytes": 1572908,
+      "transferRatio": 0.6663,
+      "sourceSha256": "701bfc5ebd5973ce4a1475a2b3fb83b968c1fbc5c30fd50ab872ba0051d6f172",
+      "outputSha256": "8beb40d859c8e4883b117b01c27b2093d0f311c2f2df4a68452fabc76fcd80e2",
+      "contract": {
+        "nodes": 1,
+        "meshes": 1,
+        "primitives": 1,
+        "triangles": 49025,
+        "materials": 1,
+        "animations": 0,
+        "ktx2Textures": 3
+      }
+    }
+  ]
+}
