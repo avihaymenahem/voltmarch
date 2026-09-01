@@ -8,6 +8,25 @@
   height: var(--vm-user-panel-height) !important;
 }
 
+.vm-hud .vm-radar-selection-group.vm-aspect-resizable.has-user-size {
+  width: var(--vm-user-panel-width);
+  height: var(--vm-user-panel-height);
+  grid-template-columns: minmax(0, 625fr) minmax(0, 946fr);
+  --vm-u: var(--vm-user-content-unit);
+}
+
+.vm-hud .vm-radar-selection-group.vm-aspect-resizable.has-user-size
+  > :is(.vm-dock-map, .vm-dock-selection) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.vm-hud .vm-radar-selection-group.vm-aspect-resizable.has-user-size
+  > :is(.vm-dock-map, .vm-dock-selection:not(.is-empty)) {
+  height: 100% !important;
+}
+
 .vm-hud .vm-dock-selection.is-empty > .vm-panel-corner-handle {
   display: none;
 }

@@ -114,6 +114,15 @@ describe('the last resort drops captions, never verbs', () => {
     expect(firstRule).not.toContain('.vm-cargo');
   });
 
+  it('keeps self-destruct as a fixed icon control with an accessible state label', () => {
+    const destruct = ruleBody('.vm-hud .vm-destruct {');
+    expect(destruct).toMatch(/width:\s*calc\(20\s*\*\s*var\(--vm-u\)\)/);
+    expect(destruct).toMatch(/min-width:\s*calc\(20\s*\*\s*var\(--vm-u\)\)/);
+    expect(ruleBody('.vm-hud .vm-destruct-copy')).toMatch(/display:\s*none/);
+    expect(TS).toContain("label(this.destructButton, 'vm-destruct-copy', 'Destruct')");
+    expect(TS).toContain("this.destructButton.setAttribute('aria-label', action.hint)");
+  });
+
   it('replaces an overflowing unit name with the compact quantity anchor', () => {
     expect(TS).toContain('const countIdentity = !this.stanceRow.hidden || tight');
     expect(TS).toContain('if (this.lastCount < 2) this.countEl.hidden = !countIdentity');

@@ -5,10 +5,9 @@ import { computeUiScale } from './Chrome';
 
 import './panel-resize.css';
 
-/* Both joined plates have new authored aspects and design sizes. Do not
- * reinterpret either retired portrait-panel preference as a v2 width. */
-export const MAP_PANEL_SIZE_KEY = 'vm.hud.radar.width-ratio.v2';
-export const SELECTION_PANEL_SIZE_KEY = 'vm.hud.selection-wide.width-ratio.v2';
+/* The radar and inspector are one authored 1571x738 assembly. The retired
+ * per-half preferences cannot be interpreted as the width of that assembly. */
+export const JOINED_PANEL_SIZE_KEY = 'vm.hud.radar-selection.width-ratio.v3';
 
 export interface AspectPanelResizeOptions {
   readonly storageKey: string;

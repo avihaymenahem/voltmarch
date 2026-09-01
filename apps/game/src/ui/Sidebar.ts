@@ -90,8 +90,7 @@ import {
 import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 import {
   AspectPanelResize,
-  MAP_PANEL_SIZE_KEY,
-  SELECTION_PANEL_SIZE_KEY,
+  JOINED_PANEL_SIZE_KEY,
 } from './AspectPanelResize';
 import {
   BUILD_PANEL_HEIGHT_KEY,
@@ -1293,7 +1292,6 @@ const IDLE_HINT = 'Select a unit or a structure to command it';
 class SelectionPanel {
   readonly root: HTMLElement;
 
-  private readonly sizeResize: AspectPanelResize;
   private readonly live: HTMLElement;
 
   /** The name-and-verbs row. Held so `fitHead` can measure its overflow. */
@@ -1392,8 +1390,6 @@ class SelectionPanel {
   constructor(
     parent: HTMLElement,
     private readonly cb: SidebarCallbacks,
-    getMaxWidthPx?: () => number,
-    getMinWidthPx?: () => number,
   ) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
     this.root.dataset.brackets = 'on';
@@ -1596,11 +1592,11 @@ class SelectionPanel {
     this.destructRow = el('div', 'vm-stances vm-destruct-row', head);
     label(this.destructRow, 'vm-stance-label', 'Scuttle');
     this.destructButton = button(this.destructRow, 'vm-stance vm-destruct', 'Self-destruct');
-    this.destructButton.style.width = 'auto';
-    this.destructButton.style.gap = 'calc(3 * var(--vm-u))';
-    this.destructButton.style.padding = '0 calc(4 * var(--vm-u))';
     this.destructButton.appendChild(makeIcon('alert', 'vm-icon'));
-    this.destructLabelNode = label(this.destructButton, '', 'Destruct');
+    // The warning glyph is the visible control. Full wording remains in the
+    // title/aria label, while this hidden node keeps the two-click state
+    // available to non-visual consumers without consuming header width.
+    this.destructLabelNode = label(this.destructButton, 'vm-destruct-copy', 'Destruct');
     this.destructRow.hidden = true;
     this.destructButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
     this.destructButton.addEventListener('click', () => {
@@ -1701,23 +1697,6 @@ class SelectionPanel {
       this.fitObserver.observe(this.root);
     }
 
-    this.sizeResize = new AspectPanelResize(this.root, {
-      storageKey: SELECTION_PANEL_SIZE_KEY,
-      label: 'Resize selection information panel',
-      aspectRatio: 946 / 738,
-      designWidthUnits: 369,
-      minWidthPx: 240,
-      scaleMinimumWithUi: true,
-      getMinWidthPx,
-      maxViewportWidthShare: 0.34,
-      maxViewportHeightShare: 0.72,
-      getMaxWidthPx,
-    });
-  }
-
-  /** Keep this instrument inside the live left-side collision budget. */
-  constrainSize(): void {
-    this.sizeResize.reflow();
   }
 
   private buildCard(): CardCell {
@@ -2230,7 +2209,6 @@ class SelectionPanel {
     // detached node for the rest of the session.
     this.fitObserver?.disconnect();
     this.fitObserver = null;
-    this.sizeResize.dispose();
     this.root.remove();
   }
 }
@@ -3611,6 +3589,7 @@ export class Sidebar {
   readonly minimapCanvas: HTMLCanvasElement;
   readonly resources: ResourceStrip;
 
+  private readonly joinedDocks: HTMLElement;
   private readonly mapResize: AspectPanelResize;
   private readonly selection: SelectionPanel;
   private readonly build: BuildPanel;
@@ -3638,7 +3617,6 @@ export class Sidebar {
      * budget; independent viewport percentages can each be valid while their
      * sum still drives the inspector underneath the command buttons. */
     const hudScale = (): number => computeUiScale(Math.max(1, globalThis.innerHeight || 720));
-    const panelGap = (): number => 8 * hudScale();
     const compactCommandWidthUnits = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
       return viewport <= 1400 ? 270 : 409.5;
@@ -3653,51 +3631,26 @@ export class Sidebar {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
       return (viewport - compactCommandWidthUnits() * hudScale()) / 2;
     };
-    const fallbackSelectionWidth = (): number => {
+    const joinedMinimum = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210
-        : viewport <= 1400 ? 269
-          : viewport <= 1700 ? 295
-            : viewport <= 1960 ? 359
-              : 369;
+      const units = viewport <= 900 ? 365
+        : viewport <= 1400 ? 447
+          : viewport <= 1700 ? 490
+            : viewport <= 1960 ? 596
+              : 613;
       return units * hudScale();
     };
-    const mapMinimum = (): number => {
-      const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 155
-        : viewport <= 1400 ? 178
-          : viewport <= 1700 ? 195
-            : viewport <= 1960 ? 237
-              : 220;
-      return units * hudScale();
-    };
-    const selectionMinimum = (): number => {
-      const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210
-        : viewport <= 1400 ? 240
-          : viewport <= 1700 ? 260
-            : 320;
-      return units * hudScale();
-    };
-    const mapMaximum = (): number => {
-      const selection = this.root.querySelector<HTMLElement>('.vm-dock-selection');
-      const liveWidth = selection?.getBoundingClientRect().width ?? 0;
-      const selectionWidth = liveWidth > 0 ? liveWidth : fallbackSelectionWidth();
-      return commandLeft() - selectionWidth - 2 * panelGap();
-    };
-    const selectionMaximum = (): number => {
-      const mapWidth = this.mapDock?.getBoundingClientRect().width ?? 0;
-      return commandLeft() - mapWidth - 2 * panelGap();
-    };
+    const joinedMaximum = (): number => commandLeft() - 8 * hudScale();
 
     // The strip is top-centre and the docks are bottom; they share one root so
     // `__VM.setUiVisible(false)` hides the whole interface with one toggle.
     this.resources = new ResourceStrip(this.root);
 
     const docks = el('div', 'vm-docks', this.root);
+    this.joinedDocks = el('div', 'vm-radar-selection-group', docks);
 
     /* -- bottom left: the minimap dock ---------------------------------- */
-    this.mapDock = panel(docks, 'vm-dock vm-dock-map', 'diag');
+    this.mapDock = panel(this.joinedDocks, 'vm-dock vm-dock-map', 'diag');
     this.mapDock.dataset.brackets = 'on';
     this.mapDock.setAttribute('aria-label', 'Tactical map');
     const mapHead = el('div', 'vm-dock-head', this.mapDock);
@@ -3754,8 +3707,8 @@ export class Sidebar {
       opts.callbacks.centreOnSelection();
     });
 
-    const resetMap = button(mapHardware, 'vm-map-hardware-pod', 'Reset tactical map size');
-    resetMap.title = 'Reset tactical map size';
+    const resetMap = button(mapHardware, 'vm-map-hardware-pod', 'Reset radar and selection size');
+    resetMap.title = 'Reset radar and selection size';
     resetMap.append(makeIcon('radar', 'vm-icon vm-map-hardware-icon'));
     resetMap.addEventListener('click', () => {
       opts.callbacks.sound('click');
@@ -3773,31 +3726,25 @@ export class Sidebar {
     textNode(this.mapHintEl, 'Build a Radar Dome');
     this.mapHintEl.hidden = true;
 
-    this.mapResize = new AspectPanelResize(this.mapDock, {
-      storageKey: MAP_PANEL_SIZE_KEY,
-      label: 'Resize tactical map panel',
-      aspectRatio: 625 / 738,
-      designWidthUnits: 244,
-      minWidthPx: 220,
+    /* -- bottom centre: selection / status ------------------------------ */
+    this.selection = new SelectionPanel(this.joinedDocks, opts.callbacks);
+
+    /* One authored 1571x738 assembly, one handle and one persisted scale.
+     * Resizing either half independently created a vertical seam and let the
+     * frames drift apart; the group now owns both source ratios together. */
+    this.mapResize = new AspectPanelResize(this.joinedDocks, {
+      storageKey: JOINED_PANEL_SIZE_KEY,
+      label: 'Resize radar and selection panels',
+      aspectRatio: 1571 / 738,
+      designWidthUnits: 613,
+      minWidthPx: 447,
       scaleMinimumWithUi: true,
-      getMinWidthPx: mapMinimum,
-      maxViewportWidthShare: 0.30,
-      maxViewportHeightShare: 0.60,
-      getMaxWidthPx: mapMaximum,
-      onWidthChange: (width) => {
-        this.root.style.setProperty('--vm-live-map-w', `${Math.round(width)}px`);
-        this.selection?.constrainSize();
-      },
+      getMinWidthPx: joinedMinimum,
+      maxViewportWidthShare: 0.55,
+      maxViewportHeightShare: 0.72,
+      getMaxWidthPx: joinedMaximum,
       onCommit: opts.mapResized,
     });
-
-    /* -- bottom centre: selection / status ------------------------------ */
-    this.selection = new SelectionPanel(
-      docks,
-      opts.callbacks,
-      selectionMaximum,
-      selectionMinimum,
-    );
 
     /* -- bottom right: build -------------------------------------------- */
     // MOUNTED ON THE ROOT, NOT IN `docks`. The build palette is the right rail
@@ -3828,10 +3775,9 @@ export class Sidebar {
     this.supers = new SuperweaponBar(railStack, opts.callbacks);
     this.commands = new CommandDeck(this.root, opts.callbacks);
     // The stored sizes were first restored before the command plate existed.
-    // Re-evaluate once against its real rendered edge, then keep doing so from
-    // both panel resizers whenever either neighbour or the viewport changes.
+    // Re-evaluate once against its real rendered edge; later viewport changes
+    // reapply the one stored group ratio against the same collision boundary.
     this.mapResize.reflow();
-    this.selection.constrainSize();
     // AFTER the build panel, because it is the one that constructs the
     // renderer. Null in any headless build, where both panels keep their glyphs.
     this.selection.setCameos(this.build.cameoRenderer);

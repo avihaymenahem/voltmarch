@@ -1691,6 +1691,9 @@
 .vm-hud .vm-destruct-row { margin-left: calc(6 * var(--vm-u)); }
 
 .vm-hud .vm-destruct {
+  width: calc(20 * var(--vm-u));
+  min-width: calc(20 * var(--vm-u));
+  padding: 0;
   font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1698,6 +1701,8 @@
   color: var(--vm-danger);
   border-color: rgba(255, 77, 61, 0.5);
 }
+
+.vm-hud .vm-destruct-copy { display: none; }
 
 .vm-hud .vm-destruct:is(:hover, .vm-pointer-hover),
 .vm-hud .vm-destruct:focus-visible {

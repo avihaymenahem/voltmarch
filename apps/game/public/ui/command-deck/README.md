@@ -37,3 +37,6 @@ then separated by connected alpha silhouettes. Imagen returned an opaque
 checker preview twice, so a deterministic neutral-luminance key removed only
 the checker pixels. The right plate was shortened by cutting and rejoining its
 straight centre rails; no corners, controls, bevels or side artwork were scaled.
+At runtime the two source halves remain one 1571 × 738 resize group: their seam
+has no layout gap, one persisted handle scales both halves, and the source
+625:946 width split keeps their shared height exact.

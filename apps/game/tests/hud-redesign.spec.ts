@@ -127,9 +127,24 @@ describe('perimeter HUD composition', () => {
   it('gives the compact selection inspector enough room for formations and enlarged text', () => {
     expect(COMMAND_DECK_CSS).toContain('--vm-selection-w: calc(269 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toContain('--vm-selection-h: calc(210 * var(--vm-u));');
-    expect(SIDEBAR).toContain(': viewport <= 1400 ? 269');
-    expect(SIDEBAR).toContain(': viewport <= 1700 ? 295');
-    expect(SIDEBAR).toContain(': viewport <= 1960 ? 359');
+    expect(SIDEBAR).toContain(': viewport <= 1400 ? 447');
+    expect(SIDEBAR).toContain(': viewport <= 1700 ? 490');
+    expect(SIDEBAR).toContain(': viewport <= 1960 ? 596');
+  });
+
+  it('scrolls only the mixed-selection inventory between fixed header and formation rows', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-multi \.vm-sel-cards\s*\{[\s\S]*?grid-auto-flow:\s*row;[\s\S]*?grid-template-columns:\s*repeat\(3,[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-selection-formations\s*\{[\s\S]*?flex:\s*0 0 auto;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-sel-head\s*\{[\s\S]*?min-height:[\s\S]*?;/,
+    );
+    expect(COMMAND_DECK_CSS).not.toMatch(
+      /\.vm-dock-selection\.is-multi \.vm-sel-live\s*\{[\s\S]*?overflow-y:\s*auto;/,
+    );
   });
 });
 
@@ -156,8 +171,7 @@ describe('approved command-deck skin', () => {
     expect(joined).toContain('--vm-map-h: calc(288 * var(--vm-u))');
     expect(joined).toContain('--vm-selection-w: calc(369 * var(--vm-u))');
     expect(joined).toContain('--vm-selection-h: calc(288 * var(--vm-u))');
-    expect(SIDEBAR).toContain('aspectRatio: 625 / 738');
-    expect(SIDEBAR).toContain('aspectRatio: 946 / 738');
+    expect(SIDEBAR).toContain('aspectRatio: 1571 / 738');
     expect(seal).toContain('calc(409.5 * var(--vm-u))');
     expect(seal).toContain('calc(100vw - (912 * var(--vm-u)))');
     expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
@@ -319,20 +333,25 @@ describe('approved command-deck skin', () => {
     expect(joined).toMatch(
       /\.vm-dock-selection\.is-multi \.vm-sel-info,[\s\S]*?\.vm-dock-selection\.is-multi \.vm-sel-hp\s*\{\s*display:\s*none;/,
     );
-    expect(joined).toMatch(/grid-template-rows:\s*repeat\(2, calc\(82 \* var\(--vm-u\)\)\);/);
+    expect(joined).toMatch(/grid-template-columns:\s*repeat\(3, calc\(72 \* var\(--vm-u\)\)\);/);
+    expect(joined).toMatch(/grid-auto-flow:\s*row;/);
   });
 
   it('offers persistent resizing without letting the build default override it', () => {
-    expect(SIDEBAR).toContain('new AspectPanelResize(this.root');
-    expect(SIDEBAR).toContain('new AspectPanelResize(this.mapDock');
+    expect(SIDEBAR).toContain('new AspectPanelResize(this.joinedDocks');
+    expect(SIDEBAR).not.toContain('new AspectPanelResize(this.mapDock');
+    expect(SIDEBAR).not.toContain('new AspectPanelResize(this.root');
+    expect(SIDEBAR).toContain('JOINED_PANEL_SIZE_KEY');
     expect(HUD).toContain('mapResized: () => this.resize(true)');
     expect(SIDEBAR).toContain("edge: 'top'");
     expect(COMMAND_DECK_CSS).not.toMatch(
       /\.vm-dock-build\.vm-height-resizable\.has-user-height\s*\{[^}]*\bheight:\s*calc\([^}]*!important/,
     );
     expect(CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
-    expect(SIDEBAR).toContain('getMinWidthPx: mapMinimum');
-    expect(SIDEBAR).toContain('selectionMinimum');
+    expect(SIDEBAR).toContain('getMinWidthPx: joinedMinimum');
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-radar-selection-group\s*\{[\s\S]*?grid-template-columns:\s*var\(--vm-map-w\) var\(--vm-selection-w\);[\s\S]*?gap:\s*0;/,
+    );
   });
 
   it('composes variable-height chrome from undistorted artwork caps', () => {
@@ -442,7 +461,7 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).toContain("mapHardware.setAttribute('role', 'toolbar')");
     expect(SIDEBAR).toContain("'Centre camera on base'");
     expect(SIDEBAR).toContain("'Centre camera on selection'");
-    expect(SIDEBAR).toContain("'Reset tactical map size'");
+    expect(SIDEBAR).toContain("'Reset radar and selection size'");
     expect(SIDEBAR).not.toContain("mapHardware.setAttribute('aria-hidden', 'true')");
     expect(HUD).toContain('centreOnHome: () => this.cameraRig.centreOnHome()');
     expect(HUD).toContain('centreOnSelection: () => this.focusSelection()');

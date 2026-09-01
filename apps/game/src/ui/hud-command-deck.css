@@ -1907,11 +1907,39 @@
  * keeps that plate's exact ratio, so proportional user resizing scales the
  * complete component and never pulls corners or button wells out of shape. */
 .vm-hud[data-layout='perimeter'] {
-  --vm-panel-gap: calc(8 * var(--vm-u));
+  --vm-panel-gap: 0px;
   --vm-map-w: calc(244 * var(--vm-u));
   --vm-map-h: calc(288 * var(--vm-u));
   --vm-selection-w: calc(369 * var(--vm-u));
   --vm-selection-h: calc(288 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-radar-selection-group {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: var(--vm-map-w) var(--vm-selection-w);
+  align-items: end;
+  gap: 0;
+  width: calc(var(--vm-map-w) + var(--vm-selection-w));
+  height: var(--vm-selection-h);
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-radar-selection-group
+  > :is(.vm-dock-map, .vm-dock-selection) {
+  position: relative;
+  left: auto !important;
+  bottom: auto !important;
+  pointer-events: auto;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-radar-selection-group
+  > .vm-dock-selection.is-empty {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-map {
@@ -2024,15 +2052,45 @@
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
   display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(2, calc(82 * var(--vm-u)));
-  grid-auto-columns: calc(82 * var(--vm-u));
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, calc(72 * var(--vm-u)));
+  grid-auto-rows: calc(72 * var(--vm-u));
   align-content: start;
   width: 100%;
   height: 100%;
   gap: calc(8 * var(--vm-u));
-  overflow-x: auto;
-  overflow-y: hidden;
+  padding-right: calc(3 * var(--vm-u));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--vm-accent-rgb), 0.58) rgba(0, 0, 0, 0.24);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-card {
+  width: calc(72 * var(--vm-u));
+  min-width: calc(72 * var(--vm-u));
+  height: calc(72 * var(--vm-u));
+}
+
+/* Only the inventory aperture scrolls. Identity/actions above it and the
+ * formation strip below it remain fixed, so a large mixed selection never
+ * turns the whole instrument into a moving sheet of chrome. */
+.vm-hud[data-layout='perimeter']
+  .vm-dock-selection.is-multi .vm-sel-cards::-webkit-scrollbar {
+  width: calc(4 * var(--vm-u));
+  height: 0;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-selection.is-multi .vm-sel-cards::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-selection.is-multi .vm-sel-cards::-webkit-scrollbar-thumb {
+  background: rgba(var(--vm-accent-rgb), 0.58);
+  border-radius: calc(2 * var(--vm-u));
 }
 
 /* Matched-height compact tiers keep the two generated halves visually joined
@@ -2134,10 +2192,6 @@
     gap: calc(8 * var(--vm-u));
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
-    grid-auto-columns: calc(60 * var(--vm-u));
-  }
-
   .vm-hud[data-layout='perimeter'] .vm-card {
     width: calc(60 * var(--vm-u));
     min-width: calc(60 * var(--vm-u));
@@ -2145,7 +2199,14 @@
   }
 
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
-    grid-template-rows: repeat(2, calc(60 * var(--vm-u)));
+    grid-template-columns: repeat(3, calc(60 * var(--vm-u)));
+    grid-auto-rows: calc(60 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-card {
+    width: calc(60 * var(--vm-u));
+    min-width: calc(60 * var(--vm-u));
+    height: calc(60 * var(--vm-u));
   }
 }
 
@@ -2190,8 +2251,15 @@
   }
 
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
-    display: flex;
+    grid-template-columns: repeat(3, calc(50 * var(--vm-u)));
+    grid-auto-rows: calc(50 * var(--vm-u));
     gap: calc(5 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-card {
+    width: calc(50 * var(--vm-u));
+    min-width: calc(50 * var(--vm-u));
+    height: calc(50 * var(--vm-u));
   }
 }
 
