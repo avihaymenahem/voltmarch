@@ -229,6 +229,15 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('keeps operation context chips inside the artwork safe area', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command-context\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*15%;[\s\S]*?width:\s*calc\(60 \* var\(--vm-u\)\);[\s\S]*?max-width:\s*18%;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command-chip\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+    );
+  });
+
   it('keeps event toasts below the responsive operation bay even with perf enabled', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-hud\[data-layout='perimeter'\] \.vm-toasts,\s*\.vm-hud\[data-layout='perimeter'\]\.vm-perf-on \.vm-toasts\s*\{[^}]*top:\s*calc\(var\(--vm-top-node-h\) \+ 24 \* var\(--vm-u\)\);[^}]*z-index:\s*13;/s,

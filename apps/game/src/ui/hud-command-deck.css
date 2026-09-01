@@ -376,8 +376,27 @@
 }
 .vm-hud[data-layout='perimeter'] .vm-command-kicker { display: block; font-size: calc(7 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.23em; color: #8d999d; }
 .vm-hud[data-layout='perimeter'] .vm-command-map { display: block; margin-top: calc(7 * var(--vm-u)); font-size: calc(17 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.055em; color: #f1f3f3; text-shadow: 0 calc(2 * var(--vm-u)) calc(5 * var(--vm-u)) #000; }
-.vm-hud[data-layout='perimeter'] .vm-command-context { grid-column: 3; padding-right: calc(16 * var(--vm-u)); gap: calc(5 * var(--vm-u)); }
-.vm-hud[data-layout='perimeter'] .vm-command-chip { padding: calc(4 * var(--vm-u)) calc(6 * var(--vm-u)); border: 1px solid rgba(105, 128, 136, 0.32); background: rgba(2, 7, 10, 0.62); color: #9aa7aa; }
+.vm-hud[data-layout='perimeter'] .vm-command-context {
+  /* The PNG's outer 15% is a transparent/sloped frame, not content space.
+   * Anchor contextual chips to the inner aperture instead of the root edge. */
+  position: absolute;
+  top: 24%;
+  right: 15%;
+  grid-column: auto;
+  width: calc(60 * var(--vm-u));
+  max-width: 18%;
+  padding-right: 0;
+  gap: calc(5 * var(--vm-u));
+  box-sizing: border-box;
+}
+.vm-hud[data-layout='perimeter'] .vm-command-chip {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: calc(4 * var(--vm-u)) calc(6 * var(--vm-u));
+  border: 1px solid rgba(105, 128, 136, 0.32);
+  background: rgba(2, 7, 10, 0.62);
+  color: #9aa7aa;
+}
 
 .vm-hud[data-layout='perimeter'] .vm-command-pips {
   position: absolute;
