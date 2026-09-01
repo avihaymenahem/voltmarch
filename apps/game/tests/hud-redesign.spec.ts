@@ -292,6 +292,15 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toContain('.vm-tab.is-active');
   });
 
+  it('keeps the opaque top-wing backing inside both transparent end caps', () => {
+    expect(COMMAND_DECK_CSS).toContain(
+      'background-size: calc(100% - 20 * var(--vm-u)) calc(58 * var(--vm-u)) !important;',
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /background-size:\s*100% 1px,\s*100% 1px,\s*calc\(100% - 20 \* var\(--vm-u\)\) calc\(58 \* var\(--vm-u\)\) !important;/,
+    );
+  });
+
   it('ships the joined components as matched-height RGBA plates', () => {
     expect(pngHeader('radar-dock-v2.png')).toEqual({ width: 625, height: 738, colorType: 6 });
     expect(pngHeader('selection-wide-v2.png')).toEqual({ width: 946, height: 738, colorType: 6 });

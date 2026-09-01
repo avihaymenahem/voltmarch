@@ -1103,7 +1103,9 @@
     rgba(3, 8, 11, 0.995) 92%,
     transparent 93%) !important;
   background-position: center top !important;
-  background-size: 100% calc(58 * var(--vm-u)) !important;
+  /* Stop the opaque fill inside the transparent end caps so its rectangular
+   * edge cannot show beyond either wing silhouette. */
+  background-size: calc(100% - 20 * var(--vm-u)) calc(58 * var(--vm-u)) !important;
   background-repeat: no-repeat !important;
   box-shadow: none;
 }
@@ -1600,7 +1602,7 @@
     background-size:
       100% 1px,
       100% 1px,
-      100% calc(58 * var(--vm-u)) !important;
+      calc(100% - 20 * var(--vm-u)) calc(58 * var(--vm-u)) !important;
     background-repeat: no-repeat !important;
   }
 
