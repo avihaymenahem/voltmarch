@@ -2370,7 +2370,13 @@ export class Hud {
         }
       }
       view.veterancy = n > 1 ? 0 : rankOf(store.flags[primaryIdx]);
-      this.fillStats(primaryIdx);
+      if (sel.count === 1) {
+        this.fillStats(primaryIdx);
+      } else {
+        // A group card is an inventory of types, not a claim that the first
+        // entity's armour/DPS/range/speed describes all selected entities.
+        view.armour = ''; view.damage = ''; view.range = ''; view.speed = '';
+      }
     } else {
       view.title = '';
       view.subtitle = '';

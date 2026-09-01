@@ -5,8 +5,10 @@ import { computeUiScale } from './Chrome';
 
 import './panel-resize.css';
 
-export const MAP_PANEL_SIZE_KEY = 'vm.hud.map.width-ratio';
-export const SELECTION_PANEL_SIZE_KEY = 'vm.hud.selection.width-ratio';
+/* Both joined plates have new authored aspects and design sizes. Do not
+ * reinterpret either retired portrait-panel preference as a v2 width. */
+export const MAP_PANEL_SIZE_KEY = 'vm.hud.radar.width-ratio.v2';
+export const SELECTION_PANEL_SIZE_KEY = 'vm.hud.selection-wide.width-ratio.v2';
 
 export interface AspectPanelResizeOptions {
   readonly storageKey: string;

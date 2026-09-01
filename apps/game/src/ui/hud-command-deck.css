@@ -28,11 +28,11 @@
 
   --vm-top-h: calc(70 * var(--vm-u));
   --vm-edge: calc(8 * var(--vm-u));
-  --vm-panel-gap: calc(8 * var(--vm-u));
-  --vm-map-w: calc(286 * var(--vm-u));
-  --vm-map-h: calc(359 * var(--vm-u));
-  --vm-selection-w: calc(250 * var(--vm-u));
-  --vm-selection-h: calc(329 * var(--vm-u));
+  --vm-panel-gap: 0px;
+  --vm-map-w: calc(244 * var(--vm-u));
+  --vm-map-h: calc(288 * var(--vm-u));
+  --vm-selection-w: calc(369 * var(--vm-u));
+  --vm-selection-h: calc(288 * var(--vm-u));
   /* Full authored width when it fits; otherwise yield exactly enough room for
      both left instruments at their desktop minima plus their two 8u gaps. */
   --vm-command-w: min(
@@ -1165,8 +1165,8 @@
 
 .vm-hud[data-layout='perimeter'] .vm-command-node::before { background-image: url('/ui/command-deck/operation.png'); }
 .vm-hud[data-layout='perimeter'] .vm-objectives::before { background-image: url('/ui/command-deck/objectives.png'); }
-.vm-hud[data-layout='perimeter'] .vm-dock-map::before { background-image: url('/ui/command-deck/minimap.png'); }
-.vm-hud[data-layout='perimeter'] .vm-dock-selection::before { background-image: url('/ui/command-deck/selection.png'); }
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before { background-image: url('/ui/command-deck/radar-dock-v2.png'); }
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::before { background-image: url('/ui/command-deck/selection-wide-v2.png'); }
 .vm-hud[data-layout='perimeter'] .vm-command-deck::before { background-image: url('/ui/command-deck/commands.png'); }
 .vm-hud[data-layout='perimeter'] .vm-dock-build::before { background-image: url('/ui/command-deck/build.png'); }
 
@@ -1878,5 +1878,295 @@
   .vm-hud[data-layout='perimeter'] .vm-command-key {
     top: calc(3 * var(--vm-u));
     right: calc(4 * var(--vm-u));
+  }
+}
+
+/* ----------------------------------------------------------------------- */
+/* Joined radar + wide data assembly                                        */
+/* ----------------------------------------------------------------------- */
+
+/* Imagen authored both plates on one shared 738px-high canvas. Each root
+ * keeps that plate's exact ratio, so proportional user resizing scales the
+ * complete component and never pulls corners or button wells out of shape. */
+.vm-hud[data-layout='perimeter'] {
+  --vm-panel-gap: 0px;
+  --vm-map-w: calc(244 * var(--vm-u));
+  --vm-map-h: calc(288 * var(--vm-u));
+  --vm-selection-w: calc(369 * var(--vm-u));
+  --vm-selection-h: calc(288 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map {
+  width: var(--vm-map-w);
+  height: var(--vm-map-h);
+  padding:
+    calc(40 * var(--vm-u))
+    calc(35 * var(--vm-u))
+    calc(81 * var(--vm-u))
+    calc(43 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before {
+  background-image: url('/ui/command-deck/radar-dock-v2.png');
+  background-size: 100% 100%;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-body {
+  width: 100%;
+  height: 100%;
+}
+
+/* Three empty Imagen wells are centred at 29%, 50%, and 71%. */
+.vm-hud[data-layout='perimeter'] .vm-map-hardware {
+  left: 18%;
+  right: 18%;
+  bottom: 5.2%;
+  height: 12.5%;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
+  background: rgba(2, 7, 10, 0.96);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+  left: calc(var(--vm-live-map-w, var(--vm-map-w)) + var(--vm-panel-gap));
+  bottom: 0;
+  width: var(--vm-selection-w);
+  min-width: var(--vm-selection-w);
+  max-width: var(--vm-selection-w);
+  height: var(--vm-selection-h);
+  padding:
+    calc(48 * var(--vm-u))
+    calc(37 * var(--vm-u))
+    calc(17 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::before {
+  background-image: url('/ui/command-deck/selection-wide-v2.png');
+  background-size: 100% 100%;
+}
+
+/* The generated apertures are real alpha. An explicit well beneath the live
+ * DOM keeps terrain out of the data field without painting over its frame. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset:
+    calc(48 * var(--vm-u))
+    calc(37 * var(--vm-u))
+    calc(43 * var(--vm-u));
+  z-index: 1;
+  background: rgba(2, 6, 9, 0.985);
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-live {
+  gap: calc(10 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-body {
+  grid-template-columns: minmax(0, calc(82 * var(--vm-u))) minmax(0, 1fr);
+  gap: calc(18 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-card {
+  width: calc(82 * var(--vm-u));
+  min-width: calc(82 * var(--vm-u));
+  height: calc(82 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-info {
+  gap: calc(14 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-stats {
+  grid-template-columns: repeat(2, minmax(calc(80 * var(--vm-u)), 1fr));
+  gap: calc(12 * var(--vm-u)) calc(18 * var(--vm-u));
+}
+
+/* A multi-selection is an inventory of entity TYPES. The type cards are the
+ * answer; primary-derived stats and aggregate HP would describe no one unit
+ * honestly. Functional stance/formation controls remain available. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-info,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-hp {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-body {
+  display: block;
+  min-height: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, calc(82 * var(--vm-u)));
+  grid-auto-columns: calc(82 * var(--vm-u));
+  align-content: start;
+  width: 100%;
+  height: 100%;
+  gap: calc(8 * var(--vm-u));
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Matched-height compact tiers keep the two generated halves visually joined
+ * until the genuinely narrow fallback, where collision safety takes priority. */
+@media (max-width: 1960px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(237 * var(--vm-u));
+    --vm-map-h: calc(280 * var(--vm-u));
+    --vm-selection-w: calc(359 * var(--vm-u));
+    --vm-selection-h: calc(280 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-map {
+    padding:
+      calc(39 * var(--vm-u))
+      calc(34 * var(--vm-u))
+      calc(79 * var(--vm-u))
+      calc(42 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+    padding:
+      calc(47 * var(--vm-u))
+      calc(36 * var(--vm-u))
+      calc(16 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+    inset:
+      calc(47 * var(--vm-u))
+      calc(36 * var(--vm-u))
+      calc(42 * var(--vm-u));
+  }
+}
+
+@media (max-width: 1700px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(195 * var(--vm-u));
+    --vm-map-h: calc(230 * var(--vm-u));
+    --vm-selection-w: calc(295 * var(--vm-u));
+    --vm-selection-h: calc(230 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-map {
+    padding:
+      calc(32 * var(--vm-u))
+      calc(28 * var(--vm-u))
+      calc(65 * var(--vm-u))
+      calc(35 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+    padding:
+      calc(38 * var(--vm-u))
+      calc(29 * var(--vm-u))
+      calc(13 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+    inset:
+      calc(38 * var(--vm-u))
+      calc(29 * var(--vm-u))
+      calc(34 * var(--vm-u));
+  }
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(178 * var(--vm-u));
+    --vm-map-h: calc(210 * var(--vm-u));
+    --vm-selection-w: calc(269 * var(--vm-u));
+    --vm-selection-h: calc(210 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-map {
+    padding:
+      calc(29 * var(--vm-u))
+      calc(26 * var(--vm-u))
+      calc(59 * var(--vm-u))
+      calc(32 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+    padding:
+      calc(35 * var(--vm-u))
+      calc(27 * var(--vm-u))
+      calc(12 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+    inset:
+      calc(35 * var(--vm-u))
+      calc(27 * var(--vm-u))
+      calc(31 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-sel-body {
+    grid-template-columns: minmax(0, calc(60 * var(--vm-u))) minmax(0, 1fr);
+    gap: calc(8 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
+    grid-auto-columns: calc(60 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-card {
+    width: calc(60 * var(--vm-u));
+    min-width: calc(60 * var(--vm-u));
+    height: calc(60 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
+    grid-template-rows: repeat(2, calc(60 * var(--vm-u)));
+  }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(155 * var(--vm-u));
+    --vm-map-h: calc(183 * var(--vm-u));
+    --vm-selection-w: calc(210 * var(--vm-u));
+    --vm-selection-h: calc(164 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-map {
+    padding:
+      calc(26 * var(--vm-u))
+      calc(22 * var(--vm-u))
+      calc(52 * var(--vm-u))
+      calc(28 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+    padding:
+      calc(27 * var(--vm-u))
+      calc(21 * var(--vm-u))
+      calc(10 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+    inset:
+      calc(27 * var(--vm-u))
+      calc(21 * var(--vm-u))
+      calc(24 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-sel-head {
+    height: calc(26 * var(--vm-u));
+    min-height: calc(26 * var(--vm-u));
+    padding-bottom: calc(5 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-sel-live {
+    gap: calc(5 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
+    display: flex;
+    gap: calc(5 * var(--vm-u));
   }
 }

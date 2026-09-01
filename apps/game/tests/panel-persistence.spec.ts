@@ -43,36 +43,36 @@ describe('persisted HUD panel geometry', () => {
 
   it('keeps sequential compact maximums outside the centered command plate', () => {
     const commandLeft = 505;
-    const gap = 8;
-    const selectionDefault = 220;
+    const gap = 0;
+    const selectionDefault = 269;
     const map = clampAspectPanelWidth(
-      Number.POSITIVE_INFINITY, 1280, 720, 205, 1100 / 1380, 0.30, 0.60,
+      Number.POSITIVE_INFINITY, 1280, 720, 178, 625 / 738, 0.30, 0.60,
       commandLeft - selectionDefault - 2 * gap,
     );
     const selection = clampAspectPanelWidth(
-      Number.POSITIVE_INFINITY, 1280, 720, 220, 1007 / 1324, 0.34, 0.72,
+      Number.POSITIVE_INFINITY, 1280, 720, 240, 946 / 738, 0.34, 0.72,
       commandLeft - map - 2 * gap,
     );
-    expect(map).toBe(269);
-    expect(selection).toBe(220);
+    expect(map).toBe(236);
+    expect(selection).toBe(269);
     expect(map + gap + selection).toBeLessThanOrEqual(commandLeft - gap);
   });
 
-  it('reserves enough compact selection height for formations at 1.5x text scale', () => {
-    const selectionWidth = 220;
-    const plateAspect = 1324 / 1007;
-    const panelChrome = 60;
-    const fixedBodyContent = 105;
-    const availableStatsHeight = selectionWidth * plateAspect - panelChrome - fixedBodyContent;
+  it('reserves enough compact selection height for one-entity details', () => {
+    const selectionWidth = 269;
+    const panelHeight = selectionWidth * 738 / 946;
+    const panelChrome = 35 + 31;
+    const fixedBodyContent = 26 + 60 + 17 + 20;
+    const availableContentHeight = panelHeight - panelChrome;
 
-    expect(availableStatsHeight).toBeGreaterThanOrEqual(124);
+    expect(availableContentHeight).toBeGreaterThanOrEqual(fixedBodyContent);
   });
 
   it('keeps the first desktop breakpoint outside the elastic command plate', () => {
     const viewport = 1401;
-    const gap = 8;
-    const mapMinimum = 220;
-    const selectionMinimum = 220;
+    const gap = 0;
+    const mapMinimum = 195;
+    const selectionMinimum = 260;
     const commandWidth = Math.min(409.5, viewport - 912);
     const commandLeft = (viewport - commandWidth) / 2;
     expect(commandWidth).toBe(409.5);

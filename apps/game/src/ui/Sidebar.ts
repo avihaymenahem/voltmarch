@@ -1329,6 +1329,7 @@ class SelectionPanel {
   private readonly hpRoot: HTMLElement;
   private readonly mendTag: HTMLElement;
   private readonly cardRow: HTMLElement;
+  private readonly infoNode: HTMLElement;
   private readonly cards: CardCell[] = [];
   private readonly statValues: Text[] = [];
   private readonly statChips: HTMLElement[] = [];
@@ -1386,6 +1387,7 @@ class SelectionPanel {
   private lastGarrison = '';
   private lastPrimary = '';
   private lastDestruct = '';
+  private lastMulti = false;
 
   constructor(
     parent: HTMLElement,
@@ -1615,6 +1617,7 @@ class SelectionPanel {
     for (let i = 0; i < CARD_POOL; i++) this.cards.push(this.buildCard());
 
     const info = el('div', 'vm-sel-info', body);
+    this.infoNode = info;
     this.subtitleNode = label(info, 'vm-sel-sub');
 
     const stats = el('div', 'vm-sel-stats', info);
@@ -1701,9 +1704,9 @@ class SelectionPanel {
     this.sizeResize = new AspectPanelResize(this.root, {
       storageKey: SELECTION_PANEL_SIZE_KEY,
       label: 'Resize selection information panel',
-      aspectRatio: 1007 / 1324,
-      designWidthUnits: 250,
-      minWidthPx: 220,
+      aspectRatio: 946 / 738,
+      designWidthUnits: 369,
+      minWidthPx: 240,
       scaleMinimumWithUi: true,
       getMinWidthPx,
       maxViewportWidthShare: 0.34,
@@ -1816,10 +1819,20 @@ class SelectionPanel {
 
   update(view: SelectionView, _snap: HudSnapshot, tele: HudTelemetry): void {
     const empty = view.count === 0;
+    const multi = view.count > 1;
     if (empty !== this.empty) {
       this.empty = empty;
       this.root.classList.toggle('is-empty', empty);
       this.root.setAttribute('aria-label', empty ? 'Base advisory' : 'Selection');
+    }
+    if (multi !== this.lastMulti) {
+      this.lastMulti = multi;
+      this.root.classList.toggle('is-multi', multi);
+      // A group overview answers "which units?" with the pooled type cards.
+      // Primary-derived stats and aggregate HP imply a single subject, so they
+      // remain exclusive to a one-entity inspection.
+      this.infoNode.hidden = multi;
+      this.hpRoot.hidden = multi;
     }
     if (empty) {
       this.updateFormations(false);
@@ -3625,7 +3638,7 @@ export class Sidebar {
      * budget; independent viewport percentages can each be valid while their
      * sum still drives the inspector underneath the command buttons. */
     const hudScale = (): number => computeUiScale(Math.max(1, globalThis.innerHeight || 720));
-    const panelGap = (): number => 8 * hudScale();
+    const panelGap = (): number => 0;
     const compactCommandWidthUnits = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
       return viewport <= 1400 ? 270 : 409.5;
@@ -3642,17 +3655,28 @@ export class Sidebar {
     };
     const fallbackSelectionWidth = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 220 : 250;
+      const units = viewport <= 900 ? 210
+        : viewport <= 1400 ? 269
+          : viewport <= 1700 ? 295
+            : viewport <= 1960 ? 359
+              : 369;
       return units * hudScale();
     };
     const mapMinimum = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 155 : viewport <= 1400 ? 205 : 220;
+      const units = viewport <= 900 ? 155
+        : viewport <= 1400 ? 178
+          : viewport <= 1700 ? 195
+            : viewport <= 1960 ? 237
+              : 220;
       return units * hudScale();
     };
     const selectionMinimum = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210 : 220;
+      const units = viewport <= 900 ? 210
+        : viewport <= 1400 ? 240
+          : viewport <= 1700 ? 260
+            : 320;
       return units * hudScale();
     };
     const mapMaximum = (): number => {
@@ -3752,8 +3776,8 @@ export class Sidebar {
     this.mapResize = new AspectPanelResize(this.mapDock, {
       storageKey: MAP_PANEL_SIZE_KEY,
       label: 'Resize tactical map panel',
-      aspectRatio: 1100 / 1380,
-      designWidthUnits: 286,
+      aspectRatio: 625 / 738,
+      designWidthUnits: 244,
       minWidthPx: 220,
       scaleMinimumWithUi: true,
       getMinWidthPx: mapMinimum,

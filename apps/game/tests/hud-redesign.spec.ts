@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import sharp from 'sharp';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const HUD = readFileSync(join(ROOT, 'apps/game/src/ui/Hud.ts'), 'utf8');
@@ -8,6 +9,16 @@ const SIDEBAR = readFileSync(join(ROOT, 'apps/game/src/ui/Sidebar.ts'), 'utf8');
 const INPUT = readFileSync(join(ROOT, 'apps/game/src/input/input.system.ts'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'apps/game/src/ui/hud-redesign.css'), 'utf8');
 const COMMAND_DECK_CSS = readFileSync(join(ROOT, 'apps/game/src/ui/hud-command-deck.css'), 'utf8');
+
+function pngHeader(name: string): { width: number; height: number; colorType: number } {
+  const bytes = readFileSync(join(ROOT, 'apps/game/public/ui/command-deck', name));
+  expect(bytes.subarray(1, 4).toString('ascii')).toBe('PNG');
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+    colorType: bytes[25],
+  };
+}
 
 describe('perimeter HUD composition', () => {
   it('is an explicit layout layer loaded after the base HUD', () => {
@@ -114,11 +125,11 @@ describe('perimeter HUD composition', () => {
   });
 
   it('gives the compact selection inspector enough room for formations and enlarged text', () => {
-    expect(COMMAND_DECK_CSS).toMatch(
-      /@media \(max-width: 1400px\)\s*\{[\s\S]*?--vm-selection-w:\s*calc\(220 \* var\(--vm-u\)\);[\s\S]*?--vm-selection-h:\s*calc\(290 \* var\(--vm-u\)\);/,
-    );
-    expect(SIDEBAR).toContain('viewport <= 900 ? 210 : viewport <= 1400 ? 220 : 250');
-    expect(SIDEBAR).toContain('viewport <= 900 ? 210 : 220');
+    expect(COMMAND_DECK_CSS).toContain('--vm-selection-w: calc(269 * var(--vm-u));');
+    expect(COMMAND_DECK_CSS).toContain('--vm-selection-h: calc(210 * var(--vm-u));');
+    expect(SIDEBAR).toContain(': viewport <= 1400 ? 269');
+    expect(SIDEBAR).toContain(': viewport <= 1700 ? 295');
+    expect(SIDEBAR).toContain(': viewport <= 1960 ? 359');
   });
 });
 
@@ -138,12 +149,15 @@ describe('command deck behavior', () => {
 
 describe('approved command-deck skin', () => {
   const seal = COMMAND_DECK_CSS;
+  const joined = COMMAND_DECK_CSS.slice(COMMAND_DECK_CSS.lastIndexOf('/* Joined radar + wide data assembly'));
 
   it('uses the authored plate proportions without distorting bitmap chrome', () => {
-    expect(seal).toContain('--vm-map-w: calc(286 * var(--vm-u))');
-    expect(seal).toContain('--vm-map-h: calc(359 * var(--vm-u))');
-    expect(seal).toContain('--vm-selection-w: calc(250 * var(--vm-u))');
-    expect(seal).toContain('--vm-selection-h: calc(329 * var(--vm-u))');
+    expect(joined).toContain('--vm-map-w: calc(244 * var(--vm-u))');
+    expect(joined).toContain('--vm-map-h: calc(288 * var(--vm-u))');
+    expect(joined).toContain('--vm-selection-w: calc(369 * var(--vm-u))');
+    expect(joined).toContain('--vm-selection-h: calc(288 * var(--vm-u))');
+    expect(SIDEBAR).toContain('aspectRatio: 625 / 738');
+    expect(SIDEBAR).toContain('aspectRatio: 946 / 738');
     expect(seal).toContain('calc(409.5 * var(--vm-u))');
     expect(seal).toContain('calc(100vw - (912 * var(--vm-u)))');
     expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
@@ -237,8 +251,8 @@ describe('approved command-deck skin', () => {
       'top-wing-right-wide.png',
       'operation.png',
       'objectives.png',
-      'minimap.png',
-      'selection.png',
+      'radar-dock-v2.png',
+      'selection-wide-v2.png',
       'selection-empty.png',
       'commands.png',
       'build.png',
@@ -252,6 +266,25 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toContain('.vm-tab.is-active');
   });
 
+  it('ships the joined components as matched-height RGBA plates', () => {
+    expect(pngHeader('radar-dock-v2.png')).toEqual({ width: 625, height: 738, colorType: 6 });
+    expect(pngHeader('selection-wide-v2.png')).toEqual({ width: 946, height: 738, colorType: 6 });
+  });
+
+  it('keeps the joined component apertures truly transparent', async () => {
+    const alphaAt = async (name: string, x: number, y: number): Promise<number> => {
+      const { data, info } = await sharp(join(ROOT, 'apps/game/public/ui/command-deck', name))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return data[(y * info.width + x) * 4 + 3] ?? 255;
+    };
+    expect(await alphaAt('radar-dock-v2.png', 300, 300)).toBe(0);
+    expect(await alphaAt('radar-dock-v2.png', 180, 660)).toBe(0);
+    expect(await alphaAt('selection-wide-v2.png', 450, 300)).toBe(0);
+    expect(await alphaAt('selection-wide-v2.png', 450, 665)).toBe(0);
+  });
+
   it('keeps the build inventory continuous and scrollable beyond the visible eight cards', () => {
     expect(SIDEBAR).toContain('export const BUILD_ROWS = 7');
     expect(COMMAND_DECK_CSS).toMatch(/\.vm-grid\s*\{[\s\S]*?overflow-y:\s*auto/);
@@ -260,9 +293,20 @@ describe('approved command-deck skin', () => {
   });
 
   it('keeps the selection cameo in its own measured track', () => {
-    expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-sel-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, calc\(64 \* var\(--vm-u\)\)\) minmax\(0, 1fr\);/,
+    expect(joined).toMatch(
+      /\.vm-sel-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, calc\(82 \* var\(--vm-u\)\)\) minmax\(0, 1fr\);/,
     );
+  });
+
+  it('turns a multi-selection into a type-card overview without stats', () => {
+    expect(SIDEBAR).toContain("this.root.classList.toggle('is-multi', multi)");
+    expect(SIDEBAR).toContain('this.infoNode.hidden = multi');
+    expect(SIDEBAR).toContain('this.hpRoot.hidden = multi');
+    expect(HUD).toContain('if (sel.count === 1)');
+    expect(joined).toMatch(
+      /\.vm-dock-selection\.is-multi \.vm-sel-info,[\s\S]*?\.vm-dock-selection\.is-multi \.vm-sel-hp\s*\{\s*display:\s*none;/,
+    );
+    expect(joined).toMatch(/grid-template-rows:\s*repeat\(2, calc\(82 \* var\(--vm-u\)\)\);/);
   });
 
   it('offers persistent resizing without letting the build default override it', () => {
@@ -365,8 +409,8 @@ describe('approved command-deck skin', () => {
   });
 
   it('registers three functional radar controls to the authored hardware wells', () => {
-    expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*25%;[\s\S]*?right:\s*25%;/,
+    expect(joined).toMatch(
+      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*18%;[\s\S]*?right:\s*18%;/,
     );
     expect(SIDEBAR).toContain("mapHardware.setAttribute('role', 'toolbar')");
     expect(SIDEBAR).toContain("'Centre camera on base'");
