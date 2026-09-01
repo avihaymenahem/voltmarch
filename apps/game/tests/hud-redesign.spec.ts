@@ -426,6 +426,9 @@ describe('approved command-deck skin', () => {
     );
     expect(COMMAND_DECK_CSS).toContain('right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toContain('padding-left: calc(26 * var(--vm-u));');
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-resources > :is\([\s\S]*?\.vm-res-credits,[\s\S]*?\.vm-res-trend,[\s\S]*?\.vm-res-clock,[\s\S]*?\.vm-res-army[\s\S]*?\)\s*\{\s*transform:\s*translateX\(calc\(12 \* var\(--vm-u\)\)\);/,
+    );
     expect(COMMAND_DECK_CSS).toContain('width: calc(2 * var(--vm-top-node-half));');
     expect(COMMAND_DECK_CSS).toMatch(
       /\[data-top-fit='tight'\] \.vm-power-state\s*\{\s*display:\s*none;/,

@@ -1389,6 +1389,18 @@
   .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power {
     min-width: calc(38 * var(--vm-u));
   }
+
+  /* The generated recesses sit optically right of their geometric tracks.
+   * Move the complete readouts together so icons, labels, and values keep
+   * their internal alignment without changing any bay boundary. */
+  .vm-hud[data-layout='perimeter'] .vm-resources > :is(
+    .vm-res-credits,
+    .vm-res-trend,
+    .vm-res-clock,
+    .vm-res-army
+  ) {
+    transform: translateX(calc(12 * var(--vm-u)));
+  }
 }
 
 /* ----------------------------------------------------------------------- */
