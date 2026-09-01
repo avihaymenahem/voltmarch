@@ -355,11 +355,12 @@
 .vm-hud[data-layout='perimeter'] .vm-command-emblem,
 .vm-hud[data-layout='perimeter'] .vm-command-portrait {
   grid-column: 1;
-  width: calc(53 * var(--vm-u));
-  height: calc(58 * var(--vm-u));
+  width: calc(46 * var(--vm-u));
+  height: calc(52 * var(--vm-u));
   /* Clear the operation plate's transparent/sloped left shoulder so the
-   * badge reads as content inside the generated image, not an overhang. */
-  margin-left: calc(27 * var(--vm-u));
+   * badge reads as content inside the generated image, not an overhang. The
+   * width plus margin still fits the 82u utility track. */
+  margin-left: calc(34 * var(--vm-u));
   box-sizing: border-box;
   clip-path: polygon(50% 0, 100% 18%, 91% 76%, 50% 100%, 9% 76%, 0 18%);
   border: 0;
@@ -383,7 +384,7 @@
    * Anchor contextual chips to the inner aperture instead of the root edge. */
   position: absolute;
   top: 24%;
-  right: 15%;
+  right: 18%;
   grid-column: auto;
   width: calc(60 * var(--vm-u));
   max-width: 18%;
@@ -2116,15 +2117,29 @@
   }
 }
 
-/* Three empty Imagen wells are centred at 29%, 50%, and 71%. */
+/* The three transparent wells in `radar-dock-v2.png` are centred at 29.0%,
+ * 50.8%, and 72.7%. The asymmetric right inset below maps three equal live
+ * cells onto those authored centres instead of pulling the last two icons
+ * left of their recesses. */
 .vm-hud[data-layout='perimeter'] .vm-map-hardware {
-  left: 18%;
-  right: 18%;
+  left: 18.1%;
+  right: 16.4%;
   bottom: 5.2%;
   height: 12.5%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
   background: linear-gradient(
     180deg,
     rgba(25, 34, 34, 0.97) 0%,
@@ -2144,6 +2159,21 @@
   box-shadow:
     inset 0 1px 0 rgba(168, 192, 187, 0.10),
     inset 0 0 calc(9 * var(--vm-u)) rgba(0, 0, 0, 0.82);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-icon {
+  display: block;
+  margin: 0;
+}
+
+/* These glyphs share a 24px SVG viewBox, but their drawn shapes do not share
+ * an optical centre. Correct the artwork rather than misaligning the wells. */
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-icon[data-icon='move'] {
+  transform: translateY(calc(2 * var(--vm-u)));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-icon[data-icon='radar'] {
+  transform: translateY(calc(-1.5 * var(--vm-u)));
 }
 
 .vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:disabled {
@@ -2196,6 +2226,10 @@
 
 .vm-hud[data-layout='perimeter'] .vm-sel-live {
   gap: calc(10 * var(--vm-u));
+  min-height: 0;
+  padding: calc(5 * var(--vm-u));
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-sel-body {
@@ -2227,8 +2261,10 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-body {
-  display: block;
+  display: flex;
+  flex: 1 1 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
@@ -2237,10 +2273,14 @@
   grid-template-columns: repeat(3, calc(72 * var(--vm-u)));
   grid-auto-rows: calc(72 * var(--vm-u));
   align-content: start;
+  flex: 1 1 0;
+  min-height: 0;
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: 100%;
   gap: calc(8 * var(--vm-u));
   padding-right: calc(3 * var(--vm-u));
+  box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2335,6 +2375,10 @@
       calc(38 * var(--vm-u))
       calc(29 * var(--vm-u))
       calc(13 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
+    gap: calc(4 * var(--vm-u));
   }
 }
 
@@ -2432,15 +2476,15 @@
   }
 
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-sel-cards {
-    grid-template-columns: repeat(3, calc(50 * var(--vm-u)));
-    grid-auto-rows: calc(50 * var(--vm-u));
+    grid-template-columns: repeat(3, calc(48 * var(--vm-u)));
+    grid-auto-rows: calc(48 * var(--vm-u));
     gap: calc(5 * var(--vm-u));
   }
 
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-multi .vm-card {
-    width: calc(50 * var(--vm-u));
-    min-width: calc(50 * var(--vm-u));
-    height: calc(50 * var(--vm-u));
+    width: calc(48 * var(--vm-u));
+    min-width: calc(48 * var(--vm-u));
+    height: calc(48 * var(--vm-u));
   }
 }
 

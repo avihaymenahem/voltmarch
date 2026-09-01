@@ -11,6 +11,7 @@ import {
 } from '../src/world/EnvironmentAssetCatalog';
 import {
   FOLIAGE_ALPHA_TEST,
+  addEnvironmentRuntimeAttributes,
   createEnvironmentMaterial,
 } from '../src/world/EnvironmentAssetLoader';
 import {
@@ -184,7 +185,7 @@ describe('environment asset catalogue', () => {
       family: 'shrub',
       stage: 'integrated',
       materialFamily: 'temperate-shrub-v1-pbr',
-      wind: 'canopy',
+      wind: 'none',
       metres: { radius: 1.9, height: 1.3 },
     });
 
@@ -236,6 +237,26 @@ describe('environment asset catalogue', () => {
     });
     expect(crates?.budget.shippingBytes).toBe(524_288);
     expect(flowers?.budget.shippingBytes).toBe(65_536);
+  });
+
+  it('keeps clipped hedges rigid in imported and procedural presentations', () => {
+    const manifest = environmentAssetManifest('hedge');
+    expect(manifest?.wind).toBe('none');
+
+    const library = new PropLibrary({ biome: 'temperate', seed: 7, keys: ['hedge'] });
+    const fallback = library.get('hedge');
+    expect(fallback).toBeDefined();
+    const fallbackSway = fallback!.geometry.getAttribute('aSway');
+    expect(fallbackSway).toBeDefined();
+    for (let i = 0; i < fallbackSway.count; i++) expect(fallbackSway.getX(i)).toBe(0);
+
+    const imported = fallback!.geometry.clone();
+    addEnvironmentRuntimeAttributes(imported, manifest?.wind !== 'none');
+    const importedSway = imported.getAttribute('aSway');
+    for (let i = 0; i < importedSway.count; i++) expect(importedSway.getX(i)).toBe(0);
+
+    imported.dispose();
+    library.dispose();
   });
 
   it('ships imported families by default while preserving explicit diagnostic modes', () => {
@@ -663,7 +684,7 @@ describe('foliage production profile', () => {
     const root = join(repo, 'packages', 'assets', 'game', 'environment', 'shrub');
     const expected = {
       bush: [28, 16, 6, 48],
-      hedge: [12, 10, 10, 12],
+      hedge: [10, 10, 10, 12],
     } as const;
     for (const key of ['bush', 'hedge'] as const) {
       const manifest = environmentAssetManifest(key)!;
@@ -701,6 +722,28 @@ describe('foliage production profile', () => {
         triangles.push(gltf.accessors[primitive.indices].count / 3);
       }
       expect(triangles).toEqual(expected[key]);
+      if (key === 'hedge') {
+        for (const file of files.slice(0, 3)) {
+          const positions = glbFloatAttribute(join(root, file), 'POSITION');
+          const uvs = glbFloatAttribute(join(root, file), 'TEXCOORD_0');
+          const vertices = new Set<string>();
+          const axes = [new Set<number>(), new Set<number>(), new Set<number>()];
+          for (let index = 0; index < positions.length; index += 3) {
+            const vertex = positions.slice(index, index + 3)
+              .map((value) => Number(value.toFixed(3)));
+            vertices.add(vertex.join(','));
+            for (let axis = 0; axis < 3; axis++) axes[axis].add(vertex[axis]);
+          }
+          expect(vertices.size, `${file}: all cards share the box corners`).toBe(8);
+          expect([...axes[0]].sort((a, b) => a - b)).toEqual([-1.5, 1.5]);
+          expect([...axes[1]].sort((a, b) => a - b)).toEqual([0.01, 1.31]);
+          expect([...axes[2]].sort((a, b) => a - b)).toEqual([-0.46, 0.46]);
+          expect(uvs.slice(16, 24).map((value) => Number(value.toFixed(3))),
+            `${file}: crown atlas width follows hedge width`).toEqual([
+            0.004, 0.153, 0.496, 0.153, 0.496, 0.347, 0.004, 0.347,
+          ]);
+        }
+      }
       expect(shippingBytes).toBeLessThanOrEqual(manifest.budget.shippingBytes);
     }
   });

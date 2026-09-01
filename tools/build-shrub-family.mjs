@@ -88,11 +88,14 @@ function appendTopCard(target, options) {
   const forward = [Math.sin(yaw), 0, Math.cos(yaw)];
   const halfWidth = width * 0.5;
   const halfDepth = depth * 0.5;
+  // Keep atlas U along the card's authored width and V along its depth. The
+  // previous corner order rotated the wide hedge panel by 90 degrees, turning
+  // its crown into a stretched pale strip at the RTS camera.
   appendQuad(target, [
-    [x - right[0] * halfWidth - forward[0] * halfDepth, y, z - right[2] * halfWidth - forward[2] * halfDepth],
     [x - right[0] * halfWidth + forward[0] * halfDepth, y, z - right[2] * halfWidth + forward[2] * halfDepth],
     [x + right[0] * halfWidth + forward[0] * halfDepth, y, z + right[2] * halfWidth + forward[2] * halfDepth],
     [x + right[0] * halfWidth - forward[0] * halfDepth, y, z + right[2] * halfWidth - forward[2] * halfDepth],
+    [x - right[0] * halfWidth - forward[0] * halfDepth, y, z - right[2] * halfWidth - forward[2] * halfDepth],
   ], [0, 1, 0], cell, value);
 }
 
@@ -132,60 +135,43 @@ function buildBush(cardCount, topCards) {
   return target;
 }
 
-function buildHedge(detail) {
+function buildHedge() {
   const target = geometry();
   const length = 3.0;
   const width = 0.92;
   const height = 1.3;
-  for (const side of [-1, 1]) {
-    appendCard(target, {
-      x: 0,
-      z: side * width * 0.43,
-      bottom: 0.01,
-      width: length * 1.015,
-      height,
-      yaw: side > 0 ? 0 : Math.PI,
-      lean: side * 0.02,
-      cell: 2,
-      value: side > 0 ? 1.0 : 0.94,
-    });
-  }
+  const bottom = 0.01;
+  const top = bottom + height;
+  const x0 = -length * 0.5;
+  const x1 = length * 0.5;
+  const z0 = -width * 0.5;
+  const z1 = width * 0.5;
+
+  // A clipped hedge is a rigid architectural volume, not a loose stack of
+  // foliage cards. Keep all five visible faces on the same eight corners so
+  // the ends cannot flare out and the crown cannot sink below the side walls.
+  appendQuad(target, [
+    [x0, bottom, z1], [x1, bottom, z1], [x1, top, z1], [x0, top, z1],
+  ], [0, 0, 1], 2, 1.0);
+  appendQuad(target, [
+    [x1, bottom, z0], [x0, bottom, z0], [x0, top, z0], [x1, top, z0],
+  ], [0, 0, -1], 2, 0.94);
   appendTopCard(target, {
     x: 0,
-    y: height * 0.91,
+    y: top,
     z: 0,
-    width: length * 0.98,
-    depth: width * 0.94,
+    width: length,
+    depth: width,
     yaw: 0,
     cell: 2,
     value: 1.06,
   });
-  for (const side of [-1, 1]) {
-    appendCard(target, {
-      x: side * length * 0.49,
-      z: 0,
-      bottom: 0.01,
-      width: width,
-      height,
-      yaw: side > 0 ? -Math.PI * 0.5 : Math.PI * 0.5,
-      lean: 0,
-      cell: 3,
-      value: 0.98,
-    });
-  }
-  if (detail > 1) {
-    appendCard(target, {
-      x: 0,
-      z: 0,
-      bottom: 0.02,
-      width: length * 0.96,
-      height: height * 0.94,
-      yaw: 0,
-      lean: 0,
-      cell: 2,
-      value: 0.97,
-    });
-  }
+  appendQuad(target, [
+    [x1, bottom, z1], [x1, bottom, z0], [x1, top, z0], [x1, top, z1],
+  ], [1, 0, 0], 3, 0.98);
+  appendQuad(target, [
+    [x0, bottom, z0], [x0, bottom, z1], [x0, top, z1], [x0, top, z0],
+  ], [-1, 0, 0], 3, 0.98);
   return target;
 }
 
@@ -321,9 +307,9 @@ const deliveries = [
   ['derived/bush-v1.lod1.glb', 'bush-v1.lod1', buildBush(8, 0), true],
   ['derived/bush-v1.lod2.glb', 'bush-v1.lod2', buildBush(3, 0), true],
   ['derived/bush-v1.shadow.glb', 'bush-v1.shadow', buildBushShadow(), false],
-  ['hedge-v1.glb', 'hedge-v1', buildHedge(2), true],
-  ['derived/hedge-v1.lod1.glb', 'hedge-v1.lod1', buildHedge(1), true],
-  ['derived/hedge-v1.lod2.glb', 'hedge-v1.lod2', buildHedge(1), true],
+  ['hedge-v1.glb', 'hedge-v1', buildHedge(), true],
+  ['derived/hedge-v1.lod1.glb', 'hedge-v1.lod1', buildHedge(), true],
+  ['derived/hedge-v1.lod2.glb', 'hedge-v1.lod2', buildHedge(), true],
   ['derived/hedge-v1.shadow.glb', 'hedge-v1.shadow', buildHedgeShadow(), false],
 ];
 const report = [];

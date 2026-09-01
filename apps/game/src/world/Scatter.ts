@@ -807,7 +807,7 @@ interface Placement {
   /** Index into PROP_DEFS, never into the live type list. */
   defIndex: number;
   x: number; y: number; z: number;
-  yaw: number; scale: number;
+  yaw: number; scale: number; heightScale: number;
   tiltX: number; tiltZ: number;
   cr: number; cg: number; cb: number;
   /** Own index in `placements`, stamped by `buildInstances()`. */
@@ -1274,11 +1274,18 @@ export class Scatter {
 
   private place(defIndex: number, def: PropDef, x: number, z: number, rng: Rng): boolean {
     if (this.placements.length >= SCATTER_LIMITS.maxProps) return false;
-    const y = this.terrain.heightAt(x, z);
-
     const sMin = def.scaleMin ?? SCATTER_JITTER.scaleMin;
     const sMax = def.scaleMax ?? SCATTER_JITTER.scaleMax;
     const scale = rng.range(sMin, sMax);
+    const heightScale = def.heightScaleMin === undefined
+      ? scale
+      : def.heightScaleMin + ((def.heightScaleMax ?? def.heightScaleMin) - def.heightScaleMin)
+        * (sMax > sMin ? 1 - (scale - sMin) / (sMax - sMin) : 0.5);
+    // A wide low card samples one terrain point but visually touches the
+    // ground across its footprint. Bury an authored root slice so small local
+    // height changes cannot expose a hovering lower edge. Scale the sink with
+    // the instance so every variant retains the same rooted proportion.
+    const y = this.terrain.heightAt(x, z) - (def.groundSink ?? 0) * heightScale;
 
     // Tilt: bible §6.5 allows +/-4 degrees on vegetation. Rock and grass also
     // lean with the ground normal so they sit in the slope instead of on it.
@@ -1297,7 +1304,7 @@ export class Scatter {
     const p: Placement = {
       defIndex, x, y, z,
       yaw: rng.next() * TAU,
-      scale, tiltX, tiltZ,
+      scale, heightScale, tiltX, tiltZ,
       cr: JITTER_OUT[0], cg: JITTER_OUT[1], cb: JITTER_OUT[2],
       index: -1, slot: -1, inst: -1, computeInst: -1, chunk: -1, alive: true,
     };
@@ -1307,10 +1314,10 @@ export class Scatter {
   }
 
   /**
-   * A copse. Bible §6.5: 3-9 members, 4-8 m spacing inside, 20-50 m between
-   * clumps. Members are drawn in a disc and rejected against the global
-   * spacing grid, which is what makes a copse read as a copse rather than as a
-   * ring of trees.
+   * A natural cluster. Trees retain a uniform-area disc so a copse has no
+   * artificial ring. Grass deliberately uses a centre-weighted radius: a
+   * dense low core fading into a few edge tufts reads as ground cover, while
+   * uniform-area grass reads as evenly spaced identical shrubs.
    */
   private placeClump(defIndex: number, def: PropDef, cx: number, cz: number, rng: Rng): number {
     const want = rng.int(def.clumpMin, def.clumpMax);
@@ -1318,9 +1325,13 @@ export class Scatter {
     for (let i = 0; i < want; i++) {
       let ok = false;
       for (let a = 0; a < SCATTER_CLUSTER.attemptsPerMember && !ok; a++) {
-        // sqrt() keeps the disc uniform; without it every clump has a dense core.
+        // sqrt() keeps ordinary clumps uniform by area. Ground cover needs the
+        // inverse editorial choice: a dense core and irregular falloff.
         const ang = rng.next() * TAU;
-        const rad = def.clumpSpread * Math.sqrt(rng.next());
+        const radialSample = rng.next();
+        const rad = def.clumpSpread * (def.family === 'grass'
+          ? Math.pow(radialSample, SCATTER_CLUSTER.grassRadialExponent)
+          : Math.sqrt(radialSample));
         const x = cx + Math.cos(ang) * rad, z = cz + Math.sin(ang) * rad;
         if (!this.legal(def, x, z)) continue;
         ok = this.place(defIndex, def, x, z, rng);
@@ -1516,6 +1527,7 @@ export class Scatter {
       // `preferred.indexOf(def.key)` left 11 of the 28 shipped entries inert.
       const pref = preferenceRank(def, preferred);
       if (pref >= 0) w *= preferenceMultiplier(pref);
+      if (def.family === 'grass') w *= SCATTER_DENSITY.grassWeight;
       if (w <= 1e-3) continue;
       // Gate 3 is deliberately a broadleaf pilot: at most two additional
       // colour submissions, rather than multiplying every vegetation and rock
@@ -1583,7 +1595,12 @@ export class Scatter {
 
     /* -- 3. structured passes --------------------------------------------- */
     const total = weights.reduce((a, b) => a + b, 0);
-    const grassCap = Math.round(budget * SCATTER_DENSITY.maxGrassFraction);
+    const grassTarget = SCATTER_DENSITY.targetGrassFraction
+      + (SCATTER_DENSITY.urbanGrassFraction - SCATTER_DENSITY.targetGrassFraction) * urban;
+    const grassCap = Math.round(budget * Math.min(
+      SCATTER_DENSITY.maxGrassFraction,
+      grassTarget + 0.06,
+    ));
     let grassPlaced = 0;
 
     const kerbs = this.traceKerbs();
@@ -1761,6 +1778,7 @@ export class Scatter {
     );
 
     this.fillToTarget(live, rng.fork());
+    this.fillGrassToShare(live, grassTarget, habitatSeed, rng.fork());
     this.types = live.filter((t) => t.count > 0);
 
     /* -- 5. GPU ----------------------------------------------------------- */
@@ -1914,8 +1932,9 @@ export class Scatter {
     if (topUp.length === 0) return grassPlaced;
     const topWeights = topUp.map((t) => {
       const w = weightOf(t);
-      // Grass is capped separately; do not let it eat the whole remainder.
-      return t.def.family === 'grass' ? w * 0.5 : w;
+      // Grass has already received its bounded shared selection preference and
+      // remains capped separately, so this pass consumes the same weight.
+      return w;
     });
     const topTotal = topWeights.reduce((a, b) => a + b, 0);
     if (topTotal <= 0) return grassPlaced;
@@ -1944,6 +1963,42 @@ export class Scatter {
   }
 
   /**
+   * Close the final grass share after coverage fill has added its mixed roster.
+   *
+   * Weighting alone cannot guarantee the visible result because the coverage
+   * gate deliberately adds shrubs and rocks after the regular density budget
+   * is full. Grass is the one safe completion family: its imported delivery is
+   * an 8-triangle instanced card, it does not block navigation or cast a
+   * shadow, and it reuses the two already-active colour draws. This pass may
+   * exceed `budget`, but remains hard-bounded by `maxProps` and stops below the
+   * separately authored maximum share.
+   */
+  private fillGrassToShare(
+    pool: readonly ScatterType[], targetShare: number, habitatSeed: number, rng: Rng,
+  ): void {
+    const grassTypes = pool.filter((t) => t.def.family === 'grass');
+    if (grassTypes.length === 0 || this.placements.length === 0) return;
+    const target = Math.min(targetShare, SCATTER_DENSITY.maxGrassFraction);
+    let grass = 0;
+    for (let i = 0; i < grassTypes.length; i++) grass += grassTypes[i].count;
+
+    let stalled = 0;
+    while (grass / this.placements.length < target
+      && this.placements.length < SCATTER_LIMITS.maxProps && stalled < 400) {
+      const before = this.placements.length;
+      const pick = rng.pick(grassTypes);
+      const cellIndex = this.pickClumpCentre(pick.def, rng, habitatSeed);
+      if (cellIndex < 0) { stalled++; continue; }
+      const cx = ((cellIndex % MAP_CELLS) + 0.5) * CELL;
+      const cz = (((cellIndex / MAP_CELLS) | 0) + 0.5) * CELL;
+      const n = this.placeClump(pick.defIndex, pick.def, cx, cz, rng);
+      pick.count += n;
+      grass += n;
+      if (this.placements.length === before) stalled++; else stalled = 0;
+    }
+  }
+
+  /**
    * Put one complete clump inside the scenario's photographed box.
    *
    * The previous focus pass placed unrelated singles at uniform random. It
@@ -1965,10 +2020,13 @@ export class Scatter {
       const cz = rng.range(focus.minZ, focus.maxZ);
       if (!this.legal(def, cx, cz)) continue;
       if (this.tooClose(cx, cz, def.spacing)) continue;
-      const gap = rng.range(
-        SCATTER_CLUSTER.betweenClumpsMin * gapScale,
-        SCATTER_CLUSTER.betweenClumpsMax * gapScale,
-      );
+      const gapMin = def.family === 'grass'
+        ? SCATTER_CLUSTER.grassBetweenClumpsMin
+        : SCATTER_CLUSTER.betweenClumpsMin;
+      const gapMax = def.family === 'grass'
+        ? SCATTER_CLUSTER.grassBetweenClumpsMax
+        : SCATTER_CLUSTER.betweenClumpsMax;
+      const gap = rng.range(gapMin * gapScale, gapMax * gapScale);
       if (this.clumpClash(family, cx, cz, gap)) continue;
       const n = this.placeClump(type.defIndex, def, cx, cz, rng);
       if (n <= 0) continue;
@@ -2001,7 +2059,9 @@ export class Scatter {
       if (rng.next() > clamp01(0.25 + h * 1.1)) continue;
       // The centre itself must be clear, or the clump grows around a boulder.
       if (this.tooClose(cx, cz, def.spacing)) continue;
-      const gap = rng.range(SCATTER_CLUSTER.betweenClumpsMin, SCATTER_CLUSTER.betweenClumpsMax);
+      const gap = def.family === 'grass'
+        ? rng.range(SCATTER_CLUSTER.grassBetweenClumpsMin, SCATTER_CLUSTER.grassBetweenClumpsMax)
+        : rng.range(SCATTER_CLUSTER.betweenClumpsMin, SCATTER_CLUSTER.betweenClumpsMax);
       if (this.clumpClash(family, cx, cz, gap)) continue;
       this.addClumpCentre(family, cx, cz);
       return i;
@@ -2061,12 +2121,13 @@ export class Scatter {
       const x = this.compositionAnchors[i];
       const z = this.compositionAnchors[i + 1];
       const family = this.compositionAnchors[i + 2];
-      // Tree copses earn the strongest soil relationship. Grass is already a
-      // ground treatment, so only an occasional grass field gets another one.
+      // Tree copses earn the strongest soil relationship. Grass fields get a
+      // lighter but more regular soil transition now that their cast shadows
+      // are disabled; this uses the existing splat and adds no draw or sampler.
       const chance = family === FAMILY_CANOPY ? 0.30
         : family === FAMILY_ROCK ? 0.24
           : family === FAMILY_SHRUB ? 0.17
-            : family === FAMILY_GRASS ? 0.05 : 0.08;
+            : family === FAMILY_GRASS ? 0.16 : 0.08;
       if (rng.next() > chance) continue;
 
       const radius = rng.range(7.0, family === FAMILY_CANOPY ? 12.5 : 11.0);
@@ -2108,8 +2169,10 @@ export class Scatter {
           const edge = ellipse + warp * 0.34;
           if (edge >= 1.04) continue;
           const core = smoothstep(1.04, 0.12, edge);
-          const weight = (family === FAMILY_ROCK ? 0.12 : 0.10)
-            + core * (family === FAMILY_ROCK ? 0.20 : 0.24);
+          const weight = family === FAMILY_GRASS
+            ? 0.06 + core * 0.12
+            : (family === FAMILY_ROCK ? 0.12 : 0.10)
+              + core * (family === FAMILY_ROCK ? 0.20 : 0.24);
           this.terrain.stampSurface(cx, cz, layer, weight);
           patchCells++;
           stamped++;
@@ -2341,9 +2404,51 @@ export class Scatter {
   private fillToTarget(avail: ScatterType[], rng: Rng): void {
     // Fillers must be cheap, legal almost anywhere, and small enough that
     // dropping three into a gap does not build a wall across it.
+    // Grass may satisfy coverage only as a complete patch. Placing one card at
+    // each uncovered sample was the source of the evenly distributed tuft
+    // grid; excluding grass entirely made this pass exhaust the scene ceiling
+    // on shrubs and rocks before the final grass composition could run.
     const fillers = avail.filter((t) => !t.def.blocksNav
       && (t.def.family === 'grass' || t.def.family === 'shrub' || t.def.family === 'rock'));
     if (fillers.length === 0) return;
+
+    let coverageGrass = 0;
+    for (let i = 0; i < this.placements.length; i++) {
+      if (PROP_DEFS[this.placements[i].defIndex]?.family === 'grass') coverageGrass++;
+    }
+
+    const placeFiller = (pick: ScatterType, x: number, z: number): number => {
+      const before = this.placements.length;
+      let n = 0;
+      if (pick.def.family === 'grass') {
+        // Coverage owns small edge knots, not the 36-72 card hero islands.
+        // Stop selecting them at the authored target so this utility pass
+        // cannot silently turn the whole composition into grass.
+        if (coverageGrass / Math.max(this.placements.length, 1)
+          >= SCATTER_DENSITY.targetGrassFraction) return 0;
+        const want = rng.int(4, 8);
+        for (let i = 0; i < want; i++) {
+          const angle = rng.next() * TAU;
+          const radius = 1.65 * Math.pow(rng.next(), 1.35);
+          const px = x + Math.cos(angle) * radius;
+          const pz = z + Math.sin(angle) * radius;
+          if (!this.legal(pick.def, px, pz, 0.72)) continue;
+          if (this.place(pick.defIndex, pick.def, px, pz, rng)) n++;
+        }
+      } else {
+        n = this.place(pick.defIndex, pick.def, x, z, rng) ? 1 : 0;
+      }
+      if (n <= 0) return 0;
+      pick.count += n;
+      if (pick.def.family === 'grass') {
+        coverageGrass += n;
+      }
+      for (let i = before; i < this.placements.length; i++) {
+        const placed = this.placements[i];
+        this.stampAdorn(placed.x, placed.z, pick.def.adorn);
+      }
+      return n;
+    };
 
     // Adornment may overshoot the density budget — rule (b) is weight 3 and
     // the budget is a target — but never without bound.
@@ -2367,9 +2472,8 @@ export class Scatter {
             const x = patch.x + rng.range(-1, 1) * patch.size * 0.42;
             const z = patch.z + rng.range(-1, 1) * patch.size * 0.42;
             if (!this.legal(pick.def, x, z, 0.6)) continue;
-            if (!this.place(pick.defIndex, pick.def, x, z, rng)) break;
-            this.stampAdorn(x, z, pick.def.adorn);
-            pick.count++; any = true;
+            if (placeFiller(pick, x, z) <= 0) continue;
+            any = true;
             break;
           }
         }
@@ -2389,9 +2493,8 @@ export class Scatter {
           const x = (gx + rng.next()) * G, z = (gz + rng.next()) * G;
           const pick = rng.pick(fillers);
           if (!this.legal(pick.def, x, z, 0.7)) continue;
-          if (!this.place(pick.defIndex, pick.def, x, z, rng)) break;
-          this.stampAdorn(x, z, pick.def.adorn);
-          pick.count++; any = true;
+          if (placeFiller(pick, x, z) <= 0) continue;
+          any = true;
         }
       }
       if (!any) break;
@@ -2722,7 +2825,7 @@ export class Scatter {
         instOf[i] = p.index;
         live[c]++;
         this.chunkUsed[c] = 1;
-        const top = p.y + type.geo.boundHeight * p.scale;
+        const top = p.y + type.geo.boundHeight * p.heightScale;
         if (p.y < this.chunkMinY[c]) this.chunkMinY[c] = p.y;
         if (top > this.chunkMaxY[c]) this.chunkMaxY[c] = top;
       }
@@ -3932,7 +4035,8 @@ function chunkOf(x: number, z: number): number {
  * a tenth of the cost of a full quaternion compose over 7000 props.
  */
 function composeMatrix(p: Placement, out: Float32Array, o: number): void {
-  const s = p.scale;
+  const widthScale = p.scale;
+  const heightScale = p.heightScale;
   const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw);
   const tx = p.tiltX, tz = p.tiltZ;
 
@@ -3953,9 +4057,12 @@ function composeMatrix(p: Placement, out: Float32Array, o: number): void {
   const fy = rz * ux - rx * uz;
   const fz = rx * uy - ry * ux;
 
-  out[o] = rx * s; out[o + 1] = ry * s; out[o + 2] = rz * s; out[o + 3] = 0;
-  out[o + 4] = ux * s; out[o + 5] = uy * s; out[o + 6] = uz * s; out[o + 7] = 0;
-  out[o + 8] = fx * s; out[o + 9] = fy * s; out[o + 10] = fz * s; out[o + 11] = 0;
+  out[o] = rx * widthScale; out[o + 1] = ry * widthScale;
+  out[o + 2] = rz * widthScale; out[o + 3] = 0;
+  out[o + 4] = ux * heightScale; out[o + 5] = uy * heightScale;
+  out[o + 6] = uz * heightScale; out[o + 7] = 0;
+  out[o + 8] = fx * widthScale; out[o + 9] = fy * widthScale;
+  out[o + 10] = fz * widthScale; out[o + 11] = 0;
   out[o + 12] = p.x; out[o + 13] = p.y; out[o + 14] = p.z; out[o + 15] = 1;
 }
 

@@ -298,6 +298,49 @@ describe('Scatter — placement', () => {
     scatter.dispose();
   });
 
+  it('keeps a dense cheap-grass share inside the bounded scene ceiling', () => {
+    const { terrain, scatter } = rig('temperate', 0.25, 1.0);
+    scatter.generate();
+    const internals = scatter as unknown as {
+      placements: readonly {
+        defIndex: number; x: number; y: number; z: number; scale: number; heightScale: number;
+      }[];
+    };
+    let grass = 0;
+    for (const placement of internals.placements) {
+      const def = PROP_DEFS[placement.defIndex];
+      if (def.family !== 'grass') continue;
+      grass++;
+      // Shadow-free crossed cards still need a physical contact contract: the
+      // authored root is buried below the same centre sample used to place it.
+      expect(def.groundSink).toBeGreaterThan(0);
+      expect(placement.y).toBeCloseTo(
+        terrain.heightAt(placement.x, placement.z) - def.groundSink! * placement.heightScale,
+        5,
+      );
+      expect(placement.scale).toBeGreaterThanOrEqual(0.76);
+      expect(placement.scale).toBeLessThanOrEqual(1.08);
+      expect(placement.heightScale).toBeGreaterThanOrEqual(0.34);
+      expect(placement.heightScale).toBeLessThanOrEqual(0.62);
+    }
+    const share = grass / internals.placements.length;
+    // Coverage fill adds mixed props after the regular budget is full, so the
+    // final completion pass closes this visible share with 8-triangle cards.
+    // Preserve enough non-grass composition that the cap's "not dense purely
+    // by hiding under a lawn" contract remains true.
+    // This fixture is one quarter urban, so its authored target blends from
+    // the 70% wilderness endpoint toward the 42% city endpoint.
+    const expectedTarget = SCATTER_DENSITY.targetGrassFraction
+      + (SCATTER_DENSITY.urbanGrassFraction - SCATTER_DENSITY.targetGrassFraction) * 0.25;
+    expect(share).toBeGreaterThanOrEqual(expectedTarget - 0.02);
+    expect(share).toBeLessThanOrEqual(SCATTER_DENSITY.maxGrassFraction + 0.01);
+    expect(scatter.propCount).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
+    const grassDefs = PROP_DEFS.filter((def) => def.family === 'grass');
+    expect(grassDefs.every((def) => def.mode === 'clump')).toBe(true);
+    expect(grassDefs.every((def) => def.clumpMin >= 36 && def.spacing <= 0.42)).toBe(true);
+    scatter.dispose();
+  });
+
   it('never scales below the ruling-#9 floor of 75/ha', () => {
     // MAP_PRESETS.urban asks for scatter 0.6, which would land at ~68/ha.
     const { scatter } = rig('urban', 0.95, 0.6);
@@ -378,14 +421,18 @@ describe('Scatter — placement', () => {
     scatter.dispose();
   });
 
-  it('sits every prop on the terrain surface', () => {
+  it('sits every prop on or deliberately bedded into the terrain surface', () => {
     const { terrain, scatter } = rig('temperate', 0.25, 1.0);
     scatter.generate();
     const out = new Float32Array(scatter.propCount * 4);
     const n = scatter.positions(out);
     for (let i = 0; i < n; i += 37) {
       const h = terrain.heightAt(out[i * 4], out[i * 4 + 2]);
-      expect(Math.abs(out[i * 4 + 1] - h)).toBeLessThan(0.01);
+      const def = PROP_DEFS[out[i * 4 + 3]];
+      const bed = h - out[i * 4 + 1];
+      const maxBed = (def.groundSink ?? 0) * (def.scaleMax ?? 1);
+      expect(bed, `${def.key} floats above terrain`).toBeGreaterThanOrEqual(-0.01);
+      expect(bed, `${def.key} is buried past its authored root`).toBeLessThanOrEqual(maxBed + 0.01);
     }
     scatter.dispose();
   });
@@ -858,7 +905,7 @@ describe('Scatter — chunk culling', () => {
     expect(usesLegacyScatterShadows('?scattershadow=legacy')).toBe(true);
 
     const noShadow = PROP_DEFS.filter((def) => def.castsShadow === false).map((def) => def.key);
-    expect(noShadow).toEqual(['flowerBed']);
+    expect(noShadow).toEqual(['grassTuft', 'grassTuftGreen', 'flowerBed']);
   });
 
   it('shows more of the map from higher up', () => {

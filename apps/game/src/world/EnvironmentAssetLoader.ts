@@ -770,6 +770,7 @@ async function loadDelivery(
   def: PropDef,
   file: string,
   name: string,
+  wind: boolean,
   authoredMaterial: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined,
   biome: BiomeName,
   mineralMaterial: EnvironmentMaterial | undefined,
@@ -805,7 +806,7 @@ async function loadDelivery(
   geometry.name = `foliage.${def.key}.${name}`;
   addEnvironmentRuntimeAttributes(
     geometry,
-    def.family === 'canopy' || def.family === 'shrub' || def.family === 'grass',
+    wind,
   );
   if (def.family === 'rock') tintRockGeometry(geometry, biome, authoredMaterial === 'mineral');
   if (def.family === 'shrub') tintShrubGeometry(
@@ -919,7 +920,7 @@ async function loadFamily(
   // delivery therefore carries UVs and must use the same cutout atlas as the
   // visible family; the other families retain their closed geometry proxies.
   const shadowMaterial = key === 'treeAutumn' ? visibleMaterial : undefined;
-  type AuthoredMaterial = Parameters<typeof loadDelivery>[3];
+  type AuthoredMaterial = Parameters<typeof loadDelivery>[4];
   const deliveryPromises = new Map<string, Promise<PropGeometry>>();
   const request = (
     file: string,
@@ -932,7 +933,7 @@ async function loadFamily(
     const cached = deliveryPromises.get(cacheKey);
     if (cached !== undefined) return cached;
     const promise = loadDelivery(
-      def, file, name, authoredMaterial, biome,
+      def, file, name, manifest.wind !== 'none', authoredMaterial, biome,
       mineralMaterial, shrubMaterial, boxPropMaterial, extendedFoliageMaterial, propSurfaceMaterial,
     );
     deliveryPromises.set(cacheKey, promise);

@@ -56,7 +56,22 @@ export const SCATTER_DENSITY = {
    * carries a wilderness map to 260/ha. Capped as a fraction of the total so a
    * map can never be "dense" purely by hiding under a lawn.
    */
-  maxGrassFraction: 0.46,
+  maxGrassFraction: 0.76,
+  /**
+   * Final wilderness composition target after coverage fill. Reaching this may
+   * add more of the existing 8-triangle instances than the normal density
+   * budget requested, but never beyond maxProps or the cap above.
+   */
+  targetGrassFraction: 0.70,
+  /** City/plaza endpoint; hard surfaces need street, civic and yard reads instead. */
+  urbanGrassFraction: 0.24,
+  /**
+   * Relative grass weight throughout structured placement and fixed-budget
+   * top-up. The two grass families are already-active 8-triangle instanced
+   * cards, so this preference trades heavier props for visible ground cover
+   * without increasing the type, material or draw-call ceilings.
+   */
+  grassWeight: 24.0,
   /** Fraction of the budget spent on clustered vegetation vs. scattered singles. */
   clusterFraction: 0.72,
 } as const;
@@ -87,6 +102,15 @@ export const SCATTER_CLUSTER = {
   /** Metres between two clump centres of the same family. */
   betweenClumpsMin: 20,
   betweenClumpsMax: 50,
+  /**
+   * Low ground cover forms connected islands at a much smaller landscape
+   * scale than tree copses. Keeping this separate avoids turning the global
+   * canopy rule into a grass-policing number.
+   */
+  grassBetweenClumpsMin: 11,
+  grassBetweenClumpsMax: 22,
+  /** >1 biases grass members into a dense core with a loose irregular edge. */
+  grassRadialExponent: 1.55,
   /** Street-furniture pitch along a kerb, metres. */
   streetPitchMin: 8,
   streetPitchMax: 12,

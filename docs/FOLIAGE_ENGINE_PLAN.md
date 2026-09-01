@@ -471,6 +471,37 @@ shadow opt-out. Live native-WebGPU overhead reviews for grass, bush, tent and ba
 their families, and focused tests enforce the authored triangle ceilings and the two static-prop
 exceptions. No paid generation or external asset acquisition was used for these corrections.
 
+Grass visibility rebalance, 2026-09-01: the fixed-budget top-up no longer applies its old 0.5 grass
+penalty; a bounded 1.6 preference lets the two already-live 8-triangle card families approach the
+existing 46% grass cap. The prop ceiling remains 9,000, the type ceiling remains 30, and no material,
+texture, shader, loader or draw family was added. A focused deterministic temperate-wilderness gate
+requires grass to occupy 40–47% of the final placement list. The native-WebGPU seed-7 review showed
+184 grass clumps among 399 visible foliage instances; their 1,472 colour plus 4,416 shadow triangles
+were 5,888 of 1,454,017 submitted scene triangles (0.40%).
+
+Grass density/shadow experiment, 2026-09-02: a shared 24.0 grass selection weight, 70% wilderness
+endpoint, 24% city endpoint and 76% absolute cap now spend a visibly larger share on the existing
+8-triangle cards without hiding paved districts under a wilderness mix. Coverage fill adds a
+mixed roster after the normal density budget, so a final grass-only completion pass may exceed that
+regular budget while remaining inside the unchanged 9,000-prop and 30-type scene ceilings. No
+material, texture, shader, loader or draw family was added. The deterministic temperate-wilderness
+gate requires the final share to follow that wilderness-to-city blend within its bounded cap. Both
+grass definitions opt out of the shadow pass for this test; `?scattershadow=legacy` restores the
+audited narrow grass casters for a same-build A/B. In the native-WebGPU seed-7 focused capture, this
+removed both grass shadow draws: foliage shadow submissions fell from 11 draws / 56,568 triangles to
+9 draws / 37,974 triangles, with no grass entries remaining in the shadow-only roster. The visual
+grounding follow-up first bedded each grass root 0.16 m before instance scale and raised broad
+grass-field splat participation from 5% to 16% at roughly half the previous soil weight. Normal-play
+review then exposed the real failure: the `field` pass still distributed same-sized cards across the
+whole map, so more grass read as a repeated shrub grid. Grass now uses clump placement exclusively:
+36–72 cards at 0.42 m spacing form a centre-weighted 5.4 m island and neighbouring islands sit 11–22 m
+apart. Independent instance axes pack the footprint more tightly at 0.76–1.08 scale while holding height
+to 0.34–0.62, so the same 2.15 m source card reads as low ground cover instead of a tiny star or shrub. Roots are bedded
+0.20 m before scale. The coverage gate may add grass only as a compact 4–8-card edge knot, never as
+an isolated single or another full island; the final bounded composition pass restores the grass share
+with the authored islands. This remains the same two instanced
+8-triangle colour families, with the same terrain draw and sampler set.
+
 ## Explicit non-goals for the POC
 
 - Rewriting terrain scatter density or map composition.

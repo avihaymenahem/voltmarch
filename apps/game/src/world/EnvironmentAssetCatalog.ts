@@ -278,7 +278,9 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       materialFamily: 'temperate-shrub-v1-pbr',
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 1.9, height: 1.3 }),
-      wind: 'canopy',
+      // A clipped hedge is a rigid landscaped volume. Swaying the complete
+      // box deforms its straight sides and makes the whole prop look loose.
+      wind: 'none',
       budget: Object.freeze({
         rawTriangles: 12,
         lod0Triangles: 14,

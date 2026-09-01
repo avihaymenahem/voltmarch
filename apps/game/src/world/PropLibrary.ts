@@ -1133,6 +1133,19 @@ export interface PropDef {
   /** Per-instance uniform scale band. Defaults to SCATTER_JITTER's. */
   readonly scaleMin?: number;
   readonly scaleMax?: number;
+  /**
+   * Optional independent vertical scale band. Ground cover uses this to keep
+   * a readable footprint without turning every card into a waist-high shrub.
+   * Omitted types remain uniformly scaled and preserve their RNG sequence.
+   */
+  readonly heightScaleMin?: number;
+  readonly heightScaleMax?: number;
+  /**
+   * Metres of the authored root to bury below the sampled terrain, before
+   * instance scale. Low crossed-card foliage needs this because one centre
+   * height sample cannot conform its whole footprint to uneven ground.
+   */
+  readonly groundSink?: number;
   /** Per-instance hue jitter multiplier. Man-made props want less than foliage. */
   readonly jitter?: number;
   readonly build: (m: PropMesh, rng: Rng, p: PropPalette) => void;
@@ -1519,7 +1532,10 @@ function buildHedge(m: PropMesh, rng: Rng, p: PropPalette): void {
   // Rotated to #353A16 — same value and chroma, hue 87 -> 77 (see PALETTES).
   // ra3steam_08 borders every planted island with exactly this.
   const len = 3.6, w = 1.15, h = 1.25;
-  m.ao(0.42, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.25, 0, h).gloss(0);
+  // Clipping turns the plant into a rigid architectural edge. Deforming the
+  // whole box breaks its straight silhouette, so wind is intentionally zero
+  // in both this fallback and the imported manifest.
+  m.ao(0.42, 0, h).sway(0, 0, 1).gloss(0);
   m.color(p.hedge).box(0, h * 0.5, 0, len, h, w, 0.14);
   // The crown lobes are LIGHTER than the box, not darker. They sit on top and
   // catch the sun; painting them in `shrubDark` put a band of shadow along the
@@ -2254,15 +2270,19 @@ export const PROP_DEFS: readonly PropDef[] = [
     jitter: 0.5, build: buildHedge },
 
   /* --- grass (the density workhorse) ------------------------------------ */
-  { key: 'grassTuft', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
+  { key: 'grassTuft', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 0.42,
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
-    mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
-    urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false,
+    mode: 'clump', clumpMin: 36, clumpMax: 72, clumpSpread: 5.4,
+    urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false, castsShadow: false,
+    scaleMin: 0.76, scaleMax: 1.08, heightScaleMin: 0.34, heightScaleMax: 0.62,
+    groundSink: 0.20,
     build: buildGrassGold },
-  { key: 'grassTuftGreen', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
+  { key: 'grassTuftGreen', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 0.42,
     surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
-    mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
-    urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false,
+    mode: 'clump', clumpMin: 36, clumpMax: 72, clumpSpread: 5.4,
+    urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false, castsShadow: false,
+    scaleMin: 0.76, scaleMax: 1.08, heightScaleMin: 0.34, heightScaleMax: 0.62,
+    groundSink: 0.20,
     build: buildGrassGreen },
 
   /* --- rock --------------------------------------------------------------

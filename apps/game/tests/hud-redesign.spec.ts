@@ -134,7 +134,13 @@ describe('perimeter HUD composition', () => {
 
   it('scrolls only the mixed-selection inventory between fixed header and formation rows', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-selection\.is-multi \.vm-sel-cards\s*\{[\s\S]*?grid-auto-flow:\s*row;[\s\S]*?grid-template-columns:\s*repeat\(3,[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/,
+      /\.vm-sel-live\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?padding:\s*calc\(5 \* var\(--vm-u\)\);[\s\S]*?box-sizing:\s*border-box;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-multi \.vm-sel-body\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex:\s*1 1 0;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-multi \.vm-sel-cards\s*\{[\s\S]*?grid-auto-flow:\s*row;[\s\S]*?grid-template-columns:\s*repeat\(3,[\s\S]*?flex:\s*1 1 0;[\s\S]*?height:\s*auto;[\s\S]*?max-height:\s*100%;[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-selection-formations\s*\{[\s\S]*?flex:\s*0 0 auto;/,
@@ -229,9 +235,12 @@ describe('approved command-deck skin', () => {
     );
   });
 
-  it('keeps operation context chips inside the artwork safe area', () => {
+  it('keeps the operation utilities inside the artwork safe area', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-command-context\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*15%;[\s\S]*?width:\s*calc\(60 \* var\(--vm-u\)\);[\s\S]*?max-width:\s*18%;/,
+      /\.vm-command-emblem,\s*\.vm-hud\[data-layout='perimeter'\] \.vm-command-portrait\s*\{[\s\S]*?width:\s*calc\(46 \* var\(--vm-u\)\);[\s\S]*?margin-left:\s*calc\(34 \* var\(--vm-u\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command-context\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*18%;[\s\S]*?width:\s*calc\(60 \* var\(--vm-u\)\);[\s\S]*?max-width:\s*18%;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-command-chip\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
@@ -487,7 +496,16 @@ describe('approved command-deck skin', () => {
 
   it('registers three functional radar controls to the authored hardware wells', () => {
     expect(joined).toMatch(
-      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*18%;[\s\S]*?right:\s*18%;/,
+      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*18\.1%;[\s\S]*?right:\s*16\.4%;[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?align-items:\s*stretch;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware-pod\s*\{[\s\S]*?place-items:\s*center;[\s\S]*?width:\s*100%;[\s\S]*?height:\s*100%;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware-icon\[data-icon='move'\]\s*\{\s*transform:\s*translateY\(calc\(2 \* var\(--vm-u\)\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware-icon\[data-icon='radar'\]\s*\{\s*transform:\s*translateY\(calc\(-1\.5 \* var\(--vm-u\)\)\);/,
     );
     expect(SIDEBAR).toContain("mapHardware.setAttribute('role', 'toolbar')");
     expect(SIDEBAR).toContain("'Centre camera on base'");
@@ -497,7 +515,7 @@ describe('approved command-deck skin', () => {
     expect(HUD).toContain('centreOnHome: () => this.cameraRig.centreOnHome()');
     expect(HUD).toContain('centreOnSelection: () => this.focusSelection()');
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-map-hardware-pod\s*\{\s*background:\s*linear-gradient\(\s*180deg,/,
+      /\.vm-map-hardware-pod\s*\{[\s\S]*?background:\s*linear-gradient\(\s*180deg,/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-map-hardware-pod:disabled\s*\{\s*opacity:\s*1;/,
