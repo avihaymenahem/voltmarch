@@ -186,8 +186,11 @@ describe('approved command-deck skin', () => {
 
   it('composes variable-height chrome from undistorted artwork caps', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-build\.vm-height-resizable::before\s*\{[\s\S]*?height:\s*calc\(56 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+      /\.vm-dock-build\.vm-height-resizable::before\s*\{[\s\S]*?height:\s*var\(--vm-build-cap-h\);[\s\S]*?background-size:\s*100% auto;/,
     );
+    expect(COMMAND_DECK_CSS).toContain('--vm-build-cap-h: calc(58 * var(--vm-u))');
+    expect(COMMAND_DECK_CSS).toContain('--vm-build-cap-h: calc(40 * var(--vm-u))');
+    expect(COMMAND_DECK_CSS).toContain('--vm-build-cap-h: calc(29 * var(--vm-u))');
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-dock-build\.vm-height-resizable::after\s*\{[\s\S]*?height:\s*calc\(22 \* var\(--vm-u\)\);[\s\S]*?100% auto no-repeat;/,
     );
@@ -239,6 +242,18 @@ describe('approved command-deck skin', () => {
   it('registers the radar controls to the three authored hardware wells', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-map-hardware\s*\{[\s\S]*?left:\s*8\.5%;[\s\S]*?right:\s*8\.5%;/,
+    );
+  });
+
+  it('registers live build controls to the authored asymmetric header bays', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(36 \* var\(--vm-u\)\);[\s\S]*?25\.55%[\s\S]*?16\.24%[\s\S]*?12\.79%[\s\S]*?10\.11%[\s\S]*?11\.04%[\s\S]*?10\.81%[\s\S]*?13\.46%/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@media \(max-width: 1400px\)[\s\S]*?\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(25 \* var\(--vm-u\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@media \(max-width: 900px\)[\s\S]*?\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(24 \* var\(--vm-u\)\);/,
     );
   });
 

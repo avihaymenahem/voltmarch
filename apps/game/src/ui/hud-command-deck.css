@@ -1296,6 +1296,7 @@
  * avoids scaling or tile-rounding the generated side hardware. */
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable {
+  --vm-build-cap-h: calc(58 * var(--vm-u));
   background-image: linear-gradient(90deg,
     rgba(43, 53, 60, 0.98) 0,
     rgba(11, 17, 21, 0.98) 2.8%,
@@ -1303,19 +1304,33 @@
     rgba(4, 9, 12, 0.98) 96.5%,
     rgba(11, 17, 21, 0.98) 97.2%,
     rgba(43, 53, 60, 0.98) 100%) !important;
-  background-position: center calc(56 * var(--vm-u)) !important;
-  background-size: 100% calc(100% - 78 * var(--vm-u)) !important;
+  background-position: center var(--vm-build-cap-h) !important;
+  background-size: 100% calc(100% - var(--vm-build-cap-h) - 22 * var(--vm-u)) !important;
   background-repeat: no-repeat !important;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable::before {
   inset: 0 0 auto;
-  height: calc(56 * var(--vm-u));
+  height: var(--vm-build-cap-h);
   border: 0;
   background-image: url('/ui/command-deck/build.png');
   background-position: center top;
   background-size: 100% auto;
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter']
+    .vm-dock-build.vm-height-resizable {
+    --vm-build-cap-h: calc(40 * var(--vm-u));
+  }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter']
+    .vm-dock-build.vm-height-resizable {
+    --vm-build-cap-h: calc(29 * var(--vm-u));
+  }
 }
 
 .vm-hud[data-layout='perimeter']
@@ -1430,12 +1445,27 @@
   background: rgba(var(--deck-mint-rgb), 0.08);
 }
 
-/* The build plate contains one title bay, five tab bays, then two tool bays.
- * A disabled tab still reserves its physical recess so subsequent controls
+/* The build plate contains one title bay, five deliberately unequal tab bays,
+ * then two tool bays. Register the live controls to those actual recesses,
+ * rather than distributing equal columns across an asymmetric render. A
+ * disabled tab still reserves its physical recess so subsequent controls
  * never slide left into the wrong piece of artwork. */
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
+  padding-top: calc(12 * var(--vm-u));
+  row-gap: calc(10 * var(--vm-u));
+}
+
 .vm-hud[data-layout='perimeter'] .vm-tabs {
   display: grid;
-  grid-template-columns: 25.5% repeat(5, minmax(0, 11.95%)) minmax(0, 14.75%);
+  height: calc(36 * var(--vm-u));
+  grid-template-columns:
+    minmax(0, 25.55%)
+    minmax(0, 16.24%)
+    minmax(0, 12.79%)
+    minmax(0, 10.11%)
+    minmax(0, 11.04%)
+    minmax(0, 10.81%)
+    minmax(0, 13.46%);
   align-items: stretch;
   gap: 0;
   box-sizing: border-box;
@@ -1480,6 +1510,62 @@
   gap: 4%;
   padding: 13% 5% 10%;
   box-sizing: border-box;
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] .vm-dock-build {
+    padding-top: calc(8 * var(--vm-u));
+    row-gap: calc(7 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-tabs {
+    height: calc(25 * var(--vm-u));
+    grid-template-columns:
+      minmax(0, 24.65%)
+      minmax(0, 16.81%)
+      minmax(0, 13.27%)
+      minmax(0, 10.48%)
+      minmax(0, 11.46%)
+      minmax(0, 11.20%)
+      minmax(0, 12.13%);
+  }
+}
+
+@media (max-width: 1200px) {
+  .vm-hud[data-layout='perimeter'] .vm-dock-build {
+    padding-top: calc(6 * var(--vm-u));
+    row-gap: calc(9 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-tabs {
+    grid-template-columns:
+      minmax(0, 25.82%)
+      minmax(0, 16.04%)
+      minmax(0, 12.66%)
+      minmax(0, 10%)
+      minmax(0, 10.94%)
+      minmax(0, 10.69%)
+      minmax(0, 13.85%);
+  }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter'] .vm-dock-build {
+    padding-top: calc(3 * var(--vm-u));
+    row-gap: calc(2 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-tabs {
+    height: calc(24 * var(--vm-u));
+    grid-template-columns:
+      minmax(0, 25.14%)
+      minmax(0, 16.50%)
+      minmax(0, 12.99%)
+      minmax(0, 10.26%)
+      minmax(0, 11.24%)
+      minmax(0, 10.98%)
+      minmax(0, 12.89%);
+  }
 }
 
 /* The five command wells start close to the plate's top edge and occupy its
