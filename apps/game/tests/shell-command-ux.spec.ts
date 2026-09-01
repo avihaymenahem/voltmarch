@@ -138,6 +138,12 @@ describe('command shell navigation contracts', () => {
     expect(pause).toContain("snapshot.classList.add('is-overlay-snapshot')");
   });
 
+  it('does not duplicate the objective tracker inside the pause menu', () => {
+    const pause = source('PauseMenu.ts');
+    expect(pause).not.toContain('buildObjectives');
+    expect(pause).not.toContain('vm-pause-obj');
+  });
+
   it('lets battlefield tools consume Escape before opening the pause menu', () => {
     const shell = source('Shell.ts');
     const input = readFileSync(join(ROOT, 'apps/game/src/input/input.system.ts'), 'utf8');

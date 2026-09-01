@@ -2,9 +2,9 @@
  * ============================================================================
  * src/shell/PauseMenu.ts — Escape, mid-match
  * ============================================================================
- * A status line, the current objectives, and the shortest list of choices that
- * still covers what a paused player wants. Deliberately the smallest screen in
- * the product: a pause menu is a thing you pass through, and every extra control
+ * A status line and the shortest list of choices that still covers what a
+ * paused player wants. Deliberately the smallest screen in the product: a pause
+ * menu is a thing you pass through, and every extra control
  * on it is a control the player has to read before getting back to the match.
  *
  * The sim is already stopped by the time this mounts — `Shell.pause()` calls
@@ -34,22 +34,6 @@
  * Both overlays satisfy the same three-member shape (`root`, `dispose`,
  * `onKeyDown`), so this file holds one overlay slot rather than one field per
  * panel, and a third panel is a button and nothing else.
- *
- * WHY THE OBJECTIVES ARE REPEATED HERE
- * ------------------------------------
- * They are already on the HUD. But `Shell.pause()` HIDES the HUD, and "what was
- * I supposed to be doing" is — with "what does this key do again" — one of the
- * two questions a paused player actually has. Reading it costs one line each and
- * the block is absent entirely when nothing is active.
- *
- * AND IT IS THE FULL LIST
- * -----------------------
- * Uncapped, unlike the HUD panel. The HUD panel is capped at three rows because
- * it shares the frame with a battle and with a 12-16% interface budget; this
- * screen is modal, over a frozen sim, and competes with nothing. Making this the
- * authoritative list is what lets the in-match panel stay a summary, and it is
- * the cheaper half of "let the player see ALL objectives" — no new state, no new
- * affordance, one deleted `slice`.
  * ============================================================================
  */
 
@@ -60,7 +44,7 @@ import { campaignBriefing, campaignTheme } from './CampaignPresentation';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
 import { desktopBridge } from '../platform/desktop';
 import { campaignObjectiveView } from '../ui/objectives.system';
-import { objectiveDisplayTier, readProgression, type ActiveObjective } from '../ui/Objectives';
+import { readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
   button,
   el,
@@ -100,23 +84,19 @@ export function currentObjectives(): readonly ActiveObjective[] {
    * THE CAMPAIGN VIEW OUTRANKS THE PROFILE, AND IT DID NOT UNTIL 2026-08-19.
    *
    * `readProgression()` answers with `__vmProgression` — the SKIRMISH mission
-   * tracker — so during a campaign operation the pause menu listed the
-   * player's skirmish mission chain under the heading "Objectives". That is
-   * the wrong answer to the one question this block exists for: its own
-   * comment names it as *"what was I supposed to be doing"*, and the operation
-   * is what they were supposed to be doing. The profile is also DEAF for the
-   * duration (`suppressProgression`), so every row it offered was a row that
-   * could not move while the player read it.
+   * tracker — so campaign consumers could receive the player's skirmish mission
+   * chain instead of the operation objectives. The profile is also DEAF for the
+   * duration (`suppressProgression`), so those rows could not move.
    *
    * `campaignObjectiveView` is the same provider the in-match panel has always
    * used — `objectives.system.ts` injects it on the frame an operation
-   * appears — so the two surfaces now answer from one source rather than from
+   * appears — so every consumer now answers from one source rather than from
    * two that agree by accident. It returns null when no operation is armed, so
    * a skirmish is bit-identical.
    *
-   * `EndScreen` also calls this, and is unaffected: it suppresses this block
-   * outright for a campaign result and draws `campaignObjectiveList` from the
-   * published result instead. `completedObjectiveCount` calls it too, which
+   * `EndScreen` also calls this, and is unaffected: it uses
+   * `campaignObjectiveList` from the published result for campaign matches.
+   * `completedObjectiveCount` calls this too, which
    * means the autosave scheduler's event trigger now fires on a campaign
    * objective completing rather than never firing at all — a strict
    * improvement, and the reason that function's doc mentions the degraded
@@ -138,14 +118,6 @@ export function objectiveLine(o: ActiveObjective): string {
   if (o.progress.target <= 1) return 'Pending';
   const value = Math.max(0, Math.min(o.progress.target, Math.floor(o.progress.value)));
   return `${value} / ${o.progress.target}`;
-}
-
-/** Optional, confirmed-paid campaign payout shown in the paused objective ledger. */
-export function objectiveCreditReward(o: ActiveObjective): string {
-  if (o.creditRewardPaid !== true) return '';
-  const reward = o.reward.find((row) => row.kind === 'credits');
-  if (reward === undefined || reward.amount <= 0) return '';
-  return `+${Math.floor(reward.amount).toLocaleString('en-US')} cr`;
 }
 
 export class PauseMenuScreen implements Screen {
@@ -228,9 +200,6 @@ export class PauseMenuScreen implements Screen {
       command.appendChild(copy);
       p.appendChild(command);
     }
-
-    const objectives = this.buildObjectives();
-    if (objectives !== null) p.appendChild(objectives);
 
     this.musicControl = new MusicControl('pause');
     p.appendChild(this.musicControl.root);
@@ -349,45 +318,6 @@ export class PauseMenuScreen implements Screen {
   }
 
   /* -------------------------------------------------------------------- */
-
-  /**
-   * The objectives block, or null when there is nothing to show.
-   *
-   * A snapshot, not a subscription: the simulation is frozen behind this panel,
-   * so nothing can advance while it is open, and a live binding here would be a
-   * listener that exists solely to never fire.
-   */
-  private buildObjectives(): HTMLElement | null {
-    const active = currentObjectives();
-    if (active.length === 0) return null;
-
-    const wrap = el('div', 'vm-pause-obj');
-    wrap.appendChild(el('p', 'vm-subtitle', 'Objectives'));
-
-    // EVERY objective, with no cap.
-    //
-    // This block used to truncate at four and print "+N more", which mirrored
-    // the HUD panel's cap. Mirroring it was the mistake: the HUD panel is
-    // capped because it competes with the battlefield for a 12-16% interface
-    // budget, and NONE of that is true here. The sim is frozen, the screen is
-    // modal, and "what was I supposed to be doing" is one of the two questions
-    // a paused player actually has. So this is the authoritative full list —
-    // which is what makes it safe for the in-match panel to stay a summary.
-    // `objectives.css` puts a scroll guard on the block for the pathological
-    // case of a very short window and a very long mission chain.
-    for (const o of active) {
-      const row = el('div', `vm-pause-obj-row${o.progress.complete ? ' is-done' : ''}`);
-      const tier = objectiveDisplayTier(o);
-      const name = el('span', 'vm-pause-obj-name', `${tier.toUpperCase()} · ${o.title}`);
-      name.title = o.description;
-      row.appendChild(name);
-      const reward = objectiveCreditReward(o);
-      if (reward !== '') row.appendChild(el('span', 'vm-pause-obj-reward vm-num', reward));
-      row.appendChild(el('span', 'vm-pause-obj-value vm-num', objectiveLine(o)));
-      wrap.appendChild(row);
-    }
-    return wrap;
-  }
 
   private openHelp(): void {
     this.openOverlay(new HelpPanel({

@@ -58,7 +58,7 @@ import { adoptPreparedOperation, detachOperation, prepareOperation } from '../sr
 import type { CampaignSession, ObjectiveRow } from '../src/campaign/session';
 import { CAMPAIGNS } from '../src/campaign/index';
 import { newOperationState } from '../src/campaign/Director';
-import { currentObjectives, objectiveCreditReward } from '../src/shell/PauseMenu';
+import { currentObjectives } from '../src/shell/PauseMenu';
 import {
   CAMPAIGN_OPERATION_IDS,
   campaignOperationIdentity,
@@ -306,7 +306,7 @@ function installSession(rows: readonly ObjectiveRow[]): void {
   adoptPreparedOperation();
 }
 
-describe('the pause menu lists the operation, not the skirmish mission chain', () => {
+describe('the active objective snapshot follows the operation, not the skirmish mission chain', () => {
   afterEach(() => { detachOperation(); prepareOperation(null); });
 
   it('falls through to the profile when no operation is armed', () => {
@@ -324,7 +324,7 @@ describe('the pause menu lists the operation, not the skirmish mission chain', (
       { id: 'town', title: 'Leave the derricks standing', kind: 'secondary', status: 'complete' },
     ]);
     const out = currentObjectives();
-    expect(out.map((o) => o.title), 'the pause menu read the profile instead of the operation')
+    expect(out.map((o) => o.title), 'the objective snapshot read the profile instead of the operation')
       .toEqual(['Silence the survey tap', 'Leave the derricks standing']);
     // The completion flag is what `completedObjectiveCount` — and therefore the
     // autosave scheduler's event trigger — reads. It was permanently 0 during
@@ -334,24 +334,13 @@ describe('the pause menu lists the operation, not the skirmish mission chain', (
 
   it('never shows a hidden objective, because that is the point of hiding it', () => {
     // A hidden objective is one the briefing deliberately does not mention.
-    // Listing it on the pause screen would disclose it, which is the defect
-    // `briefingObjectives()` already exists to prevent on the briefing screen.
+    // Publishing it to any objective consumer would disclose it, which is the
+    // defect `briefingObjectives()` already prevents on the briefing screen.
     installSession([
       { id: 'seen', title: 'Hold the seam', kind: 'primary', status: 'active' },
       { id: 'secret', title: 'The thing nobody told you', kind: 'secondary', status: 'hidden' },
     ]);
     expect(currentObjectives().map((o) => o.id)).toEqual(['seen']);
-  });
-
-  it('shows only a campaign bounty that the runtime actually pays', () => {
-    installSession([{
-      id: 'paid', title: 'Hold the depot', kind: 'secondary', status: 'active', credits: 700,
-    }]);
-    const paid = currentObjectives()[0];
-    expect(objectiveCreditReward(paid)).toBe('+700 cr');
-
-    const unpaidProfileObjective = { ...paid, creditRewardPaid: undefined };
-    expect(objectiveCreditReward(unpaidProfileObjective)).toBe('');
   });
 });
 

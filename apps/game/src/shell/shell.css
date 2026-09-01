@@ -24,9 +24,9 @@
  * the two stylesheets are mounted together for the whole of every match. Ten
  * class names were shared: `.vm-panel`, `.vm-card`, `.vm-card-name`, `.vm-tab`,
  * `.vm-tabs`, `.vm-stat`, `.vm-stat-value`, `.vm-num`, `.vm-icon`,
- * `.vm-pause-obj`. Specificity never entered into it — for any property the
- * shell declared and the HUD did not, the shell's rule was the ONLY rule, so it
- * simply applied.
+ * and the former pause-objective ledger. Specificity never entered into it —
+ * for any property the shell declared and the HUD did not, the shell's rule was
+ * the ONLY rule, so it simply applied.
  *
  * That shipped: a bare `.vm-stat { flex-direction: column; padding: 16px 18px }`
  * for the post-match summary board turned every selection stat chip in the HUD
@@ -2641,77 +2641,6 @@ html.vm-reduced-motion .vm-shell .vm-load-bar::after {
   letter-spacing: 0.02em;
   color: var(--vm-accent-dim);
   white-space: normal;
-}
-
-/* ==========================================================================
- * 11E. PAUSE-MENU OBJECTIVES
- *
- * `Shell.pause()` hides the HUD, taking the objective panel with it. This is
- * the same information, at the same cap, in the smallest form that still
- * answers "what was I supposed to be doing".
- * ========================================================================== */
-
-.vm-shell .vm-pause-obj {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px 22px 4px;
-  border-top: 1px solid var(--vm-line-soft);
-  margin-top: 10px;
-}
-
-.vm-shell .vm-pause-obj .vm-subtitle { padding-bottom: 2px; }
-
-.vm-shell .vm-pause-obj-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: calc(12px * var(--vm-text-scale, 1));
-  letter-spacing: 0.04em;
-  color: var(--vm-text-dim);
-}
-
-.vm-shell .vm-pause-obj-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vm-shell .vm-pause-obj-value {
-  flex: 0 0 auto;
-  font-weight: 700;
-  color: var(--vm-text-faint);
-}
-
-.vm-shell .vm-pause-obj-reward {
-  flex: 0 0 auto;
-  color: var(--vm-camp-accent, var(--vm-accent));
-  font-size: calc(10px * var(--vm-text-scale, 1));
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.vm-shell .vm-pause-panel.has-campaign .vm-pause-obj-row { align-items: flex-start; }
-
-.vm-shell .vm-pause-panel.has-campaign .vm-pause-obj-name {
-  overflow: visible;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
-}
-
-.vm-shell .vm-pause-obj-row.is-done .vm-pause-obj-name,
-.vm-shell .vm-pause-obj-row.is-done .vm-pause-obj-value { color: #4fd97f; }
-
-.vm-shell .vm-pause-obj-more {
-  font-size: calc(10px * var(--vm-text-scale, 1));
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--vm-text-faint);
 }
 
 @media (max-width: 860px) {

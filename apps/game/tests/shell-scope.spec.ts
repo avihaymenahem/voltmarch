@@ -6,8 +6,8 @@
  * `src/shell/shell.css` and `src/ui/hud.css` share a class-name prefix and are
  * mounted together for the whole of every match. They are NOT separate
  * namespaces: `.vm-panel`, `.vm-card`, `.vm-card-name`, `.vm-tab`, `.vm-tabs`,
- * `.vm-stat`, `.vm-stat-value`, `.vm-num`, `.vm-icon` and `.vm-pause-obj` were
- * all claimed by both files.
+ * `.vm-stat`, `.vm-stat-value`, `.vm-num` and `.vm-icon` were all claimed by
+ * both files.
  *
  * When a class is shared, specificity is not what decides the outcome. For any
  * property the shell declared and the HUD did not, the shell's rule was the
@@ -147,23 +147,7 @@ describe('every selector in src/shell/shell.css is rooted at .vm-shell', () => {
 });
 
 /* ==========================================================================
- * 3. AND THE ONE RULE THAT POINTS THE OTHER WAY IS ROOTED TOO
- * ========================================================================== */
-
-describe('the in-match stylesheets do not reach into the shell', () => {
-  it('objectives.css scopes its pause-menu rule', () => {
-    // `src/ui/objectives.css` caps the height of the pause menu's objective
-    // list — shell markup, styled from an in-match file, and the only rule in
-    // the product that crosses that line on purpose. It was a bare
-    // `.vm-pause-obj`, i.e. the same shape as the bug.
-    const selectors = rulesOf(OBJECTIVES_CSS).map((r) => r.sel);
-    expect(selectors).toContain(`.${ROOT_CLASS} .vm-pause-obj`);
-    expect(selectors.filter((s) => !isRooted(s) && /\.vm-pause-obj\b/.test(s))).toEqual([]);
-  });
-});
-
-/* ==========================================================================
- * 4. THE COLLISION SET IS EMPTY, MEASURED THE SAME WAY THE AUDIT MEASURED IT
+ * 3. THE COLLISION SET IS EMPTY, MEASURED THE SAME WAY THE AUDIT MEASURED IT
  * ========================================================================== */
 
 /** Class tokens the in-match interface actually puts on an element. */

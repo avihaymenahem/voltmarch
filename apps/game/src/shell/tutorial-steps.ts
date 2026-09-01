@@ -818,7 +818,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     body:
       'The match is over when one side has no buildings and no units left standing. Optional ' +
       'objectives — extra goals that pay out unlocks — appear in the panel at the top right, and the ' +
-      'pause menu lists them in full alongside every command in the game. You now know both loops: ' +
+      'Missions screen tracks the wider mission chain. You now know both loops: ' +
       'harvest, build and push — then preserve, reposition and spend the advantages you earned.',
     actions: ['sys.menu', 'ui.help'],
     spotlight: ['.vm-objectives', '.vm-resources'],
