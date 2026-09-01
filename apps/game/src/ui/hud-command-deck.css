@@ -2187,17 +2187,34 @@
 /* Battlefield separation                                                   */
 /* ----------------------------------------------------------------------- */
 
-/* Intentionally simple: one opaque rectangle behind each transparent PNG.
- * This prevents battlefield colour from leaking through any authored opening
- * without painting extra live layers over the frame itself. */
+/* Keep the opaque backing inside each PNG's transparent outer margin.  Four
+ * percent still extends well beyond every live aperture (including radar
+ * hardware and formation wells), but cannot square off the generated shell
+ * or bleed into the joining gap. */
 .vm-hud[data-layout='perimeter'] .vm-dock-map,
 .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
-  background: #020609 !important;
+  background: transparent !important;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-map::after,
 .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
-  display: none;
+  content: '';
+  display: block;
+  position: absolute;
+  inset: 4%;
+  background: #020609;
+  clip-path: polygon(
+    8% 0,
+    92% 0,
+    100% 8%,
+    100% 92%,
+    92% 100%,
+    8% 100%,
+    0 92%,
+    0 8%
+  );
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* One restrained black halo belongs to each complete instrument shell. It

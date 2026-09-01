@@ -446,15 +446,15 @@ describe('approved command-deck skin', () => {
     expect(joined).toMatch(/\.vm-map-hardware-pod\s*\{\s*background:\s*transparent;/);
   });
 
-  it('keeps one opaque black box behind both transparent generated panels', () => {
+  it('keeps inset opaque backings inside both transparent generated panels', () => {
     expect(joined).toMatch(
       /\.vm-dock-selection:not\(\.is-empty\)::before\s*\{[\s\S]*?z-index:\s*1;/,
     );
     expect(joined).toMatch(
-      /\.vm-dock-map,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)\s*\{\s*background:\s*#020609 !important;/,
+      /\.vm-dock-map,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)\s*\{\s*background:\s*transparent !important;/,
     );
     expect(joined).toMatch(
-      /\.vm-dock-map::after,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)::after\s*\{\s*display:\s*none;/,
+      /\.vm-dock-map::after,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)::after\s*\{[\s\S]*?inset:\s*4%;[\s\S]*?background:\s*#020609;[\s\S]*?clip-path:\s*polygon\(/,
     );
   });
 
