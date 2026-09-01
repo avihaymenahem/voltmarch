@@ -1445,6 +1445,73 @@
   background: rgba(var(--deck-mint-rgb), 0.08);
 }
 
+/* The inspector can be resized down to 220u while the default plate is 250u.
+ * Its former 72u/38% cameo split left only ~82u for four stats at the minimum,
+ * then forced those stats into two equal columns. Armour spilled into DPS and
+ * range spilled into speed. Give the title/stats lane back real width and let
+ * the stat grid choose one or two columns from the panel's live width. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection {
+  container: vm-selection / inline-size;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-body {
+  grid-template-columns: minmax(0, calc(64 * var(--vm-u))) minmax(0, 1fr);
+  gap: calc(6 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-card {
+  width: calc(64 * var(--vm-u));
+  min-width: calc(64 * var(--vm-u));
+  height: calc(64 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-info {
+  min-width: 0;
+  gap: calc(8 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-sel-stats {
+  grid-template-columns:
+    repeat(auto-fit, minmax(min(100%, calc(80 * var(--vm-u) * var(--vm-text-scale, 1))), 1fr));
+  gap: calc(6 * var(--vm-u)) calc(3 * var(--vm-u));
+  align-content: start;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-stat {
+  min-width: 0;
+  gap: calc(2 * var(--vm-u));
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-stat-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* At the genuinely compact 190px instrument width, the icons and native
+ * titles carry the four stat identities. Removing only the repeated three-
+ * letter keys keeps enlarged accessibility text complete instead of forcing
+ * the value lane to ellipsize. */
+@container vm-selection (max-width: 180px) {
+  .vm-hud[data-layout='perimeter'] .vm-stat-key {
+    display: none;
+  }
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] .vm-sel-body {
+    grid-template-columns: minmax(0, calc(58 * var(--vm-u))) minmax(0, 1fr);
+    gap: calc(5 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-card {
+    width: calc(58 * var(--vm-u));
+    min-width: calc(58 * var(--vm-u));
+    height: calc(58 * var(--vm-u));
+  }
+}
+
 /* The build plate contains one title bay, five deliberately unequal tab bays,
  * then two tool bays. Register the live controls to those actual recesses,
  * rather than distributing equal columns across an asymmetric render. A

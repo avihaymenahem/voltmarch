@@ -167,7 +167,7 @@ describe('approved command-deck skin', () => {
 
   it('keeps the selection cameo in its own measured track', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-sel-body\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(calc\(72 \* var\(--vm-u\)\), 38%\)/,
+      /\.vm-sel-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, calc\(64 \* var\(--vm-u\)\)\) minmax\(0, 1fr\);/,
     );
   });
 
@@ -208,7 +208,16 @@ describe('approved command-deck skin', () => {
       /\.vm-command-deck::before\s*\{[\s\S]*?background-size:\s*100% auto;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-sel-stats\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/,
+      /\.vm-sel-stats\s*\{[\s\S]*?repeat\(auto-fit, minmax\(min\(100%, calc\(80 \* var\(--vm-u\) \* var\(--vm-text-scale, 1\)\)\), 1fr\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-stat-value\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?text-overflow:\s*ellipsis;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@media \(max-width: 1400px\)[\s\S]*?\.vm-sel-body\s*\{[\s\S]*?calc\(58 \* var\(--vm-u\)\)[\s\S]*?\.vm-card\s*\{[\s\S]*?width:\s*calc\(58 \* var\(--vm-u\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@container vm-selection \(max-width: 180px\)[\s\S]*?\.vm-stat-key\s*\{[\s\S]*?display:\s*none;/,
     );
   });
 
