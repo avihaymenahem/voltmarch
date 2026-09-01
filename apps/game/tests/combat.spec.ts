@@ -14,7 +14,7 @@ import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, ProjectileKind,
-  Stance, UnitState, WarheadClass,
+  NONE, Stance, UnitState, WarheadClass,
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
@@ -143,6 +143,24 @@ function spawn(rig: Rig, player: PlayerId, x: number, z: number, o: SpawnOpts = 
  */
 function aimAt(rig: Rig, shooter: EntityId, target: EntityId): void {
   rig.world.store.targetId[rig.world.store.index(shooter)] = target as number;
+}
+
+/** Advance only through Weapons and preserve the first shot's FX payload. */
+function fireLeavingFx(rig: Rig, shooter: EntityId, target: EntityId): void {
+  aimAt(rig, shooter, target);
+  for (let k = 0; k < 120; k++) {
+    rig.tick++;
+    rig.world.store.snapshotPrev();
+    rig.world.tick = rig.tick;
+    rig.world.time = rig.tick * SIM_DT;
+    const s = rig.ctx();
+    rig.world.spatial.rebuild();
+    rig.targeting.tick(s);
+    rig.weapons.tick(s);
+    if (rig.channels.fx.count > 0) return;
+    rig.channels.damage.clear();
+  }
+  throw new Error('weapon did not fire within 120 ticks');
 }
 
 const W_LIGHT_CANNON = weaponIndexOf('lightCannon');
@@ -733,6 +751,33 @@ describe('instant and chained weapons', () => {
     expect(rig.world.store.hp[rig.world.store.index(foe)]).toBeLessThan(5000);
   });
 
+  it('encodes a prism beam as one straight muzzle-to-impact segment', () => {
+    const me = spawn(rig, P0, 100, 100, {
+      weapon: W_PRISM, yaw: Math.PI / 2, turretTurnRate: 12,
+    });
+    const foe = spawn(rig, P1, 124, 106, { hp: 5000, armor: ArmorClass.Medium });
+    fireLeavingFx(rig, me, foe);
+
+    const fx = rig.channels.fx;
+    expect(fx.count).toBe(1);
+    expect(fx.kind[0]).toBe(FxKind.PrismBeam);
+    expect(fx.source[0]).toBe(me as number);
+    expect(fx.scale[0]).toBe(1);
+
+    const muzzle = new Float32Array(3);
+    const impact = new Float32Array(3);
+    rig.weapons.muzzleOf(rig.world.store.index(me), muzzle);
+    rig.weapons.aimPointOf(rig.world.store.index(foe), impact);
+
+    // VFX reconstructs the origin as `pos - d`; pin both endpoints so a unit
+    // direction can never be mistaken for a complete beam vector again.
+    expect([fx.x[0], fx.y[0], fx.z[0]]).toEqual(Array.from(impact));
+    expect(fx.x[0] - fx.dx[0]).toBeCloseTo(muzzle[0], 5);
+    expect(fx.y[0] - fx.dy[0]).toBeCloseTo(muzzle[1], 5);
+    expect(fx.z[0] - fx.dz[0]).toBeCloseTo(muzzle[2], 5);
+    expect(Math.hypot(fx.dx[0], fx.dy[0], fx.dz[0])).toBeGreaterThan(20);
+  });
+
   it('tesla chains to a second victim that was never targeted', () => {
     const coil = spawn(rig, P0, 100, 100, {
       kind: EntityKind.Building, weapon: W_TESLA, footprint: 2, radius: 4,
@@ -747,6 +792,44 @@ describe('instant and chained weapons', () => {
     expect(st.hp[st.index(neighbour)]).toBeLessThan(5000);
     // The chain link is weaker than the primary bolt.
     expect(5000 - st.hp[st.index(neighbour)]).toBeLessThan(5000 - st.hp[st.index(primary)]);
+  });
+
+  it('encodes tesla chain links as full segments without range-sized thickness', () => {
+    const coil = spawn(rig, P0, 100, 100, {
+      kind: EntityKind.Building, weapon: W_TESLA, footprint: 2, radius: 4,
+      yaw: Math.PI / 2, turretTurnRate: 12, hp: 700,
+    });
+    const primary = spawn(rig, P1, 118, 100, { hp: 5000, armor: ArmorClass.Light });
+    const neighbour = spawn(rig, P1, 122, 100, { hp: 5000, armor: ArmorClass.Light });
+    fireLeavingFx(rig, coil, primary);
+
+    const fx = rig.channels.fx;
+    const arcs: number[] = [];
+    for (let i = 0; i < fx.count; i++) if (fx.kind[i] === FxKind.TeslaArc) arcs.push(i);
+    expect(arcs.length).toBe(2);
+
+    const muzzle = new Float32Array(3);
+    const primaryHit = new Float32Array(3);
+    const neighbourHit = new Float32Array(3);
+    rig.weapons.muzzleOf(rig.world.store.index(coil), muzzle);
+    rig.weapons.aimPointOf(rig.world.store.index(primary), primaryHit);
+    rig.weapons.aimPointOf(rig.world.store.index(neighbour), neighbourHit);
+
+    const first = arcs[0];
+    expect(fx.source[first]).toBe(coil as number);
+    expect(fx.scale[first]).toBe(1);
+    expect([fx.x[first], fx.y[first], fx.z[first]]).toEqual(Array.from(primaryHit));
+    expect(fx.x[first] - fx.dx[first]).toBeCloseTo(muzzle[0], 5);
+    expect(fx.y[first] - fx.dy[first]).toBeCloseTo(muzzle[1], 5);
+    expect(fx.z[first] - fx.dz[first]).toBeCloseTo(muzzle[2], 5);
+
+    const second = arcs[1];
+    expect(fx.source[second]).toBe(NONE);
+    expect(fx.scale[second]).toBe(1);
+    expect([fx.x[second], fx.y[second], fx.z[second]]).toEqual(Array.from(neighbourHit));
+    expect(fx.x[second] - fx.dx[second]).toBeCloseTo(primaryHit[0], 5);
+    expect(fx.y[second] - fx.dy[second]).toBeCloseTo(primaryHit[1], 5);
+    expect(fx.z[second] - fx.dz[second]).toBeCloseTo(primaryHit[2], 5);
   });
 });
 

@@ -45,7 +45,7 @@ import {
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, OrderKind,
-  PartId, ProjectileKind, Stance, UnitState, UpgradeLever, WarheadClass,
+  NONE, PartId, ProjectileKind, Stance, UnitState, UpgradeLever, WarheadClass,
 } from '../core/types';
 import type {
   EntityId, PlayerId, SimContext, WeaponDef,
@@ -892,9 +892,10 @@ export class WeaponSystem {
   }
 
   /**
-   * Hitscan and beams: the damage lands this tick. A beam pushes ONE FX record
-   * carrying the muzzle position, the direction to the target and the distance
-   * in `scale`, which is everything a beam renderer needs and nothing more.
+   * Hitscan and beams: the damage lands this tick. A beam pushes ONE impact-
+   * convention FX record: `pos` is the hit and `d` is hit minus muzzle. The VFX
+   * dispatcher reconstructs the origin as `pos - d`; `scale` remains the
+   * dimensionless effect-size multiplier used by every PresentationQueue row.
    */
   private resolveInstant(
     i: number, t: number, w: WeaponDef, damage: number,
@@ -904,16 +905,16 @@ export class WeaponSystem {
     this.aimPointOf(t, this.aim);
     const hx = this.aim[0], hy = this.aim[1], hz = this.aim[2];
     const dx = hx - mx, dy = hy - my, dz = hz - mz;
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
 
     this.channels.damage.push(
       st.handleOf(t), st.handleOf(i), damage, w.warhead,
       hx, hy, hz, w.splashRadius, w.splashFalloff, w.airMultiplier,
     );
     if (w.travelFx !== FxKind.None) {
-      // scale carries the beam LENGTH in metres; dx/dy/dz are the unit vector.
+      // Preserve the shooter so the visible origin follows the live render
+      // socket during the beam's short open/hold/close envelope.
       this.channels.fx.push(
-        w.travelFx, mx, my, mz, dx / d, dy / d, dz / d, d, st.handleOf(i), faction,
+        w.travelFx, hx, hy, hz, dx, dy, dz, 1, st.handleOf(i), faction,
       );
     }
   }
@@ -942,14 +943,14 @@ export class WeaponSystem {
       this.aimPointOf(victim, this.aim);
       const hx = this.aim[0], hy = this.aim[1], hz = this.aim[2];
       const dx = hx - fromX, dy = hy - fromY, dz = hz - fromZ;
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
 
       this.channels.damage.push(
         st.handleOf(victim), shooter, dmg, w.warhead, hx, hy, hz,
         w.splashRadius, w.splashFalloff, w.airMultiplier,
       );
       this.channels.fx.push(
-        FxKind.TeslaArc, fromX, fromY, fromZ, dx / d, dy / d, dz / d, d, shooter, faction,
+        FxKind.TeslaArc, hx, hy, hz, dx, dy, dz, 1,
+        link === 0 ? shooter : NONE, faction,
       );
       this.channels.fx.push(FxKind.Sparks, hx, hy, hz, 0, 1, 0, 1.4, shooter, faction);
 
