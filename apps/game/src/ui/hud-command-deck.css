@@ -1675,6 +1675,10 @@
 
 .vm-hud[data-layout='perimeter'] .vm-tabs {
   display: grid;
+  position: relative;
+  z-index: 20;
+  isolation: isolate;
+  pointer-events: auto;
   height: calc(36 * var(--vm-u));
   grid-template-columns:
     minmax(0, 25.55%)
@@ -1689,9 +1693,23 @@
   box-sizing: border-box;
 }
 
+/* Own every pixel of the visible header, including the narrow seams between
+ * unequal bays. Live controls sit one layer above this shield; the scrolling
+ * inventory is clipped one layer below and can never receive a seam click. */
+.vm-hud[data-layout='perimeter'] .vm-tabs::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
+}
+
 .vm-hud[data-layout='perimeter'] .vm-build-title,
 .vm-hud[data-layout='perimeter'] .vm-tab,
 .vm-hud[data-layout='perimeter'] .vm-tool {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
   width: auto;
   min-width: 0;
   height: auto;
@@ -1699,6 +1717,18 @@
   background: transparent;
   clip-path: none;
   box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-body {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-grid {
+  position: relative;
+  z-index: 1;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-build-title {

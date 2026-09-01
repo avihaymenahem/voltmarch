@@ -383,6 +383,20 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('makes the complete build header a pointer island above the clipped inventory', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tabs\s*\{[^}]*z-index:\s*20;[^}]*isolation:\s*isolate;[^}]*pointer-events:\s*auto;/s,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tabs::after\s*\{[^}]*inset:\s*0;[^}]*z-index:\s*1;[^}]*pointer-events:\s*auto;/s,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-build-body\s*\{[^}]*z-index:\s*1;[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;/s,
+    );
+    expect(SIDEBAR).toContain("strip.addEventListener('pointerdown', containHeaderGesture)");
+    expect(SIDEBAR).toContain('const header = this.tabStrip.getBoundingClientRect()');
+  });
+
   it('keeps compact layouts usable without changing the desktop target', () => {
     expect(seal).toContain('@media (max-width: 1400px)');
     expect(seal).toContain('@media (max-width: 900px)');

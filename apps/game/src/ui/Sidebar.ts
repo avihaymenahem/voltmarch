@@ -2358,6 +2358,7 @@ class BuildPanel {
   readonly root: HTMLElement;
 
   private readonly heightResize: VerticalPanelResize;
+  private readonly tabStrip: HTMLElement;
   private readonly tabs: HTMLButtonElement[] = [];
   private readonly tabAlerts: HTMLElement[] = [];
   private readonly grid: HTMLElement;
@@ -2435,8 +2436,18 @@ class BuildPanel {
 
     /* -- tab strip, above the body ------------------------------------- */
     const strip = el('div', 'vm-tabs', this.root);
+    this.tabStrip = strip;
     strip.setAttribute('role', 'tablist');
     strip.setAttribute('aria-label', 'Build categories');
+    // Keep every header gesture inside the header. The build root deliberately
+    // has pointer-events:none and the grid is a sibling below it; letting a
+    // pointer event escape this island hands global battlefield input a click
+    // that was visibly made on a tab.
+    const containHeaderGesture = (event: Event): void => event.stopPropagation();
+    strip.addEventListener('pointerdown', containHeaderGesture);
+    strip.addEventListener('pointerup', containHeaderGesture);
+    strip.addEventListener('click', containHeaderGesture);
+    strip.addEventListener('contextmenu', containHeaderGesture);
 
     // The command-deck composition gives the palette an explicit instrument
     // title.  It is presentation only: the tablist and all existing keyboard
@@ -2757,6 +2768,20 @@ class BuildPanel {
       // about suppressing `click` after button 2. A build cameo's primary
       // action must never run alongside its context-menu cancellation.
       if (ev.button !== 0) { ev.preventDefault(); return; }
+      // A slot must never activate from a point visibly owned by the header,
+      // even if a future responsive rule accidentally overlaps the two boxes.
+      // Keyboard activation has no client point and remains unaffected.
+      if (ev.detail > 0) {
+        const header = this.tabStrip.getBoundingClientRect();
+        if (
+          ev.clientX >= header.left && ev.clientX <= header.right
+          && ev.clientY >= header.top && ev.clientY <= header.bottom
+        ) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          return;
+        }
+      }
       if (slot.cameo === null) return;
       ev.preventDefault();
       this.cb.sound('click');
