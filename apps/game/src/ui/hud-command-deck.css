@@ -1195,9 +1195,9 @@
 
 .vm-hud[data-layout='perimeter'] .vm-command-deck {
   height: calc(94.5 * var(--vm-u));
-  padding: calc(17.25 * var(--vm-u)) calc(40.5 * var(--vm-u)) calc(21 * var(--vm-u));
-  grid-template-rows: 1fr;
-  gap: calc(3 * var(--vm-u));
+  padding: 0;
+  display: block;
+  container: vm-command-deck / inline-size;
   box-shadow: none;
 }
 
@@ -1210,7 +1210,8 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-command {
-  padding: calc(11.25 * var(--vm-u)) calc(3.75 * var(--vm-u)) calc(6 * var(--vm-u));
+  padding: calc(8 * var(--vm-u)) calc(3.75 * var(--vm-u)) calc(7 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   border-color: transparent;
   border-radius: calc(4.5 * var(--vm-u));
   background: transparent;
@@ -1300,7 +1301,7 @@
   .vm-hud[data-layout='perimeter'] .vm-resources::before,
   .vm-hud[data-layout='perimeter'] .vm-resources::after { width: calc(50% - 128 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(290 * var(--vm-u)); height: calc(72 * var(--vm-u)); padding: calc(8 * var(--vm-u)) calc(15 * var(--vm-u)) calc(17 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-command-deck { height: calc(86 * var(--vm-u)); padding: calc(15 * var(--vm-u)) calc(34 * var(--vm-u)) calc(18 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-command-deck { height: calc(86 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(246 * var(--vm-u)) !important; padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u)) calc(13 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(80 * var(--vm-u)); }
 }
@@ -1772,20 +1773,44 @@
   }
 }
 
-/* The five command wells start close to the plate's top edge and occupy its
- * central track.  Unit-scaled insets preserve that registration on desktop
- * without overriding the compact-layout measurements above. */
-@media (min-width: 901px) {
-  .vm-hud[data-layout='perimeter'] .vm-command-deck {
-    padding:
-      calc(12 * var(--vm-u))
-      min(calc(58 * var(--vm-u)), calc(10.62vw - (96.8544 * var(--vm-u))))
-      calc(27 * var(--vm-u));
-    column-gap: calc(2 * var(--vm-u));
+/* Exact registration against commands.png (1961 x 420).  The plate is drawn
+ * width-first and bottom-aligned, so vertical geometry must be expressed in
+ * container-width units as well: 1cqw is one percent of the rendered source
+ * width even when the responsive root has spare height above the artwork.
+ * Equal grid columns compressed the outer controls inward; an over-tall
+ * icon/gap/padding stack then pushed every label below its bevel. */
+.vm-hud[data-layout='perimeter'] .vm-command {
+  position: absolute;
+  top: auto;
+  bottom: 5.45cqw;
+  width: 14.38%;
+  height: 14.35cqw;
+  margin: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command:nth-of-type(1) { left: 11.73%; }
+.vm-hud[data-layout='perimeter'] .vm-command:nth-of-type(2) { left: 27.33%; }
+.vm-hud[data-layout='perimeter'] .vm-command:nth-of-type(3) { left: 42.94%; }
+.vm-hud[data-layout='perimeter'] .vm-command:nth-of-type(4) { left: 58.54%; }
+.vm-hud[data-layout='perimeter'] .vm-command:nth-of-type(5) { left: 74.15%; }
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] .vm-command {
+    padding: calc(5 * var(--vm-u)) calc(2 * var(--vm-u));
+    gap: calc(3 * var(--vm-u));
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-command {
-    margin: calc(2 * var(--vm-u)) calc(1 * var(--vm-u));
-    padding: calc(12 * var(--vm-u)) calc(4 * var(--vm-u)) calc(7 * var(--vm-u));
+  .vm-hud[data-layout='perimeter'] .vm-command-icon {
+    width: calc(16 * var(--vm-u));
+    height: calc(16 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-command-label {
+    font-size: max(7px, calc(5.5 * var(--vm-u) * var(--vm-text-scale, 1)));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-command-key {
+    top: calc(3 * var(--vm-u));
+    right: calc(4 * var(--vm-u));
   }
 }

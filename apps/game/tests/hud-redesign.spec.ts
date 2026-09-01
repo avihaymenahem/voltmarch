@@ -171,9 +171,25 @@ describe('approved command-deck skin', () => {
 
   it('renders the authored command plate at 75% of its former desktop dimensions', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-command-deck\s*\{[\s\S]*?height:\s*calc\(94\.5 \* var\(--vm-u\)\);[\s\S]*?padding:\s*calc\(17\.25 \* var\(--vm-u\)\) calc\(40\.5 \* var\(--vm-u\)\) calc\(21 \* var\(--vm-u\)\);/,
+      /\.vm-command-deck\s*\{[\s\S]*?height:\s*calc\(94\.5 \* var\(--vm-u\)\);[\s\S]*?container:\s*vm-command-deck \/ inline-size;/,
     );
     expect(COMMAND_DECK_CSS).toContain('background-size: 100% auto');
+  });
+
+  it('registers every command and its content stack inside the authored source wells', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command\s*\{[^}]*bottom:\s*5\.45cqw;[^}]*width:\s*14\.38%;[^}]*height:\s*14\.35cqw;/s,
+    );
+    for (const [index, left] of [
+      [1, '11.73'], [2, '27.33'], [3, '42.94'], [4, '58.54'], [5, '74.15'],
+    ] as const) {
+      expect(COMMAND_DECK_CSS).toContain(
+        `.vm-command:nth-of-type(${index}) { left: ${left}%; }`,
+      );
+    }
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command\s*\{[^}]*padding:\s*calc\(8 \* var\(--vm-u\)\)[^}]*gap:\s*calc\(5 \* var\(--vm-u\)\);/s,
+    );
   });
 
   it('centres operation text between equal emblem and context tracks', () => {
