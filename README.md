@@ -62,6 +62,11 @@ The seven skirmish cards use original ImageGen-authored terrain layers made for 
 ore fields, map metadata and the tactical scan treatment remain deterministic live overlays, so the
 art improves presentation without disguising the map configuration the player is choosing.
 
+The Command Deck HUD uses eight original ImageGen-authored, real-alpha gunmetal component plates.
+They supply only structural chrome; labels, resources, minimap pixels, selection, active commands,
+tabs, build cards and the scrolling inventory remain live interface elements. Provenance and the
+state-neutral asset contract are recorded in `apps/game/public/ui/command-deck/README.md`.
+
 The battlefield is more than open ground. Seeded civilian settlement pockets place apartments,
 hospitals, mines and oil sites around capturable forward-build space instead of repeating one fixed
 layout. Capture them, fortify key lanes, cross water with landing ships, repair damaged armour,

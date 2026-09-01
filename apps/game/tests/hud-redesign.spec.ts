@@ -135,9 +135,31 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).toContain("'vm-map-hardware'");
   });
 
-  it('ships the generated chrome plate locally instead of depending on a temp output', () => {
-    expect(COMMAND_DECK_CSS).toContain("url('/ui/command-deck-chrome-v2.png')");
-    expect(existsSync(join(ROOT, 'apps/game/public/ui/command-deck-chrome-v2.png'))).toBe(true);
+  it('ships state-neutral standalone chrome plates with real live state above them', () => {
+    const plates = [
+      'top-wing-left.png',
+      'top-wing-right.png',
+      'operation.png',
+      'objectives.png',
+      'minimap.png',
+      'selection.png',
+      'commands.png',
+      'build.png',
+    ];
+    for (const plate of plates) {
+      expect(COMMAND_DECK_CSS).toContain(`url('/ui/command-deck/${plate}')`);
+      expect(existsSync(join(ROOT, 'apps/game/public/ui/command-deck', plate))).toBe(true);
+    }
+    expect(COMMAND_DECK_CSS).not.toContain("url('/ui/command-deck-chrome-v2.png')");
+    expect(COMMAND_DECK_CSS).toContain('.vm-command.is-active');
+    expect(COMMAND_DECK_CSS).toContain('.vm-tab.is-active');
+  });
+
+  it('keeps the build inventory continuous and scrollable beyond the visible eight cards', () => {
+    expect(SIDEBAR).toContain('export const BUILD_ROWS = 7');
+    expect(COMMAND_DECK_CSS).toMatch(/\.vm-grid\s*\{[\s\S]*?overflow-y:\s*auto/);
+    expect(COMMAND_DECK_CSS).toContain('grid-template-rows: none');
+    expect(COMMAND_DECK_CSS).toContain('scrollbar-color:');
   });
 
   it('keeps compact layouts usable without changing the desktop target', () => {

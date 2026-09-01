@@ -19,10 +19,13 @@ the implementation thread. It supersedes the older cyan-sidebar composition in
 
 The live HUD remains DOM + CSS, the icons are SVG, the minimap is canvas, and
 build/selection cameos are rendered from the game's actual meshes. The outer
-gunmetal shell now uses one project-local ImageGen material plate so the bevels,
-fasteners, wear and recess shadows reproduce the approved render instead of
-being approximated with flat CSS gradients. It contains no labels, gameplay
-data, minimap pixels, icons or baked interaction states.
+gunmetal shell uses project-local, real-alpha ImageGen component plates for the
+two elastic top wings, operation bay, objectives, minimap, selection inspector,
+five-command console, and build console. This avoids sampling or clipping one
+full-screen render into unrelated panels. The plates contain no labels,
+gameplay data, minimap pixels, icons, scroll thumbs, card cells, or baked
+interaction states: hover, active command, selected tab, build cards and the
+scrolling inventory remain live DOM/CSS.
 
 Supplied 2026-08-05 with: *"Thats the new HUD design i was hoping for"* and *"this is what the game
 should look like as well (hopefully)"*.

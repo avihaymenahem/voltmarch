@@ -768,7 +768,7 @@
  * continuous cockpit while text/canvases/buttons stay real DOM above it.
  */
 .vm-hud[data-layout='perimeter'] {
-  --deck-chrome-image: url('/ui/command-deck-chrome-v2.png');
+  --deck-chrome-image: none;
   background:
     linear-gradient(180deg, rgba(2,7,10,0.10), transparent 24%, transparent 68%, rgba(0,3,5,0.13)),
     radial-gradient(ellipse at 50% 46%, transparent 54%, rgba(0,3,5,0.18) 100%);
@@ -911,4 +911,250 @@
   .vm-hud[data-layout='perimeter'] .vm-command,
   .vm-hud[data-layout='perimeter'] .vm-slot,
   .vm-hud[data-layout='perimeter'] .vm-tab { transition: none; }
+}
+
+/* ----------------------------------------------------------------------- */
+/* Standalone state-neutral ImageGen chrome                                */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * Every plate below is a real-alpha, content-free structural component.
+ * The generated pixels never own selection, hover, active tabs, item cells,
+ * scroll thumbs, text, or icons. Those remain live DOM/CSS above the plate.
+ * Panel roots are deliberately not clipped: the alpha silhouette shapes the
+ * chrome without cropping content or focus rings.
+ */
+.vm-hud[data-layout='perimeter'] .vm-resources,
+.vm-hud[data-layout='perimeter'] .vm-command-node,
+.vm-hud[data-layout='perimeter'] .vm-objectives,
+.vm-hud[data-layout='perimeter'] .vm-dock-map,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection,
+.vm-hud[data-layout='perimeter'] .vm-command-deck,
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
+  clip-path: none !important;
+  background: transparent !important;
+  background-image: none !important;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources > *,
+.vm-hud[data-layout='perimeter'] .vm-command-node > *,
+.vm-hud[data-layout='perimeter'] .vm-objectives > *,
+.vm-hud[data-layout='perimeter'] .vm-dock-map > *,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection > *,
+.vm-hud[data-layout='perimeter'] .vm-command-deck > *,
+.vm-hud[data-layout='perimeter'] .vm-dock-build > * {
+  z-index: 2;
+}
+
+/* The bridge is a three-part assembly: two independently elastic wings plus
+ * the fixed operation bay. The long flat runs absorb width; the center module
+ * never distorts and the bar can reach the viewport edges at any aspect. */
+.vm-hud[data-layout='perimeter'] .vm-resources {
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  height: calc(86 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::before,
+.vm-hud[data-layout='perimeter'] .vm-resources::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc(50% - 196 * var(--vm-u));
+  min-width: calc(300 * var(--vm-u));
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 1;
+  filter: none;
+  -webkit-mask: none;
+  mask: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::before {
+  left: 0;
+  right: auto;
+  background-image: url('/ui/command-deck/top-wing-left.png');
+  background-position: left top;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::after {
+  left: auto;
+  right: 0;
+  inset-inline-start: auto;
+  background-image: url('/ui/command-deck/top-wing-right.png');
+  background-position: right top;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node {
+  width: calc(470 * var(--vm-u));
+  height: calc(116 * var(--vm-u));
+  padding: calc(13 * var(--vm-u)) calc(22 * var(--vm-u)) calc(26 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::before,
+.vm-hud[data-layout='perimeter'] .vm-command-node::after,
+.vm-hud[data-layout='perimeter'] .vm-objectives::before,
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::before,
+.vm-hud[data-layout='perimeter'] .vm-command-deck::before,
+.vm-hud[data-layout='perimeter'] .vm-dock-build::before {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 1;
+  filter: none;
+  -webkit-mask: none;
+  mask: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::before { background-image: url('/ui/command-deck/operation.png'); }
+.vm-hud[data-layout='perimeter'] .vm-objectives::before { background-image: url('/ui/command-deck/objectives.png'); }
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before { background-image: url('/ui/command-deck/minimap.png'); }
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::before { background-image: url('/ui/command-deck/selection.png'); }
+.vm-hud[data-layout='perimeter'] .vm-command-deck::before { background-image: url('/ui/command-deck/commands.png'); }
+.vm-hud[data-layout='perimeter'] .vm-dock-build::before { background-image: url('/ui/command-deck/build.png'); }
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::after,
+.vm-hud[data-layout='perimeter'] .vm-objectives::after,
+.vm-hud[data-layout='perimeter'] .vm-dock-map::after,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::after,
+.vm-hud[data-layout='perimeter'] .vm-command-deck::after,
+.vm-hud[data-layout='perimeter'] .vm-build-body::before,
+.vm-hud[data-layout='perimeter'] .vm-build-body::after,
+.vm-hud[data-layout='perimeter'] .vm-tabs::before {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives {
+  padding: calc(20 * var(--vm-u)) calc(24 * var(--vm-u)) calc(22 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map {
+  padding: calc(52 * var(--vm-u)) calc(47 * var(--vm-u)) calc(92 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection {
+  padding: calc(28 * var(--vm-u)) calc(27 * var(--vm-u)) calc(32 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck {
+  height: calc(126 * var(--vm-u));
+  padding: calc(23 * var(--vm-u)) calc(54 * var(--vm-u)) calc(28 * var(--vm-u));
+  grid-template-rows: 1fr;
+  gap: calc(4 * var(--vm-u));
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck .vm-panel-edge,
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-panel-edge,
+.vm-hud[data-layout='perimeter'] .vm-dock-map .vm-panel-edge,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection .vm-panel-edge,
+.vm-hud[data-layout='perimeter'] .vm-formation-row {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command {
+  padding: calc(15 * var(--vm-u)) calc(5 * var(--vm-u)) calc(8 * var(--vm-u));
+  border-color: transparent;
+  background: transparent;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-command:focus-visible {
+  border-color: rgba(var(--deck-mint-rgb), 0.72);
+  background: radial-gradient(80% 80% at 50% 44%, rgba(var(--deck-mint-rgb), 0.16), transparent 72%);
+  box-shadow: inset 0 0 calc(18 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.10);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command.is-active {
+  border-color: var(--deck-mint);
+  background: linear-gradient(180deg, rgba(var(--deck-mint-rgb), 0.20), rgba(3, 14, 11, 0.22));
+  box-shadow: inset 0 calc(3 * var(--vm-u)) 0 var(--deck-mint-hi), inset 0 0 calc(22 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.18);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-build,
+.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height {
+  height: calc(430 * var(--vm-u)) !important;
+  padding: calc(18 * var(--vm-u)) calc(22 * var(--vm-u)) calc(22 * var(--vm-u));
+  box-sizing: border-box;
+  filter: drop-shadow(0 calc(12 * var(--vm-u)) calc(26 * var(--vm-u)) rgba(0, 0, 0, 0.64));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tabs {
+  height: calc(48 * var(--vm-u));
+  padding: 0 calc(2 * var(--vm-u));
+  background: transparent;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-body {
+  min-height: 0;
+  padding: calc(9 * var(--vm-u)) calc(12 * var(--vm-u)) calc(12 * var(--vm-u));
+  background: transparent;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-grid {
+  grid-template-rows: none;
+  grid-auto-rows: calc(150 * var(--vm-u));
+  flex: 1 1 auto;
+  max-height: none;
+  padding: calc(2 * var(--vm-u)) calc(10 * var(--vm-u)) calc(2 * var(--vm-u)) calc(2 * var(--vm-u));
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--deck-mint-rgb), 0.72) rgba(4, 9, 12, 0.72);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-grid::-webkit-scrollbar { width: calc(7 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-grid::-webkit-scrollbar-track { background: rgba(3, 8, 11, 0.82); }
+.vm-hud[data-layout='perimeter'] .vm-grid::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(1, 7, 8, 0.9);
+  background: linear-gradient(180deg, var(--deck-mint-hi), #318f73);
+  box-shadow: 0 0 calc(7 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.28);
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] .vm-resources::before,
+  .vm-hud[data-layout='perimeter'] .vm-resources::after { width: calc(50% - 150 * var(--vm-u)); min-width: 0; }
+  .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(360 * var(--vm-u)); height: calc(90 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build,
+  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(318 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(112 * var(--vm-u)); }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter'] .vm-resources { height: calc(64 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-resources::before,
+  .vm-hud[data-layout='perimeter'] .vm-resources::after { width: calc(50% - 128 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(290 * var(--vm-u)); height: calc(72 * var(--vm-u)); padding: calc(8 * var(--vm-u)) calc(15 * var(--vm-u)) calc(17 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-command-deck { height: calc(86 * var(--vm-u)); padding: calc(15 * var(--vm-u)) calc(34 * var(--vm-u)) calc(18 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build,
+  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(246 * var(--vm-u)) !important; padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u)) calc(13 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(80 * var(--vm-u)); }
 }

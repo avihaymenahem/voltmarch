@@ -511,6 +511,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'The loading screen key art, a supplied illustration',
       'Campaign command portraits — original AI-assisted artwork',
       'Skirmish map preview terrain — original ImageGen-authored artwork with live tactical overlays',
+      'Command Deck HUD chrome — original ImageGen-authored component plates with live interface content',
       'Universal terrain detail mask — original project-owner-supplied grayscale artwork',
       'Faction structures, selected units and vehicle wreckage — original Meshy AI models for VOLTMARCH',
       'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',

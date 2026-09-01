@@ -289,7 +289,8 @@ describe('the credits describe the product that actually ships', () => {
   it('ships no undeclared binary asset from public/', () => {
     // Public asset families are declared. Imported world assets are bundled from
     // `packages/assets/game/` and checked independently above.
-    // Shared `fonts/` and `brand/`, plus public `audio/`, `campaign/` and `maps/previews/`
+    // Shared `fonts/` and `brand/`, plus public `audio/`, `campaign/`, `maps/previews/`
+    // and the original `ui/command-deck/` chrome
     // are the DECLARED exceptions — named in the credits, README.md and
     // CLAUDE.md. Anything appearing elsewhere in public/ is a new undeclared
     // asset and fails here rather than silently making three documents wrong.
@@ -302,7 +303,7 @@ describe('the credits describe the product that actually ships', () => {
     const BANNED = /\.(gltf|glb|fbx|obj|dae|png|jpe?g|webp|ktx2?|dds|tga|mp3|ogg|wav|m4a)$/i;
     // CAMPAIGN joined in the gold-master vertical slice. These are interface
     // portraits, named in credits and provenance, never world textures.
-    const DECLARED = /^(brand|fonts|audio|campaign|maps\/previews)\//;
+    const DECLARED = /^(brand|fonts|audio|campaign|maps\/previews|ui\/command-deck)\//;
     const offenders = publicAssets().filter((f) => BANNED.test(f) && !DECLARED.test(f));
     expect(
       offenders,

@@ -30,7 +30,7 @@ that pass through the local VOLTMARCH asset pipeline.
 
 Units, the procedural fallback roster, materials, cameos and in-game icons still use Three.js
 geometry, custom shaders and procedural canvas generators where an authored delivery does not own
-the presentation. **Nine shipped asset groups are not generated from runtime code**, all deliberate;
+the presentation. **Ten shipped asset groups are not generated from runtime code**, all deliberate;
 one additional docs-only image is listed so it cannot be mistaken for shipped game content.
 
 1. **Rajdhani** (OFL-1.1) in `packages/assets/fonts/` — the shared UI text face, Latin subset, four weights, 60 kB.
@@ -161,7 +161,15 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
    canvas survey if an image cannot decode. Prompts, roster mapping and delivery treatment are
    recorded in `apps/game/public/maps/previews/README.md`.
 
-7. **Universal terrain detail mask** in `packages/assets/game/terrain/` — an original tileable
+7. **Command Deck HUD chrome** in `apps/game/public/ui/command-deck/` — eight original ImageGen-authored
+   real-alpha PNG component plates generated for VOLTMARCH on 2026-09-01. They are interface structure,
+   not a baked screenshot: separate elastic top wings, operation bay, objectives, minimap, selection,
+   five-command console and one continuous build-console well. Text, icons, minimap pixels, item cells,
+   scroll state and every active/hover/selection state remain live DOM/CSS. The source render previews
+   were alpha-normalized and validated before shipping; prompts and the state-neutral contract live in
+   `apps/game/public/ui/command-deck/README.md`.
+
+8. **Universal terrain detail mask** in `packages/assets/game/terrain/` — an original tileable
    8192 × 8192 grayscale master supplied by the project owner on 2026-08-27, conditioned to a
    lossless 4096 × 4096 canonical PNG/control. The shipping runtime is its deterministic linear
    ETC1S KTX2 derivative with 13 explicit mips, loaded through the renderer-configured shared KTX2
@@ -176,7 +184,7 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
    `HTMLImageElement` alone is not sufficient: WebGPU can create its sampler binding before a GPU
    texture exists, then crash bind-group creation while reading `mipLevelCount`.
 
-8. **Imported faction/civilian structures, units and conventional vehicle wreckage** in
+9. **Imported faction/civilian structures, units and conventional vehicle wreckage** in
    `packages/assets/game/{buildings,units,wrecks}/` — original Meshy AI generations
    commissioned for VOLTMARCH, then simplified, texture-budgeted, palette-conditioned, audited and
    integrated locally. Each keeps its procedural fallback; runtime assets, task IDs, credit cost,
@@ -190,7 +198,7 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
    conditioned neutral tank hulk supplies deferred Allied/Soviet combat-vehicle wrecks, while the
    rest of the roster retains procedural wreck art.
 
-9. **Authored foliage and neutral environment props** in `packages/assets/game/environment/` — the
+10. **Authored foliage and neutral environment props** in `packages/assets/game/environment/` — the
    complete 32-key Scatter catalogue: trees, shrubs, grasses, rocks, crates, flower boxes, yard and
    street furniture, civilian cars, umbrellas and tents. Runtime presentation defaults to these
    audited LOD/caster families and shared PBR atlases. Stable placement, crushing, biome choice and
@@ -198,7 +206,7 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
    `?foliage=procedural` diagnostic request or an asset-load failure. The rollout and remaining
    runtime acceptance work live in `docs/FOLIAGE_ENGINE_PLAN.md`.
 
-10. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+11. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `apps/game/public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `apps/game/tests/credits-truthful.spec.ts` checks that screen against
