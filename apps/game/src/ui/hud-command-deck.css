@@ -1385,6 +1385,21 @@
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable {
   --vm-build-cap-h: calc(58 * var(--vm-u));
+  /* The cap artwork is alpha-shaped but the elastic middle fill is a CSS
+   * rectangle. Clip the assembled panel to the same chamfered perimeter so
+   * that fill can never escape past the armour while the inner grid remains
+   * independently scrollable. */
+  overflow: hidden;
+  clip-path: polygon(
+    calc(18 * var(--vm-u)) 0,
+    calc(100% - 16 * var(--vm-u)) 0,
+    100% calc(17 * var(--vm-u)),
+    100% calc(100% - 18 * var(--vm-u)),
+    calc(100% - 18 * var(--vm-u)) 100%,
+    calc(16 * var(--vm-u)) 100%,
+    0 calc(100% - 16 * var(--vm-u)),
+    0 calc(18 * var(--vm-u))
+  ) !important;
   background-image: linear-gradient(90deg,
     rgba(43, 53, 60, 0.98) 0,
     rgba(11, 17, 21, 0.98) 2.8%,
@@ -1436,6 +1451,19 @@
 
 .vm-hud[data-layout='perimeter']
   .vm-objectives.vm-height-resizable:not(.is-collapsed) {
+  /* Same contract as Build: fixed undistorted caps, an elastic CSS middle,
+   * and one authored silhouette around the assembled result. */
+  overflow: hidden;
+  clip-path: polygon(
+    calc(16 * var(--vm-u)) 0,
+    calc(100% - 25 * var(--vm-u)) 0,
+    100% calc(25 * var(--vm-u)),
+    100% calc(100% - 20 * var(--vm-u)),
+    calc(100% - 20 * var(--vm-u)) 100%,
+    calc(16 * var(--vm-u)) 100%,
+    0 calc(100% - 16 * var(--vm-u)),
+    0 calc(16 * var(--vm-u))
+  ) !important;
   background-image: linear-gradient(90deg,
     rgba(38, 48, 54, 0.98) 0,
     rgba(7, 13, 17, 0.98) 6%,

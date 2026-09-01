@@ -275,6 +275,17 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).not.toContain('border-image-repeat: stretch round');
   });
 
+  it('clips elastic build and objective fills to their authored armour silhouettes', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-build\.vm-height-resizable\s*\{[^}]*overflow:\s*hidden;[^}]*clip-path:\s*polygon\([^}]*\)\s*!important;/s,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-objectives\.vm-height-resizable:not\(\.is-collapsed\)\s*\{[^}]*overflow:\s*hidden;[^}]*clip-path:\s*polygon\([^}]*\)\s*!important;/s,
+    );
+    // Scrolling belongs to the live inventories, not to an overflowing root.
+    expect(COMMAND_DECK_CSS).toMatch(/\.vm-grid\s*\{[^}]*overflow-y:\s*auto;/s);
+  });
+
   it('preserves generated plate ratios and the reference info grid', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?aspect-ratio:\s*1475 \/ 227;[\s\S]*?background-size:\s*contain;/,
