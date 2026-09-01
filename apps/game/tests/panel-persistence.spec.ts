@@ -12,6 +12,7 @@ import {
   parseStoredPanelHeightRatio,
 } from '../src/ui/VerticalPanelResize';
 import {
+  AspectPanelResize,
   clampAspectPanelWidth,
   parseStoredPanelWidthRatio,
 } from '../src/ui/AspectPanelResize';
@@ -83,6 +84,10 @@ describe('persisted HUD panel geometry', () => {
     expect(parseStoredPanelWidthRatio('0')).toBeNull();
     expect(parseStoredPanelWidthRatio('Infinity')).toBeNull();
     expect(parseStoredPanelWidthRatio(null)).toBeNull();
+  });
+
+  it('exposes an authored-size reset for the tactical map hardware', () => {
+    expect(AspectPanelResize.prototype.resetToDesignSize).toBeTypeOf('function');
   });
 
   it('restores draggable positions safely inside the viewport', () => {

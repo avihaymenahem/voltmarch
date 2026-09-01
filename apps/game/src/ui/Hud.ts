@@ -1095,6 +1095,8 @@ export class Hud {
         fireSuperweapon: (key) => this.armSuperweapon(key),
         usePower: (key) => this.armPower(key),
         command: (action) => this.invokeCommand(action),
+        centreOnHome: () => this.cameraRig.centreOnHome(),
+        centreOnSelection: () => this.focusSelection(),
         formation: (shape) => this.invokeFormation(shape),
         sound: (cue) => this.soundHook?.(cue),
       },
@@ -1677,6 +1679,23 @@ export class Hud {
     const i = store.index(id as EntityId);
     if (i < 0) return;
     this.cameraRig.setFocus(store.posX[i], store.posZ[i], false);
+  }
+
+  /** Centre the camera on the live selection's centroid. */
+  private focusSelection(): void {
+    const selection = this.world.selection;
+    const store = this.world.store;
+    let count = 0;
+    let x = 0;
+    let z = 0;
+    for (let n = 0; n < selection.count; n++) {
+      const i = store.index(selection.ids[n] as EntityId);
+      if (i < 0) continue;
+      x += store.posX[i];
+      z += store.posZ[i];
+      count++;
+    }
+    if (count > 0) this.cameraRig.setFocus(x / count, z / count, false);
   }
 
   /* ------------------------------------------------------------------ */

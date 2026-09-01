@@ -210,6 +210,14 @@ export class AspectPanelResize {
     this.applyWidth(this.widthRatio * this.viewportWidth(), false);
   }
 
+  /** Restore the authored size without distorting the panel's fixed aspect. */
+  resetToDesignSize(): void {
+    this.applyWidth(
+      this.options.designWidthUnits * computeUiScale(this.viewportHeight()),
+    );
+    this.persist();
+  }
+
   private persist(notify = true): void {
     if (this.width <= 0) return;
     writeStoredPanelWidthRatio(this.options.storageKey, this.widthRatio);

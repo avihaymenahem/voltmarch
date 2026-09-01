@@ -610,6 +610,10 @@ export interface SidebarCallbacks {
   usePower(key: string): void;
   /** A primary battlefield command was clicked. Input owns the gesture. */
   command(action: HudCommandAction): void;
+  /** Centre the battlefield camera on the player's home base. */
+  centreOnHome(): void;
+  /** Centre the battlefield camera on the current selection. */
+  centreOnSelection(): void;
   /** Arrange the selected mobile group into one of the explicit shapes. */
   formation(shape: FormationShape): void;
   sound(cue: HudSoundCue): void;
@@ -3578,6 +3582,7 @@ export class Sidebar {
   private readonly offlineEl: HTMLElement;
   private readonly mapHintEl: HTMLElement;
   private readonly legendEl: HTMLElement;
+  private readonly mapSelectionButton: HTMLButtonElement;
   /** Hostile armies, in the minimap's seat order. Empty = the default row. */
   private hostiles: readonly ArmyLegendEntry[] = [];
   private allies: readonly ArmyLegendEntry[] = [];
@@ -3674,16 +3679,38 @@ export class Sidebar {
     this.minimapField = el('div', 'vm-map-field', mapBody);
     this.minimapCanvas = el('canvas', 'vm-map-canvas', this.minimapField);
 
-    // The approved command-deck shell carries a short hardware rail under the
-    // tactical glass. These are deliberately status ornaments rather than
-    // fake buttons: the map already owns pointer recentering, while exposing
-    // controls with no corresponding game command would be dishonest UI.
+    // Three real controls occupy the three switch wells authored into the
+    // generated chassis. They used to be aria-hidden ornaments which looked
+    // clickable but did nothing; a command surface cannot lie like that.
     const mapHardware = el('div', 'vm-map-hardware', this.mapDock);
-    mapHardware.setAttribute('aria-hidden', 'true');
-    for (const iconName of ['move', 'primary', 'radar'] as const) {
-      const pod = el('span', 'vm-map-hardware-pod', mapHardware);
-      pod.append(makeIcon(iconName, 'vm-icon vm-map-hardware-icon'));
-    }
+    mapHardware.setAttribute('role', 'toolbar');
+    mapHardware.setAttribute('aria-label', 'Tactical map controls');
+
+    const home = button(mapHardware, 'vm-map-hardware-pod', 'Centre camera on base');
+    home.title = 'Centre camera on base';
+    home.append(makeIcon('move', 'vm-icon vm-map-hardware-icon'));
+    home.addEventListener('click', () => {
+      opts.callbacks.sound('click');
+      opts.callbacks.centreOnHome();
+    });
+
+    this.mapSelectionButton = button(
+      mapHardware, 'vm-map-hardware-pod', 'Centre camera on selection',
+    );
+    this.mapSelectionButton.title = 'Centre camera on selection';
+    this.mapSelectionButton.append(makeIcon('primary', 'vm-icon vm-map-hardware-icon'));
+    this.mapSelectionButton.addEventListener('click', () => {
+      opts.callbacks.sound('click');
+      opts.callbacks.centreOnSelection();
+    });
+
+    const resetMap = button(mapHardware, 'vm-map-hardware-pod', 'Reset tactical map size');
+    resetMap.title = 'Reset tactical map size';
+    resetMap.append(makeIcon('radar', 'vm-icon vm-map-hardware-icon'));
+    resetMap.addEventListener('click', () => {
+      opts.callbacks.sound('click');
+      this.mapResize.resetToDesignSize();
+    });
 
     // The offline state now says what to DO. "NO RADAR" named the symptom and
     // left the player staring at a grey square with no idea it was a build
@@ -3887,6 +3914,7 @@ export class Sidebar {
     supers: SuperweaponView, powers: CommanderPowerView,
   ): void {
     this.resources.update(snap, tele, dt);
+    this.mapSelectionButton.disabled = snap.selectionCount === 0;
     this.selection.update(view, snap, tele);
     this.build.update(snap);
     this.supers.update(supers);

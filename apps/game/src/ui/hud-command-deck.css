@@ -1534,15 +1534,16 @@
 
 }
 
-/* The pod wells sit at roughly 22.5%, 50%, and 78% of the chassis in the
- * approved radar crop. Keep the live hit targets on those wells. */
+/* The generated chassis groups its three wells at 33.3%, 50%, and 66.7% of
+ * the full plate. Register the live controls to those exact image-relative
+ * centres so proportional panel resizing cannot pull the icons away. */
 .vm-hud[data-layout='perimeter'] .vm-map-hardware {
-  left: 8.5%;
-  right: 8.5%;
-  bottom: 5.5%;
-  height: 13.5%;
+  left: 25%;
+  right: 25%;
+  bottom: 7.5%;
+  height: 12%;
   padding: 0;
-  gap: 1.5%;
+  gap: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1550,15 +1551,26 @@
 
 .vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  appearance: none;
   border-color: transparent;
   background: transparent;
   clip-path: none;
   box-shadow: none;
+  cursor: pointer;
 }
 
-.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:is(:hover, .vm-pointer-hover) {
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:is(:hover, .vm-pointer-hover, :focus-visible) {
   border-color: rgba(var(--deck-mint-rgb), 0.34);
   background: rgba(var(--deck-mint-rgb), 0.08);
+  outline: 1px solid rgba(var(--deck-mint-rgb), 0.68);
+  outline-offset: calc(-5 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:disabled {
+  opacity: 0.32;
+  cursor: default;
 }
 
 /* The inspector can be resized down to 220u while the default plate is 250u.

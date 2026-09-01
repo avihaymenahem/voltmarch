@@ -334,10 +334,17 @@ describe('approved command-deck skin', () => {
     );
   });
 
-  it('registers the radar controls to the three authored hardware wells', () => {
+  it('registers three functional radar controls to the authored hardware wells', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*8\.5%;[\s\S]*?right:\s*8\.5%;/,
+      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*25%;[\s\S]*?right:\s*25%;/,
     );
+    expect(SIDEBAR).toContain("mapHardware.setAttribute('role', 'toolbar')");
+    expect(SIDEBAR).toContain("'Centre camera on base'");
+    expect(SIDEBAR).toContain("'Centre camera on selection'");
+    expect(SIDEBAR).toContain("'Reset tactical map size'");
+    expect(SIDEBAR).not.toContain("mapHardware.setAttribute('aria-hidden', 'true')");
+    expect(HUD).toContain('centreOnHome: () => this.cameraRig.centreOnHome()');
+    expect(HUD).toContain('centreOnSelection: () => this.focusSelection()');
   });
 
   it('registers live build controls to the authored asymmetric header bays', () => {
