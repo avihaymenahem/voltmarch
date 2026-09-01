@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(__dirname, '..', '..', '..');
@@ -7,10 +7,12 @@ const HUD = readFileSync(join(ROOT, 'apps/game/src/ui/Hud.ts'), 'utf8');
 const SIDEBAR = readFileSync(join(ROOT, 'apps/game/src/ui/Sidebar.ts'), 'utf8');
 const INPUT = readFileSync(join(ROOT, 'apps/game/src/input/input.system.ts'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'apps/game/src/ui/hud-redesign.css'), 'utf8');
+const COMMAND_DECK_CSS = readFileSync(join(ROOT, 'apps/game/src/ui/hud-command-deck.css'), 'utf8');
 
 describe('perimeter HUD composition', () => {
   it('is an explicit layout layer loaded after the base HUD', () => {
     expect(HUD.indexOf("import './hud-redesign.css'")).toBeGreaterThan(HUD.indexOf("import './hud.css'"));
+    expect(HUD.indexOf("import './hud-command-deck.css'")).toBeGreaterThan(HUD.indexOf("import './hud-redesign.css'"));
     expect(HUD).toContain("this.root.dataset.layout = 'perimeter'");
   });
 
@@ -87,5 +89,59 @@ describe('command deck behavior', () => {
   it('publishes and removes the input seam with the system lifecycle', () => {
     expect(INPUT).toContain('.__vmInputCommands = HUD_COMMAND_SERVICE');
     expect(INPUT).toContain('delete commandGlobal.__vmInputCommands');
+  });
+});
+
+describe('approved command-deck skin', () => {
+  const seal = COMMAND_DECK_CSS;
+
+  it('uses the measured desktop proportions from the approved concept', () => {
+    expect(seal).toContain('--vm-map-w: calc(286 * var(--vm-u))');
+    expect(seal).toContain('--vm-map-h: calc(382 * var(--vm-u))');
+    expect(seal).toContain('--vm-selection-w: calc(250 * var(--vm-u))');
+    expect(seal).toContain('--vm-command-w: calc(546 * var(--vm-u))');
+    expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
+  });
+
+  it('renders a wide four-column, two-row production console', () => {
+    expect(SIDEBAR).toContain("'vm-build-title'");
+    expect(SIDEBAR).toContain("['ALL', 'STRUCTURES', 'DEFENSE', 'UNITS', 'SUPPORT']");
+    expect(seal).toContain('--vm-grid-cols: 4 !important');
+    expect(seal).toContain('grid-template-rows: repeat(2, calc(158 * var(--vm-u)))');
+  });
+
+  it('orders the five large commands like the approved console', () => {
+    const start = SIDEBAR.indexOf('const COMMAND_DECK');
+    const end = SIDEBAR.indexOf('const FORMATIONS', start);
+    const deck = SIDEBAR.slice(start, end);
+    const actions = ['guard', 'attack', 'move', 'stop', 'scatter'];
+    for (let i = 1; i < actions.length; i++) {
+      expect(deck.indexOf(`['${actions[i - 1]}',`)).toBeLessThan(deck.indexOf(`['${actions[i]}',`));
+    }
+  });
+
+  it('mounts the operation bay outside the clipped resource armour', () => {
+    expect(SIDEBAR).toContain("const command = el('section', 'vm-command-node', parent)");
+    expect(SIDEBAR).not.toContain("const command = el('section', 'vm-command-node', this.root)");
+    expect(SIDEBAR).toContain("'vm-command-pips'");
+  });
+
+  it('uses neutral gunmetal cameos and a real multi-plane material skin', () => {
+    expect(COMMAND_DECK_CSS).toContain('--deck-shell-0:');
+    expect(COMMAND_DECK_CSS).toContain('--deck-mint:');
+    expect(COMMAND_DECK_CSS).toContain('--deck-violet:');
+    expect(COMMAND_DECK_CSS).toContain('--deck-amber:');
+    expect(COMMAND_DECK_CSS).toContain('.vm-map-hardware');
+    expect(SIDEBAR).toContain("'vm-map-hardware'");
+  });
+
+  it('ships the generated chrome plate locally instead of depending on a temp output', () => {
+    expect(COMMAND_DECK_CSS).toContain("url('/ui/command-deck-chrome-v2.png')");
+    expect(existsSync(join(ROOT, 'apps/game/public/ui/command-deck-chrome-v2.png'))).toBe(true);
+  });
+
+  it('keeps compact layouts usable without changing the desktop target', () => {
+    expect(seal).toContain('@media (max-width: 1400px)');
+    expect(seal).toContain('@media (max-width: 900px)');
   });
 });

@@ -137,6 +137,7 @@ import { notifyTutorialAction } from '../core/tutorial';
 
 import './hud.css';
 import './hud-redesign.css';
+import './hud-command-deck.css';
 
 /* ==========================================================================
  * SECTION 0 — THE LIVE BINDING TABLE

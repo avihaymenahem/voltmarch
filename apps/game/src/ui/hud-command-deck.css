@@ -1,0 +1,914 @@
+/*
+ * COMMAND DECK — final visual authority.
+ *
+ * This sheet is deliberately imported after both historical HUD sheets.  It
+ * reconstructs the approved image as machined gunmetal: a dark structural
+ * shell, raised outer armour, an inset instrument well, and a restrained light
+ * channel.  Violet belongs to operation identity; mint belongs to interaction;
+ * amber/red/green retain their semantic jobs.
+ */
+
+.vm-hud[data-layout='perimeter'] {
+  --deck-shell-0: #030608;
+  --deck-shell-1: #080d10;
+  --deck-shell-2: #11191d;
+  --deck-shell-3: #202a2f;
+  --deck-steel-hi: rgba(183, 201, 206, 0.48);
+  --deck-steel-mid: rgba(91, 111, 119, 0.56);
+  --deck-steel-low: rgba(31, 44, 50, 0.88);
+  --deck-well: rgba(2, 7, 10, 0.94);
+  --deck-well-lift: rgba(35, 51, 57, 0.42);
+  --deck-mint: #65deb7;
+  --deck-mint-hi: #a9f3da;
+  --deck-mint-rgb: 101, 222, 183;
+  --deck-violet: #a94de3;
+  --deck-violet-hi: #d693fa;
+  --deck-violet-rgb: 169, 77, 227;
+  --deck-amber: #ffc51b;
+
+  --vm-top-h: calc(70 * var(--vm-u));
+  --vm-edge: calc(8 * var(--vm-u));
+  --vm-panel-gap: calc(8 * var(--vm-u));
+  --vm-map-w: calc(286 * var(--vm-u));
+  --vm-map-h: calc(382 * var(--vm-u));
+  --vm-selection-w: calc(250 * var(--vm-u));
+  --vm-selection-h: calc(338 * var(--vm-u));
+  --vm-command-w: calc(546 * var(--vm-u));
+  --vm-command-h: calc(160 * var(--vm-u));
+  --vm-rail-w: calc(580 * var(--vm-u));
+  --vm-rail-top: calc(68 * var(--vm-u));
+  --vm-obj-max-h: calc(360 * var(--vm-u));
+
+  --vm-accent: var(--deck-mint) !important;
+  --vm-accent-hi: var(--deck-mint-hi) !important;
+  --vm-accent-lo: #235f52 !important;
+  --vm-accent-rgb: var(--deck-mint-rgb) !important;
+  --vm-text: #edf1f2;
+  --vm-dim: #aab4b8;
+  --vm-faint: #69777c;
+  --vm-glass: rgba(6, 12, 15, 0.97);
+  --vm-glass-deep: rgba(2, 6, 9, 0.99);
+  --vm-rim: rgba(2, 5, 7, 0.98);
+  --vm-hairline: rgba(117, 140, 148, 0.34);
+  --vm-hairline-soft: rgba(147, 169, 176, 0.14);
+  --vm-well: var(--deck-well);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Shared three-plane armour                                                */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-panel {
+  border: 0;
+  background:
+    linear-gradient(136deg, rgba(204, 225, 229, 0.07) 0, transparent 16%),
+    linear-gradient(315deg, rgba(0, 0, 0, 0.34) 0, transparent 21%),
+    radial-gradient(120% 95% at 50% 0%, rgba(57, 77, 84, 0.22), transparent 56%),
+    linear-gradient(180deg, rgba(13, 22, 27, 0.99), rgba(3, 8, 11, 0.995));
+  box-shadow:
+    0 calc(12 * var(--vm-u)) calc(30 * var(--vm-u)) rgba(0, 0, 0, 0.62),
+    0 calc(2 * var(--vm-u)) calc(4 * var(--vm-u)) rgba(0, 0, 0, 0.9),
+    inset 0 calc(2 * var(--vm-u)) 0 rgba(188, 213, 218, 0.07),
+    inset 0 calc(-3 * var(--vm-u)) calc(9 * var(--vm-u)) rgba(0, 0, 0, 0.56),
+    inset calc(3 * var(--vm-u)) 0 calc(9 * var(--vm-u)) rgba(121, 151, 159, 0.035);
+  backdrop-filter: none;
+}
+
+/* Thick outer armour, then a separate bright inset channel. */
+.vm-hud[data-layout='perimeter'] .vm-panel::before {
+  inset: 0;
+  padding: calc(3 * var(--vm-u));
+  background:
+    linear-gradient(145deg,
+      rgba(152, 179, 185, 0.62) 0%,
+      rgba(58, 77, 84, 0.74) 20%,
+      rgba(20, 31, 36, 0.94) 58%,
+      rgba(5, 10, 13, 0.99) 100%);
+  opacity: 0.88;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel::after {
+  inset: calc(6 * var(--vm-u));
+  padding: 1px;
+  background: linear-gradient(145deg,
+    rgba(186, 209, 213, 0.54) 0%,
+    rgba(92, 116, 123, 0.34) 34%,
+    rgba(37, 54, 61, 0.42) 72%,
+    rgba(15, 26, 31, 0.72) 100%);
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 1px rgba(206, 229, 231, 0.22))
+    drop-shadow(0 0 calc(4 * var(--vm-u)) rgba(76, 120, 124, 0.10));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel:not(.vm-resources) .vm-panel-edge {
+  display: block;
+  inset: calc(9 * var(--vm-u));
+  z-index: 7;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-panel-edge::before,
+.vm-hud[data-layout='perimeter'] .vm-panel-edge::after {
+  width: calc(15 * var(--vm-u));
+  height: calc(15 * var(--vm-u));
+  border-color: rgba(180, 204, 209, 0.54);
+  filter: drop-shadow(0 0 calc(2 * var(--vm-u)) rgba(162, 203, 207, 0.13));
+}
+
+/* ----------------------------------------------------------------------- */
+/* Top command bridge                                                      */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-resources {
+  top: calc(8 * var(--vm-u));
+  left: var(--vm-edge);
+  right: var(--vm-edge);
+  width: auto;
+  height: var(--vm-top-h);
+  clip-path: polygon(
+    calc(12 * var(--vm-u)) 0,
+    calc(100% - 12 * var(--vm-u)) 0,
+    100% calc(12 * var(--vm-u)),
+    100% calc(100% - 10 * var(--vm-u)),
+    calc(100% - 12 * var(--vm-u)) 100%,
+    calc(12 * var(--vm-u)) 100%,
+    0 calc(100% - 10 * var(--vm-u)),
+    0 calc(12 * var(--vm-u))
+  );
+  background:
+    linear-gradient(90deg,
+      rgba(30, 43, 48, 0.98) 0%,
+      rgba(7, 13, 17, 0.995) 27%,
+      rgba(3, 8, 11, 0.995) 50%,
+      rgba(7, 13, 17, 0.995) 73%,
+      rgba(30, 43, 48, 0.98) 100%);
+  box-shadow:
+    0 calc(9 * var(--vm-u)) calc(22 * var(--vm-u)) rgba(0, 0, 0, 0.52),
+    inset 0 calc(2 * var(--vm-u)) 0 rgba(191, 212, 216, 0.07),
+    inset 0 calc(-4 * var(--vm-u)) calc(8 * var(--vm-u)) rgba(0, 0, 0, 0.74);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::before {
+  padding: calc(2 * var(--vm-u));
+  background: linear-gradient(90deg,
+    rgba(83, 112, 119, 0.72),
+    rgba(28, 43, 49, 0.80) 42%,
+    rgba(28, 43, 49, 0.80) 58%,
+    rgba(83, 112, 119, 0.72));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources::after {
+  inset: calc(4 * var(--vm-u));
+  background: linear-gradient(90deg,
+    rgba(151, 184, 190, 0.34),
+    rgba(52, 75, 83, 0.30) 43%,
+    rgba(52, 75, 83, 0.30) 57%,
+    rgba(151, 184, 190, 0.34));
+  filter: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources > .vm-res {
+  top: calc(10 * var(--vm-u));
+  height: calc(49 * var(--vm-u));
+  padding: 0 calc(14 * var(--vm-u));
+  border-left: 1px solid rgba(130, 153, 160, 0.16);
+  background: linear-gradient(90deg, rgba(255,255,255,0.012), transparent 66%);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-credits { left: calc(25 * var(--vm-u)); width: calc(145 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-res-trend { left: calc(170 * var(--vm-u)); width: calc(112 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-res-power { left: calc(282 * var(--vm-u)); width: calc(230 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-res-clock { right: calc(285 * var(--vm-u)); width: calc(112 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-res-army { right: calc(157 * var(--vm-u)); width: calc(128 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-res-base { right: calc(25 * var(--vm-u)); width: calc(132 * var(--vm-u)); }
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-body {
+  justify-content: center;
+  gap: calc(5 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-label {
+  font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1));
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.19em;
+  color: #829095;
+  text-shadow: 0 1px 2px #000;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-value {
+  font-size: calc(15 * var(--vm-u) * var(--vm-text-scale, 1));
+  font-weight: 600;
+  line-height: 1;
+  color: #f0f3f3;
+  text-shadow: 0 calc(2 * var(--vm-u)) calc(3 * var(--vm-u)) rgba(0, 0, 0, 0.9);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-icon {
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+  color: #89969b;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources .vm-res-credits .vm-res-icon { color: #f8ca19; filter: drop-shadow(0 0 calc(2 * var(--vm-u)) rgba(255, 207, 26, 0.30)); }
+.vm-hud[data-layout='perimeter'] .vm-credit-delta { color: #efb91a; }
+.vm-hud[data-layout='perimeter'] .vm-res-cap { color: #657176; }
+
+.vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-line {
+  display: grid;
+  grid-template-columns: minmax(calc(64 * var(--vm-u)), 1fr) max-content max-content;
+  gap: calc(7 * var(--vm-u));
+  width: 100%;
+  align-items: center;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-power .vm-power { width: auto; height: calc(8 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-power-seg { width: calc(3 * var(--vm-u)); background: rgba(132, 148, 154, 0.17); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); }
+.vm-hud[data-layout='perimeter'] .vm-power-seg.is-lit { background: linear-gradient(180deg, #d373fb, #9f3fd9); box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.45); }
+.vm-hud[data-layout='perimeter'] .vm-power-state { border: 1px solid currentColor; background: rgba(0,0,0,0.38); box-shadow: inset 0 0 calc(6 * var(--vm-u)) rgba(0,0,0,0.32); }
+
+/* The operation bay is a separate armoured object overlapping the bridge. */
+.vm-hud[data-layout='perimeter'] .vm-command-node {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  left: 50%;
+  width: calc(430 * var(--vm-u));
+  height: calc(98 * var(--vm-u));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: calc(72 * var(--vm-u)) minmax(0, 1fr) calc(92 * var(--vm-u));
+  align-items: center;
+  overflow: visible;
+  box-sizing: border-box;
+  clip-path: polygon(
+    calc(25 * var(--vm-u)) 0,
+    calc(100% - 25 * var(--vm-u)) 0,
+    100% calc(25 * var(--vm-u)),
+    calc(100% - 25 * var(--vm-u)) calc(100% - 20 * var(--vm-u)),
+    calc(100% - 58 * var(--vm-u)) 100%,
+    calc(58 * var(--vm-u)) 100%,
+    calc(25 * var(--vm-u)) calc(100% - 20 * var(--vm-u)),
+    0 calc(25 * var(--vm-u))
+  );
+  border: 0;
+  background:
+    linear-gradient(118deg, rgba(220, 231, 233, 0.07), transparent 22%),
+    linear-gradient(90deg, rgba(74, 31, 96, 0.42), transparent 26%, transparent 74%, rgba(74, 31, 96, 0.34)),
+    linear-gradient(180deg, #172126 0%, #0a1115 43%, #04080b 100%);
+  box-shadow:
+    0 calc(10 * var(--vm-u)) calc(26 * var(--vm-u)) rgba(0, 0, 0, 0.62),
+    inset 0 calc(3 * var(--vm-u)) 0 rgba(175, 196, 201, 0.08),
+    inset 0 calc(-4 * var(--vm-u)) calc(12 * var(--vm-u)) rgba(0, 0, 0, 0.82),
+    inset 0 -1px 0 rgba(var(--deck-violet-rgb), 0.72);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::before,
+.vm-hud[data-layout='perimeter'] .vm-command-node::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::before {
+  inset: calc(4 * var(--vm-u)) calc(9 * var(--vm-u)) calc(16 * var(--vm-u));
+  border-top: 1px solid rgba(166, 190, 195, 0.42);
+  border-left: 1px solid rgba(102, 126, 134, 0.30);
+  border-right: 1px solid rgba(39, 54, 61, 0.64);
+  clip-path: polygon(calc(16 * var(--vm-u)) 0, calc(100% - 16 * var(--vm-u)) 0, 100% calc(16 * var(--vm-u)), 100% 100%, 0 100%, 0 calc(16 * var(--vm-u)));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node::after {
+  left: calc(54 * var(--vm-u));
+  right: calc(54 * var(--vm-u));
+  bottom: calc(10 * var(--vm-u));
+  height: calc(3 * var(--vm-u));
+  background: linear-gradient(90deg, transparent, rgba(var(--deck-violet-rgb), 0.88) 18%, rgba(215, 133, 255, 0.95) 50%, rgba(var(--deck-violet-rgb), 0.88) 82%, transparent);
+  box-shadow: 0 0 calc(9 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.50);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-emblem,
+.vm-hud[data-layout='perimeter'] .vm-command-portrait {
+  grid-column: 1;
+  width: calc(53 * var(--vm-u));
+  height: calc(58 * var(--vm-u));
+  margin-left: calc(13 * var(--vm-u));
+  box-sizing: border-box;
+  clip-path: polygon(50% 0, 100% 18%, 91% 76%, 50% 100%, 9% 76%, 0 18%);
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(162, 80, 213, 0.24), transparent 50%),
+    linear-gradient(180deg, rgba(47, 23, 64, 0.96), rgba(12, 9, 17, 0.98));
+  box-shadow: inset 0 0 0 calc(2 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.56);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-emblem { display: grid; place-items: center; color: var(--deck-violet-hi); filter: drop-shadow(0 0 calc(6 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.25)); }
+.vm-hud[data-layout='perimeter'] .vm-command-emblem .vm-icon { width: calc(33 * var(--vm-u)); height: calc(33 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-command-body { grid-column: 2; padding: 0 calc(12 * var(--vm-u)); text-align: center; }
+.vm-hud[data-layout='perimeter'] .vm-command-kicker { display: block; font-size: calc(7 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.23em; color: #8d999d; }
+.vm-hud[data-layout='perimeter'] .vm-command-map { display: block; margin-top: calc(7 * var(--vm-u)); font-size: calc(17 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.055em; color: #f1f3f3; text-shadow: 0 calc(2 * var(--vm-u)) calc(5 * var(--vm-u)) #000; }
+.vm-hud[data-layout='perimeter'] .vm-command-context { grid-column: 3; padding-right: calc(16 * var(--vm-u)); gap: calc(5 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-command-chip { padding: calc(4 * var(--vm-u)) calc(6 * var(--vm-u)); border: 1px solid rgba(105, 128, 136, 0.32); background: rgba(2, 7, 10, 0.62); color: #9aa7aa; }
+
+.vm-hud[data-layout='perimeter'] .vm-command-pips {
+  position: absolute;
+  left: 50%;
+  bottom: calc(3 * var(--vm-u));
+  transform: translateX(-50%);
+  display: flex;
+  gap: calc(7 * var(--vm-u));
+  z-index: 4;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-pips > i {
+  width: calc(4 * var(--vm-u));
+  height: calc(4 * var(--vm-u));
+  transform: rotate(45deg);
+  background: var(--deck-violet-hi);
+  box-shadow: 0 0 calc(6 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.9);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Objectives                                                              */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-objectives {
+  top: calc(78 * var(--vm-u));
+  left: var(--vm-edge);
+  width: calc(270 * var(--vm-u));
+  max-height: var(--vm-obj-max-h);
+  padding: calc(16 * var(--vm-u));
+  gap: calc(11 * var(--vm-u));
+  clip-path: polygon(
+    calc(16 * var(--vm-u)) 0,
+    calc(100% - 25 * var(--vm-u)) 0,
+    100% calc(25 * var(--vm-u)),
+    100% calc(100% - 20 * var(--vm-u)),
+    calc(100% - 20 * var(--vm-u)) 100%,
+    calc(16 * var(--vm-u)) 100%,
+    0 calc(100% - 16 * var(--vm-u)),
+    0 calc(16 * var(--vm-u))
+  );
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives::after { inset: calc(7 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-panel-edge { inset: calc(11 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-head {
+  height: calc(30 * var(--vm-u));
+  min-height: calc(30 * var(--vm-u));
+  padding: 0 0 calc(10 * var(--vm-u));
+  border-bottom: 1px solid rgba(131, 154, 161, 0.28);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.72);
+}
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-title { font-size: calc(13 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 700; letter-spacing: 0.13em; color: #dfe5e7; }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-count { font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1)); color: var(--deck-violet-hi); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-list { gap: calc(12 * var(--vm-u)); padding-right: calc(3 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj { min-height: calc(43 * var(--vm-u)); padding-left: calc(20 * var(--vm-u)); gap: calc(5 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj::before { top: calc(2 * var(--vm-u)); width: calc(10 * var(--vm-u)); height: calc(10 * var(--vm-u)); border: 1px solid rgba(var(--deck-violet-rgb), 0.68); background: rgba(var(--deck-violet-rgb), 0.08); box-shadow: inset 0 0 calc(5 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.15); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-tier { font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1)); letter-spacing: 0.16em; }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-name { font-size: calc(10.5 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; line-height: 1.16; color: #e3e7e8; }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-desc { font-size: calc(8 * var(--vm-u) * var(--vm-text-scale, 1)); line-height: calc(10.5 * var(--vm-u)); color: #89969a; }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-bar { height: calc(2 * var(--vm-u)); background: rgba(154, 170, 176, 0.10); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-fill { background: linear-gradient(90deg, #8741b7, #cb6df3); box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.36); }
+.vm-hud[data-layout='perimeter'] .vm-objectives .vm-obj-tier.is-global { color: var(--deck-amber); }
+
+.vm-hud[data-layout='perimeter'] .vm-perf { top: calc(78 * var(--vm-u) + var(--vm-obj-max-h) + var(--vm-panel-gap)); left: var(--vm-edge); }
+
+/* ----------------------------------------------------------------------- */
+/* Minimap armour                                                          */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map {
+  left: 0;
+  bottom: 0;
+  width: var(--vm-map-w);
+  height: var(--vm-map-h);
+  padding: calc(24 * var(--vm-u)) calc(22 * var(--vm-u)) calc(28 * var(--vm-u));
+  clip-path: polygon(
+    calc(31 * var(--vm-u)) 0,
+    calc(100% - 39 * var(--vm-u)) 0,
+    100% calc(40 * var(--vm-u)),
+    100% calc(100% - 25 * var(--vm-u)),
+    calc(100% - 25 * var(--vm-u)) 100%,
+    calc(24 * var(--vm-u)) 100%,
+    0 calc(100% - 24 * var(--vm-u)),
+    0 calc(35 * var(--vm-u))
+  );
+  background:
+    radial-gradient(circle at calc(17 * var(--vm-u)) calc(19 * var(--vm-u)), rgba(188,207,211,0.55) 0 calc(1 * var(--vm-u)), rgba(2,7,10,0.9) calc(1.4 * var(--vm-u)) calc(2.7 * var(--vm-u)), transparent calc(3 * var(--vm-u))),
+    radial-gradient(circle at calc(100% - 19 * var(--vm-u)) calc(19 * var(--vm-u)), rgba(188,207,211,0.46) 0 calc(1 * var(--vm-u)), rgba(2,7,10,0.9) calc(1.4 * var(--vm-u)) calc(2.7 * var(--vm-u)), transparent calc(3 * var(--vm-u))),
+    linear-gradient(145deg, rgba(219, 232, 234, 0.08), transparent 19%),
+    linear-gradient(315deg, rgba(0,0,0,0.44), transparent 26%),
+    linear-gradient(180deg, #1c272c 0%, #0c1418 13%, #04090c 100%);
+  box-shadow:
+    calc(8 * var(--vm-u)) calc(4 * var(--vm-u)) calc(22 * var(--vm-u)) rgba(0,0,0,0.68),
+    inset calc(5 * var(--vm-u)) calc(5 * var(--vm-u)) calc(12 * var(--vm-u)) rgba(202, 221, 224, 0.055),
+    inset calc(-8 * var(--vm-u)) calc(-9 * var(--vm-u)) calc(16 * var(--vm-u)) rgba(0,0,0,0.70);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before { padding: calc(5 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-dock-map::after { inset: calc(12 * var(--vm-u)); padding: calc(2 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-dock-map .vm-panel-edge { inset: calc(17 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-dock-map .vm-dock-head { top: calc(22 * var(--vm-u)); left: calc(24 * var(--vm-u)); right: calc(24 * var(--vm-u)); height: calc(18 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-map-legend { padding: calc(3 * var(--vm-u)) calc(5 * var(--vm-u)); border: 1px solid rgba(113, 138, 145, 0.24); background: rgba(1,5,8,0.72); }
+.vm-hud[data-layout='perimeter'] .vm-map-body { width: 100%; height: calc(100% - 43 * var(--vm-u)); min-height: 0; }
+.vm-hud[data-layout='perimeter'] .vm-map-field {
+  border: calc(2 * var(--vm-u)) solid rgba(89, 112, 119, 0.72);
+  background: #030709;
+  box-shadow:
+    0 0 0 calc(5 * var(--vm-u)) #050b0e,
+    0 0 0 calc(8 * var(--vm-u)) rgba(72, 94, 101, 0.62),
+    0 0 0 calc(10 * var(--vm-u)) rgba(2,5,7,0.96),
+    inset 0 0 calc(28 * var(--vm-u)) rgba(0,0,0,0.74),
+    0 0 calc(18 * var(--vm-u)) rgba(0,0,0,0.54);
+}
+.vm-hud[data-layout='perimeter'] .vm-map-field::after { content: ''; position: absolute; inset: calc(5 * var(--vm-u)); border-top: 1px solid rgba(171, 197, 202, 0.18); border-left: 1px solid rgba(171, 197, 202, 0.12); pointer-events: none; }
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware {
+  position: absolute;
+  z-index: 4;
+  left: calc(28 * var(--vm-u));
+  right: calc(28 * var(--vm-u));
+  bottom: calc(17 * var(--vm-u));
+  height: calc(35 * var(--vm-u));
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(6 * var(--vm-u));
+  padding-top: calc(7 * var(--vm-u));
+  border-top: 1px solid rgba(139,163,169,0.24);
+  background: linear-gradient(180deg, rgba(14,23,27,0.72), rgba(2,7,10,0.88));
+  box-shadow: inset 0 calc(2 * var(--vm-u)) calc(5 * var(--vm-u)) rgba(0,0,0,0.60);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(93,116,123,0.34);
+  border-top-color: rgba(151,175,181,0.28);
+  background: linear-gradient(180deg, rgba(28,40,45,0.88), rgba(3,8,11,0.96));
+  color: #8d9ca1;
+  clip-path: polygon(calc(5 * var(--vm-u)) 0, calc(100% - 5 * var(--vm-u)) 0, 100% calc(5 * var(--vm-u)), 100% 100%, 0 100%, 0 calc(5 * var(--vm-u)));
+  box-shadow: inset 0 0 0 calc(2 * var(--vm-u)) rgba(1,5,8,0.62);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-icon { width: calc(15 * var(--vm-u)); height: calc(15 * var(--vm-u)); }
+
+/* ----------------------------------------------------------------------- */
+/* Selection inspector                                                     */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection {
+  left: calc(var(--vm-map-w) + var(--vm-panel-gap));
+  bottom: calc(8 * var(--vm-u));
+  width: var(--vm-selection-w);
+  min-width: var(--vm-selection-w);
+  max-width: var(--vm-selection-w);
+  height: var(--vm-selection-h);
+  padding: calc(18 * var(--vm-u));
+  gap: calc(10 * var(--vm-u));
+  clip-path: polygon(
+    calc(20 * var(--vm-u)) 0,
+    calc(100% - 17 * var(--vm-u)) 0,
+    100% calc(17 * var(--vm-u)),
+    100% calc(100% - 22 * var(--vm-u)),
+    calc(100% - 22 * var(--vm-u)) 100%,
+    calc(18 * var(--vm-u)) 100%,
+    0 calc(100% - 18 * var(--vm-u)),
+    0 calc(20 * var(--vm-u))
+  );
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::after { inset: calc(7 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-dock-selection .vm-panel-edge { inset: calc(11 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty { width: calc(250 * var(--vm-u)); min-width: calc(250 * var(--vm-u)); height: calc(50 * var(--vm-u)); padding: calc(12 * var(--vm-u)) calc(18 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-sel-live { gap: calc(12 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-sel-head { height: calc(33 * var(--vm-u)); min-height: calc(33 * var(--vm-u)); padding-bottom: calc(10 * var(--vm-u)); border-bottom: 1px solid rgba(130, 153, 160, 0.32); box-shadow: 0 1px 0 rgba(0,0,0,0.72); }
+.vm-hud[data-layout='perimeter'] .vm-sel-title { font-size: calc(15 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 700; letter-spacing: 0.08em; color: #edf1f2; }
+.vm-hud[data-layout='perimeter'] .vm-sel-count { color: var(--deck-violet-hi); }
+.vm-hud[data-layout='perimeter'] .vm-sel-body { min-height: 0; max-height: none; flex: 1 1 auto; gap: calc(12 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-sel-cards { gap: calc(7 * var(--vm-u)); align-content: flex-start; }
+.vm-hud[data-layout='perimeter'] .vm-card {
+  width: calc(72 * var(--vm-u));
+  min-width: calc(72 * var(--vm-u));
+  height: calc(72 * var(--vm-u));
+  border: 1px solid rgba(97, 121, 128, 0.48);
+  background: linear-gradient(180deg, rgba(15,24,28,0.94), rgba(2,7,10,0.98));
+  box-shadow: inset 0 0 calc(13 * var(--vm-u)) rgba(0,0,0,0.45);
+}
+.vm-hud[data-layout='perimeter'] .vm-card.is-primary { border-color: rgba(var(--deck-violet-rgb), 0.86); box-shadow: inset 0 0 calc(13 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.11), 0 0 calc(7 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.16); }
+.vm-hud[data-layout='perimeter'] .vm-card-cameo { filter: saturate(0.88) brightness(1.06) contrast(1.08); }
+.vm-hud[data-layout='perimeter'] .vm-sel-info { justify-content: flex-start; gap: calc(12 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-sel-sub { font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1)); letter-spacing: 0.10em; color: #849197; }
+.vm-hud[data-layout='perimeter'] .vm-sel-stats { display: grid; grid-template-columns: repeat(2, max-content); gap: calc(10 * var(--vm-u)) calc(14 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-stat { gap: calc(5 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-stat-icon { color: #718087; }
+.vm-hud[data-layout='perimeter'] .vm-sel-hp { height: calc(17 * var(--vm-u)); min-height: calc(17 * var(--vm-u)); border: 1px solid rgba(67,91,86,0.62); background: rgba(1,5,7,0.82); box-shadow: inset 0 0 calc(7 * var(--vm-u)) rgba(0,0,0,0.62); }
+.vm-hud[data-layout='perimeter'] .vm-sel-hp-track > i { background: linear-gradient(180deg, #69e0ab, #35b77d); box-shadow: 0 0 calc(7 * var(--vm-u)) rgba(67, 213, 151, 0.30); }
+.vm-hud[data-layout='perimeter'] .vm-sel-hp-text { color: #06100c; font-weight: 700; text-shadow: 0 1px 0 rgba(255,255,255,0.16); }
+
+/* ----------------------------------------------------------------------- */
+/* Build console                                                           */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-dock-build,
+.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height {
+  top: auto;
+  right: var(--vm-edge);
+  bottom: calc(8 * var(--vm-u));
+  width: var(--vm-rail-w);
+  height: calc(395 * var(--vm-u)) !important;
+  filter: drop-shadow(0 calc(12 * var(--vm-u)) calc(26 * var(--vm-u)) rgba(0,0,0,0.64));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tabs {
+  position: relative;
+  z-index: 4;
+  height: calc(47 * var(--vm-u));
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border: 0;
+  background:
+    linear-gradient(180deg, rgba(35,47,52,0.98), rgba(7,13,16,0.995) 48%, rgba(2,6,9,0.995));
+  clip-path: polygon(calc(17 * var(--vm-u)) 0, calc(100% - 17 * var(--vm-u)) 0, 100% calc(17 * var(--vm-u)), 100% 100%, 0 100%, 0 calc(17 * var(--vm-u)));
+  box-shadow:
+    inset 0 calc(2 * var(--vm-u)) 0 rgba(183,204,208,0.12),
+    inset 0 calc(-2 * var(--vm-u)) 0 rgba(0,0,0,0.72),
+    0 calc(4 * var(--vm-u)) calc(10 * var(--vm-u)) rgba(0,0,0,0.48);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tabs::before {
+  content: '';
+  position: absolute;
+  inset: calc(3 * var(--vm-u));
+  border-top: 1px solid rgba(156,181,186,0.34);
+  border-left: 1px solid rgba(97,120,128,0.26);
+  border-right: 1px solid rgba(31,44,49,0.66);
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-title {
+  flex: 0 0 calc(112 * var(--vm-u));
+  display: flex;
+  align-items: center;
+  gap: calc(9 * var(--vm-u));
+  padding-left: calc(22 * var(--vm-u));
+  box-sizing: border-box;
+  border-right: 1px solid rgba(126,149,156,0.22);
+  color: #e6ebec;
+  text-shadow: 0 calc(2 * var(--vm-u)) calc(4 * var(--vm-u)) #000;
+}
+.vm-hud[data-layout='perimeter'] .vm-build-title-icon { width: calc(18 * var(--vm-u)); height: calc(18 * var(--vm-u)); color: #96a3a7; }
+.vm-hud[data-layout='perimeter'] .vm-build-title-label { font-size: calc(15 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 700; letter-spacing: 0.08em; }
+
+.vm-hud[data-layout='perimeter'] .vm-tab {
+  flex: 1 1 0;
+  height: calc(47 * var(--vm-u));
+  padding: 0 calc(6 * var(--vm-u));
+  border: 0;
+  border-right: 1px solid rgba(119,141,148,0.13);
+  background: linear-gradient(180deg, rgba(13,21,25,0.38), rgba(2,6,9,0.44));
+  color: #788589;
+  clip-path: none;
+}
+.vm-hud[data-layout='perimeter'] .vm-tab::after { left: calc(7 * var(--vm-u)); right: calc(7 * var(--vm-u)); top: auto; bottom: 0; height: calc(3 * var(--vm-u)); background: transparent; }
+.vm-hud[data-layout='perimeter'] .vm-tab.is-active { color: #eef2f1; background: linear-gradient(180deg, rgba(63,82,85,0.36), rgba(12,25,24,0.54)); box-shadow: inset 0 calc(-3 * var(--vm-u)) 0 var(--deck-mint), inset 0 0 calc(17 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.07); }
+.vm-hud[data-layout='perimeter'] .vm-tab.is-active::after { background: var(--deck-mint-hi); box-shadow: 0 0 calc(8 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.55); }
+.vm-hud[data-layout='perimeter'] .vm-tab-label { font-size: calc(7.5 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.09em; white-space: nowrap; }
+.vm-hud[data-layout='perimeter'] .vm-tools { gap: calc(4 * var(--vm-u)); padding: 0 calc(8 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-tool { width: calc(24 * var(--vm-u)); height: calc(30 * var(--vm-u)); border: 1px solid rgba(102,126,133,0.26); background: rgba(1,6,8,0.56); color: #829095; }
+
+.vm-hud[data-layout='perimeter'] .vm-build-body {
+  padding: calc(15 * var(--vm-u));
+  border: 0;
+  clip-path: polygon(calc(12 * var(--vm-u)) 0, 100% 0, 100% calc(100% - 17 * var(--vm-u)), calc(100% - 17 * var(--vm-u)) 100%, calc(14 * var(--vm-u)) 100%, 0 calc(100% - 14 * var(--vm-u)), 0 calc(12 * var(--vm-u)));
+  background:
+    radial-gradient(circle at calc(10 * var(--vm-u)) calc(12 * var(--vm-u)), rgba(190,209,213,0.50) 0 calc(0.8 * var(--vm-u)), rgba(1,5,7,0.92) calc(1.2 * var(--vm-u)) calc(2.4 * var(--vm-u)), transparent calc(2.8 * var(--vm-u))),
+    radial-gradient(circle at calc(100% - 11 * var(--vm-u)) calc(100% - 12 * var(--vm-u)), rgba(151,174,179,0.42) 0 calc(0.8 * var(--vm-u)), rgba(1,5,7,0.92) calc(1.2 * var(--vm-u)) calc(2.4 * var(--vm-u)), transparent calc(2.8 * var(--vm-u))),
+    linear-gradient(142deg, rgba(192,214,218,0.055), transparent 18%),
+    radial-gradient(100% 60% at 50% 0, rgba(49,67,72,0.20), transparent 65%),
+    linear-gradient(180deg, rgba(13,21,25,0.995), rgba(3,8,11,0.998));
+  box-shadow:
+    inset 0 calc(3 * var(--vm-u)) calc(8 * var(--vm-u)) rgba(202,221,224,0.04),
+    inset 0 0 0 calc(3 * var(--vm-u)) #182329,
+    inset 0 0 0 calc(5 * var(--vm-u)) #030709,
+    inset 0 0 0 calc(7 * var(--vm-u)) rgba(78,101,108,0.38);
+}
+.vm-hud[data-layout='perimeter'] .vm-build-body::before { padding: calc(4 * var(--vm-u)); background: linear-gradient(145deg, rgba(129,154,161,0.58), rgba(31,45,51,0.82) 54%, rgba(4,9,12,0.98)); }
+.vm-hud[data-layout='perimeter'] .vm-build-body::after { inset: calc(9 * var(--vm-u)); padding: 1px; background: linear-gradient(145deg, rgba(161,184,189,0.38), rgba(47,65,71,0.34)); }
+
+.vm-hud[data-layout='perimeter'] .vm-grid {
+  --vm-grid-cols: 4 !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: calc(158 * var(--vm-u));
+  grid-template-rows: repeat(2, calc(158 * var(--vm-u)));
+  flex: 0 0 calc(323 * var(--vm-u));
+  max-height: calc(323 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
+  padding: calc(1 * var(--vm-u));
+  overflow-y: auto;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot {
+  isolation: isolate;
+  border: 1px solid rgba(112,135,142,0.54);
+  background:
+    radial-gradient(78% 68% at 50% 55%, rgba(76,94,99,0.18), transparent 75%),
+    linear-gradient(180deg, rgba(24,34,38,0.88), rgba(4,9,12,0.98));
+  box-shadow:
+    inset 0 0 0 calc(3 * var(--vm-u)) rgba(2,6,9,0.78),
+    inset 0 0 0 calc(4 * var(--vm-u)) rgba(111,133,139,0.12),
+    inset 0 calc(-12 * var(--vm-u)) calc(22 * var(--vm-u)) rgba(0,0,0,0.40);
+  clip-path: polygon(calc(5 * var(--vm-u)) 0, 100% 0, 100% calc(100% - 5 * var(--vm-u)), calc(100% - 5 * var(--vm-u)) 100%, 0 100%, 0 calc(5 * var(--vm-u)));
+}
+.vm-hud[data-layout='perimeter'] .vm-slot::after { inset: calc(5 * var(--vm-u)); border-top: 1px solid rgba(186,205,209,0.14); border-left: 1px solid rgba(151,174,179,0.10); border-right: 0; }
+.vm-hud[data-layout='perimeter'] .vm-slot:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-slot:focus-visible { border-color: var(--deck-mint); background: radial-gradient(78% 68% at 50% 55%, rgba(var(--deck-mint-rgb),0.20), transparent 75%), linear-gradient(180deg, rgba(23,45,40,0.92), rgba(3,12,10,0.99)); box-shadow: inset 0 0 0 calc(3 * var(--vm-u)) rgba(1,8,7,0.80), inset 0 0 calc(18 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.12), 0 0 calc(9 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.20); }
+.vm-hud[data-layout='perimeter'] .vm-slot-name { top: calc(9 * var(--vm-u)); left: calc(9 * var(--vm-u)); right: calc(9 * var(--vm-u)); max-height: calc(19 * var(--vm-u)); font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; line-height: calc(9.5 * var(--vm-u)); letter-spacing: 0.055em; color: #dce2e3; }
+.vm-hud[data-layout='perimeter'] .vm-slot-cameo { inset: calc(27 * var(--vm-u)) calc(5 * var(--vm-u)) calc(20 * var(--vm-u)); width: calc(100% - 10 * var(--vm-u)); height: calc(100% - 47 * var(--vm-u)); object-fit: contain; filter: saturate(0.87) brightness(1.08) contrast(1.08); }
+.vm-hud[data-layout='perimeter'] .vm-slot-icon { top: 53%; width: calc(34 * var(--vm-u)); height: calc(34 * var(--vm-u)); color: #829297; }
+.vm-hud[data-layout='perimeter'] .vm-slot-cost,
+.vm-hud[data-layout='perimeter'] .vm-slot-eta { bottom: calc(7 * var(--vm-u)); font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1)); color: #c7ced0; }
+.vm-hud[data-layout='perimeter'] .vm-slot-cost .vm-icon { color: #d8b51d; }
+.vm-hud[data-layout='perimeter'] .vm-slot-flag { top: calc(29 * var(--vm-u)); left: calc(7 * var(--vm-u)); right: calc(7 * var(--vm-u)); background: rgba(2,5,7,0.78); color: #b75d64; }
+.vm-hud[data-layout='perimeter'] .vm-slot-track { left: calc(6 * var(--vm-u)); right: calc(6 * var(--vm-u)); bottom: calc(5 * var(--vm-u)); height: calc(3 * var(--vm-u)); background: rgba(0,0,0,0.7); }
+.vm-hud[data-layout='perimeter'] .vm-slot-track > i { background: linear-gradient(90deg, #49bd91, #82e4be); box-shadow: 0 0 calc(6 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.34); }
+.vm-hud[data-layout='perimeter'] .vm-brief { display: none; }
+
+/* ----------------------------------------------------------------------- */
+/* Lower command console                                                   */
+/* ----------------------------------------------------------------------- */
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck {
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  width: var(--vm-command-w);
+  height: var(--vm-command-h);
+  transform: translateX(-50%);
+  padding: calc(18 * var(--vm-u)) calc(24 * var(--vm-u)) calc(20 * var(--vm-u));
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: calc(19 * var(--vm-u)) 1fr;
+  gap: calc(5 * var(--vm-u));
+  clip-path: polygon(
+    calc(66 * var(--vm-u)) 0,
+    calc(100% - 66 * var(--vm-u)) 0,
+    calc(100% - 34 * var(--vm-u)) calc(20 * var(--vm-u)),
+    100% calc(52 * var(--vm-u)),
+    100% calc(100% - 18 * var(--vm-u)),
+    calc(100% - 18 * var(--vm-u)) 100%,
+    calc(18 * var(--vm-u)) 100%,
+    0 calc(100% - 18 * var(--vm-u)),
+    0 calc(52 * var(--vm-u)),
+    calc(34 * var(--vm-u)) calc(20 * var(--vm-u))
+  );
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(24 * var(--vm-u)), rgba(151,176,182,0.025) calc(24 * var(--vm-u)) calc(25 * var(--vm-u))),
+    linear-gradient(145deg, rgba(204,222,225,0.075), transparent 19%),
+    radial-gradient(70% 50% at 50% 100%, rgba(var(--deck-violet-rgb),0.13), transparent 72%),
+    linear-gradient(180deg, #1d292e 0%, #0c1418 28%, #03080b 100%);
+  box-shadow:
+    0 calc(10 * var(--vm-u)) calc(30 * var(--vm-u)) rgba(0,0,0,0.65),
+    inset 0 calc(3 * var(--vm-u)) 0 rgba(188,207,211,0.10),
+    inset 0 calc(-7 * var(--vm-u)) calc(15 * var(--vm-u)) rgba(0,0,0,0.74);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck::before { padding: calc(5 * var(--vm-u)); background: linear-gradient(145deg, rgba(151,176,182,0.64), rgba(47,66,73,0.78) 42%, rgba(5,11,14,0.98)); }
+.vm-hud[data-layout='perimeter'] .vm-command-deck::after { inset: calc(12 * var(--vm-u)); padding: 1px; background: linear-gradient(145deg, rgba(181,201,205,0.40), rgba(48,68,75,0.46)); filter: none; }
+.vm-hud[data-layout='perimeter'] .vm-command-deck .vm-panel-edge { inset: calc(16 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-command-deck .vm-panel-edge::before { content: ''; left: 50%; right: auto; top: auto; bottom: calc(-14 * var(--vm-u)); width: calc(74 * var(--vm-u)); height: calc(4 * var(--vm-u)); transform: translateX(-50%); border: 0; background: linear-gradient(90deg, transparent, var(--deck-violet) 26%, var(--deck-violet-hi) 50%, var(--deck-violet) 74%, transparent); box-shadow: 0 0 calc(12 * var(--vm-u)) rgba(var(--deck-violet-rgb),0.60); }
+.vm-hud[data-layout='perimeter'] .vm-command-deck .vm-panel-edge::after { content: ''; left: 50%; bottom: calc(-19 * var(--vm-u)); width: calc(22 * var(--vm-u)); height: calc(8 * var(--vm-u)); transform: translateX(-50%); border: 0; clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%); background: rgba(var(--deck-violet-rgb),0.78); box-shadow: 0 0 calc(12 * var(--vm-u)) rgba(var(--deck-violet-rgb),0.66); }
+
+.vm-hud[data-layout='perimeter'] .vm-formation-row { grid-column: 1 / -1; padding: 0 calc(16 * var(--vm-u)) calc(5 * var(--vm-u)); border-bottom: 1px solid rgba(123,147,154,0.20); }
+.vm-hud[data-layout='perimeter'] .vm-formation { width: calc(26 * var(--vm-u)); height: calc(15 * var(--vm-u)); border: 1px solid rgba(107,129,136,0.25); background: rgba(1,5,8,0.66); color: #748187; }
+.vm-hud[data-layout='perimeter'] .vm-formation:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-formation:focus-visible { color: var(--deck-violet-hi); border-color: rgba(var(--deck-violet-rgb),0.64); background: rgba(var(--deck-violet-rgb),0.13); box-shadow: 0 0 calc(7 * var(--vm-u)) rgba(var(--deck-violet-rgb),0.18); }
+
+.vm-hud[data-layout='perimeter'] .vm-command {
+  padding: calc(13 * var(--vm-u)) calc(5 * var(--vm-u)) calc(9 * var(--vm-u));
+  gap: calc(9 * var(--vm-u));
+  border: 1px solid rgba(91,113,121,0.48);
+  border-top-color: rgba(143,166,172,0.42);
+  background:
+    linear-gradient(145deg, rgba(177,201,205,0.045), transparent 22%),
+    linear-gradient(180deg, rgba(24,35,40,0.94), rgba(3,8,11,0.98));
+  color: #bcc5c7;
+  clip-path: polygon(calc(7 * var(--vm-u)) 0, calc(100% - 7 * var(--vm-u)) 0, 100% calc(8 * var(--vm-u)), 100% 100%, 0 100%, 0 calc(8 * var(--vm-u)));
+  box-shadow: inset 0 0 0 calc(3 * var(--vm-u)) rgba(1,5,8,0.64), inset 0 calc(-12 * var(--vm-u)) calc(20 * var(--vm-u)) rgba(0,0,0,0.32);
+}
+.vm-hud[data-layout='perimeter'] .vm-command:first-child { border-left: 1px solid rgba(91,113,121,0.48); }
+.vm-hud[data-layout='perimeter'] .vm-command:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-command:focus-visible { color: #eef5f2; border-color: rgba(var(--deck-mint-rgb),0.74); background: linear-gradient(180deg, rgba(42,78,69,0.70), rgba(4,14,12,0.98)); box-shadow: inset 0 0 0 calc(3 * var(--vm-u)) rgba(1,8,7,0.64), inset 0 0 calc(20 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.12), 0 0 calc(9 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.16); }
+.vm-hud[data-layout='perimeter'] .vm-command.is-active { color: var(--deck-mint-hi); border-color: var(--deck-mint); background: linear-gradient(180deg, rgba(45,101,84,0.78), rgba(4,17,13,0.99)); box-shadow: inset 0 calc(3 * var(--vm-u)) 0 var(--deck-mint-hi), inset 0 0 calc(24 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.17), 0 0 calc(10 * var(--vm-u)) rgba(var(--deck-mint-rgb),0.20); }
+.vm-hud[data-layout='perimeter'] .vm-command-icon { width: calc(29 * var(--vm-u)); height: calc(29 * var(--vm-u)); filter: drop-shadow(0 calc(2 * var(--vm-u)) calc(3 * var(--vm-u)) rgba(0,0,0,0.8)); }
+.vm-hud[data-layout='perimeter'] .vm-command-label { font-size: calc(9.5 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.11em; }
+.vm-hud[data-layout='perimeter'] .vm-command-key { top: calc(10 * var(--vm-u)); right: calc(9 * var(--vm-u)); color: #5e6c71; }
+
+/* Alerts float below the operation bay in a restrained amber instrument. */
+.vm-hud[data-layout='perimeter'] .vm-toasts { top: calc(126 * var(--vm-u)); width: calc(280 * var(--vm-u)); max-width: calc(280 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-toast { min-height: calc(35 * var(--vm-u)); border: 1px solid rgba(255,194,20,0.50); background: linear-gradient(90deg, rgba(41,32,10,0.86), rgba(5,10,12,0.96) 24%, rgba(5,10,12,0.96) 76%, rgba(41,32,10,0.86)); box-shadow: 0 calc(7 * var(--vm-u)) calc(18 * var(--vm-u)) rgba(0,0,0,0.52), inset 0 0 calc(13 * var(--vm-u)) rgba(255,190,20,0.035); }
+
+.vm-hud[data-layout='perimeter'] .vm-rail-stack { right: var(--vm-edge); bottom: calc(411 * var(--vm-u)); width: var(--vm-rail-w); }
+
+/* ----------------------------------------------------------------------- */
+/* Responsive fallback — exact desktop silhouette above, compact below.    */
+/* ----------------------------------------------------------------------- */
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(205 * var(--vm-u));
+    --vm-map-h: calc(275 * var(--vm-u));
+    --vm-selection-w: calc(190 * var(--vm-u));
+    --vm-selection-h: calc(220 * var(--vm-u));
+    --vm-command-w: calc(360 * var(--vm-u));
+    --vm-command-h: calc(118 * var(--vm-u));
+    --vm-rail-w: calc(420 * var(--vm-u));
+    --vm-obj-max-h: calc(260 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(350 * var(--vm-u)); height: calc(82 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-objectives { width: calc(205 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty { width: calc(190 * var(--vm-u)); min-width: calc(190 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build,
+  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(300 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(116 * var(--vm-u)); grid-template-rows: repeat(2, calc(116 * var(--vm-u))); flex-basis: calc(239 * var(--vm-u)); max-height: calc(239 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-build-title { flex-basis: calc(82 * var(--vm-u)); padding-left: calc(13 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-build-title-label { font-size: calc(12 * var(--vm-u) * var(--vm-text-scale,1)); }
+  .vm-hud[data-layout='perimeter'] .vm-command-icon { width: calc(23 * var(--vm-u)); height: calc(23 * var(--vm-u)); }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter'] {
+    --vm-map-w: calc(155 * var(--vm-u));
+    --vm-map-h: calc(190 * var(--vm-u));
+    --vm-selection-w: calc(210 * var(--vm-u));
+    --vm-selection-h: calc(108 * var(--vm-u));
+    --vm-command-w: calc(270 * var(--vm-u));
+    --vm-command-h: calc(86 * var(--vm-u));
+    --vm-rail-w: calc(300 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(290 * var(--vm-u)); height: calc(68 * var(--vm-u)); grid-template-columns: calc(54 * var(--vm-u)) minmax(0,1fr); }
+  .vm-hud[data-layout='perimeter'] .vm-command-context,
+  .vm-hud[data-layout='perimeter'] .vm-build-title-icon,
+  .vm-hud[data-layout='perimeter'] .vm-tools,
+  .vm-hud[data-layout='perimeter'] .vm-formation-row { display: none; }
+  .vm-hud[data-layout='perimeter'] .vm-command-deck { grid-template-rows: 1fr; padding: calc(11 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-command-label { font-size: calc(7 * var(--vm-u) * var(--vm-text-scale,1)); }
+}
+
+/* ----------------------------------------------------------------------- */
+/* ImageGen material authority                                             */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * CSS still owns geometry, content and interaction.  This generated plate is
+ * only the physically rendered outer shell: machined edges, fasteners, wear,
+ * recess shadows and light channels.  Each live panel samples the same
+ * viewport-sized image at its own screen coordinate, so the chrome remains a
+ * continuous cockpit while text/canvases/buttons stay real DOM above it.
+ */
+.vm-hud[data-layout='perimeter'] {
+  --deck-chrome-image: url('/ui/command-deck-chrome-v2.png');
+  background:
+    linear-gradient(180deg, rgba(2,7,10,0.10), transparent 24%, transparent 68%, rgba(0,3,5,0.13)),
+    radial-gradient(ellipse at 50% 46%, transparent 54%, rgba(0,3,5,0.18) 100%);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources,
+.vm-hud[data-layout='perimeter'] .vm-command-node,
+.vm-hud[data-layout='perimeter'] .vm-objectives,
+.vm-hud[data-layout='perimeter'] .vm-dock-map,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection,
+.vm-hud[data-layout='perimeter'] .vm-command-deck,
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
+  background-image: var(--deck-chrome-image) !important;
+  background-size: 100vw 100vh !important;
+  background-repeat: no-repeat !important;
+  background-color: #030709;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-resources {
+  background-position: calc(-1 * var(--vm-edge)) calc(-1 * var(--vm-edge)) !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-node {
+  background-position: calc(-50vw + 215 * var(--vm-u)) 0 !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-objectives {
+  background-position: calc(-14 * var(--vm-u)) calc(-90 * var(--vm-u)) !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map {
+  background-position: 0 calc(-100vh + var(--vm-map-h)) !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection {
+  background-position:
+    calc(-1 * (var(--vm-map-w) + var(--vm-panel-gap)))
+    calc(-100vh + var(--vm-selection-h) + 8 * var(--vm-u)) !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck {
+  background-position:
+    calc(-50vw + var(--vm-command-w) / 2)
+    calc(-100vh + var(--vm-command-h)) !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
+  background-position:
+    calc(-100vw + var(--vm-rail-w) + var(--vm-edge))
+    calc(-100vh + 403 * var(--vm-u)) !important;
+  clip-path: polygon(
+    calc(18 * var(--vm-u)) 0,
+    calc(100% - 16 * var(--vm-u)) 0,
+    100% calc(17 * var(--vm-u)),
+    100% calc(100% - 18 * var(--vm-u)),
+    calc(100% - 18 * var(--vm-u)) 100%,
+    calc(16 * var(--vm-u)) 100%,
+    0 calc(100% - 16 * var(--vm-u)),
+    0 calc(18 * var(--vm-u))
+  );
+}
+
+/* The atlas already contains these outer frames.  Keep the live content, but
+ * do not stack the old procedural bevel over the rendered armor. */
+.vm-hud[data-layout='perimeter'] .vm-resources::before,
+.vm-hud[data-layout='perimeter'] .vm-resources::after,
+.vm-hud[data-layout='perimeter'] .vm-command-node::before,
+.vm-hud[data-layout='perimeter'] .vm-command-node::after,
+.vm-hud[data-layout='perimeter'] .vm-objectives::before,
+.vm-hud[data-layout='perimeter'] .vm-objectives::after,
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before,
+.vm-hud[data-layout='perimeter'] .vm-dock-map::after,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::before,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::after,
+.vm-hud[data-layout='perimeter'] .vm-command-deck::before,
+.vm-hud[data-layout='perimeter'] .vm-command-deck::after,
+.vm-hud[data-layout='perimeter'] .vm-build-body::before,
+.vm-hud[data-layout='perimeter'] .vm-build-body::after {
+  display: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tabs,
+.vm-hud[data-layout='perimeter'] .vm-build-body {
+  background: transparent;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command {
+  background: linear-gradient(180deg, rgba(22,31,35,0.68), rgba(2,7,9,0.84));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-slot {
+  background:
+    radial-gradient(75% 68% at 50% 54%, rgba(76,94,99,0.13), transparent 76%),
+    linear-gradient(180deg, #121b1f, #03080b);
+}
+
+/* The source render used a checker preview behind its translucent glass.
+ * Chrome extraction removes it outside the panels; these opaque instrument
+ * wells remove it underneath live content without touching the armor itself. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection::after,
+.vm-hud[data-layout='perimeter'] .vm-objectives::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: calc(13 * var(--vm-u));
+  padding: 0;
+  background:
+    radial-gradient(100% 70% at 50% 0, rgba(28,42,47,0.18), transparent 64%),
+    linear-gradient(180deg, #081014, #020609);
+  clip-path: polygon(
+    calc(8 * var(--vm-u)) 0,
+    calc(100% - 8 * var(--vm-u)) 0,
+    100% calc(8 * var(--vm-u)),
+    100% calc(100% - 8 * var(--vm-u)),
+    calc(100% - 8 * var(--vm-u)) 100%,
+    calc(8 * var(--vm-u)) 100%,
+    0 calc(100% - 8 * var(--vm-u)),
+    0 calc(8 * var(--vm-u))
+  );
+  -webkit-mask: none;
+  mask: none;
+  filter: none;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-selection > *,
+.vm-hud[data-layout='perimeter'] .vm-objectives > * {
+  position: relative;
+  z-index: 1;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command {
+  background: linear-gradient(180deg, #161f23, #020709);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud[data-layout='perimeter'] .vm-command,
+  .vm-hud[data-layout='perimeter'] .vm-slot,
+  .vm-hud[data-layout='perimeter'] .vm-tab { transition: none; }
+}
