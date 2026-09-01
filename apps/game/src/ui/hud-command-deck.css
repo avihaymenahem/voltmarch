@@ -993,14 +993,16 @@
   display: block;
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: auto;
   width: calc(50% - 196 * var(--vm-u));
+  height: auto;
+  aspect-ratio: 899 / 227;
   min-width: calc(300 * var(--vm-u));
   padding: 0;
   border: 0;
   background-color: transparent;
   background-repeat: no-repeat;
-  background-size: auto 100%;
+  background-size: contain;
   opacity: 1;
   filter: none;
   -webkit-mask: none;
@@ -1020,6 +1022,7 @@
   left: auto;
   right: 0;
   inset-inline-start: auto;
+  aspect-ratio: 898 / 227;
   background-image: url('/ui/command-deck/top-wing-right.png');
   background-position: right top;
 }
@@ -1319,10 +1322,9 @@
   background-size: 100% auto;
 }
 
-/* The structured resource bays stop growing once they reach the authored
- * desktop width. On ultrawide frames only two neutral one-pixel bridge rails
- * continue toward the fixed operation node; no bevel, divider or label bay is
- * scaled wider than it appears at the 1900px reference viewport. */
+/* Keep the wing shoulders interlocked with the fixed operation bay.  The
+ * 610u ceiling is the authored 2538px reference width at u=1.5; beyond that,
+ * only the neutral one-pixel bridge rails continue growing. */
 @media (min-width: 1401px) {
   .vm-hud[data-layout='perimeter'] .vm-resources {
     background-image:
@@ -1346,7 +1348,7 @@
 
   .vm-hud[data-layout='perimeter'] .vm-resources::before,
   .vm-hud[data-layout='perimeter'] .vm-resources::after {
-    width: min(calc(50% - 196 * var(--vm-u)), calc(560 * var(--vm-u)));
+    width: min(calc(50% - 235 * var(--vm-u)), calc(610 * var(--vm-u)));
   }
 
   .vm-hud[data-layout='perimeter'] .vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }
@@ -1357,11 +1359,11 @@
   .vm-hud[data-layout='perimeter'] .vm-res-base    { left: auto; right: calc(52 * var(--vm-u)); width: calc(159 * var(--vm-u)); }
 }
 
-/* Only the middle 49% of the generated minimap chassis contains hardware
- * pods.  The old full-width rail was covering armor and drawing false boxes. */
+/* The pod wells sit at roughly 22.5%, 50%, and 78% of the chassis in the
+ * approved radar crop. Keep the live hit targets on those wells. */
 .vm-hud[data-layout='perimeter'] .vm-map-hardware {
-  left: 25.5%;
-  right: 25.5%;
+  left: 8.5%;
+  right: 8.5%;
   bottom: 5.5%;
   height: 13.5%;
   padding: 0;

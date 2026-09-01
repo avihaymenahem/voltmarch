@@ -199,8 +199,9 @@ describe('approved command-deck skin', () => {
 
   it('preserves generated plate ratios and the reference info grid', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?background-size:\s*auto 100%;/,
+      /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?aspect-ratio:\s*899 \/ 227;[\s\S]*?background-size:\s*contain;/,
     );
+    expect(COMMAND_DECK_CSS).toContain('aspect-ratio: 898 / 227;');
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-command-deck::before\s*\{[\s\S]*?background-size:\s*100% auto;/,
     );
@@ -217,10 +218,16 @@ describe('approved command-deck skin', () => {
 
   it('caps structured top wings before filling ultrawide space with neutral rails', () => {
     expect(COMMAND_DECK_CSS).toContain(
-      'width: min(calc(50% - 196 * var(--vm-u)), calc(560 * var(--vm-u)))',
+      'width: min(calc(50% - 235 * var(--vm-u)), calc(610 * var(--vm-u)))',
     );
     expect(COMMAND_DECK_CSS).toContain(
       '.vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }',
+    );
+  });
+
+  it('registers the radar controls to the three authored hardware wells', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware\s*\{[\s\S]*?left:\s*8\.5%;[\s\S]*?right:\s*8\.5%;/,
     );
   });
 
