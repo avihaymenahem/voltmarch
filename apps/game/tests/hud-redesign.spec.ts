@@ -128,6 +128,18 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('centres operation text between equal emblem and context tracks', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /grid-template-columns:\s*calc\(82 \* var\(--vm-u\)\)\s+minmax\(0, 1fr\)\s+calc\(82 \* var\(--vm-u\)\);/,
+    );
+  });
+
+  it('centres right-wing values beneath their instrument labels', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /:is\(\.vm-res-clock, \.vm-res-army, \.vm-res-base\)[\s\S]*?:is\(\.vm-res-label, \.vm-res-value\)[\s\S]*?text-align:\s*center;/,
+    );
+  });
+
   it('mounts the operation bay outside the clipped resource armour', () => {
     expect(SIDEBAR).toContain("const command = el('section', 'vm-command-node', parent)");
     expect(SIDEBAR).not.toContain("const command = el('section', 'vm-command-node', this.root)");

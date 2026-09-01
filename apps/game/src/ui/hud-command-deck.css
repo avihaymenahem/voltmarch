@@ -219,6 +219,15 @@
   text-shadow: 0 calc(2 * var(--vm-u)) calc(3 * var(--vm-u)) rgba(0, 0, 0, 0.9);
 }
 
+/* The right wing is a bank of centred instrument readouts. Keep its changing
+ * numbers on the same optical axis as their wider labels instead of leaving
+ * short values hanging from the labels' left edge. */
+.vm-hud[data-layout='perimeter']
+  :is(.vm-res-clock, .vm-res-army, .vm-res-base)
+  :is(.vm-res-label, .vm-res-value) {
+  text-align: center;
+}
+
 .vm-hud[data-layout='perimeter'] .vm-resources .vm-res-icon {
   width: calc(13 * var(--vm-u));
   height: calc(13 * var(--vm-u));
@@ -259,7 +268,9 @@
   height: calc(98 * var(--vm-u));
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: calc(72 * var(--vm-u)) minmax(0, 1fr) calc(92 * var(--vm-u));
+  /* Equal utility tracks keep the live operation copy on the plate/pip axis.
+   * Their combined 164u budget is unchanged, so the title keeps its width. */
+  grid-template-columns: calc(82 * var(--vm-u)) minmax(0, 1fr) calc(82 * var(--vm-u));
   align-items: center;
   overflow: visible;
   box-sizing: border-box;
@@ -326,7 +337,11 @@
 
 .vm-hud[data-layout='perimeter'] .vm-command-emblem { display: grid; place-items: center; color: var(--deck-violet-hi); filter: drop-shadow(0 0 calc(6 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.25)); }
 .vm-hud[data-layout='perimeter'] .vm-command-emblem .vm-icon { width: calc(33 * var(--vm-u)); height: calc(33 * var(--vm-u)); }
-.vm-hud[data-layout='perimeter'] .vm-command-body { grid-column: 2; padding: 0 calc(12 * var(--vm-u)); text-align: center; }
+.vm-hud[data-layout='perimeter'] .vm-command-body {
+  grid-column: 2;
+  padding: 0 calc(12 * var(--vm-u));
+  text-align: center;
+}
 .vm-hud[data-layout='perimeter'] .vm-command-kicker { display: block; font-size: calc(7 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.23em; color: #8d999d; }
 .vm-hud[data-layout='perimeter'] .vm-command-map { display: block; margin-top: calc(7 * var(--vm-u)); font-size: calc(17 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.055em; color: #f1f3f3; text-shadow: 0 calc(2 * var(--vm-u)) calc(5 * var(--vm-u)) #000; }
 .vm-hud[data-layout='perimeter'] .vm-command-context { grid-column: 3; padding-right: calc(16 * var(--vm-u)); gap: calc(5 * var(--vm-u)); }
