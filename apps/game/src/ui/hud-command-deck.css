@@ -1482,6 +1482,10 @@
   /* Objectives uses the same three-rail contract. Its portrait frame is
    * thicker than Build's, measuring 5% per side in objectives.png. */
   overflow: hidden;
+  /* The atlas-era shell rule supplies a solid root colour.  That colour
+   * reaches the outer clip edge and shows beside the narrower authored
+   * middle rails.  Let the three explicit slices below own the fill. */
+  background-color: transparent !important;
   clip-path: polygon(
     calc(16 * var(--vm-u)) 0,
     calc(100% - 25 * var(--vm-u)) 0,

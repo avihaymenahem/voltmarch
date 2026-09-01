@@ -368,6 +368,9 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-objectives\.vm-height-resizable:not\(\.is-collapsed\)\s*\{[^}]*background-size:\s*5%[^;]*,\s*5%[^;]*,\s*90%/s,
     );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-objectives\.vm-height-resizable:not\(\.is-collapsed\)\s*\{[^}]*background-color:\s*transparent\s*!important;/s,
+    );
   });
 
   it('preserves generated plate ratios and the reference info grid', () => {
