@@ -374,6 +374,7 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).toContain('JOINED_PANEL_SIZE_KEY');
     expect(HUD).toContain('mapResized: () => this.resize(true)');
     expect(SIDEBAR).toContain("edge: 'top'");
+    expect(SIDEBAR).toContain('defaultToMinimum: true');
     expect(COMMAND_DECK_CSS).not.toMatch(
       /\.vm-dock-build\.vm-height-resizable\.has-user-height\s*\{[^}]*\bheight:\s*calc\([^}]*!important/,
     );

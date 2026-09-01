@@ -2545,6 +2545,7 @@ class BuildPanel {
       storageKey: BUILD_PANEL_HEIGHT_KEY,
       label: 'Resize construction panel height',
       minHeightUnits: 260,
+      defaultToMinimum: true,
       maxViewportShare: 0.75,
       edge: 'top',
     });

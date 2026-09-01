@@ -13,6 +13,8 @@ export interface VerticalPanelResizeOptions {
   readonly label: string;
   /** Minimum authored HUD design units, scaled with the current viewport. */
   readonly minHeightUnits: number;
+  /** Start at the resize floor when no player preference has been saved. */
+  readonly defaultToMinimum?: boolean;
   readonly maxViewportShare: number;
   /** Bottom for top-anchored panels; top for panels anchored to the viewport bottom. */
   readonly edge?: 'top' | 'bottom';
@@ -93,6 +95,8 @@ export class VerticalPanelResize {
     if (stored !== null) {
       this.heightRatio = stored;
       this.applyHeight(stored * this.viewportHeight(), false);
+    } else if (options.defaultToMinimum === true) {
+      this.applyHeight(options.minHeightUnits * computeUiScale(this.viewportHeight()));
     }
     if (typeof globalThis.addEventListener === 'function') {
       globalThis.addEventListener('resize', this.onViewportResize, { passive: true });
