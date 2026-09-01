@@ -1,5 +1,29 @@
 # Target look — two user-supplied references
 
+## 2026-09-01 approved HUD direction — Command Deck
+
+The current HUD authority is the user-approved Command Deck concept supplied in
+the implementation thread. It supersedes the older cyan-sidebar composition in
+§A wherever the two conflict. The approved desktop composition is:
+
+- a continuous gunmetal top status bar with a deep centred operation/crest bay;
+- objectives at upper left;
+- a large armoured minimap at lower left with the live selection inspector
+  immediately beside it;
+- five large orders centred along the bottom: Guard, Attack, Move, Stop,
+  Scatter;
+- a wide lower-right build console with an explicit BUILD title, category tabs,
+  and four columns by two visible rows of live mesh cameos;
+- neutral blue-black armour, mint interaction/selection light, amber warnings,
+  and violet reserved mainly for operation identity.
+
+The live HUD remains DOM + CSS, the icons are SVG, the minimap is canvas, and
+build/selection cameos are rendered from the game's actual meshes. The outer
+gunmetal shell now uses one project-local ImageGen material plate so the bevels,
+fasteners, wear and recess shadows reproduce the approved render instead of
+being approximated with flat CSS gradients. It contains no labels, gameplay
+data, minimap pixels, icons or baked interaction states.
+
 Supplied 2026-08-05 with: *"Thats the new HUD design i was hoping for"* and *"this is what the game
 should look like as well (hopefully)"*.
 

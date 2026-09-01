@@ -692,7 +692,7 @@ const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Veh
  * length that fits, and `TAB_LABELS` is still what the tooltip and the
  * `aria-label` say, so nothing that has to be read aloud got shortened.
  */
-const TAB_SHORT: readonly string[] = ['BUILD', 'DEF', 'INF', 'VEH', 'POWER'];
+const TAB_SHORT: readonly string[] = ['ALL', 'STRUCTURES', 'DEFENSE', 'UNITS', 'SUPPORT'];
 
 /**
  * The glyph a build cell draws.
@@ -999,7 +999,11 @@ export class ResourceStrip {
      * faction/commander portrait, mode + difficulty, map name, and only
      * exceptional live context. It deliberately does not duplicate the
      * objectives panel or become a seventh resource cell. --------------- */
-    const command = el('section', 'vm-command-node', this.root);
+    // The operation bay visually drops below the top armour.  It must be a
+    // sibling of the clipped resource strip: CSS overflow cannot escape an
+    // ancestor clip-path, so nesting it in `this.root` made the approved deep
+    // centre silhouette impossible at runtime.
+    const command = el('section', 'vm-command-node', parent);
     command.setAttribute('aria-label', 'Command status');
     this.commandEmblem = el('span', 'vm-command-emblem', command);
     this.commandEmblem.appendChild(makeIcon('crest', 'vm-icon'));
@@ -1019,6 +1023,9 @@ export class ResourceStrip {
     this.commandSpeed = el('span', 'vm-command-chip is-speed', context);
     this.commandWeather.hidden = true;
     this.commandSpeed.hidden = true;
+    const commandPips = el('span', 'vm-command-pips', command);
+    commandPips.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 5; i++) el('i', '', commandPips);
 
     /* -- credits -------------------------------------------------------
      * BANKED / STORED, on the power cell's model. The label said "Credits" and
@@ -2356,6 +2363,14 @@ class BuildPanel {
     strip.setAttribute('role', 'tablist');
     strip.setAttribute('aria-label', 'Build categories');
 
+    // The command-deck composition gives the palette an explicit instrument
+    // title.  It is presentation only: the tablist and all existing keyboard
+    // semantics remain unchanged.
+    const buildTitle = el('div', 'vm-build-title', strip);
+    buildTitle.setAttribute('aria-hidden', 'true');
+    buildTitle.appendChild(makeIcon('repair', 'vm-icon vm-build-title-icon'));
+    label(buildTitle, 'vm-build-title-label', 'BUILD');
+
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const tab = t as BuildTab;
       const b = button(strip, `vm-tab${t === 0 ? ' is-active' : ''}`, TAB_LABELS[t]);
@@ -3366,9 +3381,9 @@ export class CommanderPowerBar {
 const COMMAND_DECK: ReadonlyArray<readonly [
   HudCommandAction, IconName, string, string,
 ]> = [
-  ['move', 'move', 'Move', 'RMB'],
-  ['attack', 'attack', 'Attack', 'A'],
   ['guard', 'guard', 'Guard', 'G'],
+  ['attack', 'attack', 'Attack', 'A'],
+  ['move', 'move', 'Move', 'RMB'],
   ['stop', 'stop', 'Stop', 'S'],
   ['scatter', 'scatter', 'Scatter', 'X'],
 ];
@@ -3556,6 +3571,17 @@ export class Sidebar {
     const mapBody = el('div', 'vm-map-body', this.mapDock);
     this.minimapField = el('div', 'vm-map-field', mapBody);
     this.minimapCanvas = el('canvas', 'vm-map-canvas', this.minimapField);
+
+    // The approved command-deck shell carries a short hardware rail under the
+    // tactical glass. These are deliberately status ornaments rather than
+    // fake buttons: the map already owns pointer recentering, while exposing
+    // controls with no corresponding game command would be dishonest UI.
+    const mapHardware = el('div', 'vm-map-hardware', this.mapDock);
+    mapHardware.setAttribute('aria-hidden', 'true');
+    for (const iconName of ['move', 'primary', 'radar'] as const) {
+      const pod = el('span', 'vm-map-hardware-pod', mapHardware);
+      pod.append(makeIcon(iconName, 'vm-icon vm-map-hardware-icon'));
+    }
 
     // The offline state now says what to DO. "NO RADAR" named the symptom and
     // left the player staring at a grey square with no idea it was a build

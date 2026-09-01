@@ -1702,16 +1702,12 @@ function paintDiorama(ctx: CanvasRenderingContext2D, w: number, h: number, b: Ba
  * Every edge is an integer-aligned `fillRect`, never `strokeRect`, so no line
  * lands on a half pixel and doubles its width into a grey smear.
  *
- * The accent comes from `FACTION_PALETTE[...].hudAccent`, which is READ and
- * never written — the same rule `ui/Chrome.accentFor()` follows. The old code
- * picked between two hard-coded skins, so the Meridian Pact and the
- * Reclamation both drew an Allied frame; a fifth army now gets its own by
- * existing in the palette table.
+ * The command-deck skin deliberately keeps this channel neutral gunmetal.
+ * Faction identity belongs to the operation crest and live field markings;
+ * painting every production cell bright faction blue/purple made the console
+ * read as a neon grid instead of one continuous steel instrument.
  */
-function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, faction: Faction): void {
-  const i = faction as number;
-  const paletteKey = i >= 0 && i < FACTION_PALETTE_KEYS.length ? FACTION_PALETTE_KEYS[i] : 'neutral';
-  const accent = FACTION_PALETTE[paletteKey].hudAccent;
+function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, _faction: Faction): void {
   const t = designPx(h);
 
   // 1. Dark outer rim, all four sides. This is the terminator that separates
@@ -1730,11 +1726,11 @@ function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, fa
   //    right a cooler, dimmer one — the light is upper-left everywhere in this
   //    interface and the cell frame is not an exception.
   const inset = t * 2;
-  ctx.fillStyle = rgba(accent, 0.85);
+  ctx.fillStyle = 'rgba(137,159,166,0.62)';
   ctx.fillRect(inset, inset, w - inset * 2, t);
   ctx.fillRect(inset, inset, t, h - inset * 2);
 
-  ctx.fillStyle = rgba(mixHex(accent, '#0A1220', 0.45), 0.85);
+  ctx.fillStyle = 'rgba(54,74,81,0.72)';
   ctx.fillRect(inset, h - inset - t, w - inset * 2, t);
   ctx.fillRect(w - inset - t, inset, t, h - inset * 2);
 
@@ -1742,7 +1738,7 @@ function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, fa
   //    §A.1 lists them as a per-panel option; on a 60 x 48 cell two is the most
   //    that reads, and four turns the frame into a ladder.
   const arm = Math.max(t * 3, Math.round(w * 0.14));
-  ctx.fillStyle = rgba(mixHex(accent, '#FFFFFF', 0.45), 0.95);
+  ctx.fillStyle = 'rgba(188,207,211,0.76)';
   ctx.fillRect(inset, inset, arm, t);
   ctx.fillRect(inset, inset, t, arm);
   ctx.fillRect(w - inset - arm, h - inset - t, arm, t);
