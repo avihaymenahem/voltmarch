@@ -480,6 +480,20 @@ describe('approved command-deck skin', () => {
     expect(joined).toMatch(/\.vm-map-hardware-pod\s*\{\s*background:\s*transparent;/);
   });
 
+  it('adds a subtle non-interactive phosphor layer over the live radar canvas', () => {
+    expect(SIDEBAR).toContain("el('div', 'vm-map-phosphor', this.minimapField)");
+    expect(SIDEBAR).toContain("phosphor.setAttribute('aria-hidden', 'true')");
+    expect(joined).toMatch(
+      /\.vm-map-phosphor\s*\{[\s\S]*?pointer-events:\s*none;[\s\S]*?repeating-linear-gradient\([\s\S]*?radial-gradient\(/,
+    );
+    expect(joined).toMatch(
+      /\.vm-map-phosphor::after\s*\{[\s\S]*?animation:\s*vm-radar-phosphor-sweep 9s linear infinite;/,
+    );
+    expect(joined).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.vm-map-phosphor::after\s*\{[\s\S]*?animation:\s*none;/,
+    );
+  });
+
   it('keeps inset opaque backings inside both transparent generated panels', () => {
     expect(joined).toMatch(
       /\.vm-dock-selection:not\(\.is-empty\)::before\s*\{[\s\S]*?z-index:\s*1;/,

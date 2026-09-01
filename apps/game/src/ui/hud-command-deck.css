@@ -2023,6 +2023,68 @@
   height: 100%;
 }
 
+/* Soft phosphor glass over the live tactical map. The canvas remains the
+ * source of every terrain pixel and marker; this non-interactive layer adds
+ * only a restrained green cast, fine CRT scanlines, edge falloff, and a slow
+ * air-radar sweep. */
+.vm-hud[data-layout='perimeter'] .vm-map-phosphor {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(137, 255, 190, 0.032) 0,
+      rgba(137, 255, 190, 0.032) 1px,
+      rgba(0, 15, 7, 0.026) 1px,
+      rgba(0, 15, 7, 0.026) calc(3 * var(--vm-u))
+    ),
+    radial-gradient(
+      ellipse at 50% 48%,
+      rgba(77, 220, 137, 0.055) 0%,
+      rgba(28, 93, 57, 0.035) 58%,
+      rgba(0, 15, 7, 0.13) 100%
+    );
+  box-shadow:
+    inset 0 0 calc(5 * var(--vm-u)) rgba(137, 255, 190, 0.07),
+    inset 0 0 calc(22 * var(--vm-u)) rgba(0, 18, 8, 0.34);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-phosphor::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -34%;
+  height: 30%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(109, 255, 175, 0.025) 66%,
+    rgba(125, 255, 185, 0.13) 92%,
+    rgba(173, 255, 211, 0.04) 96%,
+    transparent 100%
+  );
+  opacity: 0.62;
+  animation: vm-radar-phosphor-sweep 9s linear infinite;
+  will-change: transform;
+}
+
+@keyframes vm-radar-phosphor-sweep {
+  from { transform: translateY(0); }
+  to { transform: translateY(450%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud[data-layout='perimeter'] .vm-map-phosphor::after {
+    top: 45%;
+    opacity: 0.18;
+    animation: none;
+  }
+}
+
 /* Three empty Imagen wells are centred at 29%, 50%, and 71%. */
 .vm-hud[data-layout='perimeter'] .vm-map-hardware {
   left: 18%;

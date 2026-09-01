@@ -3681,6 +3681,8 @@ export class Sidebar {
     const mapBody = el('div', 'vm-map-body', this.mapDock);
     this.minimapField = el('div', 'vm-map-field', mapBody);
     this.minimapCanvas = el('canvas', 'vm-map-canvas', this.minimapField);
+    const phosphor = el('div', 'vm-map-phosphor', this.minimapField);
+    phosphor.setAttribute('aria-hidden', 'true');
 
     // Three real controls occupy the three switch wells authored into the
     // generated chassis. They used to be aria-hidden ornaments which looked
