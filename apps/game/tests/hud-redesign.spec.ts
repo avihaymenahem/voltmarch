@@ -400,6 +400,14 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toContain(
       'width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));',
     );
+    for (const cell of ['clock', 'army', 'base']) {
+      expect(COMMAND_DECK_CSS).toContain(
+        `.vm-resources > .vm-res.vm-res-${cell} {`,
+      );
+    }
+    expect(COMMAND_DECK_CSS).not.toMatch(
+      /\.vm-resources > \.vm-res\s*\{[^}]*right:\s*auto;/,
+    );
     expect(COMMAND_DECK_CSS).toContain('right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toContain('padding-left: calc(26 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toContain('width: calc(2 * var(--vm-top-node-half));');

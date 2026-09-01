@@ -1347,38 +1347,40 @@
   }
 
   .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res {
-    right: auto;
     border-left: 0;
     background: transparent;
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-res-credits {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-credits {
     left: calc(24 * var(--vm-u));
+    right: auto;
     width: calc(var(--vm-wide-wing-a) - 24 * var(--vm-u));
     padding-left: calc(26 * var(--vm-u));
     padding-right: calc(8 * var(--vm-u));
   }
-  .vm-hud[data-layout='perimeter'] .vm-res-trend {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-trend {
     left: var(--vm-wide-wing-a);
+    right: auto;
     width: calc(var(--vm-wide-wing-b) - var(--vm-wide-wing-a));
   }
-  .vm-hud[data-layout='perimeter'] .vm-res-power {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-power {
     left: var(--vm-wide-wing-b);
+    right: auto;
     width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));
     padding-left: calc(10 * var(--vm-u));
     padding-right: calc(8 * var(--vm-u));
   }
-  .vm-hud[data-layout='perimeter'] .vm-res-clock {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-clock {
     left: auto;
     right: var(--vm-wide-wing-b);
     width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));
   }
-  .vm-hud[data-layout='perimeter'] .vm-res-army {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-army {
     left: auto;
     right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));
     width: calc(var(--vm-wide-wing-b) - var(--vm-wide-wing-a));
   }
-  .vm-hud[data-layout='perimeter'] .vm-res-base {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-base {
     left: auto;
     right: var(--vm-wide-wing-margin);
     width: calc(var(--vm-wide-wing-a) - var(--vm-wide-wing-margin));
