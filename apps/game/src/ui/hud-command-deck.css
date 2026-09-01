@@ -33,7 +33,12 @@
   --vm-map-h: calc(359 * var(--vm-u));
   --vm-selection-w: calc(250 * var(--vm-u));
   --vm-selection-h: calc(329 * var(--vm-u));
-  --vm-command-w: calc(546 * var(--vm-u));
+  /* Full authored width when it fits; otherwise yield exactly enough room for
+     both left instruments at their desktop minima plus their two 8u gaps. */
+  --vm-command-w: min(
+    calc(546 * var(--vm-u)),
+    calc(100vw - (912 * var(--vm-u)))
+  );
   --vm-command-h: calc(160 * var(--vm-u));
   --vm-rail-w: calc(580 * var(--vm-u));
   --vm-rail-top: calc(68 * var(--vm-u));
@@ -516,8 +521,8 @@
 .vm-hud[data-layout='perimeter'] .vm-sel-sub { font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1)); letter-spacing: 0.10em; color: #849197; }
 .vm-hud[data-layout='perimeter'] .vm-sel-stats {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: calc(8 * var(--vm-u));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(8 * var(--vm-u)) calc(12 * var(--vm-u));
 }
 .vm-hud[data-layout='perimeter'] .vm-stat { gap: calc(5 * var(--vm-u)); }
 .vm-hud[data-layout='perimeter'] .vm-stat-icon { color: #718087; }
@@ -971,6 +976,14 @@
   left: calc(3 * var(--vm-u));
   right: calc(3 * var(--vm-u));
   height: calc(86 * var(--vm-u));
+  background-image: linear-gradient(180deg,
+    rgba(25, 36, 41, 0.98) 0,
+    rgba(8, 15, 19, 0.995) 58%,
+    rgba(3, 8, 11, 0.995) 92%,
+    transparent 93%) !important;
+  background-position: center top !important;
+  background-size: 100% calc(58 * var(--vm-u)) !important;
+  background-repeat: no-repeat !important;
   box-shadow: none;
 }
 
@@ -987,7 +1000,7 @@
   border: 0;
   background-color: transparent;
   background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background-size: auto 100%;
   opacity: 1;
   filter: none;
   -webkit-mask: none;
@@ -1049,6 +1062,18 @@
 .vm-hud[data-layout='perimeter'] .vm-dock-selection::before { background-image: url('/ui/command-deck/selection.png'); }
 .vm-hud[data-layout='perimeter'] .vm-command-deck::before { background-image: url('/ui/command-deck/commands.png'); }
 .vm-hud[data-layout='perimeter'] .vm-dock-build::before { background-image: url('/ui/command-deck/build.png'); }
+
+/* These fixed-width plates have a little transparent breathing room in their
+ * roots. `contain`/width-derived height preserves every generated pixel while
+ * the root continues to own the live control geometry. */
+.vm-hud[data-layout='perimeter'] .vm-command-node::before {
+  background-size: contain;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-command-deck::before {
+  background-position: center bottom;
+  background-size: 100% auto;
+}
 
 .vm-hud[data-layout='perimeter'] .vm-command-node::after,
 .vm-hud[data-layout='perimeter'] .vm-objectives::after,
@@ -1208,78 +1233,81 @@
 /* ----------------------------------------------------------------------- */
 
 /* Height-resized plates cannot keep using `background-size: 100% 100%`.
- * Nine-slice borders hold the authored corners and cap depths while only the
- * long, detail-free rail spans absorb the player's height adjustment. */
+ * Their source-width-derived top and bottom caps remain intact at every size;
+ * only the deliberately detail-free CSS rail between those caps grows. This
+ * avoids scaling or tile-rounding the generated side hardware. */
 .vm-hud[data-layout='perimeter']
-  .vm-dock-build.vm-height-resizable.has-user-height {
-  background: linear-gradient(90deg,
+  .vm-dock-build.vm-height-resizable {
+  background-image: linear-gradient(90deg,
     rgba(43, 53, 60, 0.98) 0,
     rgba(11, 17, 21, 0.98) 2.8%,
     rgba(4, 9, 12, 0.98) 3.5%,
     rgba(4, 9, 12, 0.98) 96.5%,
     rgba(11, 17, 21, 0.98) 97.2%,
     rgba(43, 53, 60, 0.98) 100%) !important;
+  background-position: center calc(56 * var(--vm-u)) !important;
+  background-size: 100% calc(100% - 78 * var(--vm-u)) !important;
+  background-repeat: no-repeat !important;
 }
 
 .vm-hud[data-layout='perimeter']
-  .vm-dock-build.vm-height-resizable.has-user-height::before {
-  inset: 0;
-  height: auto;
-  box-sizing: border-box;
-  border-style: solid;
-  border-width:
-    calc(62 * var(--vm-u))
-    calc(34 * var(--vm-u))
-    calc(34 * var(--vm-u));
-  border-image-source: url('/ui/command-deck/build.png');
-  border-image-slice: 145 80 80;
-  border-image-width:
-    calc(62 * var(--vm-u))
-    calc(34 * var(--vm-u))
-    calc(34 * var(--vm-u));
-  border-image-repeat: stretch round;
-  background: none;
+  .vm-dock-build.vm-height-resizable::before {
+  inset: 0 0 auto;
+  height: calc(56 * var(--vm-u));
+  border: 0;
+  background-image: url('/ui/command-deck/build.png');
+  background-position: center top;
+  background-size: 100% auto;
 }
 
 .vm-hud[data-layout='perimeter']
-  .vm-dock-build.vm-height-resizable.has-user-height::after {
-  display: none;
+  .vm-dock-build.vm-height-resizable::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(22 * var(--vm-u));
+  border: 0;
+  background: transparent url('/ui/command-deck/build.png') center bottom / 100% auto no-repeat;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .vm-hud[data-layout='perimeter']
-  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed) {
-  background: linear-gradient(90deg,
+  .vm-objectives.vm-height-resizable:not(.is-collapsed) {
+  background-image: linear-gradient(90deg,
     rgba(38, 48, 54, 0.98) 0,
     rgba(7, 13, 17, 0.98) 6%,
     rgba(4, 9, 12, 0.98) 8%,
     rgba(4, 9, 12, 0.98) 92%,
     rgba(7, 13, 17, 0.98) 94%,
     rgba(38, 48, 54, 0.98) 100%) !important;
+  background-position: center calc(33 * var(--vm-u)) !important;
+  background-size: 100% calc(100% - 59 * var(--vm-u)) !important;
+  background-repeat: no-repeat !important;
 }
 
 .vm-hud[data-layout='perimeter']
-  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::before {
-  inset: 0;
-  height: auto;
-  box-sizing: border-box;
-  border-style: solid;
-  border-width:
-    calc(42 * var(--vm-u))
-    calc(20 * var(--vm-u))
-    calc(29 * var(--vm-u));
-  border-image-source: url('/ui/command-deck/objectives.png');
-  border-image-slice: 145 70 100;
-  border-image-width:
-    calc(42 * var(--vm-u))
-    calc(20 * var(--vm-u))
-    calc(29 * var(--vm-u));
-  border-image-repeat: stretch round;
-  background: none;
+  .vm-objectives.vm-height-resizable:not(.is-collapsed)::before {
+  inset: 0 0 auto;
+  height: calc(33 * var(--vm-u));
+  border: 0;
+  background-image: url('/ui/command-deck/objectives.png');
+  background-position: center top;
+  background-size: 100% auto;
 }
 
 .vm-hud[data-layout='perimeter']
-  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::after {
-  display: none;
+  .vm-objectives.vm-height-resizable:not(.is-collapsed)::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(26 * var(--vm-u));
+  border: 0;
+  background: transparent url('/ui/command-deck/objectives.png') center bottom / 100% auto no-repeat;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Empty selection is its own horizontal component. The portrait selection
@@ -1299,11 +1327,20 @@
   .vm-hud[data-layout='perimeter'] .vm-resources {
     background-image:
       linear-gradient(90deg, transparent, rgba(108, 137, 149, 0.42) 12%, rgba(108, 137, 149, 0.42) 88%, transparent),
-      linear-gradient(90deg, transparent, rgba(54, 67, 75, 0.72) 12%, rgba(54, 67, 75, 0.72) 88%, transparent) !important;
+      linear-gradient(90deg, transparent, rgba(54, 67, 75, 0.72) 12%, rgba(54, 67, 75, 0.72) 88%, transparent),
+      linear-gradient(180deg,
+        rgba(25, 36, 41, 0.98) 0,
+        rgba(8, 15, 19, 0.995) 58%,
+        rgba(3, 8, 11, 0.995) 92%,
+        transparent 93%) !important;
     background-position:
       center calc(8 * var(--vm-u)),
-      center calc(50 * var(--vm-u)) !important;
-    background-size: 100% 1px !important;
+      center calc(50 * var(--vm-u)),
+      center top !important;
+    background-size:
+      100% 1px,
+      100% 1px,
+      100% calc(58 * var(--vm-u)) !important;
     background-repeat: no-repeat !important;
   }
 
@@ -1404,7 +1441,10 @@
  * without overriding the compact-layout measurements above. */
 @media (min-width: 901px) {
   .vm-hud[data-layout='perimeter'] .vm-command-deck {
-    padding: calc(12 * var(--vm-u)) calc(58 * var(--vm-u)) calc(27 * var(--vm-u));
+    padding:
+      calc(12 * var(--vm-u))
+      min(calc(58 * var(--vm-u)), calc(10.62vw - (96.8544 * var(--vm-u))))
+      calc(27 * var(--vm-u));
     column-gap: calc(2 * var(--vm-u));
   }
 

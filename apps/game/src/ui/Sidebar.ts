@@ -71,6 +71,7 @@ import {
   Tooltip,
   applyTheme,
   button,
+  computeUiScale,
   el,
   formatClock,
   formatCountdown,
@@ -1387,7 +1388,12 @@ class SelectionPanel {
   private lastPrimary = '';
   private lastDestruct = '';
 
-  constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private readonly cb: SidebarCallbacks,
+    getMaxWidthPx?: () => number,
+    getMinWidthPx?: () => number,
+  ) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
     this.root.dataset.brackets = 'on';
     this.root.setAttribute('aria-label', 'Selection');
@@ -1675,9 +1681,17 @@ class SelectionPanel {
       aspectRatio: 1007 / 1324,
       designWidthUnits: 250,
       minWidthPx: 220,
+      scaleMinimumWithUi: true,
+      getMinWidthPx,
       maxViewportWidthShare: 0.34,
       maxViewportHeightShare: 0.72,
+      getMaxWidthPx,
     });
+  }
+
+  /** Keep this instrument inside the live left-side collision budget. */
+  constrainSize(): void {
+    this.sizeResize.reflow();
   }
 
   private buildCard(): CardCell {
@@ -3561,6 +3575,52 @@ export class Sidebar {
 
     this.root = el('div', 'vm-bar', opts.parent);
 
+    /* The two left instruments and the centered command plate share one
+     * horizontal lane. Their resize limits therefore have to share one live
+     * budget; independent viewport percentages can each be valid while their
+     * sum still drives the inspector underneath the command buttons. */
+    const hudScale = (): number => computeUiScale(Math.max(1, globalThis.innerHeight || 720));
+    const panelGap = (): number => 8 * hudScale();
+    const compactCommandWidthUnits = (): number => {
+      const viewport = Math.max(1, globalThis.innerWidth || 1280);
+      return viewport <= 900 ? 270 : viewport <= 1400 ? 360 : 546;
+    };
+    const commandLeft = (): number => {
+      const rootBounds = this.root.getBoundingClientRect();
+      const command = this.root.querySelector<HTMLElement>('.vm-command-deck');
+      const commandBounds = command?.getBoundingClientRect();
+      if (commandBounds !== undefined && commandBounds.width > 0) {
+        return commandBounds.left - rootBounds.left;
+      }
+      const viewport = Math.max(1, globalThis.innerWidth || 1280);
+      return (viewport - compactCommandWidthUnits() * hudScale()) / 2;
+    };
+    const fallbackSelectionWidth = (): number => {
+      const viewport = Math.max(1, globalThis.innerWidth || 1280);
+      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 190 : 250;
+      return units * hudScale();
+    };
+    const mapMinimum = (): number => {
+      const viewport = Math.max(1, globalThis.innerWidth || 1280);
+      const units = viewport <= 900 ? 155 : viewport <= 1400 ? 205 : 220;
+      return units * hudScale();
+    };
+    const selectionMinimum = (): number => {
+      const viewport = Math.max(1, globalThis.innerWidth || 1280);
+      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 190 : 220;
+      return units * hudScale();
+    };
+    const mapMaximum = (): number => {
+      const selection = this.root.querySelector<HTMLElement>('.vm-dock-selection');
+      const liveWidth = selection?.getBoundingClientRect().width ?? 0;
+      const selectionWidth = liveWidth > 0 ? liveWidth : fallbackSelectionWidth();
+      return commandLeft() - selectionWidth - 2 * panelGap();
+    };
+    const selectionMaximum = (): number => {
+      const mapWidth = this.mapDock?.getBoundingClientRect().width ?? 0;
+      return commandLeft() - mapWidth - 2 * panelGap();
+    };
+
     // The strip is top-centre and the docks are bottom; they share one root so
     // `__VM.setUiVisible(false)` hides the whole interface with one toggle.
     this.resources = new ResourceStrip(this.root);
@@ -3628,16 +3688,25 @@ export class Sidebar {
       aspectRatio: 1100 / 1380,
       designWidthUnits: 286,
       minWidthPx: 220,
+      scaleMinimumWithUi: true,
+      getMinWidthPx: mapMinimum,
       maxViewportWidthShare: 0.30,
       maxViewportHeightShare: 0.60,
+      getMaxWidthPx: mapMaximum,
       onWidthChange: (width) => {
         this.root.style.setProperty('--vm-live-map-w', `${Math.round(width)}px`);
+        this.selection?.constrainSize();
       },
       onCommit: opts.mapResized,
     });
 
     /* -- bottom centre: selection / status ------------------------------ */
-    this.selection = new SelectionPanel(docks, opts.callbacks);
+    this.selection = new SelectionPanel(
+      docks,
+      opts.callbacks,
+      selectionMaximum,
+      selectionMinimum,
+    );
 
     /* -- bottom right: build -------------------------------------------- */
     // MOUNTED ON THE ROOT, NOT IN `docks`. The build palette is the right rail
@@ -3667,6 +3736,11 @@ export class Sidebar {
     this.powers = new CommanderPowerBar(railStack, opts.callbacks);
     this.supers = new SuperweaponBar(railStack, opts.callbacks);
     this.commands = new CommandDeck(this.root, opts.callbacks);
+    // The stored sizes were first restored before the command plate existed.
+    // Re-evaluate once against its real rendered edge, then keep doing so from
+    // both panel resizers whenever either neighbour or the viewport changes.
+    this.mapResize.reflow();
+    this.selection.constrainSize();
     // AFTER the build panel, because it is the one that constructs the
     // renderer. Null in any headless build, where both panels keep their glyphs.
     this.selection.setCameos(this.build.cameoRenderer);

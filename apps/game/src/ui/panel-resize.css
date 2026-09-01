@@ -17,7 +17,9 @@
    horizontal advisory strip does not inherit the portrait panel's scale. */
 .vm-hud .vm-dock-map.vm-aspect-resizable.has-user-size,
 .vm-hud .vm-dock-selection.vm-aspect-resizable.has-user-size:not(.is-empty) {
-  --vm-u: var(--vm-user-panel-unit);
+  /* The frame follows the chosen geometry, but compact text and controls must
+     never become smaller than the root HUD's already-authored compact scale. */
+  --vm-u: var(--vm-user-content-unit);
 }
 
 .vm-hud .vm-height-resizable.has-user-height {

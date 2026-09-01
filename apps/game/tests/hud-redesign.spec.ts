@@ -100,7 +100,8 @@ describe('approved command-deck skin', () => {
     expect(seal).toContain('--vm-map-h: calc(359 * var(--vm-u))');
     expect(seal).toContain('--vm-selection-w: calc(250 * var(--vm-u))');
     expect(seal).toContain('--vm-selection-h: calc(329 * var(--vm-u))');
-    expect(seal).toContain('--vm-command-w: calc(546 * var(--vm-u))');
+    expect(seal).toContain('calc(546 * var(--vm-u))');
+    expect(seal).toContain('calc(100vw - (912 * var(--vm-u)))');
     expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
   });
 
@@ -179,17 +180,32 @@ describe('approved command-deck skin', () => {
       /\.vm-dock-build\.vm-height-resizable\.has-user-height\s*\{[^}]*\bheight:\s*calc\([^}]*!important/,
     );
     expect(CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
+    expect(SIDEBAR).toContain('getMinWidthPx: mapMinimum');
+    expect(SIDEBAR).toContain('selectionMinimum');
   });
 
-  it('composes height-resized chrome as fixed-corner nine-slice plates', () => {
+  it('composes variable-height chrome from undistorted artwork caps', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-build\.vm-height-resizable\.has-user-height::before\s*\{[\s\S]*?border-image-source:\s*url\('\/ui\/command-deck\/build\.png'\);[\s\S]*?border-image-slice:\s*145 80 80;/,
+      /\.vm-dock-build\.vm-height-resizable::before\s*\{[\s\S]*?height:\s*calc\(56 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-build\.vm-height-resizable\.has-user-height::after\s*\{[\s\S]*?display:\s*none;/,
+      /\.vm-dock-build\.vm-height-resizable::after\s*\{[\s\S]*?height:\s*calc\(22 \* var\(--vm-u\)\);[\s\S]*?100% auto no-repeat;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-objectives\.vm-height-resizable\.has-user-height:not\(\.is-collapsed\)::before\s*\{[\s\S]*?border-image-source:\s*url\('\/ui\/command-deck\/objectives\.png'\);[\s\S]*?border-image-slice:\s*145 70 100;/,
+      /\.vm-objectives\.vm-height-resizable:not\(\.is-collapsed\)::before\s*\{[\s\S]*?height:\s*calc\(33 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+    );
+    expect(COMMAND_DECK_CSS).not.toContain('border-image-repeat: stretch round');
+  });
+
+  it('preserves generated plate ratios and the reference info grid', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?background-size:\s*auto 100%;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command-deck::before\s*\{[\s\S]*?background-size:\s*100% auto;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-sel-stats\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/,
     );
   });
 

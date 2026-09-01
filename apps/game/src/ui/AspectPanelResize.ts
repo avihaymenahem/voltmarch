@@ -1,6 +1,7 @@
 /** Proportional resizing for bottom-anchored HUD instruments. */
 
 import { persistentStorage } from '../platform/storage';
+import { computeUiScale } from './Chrome';
 
 import './panel-resize.css';
 
@@ -13,9 +14,15 @@ export interface AspectPanelResizeOptions {
   readonly aspectRatio: number;
   /** Authored panel width in HUD design units; descendants scale with the frame. */
   readonly designWidthUnits: number;
+  /** Minimum authored pixels at 1x; follows the root HUD scale when enabled. */
   readonly minWidthPx: number;
+  readonly scaleMinimumWithUi?: boolean;
+  /** Breakpoint-aware authored minimum; takes precedence over the base value. */
+  readonly getMinWidthPx?: () => number;
   readonly maxViewportWidthShare: number;
   readonly maxViewportHeightShare: number;
+  /** Optional live collision boundary, evaluated for every drag and reflow. */
+  readonly getMaxWidthPx?: () => number;
   readonly onWidthChange?: (widthPx: number) => void;
   readonly onCommit?: () => void;
 }
@@ -28,6 +35,7 @@ export function clampAspectPanelWidth(
   aspectRatio: number,
   maxViewportWidthShare: number,
   maxViewportHeightShare: number,
+  collisionMaximumPx = Number.POSITIVE_INFINITY,
 ): number {
   const vw = Math.max(1, viewportWidth);
   const vh = Math.max(1, viewportHeight);
@@ -35,7 +43,13 @@ export function clampAspectPanelWidth(
   const minimum = Math.max(1, Math.min(minWidthPx, vw));
   const widthMaximum = Math.floor(vw * maxViewportWidthShare);
   const heightMaximum = Math.floor(vh * maxViewportHeightShare * aspect);
-  const maximum = Math.max(minimum, Math.min(widthMaximum, heightMaximum));
+  const collisionMaximum = Number.isFinite(collisionMaximumPx)
+    ? Math.floor(collisionMaximumPx)
+    : Number.POSITIVE_INFINITY;
+  const maximum = Math.max(
+    minimum,
+    Math.min(widthMaximum, heightMaximum, collisionMaximum),
+  );
   return Math.max(minimum, Math.min(maximum, widthPx));
 }
 
@@ -77,6 +91,7 @@ export class AspectPanelResize {
   private width = 0;
   private widthRatio = 0;
   private listening = false;
+  private disposed = false;
 
   constructor(target: HTMLElement, options: AspectPanelResizeOptions) {
     this.target = target;
@@ -97,14 +112,20 @@ export class AspectPanelResize {
     const stored = readStoredPanelWidthRatio(options.storageKey);
     if (stored !== null) {
       this.widthRatio = stored;
-      this.applyWidth(stored * this.viewportWidth());
+      this.applyWidth(stored * this.viewportWidth(), false);
     }
     if (typeof globalThis.addEventListener === 'function') {
       globalThis.addEventListener('resize', this.onViewportResize, { passive: true });
     }
+    queueMicrotask(() => {
+      if (!this.disposed && this.width <= 0) {
+        this.updateHandle(this.target.getBoundingClientRect().width);
+      }
+    });
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stopPointerTracking();
     this.handle.removeEventListener('pointerdown', this.onPointerDown);
     this.handle.removeEventListener('keydown', this.onKeyDown);
@@ -122,19 +143,32 @@ export class AspectPanelResize {
     return Math.max(1, globalThis.innerHeight || 720);
   }
 
-  private applyWidth(rawWidth: number): void {
+  private minimumWidth(): number {
+    const liveMinimum = this.options.getMinWidthPx?.();
+    if (liveMinimum !== undefined && Number.isFinite(liveMinimum) && liveMinimum > 0) {
+      return liveMinimum;
+    }
+    const scale = this.options.scaleMinimumWithUi
+      ? computeUiScale(this.viewportHeight())
+      : 1;
+    return this.options.minWidthPx * scale;
+  }
+
+  private applyWidth(rawWidth: number, rememberPreference = true): void {
+    const minimum = this.minimumWidth();
     const width = clampAspectPanelWidth(
       rawWidth,
       this.viewportWidth(),
       this.viewportHeight(),
-      this.options.minWidthPx,
+      minimum,
       this.options.aspectRatio,
       this.options.maxViewportWidthShare,
       this.options.maxViewportHeightShare,
+      this.options.getMaxWidthPx?.() ?? Number.POSITIVE_INFINITY,
     );
     const height = width / this.options.aspectRatio;
     this.width = width;
-    this.widthRatio = width / this.viewportWidth();
+    if (rememberPreference) this.widthRatio = width / this.viewportWidth();
     this.target.classList.add('has-user-size');
     this.target.style.setProperty('--vm-user-panel-width', `${Math.round(width)}px`);
     this.target.style.setProperty('--vm-user-panel-height', `${Math.round(height)}px`);
@@ -142,18 +176,38 @@ export class AspectPanelResize {
       '--vm-user-panel-unit',
       `${width / this.options.designWidthUnits}px`,
     );
+    this.target.style.setProperty(
+      '--vm-user-content-unit',
+      `${Math.max(width / this.options.designWidthUnits, computeUiScale(this.viewportHeight()))}px`,
+    );
     this.options.onWidthChange?.(width);
+    this.updateHandle(width);
+  }
+
+  private updateHandle(width: number): void {
+    const minimum = this.minimumWidth();
     this.handle.setAttribute('aria-valuenow', String(Math.round(width)));
-    this.handle.setAttribute('aria-valuemin', String(this.options.minWidthPx));
+    this.handle.setAttribute('aria-valuemin', String(Math.round(minimum)));
     this.handle.setAttribute('aria-valuemax', String(Math.round(clampAspectPanelWidth(
       Number.POSITIVE_INFINITY,
       this.viewportWidth(),
       this.viewportHeight(),
-      this.options.minWidthPx,
+      minimum,
       this.options.aspectRatio,
       this.options.maxViewportWidthShare,
       this.options.maxViewportHeightShare,
+      this.options.getMaxWidthPx?.() ?? Number.POSITIVE_INFINITY,
     ))));
+  }
+
+  /** Reapply the preferred ratio after a viewport or neighbouring-panel move. */
+  reflow(): void {
+    if (this.widthRatio <= 0) {
+      const current = this.target.getBoundingClientRect().width;
+      if (current <= 0) return;
+      this.widthRatio = current / this.viewportWidth();
+    }
+    this.applyWidth(this.widthRatio * this.viewportWidth(), false);
   }
 
   private persist(notify = true): void {
@@ -206,7 +260,7 @@ export class AspectPanelResize {
     let next = current;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next -= step;
     else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next += step;
-    else if (event.key === 'Home') next = this.options.minWidthPx;
+    else if (event.key === 'Home') next = this.minimumWidth();
     else if (event.key === 'End') next = Number.POSITIVE_INFINITY;
     else return;
     event.preventDefault();
@@ -215,9 +269,7 @@ export class AspectPanelResize {
   };
 
   private readonly onViewportResize = (): void => {
-    if (this.widthRatio <= 0) return;
-    this.applyWidth(this.widthRatio * this.viewportWidth());
-    this.persist(false);
+    this.reflow();
   };
 
   private stopPointerTracking(): void {

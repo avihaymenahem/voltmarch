@@ -66,7 +66,10 @@ export class VerticalPanelResize {
   private startY = 0;
   private startHeight = 0;
   private height = 0;
+  /** Player intent, kept even while a smaller viewport temporarily clamps it. */
+  private heightRatio = 0;
   private listening = false;
+  private disposed = false;
 
   constructor(target: HTMLElement, options: VerticalPanelResizeOptions) {
     this.target = target;
@@ -87,13 +90,22 @@ export class VerticalPanelResize {
     this.handle = handle;
 
     const stored = readStoredPanelHeightRatio(options.storageKey);
-    if (stored !== null) this.applyHeight(stored * this.viewportHeight());
+    if (stored !== null) {
+      this.heightRatio = stored;
+      this.applyHeight(stored * this.viewportHeight(), false);
+    }
     if (typeof globalThis.addEventListener === 'function') {
       globalThis.addEventListener('resize', this.onViewportResize, { passive: true });
     }
+    queueMicrotask(() => {
+      if (!this.disposed && this.height <= 0) {
+        this.updateHandle(this.target.getBoundingClientRect().height);
+      }
+    });
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stopPointerTracking();
     this.handle.removeEventListener('pointerdown', this.onPointerDown);
     this.handle.removeEventListener('keydown', this.onKeyDown);
@@ -107,7 +119,7 @@ export class VerticalPanelResize {
     return Math.max(1, globalThis.innerHeight || 720);
   }
 
-  private applyHeight(rawHeight: number): void {
+  private applyHeight(rawHeight: number, rememberPreference = true): void {
     const minimum = this.options.minHeightUnits * computeUiScale(this.viewportHeight());
     const height = clampPanelHeight(
       rawHeight,
@@ -116,12 +128,18 @@ export class VerticalPanelResize {
       this.options.maxViewportShare,
     );
     this.height = height;
+    if (rememberPreference) this.heightRatio = height / this.viewportHeight();
     this.target.classList.add('has-user-height');
     this.target.style.setProperty('--vm-user-panel-height', `${Math.round(height)}px`);
     this.target.style.setProperty(
       '--vm-user-panel-max-height',
       `${Math.floor(this.viewportHeight() * this.options.maxViewportShare)}px`,
     );
+    this.updateHandle(height);
+  }
+
+  private updateHandle(height: number): void {
+    const minimum = this.options.minHeightUnits * computeUiScale(this.viewportHeight());
     this.handle.setAttribute('aria-valuenow', String(Math.round(height)));
     this.handle.setAttribute('aria-valuemin', String(Math.round(minimum)));
     this.handle.setAttribute(
@@ -131,8 +149,8 @@ export class VerticalPanelResize {
   }
 
   private persist(): void {
-    if (this.height <= 0) return;
-    writeStoredPanelHeightRatio(this.options.storageKey, this.height / this.viewportHeight());
+    if (this.heightRatio <= 0) return;
+    writeStoredPanelHeightRatio(this.options.storageKey, this.heightRatio);
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
@@ -185,9 +203,8 @@ export class VerticalPanelResize {
   };
 
   private readonly onViewportResize = (): void => {
-    if (this.height <= 0) return;
-    this.applyHeight(this.height);
-    this.persist();
+    if (this.heightRatio <= 0) return;
+    this.applyHeight(this.heightRatio * this.viewportHeight(), false);
   };
 
   private stopPointerTracking(): void {

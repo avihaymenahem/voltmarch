@@ -35,6 +35,37 @@ describe('persisted HUD panel geometry', () => {
     expect(clampAspectPanelWidth(360, 1600, 900, 220, 0.75, 0.3, 0.72)).toBe(360);
     // Width permits 480, but 72% of 900px at a 0.75 aspect permits 486.
     expect(clampAspectPanelWidth(900, 1600, 900, 220, 0.75, 0.3, 0.72)).toBe(480);
+    // A neighbouring instrument and the centered command plate can provide a
+    // tighter live boundary than either independent viewport percentage.
+    expect(clampAspectPanelWidth(900, 1600, 900, 220, 0.75, 0.3, 0.72, 412)).toBe(412);
+  });
+
+  it('keeps sequential compact maximums outside the centered command plate', () => {
+    const commandLeft = 460;
+    const gap = 8;
+    const selectionDefault = 190;
+    const map = clampAspectPanelWidth(
+      Number.POSITIVE_INFINITY, 1280, 720, 205, 1100 / 1380, 0.30, 0.60,
+      commandLeft - selectionDefault - 2 * gap,
+    );
+    const selection = clampAspectPanelWidth(
+      Number.POSITIVE_INFINITY, 1280, 720, 190, 1007 / 1324, 0.34, 0.72,
+      commandLeft - map - 2 * gap,
+    );
+    expect(map).toBe(254);
+    expect(selection).toBe(190);
+    expect(map + gap + selection).toBeLessThanOrEqual(commandLeft - gap);
+  });
+
+  it('keeps the first desktop breakpoint outside the elastic command plate', () => {
+    const viewport = 1401;
+    const gap = 8;
+    const mapMinimum = 220;
+    const selectionMinimum = 220;
+    const commandWidth = Math.min(546, viewport - 912);
+    const commandLeft = (viewport - commandWidth) / 2;
+    expect(commandWidth).toBe(489);
+    expect(mapMinimum + gap + selectionMinimum).toBe(commandLeft - gap);
   });
 
   it('accepts only finite stored proportional-width ratios', () => {
