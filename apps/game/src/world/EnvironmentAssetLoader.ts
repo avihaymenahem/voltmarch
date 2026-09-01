@@ -907,13 +907,14 @@ async function loadFamily(
   const mineralVisibleMaterial: 'mineral' | undefined = manifest.materialFamily === 'mineral-rock-v1-pbr'
     ? 'mineral'
     : undefined;
-  const lod0Material: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined = key === 'tree'
+  const embeddedPbr = manifest.materialFamily === 'embedded-pbr';
+  const lod0Material: 'embedded' | 'mineral' | 'shrub' | 'box-prop' | 'extended-foliage' | 'prop-surface' | undefined = key === 'tree' || embeddedPbr
     ? 'embedded'
     : mineralVisibleMaterial ?? visibleMaterial;
   // Broadleaf normal-distance rungs deliberately point at the same authored
   // PBR delivery. Matching the material mode lets the request cache return one
   // decoded geometry/material object for all three normal camera bands.
-  const normalLodMaterial = key === 'tree' ? lod0Material : visibleMaterial;
+  const normalLodMaterial = key === 'tree' || embeddedPbr ? lod0Material : visibleMaterial;
   // Autumn leaves are alpha cards, not a closed crown. Its dedicated shadow
   // delivery therefore carries UVs and must use the same cutout atlas as the
   // visible family; the other families retain their closed geometry proxies.
@@ -942,7 +943,7 @@ async function loadFamily(
     request(files.lod1, 'lod1', normalLodMaterial),
     request(files.lod2, 'lod2', normalLodMaterial),
     request(files.shadow, 'shadow', shadowMaterial),
-    request(files.emergency, 'emergency', visibleMaterial),
+    request(files.emergency, 'emergency', embeddedPbr ? 'embedded' : visibleMaterial),
   ]);
   const available = settled.map((result) => (
     result.status === 'fulfilled' ? result.value : undefined

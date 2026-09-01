@@ -70,7 +70,7 @@ const STATIC_PROP_SPECS: readonly [
   ['roadSign', 'street', 0.4, 3.10, 164, 'road-sign-v1'],
   ['roadSignDisc', 'street', 0.4, 2.52, 250, 'road-sign-disc-v1'],
   ['cafeUmbrella', 'civic', 1.8, 3.15, 844, 'cafe-umbrella-v1'],
-  ['statue', 'civic', 2.6, 4.29, 616, 'statue-v1'],
+  ['statue', 'civic', 2.6, 4.60, 8_094, 'statue-v2'],
   ['statueRider', 'civic', 2.6, 4.40, 836, 'statue-rider-v1'],
   ['waterTower', 'civic', 3.2, 13.10, 1_778, 'water-tower-v1'],
 ];
@@ -83,7 +83,23 @@ const STATIC_PROP_LOD_FLOORS: Readonly<Record<string, number>> = Object.freeze({
 const STATIC_PROP_SHADOW_CEILINGS: Readonly<Record<string, number>> = Object.freeze({
   haystack: 84,
   barrel: 128,
+  statue: 960,
 });
+
+const STATIC_PROP_EMBEDDED_PBR = new Set(['statue']);
+
+const STATIC_PROP_DELIVERY_OVERRIDES: Readonly<Record<string, EnvironmentAssetDeliveries>> =
+  Object.freeze({
+    statue: Object.freeze({
+      lod0: 'statue-v2.glb',
+      // This is a rare civic landmark. Reuse one decoded PBR delivery through
+      // the normal bands until a visibly equivalent textured LOD passes review.
+      lod1: 'statue-v2.glb',
+      lod2: 'statue-v2.glb',
+      shadow: 'derived/statue-v2.shadow.glb',
+      emergency: 'statue-v2.glb',
+    }),
+  });
 
 const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.map(([
   key, family, radius, height, triangles, file,
@@ -91,20 +107,26 @@ const STATIC_PROP_CATALOG = Object.freeze(Object.fromEntries(STATIC_PROP_SPECS.m
   key,
   family,
   stage: 'integrated' as const,
-  materialFamily: 'prop-surface-v1-pbr',
+  materialFamily: STATIC_PROP_EMBEDDED_PBR.has(key) ? 'embedded-pbr' : 'prop-surface-v1-pbr',
   origin: 'ground-centre' as const,
   metres: Object.freeze({ radius, height }),
   wind: 'none' as const,
   budget: Object.freeze({
     rawTriangles: triangles,
     lod0Triangles: triangles,
-    lod1Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.86),
-    lod2Triangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
+    lod1Triangles: STATIC_PROP_EMBEDDED_PBR.has(key)
+      ? triangles
+      : STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.86),
+    lod2Triangles: STATIC_PROP_EMBEDDED_PBR.has(key)
+      ? triangles
+      : STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
     shadowTriangles: STATIC_PROP_SHADOW_CEILINGS[key] ?? 12,
-    emergencyTriangles: STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
+    emergencyTriangles: STATIC_PROP_EMBEDDED_PBR.has(key)
+      ? triangles
+      : STATIC_PROP_LOD_FLOORS[key] ?? Math.ceil(triangles * 0.55),
     shippingBytes: 1_048_576,
   }),
-  deliveries: Object.freeze({
+  deliveries: STATIC_PROP_DELIVERY_OVERRIDES[key] ?? Object.freeze({
     lod0: `${file}.glb`,
     lod1: `derived/${file}.lod1.glb`,
     lod2: `derived/${file}.lod2.glb`,

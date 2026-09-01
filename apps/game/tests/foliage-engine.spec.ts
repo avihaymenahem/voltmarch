@@ -961,13 +961,13 @@ describe('foliage production profile', () => {
     expect(tones.size).toBe(crownCards);
   });
 
-  it('ships every remaining manufactured prop as one static asset-engine primitive', () => {
+  it('ships every remaining shared-atlas prop as one static asset-engine primitive', () => {
     const repo = join(import.meta.dirname, '..', '..', '..');
     const root = join(repo, 'packages', 'assets', 'game', 'environment', 'prop-surface');
     const keys = PROP_KEYS.filter((key) => (
       environmentAssetManifest(key)?.materialFamily === 'prop-surface-v1-pbr'
     ));
-    expect(keys).toHaveLength(19);
+    expect(keys).toHaveLength(18);
     for (const key of keys) {
       const manifest = environmentAssetManifest(key)!;
       const files = [
@@ -995,6 +995,51 @@ describe('foliage production profile', () => {
         expect(triangles, `${key}.${i}`).toBeLessThanOrEqual(ceilings[i]);
       }
     }
+  });
+
+  it('ships the civic engineer monument as one embedded-PBR mesh plus a geometry-only caster', () => {
+    const repo = join(import.meta.dirname, '..', '..', '..');
+    const root = join(repo, 'packages', 'assets', 'game', 'environment', 'prop-surface');
+    const manifest = environmentAssetManifest('statue')!;
+    expect(manifest.materialFamily).toBe('embedded-pbr');
+    expect(manifest.deliveries).toMatchObject({
+      lod0: 'statue-v2.glb', lod1: 'statue-v2.glb', lod2: 'statue-v2.glb',
+      shadow: 'derived/statue-v2.shadow.glb', emergency: 'statue-v2.glb',
+    });
+
+    const visible = join(root, manifest.deliveries!.lod0);
+    const bytes = readFileSync(visible);
+    expect(statSync(visible).size).toBeLessThanOrEqual(manifest.budget.shippingBytes);
+    const jsonLength = bytes.readUInt32LE(12);
+    const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString('utf8').trim());
+    expect(gltf.meshes).toHaveLength(1);
+    expect(gltf.meshes[0].primitives).toHaveLength(1);
+    expect(gltf.images).toHaveLength(3);
+    expect(gltf.materials).toHaveLength(1);
+    expect(gltf.materials[0].doubleSided ?? false).toBe(false);
+    const primitive = gltf.meshes[0].primitives[0];
+    expect(primitive.attributes.TEXCOORD_0).toBeTypeOf('number');
+    expect(gltf.accessors[primitive.indices].count / 3).toBe(8_094);
+
+    const positions = glbFloatAttribute(visible, 'POSITION');
+    const xs = positions.filter((_, index) => index % 3 === 0);
+    const ys = positions.filter((_, index) => index % 3 === 1);
+    const zs = positions.filter((_, index) => index % 3 === 2);
+    expect(Math.min(...ys)).toBeCloseTo(0, 2);
+    expect(Math.max(...ys)).toBeCloseTo(4.6, 1);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(3.8, 1);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(2.9, 1);
+
+    const shadow = join(root, manifest.deliveries!.shadow);
+    const shadowBytes = readFileSync(shadow);
+    const shadowJsonLength = shadowBytes.readUInt32LE(12);
+    const shadowGltf = JSON.parse(
+      shadowBytes.subarray(20, 20 + shadowJsonLength).toString('utf8').trim(),
+    );
+    const shadowPrimitive = shadowGltf.meshes[0].primitives[0];
+    expect(shadowGltf.images ?? []).toHaveLength(0);
+    expect(shadowGltf.accessors[shadowPrimitive.indices].count / 3)
+      .toBeLessThanOrEqual(manifest.budget.shadowTriangles);
   });
 
   it('uses silhouette casters for the field tent and barrel group', () => {

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "family": "environment-civic-monuments",
+  "generatedAt": "2026-09-01T17:40:27.657Z",
+  "write": true,
+  "sourceManifest": "tools/asset-families/civic-monuments.json",
+  "rows": [
+    {
+      "key": "statue",
+      "class": "static-prop",
+      "movingParts": false,
+      "source": {
+        "file": "packages/assets/game/environment/prop-surface/statue-v2.glb",
+        "triangles": 8094,
+        "fileBytes": 727268
+      },
+      "outputs": [
+        {
+          "profile": "shadow",
+          "status": "candidate",
+          "blockers": [],
+          "file": "packages/assets/game/environment/prop-surface/derived/statue-v2.shadow.glb",
+          "triangles": 960,
+          "triangleRatio": 0.1186,
+          "boundsDriftMeters": 0,
+          "boundsDriftRatio": 0,
+          "fileBytes": 14252,
+          "geometryOnly": true,
+          "grid": [
+            10,
+            8
+          ],
+          "occupiedCells": 80
+        }
+      ]
+    }
+  ]
+}

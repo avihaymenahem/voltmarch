@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "family": "environment-civic-monuments",
+  "sourceDir": "packages/assets/game/environment/prop-surface",
+  "outputDir": "packages/assets/game/environment/prop-surface/derived",
+  "profiles": {
+    "shadow": {
+      "mode": "height-field",
+      "gridLongest": 10,
+      "maxRatio": 0.12,
+      "maxTriangles": 900
+    }
+  },
+  "assets": [
+    {
+      "key": "statue",
+      "file": "statue-v2.glb",
+      "class": "static-prop",
+      "lods": false,
+      "movingParts": false
+    }
+  ]
+}
