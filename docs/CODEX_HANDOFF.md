@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.15.1**.
-- The `v3.15.1` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.16.0**.
+- The `v3.16.0` tag is the coordinated desktop/web/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
@@ -53,6 +53,16 @@ project decision obsolete.
   to its approved source-axis/gameplay `+90°` yaw after the temporary 180° live-sortie correction was
   explicitly reverted. Its shared hull, LODs and shadow proxy must keep that same orientation. Palm
   presentation remains the accepted baseline.
+- Release 3.16.0 rebuilds the Command Deck around eight standalone authored chrome plates. Radar and
+  selection form one resizable instrument; mixed-selection content scrolls under a fixed header in a
+  row-major three-column grid; build, repair, sell, radar and formation controls retain their real
+  hit targets and hover states; and the top wings, objectives, operation context and notifications
+  remain contained at supported HUD sizes. The radar uses a restrained phosphor/scanline treatment.
+  Easy adaptive pressure is softer, render scale is staged before WebGPU warmup, and the current
+  realism/diagnostics pass remains covered by renderer parity gates. The detached autumn-tree shadow
+  is corrected. The approved worn-bronze Meshy civic monument, including its integrated base, is the
+  only map statue; the retired procedural low-poly variants must not return. New low-poly props require
+  explicit project-owner approval before creation.
 
 The repository should be clean and `origin/main` should match the working branch at this handoff.
 Verify rather than trusting that sentence after time has passed.
@@ -68,7 +78,7 @@ Verify rather than trusting that sentence after time has passed.
 | Imported model roster and status | `docs/ASSET_CONVERSION_MAP.md` |
 | Canonical shared models, brand art and fonts | `packages/assets/`; boundaries guarded by `npm run lint` and `npm run check:ownership` |
 | Standalone WebGPU model catalog and infantry stress tooling | `apps/asset-lab/` |
-| In-match DEV-only load controls (Cheat Engine) | `apps/game/src/dev/CheatEngine.ts`; boundary guard in `apps/game/vite.config.ts` |
+| In-match DEV-only load controls (Cheat Engine) | `apps/game/src/dev/CheatEngine.ts`; art seam in `apps/game/src/game/Bootstrap.ts`; boundary guard in `apps/game/vite.config.ts` |
 | Windows signing, SmartScreen, checksums and antivirus disputes | `docs/DESKTOP_DISTRIBUTION.md` |
 | Model conditioning, LOD, texture and shadow budgets | `docs/ASSET_OPTIMIZATION_PIPELINE.md` |
 | Environment dirt/decals/props/atmosphere rollout | `docs/ENVIRONMENT_REALISM_PLAN.md` |
@@ -107,6 +117,8 @@ tests, free/instant production, 4,096-deep local queues, max-alive bypass, test-
 grants and army healing. It is deliberately not a `*.system.ts`: Bootstrap reaches it only through
 an `__DEV__` dynamic import, the simulation mutators independently refuse calls when `__DEV__` is
 false, and the production Vite build fails if any Cheat Engine UI marker reaches emitted assets.
+Out-of-match faction spawning requests art through a callback owned by Bootstrap, the designated
+cross-layer composition root; the `dev` layer must not import `art` or `render` directly.
 Its X removes the panel completely, the shortcut restores it, and a header double-click is the only
 compact/collapsed mode; do not restore a persistent launcher chip.
 

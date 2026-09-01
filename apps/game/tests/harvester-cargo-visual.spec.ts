@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   SOVIET_HARVESTER_CARGO_PLACEMENT,
   buildSovietHarvesterCargoGeometry,
-  createSovietHarvesterCargoMaterial,
 } from '../src/art/HarvesterCargo';
+import { createSovietHarvesterCargoNodeMaterial } from '../src/art/UnitNodeMaterial';
 
 describe('Soviet harvester visible cargo experiment', () => {
   it('keeps the ore heap cheap and inside the authored hopper envelope', () => {
@@ -23,7 +23,7 @@ describe('Soviet harvester visible cargo experiment', () => {
   });
 
   it('uses the WebGPU node material and never adds a texture fetch', () => {
-    const material = createSovietHarvesterCargoMaterial();
+    const material = createSovietHarvesterCargoNodeMaterial();
     expect(material.isNodeMaterial).toBe(true);
     expect(material.vertexColors).toBe(true);
     expect(material.map).toBeNull();

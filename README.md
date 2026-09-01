@@ -85,18 +85,20 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
-## What's new in 3.15.1
+## What's new in 3.16.0
 
-- **Repaired trees at every tactical distance:** broadleaf LODs retain their approved PBR bark and
-  crown, autumn trees no longer collapse into a radial sunflower, and conifers keep visible trunks
-  with coherent but naturally varied foliage.
-- **Shadows follow what casts them:** tree, palm, bush and grass proxies remain attached to their
-  visible plants, while field tents, supply boxes and barrel groups no longer project giant joined
-  rectangles. Both grass identities cast consistently again.
-- **Correct Soviet bomber heading:** the imported Molot now maps its source nose onto gameplay
-  forward, so attack and return flights no longer appear tail-first.
-- **Stronger regression coverage:** audited asset budgets, generator provenance and native-WebGPU
-  review fixtures now pin the repaired silhouettes, LOD material contract and component shadows.
+- **A rebuilt Command Deck:** the authored gunmetal HUD now scales as joined instruments, keeps its
+  controls inside their chrome, scrolls mixed selections beneath a fixed header and fits three unit
+  cards per row. Radar, build, repair, sell and formation controls have restored interaction states.
+- **Clearer battlefield information:** top-wing resources, operation context, objectives, toasts and
+  selection details are aligned and contained at every supported HUD size. The radar gains a subtle
+  green phosphor-and-scanline treatment without sacrificing map readability.
+- **Fairer Easy skirmishes:** adaptive Easy pressure is less aggressive, giving new commanders more
+  recovery room without changing the higher difficulty profiles.
+- **Stronger WebGPU presentation:** the realism and diagnostics pass improves atmosphere and staged
+  render-scale startup, while corrected autumn-tree shadows remove detached dark blocks.
+- **A proper civic monument:** the legacy low-poly statue is retired in favour of the approved worn
+  bronze Meshy asset and its integrated base. New low-poly props now require explicit owner approval.
 
 ## Play VOLTMARCH
 
@@ -105,7 +107,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.15.1**. The
+The browser build and Windows release share the same game. The current release is **3.16.0**. The
 Windows version uses the native Electron storage and update layers and is WebGPU-first and
 WebGPU-locked for normal play.
 

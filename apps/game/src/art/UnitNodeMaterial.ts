@@ -40,12 +40,13 @@
  */
 
 import * as THREE from 'three';
-import { MeshPhysicalNodeMaterial } from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  clamp, materialColor, materialRoughness, mix, normalWorld, smoothstep, vec3, vec4,
+  attribute, clamp, materialColor, materialRoughness, mix, normalWorld, positionLocal,
+  smoothstep, vec3, vec4,
 } from 'three/tsl';
-import { UNIT_MATERIAL } from '../core/config';
+import { ORE_CRYSTAL_COLOR, UNIT_MATERIAL } from '../core/config';
 import { ditherOutput } from '../render/dither-nodes';
 import { applyGaitNodes } from '../render/gait-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
@@ -218,4 +219,40 @@ export function createUnitNodeMaterial(
    */
   assertUnitMaterialRuling(mat, 'node');
   return mat;
+}
+
+/** WebGPU-only animated ore fill used by the Soviet collector's open hopper. */
+class HarvesterCargoNodeMaterial extends MeshStandardNodeMaterial {
+  override setupPosition(builder: NodeBuilder): Vec3N {
+    const fill = clamp(attribute<'vec4'>('aState', 'vec4').w, 0.0, 1.0)
+      .toVar('vmCargoFill');
+    const footprint = smoothstep(0.02, 0.16, fill).toVar('vmCargoFootprint');
+    const height = mix(0.08, 1.0, fill).toVar('vmCargoHeight');
+    const sink = fill.oneMinus().mul(0.34).toVar('vmCargoSink');
+    positionLocal.assign(vec3(
+      positionLocal.x.mul(footprint),
+      positionLocal.y.mul(height).sub(sink),
+      positionLocal.z.mul(footprint),
+    ));
+    const position = super.setupPosition(builder) as Vec3N;
+    shroudVertexUv();
+    return position;
+  }
+
+  override setupOutput(builder: NodeBuilder, outputNode: Vec4N): Vec4N {
+    return super.setupOutput(builder, shroudTint(outputNode)) as Vec4N;
+  }
+}
+
+export function createSovietHarvesterCargoNodeMaterial(): MeshStandardNodeMaterial {
+  const material = new HarvesterCargoNodeMaterial();
+  material.name = 'SovietHarvesterCargoMaterial';
+  material.color = new THREE.Color(0xffffff);
+  material.vertexColors = true;
+  material.roughness = 0.40;
+  material.metalness = 0.03;
+  material.envMapIntensity = 0.56;
+  material.emissive = new THREE.Color(ORE_CRYSTAL_COLOR);
+  material.emissiveIntensity = 0.035;
+  return material;
 }

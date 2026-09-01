@@ -6,14 +6,10 @@
  * otherwise pull the whole control surface into release bundles.
  */
 
-import { QUALITY_PRESETS, UNIT_GREEBLE } from '../core/config';
 import {
-  BuildTab, EntityKind, Faction, type EntityId, type PlayerId,
+  BuildTab, type EntityId, type PlayerId,
 } from '../core/types';
 import type { GameContext } from '../game/Bootstrap';
-import { resolveDefBinding } from '../game/Scenarios';
-import { hasExactRegisteredKindMesh } from '../render/RenderBridge';
-import { allowDevRuntimeContentScope } from '../core/content-closure';
 import {
   BuildKind, production, type BuildEntry, type ProductionDevCheats,
 } from '../sim/Production';
@@ -44,6 +40,7 @@ export interface CheatEngineHandle {
 export interface CheatEngineOptions {
   readonly ctx: GameContext;
   readonly mount: HTMLElement;
+  readonly prepareUnitArt: (entry: BuildEntry) => Promise<void>;
 }
 
 const CATEGORY_LABELS: Readonly<Record<number, string>> = {
@@ -282,7 +279,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   let spawnPreparing = false;
   let spawnCancelled = false;
   let spawned: EntityId[] = [];
-  const preparedFactionArt = new Map<Faction, Promise<void>>();
 
   function persist(): void { writeState(state); }
 
@@ -369,60 +365,6 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
     status.textContent = `${prefix}test batch ${spawned.length} · world ${world.store.aliveCount}/${world.store.capacity}`;
   }
 
-  async function prepareUnitArt(entry: BuildEntry): Promise<void> {
-    const kind = entry.tab === BuildTab.Infantry ? EntityKind.Infantry : EntityKind.Vehicle;
-    if (entry.defId < 0 || hasExactRegisteredKindMesh(kind, entry.faction, entry.defId)) return;
-    if (entry.faction !== Faction.Meridian && entry.faction !== Faction.Reclaim) {
-      throw new Error(`${FACTION_LABELS[entry.faction] ?? 'Selected'} art is not active in this match`);
-    }
-
-    let preparation = preparedFactionArt.get(entry.faction);
-    if (preparation === undefined) {
-      preparation = (async () => {
-        const preset = QUALITY_PRESETS[options.ctx.loop.quality] ?? QUALITY_PRESETS[2];
-        const atlasSize = Math.min(UNIT_GREEBLE.atlasSize, Math.max(256, preset.textureSize));
-        allowDevRuntimeContentScope(
-          `art/unit/${entry.faction}/**`,
-          'development Cheat Engine requested an out-of-match faction',
-        );
-        const binding = await resolveDefBinding();
-        if (entry.faction === Faction.Meridian) {
-          const art = await import('../art/Faction3Units');
-          const modelKey = art.MERIDIAN_UNIT_MODELS[entry.key];
-          const report = await art.buildAndRegisterMeridianUnits(
-            atlasSize,
-            binding.unitId,
-            modelKey === undefined ? new Set() : new Set([modelKey]),
-          );
-          if (report.streamRemaining !== undefined) {
-            void report.streamRemaining(() => !disposed).catch((error: unknown) => {
-              console.error('[cheat-engine] deferred Meridian art preparation failed', error);
-            });
-          }
-        } else {
-          const art = await import('../art/Faction4Units');
-          const modelKey = art.RECLAIM_UNIT_MODELS[entry.key];
-          const report = await art.buildAndRegisterReclaimUnits(
-            atlasSize,
-            binding.unitId,
-            modelKey === undefined ? new Set() : new Set([modelKey]),
-          );
-          if (report.streamRemaining !== undefined) {
-            void report.streamRemaining(() => !disposed).catch((error: unknown) => {
-              console.error('[cheat-engine] deferred Reclamation art preparation failed', error);
-            });
-          }
-        }
-      })();
-      preparedFactionArt.set(entry.faction, preparation);
-      preparation.catch(() => preparedFactionArt.delete(entry.faction));
-    }
-    await preparation;
-    if (!hasExactRegisteredKindMesh(kind, entry.faction, entry.defId)) {
-      throw new Error(`${entry.name} render binding was not published`);
-    }
-  }
-
   async function startSpawn(): Promise<void> {
     if (spawnFrame !== 0 || spawnPreparing) return;
     const requested = clamp(Number.parseInt(count.value, 10) || 1, 1, options.ctx.world.store.capacity);
@@ -445,7 +387,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
 
     try {
       updateStatus(`preparing ${entry.name} art…`);
-      await prepareUnitArt(entry);
+      await options.prepareUnitArt(entry);
     } catch (error) {
       spawnPreparing = false;
       spawn.disabled = false;

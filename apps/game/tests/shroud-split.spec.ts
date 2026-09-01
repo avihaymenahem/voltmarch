@@ -113,7 +113,10 @@ describe('everything that draws above the ground tints itself', () => {
 
   it('builds imported PBR materials through the WebGPU shroud twin too', () => {
     const loader = code(read('apps/game/src/world/EnvironmentAssetLoader.ts'));
-    expect(loader).toContain('np.createShroudTintedStandard(params)');
+    const propNode = code(read('apps/game/src/world/PropNodeMaterial.ts'));
+    expect(loader).toContain('np.createEnvironmentPropMaterials(params)');
+    expect(propNode).toContain('shroudVertexUv();');
+    expect(propNode).toContain('shroudTint(outputNode)');
     expect(loader).toContain("'vm.environment-pbr.shroud.v1'");
   });
 

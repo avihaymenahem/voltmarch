@@ -22,11 +22,14 @@
 import { Channels } from '../core/events';
 import { GameLoop, Profiler, SystemRegistry, devAsserts, now } from '../core/loop';
 import { World } from '../core/world';
-import { DEFAULT_QUALITY_TIER, GAME_SPEEDS, MAP_SIZE, SIM_HZ } from '../core/config';
+import {
+  DEFAULT_QUALITY_TIER, GAME_SPEEDS, MAP_SIZE, QUALITY_PRESETS, SIM_HZ, UNIT_GREEBLE,
+} from '../core/config';
 import type { Object3D } from 'three';
 
 import {
-  Faction, RenderPhase, type QualityTier as CoreQualityTier, type RenderContext,
+  BuildTab, EntityKind, Faction, RenderPhase,
+  type QualityTier as CoreQualityTier, type RenderContext,
 } from '../core/types';
 
 import {
@@ -58,10 +61,12 @@ import { prepareWorldWorkers } from '../core/workers/world-warm';
 import { prepareTextureWorkers } from '../core/workers/texture-warm.system';
 import { markBattlefieldReady, resetBattlefieldReady } from '../core/battlefield-ready';
 import {
-  contentClosureEpoch, contentClosureReport, ensureContentClosureSeed, markContentClosureRevealed,
-  resetContentClosureRuntime,
+  allowDevRuntimeContentScope, contentClosureEpoch, contentClosureReport, ensureContentClosureSeed,
+  markContentClosureRevealed, resetContentClosureRuntime,
 } from '../core/content-closure';
-import { plannedScenario } from './Scenarios';
+import { plannedScenario, resolveDefBinding } from './Scenarios';
+import { hasExactRegisteredKindMesh } from '../render/RenderBridge';
+import type { BuildEntry } from '../sim/Production';
 import {
   annotateBootRun,
   beginBootSpan,
@@ -344,6 +349,62 @@ export function bootstrap(options: BootOptions): GameHandle {
   /* -- frame body --------------------------------------------------------- */
 
   let disposed = false;
+  const preparedDevFactionArt = new Map<Faction, Promise<void>>();
+
+  async function prepareDevUnitArt(entry: BuildEntry): Promise<void> {
+    const kind = entry.tab === BuildTab.Infantry ? EntityKind.Infantry : EntityKind.Vehicle;
+    if (entry.defId < 0 || hasExactRegisteredKindMesh(kind, entry.faction, entry.defId)) return;
+    if (entry.faction !== Faction.Meridian && entry.faction !== Faction.Reclaim) {
+      throw new Error(`Faction ${entry.faction} art is not active in this match`);
+    }
+
+    let preparation = preparedDevFactionArt.get(entry.faction);
+    if (preparation === undefined) {
+      preparation = (async () => {
+        const preset = QUALITY_PRESETS[loop.quality] ?? QUALITY_PRESETS[2];
+        const atlasSize = Math.min(UNIT_GREEBLE.atlasSize, Math.max(256, preset.textureSize));
+        allowDevRuntimeContentScope(
+          `art/unit/${entry.faction}/**`,
+          'development Cheat Engine requested an out-of-match faction',
+        );
+        const binding = await resolveDefBinding();
+        if (entry.faction === Faction.Meridian) {
+          const art = await import('../art/Faction3Units');
+          const modelKey = art.MERIDIAN_UNIT_MODELS[entry.key];
+          const report = await art.buildAndRegisterMeridianUnits(
+            atlasSize,
+            binding.unitId,
+            modelKey === undefined ? new Set() : new Set([modelKey]),
+          );
+          if (report.streamRemaining !== undefined) {
+            void report.streamRemaining(() => !disposed).catch((error: unknown) => {
+              console.error('[cheat-engine] deferred Meridian art preparation failed', error);
+            });
+          }
+        } else {
+          const art = await import('../art/Faction4Units');
+          const modelKey = art.RECLAIM_UNIT_MODELS[entry.key];
+          const report = await art.buildAndRegisterReclaimUnits(
+            atlasSize,
+            binding.unitId,
+            modelKey === undefined ? new Set() : new Set([modelKey]),
+          );
+          if (report.streamRemaining !== undefined) {
+            void report.streamRemaining(() => !disposed).catch((error: unknown) => {
+              console.error('[cheat-engine] deferred Reclamation art preparation failed', error);
+            });
+          }
+        }
+      })();
+      preparedDevFactionArt.set(entry.faction, preparation);
+      preparation.catch(() => preparedDevFactionArt.delete(entry.faction));
+    }
+
+    await preparation;
+    if (!hasExactRegisteredKindMesh(kind, entry.faction, entry.defId)) {
+      throw new Error(`${entry.name} render binding was not published`);
+    }
+  }
 
   // Camera matrices are the authoritative input to both the view and the
   // fitted shadow frustum. Comparing them catches pan/zoom/rotation, aspect
@@ -528,7 +589,11 @@ export function bootstrap(options: BootOptions): GameHandle {
       if (devBuild()) {
         try {
           const { mountCheatEngine } = await import('../dev/CheatEngine');
-          devCheatEngine = mountCheatEngine({ ctx, mount: options.debugRoot });
+          devCheatEngine = mountCheatEngine({
+            ctx,
+            mount: options.debugRoot,
+            prepareUnitArt: prepareDevUnitArt,
+          });
         } catch (err) {
           // A diagnostic tool may never prevent a match from starting.
           console.warn('[cheat-engine] failed to mount', err);

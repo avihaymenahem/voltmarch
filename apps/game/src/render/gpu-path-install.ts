@@ -50,7 +50,9 @@ import { createRoadNodeMaterials } from '../world/RoadNodeMaterial';
 import {
   createEnvironmentPropNodeMaterials, createPropNodeMaterials,
 } from '../world/PropNodeMaterial';
-import { createUnitNodeMaterial } from '../art/UnitNodeMaterial';
+import {
+  createSovietHarvesterCargoNodeMaterial, createUnitNodeMaterial,
+} from '../art/UnitNodeMaterial';
 import { createPadNodeMaterial, createStructureNodeMaterial } from '../art/StructureNodeMaterial';
 import {
   createVfxAdditiveNodeMaterial, createVfxDebrisNodeMaterial, createVfxLitNodeMaterial,
@@ -377,6 +379,7 @@ export function install(): void {
     createDecalMaterial: (atlas, cols, inset) => createDecalNodeMaterial(atlas, cols, inset),
 
     createUnitMaterial: (atlas, name) => createUnitNodeMaterial(atlas, name),
+    createSovietHarvesterCargoMaterial: createSovietHarvesterCargoNodeMaterial,
     createStructureMaterial: (atlas, name, coat) => createStructureNodeMaterial(atlas, name, coat),
     createPadMaterial: (atlas, name) => createPadNodeMaterial(atlas, name),
 

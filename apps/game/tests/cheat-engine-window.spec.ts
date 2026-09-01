@@ -7,6 +7,10 @@ const source = readFileSync(
   path.join(process.cwd(), 'apps/game/src/dev/CheatEngine.ts'),
   'utf8',
 );
+const bootstrapSource = readFileSync(
+  path.join(process.cwd(), 'apps/game/src/game/Bootstrap.ts'),
+  'utf8',
+);
 
 describe('Cheat Engine window controls', () => {
   it('closes completely and reopens through Ctrl+Shift+C without a mini launcher', () => {
@@ -36,11 +40,15 @@ describe('Cheat Engine window controls', () => {
   });
 
   it('prepares skipped faction art before direct-spawning a unit', () => {
-    expect(source).toContain('await prepareUnitArt(entry)');
-    expect(source).toContain('hasExactRegisteredKindMesh');
-    expect(source).toContain("await import('../art/Faction3Units')");
-    expect(source).toContain("await import('../art/Faction4Units')");
-    expect(source.indexOf('await prepareUnitArt(entry)'))
+    expect(source).toContain('await options.prepareUnitArt(entry)');
+    expect(source.indexOf('await options.prepareUnitArt(entry)'))
       .toBeLessThan(source.indexOf('service.devSpawnUnits({'));
+    expect(source).not.toContain("import('../art/");
+    expect(source).not.toContain("from '../render/RenderBridge'");
+    expect(bootstrapSource).toContain('async function prepareDevUnitArt(entry: BuildEntry)');
+    expect(bootstrapSource).toContain('hasExactRegisteredKindMesh');
+    expect(bootstrapSource).toContain("await import('../art/Faction3Units')");
+    expect(bootstrapSource).toContain("await import('../art/Faction4Units')");
+    expect(bootstrapSource).toContain('prepareUnitArt: prepareDevUnitArt');
   });
 });

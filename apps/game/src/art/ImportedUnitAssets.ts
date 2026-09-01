@@ -25,15 +25,17 @@ import { beginBootSpan } from '../core/boot-telemetry';
 import { applyShroudTint } from '../render/FogOfWar';
 import type { KindMesh, KindMeshPart, SocketSpec } from '../render/RenderBridge';
 import { unitMaterialFor, type UnitModel } from './UnitFactory';
-import type { UnitMaterialTextures } from '../render/gpu-path';
+import { nodePath, type UnitMaterialTextures } from '../render/gpu-path';
 import { applyUnitRim } from './unit-rim';
+import {
+  buildSovietHarvesterCargoGeometry, SOVIET_HARVESTER_CARGO_PLACEMENT,
+} from './HarvesterCargo';
 import { acquireRuntimeKTX2Loader, releaseRuntimeKTX2Loader } from './RuntimeKTX2Loader';
 import { createRuntimeGLTFLoader } from './RuntimeGLTFLoader';
 import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
 } from './geometry-attributes';
-import { createSovietHarvesterCargoPart } from './HarvesterCargo';
 
 interface ImportedUnitLodSpec {
   url: string;
@@ -1877,9 +1879,21 @@ export async function loadImportedUnitOverride(
     });
   }
   if (spec.key === 'soviet_harvester') {
-    const cargo = createSovietHarvesterCargoPart();
-    parts.push(cargo);
-    runtimeMaterials.add(cargo.material as THREE.Material);
+    const cargoMaterial = nodePath()?.createSovietHarvesterCargoMaterial();
+    if (cargoMaterial !== undefined) {
+      parts.push({
+        geometry: buildSovietHarvesterCargoGeometry(),
+        material: cargoMaterial,
+        ...SOVIET_HARVESTER_CARGO_PLACEMENT,
+        part: PartId.Hopper,
+        // The hull's authored proxy remains the shadow caster and the tiny
+        // heap does not warrant a second AO-normal submission.
+        castShadow: false,
+        receiveShadow: true,
+        aoOccluder: false,
+      });
+      runtimeMaterials.add(cargoMaterial);
+    }
   }
 
   // Sockets stay procedural: the imported shell is fitted to that exact

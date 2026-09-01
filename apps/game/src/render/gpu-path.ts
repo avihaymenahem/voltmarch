@@ -429,6 +429,7 @@ export interface NodePath {
 
   /* -- art -------------------------------------------------------------- */
   createUnitMaterial(atlas: UnitMaterialTextures, name: string): THREE.Material;
+  createSovietHarvesterCargoMaterial(): THREE.Material;
   createStructureMaterial(atlas: GreebleAtlas, name: string, coat?: StructureCoat): THREE.Material;
   createPadMaterial(atlas: GreebleAtlas, name: string): THREE.Material;
   createPropMaterials(): PropMaterialSetLike;

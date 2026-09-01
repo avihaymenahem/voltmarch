@@ -808,7 +808,8 @@ describe('main menu — Load Game is enabled only when there is something to loa
 
   it('reports the requested backend before the deferred title renderer exists', () => {
     expect(menuBackendLabel(undefined, '?gpu=webgpu')).toBe('WebGPU');
-    expect(menuBackendLabel(undefined, '')).toBe('WebGL2');
+    expect(menuBackendLabel(undefined, '')).toBe('WebGPU');
+    expect(menuBackendLabel(undefined, '?gpu=webgl')).toBe('WebGL2');
   });
 
   it('reports the live backend once the title renderer exists', () => {
