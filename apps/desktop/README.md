@@ -117,6 +117,27 @@ flags still reach the renderer as an ordinary query string: `--vm-<flag>=<value>
 the allowlist in `apps/desktop/src/app-url.ts`. `--vm-gpu=webgl` is the explicit diagnostic escape
 hatch; unknown flags are dropped.
 
+## Crash and issue diagnostics
+
+Diagnostics are always on and event-driven; they do no per-frame work. The renderer keeps the
+newest 512 structured events in memory and Electron persists a validated copy under
+`userData/diagnostics/events.jsonl`. Files rotate at 2 MiB with four generations retained. Native
+Chromium and GPU crashes also produce local minidumps through Electron's crash reporter; automatic
+uploading is disabled.
+
+The event stream captures browser exceptions and unhandled rejections, renderer console warnings
+and errors, worker-pool fallbacks, WebGPU device failures, failed navigation, a hung/recovered
+window, and renderer/GPU/utility process exits. Payloads are depth/size bounded and credentials,
+relay values, cookies, and user-home paths are redacted both in the renderer and again in the main
+process before disk.
+
+For a support report, use **Settings → Developer → Diagnostics → Save**. Its
+`recentEvents` section includes the latest persisted desktop events and current match context. In
+development, `__VM.diagnostics(200)` reads the same recent history and
+`__VM.diagnosticMark('before repro', { note: '...' })` adds an explicit breadcrumb. The existing
+**Reveal User Data** action opens the parent directory when the raw rotated JSONL or native dump is
+needed.
+
 ## Release updates
 
 Installed NSIS builds check the GitHub release channel 20 seconds after launch and every four

@@ -56,6 +56,7 @@
 
 import * as THREE from 'three';
 import { beginBootSpan } from '../core/boot-telemetry';
+import { logDiagnostic } from '../core/diagnostic-log';
 import { ShadowCadence, shadowCadenceModeFromSearch } from './shadow-cadence';
 
 import { RepaintGuard } from './RepaintGuard';
@@ -77,7 +78,7 @@ import {
   GpuUnavailableError,
   gpuFailureConsoleLine,
   gpuFailureReport,
-  hrefWithoutGpuFlag,
+  hrefForWebgl,
   showGpuFailure,
   watchDeviceLoss,
   type GpuFailure,
@@ -566,12 +567,11 @@ export const RENDER_CONFIG: RenderConfig = {
       vignette: 0.28,
       vignetteSoftness: 0.55,
       /*
-       * 2026-08-27 art direction explicitly restored FILM GRAIN, but not the
-       * old effect: this is 0.006 at a calmer 12 Hz, with a tested 0.008 hard
-       * ceiling, rather than the former 0.016 at 24 Hz. Chromatic aberration
-       * remains banned and has no WebGPU implementation.
+       * Full-frame screen-space grain aliases into soft horizontal rows when
+       * the high-DPI canvas resolves to CSS pixels. Surface detail belongs to
+       * the materials; sky banding has its own local dither. Keep this zero.
        */
-      grain: 0.006,
+      grain: 0,
       grainSize: 1.0,
       chromaticAberration: 0,
       sharpen: 0.22,
@@ -1432,6 +1432,7 @@ function liveCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * that route automatically; it does not leave it broken.
  */
 function raiseGpuFailure(failure: GpuFailure): void {
+  logDiagnostic('fatal', 'render.webgpu', 'gpu-failure', failure.message, failure);
   console.error(gpuFailureConsoleLine(failure));
   if (typeof document === 'undefined' || document.body === null) return;
   const here = typeof location !== 'undefined' ? location.href : '';
@@ -1445,7 +1446,7 @@ function raiseGpuFailure(failure: GpuFailure): void {
       onWebgl: () => {
         // `replace`, not `assign`: the WebGPU URL must not sit in the back
         // stack waiting for a stray Back press to reproduce the failure.
-        location.replace(hrefWithoutGpuFlag(here));
+        location.replace(hrefForWebgl(here));
       },
       onRetry: () => {
         location.replace(here);

@@ -7,6 +7,7 @@
  *   node tools/gpu-frame-ab.mjs [--scene allied-base] [--size 2560x1440]
  *                               [--frames 60] [--blocks 5] [--no-build]
  *                               [--backend webgpu] [--aa traa|taau] [--taau-scale .75]
+ *                               [--gi auto|off|low|medium|high]
  *                               [--capture .codex-artifacts/frame]
  *   node tools/gpu-frame-ab.mjs --match --units 200 --sim 900
  *
@@ -113,12 +114,19 @@ const ART = flag('art', '');
 const BACKEND = flag('backend', 'both');
 const AA = flag('aa', '').toLowerCase();
 const TAAU_SCALE = flag('taau-scale', '');
+const GI = flag('gi', 'auto').toLowerCase();
 const BACKENDS = BACKEND === 'both' ? ['webgl', 'webgpu'] : [BACKEND];
 if (BACKENDS.some((gpu) => gpu !== 'webgl' && gpu !== 'webgpu')) {
   throw new Error(`--backend must be webgl, webgpu or both; received "${BACKEND}"`);
 }
 if (AA && BACKENDS.some((gpu) => gpu !== 'webgpu')) {
   throw new Error('--aa is a WebGPU experiment; pair it with --backend webgpu');
+}
+if (!['auto', 'off', 'ssgi', 'low', 'medium', 'high'].includes(GI)) {
+  throw new Error(`--gi must be auto, off, low, medium or high; received "${GI}"`);
+}
+if (GI !== 'auto' && BACKENDS.some((gpu) => gpu !== 'webgpu')) {
+  throw new Error('--gi is a WebGPU measurement control; pair it with --backend webgpu');
 }
 if (!['adaptive', 'legacy', 'half'].includes(SHADOW_CADENCE)) {
   throw new Error(`--shadow-cadence must be adaptive, legacy or half; received "${SHADOW_CADENCE}"`);
@@ -245,6 +253,7 @@ async function measure(gpu) {
     if (gpu === 'webgpu') qs.set('gpu', 'webgpu');
     if (AA) qs.set('aa', AA);
     if (TAAU_SCALE) qs.set('taauScale', TAAU_SCALE);
+    if (GI !== 'auto') qs.set('gi', GI);
     if (!RENDER_CULL) qs.set('rendercull', 'off');
     if (SHADOW_PROXY === 'legacy') qs.set('shadowproxy', 'legacy');
     if (SCATTER_BATCH === 'legacy') qs.set('scatterbatch', 'legacy');
@@ -690,6 +699,7 @@ async function measure(gpu) {
       requestedBackend: gpu,
       postReuse: POST_REUSE,
       postReuseApplied: gpu === 'webgpu',
+      gi: GI,
       baseWear: BASE_WEAR,
       command: process.argv.slice(2),
     };
@@ -765,6 +775,7 @@ if (FOLIAGE) console.log(`foliage presentation: ${FOLIAGE}`);
 if (FOLIAGE_COMPUTE) console.log(`foliage compute: ${FOLIAGE_COMPUTE}`);
 if (ART) console.log(`art preset: ${ART}`);
 console.log(`post HDR input reuse: ${POST_REUSE}`);
+console.log(`indirect-lighting policy: ${GI}`);
 if (MATCH) {
   console.log(`load: ${sample.units} drawn units · peak ${sample.ramp?.peak ?? sample.units} · ${(sample.ramp?.ticks ?? 0) / 30}s simulated`);
   if (UNIT_TARGET > 0 && sample.units < UNIT_TARGET) {

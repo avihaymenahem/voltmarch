@@ -56,21 +56,19 @@ function nonZeroLiterals(text: string, key: string): string[] {
 }
 
 describe('post-effect guardrails stay enforced', () => {
-  it('film grain is present but remains below its subtle ceiling', () => {
-    expect(RENDER_CONFIG.post.grade.grain).toBeGreaterThan(0);
-    expect(RENDER_CONFIG.post.grade.grain).toBeLessThanOrEqual(0.008);
+  it('film grain is zero in the shipped render config', () => {
+    expect(RENDER_CONFIG.post.grade.grain).toBe(0);
   });
 
   it('chromatic aberration is zero in the shipped render config', () => {
     expect(RENDER_CONFIG.post.grade.chromaticAberration).toBe(0);
   });
 
-  it('no quality tier raises grain above its ceiling or reintroduces CA', () => {
+  it('no quality tier reintroduces grain or CA', () => {
     // A tier preset overwrites the whole post block, so it is a live route back.
     for (const t of TIERS) {
       applyQualityTier(t);
-      expect(RENDER_CONFIG.post.grade.grain, `tier ${t}`).toBeGreaterThan(0);
-      expect(RENDER_CONFIG.post.grade.grain, `tier ${t}`).toBeLessThanOrEqual(0.008);
+      expect(RENDER_CONFIG.post.grade.grain, `tier ${t}`).toBe(0);
       expect(RENDER_CONFIG.post.grade.chromaticAberration, `tier ${t}`).toBe(0);
     }
   });
@@ -84,7 +82,7 @@ describe('post-effect guardrails stay enforced', () => {
    * assertion above passes at module scope while that line is present — it only
    * bites once the shell applies settings, which no node test does.
    */
-  it('no source file writes a non-zero CA or lens-dirt literal', () => {
+  it('no source file writes non-zero grain, CA or lens-dirt literals', () => {
     const files = [
       'apps/game/src/render/renderer.ts',
       'apps/game/src/shell/Settings.ts',
@@ -104,15 +102,15 @@ describe('post-effect guardrails stay enforced', () => {
        * which is this file's entire thesis. There is now no field to set; the
        * scan is here so reintroducing one fails in CI rather than in a grade.
        */
-      for (const key of ['chromaticAberration', 'lensDirt']) {
+      for (const key of ['grain', 'chromaticAberration', 'lensDirt']) {
         for (const hit of nonZeroLiterals(text, key)) offenders.push(`${f}: ${hit}`);
       }
     }
     expect(
       offenders,
-      'CLAUDE.md bans chromatic aberration and RA3_LOOK_BIBLE.md §11 bans lens '
-      + 'dirt. If you are deliberately lifting '
-      + 'one of those bans, change the document and this test in the same '
+      'CLAUDE.md bans film grain and chromatic aberration, and '
+      + 'RA3_LOOK_BIBLE.md §11 bans lens dirt. If you are deliberately lifting '
+      + 'one of those bans, change the documents and this test in the same '
       + 'commit — do not just raise the number.',
     ).toEqual([]);
   });

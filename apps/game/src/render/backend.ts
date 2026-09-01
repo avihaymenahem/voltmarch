@@ -21,7 +21,7 @@
  * branch against hand-built fakes.
  */
 
-/** The two renderers the product could run. `webgl` is the shipping default. */
+/** The two renderers the product could run. `webgpu` is the product default. */
 export type GpuBackend = 'webgl' | 'webgpu';
 
 /**
@@ -33,22 +33,20 @@ export type GpuBackend = 'webgl' | 'webgpu';
  */
 export type LiveBackend = GpuBackend | 'webgl2-fallback';
 
-/** The boot flag. `?gpu=webgpu`; anything else, including absent, is WebGL. */
+/** Temporary rollback flag. The normal product path is WebGPU without a query. */
 export const GPU_QUERY_PARAM = 'gpu';
 
 /**
  * Reads the requested backend off a query string.
  *
- * DEFAULTS TO `webgl` FOR EVERY INPUT IT DOES NOT RECOGNISE, deliberately. A
- * typo in a debug flag must never change which renderer a player gets; the
- * WebGPU path is opt-in and stays opt-in. `?gpu=webgl` is accepted so the flag
- * can be pinned explicitly in a bug report.
+ * WebGPU is the product default. `?gpu=webgl` remains as a temporary explicit
+ * rollback; absent and unrecognised values stay on the product renderer.
  */
 export function requestedBackend(search: string): GpuBackend {
   // Tolerate a bare query string with or without its leading '?'.
   const q = search.startsWith('?') ? search.slice(1) : search;
   const value = new URLSearchParams(q).get(GPU_QUERY_PARAM);
-  return value !== null && value.toLowerCase() === 'webgpu' ? 'webgpu' : 'webgl';
+  return value !== null && value.toLowerCase() === 'webgl' ? 'webgl' : 'webgpu';
 }
 
 /**

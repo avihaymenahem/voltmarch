@@ -36,9 +36,9 @@
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, attribute, clamp, float, materialClearcoat, materialColor, materialEmissive,
-  max, mix, normalLocal, positionLocal, select, sin, smoothstep, step, texture,
-  uniform, uv, varyingProperty, vec3, vec4,
+  Fn, abs, attribute, clamp, float, materialClearcoat, materialColor, materialEmissive,
+  materialRoughness, max, mix, normalLocal, normalWorld, positionLocal, select, sin,
+  smoothstep, step, texture, uniform, uv, varyingProperty, vec3, vec4,
 } from 'three/tsl';
 import { castShadowPosition } from '../render/cast-shadow-nodes';
 import { ditherOutput } from '../render/dither-nodes';
@@ -49,6 +49,10 @@ import { configureUnitNodeBase } from './UnitNodeMaterial';
 import { assertUnitMaterialRuling } from './UnitFactory';
 import type { GreebleAtlas } from './Greeble';
 import { structureRim } from './structure-rim-nodes';
+import {
+  STRUCTURE_DUST_TINT_LINEAR, STRUCTURE_SURFACE_PROFILES, type StructureSurfaceProfile,
+} from './structure-surface';
+import { surfaceClimateNode, surfaceContactNode } from '../world/surface-environment-nodes';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -97,6 +101,8 @@ const vRaClip = varyingProperty('float', 'vRaClip');
 const vRaState = varyingProperty('vec4', 'vRaState');
 /** `aTeamColor`, interpolated. Same. */
 const vRaTeam = varyingProperty('vec3', 'vRaTeam');
+/** Model-space height after construction/door displacement, used for restrained contact grime. */
+const vRaLocalHeight = varyingProperty('float', 'vRaLocalHeight');
 
 /* ==========================================================================
  * 3. THE VERTEX SOLVE — `STRUCTURE_ANIM_SOLVE` + `STRUCTURE_ANIM_APPLY`
@@ -200,6 +206,7 @@ function applyStructureVertex(): void {
 
   // A static pad is never clipped; everything else is cut at the ground plane.
   const isPad = aFeature.x.sub(STRUCTURE_FEATURE.pad).abs().lessThan(0.5);
+  vRaLocalHeight.assign(positionLocal.y);
   vRaClip.assign(select(isPad, float(1.0), positionLocal.y));
   vRaState.assign(aState);
   vRaTeam.assign(aTeamColor);
@@ -289,6 +296,51 @@ class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
   }
 }
 
+function applySurfaceEnvironment(
+  mat: MeshPhysicalNodeMaterial,
+  surfaceClass: FloatN,
+  profile: StructureSurfaceProfile,
+): void {
+  const painted = clamp(surfaceClass, 0.0, 1.0).toVar('raStructurePainted');
+  const porous = painted.oneMinus().toVar('raStructurePorous');
+  const wet = clamp(surfaceClimateNode.x, 0.0, 1.0).toVar('raStructureWet');
+  const up = clamp(normalWorld.y, 0.0, 1.0).toVar('raStructureUp');
+  const dust = clamp(surfaceClimateNode.y, 0.0, 1.0)
+    .mul(up.mul(up))
+    .mul(porous.add(painted.mul(0.18)))
+    .mul(float(1.0).sub(wet.mul(0.82)))
+    .toVar('raStructureDust');
+  const contact = clamp(surfaceContactNode, 0.0, 1.0)
+    .mul(smoothstep(0.0, profile.contactHeightMetres, abs(vRaLocalHeight)).oneMinus())
+    .toVar('raStructureContact');
+
+  const wetDarken = wet.mul(
+    porous.mul(profile.wetPorousDarken).add(painted.mul(profile.wetPaintDarken)),
+  );
+  const dustTint = dust.mul(profile.dustTintStrength);
+  const contactDarken = contact.mul(profile.contactDarken);
+  const climateRgb = mix(
+    materialColor.rgb,
+    vec3(...STRUCTURE_DUST_TINT_LINEAR),
+    dustTint,
+  ).mul(float(1.0).sub(wetDarken).sub(contactDarken));
+
+  // Structures are opaque. Do not read materialColor.a here: the TSL type
+  // declaration exposes materialColor as vec3 even though the stock setup may
+  // internally carry a vec4 (see the vec4 arity finding above).
+  mat.colorNode = vec4(climateRgb.mul(sootFactor()), 1.0);
+  mat.roughnessNode = clamp(
+    materialRoughness
+      .sub(wet.mul(
+        porous.mul(profile.wetPorousRoughnessDrop)
+          .add(painted.mul(profile.wetPaintRoughnessDrop)),
+      ))
+      .add(dust.mul(profile.dustRoughnessGain)),
+    profile.minimumRoughness,
+    1.0,
+  );
+}
+
 /**
  * THE NODE-PATH TWIN OF `createStructureMaterial`.
  *
@@ -312,6 +364,7 @@ class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
  */
 export function createStructureNodeMaterial(
   atlas: GreebleAtlas, name: string, coat?: StructureCoat, silhouetteRim = true,
+  surfaceProfile: StructureSurfaceProfile = STRUCTURE_SURFACE_PROFILES.structure,
 ): MeshPhysicalNodeMaterial {
   const mat = new StructureStandardNodeMaterial(silhouetteRim);
   mat.name = name;
@@ -325,7 +378,8 @@ export function createStructureNodeMaterial(
   // the stock material setup. `materialClearcoat` is that stock scalar on the
   // node path; overriding the node preserves one procedural class mask across
   // both backends without another atlas texture.
-  mat.clearcoatNode = materialClearcoat.mul(texture(atlas.ormMap, uv()).a);
+  const surfaceClass = texture(atlas.ormMap, uv()).a;
+  mat.clearcoatNode = materialClearcoat.mul(surfaceClass);
 
   /*
    * `materialColor` is `color * map` — exactly what `diffuseColor` holds when
@@ -349,7 +403,7 @@ export function createStructureNodeMaterial(
    * colours, whereas `colorNode` is applied before both. Scalar multiplies
   * commute, so the two agree. That is only true while it stays a scalar.
   */
-  mat.colorNode = materialColor.mul(sootFactor());
+  applySurfaceEnvironment(mat, surfaceClass, surfaceProfile);
   mat.emissiveNode = structureEmissive(materialEmissive);
   mat.maskNode = vRaClip.greaterThanEqual(0.0);
   /*
@@ -382,7 +436,9 @@ export function createStructureNodeMaterial(
 export function createPadNodeMaterial(
   atlas: GreebleAtlas, name: string,
 ): MeshPhysicalNodeMaterial {
-  const mat = createStructureNodeMaterial(atlas, name, undefined, false);
+  const mat = createStructureNodeMaterial(
+    atlas, name, undefined, false, STRUCTURE_SURFACE_PROFILES.foundation,
+  );
   mat.clearcoat = 0;
   mat.clearcoatRoughness = 1;
   mat.envMapIntensity = 0.35;

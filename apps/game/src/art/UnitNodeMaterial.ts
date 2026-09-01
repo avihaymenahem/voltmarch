@@ -42,6 +42,9 @@
 import * as THREE from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
+import {
+  clamp, materialColor, materialRoughness, mix, normalWorld, smoothstep, vec3, vec4,
+} from 'three/tsl';
 import { UNIT_MATERIAL } from '../core/config';
 import { ditherOutput } from '../render/dither-nodes';
 import { applyGaitNodes } from '../render/gait-nodes';
@@ -49,6 +52,7 @@ import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import type { UnitMaterialTextures } from '../render/gpu-path';
 import { assertUnitMaterialRuling } from './UnitFactory';
 import { unitRim } from './unit-rim-nodes';
+import { surfaceClimateNode } from '../world/surface-environment-nodes';
 
 type Vec3N = Node<'vec3'>;
 type Vec4N = Node<'vec4'>;
@@ -161,6 +165,34 @@ export function createUnitNodeMaterial(
   const mat = new UnitStandardNodeMaterial();
   mat.name = name;
   configureUnitNodeBase(mat, atlas);
+
+  /*
+   * Shared battlefield exposure, evaluated in the existing unit fragment
+   * graph. Up-facing surfaces collect restrained dust/snow/salt; wetness acts
+   * primarily through roughness so painted armour never turns uniformly black.
+   * `colorNode` precedes stock vertex/team colour, preserving faction read.
+   */
+  const up = clamp(normalWorld.y, 0.0, 1.0).toVar('raUnitSurfaceUp');
+  const wet = clamp(surfaceClimateNode.x, 0.0, 1.0).toVar('raUnitWet');
+  const dust = clamp(surfaceClimateNode.y, 0.0, 1.0)
+    .mul(up.mul(up))
+    .mul(wet.mul(0.82).oneMinus())
+    .toVar('raUnitDust');
+  const snow = clamp(surfaceClimateNode.z, 0.0, 1.0)
+    .mul(smoothstep(0.56, 0.92, up))
+    .mul(wet.mul(0.42).oneMinus())
+    .toVar('raUnitSnow');
+  const dusty = mix(materialColor.rgb, vec3(0.46, 0.39, 0.29), dust.mul(0.14));
+  const snowed = mix(dusty, vec3(0.78, 0.82, 0.84), snow.mul(0.20));
+  mat.colorNode = vec4(snowed.mul(wet.mul(0.045).oneMinus()), 1.0);
+  mat.roughnessNode = clamp(
+    materialRoughness
+      .sub(wet.mul(0.13))
+      .add(dust.mul(0.10))
+      .add(snow.mul(0.13)),
+    0.18,
+    1.0,
+  );
   /*
    * NO `castShadowPositionNode`, AND THAT IS A DECISION RATHER THAN AN OMISSION.
    *

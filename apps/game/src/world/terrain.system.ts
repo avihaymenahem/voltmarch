@@ -36,12 +36,16 @@ import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
 import { ctx } from '../game/context';
 import {
-  notePrewarmAdopted, prewarmedTerrain, prewarmedTerrainTextureKey,
-  prewarmedTerrainTextures,
+  noteIrradianceMainThread, notePrewarmAdopted, prewarmedIrradiance,
+  prewarmedTerrain, prewarmedTerrainTextureKey, prewarmedTerrainTextures,
 } from '../core/workers/world-warm';
 import { Terrain, getTerrain, setActiveTerrain } from './Terrain';
 import { plannedTerrainInput } from './terrain-plan';
 import { preloadTerrainDetailMask } from './terrain-detail-mask';
+import {
+  generateIrradianceField, irradianceFieldKey, type IrradianceFieldData,
+} from './irradiance-field';
+import { setRetainedIrradianceField } from './retained-irradiance';
 
 let terrain: Terrain | null = null;
 
@@ -87,8 +91,8 @@ export default defineSystem({
      * `Promise.all` resolves when the slower of the two lands, which is exactly
      * how long the boot stopped here.
      */
-    const [fields, layerTextures, terrainDetail] = await Promise.all([
-      prewarmedTerrain(), prewarmedTerrainTextures(),
+    const [fields, irradianceWarm, layerTextures, terrainDetail] = await Promise.all([
+      prewarmedTerrain(), prewarmedIrradiance(), prewarmedTerrainTextures(),
       preloadTerrainDetailMask(handle.webgl ?? handle.node!),
     ]);
 
@@ -113,6 +117,54 @@ export default defineSystem({
       'terrainTex',
       layerTextures !== null && layerTextures.key === prewarmedTerrainTextureKey(),
     );
+
+    /*
+     * DEFAULT FEATURE, NO QUERY SWITCH. The field was made inside the terrain
+     * worker while it still owned the height/surface arrays, so adopting it is
+     * one 64 KiB transferred buffer and one fixed GPU upload before reveal.
+     *
+     * The fallback is deliberately generated only for WebGPU: WebGL's post
+     * chain cannot consume it, so spending even this small kernel there would
+     * be boot work with no pixel result. On a worker miss WebGPU runs the same
+     * 4096-probe generator once, under the loading curtain, from the live
+     * Terrain arrays. It remains presentation-only and never writes them.
+     */
+    const canInstallIrradiance = handle.node !== null;
+    const workerIrradiance = irradianceWarm !== null
+      && irradianceWarm.key === irradianceFieldKey(terrain.genKey)
+      ? irradianceWarm
+      : null;
+    let irradiance: IrradianceFieldData | null = workerIrradiance;
+    let generatedOnMain = false;
+    if (canInstallIrradiance && irradiance === null) {
+      irradiance = generateIrradianceField({
+        terrainKey: terrain.genKey,
+        biome: terrain.biome.key,
+        height: terrain.height,
+        slope: terrain.slope,
+        surface: terrain.surface,
+      });
+      generatedOnMain = true;
+    }
+    const irradianceInstalled = canInstallIrradiance
+      && irradiance !== null
+      && ctx().post.setIrradianceField(irradiance);
+    setRetainedIrradianceField(irradianceInstalled ? irradiance : null);
+    notePrewarmAdopted('irradiance', irradianceInstalled && workerIrradiance !== null);
+    if (irradianceInstalled && generatedOnMain && irradiance !== null) {
+      noteIrradianceMainThread(irradiance.generateMs);
+    }
+    debug.setCounter(
+      'irradianceFieldPixels',
+      irradianceInstalled && irradiance !== null ? irradiance.width * irradiance.height : 0,
+    );
+    debug.setCounter('irradianceFieldWorker', irradianceInstalled && workerIrradiance !== null ? 1 : 0);
+    if (irradianceInstalled && irradiance !== null) {
+      console.info(
+        `[terrain] irradiance field ready — ${irradiance.width}x${irradiance.height}, `
+        + `${irradiance.generateMs | 0} ms ${workerIrradiance !== null ? 'off-thread' : 'on main thread'}`,
+      );
+    }
 
     setActiveTerrain(terrain);
     world.terrain = terrain;
@@ -182,6 +234,8 @@ export default defineSystem({
   },
 
   dispose(): void {
+    setRetainedIrradianceField(null);
+    ctx().post.setIrradianceField(null);
     if (terrain === null) return;
     terrain.dispose();
     if (getTerrain() === terrain) setActiveTerrain(null);

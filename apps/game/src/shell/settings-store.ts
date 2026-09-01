@@ -549,7 +549,7 @@ export function defaultSettings(): Settings {
       postFx: true,
       smaa: true,
       msaa: false,
-      filmGrain: true,
+      filmGrain: false,
       panelBlur: 'auto',
       perfOverlay: false,
       fov: 36,

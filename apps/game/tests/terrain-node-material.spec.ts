@@ -356,28 +356,25 @@ describe('the translated shader keeps the GLSL structures', () => {
     set.dispose();
   });
 
-  it('re-implements the dithering the node system does not have', () => {
+  it('keeps full-ground screen-space dithering out of the shipped material', () => {
     /*
-     * `material.dithering` is honoured by three's WebGL chunk system and by
-     * NOTHING in `src/nodes/`. This material is 60-75% of the frame and one
-     * enormous low-frequency gradient, so losing the dither would band the
-     * ground in the one place it shows most. The marker is the +/-0.25/255
-     * shift constant, which nothing else in the graph produces.
+     * The old screen-coordinate hash covered 60-75% of the frame. At high DPR
+     * its resolve produced visible horizontal rows across otherwise flat
+     * ground. Terrain already has authored/material variation, so it does not
+     * need a full-surface output dither.
      */
     const set = makeSet();
-    expect(set.material.dithering).toBe(true);
+    expect(set.material.dithering).toBe(false);
     const { fragment } = compile(set.material, 'glsl');
-    expect(fragment).toMatch(/0\.0009803921568627451|0\.00098039/);
+    expect(fragment).not.toMatch(/0\.0009803921568627451|0\.00098039/);
     set.dispose();
   });
 
-  it('drops the dither when the flag is off, so the flag is really the switch', () => {
-    // The control for the test above: without this, a hard-coded dither would
-    // pass it just as happily.
+  it('retains the optional dither implementation behind the material flag', () => {
     const set = makeSet();
-    set.material.dithering = false;
+    set.material.dithering = true;
     const { fragment } = compile(set.material, 'glsl');
-    expect(fragment).not.toMatch(/0\.0009803921568627451|0\.00098039/);
+    expect(fragment).toMatch(/0\.0009803921568627451|0\.00098039/);
     set.dispose();
   });
 });
@@ -706,7 +703,7 @@ describe('program caching', () => {
     /*
      * `customProgramCacheKey` STILL FIRES on node materials — it is the half of
      * the old mechanism that survives `onBeforeCompile`'s silent death. The
-     * shipping GLSL material returns `'ra-terrain-v5'`, a string a human has to
+     * legacy GLSL material returns `'ra-terrain-v6-surface-environment'`, a string a human has to
      * remember to bump whenever the injected GLSL changes. There is no injected
      * GLSL on this path, so that string could only ever be stale, and a stale
      * key hands back the previous program with nothing thrown and nothing
@@ -716,8 +713,8 @@ describe('program caching', () => {
     const glsl = createTerrainMaterials({
       biome: BIOMES.temperate, layerTextureSize: LAYER_SIZE, seed: SEED,
     });
-    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v5');
-    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v5');
+    expect(glsl.material.customProgramCacheKey()).toBe('ra-terrain-v6-surface-environment');
+    expect(node.material.customProgramCacheKey()).not.toBe('ra-terrain-v6-surface-environment');
     node.dispose();
     glsl.dispose();
   });

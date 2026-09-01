@@ -35,7 +35,9 @@ import { createPadNodeMaterial, createStructureNodeMaterial } from '../src/art/S
 import { createUnitNodeMaterial } from '../src/art/UnitNodeMaterial';
 import { UNIT_RIM_NODE_MARKER } from '../src/art/unit-rim-nodes';
 import { STRUCTURE_RIM_NODE_MARKER } from '../src/art/structure-rim-nodes';
-import { createPropNodeMaterial } from '../src/world/PropNodeMaterial';
+import {
+  createEnvironmentPropNodeMaterials, createPropNodeMaterial,
+} from '../src/world/PropNodeMaterial';
 import { PROP_WIND } from '../src/world/prop-wind';
 import { DITHER_SHIFT_LITERAL } from '../src/render/dither-nodes';
 import { GAIT_TURNS_TO_RADIANS } from '../src/render/Gait';
@@ -473,6 +475,13 @@ describe('the unit node material', () => {
     expect(fragment).toMatch(/normalViewGeometry/);
     mat.dispose();
   });
+
+  it('applies shared climate colour and roughness without cloning unit materials', () => {
+    const mat = createUnitNodeMaterial(fakeAtlas(), 'unit.climate');
+    expect(mat.colorNode).not.toBeNull();
+    expect(mat.roughnessNode).not.toBeNull();
+    mat.dispose();
+  });
 });
 
 describe('the structure node material', () => {
@@ -509,13 +518,12 @@ describe('the structure node material', () => {
     mat.dispose();
   });
 
-  it('leaves material.roughness reachable, unlike terrain', () => {
-    // Terrain replaces `roughnessNode` and so makes the scalar inert. This
-    // material does NOT, and the difference is worth pinning: a structure's
-    // roughness comes from its faction construction language and is set per
-    // material by `BuildingFactory`.
+  it('keeps authored material roughness as the input to restrained climate response', () => {
+    // The pilot now owns roughnessNode, but starts from materialRoughness so
+    // faction construction language remains the authored base instead of an
+    // inert scalar.
     const mat = createStructureNodeMaterial(fakeAtlas(), 'structure.rough');
-    expect(mat.roughnessNode).toBeNull();
+    expect(mat.roughnessNode).not.toBeNull();
     mat.dispose();
   });
 });
@@ -544,7 +552,38 @@ describe('the prop node material', () => {
     expect(mat.emissiveNode).not.toBeNull();
     // And the scalar stays on its shipping value, because the lerp starts there.
     expect(mat.roughness).toBe(PROP_MATERIAL.roughness);
+    expect(mat.colorNode).not.toBeNull();
     mat.dispose();
+  });
+
+  it('keeps authored environment PBR on the shared climate response', () => {
+    const set = createEnvironmentPropNodeMaterials({
+      color: 0x778866,
+      roughness: 0.74,
+      metalness: 0.08,
+    });
+    expect(set.material.colorNode).not.toBeNull();
+    expect(set.material.roughnessNode).not.toBeNull();
+    expect(set.material.roughness).toBe(0.74);
+    set.dispose();
+  });
+
+  it('preserves authored foliage alpha while climate modifies RGB', () => {
+    const set = createEnvironmentPropNodeMaterials({
+      map: new THREE.Texture(),
+      alphaTest: 0.85,
+      transparent: false,
+    });
+    const alphaSplits: Node[] = [];
+    set.material.colorNode?.traverse((node) => {
+      const split = node as Node & { readonly components?: string };
+      // TSL canonicalises the RGBA alias `.a` to the XYZW component `.w`.
+      if (split.components === 'w') alphaSplits.push(node);
+    });
+    expect(set.material.alphaTest).toBe(0.85);
+    expect(alphaSplits).toHaveLength(1);
+    set.material.map?.dispose();
+    set.dispose();
   });
 
   it('publishes the shroud varying, so a forest in the black stays dark', () => {

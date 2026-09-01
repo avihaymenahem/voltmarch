@@ -18,4 +18,20 @@ describe('Cheat Engine window controls', () => {
   it('uses header double-click only for collapse and restore', () => {
     expect(source).toContain("headElement.addEventListener('dblclick', toggleCollapsed)");
   });
+
+  it('falls back to window dragging when Chromium rejects pointer capture', () => {
+    expect(source).toContain('headElement.setPointerCapture(event.pointerId)');
+    expect(source).toContain('catch { /* window listeners retain ownership */ }');
+    expect(source).toContain("window.addEventListener('pointermove', dragMove, true)");
+    expect(source).toContain("window.addEventListener('pointerup', dragEnd, true)");
+    expect(source).toContain("window.addEventListener('pointercancel', dragEnd, true)");
+    expect(source).toContain('headElement.hasPointerCapture(event.pointerId)');
+    expect(source).toContain('headElement.releasePointerCapture(event.pointerId)');
+  });
+
+  it('computes the drag grab point from the rendered panel position', () => {
+    expect(source).toContain('const bounds = panel.getBoundingClientRect()');
+    expect(source).toContain('dragDX = event.clientX - bounds.left');
+    expect(source).toContain('dragDY = event.clientY - bounds.top');
+  });
 });

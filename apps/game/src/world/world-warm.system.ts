@@ -73,6 +73,13 @@ export default defineSystem({
     parts.push(r.waterAdopted
       ? `water ${r.waterMs | 0} ms off-thread`
       : `water on the main thread${r.waterOff ? ' (?waterworkers=off)' : ''}`);
+    // Keep this AFTER terrain + water: boot-profile's established regex relies
+    // on those first two field entries and their order.
+    parts.push(r.irradianceSource === 'worker'
+      ? `irradiance ${r.irradianceMs | 0} ms off-thread`
+      : r.irradianceSource === 'main'
+        ? `irradiance ${r.irradianceMs | 0} ms on the main thread`
+        : 'irradiance not installed');
     parts.push(r.terrainTexAdopted
       ? `terrain tiles ${r.terrainTexMs | 0} ms off-thread`
       : 'terrain tiles on the main thread');

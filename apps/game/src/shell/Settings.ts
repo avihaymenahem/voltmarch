@@ -52,6 +52,7 @@ import { CREDITS } from './MainMenu';
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { audio, configureAudioMixer } from '../audio/AudioEngine';
 import { CAMERA_NAV } from '../core/config';
+import { diagnosticSnapshot } from '../core/diagnostic-log';
 import type { GameHandle } from '../game/Bootstrap';
 import type { QualityTier } from '../core/types';
 
@@ -226,10 +227,11 @@ export function applySettings(
         // `samples` into that graph. `postGraphSignature` MUST carry this value;
         // omitting it once left the toggle on while the live target stayed 0x.
         msaaSamples: g.msaa ? 4 : 0,
-        // The enabled arm uses the deliberately restrained 2026-08-27 grain
-        // ceiling. Chromatic aberration stays zero in both arms.
+        // The former film-grain arm is now vignette-only. Full-frame grain
+        // aliases into horizontal rows on high-DPI canvases, so both arms keep
+        // it at zero. Saved settings therefore cannot reintroduce the defect.
         grade: g.filmGrain
-          ? { grain: 0.006, vignette: 0.28, chromaticAberration: 0 }
+          ? { grain: 0, vignette: 0.28, chromaticAberration: 0 }
           : { grain: 0, vignette: 0.12, chromaticAberration: 0 },
       },
     });
@@ -1295,6 +1297,7 @@ export class SettingsScreen implements Screen {
       },
       match,
       includeEntities: this.diagFull,
+      recentEvents: diagnosticSnapshot(200),
     }));
   }
 
@@ -1906,9 +1909,9 @@ export class SettingsScreen implements Screen {
       + 'switch it on and watch your frame counter.',
     ));
     post.appendChild(row(
-      'Film Grain & Vignette',
+      'Cinematic Vignette',
       toggle(g.filmGrain, (v) => set({ filmGrain: v })),
-      'Adds a subtle cinematic texture and darkens the frame edges. Chromatic aberration stays off.',
+      'Darkens the frame edges without adding screen-space grain or chromatic aberration.',
     ));
     post.appendChild(row(
       'Panel Blur',

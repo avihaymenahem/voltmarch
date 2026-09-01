@@ -1,15 +1,16 @@
 # VOLTMARCH realism phases 2–4
 
-**Status:** implementation-ready planning draft
+**Status:** all-map WebGPU implementation and local NVIDIA acceptance complete; release/device-matrix gates remain separate
 **Scope:** 2. indirect lighting; 3. authored map composition; 4. material and ground-contact cohesion
-**First vertical slice:** Industrial Grid (`MAP_PRESETS.urban`)
-**Primary renderer:** desktop WebGPU
-**Fallback:** WebGL keeps the current lighting path and receives all renderer-neutral composition work
+**First vertical slice:** Industrial Grid (`MAP_PRESETS.urban`); subsequently rolled out to all seven shipped map presets
+**Renderer:** desktop WebGPU only; it is the normal no-query product default
+**Legacy:** WebGL parity, tuning and testing are out of scope pending its separate removal
 **Planning date:** 2026-09-01
 
 This document starts the next visual-realism workstream. It does not authorize a release or production
-deployment. Each stage must survive its own visual, deterministic, performance, and rollback gates before
-the next stage becomes a default.
+deployment. Each stage must survive its own visual, deterministic, performance, and rollback gates. Product
+features are integrated through the normal renderer/capability policy, not exposed as query-flag modes;
+critic-only URL controls remain acceptable for repeatable capture and backend comparison.
 
 The intended result is not a busier image. It is a more coherent one:
 
@@ -27,11 +28,14 @@ The work starts from a substantial existing renderer, not a blank slate:
 
 - `render/scene.ts` owns one shadow-casting sun, a `HemisphereLight`, a dim ground-bounce directional light,
   the procedural sky and a boot-time PMREM environment probe.
-- `render/nodes/ssgi-node.ts` provides an opt-in WebGPU SSGI experiment through `?gi=ssgi|low|medium|high`.
-  It is useful for local contact bounce but cannot provide stable off-screen radiance.
+- `render/nodes/ssgi-node.ts` owns the accepted bounded WebGPU screen-space layer. High defaults to low SSGI
+  and Ultra to medium at 0.5 resolution with a deterministic non-temporal denoise. Its first candidate was
+  rejected for horizontal ground bands, muddy faction-colour bleeding and whole-scene dulling; the final
+  receiver-tinted/contact-only-AO formulation passed colour and timing acceptance. It still cannot provide
+  stable off-screen radiance, which remains the retained irradiance field's job.
 - `world/time-of-day.ts` and `world/weather.system.ts` already provide presentation-only day phase and
   weather state without entering simulation checksums.
-- terrain, roads, props, structures, units, water and VFX already have explicit GLSL/TSL ownership seams.
+- terrain, roads, props, structures, units, water and VFX already have explicit WebGPU/TSL ownership seams.
 - `world/structure-wear.ts`, `world/scatter.system.ts` and `world/Decals.ts` already produce deterministic,
   cause-linked base wear inside fixed pools.
 - `render/ContactShadows.ts` and authored structure foundations already address the smallest contact scale.
@@ -49,8 +53,10 @@ These are architecture decisions, not open implementation questions.
 3. **No runtime PMREM rebakes.** The current measured hitch makes that unsuitable for day/night or weather.
    The existing probe remains the specular environment; low-frequency diffuse change comes from live
    uniforms and the irradiance field.
-4. **SSGI is optional contact detail, not the foundation.** A future `probes+ssgi` mode may combine them on
-   Ultra if it earns its frame budget. GTAO remains the cheaper default during development.
+4. **SSGI is a bounded near-field layer, not the foundation.** The first candidate failed the motion/colour
+   scorecard; the accepted version multiplies incident radiance by receiving scene colour, limits long-range
+   AO to 0.18 of configured AO, and uses deterministic non-temporal denoising. High defaults to low and Ultra
+   to medium, while world-space irradiance remains authoritative for stable off-screen radiance.
 5. **Map composition is planned from semantic causes.** “Depot,” “civilian block,” “shore,” “resource yard,”
    “woodland” and “ruin” are inputs. Random stains and evenly distributed props are not.
 6. **Composition remains deterministic and bounded.** Pure planners consume an explicit seed and immutable
@@ -62,8 +68,11 @@ These are architecture decisions, not open implementation questions.
    biome and orientation, and damage follows actual damage/destruction state.
 9. **Faction and gameplay channels stay independent.** Team colour, emissive recognition, selection,
    shroud, construction, damage and the new aging channels cannot overwrite one another.
-10. **WebGL fallback is explicit.** Phases 3 and 4 must keep compatible GLSL and TSL paths. Phase 2 may ship
-    WebGPU-only if the current WebGL light rig remains visually acceptable and the UI reports no false parity.
+10. **WebGPU is the only acceptance target.** Normal boot selects WebGPU with no query flag. Legacy WebGL
+    parity, screenshots and performance are not gates for this workstream.
+11. **No product rollout query flags.** Accepted graphics work affects the game directly. Capability and
+    quality policies choose valid implementations; URLs may control only deterministic critic fixtures and
+    explicit renderer comparison outside normal play.
 
 Rejected foundations remain rejected: no CSM expansion in this workstream, no TAAU promotion, no default
 GPU foliage path, no Meshopt family rollout, no compute-driven simulation/world generation, no per-prop
@@ -100,7 +109,7 @@ context masks and causes the material system should consume.
   civilian, road, ore and tree-line regions. Do not change the authored map default.
 - Capture the same pose at `?dayphase=day|dusk|night|dawn` and at clear/light/heavy precipitation.
 - Preserve one desert, one snow and one shoreline fixture so the vertical slice cannot overfit urban night.
-- Record WebGPU and WebGL screenshots at close, normal and far tactical zoom.
+- Record WebGPU screenshots at close, normal and far tactical zoom.
 - Record warm-frame median and p95 GPU time, pass timings, draw calls, shadow draws, visible triangles,
   material/program count, texture residency, boot time and shader compilation after reveal.
 - Record the current simulation checksum/placement fingerprints for the same seed.
@@ -193,12 +202,11 @@ separation. Do not start by modifying every material family.
 - Presentation inputs only: `apps/game/src/world/time-of-day.ts`,
   `apps/game/src/world/weather.system.ts`, and the terrain/structure render bridges
 
-The feature switch should extend the existing GI vocabulary rather than create a second control:
-
-- `?gi=off` or absent: current GTAO path;
-- `?gi=probes`: irradiance cache + GTAO;
-- `?gi=probes+ssgi`: irradiance cache plus conservative SSGI contact detail, Ultra experiment only;
-- existing `?gi=ssgi|low|medium|high`: retained during comparison until migration is decided.
+The stable irradiance cache is a default part of the WebGPU graph. A neutral retained field is an exact no-op
+until the worker result is uploaded. Normal High play combines it with low SSGI and Ultra with medium SSGI;
+lower tiers retain their bounded AO path. SSGI runs at 0.5 resolution with deterministic non-temporal denoise,
+receiver-tinted incident radiance, and only 0.18 of configured AO at long range. Low/medium/high GI intensity
+is 3.4/3.8/4.2. These are product defaults rather than a query-gated rollout.
 
 ### 5.6 Phase 2 acceptance
 
@@ -287,14 +295,12 @@ pathing rules. Repeated destruction must saturate instead of forming a black dec
   `apps/game/src/world/structure-wear.ts`
 - Destruction bridge: the current VFX/decal event path and `layRubbleStory()`
 
-Development switch:
-
-- `?worldstories=off`: existing world presentation;
-- `?worldstories=context`: phase 3 planner and composition.
+Industrial Grid is the first bounded rollout target. Accepted context descriptors enter the existing pooled
+world presentation directly; rollback is a source/config revert, not a player-visible URL mode.
 
 ### 6.6 Phase 3 acceptance
 
-- The same seed and source list produce the same plan and fingerprint in WebGL, WebGPU and headless tests.
+- The same seed and source list produce the same plan and fingerprint in WebGPU and headless tests.
 - No simulation checksum, map generation, occupancy or placement fingerprint changes.
 - At least depot, civilian and resource contexts are identifiable in blind screenshots without labels.
 - Industrial Grid no longer reads as isolated buildings placed on generic terrain.
@@ -387,10 +393,8 @@ dark halo under every object.
   `buildings.system.ts`, `ImportedInfantryAssets.ts`, `ImportedWreckAssets.ts`, and
   `EnvironmentAssetLoader.ts`
 
-Development switch:
-
-- `?surfaceaging=off`: current material response;
-- `?surfaceaging=context`: shared phase 4 state.
+Material pilots use the normal shared environment state and renderer twins directly. Rollback is kept at the
+material-family integration boundary rather than exposed as a product URL mode.
 
 GLSL `customProgramCacheKey` values must change whenever injected source changes. Node materials must use
 node ownership points and must not copy GLSL `onBeforeCompile` cache-key patterns.
@@ -402,7 +406,7 @@ node ownership points and must not copy GLSL `onBeforeCompile` cache-key pattern
 - Wet ground and dry metal remain distinct; metal does not look chalky or uniformly varnished.
 - Dust, salt, snow and dampness are absent where their causes are absent.
 - Team-colour and emissive coverage remain inside their locked readability ranges.
-- Every changed GLSL material has a visually equivalent TSL path or an explicit documented fallback.
+- Every changed material has a tested TSL/WebGPU ownership path.
 - No normal-play draw-call increase from the material system itself.
 - Shared texture additions remain inside the normal family residency allowance; any new context texture is
   map-shared and replaces an equivalent temporary buffer before rollout.
@@ -414,8 +418,8 @@ node ownership points and must not copy GLSL `onBeforeCompile` cache-key pattern
 - irradiance cache key, bounds, dirty-rectangle coalescing and deterministic CPU inputs;
 - world-context planner fingerprints, priority admission, clearance and pool reserve;
 - surface-state clamping, rain/dry transitions and biome coefficients;
-- `requested` feature-mode parsing and capability fallbacks;
-- GLSL/TSL source contracts and render-path ownership.
+- WebGPU neutral-resource behavior and device/resource lifecycle;
+- TSL source contracts and render-path ownership.
 
 Likely existing suites to extend:
 
@@ -434,8 +438,7 @@ turning one integration spec into a catch-all.
 ### Runtime and visual tests
 
 - repeat captures for all Stage 0 fixtures;
-- WebGPU `probes` A/B against GTAO and SSGI;
-- WebGL comparison proving phases 3–4 did not drift materially;
+- WebGPU fixed-fixture A/B against the recorded pre-change baseline and the accepted default-tier SSGI path;
 - AMD and NVIDIA representative-device timing closure;
 - device-loss recovery with irradiance resources active;
 - 30-unit and mass-battle readability;
@@ -450,7 +453,7 @@ and the existing environment allowance of +2 colour/+2 shadow draws.
 
 Additional workstream rules:
 
-- Phase 2 gets no unconditional default until the measured whole-stack frame cost leaves capacity for phase 4.
+- Phase 2 is default on WebGPU once its boot, visual and whole-stack frame gates pass.
 - Phase 3 admits descriptors to fixed budgets; it never grows pools at runtime.
 - Phase 4 adds zero draws and zero per-instance resources.
 - Any single stage that causes visible tactical mud, post-reveal shader compile, recurring upload spikes or
@@ -465,27 +468,81 @@ Additional workstream rules:
 | Gate | Default state | Required evidence | Rollback |
 |---|---|---|---|
 | R0 baseline | current game | repeatable fixture/counters | none |
-| R1 irradiance prototype | `?gi=probes` only | stable A/B, labelled GPU pass, no PMREM hitch | remove graph node |
-| R2 Industrial Grid stories | `?worldstories=context` only | fingerprints, pool reserve, screenshot approval | `worldstories=off` |
-| R3 material pilot | `?surfaceaging=context` only | GLSL/TSL parity, no program growth, weather matrix | `surfaceaging=off` |
-| R4 combined vertical slice | all three switches | whole-stack timing, mass battle, destruction, device loss | disable independently |
+| R1 irradiance prototype | WebGPU graph | stable baseline comparison, truthful total A/B timing, no PMREM hitch | revert graph integration |
+| R2 Industrial Grid stories | bounded urban descriptors | fingerprints, pool reserve, screenshot approval | revert descriptor/config batch |
+| R3 material pilot | selected shared family | TSL ownership, no program growth, weather matrix | revert family integration |
+| R4 combined vertical slice | normal game paths | whole-stack timing, mass battle, destruction, device loss | revert each ownership seam independently |
 | R5 biome rollout | one biome at a time | three approved context families/biome and counterexample shots | retain prior biome defaults |
-| R6 default candidate | staged build | AMD/NVIDIA closure, WebGL fallback, full CI, human scorecard | feature defaults remain off |
+| R6 default candidate | staged build | AMD/NVIDIA WebGPU closure, full CI, human scorecard | hold/revert the owning batch |
 | R7 production release | explicit release authorization | release checklist and deployment health | normal release rollback |
 
-No gate bundles its rollback. Lighting, stories and surface aging remain independently disableable until at
-least one release after default promotion.
+No gate bundles its rollback. Lighting, stories and surface aging retain independent code/config ownership
+so one failed batch can be reverted without unwinding the others.
 
 ## 11. First implementation batch
 
 The first code batch should be deliberately narrow:
 
 1. add the baseline fixture and measurements;
-2. add pure irradiance-cache descriptors and mode parsing with tests;
-3. render a false-colour cache debug view over Industrial Grid;
-4. integrate a conservative WebGPU composite behind `?gi=probes`;
+2. add pure irradiance-cache descriptors and worker generation with tests;
+3. transfer one fixed field from the existing terrain worker job without adding a boot-time fetch or pool;
+4. integrate a conservative default WebGPU composite with a neutral retained field;
 5. capture day/dusk/night plus camera-pan A/B evidence;
 6. decide whether the composite is materially sound before beginning semantic context work.
 
 This creates the lighting foundation without touching the current in-progress foliage rollout or performing
 a broad material rewrite. Phase 3 begins only after the Phase 2 composite passes that decision gate.
+
+## 12. Second implementation batch
+
+The next bounded batch extends the same default WebGPU path without adding product switches:
+
+1. **Retained context light.** Up to 18 deterministic depot, civilian and resource anchors compose once
+   into the existing 64×64 irradiance backing store. The renderer reuploads its retained 32 KiB RGBA16F
+   source without replacing the texture, graph or pipeline. Time-of-day response remains uniform-only.
+2. **Destruction continuity.** A structure lays one attacker-facing pooled scorch at the existing heavy-
+   damage threshold. Its later rubble decal and wreck inherit that angle and source seed, including
+   scripted, one-shot and attacker-handoff deaths. Destroyed-building pool cost remains unchanged.
+3. **Procedural structure-family material pilot.** Foundation concrete and shared faction structure
+   materials consume the existing surface-weather state in their WebGPU node graph. ORM alpha preserves
+   the authored paint/exposed-surface split: paint responds mainly through roughness, porous material takes
+   restrained wet/dust colour, and contact contamination is confined to the model-space foundation band.
+4. **Boot recovery.** Imported foliage settles before the one intentional WebGPU pipeline compile, so asset
+   rebuilds no longer contend with Dawn's shader workers or create a post-reveal first-use compile. This
+   changes scheduling only; the authored default and deterministic placement remain unchanged.
+
+The batch adds no render pass, draw call, runtime asset, material clone, shader variant or worker pool. The
+late context-light job touches only a few hundred retained texels once; worker messaging or WASM startup
+would cost more than its bounded scalar work. The structure response executes on the GPU. Destruction adds
+one 24 KiB generation-stamped side array per `DamageSystem` and no per-frame/per-hit allocation.
+
+## 13. Final all-map implementation batch
+
+The normal WebGPU game path now completes the rollout across Temperate Valley, Airbase Flats, Frozen
+Sector, Industrial Grid, Contested Strait, Coral Shore and Sunder Atoll:
+
+1. **Map-specific place grammar.** Every preset plans deterministic, capped depot, civilian, resource,
+   woodland and ruin context marks from real structures, resources, wrecks and accepted vegetation
+   clusters. Each preset owns a grammar fingerprint and a fixed admission cap; no camera-dependent or
+   unbounded scatter work was added.
+2. **Shared contextual irradiance.** Compatible active-place anchors feed the retained 64×64 field and its
+   bounded context-light set on every map. The existing terrain warm worker and WASM loader are reused;
+   this batch adds no worker pool, fetch, texture or render pass.
+3. **Causal climate state.** Inland, coast, tropical, atoll and snow causes expose retained shoreline
+   wetness, salt and snow contamination. Rain washes salt, shoreline dampness persists locally, and dirty
+   snow is limited to snow-bearing surfaces.
+4. **WebGPU material-family closure.** Terrain, roads, procedural structures, units, procedural props and
+   the default authored environment catalogue consume one shared TSL climate state. Terrain confines salt
+   and shore dampness to its shore layer; roads exclude traffic/paint from fresh deposition; faction paint
+   and authored mapped roughness remain authoritative.
+
+The seven-map acceptance matrix passes on the current real WebGPU device with 4,096 irradiance probes on
+every map, stable simulation hashes through a 40 m camera pan, zero post-warmup program growth and 47–57
+colour draws (well below the 130-draw ceiling). Accepted semantic context counts are 24, 21, 18, 30, 16,
+25 and 14 respectively in the map order above. Frozen Sector was rerun after the final road-snow change and
+retained hash `1145686088`, 18 contextual wear marks and the same 18 semantic contexts.
+
+This closure adds no runtime asset, material clone, shader variant, product query flag, render pass or draw
+call. The pure context planners are small, late and fixed-budget; dispatching them to a worker or starting a
+new WASM module would cost more boot time than their scalar work. GPU-owned weather response stays in shared
+uniform nodes. AMD/Intel and packaged-device validation remain release gates, not unfinished map content.

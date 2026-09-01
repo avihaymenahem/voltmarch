@@ -106,14 +106,14 @@ describe('initial title-menu boot', () => {
   });
 
   it('re-arms world workers at every real bootstrap, not during menu code prefetch', () => {
-    const prepare = bootstrap.indexOf('prepareWorldWorkers();');
+    const prepare = bootstrap.indexOf('prepareWorldWorkers(requestedBackend(');
     const prepareTextures = bootstrap.indexOf('prepareTextureWorkers();');
     const renderer = bootstrap.indexOf('const handle = createRenderer({');
     expect(prepare).toBeGreaterThanOrEqual(0);
     expect(prepareTextures).toBeGreaterThan(prepare);
     expect(renderer).toBeGreaterThan(prepare);
     expect(renderer).toBeGreaterThan(prepareTextures);
-    expect(worldWarm).toContain('export function prepareWorldWorkers(): void');
+    expect(worldWarm).toContain('export function prepareWorldWorkers(wantsIrradiance = true): void');
     expect(worldWarm).toContain('generation++');
     expect(worldWarmSystem).not.toContain('installWorldWorkers();');
     expect(textureWarmSystem).toContain('export function prepareTextureWorkers(): void');
@@ -206,6 +206,12 @@ describe('initial title-menu boot', () => {
     expect(bootstrap.indexOf('renderOnce(shotMode ? 0 : 1 / 60);')).toBeLessThan(
       bootstrap.indexOf('markBattlefieldReady();'),
     );
+  });
+
+  it('settles authored foliage before WebGPU compiles the stable scene graph', () => {
+    expect(scatterSystem).toContain('await promoteImportedFoliage(');
+    expect(scatterSystem).not.toContain('void promoteImportedFoliage(');
+    expect(scatterSystem).not.toContain('scheduleBattlefieldWork(50');
   });
 
   it('prepares the first battlefield audio bank after gameplay becomes ready', () => {

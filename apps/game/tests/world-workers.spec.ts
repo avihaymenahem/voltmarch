@@ -61,6 +61,9 @@ import { BIOMES } from '../src/world/Biomes';
 import { WATER_PALETTES } from '../src/core/config';
 import { createTerrainMaterials } from '../src/world/TerrainMaterial';
 import { createWaterMaterial } from '../src/world/WaterMaterial';
+import {
+  generateIrradianceField, irradianceFieldTransfers,
+} from '../src/world/irradiance-field';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                    */
@@ -493,13 +496,39 @@ describe('isWaterJob', () => {
 describe('isTerrainReply', () => {
   /** A shallow copy of one memoised reply, so a corruption cannot leak. */
   function fresh(): Record<string, unknown> {
-    return { kind: 'terrain:done', id: 1, data: { ...generateViaWorker(CASES[0][1]) } };
+    const data = generateViaWorker(CASES[0][1]);
+    const irradiance = generateIrradianceField({
+      terrainKey: data.key,
+      biome: CASES[0][1].biome,
+      height: data.height,
+      slope: data.slope,
+      surface: data.surface,
+    });
+    return { kind: 'terrain:done', id: 1, data: { ...data }, irradiance };
   }
 
   it('accepts a real reply and a failure', () => {
     expect(isTerrainReply(fresh())).toBe(true);
+    const withoutPresentation = fresh();
+    withoutPresentation.irradiance = null;
+    expect(isTerrainReply(withoutPresentation)).toBe(true);
     expect(isTerrainReply({ kind: 'terrain:failed', id: 1, reason: 'boom' })).toBe(true);
     expect(isTerrainReply({ kind: 'terrain:failed', id: 1 })).toBe(false);
+  });
+
+  it('refuses a missing, mis-sized or mis-keyed presentation field', () => {
+    const missing = fresh();
+    delete missing.irradiance;
+    expect(isTerrainReply(missing)).toBe(false);
+
+    const short = fresh();
+    const irradiance = short.irradiance as Record<string, unknown>;
+    irradiance.rgba = new Float32Array(64 * 64 * 4 - 1);
+    expect(isTerrainReply(short)).toBe(false);
+
+    const crossed = fresh();
+    (crossed.irradiance as Record<string, unknown>).key = 'another-map';
+    expect(isTerrainReply(crossed)).toBe(false);
   });
 
   it('refuses a grid of the wrong length, wrong type or missing', () => {
@@ -660,7 +689,14 @@ describe('isWaterReply', () => {
 describe('transfer lists', () => {
   it('lists every buffer a terrain reply owns, exactly once', () => {
     const data = generateViaWorker(CASES[0][1]);
-    const list = terrainFieldTransfers(data);
+    const irradiance = generateIrradianceField({
+      terrainKey: data.key,
+      biome: CASES[0][1].biome,
+      height: data.height,
+      slope: data.slope,
+      surface: data.surface,
+    });
+    const list = [...terrainFieldTransfers(data), ...irradianceFieldTransfers(irradiance)];
     /*
      * 15 grids, 5 arrays per chunk, plus one more for every chunk that earned a
      * half-resolution index. Counted off the data rather than pinned, because
@@ -671,9 +707,11 @@ describe('transfer lists', () => {
      */
     const lods = data.chunks.filter((c) => c.lodIndex !== null).length;
     expect(lods).toBeGreaterThan(0);
-    expect(list.length).toBe(15 + TERRAIN_CHUNKS * 5 + lods);
+    expect(list.length).toBe(16 + TERRAIN_CHUNKS * 5 + lods);
     expect(new Set(list).size).toBe(list.length);
-    expect(replyTransfers({ kind: 'terrain:done', id: 1, data })).toEqual(list);
+    expect(replyTransfers({ kind: 'terrain:done', id: 1, data, irradiance })).toEqual(list);
+    expect(replyTransfers({ kind: 'terrain:done', id: 2, data, irradiance: null }))
+      .toEqual(terrainFieldTransfers(data));
   });
 
   it('lists every buffer a water reply owns, exactly once', () => {
@@ -772,8 +810,19 @@ describe('the pool never breaks the world', () => {
     const data = await pool.submitTerrain(options);
     expect(data).not.toBeNull();
     const inline = generateInline(options);
-    expect(bytesOf(data!.height).equals(bytesOf(inline.height))).toBe(true);
-    expect(data!.key).toBe(terrainGenKey(options));
+    expect(bytesOf(data!.terrain.height).equals(bytesOf(inline.height))).toBe(true);
+    expect(data!.terrain.key).toBe(terrainGenKey(options));
+    expect(data!.irradiance).not.toBeNull();
+    expect(data!.irradiance!.rgba).toBeInstanceOf(Float32Array);
+    pool.dispose();
+  });
+
+  it('keeps valid terrain and omits presentation work for WebGL', async () => {
+    const { pool } = poolWith({ mode: 'work' });
+    const data = await pool.submitTerrain(options, false);
+    expect(data).not.toBeNull();
+    expect(data!.terrain.key).toBe(terrainGenKey(options));
+    expect(data!.irradiance).toBeNull();
     pool.dispose();
   });
 
@@ -835,7 +884,7 @@ describe('the pool never breaks the world', () => {
     const terrain = await pool.submitTerrain(options);
     expect(terrain).not.toBeNull();
     const water = await pool.submitWater(
-      'k', Float32Array.from(terrain!.height), WATER_LEVEL, WATER_SEED,
+      'k', Float32Array.from(terrain!.terrain.height), WATER_LEVEL, WATER_SEED,
     );
     expect(water).not.toBeNull();
     expect(water!.depth).toBeInstanceOf(Float32Array);

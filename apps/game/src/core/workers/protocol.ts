@@ -55,6 +55,11 @@ import {
   generateWaterTextures, waterTextureTransfers, type WaterTextureData,
 } from '../../world/water-texture-gen';
 import { BIOMES, SURFACE_COUNT, isBiomeName } from '../../world/Biomes';
+import {
+  generateIrradianceField, irradianceFieldKey, irradianceFieldTransfers,
+  type IrradianceFieldData,
+} from '../../world/irradiance-field';
+import { validIrradianceField } from '../irradiance-field';
 
 /* ==========================================================================
  * MESSAGES
@@ -162,12 +167,17 @@ export interface TerrainJob {
   readonly kind: 'terrain';
   readonly id: number;
   readonly options: TerrainGenOptions;
+  /** Requested only for the WebGPU product path that can consume the field. */
+  readonly irradiance?: boolean;
 }
 
 export interface TerrainJobDone {
   readonly kind: 'terrain:done';
   readonly id: number;
   readonly data: TerrainFieldData;
+  /** Presentation-only; generated while the worker still owns `data`'s inputs. */
+  /** Optional presentation work must never make a valid simulation terrain fail. */
+  readonly irradiance: IrradianceFieldData | null;
 }
 
 export interface TerrainJobFailed {
@@ -474,6 +484,7 @@ export function isTerrainJob(v: unknown): v is TerrainJob {
       if (!isFiniteNumber(o.sea.beachGrade) || o.sea.beachGrade <= 0) return false;
     }
   }
+  if (v.irradiance !== undefined && typeof v.irradiance !== 'boolean') return false;
   return true;
 }
 
@@ -560,7 +571,13 @@ export function isTerrainReply(v: unknown): v is TerrainReply {
     if (!Number.isInteger(c.cliffTris) || (c.cliffTris as number) < 0) return false;
     if (!isFiniteNumber(c.lodError) || (c.lodError as number) < 0) return false;
   }
-  return true;
+  const irradiance = v.irradiance;
+  if (irradiance === null) return true;
+  if (!isRecord(irradiance)) return false;
+  if (irradiance.key !== irradianceFieldKey(d.key)) return false;
+  if (!isFiniteNumber(irradiance.generateMs) || (irradiance.generateMs as number) < 0) return false;
+  if (!(irradiance.rgba instanceof Float32Array)) return false;
+  return validIrradianceField(irradiance as unknown as IrradianceFieldData);
 }
 
 /** True when `v` is a well-formed water reply. */
@@ -681,7 +698,11 @@ export function isWorkerReply(v: unknown): v is WorkerReply {
  */
 export function replyTransfers(reply: WorkerReply): ArrayBuffer[] {
   if (reply.kind === 'greeble:done') return greebleTransfers(reply.data);
-  if (reply.kind === 'terrain:done') return terrainFieldTransfers(reply.data);
+  if (reply.kind === 'terrain:done') {
+    return reply.irradiance === null
+      ? terrainFieldTransfers(reply.data)
+      : [...terrainFieldTransfers(reply.data), ...irradianceFieldTransfers(reply.irradiance)];
+  }
   if (reply.kind === 'water:done') return waterFieldTransfers(reply.data);
   if (reply.kind === 'terrainTex:done') return terrainTextureTransfers(reply.data);
   if (reply.kind === 'waterTex:done') return waterTextureTransfers(reply.data);
@@ -768,7 +789,25 @@ export function runGreebleJob(job: GreebleJob): GreebleReply {
  */
 export function runTerrainJob(job: TerrainJob): TerrainReply {
   try {
-    return { kind: 'terrain:done', id: job.id, data: generateTerrainFields(job.options) };
+    const data = generateTerrainFields(job.options);
+    let irradiance: IrradianceFieldData | null = null;
+    if (job.irradiance === true) {
+      try {
+        irradiance = generateIrradianceField({
+          terrainKey: data.key,
+          biome: job.options.biome,
+          height: data.height,
+          slope: data.slope,
+          surface: data.surface,
+        });
+      } catch (err: unknown) {
+        // Terrain is simulation authority; irradiance is optional presentation.
+        // Returning valid terrain with a null field activates the cheap main-
+        // thread WebGPU fallback rather than throwing away a 600 ms generation.
+        console.warn('[world-worker] irradiance generation failed; keeping terrain', err);
+      }
+    }
+    return { kind: 'terrain:done', id: job.id, data, irradiance };
   } catch (err: unknown) {
     return {
       kind: 'terrain:failed',

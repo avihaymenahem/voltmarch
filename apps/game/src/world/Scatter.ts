@@ -1772,7 +1772,8 @@ export class Scatter {
   /**
    * Adopt authored families after placement has completed, then rebuild only
    * presentation buffers. Placement order, fingerprint, clear/crush state and
-   * save-mask identity remain untouched while asset I/O stays off world boot.
+   * save-mask identity remain untouched while the presentation changes before
+   * the renderer compiles its stable scene graph.
    */
   installImportedFoliage(
     families: ReadonlyMap<string, EnvironmentGeometryFamily>,

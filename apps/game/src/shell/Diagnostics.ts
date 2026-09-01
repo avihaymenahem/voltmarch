@@ -67,7 +67,9 @@ import { DIFFICULTIES, PERSONALITIES } from './settings-store';
  * weeks later. Without a version on the page, "the export did not have that
  * field" and "the build did not have that bug" are indistinguishable.
  */
-export const DIAGNOSTICS_FORMAT_VERSION = 1;
+export const DIAGNOSTICS_FORMAT_VERSION = 2;
+
+import type { DiagnosticRecord } from '../core/diagnostic-log';
 
 /* ==========================================================================
  * 1. NAMES FOR NUMBERS
@@ -353,6 +355,8 @@ export interface DiagnosticsInput {
   readonly match: DiagnosticsMatch | null;
   /** Include the per-entity list. Off by default; it is the big tier. */
   readonly includeEntities: boolean;
+  /** Recent bounded renderer breadcrumbs and failures, newest last. */
+  readonly recentEvents?: readonly DiagnosticRecord[];
 }
 
 /* ==========================================================================
@@ -432,6 +436,7 @@ export interface DiagnosticsReport {
   readonly formatVersion: number;
   readonly notes: readonly string[];
   readonly environment: DiagnosticsEnvironment;
+  readonly recentEvents: readonly DiagnosticRecord[];
   readonly match: {
     readonly kind: string;
     readonly simTick: number;
@@ -767,6 +772,7 @@ export function buildDiagnostics(input: DiagnosticsInput): DiagnosticsReport {
     formatVersion: DIAGNOSTICS_FORMAT_VERSION,
     notes: notesFor(input),
     environment: input.env,
+    recentEvents: input.recentEvents ?? [],
     match: m === null ? null : {
       kind: m.kind,
       simTick: m.simTick,

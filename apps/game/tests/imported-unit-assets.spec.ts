@@ -81,6 +81,11 @@ function triangles(json: GlbJson): number {
 }
 
 describe('imported unit shipping budgets', () => {
+  it('maps the Allied Albatross source nose onto gameplay forward', () => {
+    const albatross = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'allied_albatross');
+    expect(albatross?.yawDeg).toBe(90);
+  });
+
   it('maps the Soviet Molot nose onto gameplay forward', () => {
     const molot = IMPORTED_UNIT_SPECS.find((spec) => spec.key === 'soviet_molot');
     expect(molot?.sourceLongAxis).toBe('x');

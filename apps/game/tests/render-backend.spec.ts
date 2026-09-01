@@ -27,22 +27,21 @@ import {
 } from '../src/render/backend';
 
 describe('requestedBackend', () => {
-  it('defaults to webgl when the flag is absent', () => {
-    expect(requestedBackend('')).toBe('webgl');
-    expect(requestedBackend('?')).toBe('webgl');
-    expect(requestedBackend('?shot=01-establishing-base&seed=7')).toBe('webgl');
+  it('defaults to webgpu when the flag is absent', () => {
+    expect(requestedBackend('')).toBe('webgpu');
+    expect(requestedBackend('?')).toBe('webgpu');
+    expect(requestedBackend('?shot=01-establishing-base&seed=7')).toBe('webgpu');
   });
 
-  it('selects webgpu only for an exact opt-in', () => {
+  it('keeps explicit webgpu requests on webgpu', () => {
     expect(requestedBackend('?gpu=webgpu')).toBe('webgpu');
     expect(requestedBackend('gpu=webgpu')).toBe('webgpu');
     expect(requestedBackend('?seed=3&gpu=WebGPU&map=coral-shore')).toBe('webgpu');
   });
 
-  it('treats every unrecognised value as webgl', () => {
-    // A typo in a debug flag must never decide which renderer a player gets.
+  it('keeps every unrecognised value on the product WebGPU renderer', () => {
     for (const s of ['?gpu=', '?gpu=web-gpu', '?gpu=wgpu', '?gpu=1', '?gpu=true', '?gpu=gl']) {
-      expect(requestedBackend(s)).toBe('webgl');
+      expect(requestedBackend(s)).toBe('webgpu');
     }
   });
 

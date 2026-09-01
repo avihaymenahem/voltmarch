@@ -84,6 +84,7 @@ import {
   ROAD_DETAIL_ROUGHNESS, ROAD_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
   createTerrainDetailMask,
 } from './terrain-detail-mask';
+import type { SurfaceEnvironmentState } from './surface-environment';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -172,6 +173,10 @@ function createUniforms(anisotropy = 4) {
     uRoadDetailRoughness: uniform(ROAD_DETAIL_ROUGHNESS),
     uPavementDetailStrength: uniform(PAVEMENT_DETAIL_STRENGTH),
     uPavementDetailRoughness: uniform(PAVEMENT_DETAIL_ROUGHNESS),
+    // wetness, dust, fresh snow deposition, contact contamination.
+    uSurfaceEnvironment: uniform(new THREE.Vector4(0, 0, 0, 0)),
+    // shoreline wetness, salt, snow contamination, reserved.
+    uSurfaceContext: uniform(new THREE.Vector4(0, 0, 0, 0)),
   };
 }
 
@@ -488,6 +493,7 @@ export interface RoadNodeMaterialSet {
   readonly materials: Readonly<Record<RoadSurfaceKind, MeshStandardNodeMaterial>>;
   /** Live uniform nodes, shared by all three. Mutate `.value`, never replace. */
   readonly uniforms: RoadNodeUniforms;
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -580,10 +586,46 @@ export function createRoadNodeMaterial(
   ), 0.45, 1.0).toVar('roadDetailedRoughness');
 
   const painted = paintFor(kind, detailedBase, uniforms);
-  mat.colorNode = vec4(painted.xyz, vRoadFade);
-  mat.roughnessNode = kind === 'pavement'
-    ? mix(detailedRoughness, ROAD_MARKS.shoulderRoughness, painted.w.mul(0.42))
-    : mix(detailedRoughness, ROAD_MARKS.paintRoughness, painted.w);
+  const climateMask: FloatN = kind === 'carriageway'
+    ? smoothstep(vRoad.z.mul(0.58), vRoad.z.mul(0.92), abs(vRoad.x))
+      .mul(float(1.0).sub(painted.w))
+    : kind === 'pavement' ? painted.w : float(0.18).mul(float(1.0).sub(painted.w));
+  const wetResponse = kind === 'carriageway' ? 0.90 : kind === 'pavement' ? 0.72 : 0.58;
+  const wet = uniforms.uSurfaceEnvironment.x.mul(wetResponse)
+    .mul(float(1.0).sub(painted.w.mul(kind === 'pavement' ? 0.08 : 0.35)))
+    .toVar('roadClimateWet');
+  const dust = uniforms.uSurfaceEnvironment.y.mul(climateMask)
+    .mul(float(1.0).sub(wet.mul(0.82))).toVar('roadClimateDust');
+  const contact = uniforms.uSurfaceEnvironment.w.mul(climateMask).toVar('roadClimateContact');
+  // Fresh deposition avoids traffic/paint first; the persistent snow-map
+  // contamination channel then dirties only that deposited layer. This is a
+  // shared uniform response—no road rebuild, texture, pass, or material clone.
+  const snow = uniforms.uSurfaceEnvironment.z.mul(climateMask)
+    .mul(float(1.0).sub(painted.w.mul(0.82)))
+    .mul(float(1.0).sub(wet.mul(0.55))).toVar('roadClimateSnow');
+  const snowContamination = uniforms.uSurfaceContext.z.mul(snow)
+    .toVar('roadSnowContamination');
+  const wetDarken = kind === 'carriageway' ? 0.065 : kind === 'pavement' ? 0.045 : 0.035;
+  const climateBase = painted.xyz
+    .mul(float(1.0).sub(wet.mul(wetDarken)))
+    .mul(mix(vec3(1.0), vec3(0.90, 0.82, 0.70), dust.mul(0.08)))
+    .mul(float(1.0).sub(contact.mul(0.015)));
+  const climatePainted = vec4(
+    mix(climateBase, vec3(0.76, 0.75, 0.73), snow.mul(0.20))
+      .mul(float(1.0).sub(snowContamination.mul(0.08))),
+    painted.w,
+  ).toVar('roadClimatePainted');
+  mat.colorNode = vec4(climatePainted.xyz, vRoadFade);
+  const paintedRoughness = kind === 'pavement'
+    ? mix(detailedRoughness, ROAD_MARKS.shoulderRoughness, climatePainted.w.mul(0.42))
+    : mix(detailedRoughness, ROAD_MARKS.paintRoughness, climatePainted.w);
+  const wetRoughness = kind === 'carriageway' ? 0.16 : kind === 'pavement' ? 0.12 : 0.08;
+  const minimumRoughness = kind === 'carriageway' ? 0.62 : kind === 'pavement' ? 0.68 : 0.74;
+  mat.roughnessNode = clamp(
+    paintedRoughness.sub(wet.mul(wetRoughness)).add(dust.mul(0.018))
+      .add(snow.mul(0.10)).add(snowContamination.mul(0.03)),
+    minimumRoughness, 1.0,
+  );
 
   return mat;
 }
@@ -606,6 +648,14 @@ export function createRoadNodeMaterials(anisotropy: number): RoadNodeMaterialSet
   return {
     materials,
     uniforms,
+    setSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+      (uniforms.uSurfaceEnvironment.value as THREE.Vector4).set(
+        state.wetness, state.dust, state.snow, state.contact,
+      );
+      (uniforms.uSurfaceContext.value as THREE.Vector4).set(
+        state.shoreWetness, state.salt, state.snowContamination, 0,
+      );
+    },
     dispose(): void {
       for (const kind of ROAD_SURFACE_KINDS) materials[kind].dispose();
     },

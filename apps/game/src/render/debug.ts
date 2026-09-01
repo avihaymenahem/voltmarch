@@ -58,6 +58,11 @@ import {
   gpuPassSnapshot,
   type GpuPassId,
 } from './gpu-pass-timings';
+import {
+  diagnosticSnapshot,
+  logDiagnostic,
+  type DiagnosticRecord,
+} from '../core/diagnostic-log';
 
 /* ========================================================================== */
 /* Types                                                                      */
@@ -416,6 +421,10 @@ export interface VMHandle {
   onFrame(cb: (dtMs: number) => void): () => void;
   /** Dump the current render config to the console as pasteable source. */
   dumpConfig(): string;
+  /** Recent bounded renderer events, newest last. */
+  diagnostics(limit?: number): readonly DiagnosticRecord[];
+  /** Add a breadcrumb before reproducing an issue from the console. */
+  diagnosticMark(message: string, detail?: unknown): DiagnosticRecord;
 
   /* -- the invisible-entity audit (ADDITIVE — see RenderBridge §5a).
    *    `tools/shoot.mjs` and `tools/metrics.mjs` drive this handle and neither
@@ -1109,6 +1118,14 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       // `src/render/backend.ts`. Passing it in rather than letting `gpuReport`
       // guess keeps the one source of that answer in one place.
       return gpuReport(handle.backend);
+    },
+
+    diagnostics(limit = 200) {
+      return diagnosticSnapshot(limit);
+    },
+
+    diagnosticMark(message, detail) {
+      return logDiagnostic('info', 'developer', 'manual-mark', message, detail);
     },
   };
 

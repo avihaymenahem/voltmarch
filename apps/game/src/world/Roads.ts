@@ -89,6 +89,9 @@ import { LAYERS, RENDER_ORDER } from '../render/scene';
 import { SurfaceId } from './Biomes';
 import { PASS_TRACK, type Terrain } from './Terrain';
 import { DecalKind, type DecalField } from './Decals';
+import {
+  surfaceEnvironmentState, type SurfaceEnvironmentState,
+} from './surface-environment';
 
 /* ==========================================================================
  * 1. VOCABULARY
@@ -1305,6 +1308,7 @@ interface RoadUniforms {
   uRoadDetailRoughness: { value: number };
   uPavementDetailStrength: { value: number };
   uPavementDetailRoughness: { value: number };
+  uSurfaceEnvironment: { value: THREE.Vector4 };
   [k: string]: THREE.IUniform;
 }
 
@@ -1324,6 +1328,7 @@ function makeRoadUniforms(): RoadUniforms {
     uRoadDetailRoughness: { value: ROAD_DETAIL_ROUGHNESS },
     uPavementDetailStrength: { value: PAVEMENT_DETAIL_STRENGTH },
     uPavementDetailRoughness: { value: PAVEMENT_DETAIL_ROUGHNESS },
+    uSurfaceEnvironment: { value: new THREE.Vector4(0, 0, 0, 0) },
   };
 }
 
@@ -1666,6 +1671,7 @@ export interface RoadGlslMaterialSet {
   readonly materials: Readonly<Record<RoadSurfaceKind, THREE.MeshStandardMaterial>>;
   /** Live uniform objects, shared by all three. Mutate `.value`, never replace. */
   readonly uniforms: RoadUniforms;
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -1701,6 +1707,11 @@ export function createRoadGlslMaterials(
   return {
     materials,
     uniforms,
+    setSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+      uniforms.uSurfaceEnvironment.value.set(
+        state.wetness, state.dust, state.snow, state.contact,
+      );
+    },
     dispose(): void {
       for (const kind of ROAD_SURFACE_KINDS) materials[kind].dispose();
     },
@@ -1836,6 +1847,8 @@ export class RoadNetwork {
   private paveMesh: THREE.Mesh | null = null;
   private readonly materials: THREE.Material[] = [];
   private readonly uniforms = makeRoadUniforms();
+  private setSurfaceEnvironmentUniforms:
+    ((state: SurfaceEnvironmentState) => void) | null = null;
 
   /** Cross-sections that gave up their markings to a higher-ranked chain. */
   private foreignPaintRows = 0;
@@ -4118,9 +4131,12 @@ export class RoadNetwork {
      * unread on the node path.
      */
     const np = nodePath();
-    const { carriageway: roadMat, kerb: kerbMat, pavement: paveMat } =
-      (np !== null ? np.createRoadMaterials(anis) : createRoadGlslMaterials(anis, this.uniforms))
-        .materials;
+    const materialSet = np !== null
+      ? np.createRoadMaterials(anis)
+      : createRoadGlslMaterials(anis, this.uniforms);
+    this.setSurfaceEnvironmentUniforms = materialSet.setSurfaceEnvironment;
+    materialSet.setSurfaceEnvironment(surfaceEnvironmentState);
+    const { carriageway: roadMat, kerb: kerbMat, pavement: paveMat } = materialSet.materials;
     this.materials.push(roadMat, kerbMat, paveMat);
 
     this.roadMesh = this.mount(road.toGeometry('road.carriageway', 'aRoad'), roadMat, false);
@@ -5221,6 +5237,11 @@ export class RoadNetwork {
   /** Metres of carriageway. For the boot log and the density validator. */
   get lengthMetres(): number { return this.totalMetres; }
 
+  /** Weather publishes into the retained uniform block; no graph/material rebuild. */
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+    this.setSurfaceEnvironmentUniforms?.(state);
+  }
+
   dispose(): void {
     for (const mesh of [this.roadMesh, this.kerbMesh, this.paveMesh]) {
       if (mesh === null) continue;
@@ -5229,6 +5250,7 @@ export class RoadNetwork {
     }
     for (const m of this.materials) m.dispose();
     this.materials.length = 0;
+    this.setSurfaceEnvironmentUniforms = null;
     this.scene.remove(this.root);
     this.roadMesh = this.kerbMesh = this.paveMesh = null;
     this.furnitureRuns = [];

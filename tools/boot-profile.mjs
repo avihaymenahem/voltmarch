@@ -69,7 +69,10 @@ const OUT = opt('out', '');
 const RAW_OUT = opt('raw-out', '');
 const compactOutput = argv.includes('--compact');
 const LINGER = Number(opt('linger', '0'));
-const nativeWebGpu = EXTRA.split(',').some((pair) => pair.trim() === 'gpu=webgpu');
+// WebGPU is the product default. Only the temporary explicit legacy override
+// should launch the non-native harness path; an absent `gpu` query must still
+// exercise the same renderer players now receive.
+const nativeWebGpu = !EXTRA.split(',').some((pair) => pair.trim() === 'gpu=webgl');
 
 /** The fixtures worth profiling, and the boot flags each one needs. */
 const FIXTURES = {
@@ -119,6 +122,29 @@ const FIXTURES = {
   '03-terrain-closeup': { shot: 'terrain-showcase', seed: 3 },
   // The one map with a declared sea, so the only one where water does real work.
   '08-naval-water': { shot: 'naval', seed: 13 },
+  // Phase 2-4 graphics baseline: the real product map, not a showcase scene.
+  // Keep this setup byte-for-byte aligned with tools/realism-baseline.mjs so
+  // visual gains can be charged against the boot curtain on the same content.
+  '14-industrial-grid-realism': {
+    shot: null,
+    seed: 7,
+    skipmenu: '1',
+    start: 'base',
+    setup: {
+      playerFaction: 'allies',
+      aiFaction: 'soviets',
+      map: 'industrial-grid',
+      difficulty: 1,
+      personality: -1,
+      startingCredits: 10_000,
+      speed: 1,
+      seed: 7,
+      weather: false,
+      opponents: [
+        { faction: 'soviets', difficulty: 1, personality: -1, team: 2 },
+      ],
+    },
+  },
 };
 
 const flags = FIXTURES[SHOT];

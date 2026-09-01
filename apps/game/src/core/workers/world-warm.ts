@@ -56,6 +56,8 @@ import {
   terrainTextureKey, type TerrainTextureData,
 } from '../../world/terrain-texture-gen';
 import { waterTextureKey, type WaterTextureData } from '../../world/water-texture-gen';
+import type { IrradianceFieldData } from '../../world/irradiance-field';
+import type { TerrainWarmData } from './TexturePool';
 
 /* -------------------------------------------------------------------------- */
 
@@ -73,8 +75,11 @@ function flagOff(name: string): boolean {
  * early is a boot that is slower than doing nothing at all.
  */
 let pool: TexturePool | null = null;
+/** Renderer capability decided before bootstrap starts the worker. */
+let irradianceRequested = true;
 
 let terrainPromise: Promise<TerrainFieldData | null> | null = null;
+let irradiancePromise: Promise<IrradianceFieldData | null> | null = null;
 let waterPromise: Promise<WaterFieldData | null> | null = null;
 let terrainTexPromise: Promise<TerrainTextureData | null> | null = null;
 let waterTexPromise: Promise<WaterTextureData | null> | null = null;
@@ -88,10 +93,12 @@ const report = {
   waterOff: false,
   /** Milliseconds the worker itself spent, as measured inside the worker. */
   terrainMs: 0,
+  irradianceMs: 0,
   waterMs: 0,
   terrainTexMs: 0,
   waterTexMs: 0,
   terrainAdopted: false,
+  irradianceSource: 'none' as 'none' | 'worker' | 'main',
   waterAdopted: false,
   terrainTexAdopted: false,
   waterTexAdopted: false,
@@ -167,11 +174,18 @@ export function installWorldWorkers(): void {
   const input = plannedTerrainInput();
   const tKey = terrainGenKey(input);
 
-  terrainPromise = pool.submitTerrain(input).then((data) => {
+  const terrainWarmPromise: Promise<TerrainWarmData | null> = pool.submitTerrain(
+    input, irradianceRequested,
+  ).then((data) => {
     if (ownGeneration !== generation) return null;
-    if (data !== null) report.terrainMs = data.generateMs;
+    if (data !== null) {
+      report.terrainMs = data.terrain.generateMs;
+      if (data.irradiance !== null) report.irradianceMs = data.irradiance.generateMs;
+    }
     return data;
   });
+  terrainPromise = terrainWarmPromise.then((warm) => warm?.terrain ?? null);
+  irradiancePromise = terrainWarmPromise.then((warm) => warm?.irradiance ?? null);
 
   /*
    * THE TILE JOBS ARE SUBMITTED HERE, not chained onto anything.
@@ -247,10 +261,12 @@ export function installWorldWorkers(): void {
  * old pool harmless: they may run, but they cannot publish bytes or timings
  * into the new boot.
  */
-export function prepareWorldWorkers(): void {
+export function prepareWorldWorkers(wantsIrradiance = true): void {
   generation++;
+  irradianceRequested = wantsIrradiance;
   disposeWorldWorkers();
   terrainPromise = null;
+  irradiancePromise = null;
   waterPromise = null;
   terrainTexPromise = null;
   waterTexPromise = null;
@@ -259,10 +275,12 @@ export function prepareWorldWorkers(): void {
     terrainOff: false,
     waterOff: false,
     terrainMs: 0,
+    irradianceMs: 0,
     waterMs: 0,
     terrainTexMs: 0,
     waterTexMs: 0,
     terrainAdopted: false,
+    irradianceSource: 'none' as 'none' | 'worker' | 'main',
     waterAdopted: false,
     terrainTexAdopted: false,
     waterTexAdopted: false,
@@ -281,6 +299,15 @@ export function prepareWorldWorkers(): void {
 export function prewarmedTerrain(): Promise<TerrainFieldData | null> {
   if (terrainPromise === null) return Promise.resolve(null);
   return terrainPromise;
+}
+
+/**
+ * The map-aligned presentation field generated in the same worker pass as the
+ * terrain. Its Float32 buffer has already been transferred, never cloned.
+ */
+export function prewarmedIrradiance(): Promise<IrradianceFieldData | null> {
+  if (irradiancePromise === null) return Promise.resolve(null);
+  return irradiancePromise;
 }
 
 /** The prewarmed water fields, or null. Awaited by `world.water`'s init. */
@@ -326,12 +353,19 @@ export function prewarmedWaterTextureKey(): string {
 
 /** Record that a caller actually used a prewarmed set. For the boot log only. */
 export function notePrewarmAdopted(
-  which: 'terrain' | 'water' | 'terrainTex' | 'waterTex', adopted: boolean,
+  which: 'terrain' | 'irradiance' | 'water' | 'terrainTex' | 'waterTex', adopted: boolean,
 ): void {
   if (which === 'terrain') report.terrainAdopted = adopted;
+  else if (which === 'irradiance') report.irradianceSource = adopted ? 'worker' : 'none';
   else if (which === 'water') report.waterAdopted = adopted;
   else if (which === 'terrainTex') report.terrainTexAdopted = adopted;
   else report.waterTexAdopted = adopted;
+}
+
+/** Record the rare worker-fallback cost for boot profiling. */
+export function noteIrradianceMainThread(generateMs: number): void {
+  report.irradianceSource = 'main';
+  report.irradianceMs = Math.max(0, generateMs);
 }
 
 /**

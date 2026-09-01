@@ -57,6 +57,7 @@ import {
   createVfxRibbonNodeMaterial,
 } from '../vfx/vfx-node-materials';
 import { createFoliageComputeController } from './FoliageComputeNodeController';
+import type { IrradianceFieldUpdate } from '../core/irradiance-field';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -209,6 +210,11 @@ function createNodePostAdapter(
   let liveScene = scene;
   let liveCamera = camera;
   let rainIntensity = 0;
+  let irradianceField: IrradianceFieldUpdate | null = null;
+  let irradianceMoodGain = 1;
+  let irradianceMoodRed = 1;
+  let irradianceMoodGreen = 1;
+  let irradianceMoodBlue = 1;
   const draws = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
   const triangles = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
   const previousRenderObject = renderer.renderObject;
@@ -269,6 +275,10 @@ function createNodePostAdapter(
       camera: liveCamera as unknown as ChainCamera,
     });
     chain.setWeatherIntensity(rainIntensity);
+    if (irradianceField !== null) chain.setIrradianceField(irradianceField);
+    chain.setIrradianceMood(
+      irradianceMoodGain, irradianceMoodRed, irradianceMoodGreen, irradianceMoodBlue,
+    );
   }
 
   return {
@@ -297,6 +307,18 @@ function createNodePostAdapter(
     setWeatherIntensity(intensity: number): void {
       rainIntensity = Math.max(-1, Math.min(1, intensity));
       chain.setWeatherIntensity(rainIntensity);
+    },
+    setIrradianceField(field: IrradianceFieldUpdate | null): boolean {
+      const adopted = chain.setIrradianceField(field);
+      if (adopted) irradianceField = field;
+      return adopted;
+    },
+    setIrradianceMood(gain: number, red: number, green: number, blue: number): void {
+      irradianceMoodGain = gain;
+      irradianceMoodRed = red;
+      irradianceMoodGreen = green;
+      irradianceMoodBlue = blue;
+      chain.setIrradianceMood(gain, red, green, blue);
     },
     postLabel(): string { return chain.postLabel(); },
     setSize(w: number, h: number): void { chain.setSize(w, h); },

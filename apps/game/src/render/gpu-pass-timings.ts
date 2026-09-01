@@ -104,8 +104,8 @@ export function classifyGpuBottleneck(snapshot: GpuPassSnapshot | null): GpuBott
 
   if (shadow / total >= 0.30) return 'shadow';
   if (ao / total >= 0.22) return 'ao';
-  // SSGI is an opt-in full-screen experiment with fixed ray counts. Resolution
-  // is its safe adaptive lever; GTAO's sample-count lever does not control it.
+  // SSGI has fixed ray counts. Resolution is its safe adaptive lever; GTAO's
+  // sample-count lever does not control it.
   if (gi / total >= 0.22) return 'fill-rate';
   if (water / total >= 0.22) return 'water';
   if (particles / total >= 0.22) return 'particles';

@@ -1,10 +1,12 @@
 /**
- * VOLTMARCH — experimental WebGPU screen-space global illumination.
+ * VOLTMARCH — bounded WebGPU screen-space global illumination.
  *
- * This is deliberately an opt-in experiment, not a quality-tier default. The
- * official Three SSGINode is expensive at the drawing-buffer resolution and
- * requires an optional WebGPU render-target feature. `post-nodes.ts` enables
- * it only for `?gi=ssgi` on a capable WebGPU device and otherwise keeps GTAO.
+ * The official Three SSGINode is expensive at drawing-buffer resolution and
+ * requires an optional WebGPU render-target feature. The first 40%-resolution
+ * candidate failed live visual acceptance. The second candidate raises the
+ * working resolution and treats sampled radiance as incident light; the
+ * composite applies the receiving surface colour before it reaches the frame.
+ * Query values remain critic-only lab overrides, never a product dependency.
  *
  * The cost shape is kept close to the shipped GTAO path:
  *
@@ -21,7 +23,7 @@ import { float, mix, rtt, texture, uniform } from 'three/tsl';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 
-import type { AoConfig } from '../renderer';
+import type { AoConfig, RenderQualityTier } from '../renderer';
 import {
   normalFromDepthTexture,
   seedDenoiseNoise,
@@ -29,6 +31,11 @@ import {
 
 type Flt = Node<'float'>;
 type Vec3 = Node<'vec3'>;
+
+// SSGI's horizon field reaches far beyond the 1.6 m GTAO it replaces. A full
+// GTAO-strength blend darkens entire terrain regions, so retain only enough of
+// it for local contact grounding and let the bounced-light channel do the work.
+const SSGI_AO_BLEND = 0.18;
 
 type RttNode = TextureNode & {
   setResolutionScale(scale: number): void;
@@ -52,28 +59,28 @@ const SSGI_PRESETS: Readonly<Record<SsgiQuality, SsgiPreset>> = {
     quality: 'low',
     resolutionScale: 0.5,
     sliceCount: 2,
-    stepCount: 6,
-    radius: 12,
-    thickness: 1.4,
-    giIntensity: 4.0,
+    stepCount: 4,
+    radius: 10,
+    thickness: 1.3,
+    giIntensity: 3.4,
   },
   medium: {
     quality: 'medium',
+    resolutionScale: 0.5,
+    sliceCount: 2,
+    stepCount: 6,
+    radius: 12,
+    thickness: 1.4,
+    giIntensity: 3.8,
+  },
+  high: {
+    quality: 'high',
     resolutionScale: 0.5,
     sliceCount: 3,
     stepCount: 8,
     radius: 14,
     thickness: 1.5,
-    giIntensity: 5.0,
-  },
-  high: {
-    quality: 'high',
-    resolutionScale: 0.75,
-    sliceCount: 4,
-    stepCount: 12,
-    radius: 16,
-    thickness: 1.6,
-    giIntensity: 6.0,
+    giIntensity: 4.2,
   },
 };
 
@@ -92,14 +99,26 @@ export function requestedSsgiPreset(search: string): SsgiPreset | null {
   return null;
 }
 
-/** Pure capability policy, kept outside the renderer so the refusal paths run in CI. */
+/** Bounded second candidate. Lower tiers retain GTAO. */
+export function defaultSsgiPreset(tier: RenderQualityTier): SsgiPreset | null {
+  if (tier === 'high') return SSGI_PRESETS.low;
+  if (tier === 'ultra') return SSGI_PRESETS.medium;
+  return null;
+}
+
+/** Pure quality/capability policy, kept outside the renderer so refusal paths run in CI. */
 export function capabilityGatedSsgiPreset(
   search: string,
+  tier: RenderQualityTier,
   perspectiveCamera: boolean,
   rg11b10Renderable: boolean,
 ): SsgiPreset | null {
   if (!perspectiveCamera || !rg11b10Renderable) return null;
-  return requestedSsgiPreset(search);
+  const raw = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+    .get('gi')
+    ?.toLowerCase();
+  if (raw === 'off' || raw === 'gtao') return null;
+  return requestedSsgiPreset(search) ?? defaultSsgiPreset(tier);
 }
 
 interface SsgiMarchNode {
@@ -194,7 +213,7 @@ export function createSsgiNodes(options: CreateSsgiOptions): SsgiNodes {
   denoiseLike.lumaPhi.value = 2.5;
   denoiseLike.depthPhi.value = 2.0;
   denoiseLike.normalPhi.value = 6.0;
-  denoiseLike.radius.value = preset.quality === 'high' ? 4 : 5;
+  denoiseLike.radius.value = preset.quality === 'high' ? 5 : 4;
 
   const denoisedGi = rtt(denoiseNode, null, null, {
     type: HalfFloatType,
@@ -207,7 +226,7 @@ export function createSsgiNodes(options: CreateSsgiOptions): SsgiNodes {
 
   // The horizon field reaches farther than the shipped 1.6 m GTAO. Keep its
   // contact darkening subordinate to the new bounced-light information.
-  const aoMix = uniform(options.ao.intensity * 0.72);
+  const aoMix = uniform(options.ao.intensity * SSGI_AO_BLEND);
 
   const nodes: SsgiNodes = {
     preset,
@@ -222,8 +241,8 @@ export function createSsgiNodes(options: CreateSsgiOptions): SsgiNodes {
       return (denoisedGi as unknown as { rgb: Vec3 }).rgb;
     },
     applyAoConfig(cfg: AoConfig): void {
-      aoMix.value = cfg.intensity * 0.72;
-      march.aoIntensity.value = Math.max(0.45, cfg.power * 0.6);
+      aoMix.value = cfg.intensity * SSGI_AO_BLEND;
+      march.aoIntensity.value = Math.max(0.45, cfg.power * 0.60);
     },
     dispose(): void {
       march.dispose();

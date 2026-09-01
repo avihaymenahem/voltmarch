@@ -236,7 +236,7 @@ export interface GpuFailureReport {
   readonly lines: ReadonlyArray<string>;
   /** The browser's raw text, kept separate so the prose above stays readable. */
   readonly detail: string;
-  /** Label for the button that reloads without `?gpu=webgpu`. */
+  /** Label for the button that reloads with the temporary WebGL rollback. */
   readonly webglAction: string;
   /** Label for the button that retries WebGPU on a fresh page. */
   readonly retryAction: string;
@@ -274,8 +274,8 @@ export function gpuFailureReport(failure: GpuFailure): GpuFailureReport {
           'This happens when the driver is still recovering from a reset, when the ' +
             'browser has blocked WebGPU for this GPU, or when the machine has no ' +
             'WebGPU-capable adapter at all.',
-          'The game runs on WebGL, which is the default — the WebGPU renderer is only ' +
-            'selected by the ?gpu=webgpu flag in the address bar.',
+          'WebGPU is the normal renderer. You can retry it, or use the temporary ' +
+            '?gpu=webgl rollback on this machine.',
         ];
 
   const reason = failure.reason !== null && failure.reason !== '' ? `${failure.reason}: ` : '';
@@ -295,7 +295,7 @@ export function gpuFailureConsoleLine(failure: GpuFailure): string {
   const reason = failure.reason !== null && failure.reason !== '' ? ` reason=${failure.reason}` : '';
   return (
     `[render] WebGPU ${where} — ${gpu}${reason} — ${failure.message || 'no detail'}. ` +
-    'The WebGL renderer is the default and is reached by removing ?gpu=webgpu. ' +
+    'WebGPU is the product default; the temporary rollback is ?gpu=webgl. ' +
     'See docs/RENDER_FINDINGS.md §7g.'
   );
 }
@@ -305,9 +305,9 @@ export function gpuFailureConsoleLine(failure: GpuFailure): string {
  * ========================================================================== */
 
 /**
- * The same page with `?gpu=` removed.
+ * The same page with the explicit temporary `?gpu=webgl` rollback.
  *
- * THE FLAG IS THE ONLY THING TAKEN OUT. `?seed=`, `?map=`, `?mapseed=` and
+ * THE GPU VALUE IS THE ONLY THING CHANGED. `?seed=`, `?map=`, `?mapseed=` and
  * `?shot=` all decide what the page IS, and a "get me back to a working
  * renderer" button that silently rerolled the map would be a second, quieter
  * version of the substitution this whole design refuses.
@@ -316,11 +316,10 @@ export function gpuFailureConsoleLine(failure: GpuFailure): string {
  * direction: a button that reloads the identical URL is useless, a button that
  * navigates somewhere unexpected is worse.
  */
-export function hrefWithoutGpuFlag(href: string): string {
+export function hrefForWebgl(href: string): string {
   try {
     const url = new URL(href);
-    if (!url.searchParams.has('gpu')) return href;
-    url.searchParams.delete('gpu');
+    url.searchParams.set('gpu', 'webgl');
     return url.toString();
   } catch {
     return href;

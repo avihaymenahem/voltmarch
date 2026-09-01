@@ -2304,9 +2304,13 @@ new WebGL implementation. `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` owns that roa
   catches the rejection. **Do not restore three's fallback and do not build any renderer on a canvas
   a `WebGPURenderer` has touched** — `liveCanvas()` in `renderer.ts` mints a fresh one, and it is
   identity on every WebGL boot.
-- **`?gpu=webgpu` REFUSES when the device cannot be had. It does not substitute, loudly or
-  quietly.** A visible panel names the failure and the GPU and carries a one-click *Continue on
-  WebGL* that reloads without the flag. The argument is above `raiseGpuFailure` in `renderer.ts`:
+- **WEBGPU IS THE PRODUCT DEFAULT, WITHOUT A QUERY FLAG.** As of the Phase 2–4 realism workstream,
+  an absent or unrecognised `gpu` query selects WebGPU. `?gpu=webgl` is only a temporary explicit
+  rollback seam pending the separately authorised deletion of the legacy renderer; WebGL parity,
+  performance and visual acceptance are not gates for new graphics work.
+- **WEBGPU REFUSES when the device cannot be had. It does not substitute, loudly or quietly.** A
+  visible panel names the failure and the GPU and carries a temporary one-click legacy WebGL route
+  that reloads with `?gpu=webgl`. The argument is above `raiseGpuFailure` in `renderer.ts`:
   a notice-plus-fallback is the same lie `assertBackend` exists to forbid — every downstream number
   would go on being produced about WebGL while the address bar said WebGPU, which is Stage A's
   defect exactly — and a lost device takes every GPU resource with it, so "recover onto WebGL" is a

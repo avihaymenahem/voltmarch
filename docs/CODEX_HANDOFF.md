@@ -49,8 +49,10 @@ project decision obsolete.
   keep visible bark and coherent silhouettes; foliage depth uses the same alpha contract on both
   renderers; and bush, grass, field-tent and barrel casters follow their visible components instead
   of disappearing or projecting detached boxes. The Soviet Molot's imported source -X nose is also
-  mapped onto gameplay +Z so sorties no longer appear to fly tail-first. Palm presentation remains
-  the accepted baseline.
+  mapped onto gameplay +Z so sorties no longer appear to fly tail-first. The Allied Albatross was returned
+  to its approved source-axis/gameplay `+90°` yaw after the temporary 180° live-sortie correction was
+  explicitly reverted. Its shared hull, LODs and shadow proxy must keep that same orientation. Palm
+  presentation remains the accepted baseline.
 
 The repository should be clean and `origin/main` should match the working branch at this handoff.
 Verify rather than trusting that sentence after time has passed.
@@ -205,8 +207,9 @@ dozer into its imported shell.
 
 ## Platform and UX decisions
 
-- Desktop is **WebGPU-first and WebGPU-locked** for normal play. Do not silently fall back to WebGL
-  there. Browser builds retain the supported renderer negotiation/fallback path.
+- WebGPU is the only graphics acceptance target and the no-query product default on desktop and web.
+  Do not silently fall back. `?gpu=webgl` remains only as a temporary explicit rollback seam pending
+  the separately authorised removal of the legacy renderer; do not spend new graphics work on parity.
 - Title/menu presentation is image-first. Show the key art and interactive menu before loading or
   compiling the game scene. Returning from a match must not block on shader preparation again.
 - Out-of-game pages, overlays and the pause menu share the command-shell chrome in `shell.css`;
@@ -310,9 +313,26 @@ This is an index, not a duplicate checklist:
   path is observable in ordinary matches. Industrial
   Grid is the deterministic eight-minute day/night pilot; it animates existing uniforms and one
   pooled lamp-decal gain only, with runtime PMREM rebakes explicitly forbidden after a measured
-  ~90 ms WebGPU hitch. Correlation, biome aging and destruction continuity remain open. The ordered,
-  separately gated next phases for stable indirect lighting, semantic place composition and causal
-  material cohesion live in `docs/REALISM_PHASES_2_TO_4_PLAN.md`; that plan is not release authority.
+  ~90 ms WebGPU hitch. The phases 2–4 implementation now covers all seven shipped maps through the normal
+  WebGPU path: one retained 64×64 irradiance field, bounded map-specific semantic context grammars/lights,
+  attacker-aligned damage-to-rubble continuity, causal shoreline/salt/snow state and shared terrain, road,
+  structure, unit, procedural-prop and authored-environment material response. The full local matrix passes
+  with 4,096 probes per map, stable camera-pan simulation hashes, 47–57 colour draws and zero post-warmup
+  program growth. The rollout adds no product query flag, runtime asset, render pass, draw call, material
+  clone, shader variant or worker pool; bounded scalar planners stay on the main thread because dispatch
+  overhead would cost more than their work. Device-vendor and release gates remain separately owned by
+  `docs/REALISM_PHASES_2_TO_4_PLAN.md`; that plan is not release authority.
+- **SSGI checkpoint:** the first bounded candidate was rejected after live tactical views exposed reduced-
+  resolution sampling rows, faction-colour contamination and whole-scene dulling. The corrected WebGPU
+  candidate is accepted: High defaults to low SSGI and Ultra to medium SSGI, at 0.5 resolution with a
+  deterministic non-temporal denoise. Incident radiance is multiplied by the receiving scene colour so
+  faction hue is preserved, while long-range SSGI AO is blended at 0.18 of configured AO so it remains a
+  contact cue instead of flattening the frame. Low/medium/high GI intensity is 3.4/3.8/4.2. At 2560×1440
+  D62, GTAO versus final SSGI measured luma 0.34349849 versus 0.33946900 (-1.17%) and saturation
+  0.45379077 versus 0.45375932 (-0.007%, effectively identical). The final paired wall median moved
+  4.336667 to 4.536667 ms (+4.61%, within the 10% gate); direct GI cost 1.048576 ms versus 0.589824 ms
+  for GTAO AO, a +0.458752 ms lighting cost. Non-paired total GPU timestamps are clock-sensitive, so the
+  direct replaced-pass and paired wall deltas are the acceptance evidence.
 - **Strategic air wing:** `docs/STRATEGIC_AIRBASE_PLAN.md` — all four faction-specific airbase/heavy-
   bomber pairs now have conditioned ImageGen-to-Meshy PBR assets, KTX2/LOD/shadow derivatives,
   procedural fallbacks, catalogue bindings and deterministic fixtures. Each base costs 3,000 credits,

@@ -33,6 +33,7 @@ import {
   promoteGeometryAttributeToFloat32,
   removeStaleTangentAttribute,
 } from './geometry-attributes';
+import { createSovietHarvesterCargoPart } from './HarvesterCargo';
 
 interface ImportedUnitLodSpec {
   url: string;
@@ -1874,6 +1875,11 @@ export async function loadImportedUnitOverride(
       aoOccluder: false,
       shadowOnly: true,
     });
+  }
+  if (spec.key === 'soviet_harvester') {
+    const cargo = createSovietHarvesterCargoPart();
+    parts.push(cargo);
+    runtimeMaterials.add(cargo.material as THREE.Material);
   }
 
   // Sockets stay procedural: the imported shell is fitted to that exact

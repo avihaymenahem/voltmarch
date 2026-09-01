@@ -40,6 +40,16 @@ declare global {
   }
 }
 
+import {
+  installGlobalDiagnostics,
+  logDiagnostic,
+  setDiagnosticContextProvider,
+} from './core/diagnostic-log';
+
+// This must precede URL parsing and DOM lookups: those are boot work too, and a
+// failure there used to happen before any durable renderer listener existed.
+installGlobalDiagnostics();
+
 /* -------------------------------------------------------------------------- */
 /* Boot flags                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -117,6 +127,7 @@ function fail(title: string, detail: unknown, state: 'error' | 'pending' = 'erro
     detail instanceof Error ? (detail.stack ?? `${detail.name}: ${detail.message}`) : String(detail);
   // 'pending' is an expected state, not a fault — keep it out of console.error so
   // it never shows up in the screenshot harness's error report.
+  if (state === 'error') logDiagnostic('fatal', 'boot', 'visible-failure', title, detail);
   (state === 'pending' ? console.info : console.error)(`[RA] ${title}\n${body}`);
   window.__vmFail?.(title, body, state);
 }
@@ -161,6 +172,9 @@ let game: GameHandle | null = null;
 let shell: Shell | null = null;
 
 async function main(): Promise<void> {
+  logDiagnostic('info', 'boot', 'start', 'Application boot started', {
+    surface: harnessMode ? 'harness' : 'product',
+  });
   installViewportHandlers();
   installLifecycleHandlers();
 
@@ -284,6 +298,8 @@ function installLifecycleHandlers(): void {
   // catch up on return and burn its whole substep budget. On the product path
   // the Shell owns this, because only it knows whether a menu is open.
   document.addEventListener('visibilitychange', () => {
+    logDiagnostic('info', 'lifecycle', document.hidden ? 'hidden' : 'visible',
+      document.hidden ? 'Document hidden' : 'Document visible');
     if (harnessMode) game?.setPaused?.(document.hidden);
   });
 
@@ -298,6 +314,17 @@ function installLifecycleHandlers(): void {
 
 // Production web only. The helper rejects localhost, GitHub previews and the
 // desktop app:// origin before a third-party script can be requested.
+setDiagnosticContextProvider(() => {
+  const active = currentGame();
+  return {
+    surface: harnessMode ? 'harness' : 'product',
+    shellState: shell?.getState() ?? null,
+    visible: document.visibilityState,
+    simTick: active?.ctx.loop.tick ?? null,
+    simSeconds: active?.ctx.loop.simTime ?? null,
+    paused: active?.ctx.loop.paused ?? null,
+  };
+});
 installCloudflareAnalytics();
 main().catch((err) => fail('Boot Failure', err));
 

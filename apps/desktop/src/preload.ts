@@ -10,9 +10,9 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 8` is a VERSION, not a boolean. The game accepts bridge 7 as the
- * one explicit compatibility predecessor because 8 keeps the public method
- * shape and only makes key/value mutations non-blocking. Other mismatches
+ * `bridge: 9` is a VERSION, not a boolean. The game accepts bridge 8 as the
+ * one explicit compatibility predecessor; it lacks the diagnostics methods
+ * but remains safe for every pre-existing capability. Other mismatches
  * degrade to WEB BEHAVIOUR rather than guessing at a missing capability.
  *
  * That accessor did NOT EXIST when this comment first described it, and
@@ -26,7 +26,8 @@
  * methods below, 2 -> 3 was `alwaysOnTop` joining the display state and patch,
  * 3 -> 4 added desktop diagnostics, 4 -> 5 updater controls, 5 -> 6 relaunch
  * status, 6 -> 7 added `lockPointer` to the display state and patch, and
- * 7 -> 8 moved key/value mutations off the renderer's synchronous IPC path.
+ * 7 -> 8 moved key/value mutations off the renderer's synchronous IPC path,
+ * and 8 -> 9 added bounded diagnostics persistence.
  * Shape, not just method names, is part of the contract. Compatibility with a
  * predecessor must be named explicitly on the game side, never inferred.
  *
@@ -60,7 +61,7 @@ ipcRenderer.on('vm:storage-error', (_event, message: unknown) => {
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 8,
+    bridge: 9,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -137,5 +138,10 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('vm:update-state', wrapped);
       return () => { ipcRenderer.removeListener('vm:update-state', wrapped); };
     },
+
+    /** Structured diagnostics only; the renderer never chooses a file path. */
+    diagnosticWrite: (record: unknown): void => ipcRenderer.send('vm:diagnostic-write', record),
+    diagnosticRead: (limit = 200): Promise<readonly unknown[]> =>
+      ipcRenderer.invoke('vm:diagnostic-read', limit),
   }),
 );

@@ -10,6 +10,7 @@ import { ctx } from '../game/context';
 import * as THREE from 'three';
 
 import { groundDecals } from './Decals';
+import { getRoads } from './Roads';
 import { getTerrain } from './Terrain';
 import { getWater } from './Water';
 import {
@@ -20,6 +21,12 @@ import {
   activeTimeOfDayCycle, sampleTimeOfDay, type TimeOfDayCycle,
   type TimeOfDayPhase, type TimeOfDaySample,
 } from './time-of-day';
+import {
+  resetSurfaceEnvironment,
+  surfaceEnvironmentCauseForMap,
+  stepSurfaceEnvironment,
+  type SurfaceEnvironmentState,
+} from './surface-environment';
 
 type WeatherMode = 'off' | 'dynamic' | 'light' | 'heavy';
 
@@ -59,6 +66,7 @@ let timeOfDayCycle: TimeOfDayCycle | null = null;
 let timeOfDayArt: Record<TimeOfDayPhase, ArtDirection> | null = null;
 let lastTimeOfDayTick = -TIME_OF_DAY_UPDATE_TICKS;
 let lastReportedTimeOfDayPhase: TimeOfDayPhase | null = null;
+let surfaceDayPhase = 0;
 const timeOfDayHudState: TimeOfDayHudState = {
   phase: 'day', nextPhase: 'day', progress: 0, cycleSeconds: 0,
 };
@@ -93,11 +101,37 @@ function phaseOffsetOverride(value: string | null): number | null {
   return Number.isFinite(n) ? ((n % 1) + 1) % 1 : null;
 }
 
+function irradianceMoodValue(
+  phase: TimeOfDayPhase,
+  channel: 'gain' | 'red' | 'green' | 'blue',
+): number {
+  switch (phase) {
+    case 'dusk':
+      return channel === 'gain' ? 0.64 : channel === 'green' ? 0.78 : channel === 'blue' ? 0.60 : 1.0;
+    case 'night':
+      return channel === 'gain' ? 0.18 : channel === 'red' ? 0.38 : channel === 'green' ? 0.52 : 0.80;
+    case 'dawn':
+      return channel === 'gain' ? 0.84 : channel === 'red' ? 0.88 : channel === 'green' ? 0.90 : 1.0;
+    case 'day':
+      return 1.0;
+  }
+}
+
+function moodBlend(sample: TimeOfDaySample, channel: 'gain' | 'red' | 'green' | 'blue'): number {
+  const from = irradianceMoodValue(sample.fromPhase, channel);
+  return from + (irradianceMoodValue(sample.toPhase, channel) - from) * sample.blend;
+}
+
 function applyTimeOfDaySample(sample: TimeOfDaySample): void {
   if (timeOfDayArt === null) return;
-  const { debug } = ctx();
+  const { debug, post } = ctx();
   pushArtBlend(timeOfDayArt[sample.fromPhase], timeOfDayArt[sample.toPhase], sample.blend);
   groundDecals()?.setLightPoolGain(sample.localLightPoolGain);
+  surfaceDayPhase = sample.progress;
+  post.setIrradianceMood(
+    moodBlend(sample, 'gain'), moodBlend(sample, 'red'),
+    moodBlend(sample, 'green'), moodBlend(sample, 'blue'),
+  );
 
   // Water palette uniforms are live and allocation-free. Keeping this here
   // makes the cycle seam correct for the next map without rebaking PMREM.
@@ -118,6 +152,12 @@ function applyTimeOfDaySample(sample: TimeOfDaySample): void {
     lastReportedTimeOfDayPhase = sample.phase;
     console.info(`[time-of-day] ${sample.phase} -> ${sample.toPhase}`);
   }
+}
+
+/** Uniform writes only; terrain/road materials and their programs already exist. */
+function publishSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+  getTerrain()?.materials.setSurfaceEnvironment(state);
+  getRoads()?.setSurfaceEnvironment(state);
 }
 
 function initializeTimeOfDay(q: URLSearchParams): void {
@@ -172,6 +212,10 @@ export default defineSystem({
 
   init(): void {
     const q = query();
+    surfaceDayPhase = 0;
+    // Reset first; an active cycle immediately replaces this with its sampled
+    // mood below. Doing it afterward would flatten a dusk/night boot to noon.
+    ctx().post.setIrradianceMood(1, 1, 1, 1);
     initializeTimeOfDay(q);
     elapsed = 0;
     seed = querySeed(q) || 1;
@@ -184,6 +228,11 @@ export default defineSystem({
     baseSunColor.copy(sceneRig.sun.color);
     baseHemiColor.copy(sceneRig.hemi.color);
     post.setWeatherIntensity(0);
+    publishSurfaceEnvironment(resetSurfaceEnvironment(
+      getTerrain()?.biomeKey,
+      surfaceDayPhase,
+      surfaceEnvironmentCauseForMap(plannedScenario().map),
+    ));
     weatherHudState.kind = 'clear';
     weatherHudState.precipitation = 'none';
     weatherHudState.intensity = 0;
@@ -211,6 +260,13 @@ export default defineSystem({
     // The post seam encodes snow as a negative value so both renderers retain
     // one allocation-free scalar setter and no graph/pass rebuild is required.
     post.setWeatherIntensity(precipitation === 'snow' ? -frame.intensity : frame.intensity);
+    publishSurfaceEnvironment(stepSurfaceEnvironment(
+      rc.dt,
+      precipitation,
+      frame.intensity,
+      getTerrain()?.biomeKey,
+      surfaceDayPhase,
+    ));
     weatherHudState.kind = frame.kind;
     weatherHudState.precipitation = precipitation;
     weatherHudState.intensity = frame.intensity;
@@ -244,6 +300,13 @@ export default defineSystem({
   dispose(): void {
     const { post, sceneRig } = ctx();
     post.setWeatherIntensity(0);
+    post.setIrradianceMood(1, 1, 1, 1);
+    surfaceDayPhase = 0;
+    publishSurfaceEnvironment(resetSurfaceEnvironment(
+      getTerrain()?.biomeKey,
+      surfaceDayPhase,
+      surfaceEnvironmentCauseForMap(plannedScenario().map),
+    ));
     sceneRig.sun.intensity = baseSunIntensity;
     sceneRig.sun.color.copy(baseSunColor);
     sceneRig.hemi.intensity = baseHemiIntensity;

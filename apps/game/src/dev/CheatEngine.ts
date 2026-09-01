@@ -118,7 +118,7 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
       color:#e8e1e7;background:linear-gradient(180deg,#150b17f7,#08070df7);border:1px solid #ff3f70;
       box-shadow:0 16px 48px #000b,0 0 26px #ff174425;font:500 13px/1.2 Rajdhani,sans-serif}
     .vm-cheat[hidden]{display:none}.vm-cheat__head{height:42px;display:flex;align-items:center;gap:9px;padding:0 11px;
-      background:#260a18;border-bottom:1px solid #7c2440;cursor:move;touch-action:none}
+      background:#260a18;border-bottom:1px solid #7c2440;cursor:move;touch-action:none;user-select:none}
     .vm-cheat--collapsed .vm-cheat__body{display:none}
     .vm-cheat__mark{color:#ff426d;font:800 18px/1 monospace}.vm-cheat__title{flex:1;font-weight:800;letter-spacing:.18em}
     .vm-cheat__dev{border:1px solid #ffb12f;color:#ffca64;padding:2px 5px;font:700 9px/1 monospace}
@@ -445,20 +445,47 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   let dragDX = 0;
   let dragDY = 0;
   function dragStart(event: PointerEvent): void {
-    if ((event.target as Element).closest('button') !== null) return;
+    if (event.button !== 0 || (event.target as Element).closest('button') !== null) return;
+    const bounds = panel.getBoundingClientRect();
     dragPointer = event.pointerId;
-    dragDX = event.clientX - (state.x ?? 0);
-    dragDY = event.clientY - (state.y ?? 0);
-    headElement.setPointerCapture(event.pointerId);
+    dragDX = event.clientX - bounds.left;
+    dragDY = event.clientY - bounds.top;
+    try {
+      /*
+       * Chromium may retire the active pointer while focus or an HMR update is
+       * moving between the canvas and this dev overlay. setPointerCapture()
+       * then throws InvalidStateError even though this is still the synchronous
+       * pointerdown handler. Window-level listeners below are the fallback and
+       * keep the drag alive; capture is an enhancement, not a prerequisite.
+       */
+      headElement.setPointerCapture(event.pointerId);
+    } catch { /* window listeners retain ownership */ }
+    event.preventDefault();
+    event.stopPropagation();
   }
   function dragMove(event: PointerEvent): void {
     if (event.pointerId !== dragPointer) return;
     state.x = event.clientX - dragDX;
     state.y = event.clientY - dragDY;
     placePanel();
+    event.preventDefault();
+    event.stopPropagation();
   }
   function dragEnd(event: PointerEvent): void {
     if (event.pointerId !== dragPointer) return;
+    dragPointer = -1;
+    try {
+      if (headElement.hasPointerCapture(event.pointerId)) {
+        headElement.releasePointerCapture(event.pointerId);
+      }
+    } catch { /* the pointer may already have been retired */ }
+    persist();
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function cancelDrag(): void {
+    if (dragPointer === -1) return;
     dragPointer = -1;
     persist();
   }
@@ -497,9 +524,12 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
   credits.addEventListener('click', grantCredits);
   heal.addEventListener('click', healArmy);
   headElement.addEventListener('pointerdown', dragStart);
-  headElement.addEventListener('pointermove', dragMove);
-  headElement.addEventListener('pointerup', dragEnd);
-  headElement.addEventListener('pointercancel', dragEnd);
+  // Capture-phase window listeners survive a failed Element pointer capture
+  // and continue receiving movement once the cursor crosses onto the canvas.
+  window.addEventListener('pointermove', dragMove, true);
+  window.addEventListener('pointerup', dragEnd, true);
+  window.addEventListener('pointercancel', dragEnd, true);
+  window.addEventListener('blur', cancelDrag);
   headElement.addEventListener('dblclick', toggleCollapsed);
   window.addEventListener('keydown', toggleFromKey, true);
   window.addEventListener('resize', placePanel);
@@ -512,6 +542,10 @@ export function mountCheatEngine(options: CheatEngineOptions): CheatEngineHandle
       if (spawnFrame !== 0) cancelAnimationFrame(spawnFrame);
       service.setDevCheats(options.ctx.world.localPlayer, null);
       setVisionDevRevealMap(false);
+      window.removeEventListener('pointermove', dragMove, true);
+      window.removeEventListener('pointerup', dragEnd, true);
+      window.removeEventListener('pointercancel', dragEnd, true);
+      window.removeEventListener('blur', cancelDrag);
       window.removeEventListener('keydown', toggleFromKey, true);
       window.removeEventListener('resize', placePanel);
       panel.remove();

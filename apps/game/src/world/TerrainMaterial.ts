@@ -113,6 +113,7 @@ import {
   TERRAIN_DETAIL_ROUGHNESS, TERRAIN_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
   createTerrainDetailMask,
 } from './terrain-detail-mask';
+import type { SurfaceEnvironmentState } from './surface-environment';
 
 /* ==========================================================================
  * 1. THE UNIFORM BLOCK
@@ -161,6 +162,8 @@ export interface TerrainUniforms {
    * apron actually looks like.
    */
   uSplatSharpen: { value: number };
+  /** wetness, dust, snow (reserved), ground-contact contamination. */
+  uSurfaceEnvironment: { value: THREE.Vector4 };
 
   /* -- cliff ------------------------------------------------------------- */
   /** Face-normal Y below which the cliff model is selected. */
@@ -218,6 +221,7 @@ function createUniforms(terrainDetail: THREE.Texture): TerrainUniforms {
     uWarpAmp: { value: S.uWarpAmp },
     uCellSize: { value: S.uCellSize },
     uCellJitter: { value: S.uCellJitter },
+    uSurfaceEnvironment: { value: new THREE.Vector4(0, 0, 0, 0) },
     uSplatSharpen: { value: S.uSplatSharpen },
 
     uCliffNy: { value: S.uCliffNy },
@@ -291,6 +295,7 @@ uniform float uWarpAmp;
 uniform float uCellSize;
 uniform float uCellJitter;
 uniform float uSplatSharpen;
+uniform vec4  uSurfaceEnvironment;
 
 uniform float uCliffNy;
 uniform float uFaceMix;
@@ -628,6 +633,22 @@ if ( raIsCliff ) {
   raAlbedo *= 1.0 - raCrack * 0.30 - raGrit * 0.11;
   raR = clamp( raR + raDust * 0.040 + raCrack * 0.075 + raGrit * 0.030, 0.55, 1.0 );
 
+  // 2c. Cause-linked surface climate. The shared vec4 is mutated in place by
+  // weather; this is ALU over existing splat/history data, not a new texture,
+  // draw, program variant or per-frame allocation. Snow is reserved until it
+  // has an authored accumulation model rather than being faked as a tint.
+  float raSurfaceUp = clamp( raShadeN.y, 0.0, 1.0 );
+  float raClimateWet = uSurfaceEnvironment.x * ( 0.55 + 0.45 * raSurfaceUp );
+  float raClimateDust = uSurfaceEnvironment.y * raDustable
+    * ( 0.38 + raAge.x * 0.62 ) * ( 1.0 - raClimateWet * 0.82 );
+  float raContactClimate = uSurfaceEnvironment.w * raCavity
+    * ( 0.35 + raAge.z * 0.65 );
+  raAlbedo *= 1.0 - raClimateWet * mix( 0.045, 0.070, raNatural );
+  raAlbedo *= mix( vec3( 1.0 ), vec3( 0.90, 0.82, 0.70 ), raClimateDust * 0.10 );
+  raAlbedo *= 1.0 - raContactClimate * 0.025;
+  raR = clamp( raR - raClimateWet * mix( 0.10, 0.14, raNatural )
+    + raClimateDust * 0.018, 0.50, 1.0 );
+
   // 3. Build-cell-scale variation, smoothly interpolated. A hard hash here was
   //    invisible while the surface was nearly uniform, then became a literal
   //    checkerboard as soon as dirt coverage increased. Keep the authored 4 m
@@ -812,6 +833,8 @@ export interface TerrainMaterialSet {
   applyBiome(biome: BiomeDef): void;
   /** Anisotropy is a renderer capability, so it is pushed in from outside. */
   setAnisotropy(a: number): void;
+  /** Copy the shared weather scalars into the retained packed uniform. */
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -967,7 +990,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
   // Bumped with every change to the injected GLSL above. three caches compiled
   // programs by this string, so leaving it stale after editing a chunk hands
   // you the OLD shader in any session that already compiled one.
-  material.customProgramCacheKey = () => 'ra-terrain-v5';
+  material.customProgramCacheKey = () => 'ra-terrain-v6-surface-environment';
 
   function applyBiome(biome: BiomeDef): void {
     applyTerrainBiome(biome, biomeSink);
@@ -1004,6 +1027,12 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
     },
 
     applyBiome,
+
+    setSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+      uniforms.uSurfaceEnvironment.value.set(
+        state.wetness, state.dust, state.snow, state.contact,
+      );
+    },
 
     setAnisotropy(a: number): void {
       terrainDetail.anisotropy = a;

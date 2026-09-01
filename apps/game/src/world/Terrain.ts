@@ -45,6 +45,7 @@ import {
   drawnTerrainHeightAt, terrainGenKey,
   type TerrainFieldData, type TerrainGenOptions,
 } from './terrain-gen';
+import { surfaceEnvironmentState } from './surface-environment';
 
 /* ==========================================================================
  * 1. THE PUBLIC SURFACE OF THE OLD FILE
@@ -149,6 +150,7 @@ export class Terrain extends TerrainFields {
       ? np.createTerrainMaterials(terrainOptions)
       : createTerrainMaterials(terrainOptions);
     this.materials.setSplat(this.splatTexA, this.splatTexB);
+    this.materials.setSurfaceEnvironment(surfaceEnvironmentState);
     if (options.anisotropy !== undefined) this.materials.setAnisotropy(options.anisotropy);
 
     this.root.name = 'Terrain';

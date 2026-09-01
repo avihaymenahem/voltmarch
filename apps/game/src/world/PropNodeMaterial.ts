@@ -39,15 +39,16 @@ import * as THREE from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { Node, NodeBuilder } from 'three/webgpu';
 import {
-  Fn, attribute, batch, clamp, cos, fract, instancedMesh, materialEmissive,
-  materialRoughness, min, mix, normalGeometry, normalLocal, positionGeometry,
-  positionLocal, sin, step, uniform, varyingProperty, vec3, vertexColor,
+  Fn, attribute, batch, clamp, cos, float, fract, instancedMesh, materialColor, materialEmissive,
+  materialRoughness, min, mix, normalGeometry, normalLocal, normalWorld, positionGeometry,
+  positionLocal, sin, smoothstep, step, uniform, varyingProperty, vec3, vec4, vertexColor,
 } from 'three/tsl';
 import { PROP_EMISSIVE_GAIN, PROP_LIGHT_ANIM, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
+import { surfaceClimateNode } from './surface-environment-nodes';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -269,6 +270,46 @@ export interface PropNodeMaterialSet {
   dispose(): void;
 }
 
+/** Shared zero-allocation climate layer for procedural and authored props. */
+function applyPropSurfaceEnvironment(
+  material: MeshPhysicalNodeMaterial,
+  authoredRoughness: FloatN,
+  porous: FloatN,
+): void {
+  const up = clamp(normalWorld.y, 0.0, 1.0).toVar('raPropSurfaceUp');
+  const wet = clamp(surfaceClimateNode.x, 0.0, 1.0).toVar('raPropWet');
+  const dust = clamp(surfaceClimateNode.y, 0.0, 1.0)
+    .mul(up.mul(up))
+    .mul(porous)
+    .mul(wet.mul(0.86).oneMinus())
+    .toVar('raPropDust');
+  const snow = clamp(surfaceClimateNode.z, 0.0, 1.0)
+    .mul(smoothstep(0.52, 0.9, up))
+    .toVar('raPropSnow');
+  // `materialColor` resolves to RGBA when the authored base map carries
+  // coverage, even though its public TSL type is the RGB material factor.
+  // Widen once so the climate graph can share the sampled RGB and alpha.
+  const authoredColor = vec4(materialColor as unknown as Vec4N)
+    .toVar('raPropAuthoredColor');
+  const dusty = mix(authoredColor.rgb, vec3(0.43, 0.37, 0.27), dust.mul(0.16));
+  const snowed = mix(dusty, vec3(0.80, 0.84, 0.86), snow.mul(0.24));
+  // Climate owns RGB only. Authored foliage keeps coverage in the base-map
+  // alpha channel; replacing it with 1.0 turns every crossed leaf card into an
+  // opaque black rectangle even though alphaTest itself is still configured.
+  material.colorNode = vec4(
+    snowed.mul(wet.mul(0.055).oneMinus()),
+    authoredColor.a,
+  );
+  material.roughnessNode = clamp(
+    authoredRoughness
+      .sub(wet.mul(porous.mul(0.07).add(0.14)))
+      .add(dust.mul(0.12))
+      .add(snow.mul(0.14)),
+    0.16,
+    1.0,
+  );
+}
+
 /**
  * THE NODE-PATH TWIN OF `createPropMaterial`.
  *
@@ -298,7 +339,17 @@ export function createPropNodeMaterials(): PropNodeMaterialSet {
    * way. `materialRoughness` is the scalar-times-map three would otherwise have
    * used, so the starting value is identical.
    */
-  material.roughnessNode = mix(materialRoughness, uniforms.uGlossRough, vGloss);
+  const authoredRoughness = mix(materialRoughness, uniforms.uGlossRough, vGloss);
+
+  /*
+   * One climate response covers the procedural and authored environment
+   * catalogue. It stays broad and low-frequency: upward orientation is the
+   * accumulation mask, rain mostly changes the BRDF, and no noise or unique
+   * material is introduced per prop. Gloss-painted street props retain more
+   * of their authored colour than porous vegetation and debris.
+   */
+  const porous = vGloss.mul(0.72).oneMinus().toVar('raPropPorous');
+  applyPropSurfaceEnvironment(material, authoredRoughness, porous);
 
   /*
    * ADDITIVE, and tinted by the prop's own vertex colour — so a lamp head and a
@@ -338,6 +389,10 @@ export function createEnvironmentPropNodeMaterials(
   const uniforms = createUniforms();
   const material = new PropStandardNodeMaterial(uniforms);
   material.setValues(params);
+  // Authored PBR maps remain the starting point. Unlike the procedural packed
+  // gloss channel, imported aSurface.y is a runtime-layout placeholder and is
+  // not a material classifier, so use the stock mapped roughness directly.
+  applyPropSurfaceEnvironment(material, materialRoughness, float(0.72));
   material.castShadowPositionNode = propShadowPosition(uniforms);
   return {
     material,

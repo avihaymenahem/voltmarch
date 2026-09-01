@@ -44,6 +44,7 @@ import { createCameraRig, type CameraRig } from '../render/camera';
 import { createPostChain, type PostChain } from '../render/post';
 import { initDebug, type DebugHandle } from '../render/debug';
 import { shadowCadenceModeFromSearch } from '../render/shadow-cadence';
+import { requestedBackend } from '../render/backend';
 import {
   markBattlefieldPipelinesWarm,
   pipelineCacheStats,
@@ -201,7 +202,9 @@ export function bootstrap(options: BootOptions): GameHandle {
   // cannot describe those later worlds. Re-arm against the settled scenario
   // plan before renderer construction gives terrain/water the entire render +
   // art initialisation window to finish off-thread.
-  prepareWorldWorkers();
+  prepareWorldWorkers(requestedBackend(
+    typeof location === 'undefined' ? '' : location.search,
+  ) === 'webgpu');
   prepareTextureWorkers();
 
   const shotMode = options.shot != null && options.shot !== '';

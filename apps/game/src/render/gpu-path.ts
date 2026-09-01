@@ -61,6 +61,8 @@ import type { WaterLightRig, WaterMaterialOptions } from '../world/WaterMaterial
 import type { RoadSurfaceKind } from '../world/road-markings';
 import type { GreebleAtlas } from '../art/Greeble';
 import type { StructureCoat } from '../art/BuildingFactory';
+import type { IrradianceFieldUpdate } from '../core/irradiance-field';
+import type { SurfaceEnvironmentState } from '../world/surface-environment';
 
 /**
  * The four texture slots shared by generated atlases and imported animated units.
@@ -85,6 +87,7 @@ export interface TerrainMaterialSetLike {
   setSplat(a: THREE.DataTexture, b: THREE.DataTexture): void;
   applyBiome(biome: BiomeDef): void;
   setAnisotropy(a: number): void;
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -106,6 +109,7 @@ export interface WaterMaterialSetLike {
 /** What `RoadNetwork.buildMeshes` uses of a road material set. */
 export interface RoadMaterialSetLike {
   readonly materials: Readonly<Record<RoadSurfaceKind, THREE.Material>>;
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -374,6 +378,8 @@ export interface NodePostChainLike {
   render(dt: number): void;
   syncConfig(): void;
   setWeatherIntensity(intensity: number): void;
+  setIrradianceField(field: IrradianceFieldUpdate | null): boolean;
+  setIrradianceMood(gain: number, red: number, green: number, blue: number): void;
   postLabel(): string;
   setSize(width: number, height: number): void;
   /**

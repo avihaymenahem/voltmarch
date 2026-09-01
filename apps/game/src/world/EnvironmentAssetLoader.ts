@@ -85,9 +85,11 @@ export function createEnvironmentMaterial(
 ): EnvironmentMaterial {
   const np = nodePath();
   if (np !== null) {
-    if (!wind) return np.createShroudTintedStandard(params);
     const set = np.createEnvironmentPropMaterials(params);
-    set.material.userData.vmFoliageSetTime = set.setTime;
+    // Static authored props use the same node graph with aSway=0. This keeps
+    // the default 32-family catalogue on the shared climate response instead
+    // of applying it only to procedural fallbacks and wind-enabled foliage.
+    if (wind) set.material.userData.vmFoliageSetTime = set.setTime;
     return set.material;
   }
 

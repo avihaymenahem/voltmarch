@@ -61,8 +61,29 @@ These are allowed to differ by a pixel across devices because they never feed ga
 3. **Material and atmosphere upgrade.** Use restrained aerial perspective, physically coherent
    roughness/normal response, contact darkening and weather continuity. Do not hide weak assets under
    bloom or saturation.
-4. **Lighting depth.** Graduate the existing SSGI/SSR experiments through WebGPU timestamp gates;
-   favour stable indirect light and reflections before adding more direct lights.
+4. **Lighting depth.** Keep the accepted High/Ultra SSGI defaults inside WebGPU timestamp and colour gates,
+   then graduate SSR separately; favour stable indirect light and reflections before adding more direct lights.
+
+### SSGI acceptance checkpoint
+
+The first bounded candidate was rejected after live tactical review exposed reduced-resolution horizontal
+rows, sampled ground colour contaminating faction materials, and long-range AO dulling the whole scene. The
+corrected candidate is accepted for normal WebGPU play: High defaults to low SSGI and Ultra to medium SSGI.
+It runs at 0.5 resolution with deterministic non-temporal denoise; incident radiance is multiplied by the
+receiving scene colour to preserve faction hue, and long-range SSGI AO is blended at 0.18 of configured AO so
+it reads as contact rather than a global grey wash. Low/medium/high `giIntensity` is 3.4/3.8/4.2. The retained
+64×64 world-space irradiance field remains the stable off-screen indirect-light foundation.
+
+On the same local NVIDIA Ampere WebGPU adapter at 2560×1440 D62, GTAO measured luma 0.34349849 and
+saturation 0.45379077. Final SSGI measured luma 0.33946900 (-1.17%) and saturation 0.45375932 (-0.007%,
+effectively identical). The final paired wall median moved from 4.336667 to 4.536667 ms (+4.61%, under the
+10% gate). Direct GI measured 1.048576 ms against 0.589824 ms for GTAO AO, a +0.458752 ms marginal lighting
+cost. Non-paired total GPU timestamps are clock-sensitive; the direct replaced-pass and paired wall deltas
+are the acceptance evidence.
+
+No worker or WASM path was added: ray marching and denoising are GPU-owned, and a CPU round trip would
+increase copies and boot work. The earlier rejected candidate remains useful failure history, but its visual
+decision and timing numbers are not the accepted product baseline.
 
 ### Temporal reconstruction checkpoint
 

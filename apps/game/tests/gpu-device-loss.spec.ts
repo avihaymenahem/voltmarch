@@ -44,7 +44,7 @@ import {
   GpuUnavailableError,
   gpuFailureConsoleLine,
   gpuFailureReport,
-  hrefWithoutGpuFlag,
+  hrefForWebgl,
   isDeliberateDestroy,
   showGpuFailure,
   watchDeviceLoss,
@@ -311,10 +311,10 @@ describe('gpuFailureReport', () => {
     expect(prose).toContain('amd gcn-5');
   });
 
-  it('names the flag as the thing to remove when the device never existed', () => {
+  it('names the explicit rollback when the device never existed', () => {
     const r = gpuFailureReport(init);
     expect(r.title).toBe('WebGPU Unavailable');
-    expect(r.lines.join(' ')).toContain('?gpu=webgpu');
+    expect(r.lines.join(' ')).toContain('?gpu=webgl');
   });
 
   it('always offers the WebGL route out', () => {
@@ -342,34 +342,34 @@ describe('gpuFailureReport', () => {
   it('puts the adapter and the way out in the console line a bug report gets pasted from', () => {
     const line = gpuFailureConsoleLine(lost);
     expect(line).toContain('amd gcn-5');
-    expect(line).toContain('?gpu=webgpu');
+    expect(line).toContain('?gpu=webgl');
     expect(gpuFailureConsoleLine(init)).toContain('adapter not reported');
   });
 });
 
-describe('hrefWithoutGpuFlag', () => {
-  it('removes the flag and nothing else', () => {
+describe('hrefForWebgl', () => {
+  it('pins WebGL and changes nothing else', () => {
     /*
      * `?seed=`, `?map=` and `?mapseed=` decide what the page IS. A "get me back
      * to a working renderer" button that quietly rerolled the map would be the
      * same substitution this design refuses, one level down.
      */
-    expect(hrefWithoutGpuFlag('https://x.test/?gpu=webgpu&seed=7&map=coral-shore'))
-      .toBe('https://x.test/?seed=7&map=coral-shore');
+    expect(hrefForWebgl('https://x.test/?gpu=webgpu&seed=7&map=coral-shore'))
+      .toBe('https://x.test/?gpu=webgl&seed=7&map=coral-shore');
   });
 
   it('leaves no dangling ? when the flag was the only parameter', () => {
-    expect(hrefWithoutGpuFlag('https://x.test/game?gpu=webgpu')).toBe('https://x.test/game');
+    expect(hrefForWebgl('https://x.test/game?gpu=webgpu')).toBe('https://x.test/game?gpu=webgl');
   });
 
   it('is identity when there is no flag, and never throws on junk', () => {
-    expect(hrefWithoutGpuFlag('https://x.test/?seed=7')).toBe('https://x.test/?seed=7');
-    expect(hrefWithoutGpuFlag('not a url at all')).toBe('not a url at all');
+    expect(hrefForWebgl('https://x.test/?seed=7')).toBe('https://x.test/?seed=7&gpu=webgl');
+    expect(hrefForWebgl('not a url at all')).toBe('not a url at all');
   });
 
   it('keeps the fragment and the path', () => {
-    expect(hrefWithoutGpuFlag('https://x.test/a/b?gpu=webgpu&t=1#frag'))
-      .toBe('https://x.test/a/b?t=1#frag');
+    expect(hrefForWebgl('https://x.test/a/b?gpu=webgpu&t=1#frag'))
+      .toBe('https://x.test/a/b?gpu=webgl&t=1#frag');
   });
 });
 
@@ -526,10 +526,10 @@ describe('prepareRenderer under a failing or dying device', () => {
   });
 
   it('leaves the WebGL path completely alone', async () => {
-    // No flag: no node path is even consulted, so a broken one cannot matter.
+    // Only the explicit rollback skips the product WebGPU path.
     installNodePath(fakeNodePath(() => { throw new Error('must not be called'); }));
-    await expect(prepareRenderer(asCanvas(makeCanvas()), '')).resolves.toBe('webgl');
-    await expect(prepareRenderer(asCanvas(makeCanvas()), '?seed=7')).resolves.toBe('webgl');
+    await expect(prepareRenderer(asCanvas(makeCanvas()), '?gpu=webgl')).resolves.toBe('webgl');
+    await expect(prepareRenderer(asCanvas(makeCanvas()), '?seed=7&gpu=webgl')).resolves.toBe('webgl');
     expect(errors).toEqual([]);
   });
 
@@ -608,7 +608,7 @@ describe('prepareRenderer under a failing or dying device', () => {
     const report = gpuReport('webgpu');
     expect(report.adapter).toEqual(ADAPTER);
     expect(report.gpu).toBe('amd gcn-5');
-    expect(report.requested).toBe('webgl'); // no `location` in the node pool
+    expect(report.requested).toBe('webgpu'); // product default; no `location` in the node pool
     expect(report.deviceLost).toBeNull();
   });
 

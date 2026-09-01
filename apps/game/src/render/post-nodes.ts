@@ -5,7 +5,7 @@
  *
  * Same order as `post.ts`, and `PASS_ORDER` is imported rather than restated:
  *
- *      scene  ->  AO  ->  Bloom  ->  Grade  ->  SMAA
+ *      scene  ->  AO  ->  Irradiance  ->  Bloom  ->  Grade  ->  SMAA
  *      [ HDR, linear, RGBA16F .............]  [ LDR, sRGB ]
  *
  * Read `post.ts`'s header for WHY that order — the argument (tonemapping off the
@@ -69,7 +69,20 @@ import {
   Vector2,
 } from 'three/webgpu';
 import type { Camera, DepthTexture, Material, Node, PerspectiveCamera, Renderer, Scene, TextureNode } from 'three/webgpu';
-import { depthPass, mrt, output as sceneOutput, pass, rtt, vec4, velocity } from 'three/tsl';
+import {
+  clamp,
+  depthPass,
+  equal,
+  float,
+  mrt,
+  output as sceneOutput,
+  pass,
+  rtt,
+  select,
+  vec3,
+  vec4,
+  velocity,
+} from 'three/tsl';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { taau } from 'three/addons/tsl/display/TAAUNode.js';
@@ -93,9 +106,42 @@ import {
   type GradeNodeUniforms,
 } from './nodes/grade-node';
 import { createAtmosphereNodes, type AtmosphereNodes } from './nodes/atmosphere-node';
+import { createIrradianceNodes, type IrradianceNodes } from './nodes/irradiance-node';
+import { IRRADIANCE_FIELD_SIZE, type IrradianceFieldUpdate } from '../core/irradiance-field';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
+
+/**
+ * Half float can represent much more, but no authored VOLTMARCH HDR source
+ * needs energy above this. Bounding it also converts +/-Infinity to a finite
+ * value before bloom downsamples the frame.
+ */
+export const POST_HDR_FINITE_LIMIT = 64;
+
+/**
+ * Last-resort containment at the HDR/post boundary.
+ *
+ * A NaN can originate in imported art, an instance attribute, SSGI, or a
+ * future screen-space effect. `clamp(NaN)` is still NaN, so test each channel
+ * against itself first (the IEEE value for which x != x is NaN), then select a
+ * black fallback. This intentionally sits before temporal history and bloom:
+ * one malformed object may lose its own pixel, but it cannot poison the whole
+ * frame or persist in history.
+ */
+export function finiteHdrNode(input: Node<'vec4'>, label = 'postHdr'): Node<'vec4'> {
+  const unchecked = (input as unknown as { rgb: Node<'vec3'> }).rgb
+    .toVar(`${label}Unchecked`);
+  const bounded = clamp(unchecked, 0, POST_HDR_FINITE_LIMIT)
+    .toVar(`${label}Bounded`);
+  const safe = vec3(
+    select(equal(unchecked.r, unchecked.r), bounded.r, 0),
+    select(equal(unchecked.g, unchecked.g), bounded.g, 0),
+    select(equal(unchecked.b, unchecked.b), bounded.b, 0),
+  )
+    .toVar(`${label}Finite`);
+  return vec4(safe, float(1)) as unknown as Node<'vec4'>;
+}
 
 /** An `RTTNode` — see the identical alias and reasoning in `nodes/ao-node.ts`. */
 type RttNode = TextureNode & {
@@ -172,9 +218,11 @@ export interface PostGraph {
   readonly ao: AoNodes | null;
   /** Fused HDR atmosphere expression; no independent render target or draw. */
   readonly atmosphere: AtmosphereNodes | null;
-  /** Experimental indirect diffuse. Non-null only for a capable `?gi=` WebGPU boot. */
+  /** Quality-selected local indirect diffuse on capable High/Ultra WebGPU boots. */
   readonly ssgi: SsgiNodes | null;
-  readonly indirectLighting: 'gtao' | 'ssgi' | 'off';
+  /** Default-on world-space cache, present independently of the SSGI experiment. */
+  readonly irradiance: IrradianceNodes;
+  readonly indirectLighting: 'irradiance' | 'irradiance+gtao' | 'irradiance+ssgi';
   /** Why an explicitly requested SSGI path fell back to GTAO, if it did. */
   readonly ssgiFailure: string | null;
   readonly bloom: BloomNodes | null;
@@ -482,7 +530,20 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
         });
         const occluded = (colour as unknown as { mul(f: Node<'float'>): Node<'vec4'> })
           .mul(ssgiNodes.occlusion());
-        const bounce = vec4(ssgiNodes.indirect(), 0) as unknown as Node<'vec4'>;
+        /*
+         * SSGINode returns sampled source radiance, not light already evaluated
+         * at the receiving surface. Adding that RGB directly painted yellow
+         * ground light over purple faction materials. Approximate the missing
+         * receiving-albedo term with the pre-composite scene colour: this keeps
+         * local bounce geometry while preserving faction hue and dark values.
+         */
+        const receiver = clamp(
+          (colour as unknown as { rgb: Node<'vec3'> }).rgb, 0, 1,
+        ) as Node<'vec3'>;
+        const receivedBounce = (
+          ssgiNodes.indirect() as unknown as { mul(n: Node<'vec3'>): Node<'vec3'> }
+        ).mul(receiver);
+        const bounce = vec4(receivedBounce, 0) as unknown as Node<'vec4'>;
         lit = (occluded as unknown as { add(n: Node<'vec4'>): Node<'vec4'> }).add(bounce);
       } catch (err) {
         ssgiFailure = String(err);
@@ -510,6 +571,24 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     }
     built.ao = true;
   }
+
+  /* ---- World-space indirect light ---------------------------------------
+   * Always part of the capable WebGPU graph. A neutral zero field makes this
+   * an exact no-op until the worker result arrives, while constructing the
+   * sampler and output pipeline under the loading curtain prevents a late
+   * compile. The existing AO/SSGI normal target is reused when available.
+   */
+  const irradiance = createIrradianceNodes({
+    input: lit,
+    depthNode,
+    camera,
+    normalNode: ssgiNodes?.normals ?? ao?.normals ?? null,
+  });
+  lit = irradiance.node;
+
+  // Contain any upstream invalid HDR value before temporal history or bloom
+  // can amplify it into a persistent whole-frame failure.
+  lit = finiteHdrNode(lit, 'postPreTemporalHdr');
 
   /* ---- Temporal resolve --------------------------------------------------
    * Resolve scene + indirect lighting before bloom and grading. This gives
@@ -559,6 +638,11 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     : null;
   if (atmosphere !== null) lit = atmosphere.node;
 
+  // Atmosphere is intentionally outside temporal history. Sanitize once more
+  // at the final HDR boundary so it—and any future stage inserted here—cannot
+  // feed an invalid value into bloom.
+  lit = finiteHdrNode(lit, 'postPreBloomHdr');
+
   /* ---- Bloom -------------------------------------------------------------
    * Additive over the AO-multiplied scene. `UnrealBloomPass` does this blend
    * itself; `BloomNode` returns the bloom alone, so the `.add()` here IS the
@@ -582,6 +666,9 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
       depthBuffer: false,
       stencilBuffer: false,
     }) as unknown as RttNode;
+    // The irradiance expression is fused into this existing materialisation;
+    // retain its truthful pass label. Its incremental cost is evaluated by
+    // whole-chain A/B until a genuinely isolated timestamp seam exists.
     bloomInput.renderTarget.texture.name = 'PostBloomInput';
     // This texture now has two consumers. RTTNode's default RENDER cadence
     // would redraw it once inside each nested post render; FRAME cadence keeps
@@ -669,7 +756,10 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     ao,
     atmosphere,
     ssgi: ssgiNodes,
-    indirectLighting: !want.ao ? 'off' : ssgiNodes === null ? 'gtao' : 'ssgi',
+    irradiance,
+    indirectLighting: !want.ao
+      ? 'irradiance'
+      : ssgiNodes === null ? 'irradiance+gtao' : 'irradiance+ssgi',
     ssgiFailure,
     bloom,
     bloomInput,
@@ -710,6 +800,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
       ao?.dispose();
       atmosphere?.dispose();
       ssgiNodes?.dispose();
+      irradiance.dispose();
       bloom?.dispose();
       bloomInput?.renderTarget.dispose();
       smaaNode?.dispose();
@@ -728,6 +819,7 @@ export function buildPostGraph(options: BuildPostGraphOptions): PostGraph {
     const failed = Object.keys(failures);
     console.info(
       `[post-nodes] graph: ${list.join(' -> ')}` +
+      `  [Irradiance ${IRRADIANCE_FIELD_SIZE}x${IRRADIANCE_FIELD_SIZE}]` +
       (ssgiNodes !== null
         ? `  [SSGI ${ssgiNodes.preset.quality} @ ${Math.round(ssgiNodes.preset.resolutionScale * 100)}%]`
         : '') +
@@ -754,6 +846,9 @@ export interface NodePostChain {
   render(dt: number): void;
   syncConfig(): void;
   setWeatherIntensity(intensity: number): void;
+  /** Adopt/reupload one retained 64x64 field; false rejects malformed input. */
+  setIrradianceField(field: IrradianceFieldUpdate | null): boolean;
+  setIrradianceMood(gain: number, red: number, green: number, blue: number): void;
   /** Human-readable live graph order for the performance overlay. */
   postLabel(): string;
   setSize(width: number, height: number): void;
@@ -786,11 +881,10 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const cfg = options.cfg ?? RENDER_CONFIG.post;
 
   /*
-   * SSGI is a development switch until it has survived the visual scorecard
-   * and the 1440p GPU budget. Its R11G11B10 GI attachment requires an optional
-   * WebGPU feature; refusing the experiment here means the graph below never
-   * constructs a node the active device cannot compile. The normal GTAO graph
-   * is therefore both the unsupported-device and the no-query fallback.
+   * The second SSGI candidate is selected by normal quality policy after
+   * raising its working resolution and applying receiving-surface colour in
+   * the composite. Its R11G11B10 GI attachment requires an optional WebGPU
+   * feature; unsupported/lower tiers keep GTAO. Query controls remain lab A/B.
    */
   const requestedSsgi = requestedSsgiPreset(
     typeof location === 'undefined' ? '' : location.search,
@@ -801,6 +895,7 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const perspective = (camera as unknown as { isPerspectiveCamera?: boolean }).isPerspectiveCamera === true;
   const ssgiPreset = capabilityGatedSsgiPreset(
     typeof location === 'undefined' ? '' : location.search,
+    RENDER_CONFIG.quality,
     perspective,
     rendererFeatures.hasFeature?.('rg11b10ufloat-renderable') === true,
   );
@@ -852,6 +947,11 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   let passSignature = postGraphSignature(cfg);
   let elapsed = 0;
   let rainIntensity = 0;
+  let irradianceField: IrradianceFieldUpdate | null = null;
+  let irradianceMoodGain = 1;
+  let irradianceMoodRed = 1;
+  let irradianceMoodGreen = 1;
+  let irradianceMoodBlue = 1;
 
   const chain: NodePostChain = {
     pipeline,
@@ -888,6 +988,10 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
           graph.gradeUniforms.rain.value = rainIntensity;
         }
         if (graph.atmosphere !== null) graph.atmosphere.uniforms.time.value = elapsed;
+        if (irradianceField !== null) graph.irradiance.setField(irradianceField);
+        graph.irradiance.setMood(
+          irradianceMoodGain, irradianceMoodRed, irradianceMoodGreen, irradianceMoodBlue,
+        );
         pipeline.outputNode = graph.output;
         pipeline.outputColorTransform = graph.needsOutputColorTransform;
         pipeline.needsUpdate = true;
@@ -901,11 +1005,26 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
       if (graph.gradeUniforms !== null) graph.gradeUniforms.rain.value = rainIntensity;
     },
 
+    setIrradianceField(field: IrradianceFieldUpdate | null): boolean {
+      const adopted = graph.irradiance.setField(field);
+      if (adopted) irradianceField = field;
+      return adopted;
+    },
+
+    setIrradianceMood(gain: number, red: number, green: number, blue: number): void {
+      irradianceMoodGain = gain;
+      irradianceMoodRed = red;
+      irradianceMoodGreen = green;
+      irradianceMoodBlue = blue;
+      graph.irradiance.setMood(gain, red, green, blue);
+    },
+
     postLabel(): string {
       const stages = ['render'];
       const liveSamples = graph.scenePass.renderTarget.samples;
       if (liveSamples > 1) stages.push(`msaa${liveSamples}x`);
       if (graph.built.ao === true) stages.push('ao');
+      stages.push('irradiance');
       if (graph.antialiasing === 'traa' || graph.antialiasing === 'taau') {
         stages.push(graph.antialiasing);
       }

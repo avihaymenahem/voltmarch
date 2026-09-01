@@ -1170,6 +1170,11 @@ export class RenderBridge {
       const y = py + (s.posY[i] - py) * alpha;
       const z = pz + (s.posZ[i] - pz) * alpha;
 
+      // A malformed transform must not reach an instance matrix or its batch
+      // bounds. Leaving the entity unvisited releases any old slot during the
+      // normal end-of-frame sweep, containing the defect to that one entity.
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+
       if (cullVolume !== null) {
         const kind = s.kind[i] as EntityKind;
         let cy = y;
@@ -1210,10 +1215,19 @@ export class RenderBridge {
 
       // SHORTEST ARC. A plain lerp across the +/-PI seam spins a turret the
       // long way round in a single frame.
-      const yaw = lerpAngle(s.prevYaw[i], s.yaw[i], alpha);
-      const turretYaw = lerpAngle(s.prevTurretYaw[i], s.turretYaw[i], alpha);
-      const pbp = s.prevBarrelPitch[i];
-      const barrelPitch = pbp + (s.barrelPitch[i] - pbp) * alpha;
+      const nextYaw = Number.isFinite(s.yaw[i]) ? s.yaw[i] : 0;
+      const prevYaw = Number.isFinite(s.prevYaw[i]) ? s.prevYaw[i] : nextYaw;
+      const yaw = lerpAngle(prevYaw, nextYaw, alpha);
+      const nextTurretYaw = Number.isFinite(s.turretYaw[i]) ? s.turretYaw[i] : 0;
+      const prevTurretYaw = Number.isFinite(s.prevTurretYaw[i])
+        ? s.prevTurretYaw[i]
+        : nextTurretYaw;
+      const turretYaw = lerpAngle(prevTurretYaw, nextTurretYaw, alpha);
+      const nextBarrelPitch = Number.isFinite(s.barrelPitch[i]) ? s.barrelPitch[i] : 0;
+      const pbp = Number.isFinite(s.prevBarrelPitch[i])
+        ? s.prevBarrelPitch[i]
+        : nextBarrelPitch;
+      const barrelPitch = pbp + (nextBarrelPitch - pbp) * alpha;
 
       this.lerpX[i] = x; this.lerpY[i] = y; this.lerpZ[i] = z;
       this.lerpYaw[i] = yaw;
@@ -1222,14 +1236,18 @@ export class RenderBridge {
 
       /* -- per-instance state --------------------------------------------- */
       const maxHp = s.maxHp[i];
-      const hpFrac = maxHp > 0 ? clamp01(s.hp[i] / maxHp) : 1;
-      const buildProgress = s.buildProgress[i];
+      const hpFracRaw = maxHp > 0 ? s.hp[i] / maxHp : 1;
+      const hpFrac = Number.isFinite(hpFracRaw) ? clamp01(hpFracRaw) : 1;
+      const buildProgress = Number.isFinite(s.buildProgress[i])
+        ? clamp01(s.buildProgress[i])
+        : 1;
       const selected = (flags & EntityFlag.Selected) !== 0 ? 1
         : (flags & EntityFlag.Hovered) !== 0 ? 0.5 : 0;
 
       const batch = entry.batch!;
       // THE FOURTH CHANNEL IS `seed` FOR EVERYTHING EXCEPT INFANTRY, where it
-      // carries the walk-cycle phase in turns.
+      // carries the walk-cycle phase in turns, and harvesters, where it carries
+      // their authoritative 0..1 hopper fill.
       //
       // Sharing the slot rather than adding a fifth per-instance attribute is
       // deliberate: `aState` is already allocated, already uploaded and already
@@ -1237,13 +1255,25 @@ export class RenderBridge {
       // attribute plus upload range on all of them — including the ninety-odd
       // that will never walk — would cost more than the animation does. The two
       // readers cannot collide: `seed` is read by the BUILDING shader (door
-      // phase, burn flicker) and the phase by the UNIT shader, and no entity is
-      // both. `src/render/unit-anim.system.ts` owns the column.
+      // phase, burn flicker), the phase by the infantry UNIT shader, and cargo
+      // only by the Soviet harvester's extra Hopper part. No entity is two of
+      // those things. `src/render/unit-anim.system.ts` owns the infantry value;
+      // `sim/Harvesting.ts` owns cargo and cargoMax.
+      const rawStateW = s.kind[i] === EntityKind.Infantry
+        ? s.animTime[i]
+        : (flags & EntityFlag.IsHarvester) !== 0
+          ? (s.cargoMax[i] > 0 ? clamp01(s.cargo[i] / s.cargoMax[i]) : 0)
+          : s.seed[i];
+      const stateW = Number.isFinite(rawStateW) ? rawStateW : 0;
       batch.writeState(
-        slot, hpFrac, buildProgress, selected,
-        s.kind[i] === EntityKind.Infantry ? s.animTime[i] : s.seed[i],
+        slot, hpFrac, buildProgress, selected, stateW,
       );
-      const fi = s.faction[i] * 3;
+      // A faction column is a Uint8Array, so corruption cannot become NaN but
+      // it can exceed TEAM_RGB. An out-of-range typed-array read returns
+      // undefined, which Float32Array stores as NaN and bloom can spread across
+      // the entire frame. Neutral is the bounded visual fallback.
+      const faction = s.faction[i] < FACTION_COUNT ? s.faction[i] : Faction.Neutral;
+      const fi = faction * 3;
       batch.writeTeam(slot, TEAM_RGB[fi], TEAM_RGB[fi + 1], TEAM_RGB[fi + 2]);
 
       /* -- scale ----------------------------------------------------------- */
@@ -1262,7 +1292,8 @@ export class RenderBridge {
         // authored" (see ScenarioBuilder.spawnProp). Clamped, because a prop
         // whose seed was left as plain per-entity randomness would otherwise
         // occasionally scale to nothing.
-        sx = sy = sz = Math.min(1.9, Math.max(0.6, s.seed[i] * 2));
+        const propSeed = Number.isFinite(s.seed[i]) ? s.seed[i] : 0.5;
+        sx = sy = sz = Math.min(1.9, Math.max(0.6, propSeed * 2));
       } else if (entry.placeholder && kind === EntityKind.Building) {
         // A placeholder BUILDING is a unit cube, stretched to the entity's real
         // footprint so the gap in the art is the right size and shape on the
@@ -1279,8 +1310,9 @@ export class RenderBridge {
       // entity hydraulically folds under the pad and the replacement rises
       // from the same point, hiding the entity swap without changing one tick
       // of ownership, footprint, power or production gameplay.
-      const deployCollapsed = deployCollapse(s.animClip[i], s.animTime[i]);
-      const deployWidthPulse = deployBulge(s.animClip[i], s.animTime[i]);
+      const deployTime = Number.isFinite(s.animTime[i]) ? s.animTime[i] : 0;
+      const deployCollapsed = deployCollapse(s.animClip[i], deployTime);
+      const deployWidthPulse = deployBulge(s.animClip[i], deployTime);
       if (deployCollapsed > 0 || deployWidthPulse > 0) {
         const building = kind === EntityKind.Building;
         sx *= 1 + (building ? 0.055 : 0.12) * deployWidthPulse;

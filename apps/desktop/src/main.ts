@@ -29,6 +29,7 @@ import {
   powerSaveBlocker,
   Menu,
   ipcMain,
+  crashReporter,
 } from 'electron';
 import path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -52,6 +53,7 @@ import {
 } from './display';
 import type { DisplayInfo, DisplayPatch, DisplayPrefs, DisplayState } from './display';
 import { NativeStorage } from './storage';
+import { DesktopDiagnosticStore } from './diagnostics';
 import { installDesktopUpdater } from './updater';
 
 // Test and diagnostic launches may isolate native settings/saves without
@@ -62,6 +64,29 @@ const userDataOverride = process.env.VM_DESKTOP_USER_DATA?.trim();
 if (userDataOverride !== undefined && userDataOverride !== '') {
   app.setPath('userData', path.resolve(userDataOverride));
 }
+
+const diagnosticStore = new DesktopDiagnosticStore(app.getPath('userData'));
+
+// Native Chromium/GPU failures can kill the process before JavaScript runs.
+// Keep their local minidumps beside Electron's user data; uploading is always
+// disabled, so a player remains in control of whether a report leaves disk.
+crashReporter.start({
+  companyName: 'Three Dev',
+  productName: 'VOLTMARCH',
+  uploadToServer: false,
+  compress: true,
+});
+
+// The monitor observes without changing Node's normal fatal-exception path.
+// Synchronous persistence is intentional here: the process may be gone on the
+// next instruction, so an asynchronous writer would lose the event it exists
+// to preserve.
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  diagnosticStore.recordHost('fatal', 'electron.main', 'uncaught-exception', error.message, {
+    origin,
+    error,
+  });
+});
 
 /* -------------------------------------------------------------------------- */
 /* 1. Where the web build lives                                                */
@@ -515,16 +540,38 @@ function createWindow(): BrowserWindow {
    * be measured without opening DevTools (which changes GPU scheduling).
    * Packaged builds remain silent.
    */
-  if (devOrigin !== null) {
-    win.webContents.on('console-message', (details) => {
-      if (details.level !== 'error') {
-        if (details.message.startsWith('[boot]')) console.info(`[vm:renderer] ${details.message}`);
-        return;
-      }
-      const source = details.sourceId ? ` (${details.sourceId}:${details.lineNumber})` : '';
-      console.error(`[vm:renderer:error] ${details.message}${source}`);
+  win.webContents.on('console-message', (details) => {
+    const source = details.sourceId ? ` (${details.sourceId}:${details.lineNumber})` : '';
+    if (details.level === 'error' || details.level === 'warning') {
+      diagnosticStore.recordHost(
+        details.level === 'error' ? 'error' : 'warn',
+        'electron.renderer-console',
+        details.level === 'error' ? 'console-error' : 'console-warning',
+        details.message,
+        { sourceId: details.sourceId, lineNumber: details.lineNumber },
+      );
+    }
+    if (devOrigin === null) return;
+    if (details.level !== 'error') {
+      if (details.message.startsWith('[boot]')) console.info(`[vm:renderer] ${details.message}`);
+      return;
+    }
+    console.error(`[vm:renderer:error] ${details.message}${source}`);
+  });
+
+  win.on('unresponsive', () => {
+    diagnosticStore.recordHost('error', 'electron.window', 'unresponsive', 'Game window became unresponsive');
+  });
+  win.on('responsive', () => {
+    diagnosticStore.recordHost('info', 'electron.window', 'responsive', 'Game window recovered responsiveness');
+  });
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return; // Chromium's normal navigation-aborted code.
+    diagnosticStore.recordHost('fatal', 'electron.navigation', 'did-fail-load', errorDescription, {
+      errorCode,
+      url: validatedURL,
     });
-  }
+  });
 
   win.once('ready-to-show', () => {
     if (display.mode === 'windowed' && display.maximized) win.maximize();
@@ -556,6 +603,11 @@ function createWindow(): BrowserWindow {
  * execution primitive.
  */
 function installIpc(): void {
+  ipcMain.on('vm:diagnostic-write', (_event, record: unknown) => {
+    diagnosticStore.recordRenderer(record);
+  });
+  ipcMain.handle('vm:diagnostic-read', (_event, limit: unknown) =>
+    diagnosticStore.readRecent(typeof limit === 'number' ? limit : 200));
   ipcMain.handle('vm:version', () => app.getVersion());
   ipcMain.handle('vm:gpu-info', (_e, kind: unknown) =>
     app.getGPUInfo(kind === 'complete' ? 'complete' : 'basic'),
@@ -756,6 +808,11 @@ if (!app.requestSingleInstanceLock()) {
   if (process.platform === 'win32') app.setAppUserModelId('com.three-dev.voltmarch');
 
   app.whenReady().then(async () => {
+    diagnosticStore.recordHost('info', 'electron.boot', 'ready', 'Electron main process ready', {
+      appVersion: app.getVersion(),
+      packaged: app.isPackaged,
+      safeMode: safeModeRequested(process.argv),
+    });
     Menu.setApplicationMenu(null); // an RTS has no use for a File menu
     installProtocol();
     // The game-side persistence interfaces intentionally hydrate
@@ -848,9 +905,17 @@ if (!app.requestSingleInstanceLock()) {
   // records that no part of the WebGPU recovery path has been observed on real
   // hardware. A renderer death is now at least named.
   app.on('render-process-gone', (_e, _wc, details) => {
+    diagnosticStore.recordHost('fatal', 'electron.renderer', 'process-gone', 'Renderer process exited', details);
     console.error(`[vm] render process gone: ${details.reason} (exit ${details.exitCode})`);
   });
   app.on('child-process-gone', (_e, details) => {
+    diagnosticStore.recordHost(
+      details.type === 'GPU' ? 'fatal' : 'error',
+      'electron.child',
+      'process-gone',
+      `${details.type} process exited`,
+      details,
+    );
     console.error(`[vm] ${details.type} process gone: ${details.reason}`);
   });
 }

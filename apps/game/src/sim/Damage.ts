@@ -173,6 +173,13 @@ export class DamageSystem {
   private readonly wreckAge: PerEntityF32;
   /** Sim time of the last smoke puff, per burning entity. */
   private readonly lastSmoke: PerEntityF32;
+  /**
+   * The attacker-facing yaw of this occupant's persistent structure scorch.
+   * Generation stamping prevents a recycled slot inheriting the previous
+   * building's mark, while retaining the angle makes later rubble follow the
+   * scar even if another attacker lands the killing blow.
+   */
+  private readonly structureScorchYaw: PerEntityF32;
 
   /* -- delayed FX ring (structure cook-off) ------------------------------- */
   private readonly fxTime = new Float32Array(FX_RING);
@@ -194,6 +201,7 @@ export class DamageSystem {
     this.deathProcessed = new PerEntityU32(world.store, 0);
     this.wreckAge = new PerEntityF32(world.store, 0);
     this.lastSmoke = new PerEntityF32(world.store, -1e9);
+    this.structureScorchYaw = new PerEntityF32(world.store, Number.NaN);
   }
 
   /* ======================================================================
@@ -478,6 +486,14 @@ export class DamageSystem {
     ev.x = st.posX[i];
     ev.z = st.posZ[i];
     this.channels.events.emitPooled('entity:damaged');
+
+    // Structure soot/fire already follows this same health band in the pooled
+    // material/VFX paths. Lay one restrained, permanent ground scar when that
+    // band is crossed so the cause remains visible after the mesh becomes
+    // rubble. Repeated hits and burn ticks cannot consume more decal slots.
+    if (st.kind[i] === EntityKind.Building && frac <= SMOKE_HP_THRESHOLD) {
+      this.ensureStructureScorch(i, attacker);
+    }
 
     // "Base under attack", throttled per player. Only real hostiles count —
     // your own artillery clipping your own tank is not an invasion.
@@ -874,6 +890,64 @@ export class DamageSystem {
   }
 
   /**
+   * Stamp the one persistent scorch that joins a structure's living damage
+   * state to its ruin.
+   *
+   * Placement faces the last valid attacker and falls back to the entity seed
+   * for scripted damage. The rectangle support calculation lands the centre on
+   * the real footprint edge instead of assuming a square or painting the whole
+   * foundation black. This performs only scalar arithmetic and one write into
+   * the existing static decal ring.
+   */
+  private ensureStructureScorch(i: number, attacker: EntityId): void {
+    if (Number.isFinite(this.structureScorchYaw.getAt(i))) return;
+    const st = this.world.store;
+    if (st.kind[i] !== EntityKind.Building) return;
+
+    const x = st.posX[i];
+    const z = st.posZ[i];
+    const halfW = Math.max(CELL * 0.5, (st.footprintW[i] || 2) * CELL * 0.5);
+    const halfH = Math.max(CELL * 0.5, (st.footprintH[i] || 2) * CELL * 0.5);
+    const impactAngle = this.structureImpactAngle(i, attacker);
+    const dx = Math.sin(impactAngle);
+    const dz = Math.cos(impactAngle);
+
+    // Distance from the centre to a rectangle edge in this direction.
+    const edge = 1 / Math.max(Math.abs(dx) / halfW, Math.abs(dz) / halfH, 1e-5);
+    const radius = clamp(Math.min(halfW, halfH) * 0.33, 1.1, 2.8);
+    // Match the retained Float32 representation on the initial decal call so
+    // the later rubble replacement reuses the angle bit-for-bit.
+    const yaw = Math.fround(impactAngle + (st.seed[i] - 0.5) * 0.70);
+    this.world.vfx.decal(
+      DecalKind.Scorch,
+      x + dx * edge * 0.92,
+      z + dz * edge * 0.92,
+      yaw,
+      radius,
+    );
+    this.structureScorchYaw.setAt(i, yaw);
+  }
+
+  /** Attacker direction in engine yaw convention; seed fallback is replay-stable. */
+  private structureImpactAngle(i: number, attacker: EntityId): number {
+    const st = this.world.store;
+    const attackerIdx = st.index(attacker);
+    if (attackerIdx >= 0) {
+      const dx = st.posX[attackerIdx] - st.posX[i];
+      const dz = st.posZ[attackerIdx] - st.posZ[i];
+      if (Math.hypot(dx, dz) > 1e-5) return Math.atan2(dx, dz);
+    }
+    return st.seed[i] * 6.283185307179586;
+  }
+
+  private structureRuinYaw(i: number, attacker: EntityId): number {
+    const retainedYaw = this.structureScorchYaw.getAt(i);
+    return Number.isFinite(retainedYaw)
+      ? retainedYaw
+      : this.structureImpactAngle(i, attacker) + (this.world.store.seed[i] - 0.5) * 0.70;
+  }
+
+  /**
    * Structure: a big flash, then a 3-5 s cook-off of smaller blasts, then
    * rubble. The cook-off is what sells the SIZE of the thing that just died.
    */
@@ -914,6 +988,10 @@ export class DamageSystem {
     const sizeMul = clamp(Math.sqrt(fw * fh) / 2.4, 0.7, 1.8);
     const scale = COMBAT_DAMAGE.buildingBlastMetres * sizeMul;
 
+    // Scripted/self-destruct deaths can bypass `applyOne`. Ensure they enter
+    // the same visual story before the pooled building instance disappears.
+    this.ensureStructureScorch(i, st.lastAttackerId[i] as EntityId);
+
     this.channels.fx.push(FxKind.ExplosionBuilding, x, y + 2.0, z, 0, 1, 0, sizeMul, NONE, faction);
     this.channels.fx.push(FxKind.Debris, x, y + 2.0, z, 0, 1, 0, sizeMul, NONE, faction);
     this.channels.fx.push(FxKind.SmokePlumeLarge, x, y + 2.4, z, 0, 1, 0, sizeMul * 0.9, NONE, faction);
@@ -924,6 +1002,7 @@ export class DamageSystem {
     // from the entity seed, NOT from the RNG — a death must not consume sim
     // random state, or two replays that differ only in FX would desync.
     const seed = st.seed[i];
+    const ruinYaw = this.structureRuinYaw(i, st.lastAttackerId[i] as EntityId);
     const half = fw * CELL * 0.35;
     for (let k = 0; k < COMBAT_DAMAGE.cookOffCount; k++) {
       const a = (seed * 6.283185 + k * 2.399963);
@@ -937,32 +1016,40 @@ export class DamageSystem {
       );
     }
 
-    // Rubble + scorch over the whole footprint, permanently.
-    w.vfx.decal(DecalKind.Rubble, x, z, seed * 6.283185, Math.max(fw, fh) * CELL * 0.95);
-    w.vfx.decal(DecalKind.Scorch, x, z, seed * 6.283185, Math.max(fw, fh) * CELL * 0.8);
+    // Physical rubble plus disturbed ground over the footprint. The permanent
+    // scorch was laid at the damage threshold above and is deliberately not
+    // duplicated here: a damaged-then-destroyed building and a one-shot kill
+    // consume the same existing decal budget and leave the same history.
+    w.vfx.decal(DecalKind.Rubble, x, z, ruinYaw, Math.max(fw, fh) * CELL * 0.95);
     // The nav grid must be released or the ruin blocks pathing forever.
     if (fw > 0) {
       const cx = Math.round(x / CELL - fw * 0.5);
       const cz = Math.round(z / CELL - fh * 0.5);
       w.terrain.clearOccupied(cx, cz, fw, fh);
     }
-    this.spawnBuildingRubble(s, i, x, y, z, fw, fh);
+    this.spawnBuildingRubble(s, i, x, y, z, fw, fh, ruinYaw);
   }
 
   /** Leave a persistent, non-blocking ruin after a structure collapses. */
   private spawnBuildingRubble(
-    s: SimContext, i: number, x: number, y: number, z: number, fw: number, fh: number,
+    s: SimContext, i: number, x: number, y: number, z: number,
+    fw: number, fh: number, yaw: number,
   ): void {
     const st = this.world.store;
     const h = st.alloc(
       EntityKind.Wreck, buildingRubbleDefForFootprint(fw * fh),
       st.owner[i] as PlayerId, st.faction[i] as Faction,
-      x, y, z, st.seed[i] * 6.283185,
+      x, y, z, yaw,
     );
     if (h === NONE) return;
     const j = st.index(h);
     if (j < 0) return;
     st.spawnTick[j] = s.tick;
+    // Preserve the source's wear/flicker identity across the model swap. The
+    // rubble yaw and its ground scar already derive from this seed; keeping the
+    // instance channel aligned prevents the ruin becoming a visually unrelated
+    // newly spawned prop.
+    st.seed[j] = st.seed[i];
     // Query radius follows the old footprint but the ruin never blocks nav.
     st.radius[j] = Math.hypot(fw * CELL, fh * CELL) * 0.42;
     st.maxHp[j] = 1;
@@ -985,6 +1072,7 @@ export class DamageSystem {
     const j = st.index(h);
     if (j < 0) return;
     st.spawnTick[j] = s.tick;
+    st.seed[j] = st.seed[i];
     st.radius[j] = st.radius[i];
     st.maxHp[j] = 1;
     st.hp[j] = 1;

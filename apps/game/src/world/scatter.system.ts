@@ -44,11 +44,12 @@
 import { defineSystem } from '../core/loop';
 import { Phase, RenderPhase, EntityKind, EntityFlag, type RenderContext } from '../core/types';
 import {
-  AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAX_DRAW_CALLS,
+  AUTO_BASE_APRON_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_DRAW_CALLS,
   DECAL_POOL_STATIC, MCV_START_SCATTER_CLEAR_RADIUS, SCATTER_SEED,
   TITLE_BACKDROP_CAMERA_DISTANCE, TITLE_BACKDROP_SCATTER_CLEAR_RADIUS,
 } from '../core/config';
 import { clamp, Rng, TAU } from '../core/math';
+import { beginBootSpan } from '../core/boot-telemetry';
 import { ctx } from '../game/context';
 import {
   activeScenario, plannedScenario, plannedStartPoints, resolveDefBinding, visibleGround,
@@ -70,6 +71,16 @@ import {
   type StructureWearMark, type StructureWearSource,
 } from './structure-wear';
 import {
+  planSemanticContexts, semanticContextBudget, semanticContextFingerprint,
+  semanticContextGrammar,
+  semanticContextKind,
+  type SemanticCompositionSource, type SemanticContextMark, type SemanticContextSource,
+} from './semantic-context';
+import {
+  composeContextLights, planContextLights,
+} from './context-light-field';
+import { retainedIrradianceField } from './retained-irradiance';
+import {
   contentClosureEpoch, declareArtAssetFamily, markArtAssetFamilyFallbackReady,
   markArtAssetFamilyReady, markContentProviderReady,
   requestArtAssetFamily,
@@ -87,9 +98,31 @@ interface StructureWearRuntimeStats {
   readonly reserve: number;
 }
 
+interface SemanticContextRuntimeStats {
+  readonly active: boolean;
+  readonly sources: number;
+  readonly depot: number;
+  readonly civilian: number;
+  readonly resource: number;
+  readonly woodland: number;
+  readonly ruin: number;
+  readonly grammar: string;
+  readonly grammarFingerprint: number;
+  readonly planned: number;
+  readonly spawned: number;
+  readonly fingerprint: number;
+  readonly reserve: number;
+  readonly lights: number;
+  readonly lightTexels: number;
+  readonly lightFingerprint: number;
+  readonly lightUploadBytes: number;
+  readonly lightComposeMs: number;
+}
+
 declare const globalThis: {
   __vmScatter?: Scatter;
   __vmStructureWear?: StructureWearRuntimeStats;
+  __vmSemanticContexts?: SemanticContextRuntimeStats;
 } & typeof window;
 
 let scatter: Scatter | null = null;
@@ -166,8 +199,8 @@ function paintLegacyBaseWear(
   return baseWear;
 }
 
-function structureWearPlacementIsClear(
-  item: StructureWearMark,
+function groundMarkPlacementIsClear(
+  item: Pick<StructureWearMark | SemanticContextMark, 'x' | 'z' | 'halfX' | 'halfZ' | 'yaw'>,
   terrain: NonNullable<ReturnType<typeof getTerrain>>,
 ): boolean {
   const radius = Math.hypot(item.halfX, item.halfZ);
@@ -224,7 +257,7 @@ async function promoteImportedFoliage(
     installImportedEntityProps(families);
     debug.setCounter('importedFoliageFamilies', installed);
     console.info(
-      `%c[foliage]%c promoted ${installed} audited ${presentation} families after world reveal`,
+      `%c[foliage]%c settled ${installed} audited ${presentation} families before pipeline compile`,
       'color:#7fd', 'color:inherit',
     );
   } catch (error) {
@@ -435,6 +468,183 @@ export default defineSystem({
       ? scatter.paintGroundStories(decals, spec?.ore ?? [])
       : null;
 
+    /* -- map-roster semantic composition -------------------------------- *
+     * These are map stories, not random clutter. Built/resource sources use
+     * their real gameplay anchors; woodland comes from Scatter's already-
+     * accepted clump centres; ruin context comes only from actual wrecks.
+     * Preset grammars tune the same fixed pool for all seven shipped maps.   */
+    let binding: Awaited<ReturnType<typeof resolveDefBinding>> | null = null;
+    let contextStats: SemanticContextRuntimeStats = {
+      active: false, sources: 0, depot: 0, civilian: 0, resource: 0,
+      woodland: 0, ruin: 0, grammar: plan.map, grammarFingerprint: 0,
+      planned: 0, spawned: 0, fingerprint: 0,
+      reserve: decals === null ? DECAL_POOL_STATIC : DECAL_POOL_STATIC - decals.stats().live,
+      lights: 0, lightTexels: 0, lightFingerprint: 0, lightUploadBytes: 0, lightComposeMs: 0,
+    };
+    if (decals !== null) {
+      binding = await resolveDefBinding();
+      const sources: SemanticCompositionSource[] = [];
+      const lightSources: SemanticContextSource[] = [];
+      for (let n = 0; n < store.count; n++) {
+        const i = store.alive[n];
+        if ((store.flags[i] & EntityFlag.Alive) === 0) continue;
+        if (store.kind[i] === EntityKind.Wreck) {
+          sources.push({
+            id: 0x60000000 + i,
+            kind: 'ruin',
+            key: `wreck-field-${i}`,
+            x: store.posX[i],
+            z: store.posZ[i],
+            yaw: store.yaw[i],
+            radius: Math.max(2.4, store.radius[i]),
+          });
+          continue;
+        }
+        if (store.kind[i] !== EntityKind.Building) continue;
+        const def = binding.tables?.buildings[store.defId[i]];
+        const key = def?.key ?? `building-${store.defId[i]}`;
+        const kind = semanticContextKind(key);
+        if (kind === null) continue;
+        const halfWidth = def === undefined ? store.radius[i] : def.footprintW * CELL * 0.5;
+        const halfDepth = def === undefined ? store.radius[i] : def.footprintH * CELL * 0.5;
+        const source: SemanticContextSource = {
+          id: i,
+          kind,
+          key,
+          x: store.posX[i],
+          z: store.posZ[i],
+          yaw: store.yaw[i],
+          // Circumscribed footprint keeps every rotated descriptor outside the
+          // structure; legality below then rejects another owner's footprint.
+          radius: Math.hypot(halfWidth, halfDepth),
+        };
+        sources.push(source);
+        lightSources.push(source);
+      }
+      for (let i = 0; i < (spec?.ore.length ?? 0); i++) {
+        const ore = spec!.ore[i];
+        const dx = MAP_SIZE * 0.5 - ore.x;
+        const dz = MAP_SIZE * 0.5 - ore.z;
+        const yaw = dx * dx + dz * dz > 1
+          ? Math.atan2(dx, dz)
+          : ((plan.seed ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0) / 0x100000000 * TAU;
+        const source: SemanticContextSource = {
+          id: 0x40000000 + i,
+          kind: 'resource',
+          key: `ore-field-${i}`,
+          x: ore.x,
+          z: ore.z,
+          yaw,
+          radius: ore.radius,
+        };
+        sources.push(source);
+        lightSources.push(source);
+      }
+
+      // Scatter already records accepted natural clump centres for its broad
+      // terrain-composition pass. Reuse a small prefix—no second placement
+      // search and no world-sized buffer—to give non-urban maps canopy-floor
+      // history. Family codes 0/1 are canopy/shrub; grass and rocks retain the
+      // composition they already own and are not relabelled as woodland.
+      const landscape = new Float32Array(3 * 32);
+      const landscapeCount = scatter.compositionCenters(landscape);
+      let woodlands = 0;
+      for (let i = 0; i < landscapeCount && woodlands < 10; i++) {
+        const family = landscape[i * 3 + 2] | 0;
+        if (family !== 0 && family !== 1) continue;
+        const x = landscape[i * 3];
+        const z = landscape[i * 3 + 1];
+        let separated = true;
+        for (const source of sources) {
+          if (source.kind !== 'woodland') continue;
+          if (Math.hypot(source.x - x, source.z - z) < 18) { separated = false; break; }
+        }
+        if (!separated) continue;
+        const roll = (plan.seed ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0;
+        sources.push({
+          id: 0x50000000 + i,
+          kind: 'woodland',
+          key: family === 0 ? `canopy-cluster-${i}` : `shrub-cluster-${i}`,
+          x,
+          z,
+          yaw: roll / 0x100000000 * TAU,
+          radius: family === 0 ? 12 : 8,
+        });
+        woodlands++;
+      }
+      const liveBefore = decals.stats().live;
+      const grammar = semanticContextGrammar(plan.map, terrain.biomeKey);
+      const budget = semanticContextBudget(
+        decals.capacity, liveBefore, undefined, grammar.maxMarks,
+      );
+      const contextPlan = planSemanticContexts(sources, {
+        seed: (plan.seed ^ 0x37a94c21) >>> 0,
+        maxMarks: budget,
+        preset: plan.map,
+        biome: terrain.biomeKey,
+      });
+      const spawned: SemanticContextMark[] = [];
+      for (const item of contextPlan.marks) {
+        const x = clamp(item.x, CELL, MAP_CELLS * CELL - CELL);
+        const z = clamp(item.z, CELL, MAP_CELLS * CELL - CELL);
+        const actual = x === item.x && z === item.z ? item : { ...item, x, z };
+        if (!groundMarkPlacementIsClear(actual, terrain)) continue;
+        decals.spawn(
+          actual.kind, actual.x, actual.z, actual.halfX, actual.halfZ,
+          actual.yaw, 0, actual.strength,
+        );
+        spawned.push(actual);
+      }
+
+      /* -- retained context light --------------------------------------- *
+       * One bounded composition reuses the already-installed 64x64 field.
+       * The CPU array, GPU Texture/Source and post graph all retain identity;
+       * the 64 KiB CPU field copies into the retained 32 KiB half-float store
+       * once more. This late
+       * main-thread boundary is cheaper than cloning live semantic anchors to
+       * a worker, and the WebGPU post node adds no pass/draw/texture sample. */
+      const lightPlan = planContextLights(lightSources, (plan.seed ^ 0x7f4a21d3) >>> 0);
+      const retainedField = handle.node === null ? null : retainedIrradianceField();
+      const lightStarted = typeof performance === 'undefined' ? 0 : performance.now();
+      const lightComposition = retainedField === null
+        ? null
+        : composeContextLights(retainedField, lightPlan.anchors);
+      const lightAdopted = retainedField !== null
+        && lightComposition?.applied === true
+        && ctx().post.setIrradianceField(retainedField);
+      const lightComposeMs = lightAdopted && typeof performance !== 'undefined'
+        ? performance.now() - lightStarted
+        : 0;
+      contextStats = {
+        active: true,
+        sources: contextPlan.sources,
+        depot: contextPlan.depot,
+        civilian: contextPlan.civilian,
+        resource: contextPlan.resource,
+        woodland: contextPlan.woodland,
+        ruin: contextPlan.ruin,
+        grammar: contextPlan.grammar,
+        grammarFingerprint: contextPlan.grammarFingerprint,
+        planned: contextPlan.marks.length,
+        spawned: spawned.length,
+        fingerprint: semanticContextFingerprint(spawned),
+        reserve: Math.max(0, DECAL_POOL_STATIC - decals.stats().live),
+        lights: lightAdopted ? lightPlan.anchors.length : 0,
+        lightTexels: lightAdopted ? lightComposition.changedTexels : 0,
+        lightFingerprint: lightAdopted ? lightPlan.fingerprint : 0,
+        lightUploadBytes: lightAdopted ? retainedField.rgba.byteLength / 2 : 0,
+        lightComposeMs,
+      };
+      if (lightAdopted) {
+        console.info(
+          `[context-light] ${lightPlan.anchors.length} anchors composed into `
+          + `${lightComposition.changedTexels} retained texels in ${lightComposeMs.toFixed(2)} ms; `
+          + `${(retainedField.rgba.byteLength / 2048).toFixed(0)} KiB GPU reupload, no new resource`,
+        );
+      }
+    }
+    globalThis.__vmSemanticContexts = contextStats;
+
     /* -- structure wear -------------------------------------------------- *
      * Every mark now names a cause: factory egress, refinery service, oxide
      * runoff or defensive perimeter. The pure planner is shared by both
@@ -458,15 +668,20 @@ export default defineSystem({
         reserve: Math.max(0, DECAL_POOL_STATIC - decals.stats().live),
       };
     } else if (decals !== null && wearMode === 'context') {
-      const binding = await resolveDefBinding();
+      binding ??= await resolveDefBinding();
       const sources: StructureWearSource[] = [];
       for (let n = 0; n < store.count; n++) {
         const i = store.alive[n];
         if ((store.flags[i] & EntityFlag.Alive) === 0 || store.kind[i] !== EntityKind.Building) continue;
         const def = binding.tables?.buildings[store.defId[i]];
+        const key = def?.key ?? `building-${store.defId[i]}`;
+        // The Industrial Grid planner already owns depot/civilian/resource
+        // ground history. Feeding those same anchors through generic structure
+        // wear would paint two unrelated stories around one building.
+        if (contextStats.active && semanticContextKind(key) !== null) continue;
         sources.push({
           id: i,
-          key: def?.key ?? `building-${store.defId[i]}`,
+          key,
           x: store.posX[i],
           z: store.posZ[i],
           yaw: store.yaw[i],
@@ -494,7 +709,7 @@ export default defineSystem({
         const x = clamp(item.x, CELL, MAP_CELLS * CELL - CELL);
         const z = clamp(item.z, CELL, MAP_CELLS * CELL - CELL);
         const actual = x === item.x && z === item.z ? item : { ...item, x, z };
-        if (!structureWearPlacementIsClear(actual, terrain)) continue;
+        if (!groundMarkPlacementIsClear(actual, terrain)) continue;
         decals.spawn(
           actual.kind, actual.x, actual.z, actual.halfX, actual.halfZ,
           actual.yaw, 0, actual.strength,
@@ -516,16 +731,31 @@ export default defineSystem({
     setActiveScatter(scatter);
     globalThis.__vmScatter = scatter;
     if (foliagePresentation !== 'procedural') {
-      void promoteImportedFoliage(
-        scatter,
-        handle.node ?? handle.webgl,
-        terrain.biomeKey,
-        foliagePresentation,
-        foliageGeneration,
-        debug,
-        environmentDependencies,
-        closureEpoch,
-      );
+      /*
+       * Do not leave this promise floating into Bootstrap's WebGPU compile.
+       * Loading and rebuilding 32 authored families at the same time as Dawn's
+       * shader workers made both spans slower, while deferring the rebuild past
+       * reveal produced a visible first-use compile hitch. Awaiting here gives
+       * the renderer one stable scene graph for its one intentional pre-reveal
+       * compile and keeps the authored default in frame zero.
+       */
+      const finishFoliageSettle = beginBootSpan('conditioning', 'environment-catalogue');
+      try {
+        await promoteImportedFoliage(
+          scatter,
+          handle.node ?? handle.webgl,
+          terrain.biomeKey,
+          foliagePresentation,
+          foliageGeneration,
+          debug,
+          environmentDependencies,
+          closureEpoch,
+        );
+        finishFoliageSettle();
+      } catch (error) {
+        finishFoliageSettle('error');
+        throw error;
+      }
     }
     // `flag('shot')`, not just `spec.frozen`. The intent above — "two captures
     // are pixel-identical" — was only ever honoured for the FROZEN fixtures,
@@ -544,7 +774,7 @@ export default defineSystem({
       `${scatter.foliage.totalTriangles} tris in the library, ` +
       `${(scatter.foliage.buildMs | 0)} ms to bake + ${(s.generateMs | 0)} ms to place, ` +
       `${scatter.groundPatches} habitat patches + ${groundStories?.total ?? 0} ground-story ` +
-      `marks + ${baseWear} base-wear marks`,
+      `marks + ${contextStats.spawned} semantic-context marks + ${baseWear} base-wear marks`,
       'color:#7fd', 'color:inherit',
     );
     console.info(
@@ -600,6 +830,16 @@ export default defineSystem({
     ].filter((n) => n > 0).length);
     debug.setCounter('openingProps', scatter.openingProps);
     debug.setCounter('baseWear', baseWear);
+    debug.setCounter('semanticContexts', contextStats.spawned);
+    debug.setCounter('semanticContextSources', contextStats.sources);
+    debug.setCounter('semanticWoodlands', contextStats.woodland);
+    debug.setCounter('semanticRuins', contextStats.ruin);
+    debug.setCounter('semanticGrammarHash', contextStats.grammarFingerprint);
+    debug.setCounter('semanticContextReserve', contextStats.reserve);
+    debug.setCounter('contextLights', contextStats.lights);
+    debug.setCounter('contextLightTexels', contextStats.lightTexels);
+    debug.setCounter('contextLightUploadKB', contextStats.lightUploadBytes / 1024);
+    debug.setCounter('contextLightComposeMs', contextStats.lightComposeMs);
   },
 
   frame(r: RenderContext): void {
@@ -625,6 +865,7 @@ export default defineSystem({
   dispose(): void {
     foliageLoadGeneration++;
     delete globalThis.__vmStructureWear;
+    delete globalThis.__vmSemanticContexts;
     if (scatter === null) return;
     scatter.dispose();
     if (getScatter() === scatter) setActiveScatter(null);

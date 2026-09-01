@@ -273,9 +273,65 @@ describe('RenderBridge — team colour is per-instance, never a batch key', () =
     expect(bridge.batchCount).toBe(1);
     teardown(bridge);
   });
+
+  it('contains invalid faction and state data at the GPU upload boundary', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Soviets, 20, 0, 20, 0);
+    const i = store.index(id);
+    store.flags[i] |= EntityFlag.IsHarvester;
+    store.faction[i] = 255;
+    store.hp[i] = Number.NaN;
+    store.maxHp[i] = 100;
+    store.buildProgress[i] = Number.NaN;
+    store.cargo[i] = Number.NaN;
+    store.cargoMax[i] = 100;
+    store.snapshotPrev();
+
+    bridge.update(1);
+
+    const geometry = meshes(scene)[0].geometry;
+    const state = geometry.getAttribute('aState').array as Float32Array;
+    const team = geometry.getAttribute('aTeamColor').array as Float32Array;
+    expect(Array.from(state.slice(0, 4)).every(Number.isFinite)).toBe(true);
+    expect(Array.from(team.slice(0, 3)).every(Number.isFinite)).toBe(true);
+    expect(Array.from(state.slice(0, 4))).toEqual([1, 1, 0, 0]);
+    teardown(bridge);
+  });
 });
 
 describe('RenderBridge — interpolation', () => {
+  it('drops one entity with a non-finite position instead of uploading a poisoned matrix', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    const i = store.index(id);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(meshes(scene)[0].count).toBe(1);
+
+    store.posX[i] = Number.NaN;
+    bridge.update(1);
+
+    expect(meshes(scene)[0].count).toBe(0);
+    expect(bridge.visibleUnits).toBe(0);
+    teardown(bridge);
+  });
+
+  it('falls back invalid angles without writing a non-finite matrix', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    const i = store.index(id);
+    store.yaw[i] = Number.NaN;
+    store.turretYaw[i] = Number.NaN;
+    store.barrelPitch[i] = Number.NaN;
+    store.snapshotPrev();
+
+    bridge.update(1);
+
+    const matrix = meshes(scene)[0].instanceMatrix.array as Float32Array;
+    expect(Array.from(matrix.slice(0, 16)).every(Number.isFinite)).toBe(true);
+    teardown(bridge);
+  });
+
   it('lerps position between the previous and current tick', () => {
     const { store, scene, bridge } = makeRig();
     const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
@@ -533,6 +589,21 @@ describe('RenderBridge — per-instance state', () => {
     expect(st[1]).toBeCloseTo(0.4, 6);
     expect(st[2]).toBe(1);
     expect(st[3]).toBeCloseTo(store.seed[i], 6);
+    teardown(bridge);
+  });
+
+  it('packs authoritative hopper fill into aState.w for harvesters', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Soviets, 8, 0, 8, 0);
+    const i = store.index(id);
+    store.flags[i] |= EntityFlag.IsHarvester;
+    store.cargoMax[i] = 1_400;
+    store.cargo[i] = 525;
+    store.snapshotPrev();
+
+    bridge.update(1);
+    const st = meshes(scene)[0].geometry.getAttribute('aState').array as Float32Array;
+    expect(st[3]).toBeCloseTo(0.375, 6);
     teardown(bridge);
   });
 });

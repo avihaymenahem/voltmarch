@@ -86,12 +86,15 @@ import { aoResolutionScale, createAoNodes } from '../src/render/nodes/ao-node';
 import { createBloomNodes } from '../src/render/nodes/bloom-node';
 import {
   capabilityGatedSsgiPreset,
+  defaultSsgiPreset,
   requestedSsgiPreset,
 } from '../src/render/nodes/ssgi-node';
 import {
   buildPostGraph,
   demoteSmaaMaskTargets,
   enabledPasses,
+  finiteHdrNode,
+  POST_HDR_FINITE_LIMIT,
   postGraphSignature,
   requestedBloomInputReuse,
   requestedTemporalAa,
@@ -249,6 +252,17 @@ describe('the settled bloom pair travels through one function', () => {
     expect(b.threshold).toBeCloseTo(1.2, 6);
     expect(b.radius).toBeCloseTo(0.34, 6);
     expect(effectiveBloomStrength(b.strength, b.emissiveBoost)).toBeCloseTo(b.strength, 12);
+  });
+});
+
+describe('the HDR boundary contains invalid values before bloom', () => {
+  it('compiles an explicit NaN test and finite energy bound', () => {
+    const source = compileFragmentNode(finiteHdrNode(texture(hdrInput()) as never)).fragment;
+    expect(source).toContain('postHdrUnchecked');
+    expect(source).toContain('postHdrFinite');
+    expect(source).toContain(POST_HDR_FINITE_LIMIT.toFixed(1));
+    expect(source.match(/postHdrUnchecked\.[xyz]\s*==\s*postHdrUnchecked\.[xyz]/g))
+      .toHaveLength(3);
   });
 });
 
@@ -665,15 +679,21 @@ describe('the assembled node chain', () => {
     g.dispose();
   });
 
-  it('keeps SSGI opt-in and replaces GTAO when explicitly requested', () => {
+  it('selects bounded SSGI from quality while preserving critic overrides', () => {
     expect(requestedSsgiPreset('')).toBeNull();
     expect(requestedSsgiPreset('?gi=off')).toBeNull();
     expect(requestedSsgiPreset('?gi=ssgi')?.quality).toBe('low');
-    expect(requestedSsgiPreset('?gi=medium')?.sliceCount).toBe(3);
-    expect(requestedSsgiPreset('?gi=high')?.resolutionScale).toBe(0.75);
-    expect(capabilityGatedSsgiPreset('?gi=ssgi', false, true)).toBeNull();
-    expect(capabilityGatedSsgiPreset('?gi=ssgi', true, false)).toBeNull();
-    expect(capabilityGatedSsgiPreset('?gi=ssgi', true, true)?.quality).toBe('low');
+    expect(requestedSsgiPreset('?gi=medium')?.sliceCount).toBe(2);
+    expect(requestedSsgiPreset('?gi=high')?.resolutionScale).toBe(0.5);
+    expect(defaultSsgiPreset('low')).toBeNull();
+    expect(defaultSsgiPreset('medium')).toBeNull();
+    expect(defaultSsgiPreset('high')?.quality).toBe('low');
+    expect(defaultSsgiPreset('ultra')?.quality).toBe('medium');
+    expect(capabilityGatedSsgiPreset('', 'high', true, true)?.quality).toBe('low');
+    expect(capabilityGatedSsgiPreset('?gi=off', 'high', true, true)).toBeNull();
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', 'high', false, true)).toBeNull();
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', 'high', true, false)).toBeNull();
+    expect(capabilityGatedSsgiPreset('?gi=ssgi', 'high', true, true)?.quality).toBe('low');
 
     const preset = requestedSsgiPreset('?gi=ssgi');
     const graph = buildPostGraph({
@@ -684,7 +704,8 @@ describe('the assembled node chain', () => {
       height: 1440,
       ssgiPreset: preset,
     });
-    expect(graph.indirectLighting).toBe('ssgi');
+    expect(graph.indirectLighting).toBe('irradiance+ssgi');
+    expect(graph.irradiance).toBeDefined();
     expect(graph.ssgi).not.toBeNull();
     expect(graph.ao).toBeNull();
     expect(graph.ssgi?.march.useTemporalFiltering).toBe(false);
@@ -991,14 +1012,15 @@ describe('the assembled node chain', () => {
     expect(src, "bloom's additive composite").toMatch(/nodeVar\d+\s*\+\s*nodeVar\d+/);
     g.dispose();
 
-    // Same-build rollback: the old graph re-evaluated scene colour, AO and
-    // both atmosphere taps in this composite, for five texture samples total.
+    // Same-build rollback: the old graph re-evaluated scene colour, AO, the
+    // two atmosphere taps, depth and the world irradiance field in this
+    // composite, for seven texture samples total.
     const legacy = buildPostGraph({
       scene: new Scene(), camera: new PerspectiveCamera(), cfg,
       width: 2560, height: 1440, reuseBloomInput: false,
     });
     const legacySrc = compileFragmentNode(legacy.output).fragment;
-    expect(legacySrc.match(/textureSample\(/g)?.length).toBe(5);
+    expect(legacySrc.match(/textureSample\(/g)?.length).toBe(7);
     expect(legacySrc, 'GTAOBlendShader semantics').toMatch(/mix\(\s*1\.0,/);
     legacy.dispose();
   });
@@ -1098,12 +1120,11 @@ describe('the WebGL chain still owns the shipping path', () => {
     expect(read('normalPhi')).toBe(ours.normalPhi);
   });
 
-  it('the shipped config keeps grain restrained and CA at zero', () => {
+  it('the shipped config disables global grain and CA', () => {
     // Belt and braces with `tests/banned-effects.spec.ts`: that file is the
     // source scan, this is the live-config half, and the compiled-shader
     // assertion above is the one neither of them could make before.
-    expect(RENDER_CONFIG.post.grade.grain).toBeGreaterThan(0);
-    expect(RENDER_CONFIG.post.grade.grain).toBeLessThanOrEqual(0.008);
+    expect(RENDER_CONFIG.post.grade.grain).toBe(0);
     expect(RENDER_CONFIG.post.grade.chromaticAberration).toBe(0);
     expect(new Color()).toBeTruthy(); // three/webgpu imported without side effects
   });

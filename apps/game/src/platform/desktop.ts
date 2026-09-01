@@ -42,7 +42,8 @@
  * 3 -> 4 added minimize; 4 -> 5 added native state and binary-save storage;
  * 5 -> 6 added the release-update state machine; 6 -> 7 added the desktop
  * pointer-confinement preference; 7 -> 8 moved storage mutations to one-way
- * IPC while preserving their public void-returning shape.
+ * IPC while preserving their public void-returning shape; 8 -> 9 added the
+ * bounded diagnostics stream.
  *
  * BUMP THIS whenever a method is added, removed, changes shape, or changes IPC
  * delivery semantics, and bump the
@@ -59,9 +60,9 @@
  * as off. Excluding that version makes it degrade to web behaviour instead —
  * no Display section at all, visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 8;
-/** Bridge 7 has the same public methods; only its storage writes may block. */
-export const LEGACY_BRIDGE_VERSION = 7;
+export const BRIDGE_VERSION = 9;
+/** Bridge 8 lacks diagnostics but remains safe for every existing capability. */
+export const LEGACY_BRIDGE_VERSION = 8;
 
 export type DesktopUpdateStatus =
   | 'idle'
@@ -231,6 +232,10 @@ export interface DesktopBridge {
   openUpdatePage(): Promise<void>;
   installUpdate(): void;
   onUpdateState(listener: (state: DesktopUpdateState) => void): () => void;
+  /** One-way, validated structured event submission to the main-process store. */
+  diagnosticWrite?(record: unknown): void;
+  /** Recent persisted events, including the previous renderer session. */
+  diagnosticRead?(limit?: number): Promise<readonly unknown[]>;
 }
 
 /**

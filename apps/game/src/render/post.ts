@@ -193,6 +193,7 @@ import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
 import { FullScreenQuad, type Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
 import { Rng } from '../core/math';
+import type { IrradianceFieldUpdate } from '../core/irradiance-field';
 
 import {
   RENDER_CONFIG,
@@ -1046,6 +1047,13 @@ export interface PostChain {
   syncConfig(): void;
   /** Screen-space precipitation: +rain, -snow; magnitude 0 (clear)..1 (heavy). */
   setWeatherIntensity(intensity: number): void;
+  /**
+   * Adopt one map-aligned indirect-light field. WebGPU mutates a retained
+   * 64x64 texture; WebGL deliberately returns false and keeps its current rig.
+   */
+  setIrradianceField(field: IrradianceFieldUpdate | null): boolean;
+  /** Live time-of-day modulation of the static world cache. */
+  setIrradianceMood(gain: number, red: number, green: number, blue: number): void;
   setSize(width: number, height: number): void;
   dispose(): void;
 }
@@ -1191,6 +1199,14 @@ function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
     setWeatherIntensity(intensity: number): void {
       weatherIntensity = THREE.MathUtils.clamp(intensity, -1, 1);
       chain.setWeatherIntensity(weatherIntensity);
+    },
+
+    setIrradianceField(field: IrradianceFieldUpdate | null): boolean {
+      return chain.setIrradianceField(field);
+    },
+
+    setIrradianceMood(gain: number, red: number, green: number, blue: number): void {
+      chain.setIrradianceMood(gain, red, green, blue);
     },
 
     setSize(width: number, height: number): void { chain.setSize(width, height); },
@@ -2698,6 +2714,13 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       weatherIntensity = THREE.MathUtils.clamp(intensity, -1, 1);
       if (gradeUniforms) gradeUniforms.uRain.value = weatherIntensity;
     },
+    // The legacy backend keeps its existing HemisphereLight/bounce rig. The
+    // explicit false return prevents callers from assuming false visual parity
+    // while preserving the shared PostChain interface and worker lifecycle.
+    setIrradianceField(_field: IrradianceFieldUpdate | null): boolean {
+      return false;
+    },
+    setIrradianceMood(_gain: number, _red: number, _green: number, _blue: number): void {},
     setSize,
 
     dispose() {

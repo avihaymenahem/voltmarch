@@ -339,7 +339,9 @@ Completed for the Allied POC on 2026-08-30. The 49,025-triangle Albatross ships 
 with a 22,061-triangle colour LOD and 1,320-triangle shadow proxy. The 88,608-triangle complete airbase
 ships as a 6.99 MiB KTX2 GLB with a 44,031-triangle colour LOD and 3,072-triangle shadow proxy. Both use
 one material and an estimated 8 MiB decoded texture footprint. Meshy's connected bomb is visual only;
-the deterministic runtime bomb remains an independent gameplay payload.
+the deterministic runtime bomb remains an independent gameplay payload. Live sortie review on 2026-09-01
+found the imported Albatross flying tail-first at the previous +90° fit, so its shared hull/LOD/shadow fit
+now rotates -90°—an explicit 180° visual correction with no simulation-yaw or replay change.
 
 Completed for the Soviet pair on 2026-08-30 from dedicated ImageGen references rather than an Allied
 recolour. The 32,784-triangle Molot ships as a 2.89 MiB KTX2 GLB with 14,752- and 5,900-triangle colour

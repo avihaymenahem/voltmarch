@@ -58,13 +58,10 @@
  *
  * WHAT IS DELIBERATELY DIFFERENT, AND MEASURED
  * --------------------------------------------
- *  - **`material.dithering` DOES NOTHING ON THE NODE PATH.** three implements
- *    dithering only in the WebGL chunk system (`dithering_pars_fragment.glsl`);
- *    there is no node equivalent anywhere in `src/nodes/`. The shipping terrain
- *    material sets `dithering: true` and means it — this is 60-75% of the frame
- *    and the ground is where 8-bit banding shows. `setupOutput` below
- *    re-implements the same `+/-0.5/255` ordered shift so the two renders match.
- *    See `TSL_GAPS` at the foot of this file.
+ *  - **Terrain output dithering is available but disabled.** The old
+ *    screen-coordinate hash covered 60-75% of every frame and resolved into
+ *    visible horizontal rows on high-DPI canvases. The textured terrain does
+ *    not need that global overlay; local sky-gradient dithering remains.
  *  - **`envMapIntensity`.** See section 6.
  *
  * NOTHING IN `src/` IMPORTS THIS YET, AND THAT IS CHECKED
@@ -106,6 +103,7 @@ import {
   TERRAIN_DETAIL_ROUGHNESS, TERRAIN_DETAIL_STRENGTH, TERRAIN_DETAIL_TILE_METRES,
   createTerrainDetailMask,
 } from './terrain-detail-mask';
+import type { SurfaceEnvironmentState } from './surface-environment';
 
 /**
  * TSL node types, named once so the shader below reads as shader code.
@@ -176,6 +174,9 @@ function createUniformNodes(
     uCellSize: uniform(S.uCellSize),
     uCellJitter: uniform(S.uCellJitter),
     uSplatSharpen: uniform(S.uSplatSharpen),
+    uSurfaceEnvironment: uniform(new THREE.Vector4(0, 0, 0, 0)),
+    // shoreline wetness, salt exposure, snow contamination, reserved.
+    uSurfaceContext: uniform(new THREE.Vector4(0, 0, 0, 0)),
 
     uCliffNy: uniform(S.uCliffNy),
     uCliffBase: uniform(v3(TERRAIN_VEC3_DEFAULTS.uCliffBase)),
@@ -432,6 +433,8 @@ export interface TerrainNodeMaterialSet {
    * is INERT until this is called, so the default appearance is unchanged.
    */
   setEnvironment(env: THREE.Texture | null, intensity: number): void;
+  /** Copy the shared weather scalars into the retained packed uniform. */
+  setSurfaceEnvironment(state: SurfaceEnvironmentState): void;
   dispose(): void;
 }
 
@@ -859,6 +862,48 @@ export function createTerrainNodeMaterials(
       raR.assign(clamp(raR.add(raDust.mul(0.040)).add(raCrack.mul(0.075))
         .add(raGrit.mul(0.030)), 0.55, 1.0));
 
+      // 2c. Packed climate pilot for the shipping node path.
+      // Snow is deliberately carried but unused until accumulation has a real
+      // surface model; a white multiply here would be a misleading weather FX.
+      const raSurfaceUp = clamp(normalWorldGeometry.y, 0.0, 1.0).toVar('raSurfaceUp');
+      const raClimateWet = U.uSurfaceEnvironment.x
+        .mul(float(0.55).add(raSurfaceUp.mul(0.45))).toVar('raClimateWet');
+      const raClimateDust = U.uSurfaceEnvironment.y.mul(raDustable)
+        .mul(float(0.38).add(raAge.x.mul(0.62)))
+        .mul(float(1.0).sub(raClimateWet.mul(0.82))).toVar('raClimateDust');
+      const raContactClimate = U.uSurfaceEnvironment.w.mul(raCavity)
+        .mul(float(0.35).add(raAge.z.mul(0.65))).toVar('raContactClimate');
+      // Slot 2 is the authored sand/beach surface in every biome. The map
+      // cause remains a broad envelope; this splat is the local shoreline mask
+      // that prevents coast/atoll exposure from salting inland pixels.
+      const raShoreMask = clamp(raW[2].mul(raNorm), 0.0, 1.0)
+        .mul(raNatural).toVar('raShoreMask');
+      const raShoreWet = U.uSurfaceContext.x.mul(raShoreMask)
+        .mul(float(1.0).sub(raClimateWet.mul(0.35))).toVar('raShoreWet');
+      const raSalt = U.uSurfaceContext.y.mul(raShoreMask)
+        .mul(float(1.0).sub(raClimateWet.mul(0.72))).toVar('raShoreSalt');
+      // Slot 0 is snow only in the snow biome. The cause is exactly zero on
+      // every other preset, so grass never inherits this contamination path.
+      const raSnowMask = clamp(raW[0].mul(raNorm), 0.0, 1.0)
+        .mul(raNatural).toVar('raSnowMask');
+      const raSnowContamination = U.uSurfaceContext.z.mul(raSnowMask)
+        .mul(float(0.42).add(raAge.z.mul(0.58))).toVar('raSnowContamination');
+      raAlbedo.mulAssign(float(1.0).sub(
+        raClimateWet.mul(mix(0.045, 0.070, raNatural)).add(raShoreWet.mul(0.055)),
+      ));
+      raAlbedo.mulAssign(mix(
+        vec3(1.0), vec3(0.90, 0.82, 0.70), raClimateDust.mul(0.10),
+      ));
+      raAlbedo.mulAssign(float(1.0).sub(raContactClimate.mul(0.025)));
+      raAlbedo.assign(mix(
+        raAlbedo, vec3(0.72, 0.69, 0.62), raSalt.mul(0.045),
+      ));
+      raAlbedo.mulAssign(float(1.0).sub(raSnowContamination.mul(0.085)));
+      raR.assign(clamp(raR.sub(
+        raClimateWet.mul(mix(0.10, 0.14, raNatural)).add(raShoreWet.mul(0.07)),
+      ).add(raClimateDust.mul(0.018)).add(raSalt.mul(0.045))
+        .add(raSnowContamination.mul(0.035)), 0.50, 1.0));
+
       // 3. Build-cell-scale variation without exposing the control grid.
       const raCell = raValue2(raXZ.div(U.uCellSize).add(vec2(0.5))).toVar('raCell');
       const raCellTail = smoothstep(0.88, 0.98, raCell).toVar('raCellTail');
@@ -945,11 +990,11 @@ export function createTerrainNodeMaterials(
   material.roughness = 0.92;
   material.metalness = 0.0;
   /*
-   * Read by `TerrainStandardNodeMaterial.setupOutput` above and by NOTHING in
-   * three's node system — see section 3b. The shipping GLSL material carries
-   * the same flag and means the same thing by it.
+   * Keep the optional implementation available for an explicit material that
+   * proves it needs gradient protection. The terrain default stays false: a
+   * full-ground screen-space hash is visible texture, not invisible dither.
    */
-  material.dithering = true;
+  material.dithering = false;
 
   const surface = raSurface();
   material.colorNode = surface.xyz;
@@ -1081,6 +1126,15 @@ export function createTerrainNodeMaterials(
     applyBiome,
     setEnvironment,
 
+    setSurfaceEnvironment(state: SurfaceEnvironmentState): void {
+      (uniforms.uSurfaceEnvironment.value as THREE.Vector4).set(
+        state.wetness, state.dust, state.snow, state.contact,
+      );
+      (uniforms.uSurfaceContext.value as THREE.Vector4).set(
+        state.shoreWetness, state.salt, state.snowContamination, 0,
+      );
+    },
+
     setAnisotropy(a: number): void {
       anisotropy = a;
       terrainDetail.anisotropy = a;
@@ -1124,14 +1178,12 @@ export function createTerrainNodeMaterials(
 
 export const TSL_GAPS: readonly string[] = [
   /*
-   * 1. THE ONLY REAL FEATURE GAP. `material.dithering` is implemented in
-   *    three's WebGL chunk system and nowhere else — no node in `src/nodes/`
-   *    reads the flag. Re-implemented in `TerrainStandardNodeMaterial`
-   *    (section 3b) from three's own GLSL, and pinned by the spec. Anything
-   *    else in the project that sets `dithering: true` will lose it silently on
-   *    the node path.
+   * 1. `material.dithering` is implemented in three's chunk system and nowhere
+   *    else — no node reads the flag. The optional implementation remains in
+   *    `TerrainStandardNodeMaterial`, but terrain deliberately leaves it off
+   *    because the screen-space hash was visible after high-DPI resolve.
    */
-  'material.dithering: no node implementation; re-implemented via setupOutput',
+  'material.dithering: optional node implementation retained; terrain default disabled',
   /*
    * 2. `Fn` IS A MACRO UNTIL YOU GIVE IT A LAYOUT. A bare `Fn` inlines at every
    *    call site. `.setLayout({ name, type, inputs })` is what makes it a

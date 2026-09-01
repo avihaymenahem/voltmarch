@@ -43,6 +43,7 @@
  */
 
 import type { Channel, TextureRequest } from '../surfaces';
+import { logDiagnostic } from '../diagnostic-log';
 import {
   isWorkerReply,
   type GreebleJob, type TerrainJob, type TerrainTexJob, type TextureJob,
@@ -53,6 +54,7 @@ import type { TerrainFieldData, TerrainGenOptions } from '../../world/terrain-ge
 import type { WaterFieldData } from '../../world/water-gen';
 import type { TerrainTextureData } from '../../world/terrain-texture-gen';
 import type { WaterTextureData } from '../../world/water-texture-gen';
+import type { IrradianceFieldData } from '../../world/irradiance-field';
 
 /* ==========================================================================
  * THE WORKER SEAM
@@ -118,7 +120,13 @@ function defaultPoolSize(): number {
  */
 type JobResult =
   readonly TextureLayer[] | GreebleAtlasData | TerrainFieldData | WaterFieldData
-  | TerrainTextureData | WaterTextureData | null;
+  | TerrainTextureData | WaterTextureData | TerrainWarmData | null;
+
+/** One terrain job owns both payloads so no live terrain array is cloned. */
+export interface TerrainWarmData {
+  readonly terrain: TerrainFieldData;
+  readonly irradiance: IrradianceFieldData | null;
+}
 
 interface Pending {
   readonly resolve: (result: JobResult) => void;
@@ -147,8 +155,11 @@ function isAtlasResult(r: JobResult): r is GreebleAtlasData {
  * would come up with nothing passable — which reads as a pathfinding bug, five
  * files away from the cause.
  */
-function isTerrainResult(r: JobResult): r is TerrainFieldData {
-  return r !== null && (r as { height?: unknown }).height instanceof Float32Array;
+function isTerrainResult(r: JobResult): r is TerrainWarmData {
+  return r !== null
+    && (r as { terrain?: { height?: unknown } }).terrain?.height instanceof Float32Array
+    && ((r as { irradiance?: unknown }).irradiance === null
+      || (r as { irradiance?: { rgba?: unknown } }).irradiance?.rgba instanceof Float32Array);
 }
 
 /** Narrow a job result to a water field set. */
@@ -320,7 +331,9 @@ export class TexturePool {
    * only caller and `Terrain` re-checks the key before adopting anything, so a
    * result that arrives late, crossed or for a different map is refused twice.
    */
-  submitTerrain(options: TerrainGenOptions): Promise<TerrainFieldData | null> {
+  submitTerrain(
+    options: TerrainGenOptions, irradiance = true,
+  ): Promise<TerrainWarmData | null> {
     if (this.off) return Promise.resolve(null);
     if (!this.start()) return Promise.resolve(null);
 
@@ -328,7 +341,7 @@ export class TexturePool {
     const worker = this.workers[this.cursor];
     this.cursor = (this.cursor + 1) % this.workers.length;
 
-    return new Promise<TerrainFieldData | null>((resolve) => {
+    return new Promise<TerrainWarmData | null>((resolve) => {
       const timer = setTimeout(() => {
         this.disable(`terrain job ${id} exceeded ${this.timeoutMs} ms`);
       }, this.timeoutMs);
@@ -337,7 +350,7 @@ export class TexturePool {
         timer,
       });
 
-      const job: TerrainJob = { kind: 'terrain', id, options };
+      const job: TerrainJob = { kind: 'terrain', id, options, irradiance };
       try {
         worker.postMessage(job);
       } catch (err: unknown) {
@@ -506,7 +519,7 @@ export class TexturePool {
     entry.resolve(
       data.kind === 'texture:done' ? data.layers
         : data.kind === 'greeble:done' ? data.data
-          : data.kind === 'terrain:done' ? data.data
+          : data.kind === 'terrain:done' ? { terrain: data.data, irradiance: data.irradiance }
             : data.kind === 'water:done' ? data.data
               : data.kind === 'terrainTex:done' ? data.data
                 : data.kind === 'waterTex:done' ? data.data
@@ -523,6 +536,13 @@ export class TexturePool {
     if (this.off) return;
     this.off = true;
     this.disabledReason = reason;
+    if (reason !== 'disposed') {
+      logDiagnostic('warn', 'worker', 'pool-disabled', 'Worker pool disabled; falling back to the main thread', {
+        reason,
+        workers: this.workers.length,
+        pending: this.pending.size,
+      });
+    }
     for (const w of this.workers) {
       try { w.terminate(); } catch { /* already gone; nothing to salvage */ }
     }
