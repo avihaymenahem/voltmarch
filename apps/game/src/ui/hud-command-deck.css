@@ -1158,3 +1158,128 @@
   .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(246 * var(--vm-u)) !important; padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u)) calc(13 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(80 * var(--vm-u)); }
 }
+
+/* ----------------------------------------------------------------------- */
+/* Generated-recess registration                                           */
+/* ----------------------------------------------------------------------- */
+
+/* The chrome images define the bays.  Live controls are registered to those
+ * bays with image-relative tracks so they do not invent a second layout on
+ * top of the artwork. */
+@media (min-width: 901px) {
+  .vm-hud[data-layout='perimeter'] .vm-resources .vm-res-cell {
+    right: auto;
+    border-left: 0;
+    background: transparent;
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-res-credits { left: 1.2%; width: 12.7%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-trend   { left: 13.9%; width: 8.5%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-power   { left: 22.4%; width: 8.0%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-clock   { left: 70.4%; width: 9.4%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-army    { left: 79.8%; width: 6.3%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-base    { left: 86.1%; width: 10.5%; }
+
+  .vm-hud[data-layout='perimeter'] .vm-res-power .vm-res-main {
+    gap: calc(5 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-meter {
+    flex: 1 1 auto;
+    min-width: calc(38 * var(--vm-u));
+  }
+}
+
+/* Only the middle 49% of the generated minimap chassis contains hardware
+ * pods.  The old full-width rail was covering armor and drawing false boxes. */
+.vm-hud[data-layout='perimeter'] .vm-map-hardware {
+  left: 25.5%;
+  right: 25.5%;
+  bottom: 5.5%;
+  height: 13.5%;
+  padding: 0;
+  gap: 1.5%;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:is(:hover, .vm-pointer-hover) {
+  border-color: rgba(var(--deck-mint-rgb), 0.34);
+  background: rgba(var(--deck-mint-rgb), 0.08);
+}
+
+/* The build plate contains one title bay, five tab bays, then two tool bays.
+ * A disabled tab still reserves its physical recess so subsequent controls
+ * never slide left into the wrong piece of artwork. */
+.vm-hud[data-layout='perimeter'] .vm-tabs {
+  display: grid;
+  grid-template-columns: 25.5% repeat(5, minmax(0, 11.95%)) minmax(0, 14.75%);
+  align-items: stretch;
+  gap: 0;
+  box-sizing: border-box;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-title,
+.vm-hud[data-layout='perimeter'] .vm-tab,
+.vm-hud[data-layout='perimeter'] .vm-tool {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  border-color: transparent;
+  background: transparent;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-build-title {
+  padding-inline: calc(15 * var(--vm-u)) calc(7 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab {
+  flex: none;
+  padding-inline: calc(3 * var(--vm-u));
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab[hidden] {
+  display: flex !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tab::after {
+  left: 8%;
+  right: 8%;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 4%;
+  padding: 13% 5% 10%;
+  box-sizing: border-box;
+}
+
+/* The five command wells start close to the plate's top edge and occupy its
+ * central track.  Unit-scaled insets preserve that registration on desktop
+ * without overriding the compact-layout measurements above. */
+@media (min-width: 901px) {
+  .vm-hud[data-layout='perimeter'] .vm-command-deck {
+    padding: calc(12 * var(--vm-u)) calc(58 * var(--vm-u)) calc(27 * var(--vm-u));
+    column-gap: calc(2 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-command {
+    margin: calc(2 * var(--vm-u)) calc(1 * var(--vm-u));
+    padding: calc(12 * var(--vm-u)) calc(4 * var(--vm-u)) calc(7 * var(--vm-u));
+  }
+}
