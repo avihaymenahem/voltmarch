@@ -219,9 +219,26 @@
   text-shadow: 0 calc(2 * var(--vm-u)) calc(3 * var(--vm-u)) rgba(0, 0, 0, 0.9);
 }
 
-/* The right wing is a bank of centred instrument readouts. Keep its changing
- * numbers on the same optical axis as their wider labels instead of leaving
- * short values hanging from the labels' left edge. */
+/* Credits and Army are compact instruments: centre the complete icon/body
+ * cluster inside each authored bay, then keep the label and changing value on
+ * one optical axis. Text-align alone centred the glyphs inside a body that was
+ * still pinned to the bay's left edge. */
+.vm-hud[data-layout='perimeter']
+  .vm-resources > :is(.vm-res-credits, .vm-res-army) {
+  justify-content: center;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-resources > :is(.vm-res-credits, .vm-res-army) .vm-res-body {
+  align-items: center;
+  text-align: center;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-res-credits .vm-credit-line {
+  justify-content: center;
+}
+
+/* The rest of the right wing keeps changing values beneath wider labels. */
 .vm-hud[data-layout='perimeter']
   :is(.vm-res-clock, .vm-res-army, .vm-res-base)
   :is(.vm-res-label, .vm-res-value) {
@@ -1355,7 +1372,7 @@
     left: calc(24 * var(--vm-u));
     right: auto;
     width: calc(var(--vm-wide-wing-a) - 24 * var(--vm-u));
-    padding-left: calc(26 * var(--vm-u));
+    padding-left: calc(8 * var(--vm-u));
     padding-right: calc(8 * var(--vm-u));
   }
   .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res.vm-res-trend {

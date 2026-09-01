@@ -244,6 +244,18 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('centres the complete Credits and Army readouts inside their bays', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-resources > :is\(\.vm-res-credits, \.vm-res-army\)\s*\{\s*justify-content:\s*center;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-resources > :is\(\.vm-res-credits, \.vm-res-army\) \.vm-res-body\s*\{[\s\S]*?align-items:\s*center;[\s\S]*?text-align:\s*center;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-res-credits \.vm-credit-line\s*\{\s*justify-content:\s*center;/,
+    );
+  });
+
   it('mounts the operation bay outside the clipped resource armour', () => {
     expect(SIDEBAR).toContain("const command = el('section', 'vm-command-node', parent)");
     expect(SIDEBAR).not.toContain("const command = el('section', 'vm-command-node', this.root)");
@@ -444,7 +456,7 @@ describe('approved command-deck skin', () => {
       /\.vm-resources > \.vm-res\s*\{[^}]*right:\s*auto;/,
     );
     expect(COMMAND_DECK_CSS).toContain('right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));');
-    expect(COMMAND_DECK_CSS).toContain('padding-left: calc(26 * var(--vm-u));');
+    expect(COMMAND_DECK_CSS).toContain('padding-left: calc(8 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-resources > :is\([\s\S]*?\.vm-res-credits,[\s\S]*?\.vm-res-trend,[\s\S]*?\.vm-res-clock,[\s\S]*?\.vm-res-army[\s\S]*?\)\s*\{\s*transform:\s*translateX\(calc\(12 \* var\(--vm-u\)\)\);/,
     );
