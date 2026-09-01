@@ -357,7 +357,9 @@
   grid-column: 1;
   width: calc(53 * var(--vm-u));
   height: calc(58 * var(--vm-u));
-  margin-left: calc(13 * var(--vm-u));
+  /* Clear the operation plate's transparent/sloped left shoulder so the
+   * badge reads as content inside the generated image, not an overhang. */
+  margin-left: calc(27 * var(--vm-u));
   box-sizing: border-box;
   clip-path: polygon(50% 0, 100% 18%, 91% 76%, 50% 100%, 9% 76%, 0 18%);
   border: 0;
@@ -401,7 +403,9 @@
 .vm-hud[data-layout='perimeter'] .vm-command-pips {
   position: absolute;
   left: 50%;
-  bottom: calc(3 * var(--vm-u));
+  /* Keep the indicators in the operation aperture, above the lower chrome
+   * seam where the generated plate narrows into its center notch. */
+  bottom: calc(12 * var(--vm-u));
   transform: translateX(-50%);
   display: flex;
   gap: calc(7 * var(--vm-u));
@@ -908,6 +912,12 @@
     --vm-rail-w: calc(300 * var(--vm-u));
   }
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(290 * var(--vm-u)); height: calc(68 * var(--vm-u)); grid-template-columns: calc(54 * var(--vm-u)) minmax(0,1fr); }
+  .vm-hud[data-layout='perimeter'] .vm-command-emblem,
+  .vm-hud[data-layout='perimeter'] .vm-command-portrait {
+    width: calc(42 * var(--vm-u));
+    height: calc(46 * var(--vm-u));
+    margin-left: calc(10 * var(--vm-u));
+  }
   .vm-hud[data-layout='perimeter'] .vm-command-context,
   .vm-hud[data-layout='perimeter'] .vm-build-title-icon,
   .vm-hud[data-layout='perimeter'] .vm-tools,
