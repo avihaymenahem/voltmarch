@@ -1078,6 +1078,7 @@ export class Hud {
        * exactly one of these two is ever non-null (`RendererHandle.webgl`).
        */
       renderer: this.handle.webgl ?? this.handle.node,
+      mapResized: () => this.resize(true),
       callbacks: {
         selectTab: (tab) => this.selectTab(tab),
         activate: (tab, cameo) => this.onSlotActivate(tab, cameo),

@@ -1213,8 +1213,7 @@
 .vm-hud[data-layout='perimeter'] .vm-sel-hp-track > i { background: linear-gradient(90deg, #47c990, #68e1aa); box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(75, 213, 153, 0.28); }
 
 /* Wide four-column production palette. */
-.vm-hud[data-layout='perimeter'] .vm-dock-build,
-.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height {
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
   top: auto;
   right: var(--vm-edge);
   bottom: calc(8 * var(--vm-u));
@@ -1358,8 +1357,7 @@
     --vm-rail-w: calc(365 * var(--vm-u));
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(260 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(260 * var(--vm-u)) !important; }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(96 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-build-title { flex-basis: calc(75 * var(--vm-u)); padding-left: calc(11 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-build-title-label { font-size: calc(11 * var(--vm-u) * var(--vm-text-scale, 1)); }
@@ -1382,8 +1380,7 @@
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(300 * var(--vm-u)); height: calc(62 * var(--vm-u)); grid-template-columns: calc(52 * var(--vm-u)) minmax(0, 1fr); }
   .vm-hud[data-layout='perimeter'] .vm-command-emblem,
   .vm-hud[data-layout='perimeter'] .vm-command-portrait { width: calc(39 * var(--vm-u)); height: calc(39 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(230 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(230 * var(--vm-u)) !important; }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(82 * var(--vm-u)); gap: calc(4 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-tools { display: none; }
   .vm-hud[data-layout='perimeter'] .vm-build-title { flex-basis: calc(62 * var(--vm-u)); }
@@ -2473,8 +2470,7 @@
 .vm-hud[data-layout='perimeter'] .vm-card { width: calc(62 * var(--vm-u)); min-width: calc(62 * var(--vm-u)); height: calc(62 * var(--vm-u)); }
 .vm-hud[data-layout='perimeter'] .vm-sel-stats { display: grid; grid-template-columns: repeat(2, max-content); gap: calc(7 * var(--vm-u)) calc(11 * var(--vm-u)); }
 
-.vm-hud[data-layout='perimeter'] .vm-dock-build,
-.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { top: auto; right: var(--vm-edge); bottom: var(--vm-edge); width: var(--vm-rail-w); height: calc(395 * var(--vm-u)) !important; }
+.vm-hud[data-layout='perimeter'] .vm-dock-build { top: auto; right: var(--vm-edge); bottom: var(--vm-edge); width: var(--vm-rail-w); height: calc(395 * var(--vm-u)) !important; }
 .vm-hud[data-layout='perimeter'] .vm-tabs { height: calc(35 * var(--vm-u)); border: 1px solid rgba(111, 140, 148, 0.36); border-bottom: 0; background: linear-gradient(180deg, rgba(15, 24, 30, 0.99), rgba(4, 9, 13, 0.99)); }
 .vm-hud[data-layout='perimeter'] .vm-build-title { flex: 0 0 calc(95 * var(--vm-u)); display: flex; align-items: center; gap: calc(7 * var(--vm-u)); padding-left: calc(16 * var(--vm-u)); box-sizing: border-box; color: #e5eaec; border-right: 1px solid rgba(136, 161, 168, 0.22); }
 .vm-hud[data-layout='perimeter'] .vm-build-title-icon { width: calc(16 * var(--vm-u)); height: calc(16 * var(--vm-u)); color: #9ca9ad; }
@@ -2519,8 +2515,7 @@
 
   .vm-hud[data-layout='perimeter'] .vm-objectives { width: calc(205 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty { width: calc(190 * var(--vm-u)); min-width: calc(190 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(300 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(300 * var(--vm-u)) !important; }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(116 * var(--vm-u)); grid-template-rows: repeat(2, calc(116 * var(--vm-u))); flex-basis: calc(239 * var(--vm-u)); max-height: calc(239 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(340 * var(--vm-u)); height: calc(78 * var(--vm-u)); }
 }

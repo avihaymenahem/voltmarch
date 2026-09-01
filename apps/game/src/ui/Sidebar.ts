@@ -88,6 +88,11 @@ import {
 } from './Cameos';
 import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 import {
+  AspectPanelResize,
+  MAP_PANEL_SIZE_KEY,
+  SELECTION_PANEL_SIZE_KEY,
+} from './AspectPanelResize';
+import {
   BUILD_PANEL_HEIGHT_KEY,
   VerticalPanelResize,
 } from './VerticalPanelResize';
@@ -613,6 +618,8 @@ export interface SidebarOptions {
   parent: HTMLElement;
   faction: Faction;
   callbacks: SidebarCallbacks;
+  /** Rebuild the minimap backing store after its proportional resize commits. */
+  mapResized?: () => void;
   /**
    * The main renderer — EITHER backend — so build slots can show the ACTUAL
    * MODEL instead of a flat glyph.
@@ -1289,6 +1296,7 @@ const IDLE_HINT = 'Select a unit or a structure to command it';
 class SelectionPanel {
   readonly root: HTMLElement;
 
+  private readonly sizeResize: AspectPanelResize;
   private readonly live: HTMLElement;
 
   /** The name-and-verbs row. Held so `fitHead` can measure its overflow. */
@@ -1660,6 +1668,15 @@ class SelectionPanel {
       this.fitObserver = new ResizeObserver(() => { this.lastFitSig = ''; });
       this.fitObserver.observe(this.root);
     }
+
+    this.sizeResize = new AspectPanelResize(this.root, {
+      storageKey: SELECTION_PANEL_SIZE_KEY,
+      label: 'Resize selection information panel',
+      aspectRatio: 250 / 338,
+      minWidthPx: 220,
+      maxViewportWidthShare: 0.34,
+      maxViewportHeightShare: 0.72,
+    });
   }
 
   private buildCard(): CardCell {
@@ -2142,6 +2159,7 @@ class SelectionPanel {
     // detached node for the rest of the session.
     this.fitObserver?.disconnect();
     this.fitObserver = null;
+    this.sizeResize.dispose();
     this.root.remove();
   }
 }
@@ -2465,6 +2483,7 @@ class BuildPanel {
       label: 'Resize construction panel height',
       minHeightPx: 260,
       maxViewportShare: 0.75,
+      edge: 'top',
     });
   }
 
@@ -3513,6 +3532,7 @@ export class Sidebar {
   readonly minimapCanvas: HTMLCanvasElement;
   readonly resources: ResourceStrip;
 
+  private readonly mapResize: AspectPanelResize;
   private readonly selection: SelectionPanel;
   private readonly build: BuildPanel;
   private readonly supers: SuperweaponBar;
@@ -3593,6 +3613,19 @@ export class Sidebar {
     textNode(hintTitle, 'RADAR OFFLINE');
     textNode(this.mapHintEl, 'Build a Radar Dome');
     this.mapHintEl.hidden = true;
+
+    this.mapResize = new AspectPanelResize(this.mapDock, {
+      storageKey: MAP_PANEL_SIZE_KEY,
+      label: 'Resize tactical map panel',
+      aspectRatio: 286 / 382,
+      minWidthPx: 220,
+      maxViewportWidthShare: 0.30,
+      maxViewportHeightShare: 0.72,
+      onWidthChange: (width) => {
+        this.root.style.setProperty('--vm-live-map-w', `${Math.round(width)}px`);
+      },
+      onCommit: opts.mapResized,
+    });
 
     /* -- bottom centre: selection / status ------------------------------ */
     this.selection = new SelectionPanel(docks, opts.callbacks);
@@ -3777,6 +3810,7 @@ export class Sidebar {
   dispose(): void {
     this.build.dispose();
     this.selection.dispose();
+    this.mapResize.dispose();
     this.resources.dispose();
     this.supers.dispose();
     this.powers.dispose();

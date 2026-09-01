@@ -1,4 +1,16 @@
-/* Height-only grab rail shared by Objectives and the construction palette. */
+/* Persistent resize controls shared by the HUD instruments. */
+
+.vm-hud .vm-dock-map.vm-aspect-resizable.has-user-size,
+.vm-hud .vm-dock-selection.vm-aspect-resizable.has-user-size:not(.is-empty) {
+  width: var(--vm-user-panel-width) !important;
+  min-width: var(--vm-user-panel-width) !important;
+  max-width: var(--vm-user-panel-width) !important;
+  height: var(--vm-user-panel-height) !important;
+}
+
+.vm-hud .vm-dock-selection.is-empty > .vm-panel-corner-handle {
+  display: none;
+}
 
 .vm-hud .vm-height-resizable.has-user-height {
   height: var(--vm-user-panel-height);
@@ -36,7 +48,12 @@
   cursor: ns-resize;
   touch-action: none;
   pointer-events: auto;
-  outline: none;
+  outline: none !important;
+}
+
+.vm-hud .vm-panel-height-handle[data-resize-edge='top'] {
+  top: 0;
+  bottom: auto;
 }
 
 .vm-hud .vm-panel-height-handle::before {
@@ -50,6 +67,58 @@
   background: rgba(var(--vm-accent-rgb), 0.34);
   box-shadow: 0 0 calc(4 * var(--vm-u, 1px)) rgba(var(--vm-accent-rgb), 0.16);
   transition: width 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.vm-hud .vm-panel-height-handle[data-resize-edge='top']::before {
+  top: calc(2 * var(--vm-u, 1px));
+  bottom: auto;
+}
+
+.vm-hud .vm-panel-corner-handle {
+  /* `hud-command-deck.css` makes every selection child relative so live
+     content paints above the bitmap. The resize affordance is the exception. */
+  position: absolute !important;
+  top: calc(8 * var(--vm-u, 1px)) !important;
+  right: calc(8 * var(--vm-u, 1px)) !important;
+  bottom: auto !important;
+  left: auto !important;
+  z-index: 21;
+  width: calc(18 * var(--vm-u, 1px));
+  height: calc(18 * var(--vm-u, 1px));
+  cursor: nesw-resize;
+  touch-action: none;
+  pointer-events: auto;
+  outline: none;
+}
+
+.vm-hud .vm-panel-corner-handle::before,
+.vm-hud .vm-panel-corner-handle::after {
+  content: '';
+  position: absolute;
+  top: calc(2 * var(--vm-u, 1px));
+  right: calc(2 * var(--vm-u, 1px));
+  background: rgba(var(--vm-accent-rgb), 0.34);
+  box-shadow: 0 0 calc(4 * var(--vm-u, 1px)) rgba(var(--vm-accent-rgb), 0.16);
+}
+
+.vm-hud .vm-panel-corner-handle::before {
+  width: calc(10 * var(--vm-u, 1px));
+  height: 1px;
+}
+
+.vm-hud .vm-panel-corner-handle::after {
+  width: 1px;
+  height: calc(10 * var(--vm-u, 1px));
+}
+
+.vm-hud .vm-panel-corner-handle:is(:hover, .vm-pointer-hover)::before,
+.vm-hud .vm-panel-corner-handle:is(:hover, .vm-pointer-hover)::after,
+.vm-hud .vm-panel-corner-handle:focus-visible::before,
+.vm-hud .vm-panel-corner-handle:focus-visible::after,
+.vm-hud .is-size-resizing > .vm-panel-corner-handle::before,
+.vm-hud .is-size-resizing > .vm-panel-corner-handle::after {
+  background: var(--vm-accent);
+  box-shadow: 0 0 calc(7 * var(--vm-u, 1px)) rgba(var(--vm-accent-rgb), 0.42);
 }
 
 .vm-hud .vm-panel-height-handle:is(:hover, .vm-pointer-hover)::before,

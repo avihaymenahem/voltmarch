@@ -12,6 +12,8 @@ export interface VerticalPanelResizeOptions {
   readonly label: string;
   readonly minHeightPx: number;
   readonly maxViewportShare: number;
+  /** Bottom for top-anchored panels; top for panels anchored to the viewport bottom. */
+  readonly edge?: 'top' | 'bottom';
 }
 
 export function clampPanelHeight(
@@ -75,6 +77,7 @@ export class VerticalPanelResize {
     handle.setAttribute('role', 'separator');
     handle.setAttribute('aria-orientation', 'horizontal');
     handle.setAttribute('aria-label', options.label);
+    handle.dataset.resizeEdge = options.edge ?? 'bottom';
     handle.title = `${options.label} · drag vertically`;
     handle.addEventListener('pointerdown', this.onPointerDown);
     handle.addEventListener('keydown', this.onKeyDown);
@@ -148,7 +151,8 @@ export class VerticalPanelResize {
   private readonly onPointerMove = (event: PointerEvent): void => {
     if (event.pointerId !== this.pointerId) return;
     event.preventDefault();
-    this.applyHeight(this.startHeight + event.clientY - this.startY);
+    const delta = event.clientY - this.startY;
+    this.applyHeight(this.startHeight + (this.options.edge === 'top' ? -delta : delta));
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
@@ -165,8 +169,8 @@ export class VerticalPanelResize {
     const current = this.height > 0 ? this.height : bounds.height;
     const step = event.shiftKey ? 40 : 12;
     let next = current;
-    if (event.key === 'ArrowUp') next -= step;
-    else if (event.key === 'ArrowDown') next += step;
+    if (event.key === 'ArrowUp') next += this.options.edge === 'top' ? step : -step;
+    else if (event.key === 'ArrowDown') next += this.options.edge === 'top' ? -step : step;
     else if (event.key === 'Home') next = this.options.minHeightPx;
     else if (event.key === 'End') next = this.viewportHeight() * this.options.maxViewportShare;
     else return;

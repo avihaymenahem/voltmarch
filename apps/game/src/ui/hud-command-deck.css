@@ -459,7 +459,7 @@
 /* ----------------------------------------------------------------------- */
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection {
-  left: calc(var(--vm-map-w) + var(--vm-panel-gap));
+  left: calc(var(--vm-live-map-w, var(--vm-map-w)) + var(--vm-panel-gap));
   bottom: calc(8 * var(--vm-u));
   width: var(--vm-selection-w);
   min-width: var(--vm-selection-w);
@@ -486,8 +486,20 @@
 .vm-hud[data-layout='perimeter'] .vm-sel-head { height: calc(33 * var(--vm-u)); min-height: calc(33 * var(--vm-u)); padding-bottom: calc(10 * var(--vm-u)); border-bottom: 1px solid rgba(130, 153, 160, 0.32); box-shadow: 0 1px 0 rgba(0,0,0,0.72); }
 .vm-hud[data-layout='perimeter'] .vm-sel-title { font-size: calc(15 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 700; letter-spacing: 0.08em; color: #edf1f2; }
 .vm-hud[data-layout='perimeter'] .vm-sel-count { color: var(--deck-violet-hi); }
-.vm-hud[data-layout='perimeter'] .vm-sel-body { min-height: 0; max-height: none; flex: 1 1 auto; gap: calc(12 * var(--vm-u)); }
-.vm-hud[data-layout='perimeter'] .vm-sel-cards { gap: calc(7 * var(--vm-u)); align-content: flex-start; }
+.vm-hud[data-layout='perimeter'] .vm-sel-body {
+  display: grid;
+  grid-template-columns: minmax(calc(72 * var(--vm-u)), 38%) minmax(0, 1fr);
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+  gap: calc(12 * var(--vm-u));
+}
+.vm-hud[data-layout='perimeter'] .vm-sel-cards {
+  width: auto;
+  min-width: 0;
+  gap: calc(7 * var(--vm-u));
+  align-content: flex-start;
+}
 .vm-hud[data-layout='perimeter'] .vm-card {
   width: calc(72 * var(--vm-u));
   min-width: calc(72 * var(--vm-u));
@@ -511,8 +523,7 @@
 /* Build console                                                           */
 /* ----------------------------------------------------------------------- */
 
-.vm-hud[data-layout='perimeter'] .vm-dock-build,
-.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height {
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
   top: auto;
   right: var(--vm-edge);
   bottom: calc(8 * var(--vm-u));
@@ -729,8 +740,7 @@
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(350 * var(--vm-u)); height: calc(82 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-objectives { width: calc(205 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty { width: calc(190 * var(--vm-u)); min-width: calc(190 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(300 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(300 * var(--vm-u)) !important; }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(116 * var(--vm-u)); grid-template-rows: repeat(2, calc(116 * var(--vm-u))); flex-basis: calc(239 * var(--vm-u)); max-height: calc(239 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-build-title { flex-basis: calc(82 * var(--vm-u)); padding-left: calc(13 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-build-title-label { font-size: calc(12 * var(--vm-u) * var(--vm-text-scale,1)); }
@@ -1097,8 +1107,7 @@
   box-shadow: inset 0 calc(3 * var(--vm-u)) 0 var(--deck-mint-hi), inset 0 0 calc(22 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.18);
 }
 
-.vm-hud[data-layout='perimeter'] .vm-dock-build,
-.vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height {
+.vm-hud[data-layout='perimeter'] .vm-dock-build {
   height: calc(430 * var(--vm-u)) !important;
   padding: calc(18 * var(--vm-u)) calc(22 * var(--vm-u)) calc(22 * var(--vm-u));
   box-sizing: border-box;
@@ -1143,8 +1152,7 @@
   .vm-hud[data-layout='perimeter'] .vm-resources::before,
   .vm-hud[data-layout='perimeter'] .vm-resources::after { width: calc(50% - 150 * var(--vm-u)); min-width: 0; }
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(360 * var(--vm-u)); height: calc(90 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(318 * var(--vm-u)) !important; }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(318 * var(--vm-u)) !important; }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(112 * var(--vm-u)); }
 }
 
@@ -1154,8 +1162,7 @@
   .vm-hud[data-layout='perimeter'] .vm-resources::after { width: calc(50% - 128 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-command-node { width: calc(290 * var(--vm-u)); height: calc(72 * var(--vm-u)); padding: calc(8 * var(--vm-u)) calc(15 * var(--vm-u)) calc(17 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-command-deck { height: calc(86 * var(--vm-u)); padding: calc(15 * var(--vm-u)) calc(34 * var(--vm-u)) calc(18 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-dock-build,
-  .vm-hud[data-layout='perimeter'] .vm-dock-build.vm-height-resizable.has-user-height { height: calc(246 * var(--vm-u)) !important; padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u)) calc(13 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-dock-build { height: calc(246 * var(--vm-u)) !important; padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u)) calc(13 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-grid { grid-auto-rows: calc(80 * var(--vm-u)); }
 }
 

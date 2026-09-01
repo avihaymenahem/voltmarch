@@ -162,6 +162,21 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toContain('scrollbar-color:');
   });
 
+  it('keeps the selection cameo in its own measured track', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-sel-body\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(calc\(72 \* var\(--vm-u\)\), 38%\)/,
+    );
+  });
+
+  it('offers persistent resizing without letting the build default override it', () => {
+    expect(SIDEBAR).toContain('new AspectPanelResize(this.root');
+    expect(SIDEBAR).toContain('new AspectPanelResize(this.mapDock');
+    expect(HUD).toContain('mapResized: () => this.resize(true)');
+    expect(SIDEBAR).toContain("edge: 'top'");
+    expect(COMMAND_DECK_CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
+    expect(CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
+  });
+
   it('keeps compact layouts usable without changing the desktop target', () => {
     expect(seal).toContain('@media (max-width: 1400px)');
     expect(seal).toContain('@media (max-width: 900px)');

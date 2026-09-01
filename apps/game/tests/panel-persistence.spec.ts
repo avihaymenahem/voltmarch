@@ -11,6 +11,10 @@ import {
   clampPanelHeight,
   parseStoredPanelHeightRatio,
 } from '../src/ui/VerticalPanelResize';
+import {
+  clampAspectPanelWidth,
+  parseStoredPanelWidthRatio,
+} from '../src/ui/AspectPanelResize';
 
 describe('persisted HUD panel geometry', () => {
   it('clamps vertical resizing to the configured viewport band', () => {
@@ -24,6 +28,20 @@ describe('persisted HUD panel geometry', () => {
     expect(parseStoredPanelHeightRatio('0')).toBeNull();
     expect(parseStoredPanelHeightRatio('NaN')).toBeNull();
     expect(parseStoredPanelHeightRatio(null)).toBeNull();
+  });
+
+  it('clamps proportional instruments against both viewport axes', () => {
+    expect(clampAspectPanelWidth(100, 1600, 900, 220, 0.75, 0.3, 0.72)).toBe(220);
+    expect(clampAspectPanelWidth(360, 1600, 900, 220, 0.75, 0.3, 0.72)).toBe(360);
+    // Width permits 480, but 72% of 900px at a 0.75 aspect permits 486.
+    expect(clampAspectPanelWidth(900, 1600, 900, 220, 0.75, 0.3, 0.72)).toBe(480);
+  });
+
+  it('accepts only finite stored proportional-width ratios', () => {
+    expect(parseStoredPanelWidthRatio('0.25')).toBe(0.25);
+    expect(parseStoredPanelWidthRatio('0')).toBeNull();
+    expect(parseStoredPanelWidthRatio('Infinity')).toBeNull();
+    expect(parseStoredPanelWidthRatio(null)).toBeNull();
   });
 
   it('restores draggable positions safely inside the viewport', () => {
