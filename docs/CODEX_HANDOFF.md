@@ -377,6 +377,10 @@ This is an index, not a duplicate checklist:
 
 ## User collaboration preferences worth preserving
 
+- Never create, generate, integrate or add a new low-poly prop—including a
+  procedural placeholder or fallback—without the user's explicit approval for
+  that specific asset. Ask before authoring it; do not infer permission from an
+  approved high-fidelity asset round.
 - For large visual changes, show screenshots after meaningful milestones rather than waiting until
   the entire round is over.
 - Keep working through an approved batch; do not stop after every tiny change for another approval.
