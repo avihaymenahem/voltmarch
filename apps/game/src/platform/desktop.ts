@@ -60,9 +60,9 @@
  * as off. Excluding that version makes it degrade to web behaviour instead —
  * no Display section at all, visibly wrong rather than quietly wrong.
  */
-export const BRIDGE_VERSION = 9;
-/** Bridge 8 lacks diagnostics but remains safe for every existing capability. */
-export const LEGACY_BRIDGE_VERSION = 8;
+export const BRIDGE_VERSION = 10;
+/** Bridge 9 lacks the DevTools opener but remains safe for every existing capability. */
+export const LEGACY_BRIDGE_VERSION = 9;
 
 export type DesktopUpdateStatus =
   | 'idle'
@@ -236,6 +236,8 @@ export interface DesktopBridge {
   diagnosticWrite?(record: unknown): void;
   /** Recent persisted events, including the previous renderer session. */
   diagnosticRead?(limit?: number): Promise<readonly unknown[]>;
+  /** Open DevTools for the requesting desktop game window only. Bridge 9 lacks it. */
+  openDevTools?(): Promise<boolean>;
 }
 
 /**

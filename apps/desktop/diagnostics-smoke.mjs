@@ -23,8 +23,9 @@ async function launch() {
   });
   const page = await app.firstWindow();
   await page.waitForFunction(() => (
-    window.voltmarch?.bridge === 9
+    window.voltmarch?.bridge === 10
     && typeof window.voltmarch.diagnosticRead === 'function'
+    && typeof window.voltmarch.openDevTools === 'function'
   ), null, { timeout: 60_000 });
   return { app, page };
 }
@@ -41,6 +42,8 @@ try {
       && 'message' in row && String(row.message).includes(message)
     ));
   }, sentinel, { timeout: 10_000 });
+  const devToolsOpened = await first.page.evaluate(() => window.voltmarch.openDevTools());
+  if (!devToolsOpened) throw new Error('The renderer could not open its DevTools window.');
   await first.app.close();
   first = undefined;
 

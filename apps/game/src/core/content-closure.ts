@@ -238,6 +238,20 @@ export function ensureContentClosureSeed(value: ContentClosureSeed): void {
   if (seed === null) setContentClosureSeed(value);
 }
 
+/**
+ * Admit one explicitly requested development-tool content family after reveal.
+ *
+ * Production systems must never call this: their complete reachable graph is
+ * fixed by `ContentClosureSeed`. The Cheat Engine is different by design — it
+ * can ask for a faction that has no seat in the running match. Keeping this
+ * extension both DEV-gated and pattern-scoped preserves the production closure
+ * invariant while letting that local tool prepare real art before it spawns.
+ */
+export function allowDevRuntimeContentScope(pattern: string, reason: string): void {
+  if (!DEV || scopes.some((scope) => scope.pattern === pattern)) return;
+  scopes = [...scopes, { pattern, reason }].sort((a, b) => a.pattern.localeCompare(b.pattern));
+}
+
 export function contentClosureEpoch(): number {
   return runtimeEpoch;
 }

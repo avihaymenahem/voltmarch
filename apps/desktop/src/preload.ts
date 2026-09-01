@@ -10,9 +10,9 @@
  * preloads only, and `sandbox: true` is kept — so `import` here is a syntax
  * error at load time. `build.mjs` emits this as CJS for that reason.
  *
- * `bridge: 9` is a VERSION, not a boolean. The game accepts bridge 8 as the
- * one explicit compatibility predecessor; it lacks the diagnostics methods
- * but remains safe for every pre-existing capability. Other mismatches
+ * `bridge: 10` is a VERSION, not a boolean. The game accepts bridge 9 as the
+ * one explicit compatibility predecessor; it lacks the DevTools opener but
+ * remains safe for every pre-existing capability. Other mismatches
  * degrade to WEB BEHAVIOUR rather than guessing at a missing capability.
  *
  * That accessor did NOT EXIST when this comment first described it, and
@@ -27,7 +27,8 @@
  * 3 -> 4 added desktop diagnostics, 4 -> 5 updater controls, 5 -> 6 relaunch
  * status, 6 -> 7 added `lockPointer` to the display state and patch, and
  * 7 -> 8 moved key/value mutations off the renderer's synchronous IPC path,
- * and 8 -> 9 added bounded diagnostics persistence.
+ * 8 -> 9 added bounded diagnostics persistence, and 9 -> 10 added the narrow
+ * diagnostics-only DevTools opener.
  * Shape, not just method names, is part of the contract. Compatibility with a
  * predecessor must be named explicitly on the game side, never inferred.
  *
@@ -61,7 +62,7 @@ ipcRenderer.on('vm:storage-error', (_event, message: unknown) => {
 contextBridge.exposeInMainWorld(
   'voltmarch',
   Object.freeze({
-    bridge: 9,
+    bridge: 10,
     platform: process.platform,
 
     appVersion: (): Promise<string> => ipcRenderer.invoke('vm:version'),
@@ -143,5 +144,7 @@ contextBridge.exposeInMainWorld(
     diagnosticWrite: (record: unknown): void => ipcRenderer.send('vm:diagnostic-write', record),
     diagnosticRead: (limit = 200): Promise<readonly unknown[]> =>
       ipcRenderer.invoke('vm:diagnostic-read', limit),
+    /** Opens DevTools for this game window; no arbitrary target crosses IPC. */
+    openDevTools: (): Promise<boolean> => ipcRenderer.invoke('vm:open-devtools'),
   }),
 );

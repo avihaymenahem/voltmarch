@@ -1443,6 +1443,11 @@ export class SettingsScreen implements Screen {
     actions.appendChild(button('Refresh', {
       iconName: 'refresh', onClick: () => this.renderTab(),
     }));
+    if (typeof desktopBridge()?.openDevTools === 'function') {
+      actions.appendChild(button('Open DevTools', {
+        iconName: 'monitor', onClick: () => this.openDiagnosticsDevTools(),
+      }));
+    }
     exp.appendChild(actions);
     exp.appendChild(status);
 
@@ -1481,6 +1486,19 @@ export class SettingsScreen implements Screen {
     if (node === null) return;
     node.textContent = text;
     node.classList.toggle('is-bad', bad);
+  }
+
+  private openDiagnosticsDevTools(): void {
+    const bridge = desktopBridge();
+    if (typeof bridge?.openDevTools !== 'function') {
+      this.sayDiag('DevTools requires the current desktop shell. Relaunch the desktop app once.', true);
+      return;
+    }
+    void bridge.openDevTools().then((opened) => {
+      this.sayDiag(opened ? 'DevTools opened in a separate window.' : 'DevTools could not open.', !opened);
+    }).catch((error: unknown) => {
+      this.sayDiag(`DevTools could not open (${String(error)}).`, true);
+    });
   }
 
   /**

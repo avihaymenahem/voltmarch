@@ -347,6 +347,16 @@ describe('desktop asset resolution', () => {
  * ========================================================================== */
 
 describe('dev mode', () => {
+  it('wires the Diagnostics DevTools action through one narrow IPC capability', () => {
+    const preload = readFileSync(path.join(process.cwd(), 'apps/desktop/src/preload.ts'), 'utf8');
+    const main = readFileSync(path.join(process.cwd(), 'apps/desktop/src/main.ts'), 'utf8');
+    const settings = readFileSync(path.join(process.cwd(), 'apps/game/src/shell/Settings.ts'), 'utf8');
+    expect(preload).toContain("ipcRenderer.invoke('vm:open-devtools')");
+    expect(main).toContain("ipcMain.handle('vm:open-devtools'");
+    expect(main).toContain("BrowserWindow.fromWebContents(event.sender)");
+    expect(settings).toContain("button('Open DevTools'");
+  });
+
   it('is off unless argv asks for it', () => {
     // The packaged path must be the default. A player can never reach a state
     // where the app tries to load a dev server that is not running.

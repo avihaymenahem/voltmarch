@@ -34,4 +34,13 @@ describe('Cheat Engine window controls', () => {
     expect(source).toContain('dragDX = event.clientX - bounds.left');
     expect(source).toContain('dragDY = event.clientY - bounds.top');
   });
+
+  it('prepares skipped faction art before direct-spawning a unit', () => {
+    expect(source).toContain('await prepareUnitArt(entry)');
+    expect(source).toContain('hasExactRegisteredKindMesh');
+    expect(source).toContain("await import('../art/Faction3Units')");
+    expect(source).toContain("await import('../art/Faction4Units')");
+    expect(source.indexOf('await prepareUnitArt(entry)'))
+      .toBeLessThan(source.indexOf('service.devSpawnUnits({'));
+  });
 });

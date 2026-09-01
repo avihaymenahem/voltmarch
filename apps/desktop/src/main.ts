@@ -608,6 +608,14 @@ function installIpc(): void {
   });
   ipcMain.handle('vm:diagnostic-read', (_event, limit: unknown) =>
     diagnosticStore.readRecent(typeof limit === 'number' ? limit : 200));
+  ipcMain.handle('vm:open-devtools', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win === null || win.isDestroyed()) return false;
+    // A diagnostics action gets exactly one capability: inspect the requesting
+    // game window. No URL, file, command, or WebContents id crosses the bridge.
+    win.webContents.openDevTools({ mode: 'detach', activate: true });
+    return true;
+  });
   ipcMain.handle('vm:version', () => app.getVersion());
   ipcMain.handle('vm:gpu-info', (_e, kind: unknown) =>
     app.getGPUInfo(kind === 'complete' ? 'complete' : 'basic'),

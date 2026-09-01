@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as THREE from 'three';
 import {
+  allowDevRuntimeContentScope,
   contentClosureReport,
   contentClosureEpoch,
   declareArtAssetFamily,
@@ -583,6 +584,26 @@ describe('generated content dependency closure', () => {
     expect(contentClosureReport().misses.at(-1)).toEqual(expect.objectContaining({
       key: 'art/unit/4/reclaim_crawler/lod0', reason: 'outside-plan', state: 'missing',
     }));
+  });
+
+  it('admits only an explicit Cheat Engine art scope after reveal', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    seed({ factions: [1] });
+    satisfyProviders([1]);
+    expect(markContentClosureRevealed()).toBe(true);
+
+    allowDevRuntimeContentScope(
+      'art/unit/3/**',
+      'development Cheat Engine requested an out-of-match faction',
+    );
+    const keys = declareArtAssetFamily({
+      domain: 'unit', faction: 3, key: 'meridian_collector', owner: 'dev-test',
+      fallback: 'validated procedural Pact unit model',
+    });
+    markArtAssetFamilyFallbackReady(keys);
+
+    for (const key of keys) expect(requestContentDelivery(key, 'dev-test')).toBe(true);
+    expect(contentClosureReport().misses).toEqual([]);
   });
 
   it('generation-guards late completion from a disposed battlefield', () => {
