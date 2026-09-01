@@ -37,11 +37,12 @@ describe('perimeter HUD composition', () => {
     expect(CSS).toContain('.vm-slot-name');
   });
 
-  it('restores the four explicit formation controls above the command deck', () => {
+  it('keeps the four explicit formation controls with the selected group', () => {
     for (const shape of ['line', 'box', 'wedge', 'triangle']) {
       expect(SIDEBAR).toContain(`['${shape}',`);
     }
-    expect(CSS).toContain('.vm-formation-row');
+    expect(SIDEBAR).toContain("this.formationRow = el('div', 'vm-selection-formations', this.live)");
+    expect(COMMAND_DECK_CSS).toContain('.vm-selection-formations');
     expect(INPUT).toContain('invokeHudFormation');
   });
 
@@ -71,10 +72,18 @@ describe('perimeter HUD composition', () => {
 
   it('keeps stance and formation orders as compact action strips', () => {
     expect(SIDEBAR).toContain("'vm-stances vm-stance-actions'");
-    expect(SIDEBAR).toContain("formationRow.setAttribute('aria-label', 'Formation orders')");
-    expect(CSS).toMatch(/--vm-command-h:\s*calc\(70 \* var\(--vm-u\)\)/);
+    expect(SIDEBAR).toContain("this.formationRow.setAttribute('aria-label', 'Formation orders')");
+    expect(COMMAND_DECK_CSS).toMatch(/--vm-command-h:\s*calc\(94\.5 \* var\(--vm-u\)\)/);
     expect(CSS).toMatch(/\.vm-stance-actions \.vm-stance\s*\{[\s\S]*?width:\s*calc\(16 \* var\(--vm-u\)\)/);
-    expect(CSS).toMatch(/\.vm-formation\s*\{[\s\S]*?width:\s*calc\(25 \* var\(--vm-u\)\);[\s\S]*?height:\s*calc\(15 \* var\(--vm-u\)\)/);
+    expect(COMMAND_DECK_CSS).toMatch(/\.vm-selection-formations \.vm-formation\s*\{[\s\S]*?width:\s*calc\(22 \* var\(--vm-u\)\);[\s\S]*?height:\s*calc\(17 \* var\(--vm-u\)\)/);
+  });
+
+  it('gives the compact selection inspector enough room for formations and enlarged text', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@media \(max-width: 1400px\)\s*\{[\s\S]*?--vm-selection-w:\s*calc\(220 \* var\(--vm-u\)\);[\s\S]*?--vm-selection-h:\s*calc\(290 \* var\(--vm-u\)\);/,
+    );
+    expect(SIDEBAR).toContain('viewport <= 900 ? 210 : viewport <= 1400 ? 220 : 250');
+    expect(SIDEBAR).toContain('viewport <= 900 ? 210 : 220');
   });
 });
 
@@ -100,7 +109,7 @@ describe('approved command-deck skin', () => {
     expect(seal).toContain('--vm-map-h: calc(359 * var(--vm-u))');
     expect(seal).toContain('--vm-selection-w: calc(250 * var(--vm-u))');
     expect(seal).toContain('--vm-selection-h: calc(329 * var(--vm-u))');
-    expect(seal).toContain('calc(546 * var(--vm-u))');
+    expect(seal).toContain('calc(409.5 * var(--vm-u))');
     expect(seal).toContain('calc(100vw - (912 * var(--vm-u)))');
     expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
   });
@@ -124,8 +133,15 @@ describe('approved command-deck skin', () => {
 
   it('rounds live command hover, focus, and active outlines inside the authored wells', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-command\s*\{[\s\S]*?border-radius:\s*calc\(6 \* var\(--vm-u\)\);/,
+      /\.vm-command\s*\{[\s\S]*?border-radius:\s*calc\(4\.5 \* var\(--vm-u\)\);/,
     );
+  });
+
+  it('renders the authored command plate at 75% of its former desktop dimensions', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command-deck\s*\{[\s\S]*?height:\s*calc\(94\.5 \* var\(--vm-u\)\);[\s\S]*?padding:\s*calc\(17\.25 \* var\(--vm-u\)\) calc\(40\.5 \* var\(--vm-u\)\) calc\(21 \* var\(--vm-u\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toContain('background-size: 100% auto');
   });
 
   it('centres operation text between equal emblem and context tracks', () => {

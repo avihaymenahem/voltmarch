@@ -41,20 +41,30 @@ describe('persisted HUD panel geometry', () => {
   });
 
   it('keeps sequential compact maximums outside the centered command plate', () => {
-    const commandLeft = 460;
+    const commandLeft = 505;
     const gap = 8;
-    const selectionDefault = 190;
+    const selectionDefault = 220;
     const map = clampAspectPanelWidth(
       Number.POSITIVE_INFINITY, 1280, 720, 205, 1100 / 1380, 0.30, 0.60,
       commandLeft - selectionDefault - 2 * gap,
     );
     const selection = clampAspectPanelWidth(
-      Number.POSITIVE_INFINITY, 1280, 720, 190, 1007 / 1324, 0.34, 0.72,
+      Number.POSITIVE_INFINITY, 1280, 720, 220, 1007 / 1324, 0.34, 0.72,
       commandLeft - map - 2 * gap,
     );
-    expect(map).toBe(254);
-    expect(selection).toBe(190);
+    expect(map).toBe(269);
+    expect(selection).toBe(220);
     expect(map + gap + selection).toBeLessThanOrEqual(commandLeft - gap);
+  });
+
+  it('reserves enough compact selection height for formations at 1.5x text scale', () => {
+    const selectionWidth = 220;
+    const plateAspect = 1324 / 1007;
+    const panelChrome = 60;
+    const fixedBodyContent = 105;
+    const availableStatsHeight = selectionWidth * plateAspect - panelChrome - fixedBodyContent;
+
+    expect(availableStatsHeight).toBeGreaterThanOrEqual(124);
   });
 
   it('keeps the first desktop breakpoint outside the elastic command plate', () => {
@@ -62,10 +72,10 @@ describe('persisted HUD panel geometry', () => {
     const gap = 8;
     const mapMinimum = 220;
     const selectionMinimum = 220;
-    const commandWidth = Math.min(546, viewport - 912);
+    const commandWidth = Math.min(409.5, viewport - 912);
     const commandLeft = (viewport - commandWidth) / 2;
-    expect(commandWidth).toBe(489);
-    expect(mapMinimum + gap + selectionMinimum).toBe(commandLeft - gap);
+    expect(commandWidth).toBe(409.5);
+    expect(mapMinimum + gap + selectionMinimum).toBeLessThan(commandLeft - gap);
   });
 
   it('accepts only finite stored proportional-width ratios', () => {

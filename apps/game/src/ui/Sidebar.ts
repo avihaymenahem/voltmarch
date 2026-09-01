@@ -1339,6 +1339,8 @@ class SelectionPanel {
   private readonly stanceRow: HTMLElement;
   private readonly stanceLabelNode: Text;
   private readonly stanceButtons: HTMLButtonElement[] = [];
+  private readonly formationRow: HTMLElement;
+  private readonly formationButtons: HTMLButtonElement[] = [];
   private readonly relocateRow: HTMLElement;
   private readonly relocateButton: HTMLButtonElement;
   private readonly relocateCostNode: Text;
@@ -1378,6 +1380,7 @@ class SelectionPanel {
   private lastCount = -1;
   private lastVet = -1;
   private lastStance = -2;
+  private lastCanForm = false;
   private lastHp = '';
   private lastMending = false;
   private liveCards = 0;
@@ -1634,6 +1637,30 @@ class SelectionPanel {
       this.statChips.push(chip);
     }
 
+    /* -- formations ---------------------------------------------------- *
+     * Formation is a property of the selected mobile GROUP, not of the five
+     * universal orders. Keep it with the selection it operates on and reveal
+     * it only when it is meaningful; this leaves the command console compact
+     * without making the four existing shapes undiscoverable. */
+    this.formationRow = el('div', 'vm-selection-formations', this.live);
+    this.formationRow.setAttribute('role', 'group');
+    this.formationRow.setAttribute('aria-label', 'Formation orders');
+    label(this.formationRow, 'vm-selection-formation-label', 'Formation');
+    for (const [shape, name, points] of FORMATIONS) {
+      const control = button(this.formationRow, 'vm-formation', name);
+      control.dataset.formation = shape;
+      control.title = name;
+      control.appendChild(formationGlyph(points));
+      control.addEventListener('click', () => {
+        if (control.disabled) return;
+        this.cb.sound('click');
+        this.cb.formation(shape);
+      });
+      control.addEventListener('pointerenter', () => this.cb.sound('hover'));
+      this.formationButtons.push(control);
+    }
+    this.formationRow.hidden = true;
+
     /* -- the health bar ------------------------------------------------ *
      * Full width along the bottom with the absolute hit points laid over it,
      * exactly as the reference draws it. The old panel put a 54-unit stub and
@@ -1799,6 +1826,7 @@ class SelectionPanel {
       this.root.setAttribute('aria-label', empty ? 'Base advisory' : 'Selection');
     }
     if (empty) {
+      this.updateFormations(false);
       for (let i = 0; i < this.liveCards; i++) this.cards[i].root.hidden = true;
       this.liveCards = 0;
       // The whole live half is display:none while empty, but the row is left in
@@ -1931,6 +1959,7 @@ class SelectionPanel {
       }
       this.stanceLabelNode.nodeValue = stance < 0 ? 'Stance' : name;
     }
+    this.updateFormations(view.stanceEnabled && view.count >= 2);
 
     this.updateRelocate(view.relocate);
     this.updateAbility(view.ability);
@@ -1939,6 +1968,17 @@ class SelectionPanel {
     this.updatePrimary(view.primary);
     this.updateDestruct(view.selfDestruct);
     this.fitHead();
+  }
+
+  /** Show formation choices only for a mobile multi-selection. */
+  private updateFormations(canForm: boolean): void {
+    if (canForm === this.lastCanForm) return;
+    this.lastCanForm = canForm;
+    this.formationRow.hidden = !canForm;
+    for (const control of this.formationButtons) {
+      control.disabled = !canForm;
+      control.setAttribute('aria-disabled', canForm ? 'false' : 'true');
+    }
   }
 
   /**
@@ -3468,22 +3508,6 @@ class CommandDeck {
     this.root.setAttribute('role', 'toolbar');
     this.root.setAttribute('aria-label', 'Unit commands');
 
-    const formationRow = el('div', 'vm-formation-row', this.root);
-    formationRow.setAttribute('role', 'group');
-    formationRow.setAttribute('aria-label', 'Formation orders');
-    label(formationRow, 'vm-formation-label', 'Formation');
-    for (const [shape, name, points] of FORMATIONS) {
-      const control = button(formationRow, 'vm-formation', name);
-      control.dataset.formation = shape;
-      control.title = name;
-      control.appendChild(formationGlyph(points));
-      control.addEventListener('click', () => {
-        if (control.disabled) return;
-        cb.sound('click'); cb.formation(shape);
-      });
-      control.addEventListener('pointerenter', () => cb.sound('hover'));
-    }
-
     for (const [action, icon, labelText, hotkey] of COMMAND_DECK) {
       const control = button(this.root, 'vm-command', labelText);
       control.dataset.command = action;
@@ -3505,20 +3529,10 @@ class CommandDeck {
     const hasSelection = view.count > 0;
     const canMove = hasSelection && view.stanceEnabled;
     const canAttack = canMove && view.damage !== '' && view.damage !== '—';
-    // Formation availability changes when a single mobile selection becomes a
-    // group even though every other command capability stays identical. Keep
-    // that bit in the render key or the buttons remain disabled after the
-    // tutorial's natural click-one -> box-select progression.
-    const canForm = canMove && view.count >= 2;
-    const state = `${hasSelection ? 1 : 0}${canMove ? 1 : 0}${canAttack ? 1 : 0}${canForm ? 1 : 0}`;
+    const state = `${hasSelection ? 1 : 0}${canMove ? 1 : 0}${canAttack ? 1 : 0}`;
     if (state === this.lastState) return;
     this.lastState = state;
     this.root.classList.toggle('is-idle', !hasSelection);
-    for (const control of this.root.querySelectorAll<HTMLButtonElement>('.vm-formation')) {
-      control.disabled = !canForm;
-      control.setAttribute('aria-disabled', !control.disabled ? 'false' : 'true');
-    }
-
     for (let i = 0; i < COMMAND_DECK.length; i++) {
       const action = COMMAND_DECK[i][0];
       const enabled = action === 'move' || action === 'scatter'
@@ -3583,7 +3597,7 @@ export class Sidebar {
     const panelGap = (): number => 8 * hudScale();
     const compactCommandWidthUnits = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      return viewport <= 900 ? 270 : viewport <= 1400 ? 360 : 546;
+      return viewport <= 1400 ? 270 : 409.5;
     };
     const commandLeft = (): number => {
       const rootBounds = this.root.getBoundingClientRect();
@@ -3597,7 +3611,7 @@ export class Sidebar {
     };
     const fallbackSelectionWidth = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 190 : 250;
+      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 220 : 250;
       return units * hudScale();
     };
     const mapMinimum = (): number => {
@@ -3607,7 +3621,7 @@ export class Sidebar {
     };
     const selectionMinimum = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
-      const units = viewport <= 900 ? 210 : viewport <= 1400 ? 190 : 220;
+      const units = viewport <= 900 ? 210 : 220;
       return units * hudScale();
     };
     const mapMaximum = (): number => {
