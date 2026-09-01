@@ -19,12 +19,12 @@
  * ------------------------
  *   - THE LADDER IS MONOTONIC. Easy waits longest, Brutal shortest, at both
  *     gates. A table where two rows cross is a difficulty setting that lies.
- *   - EASY ACTUALLY GIVES YOU TIME. Six minutes forty before the first push,
- *     two minutes forty between them. Asserted in seconds against the clock,
+ *   - EASY ACTUALLY GIVES YOU TIME. Eight minutes twenty before the first push,
+ *     three minutes twenty between them. Asserted in seconds against the clock,
  *     not as a ratio.
- *   - THE GRACE PERIOD IS NOT A TRUCE. Rushing the AI cancels it on the spot.
- *     An opponent that absorbs a six-minute rush without ever hitting back
- *     because a timer said so is not easy, it is inert.
+ *   - THE GRACE PERIOD IS NOT A TRUCE. Every rung defends immediately, but
+ *     Easy does not convert a stray hit into a cross-map counterattack. Normal
+ *     and above can still cancel their opening gate under sustained pressure.
  *   - DEFENCE IS NEVER GATED. The AI answers a raid during the grace period.
  *     This is the case that stops the fix turning "too aggressive" into
  *     "does not react at all".
@@ -201,12 +201,18 @@ describe('aggression is wired to something', () => {
 /* ========================================================================== */
 
 describe('the first push waits for the clock, not just for the headcount', () => {
-  it('holds an Easy AI for more than six minutes even with an army standing ready', () => {
+  it('keeps the Easy Turtle used by Adaptive to a five-unit opening wave', () => {
+    const h = makeHarness(EASY, 0);
+    expect(h.brain.intent().personality).toBe('Turtle');
+    expect(h.brain.wave).toBe(5);
+  });
+
+  it('holds an Easy AI for more than eight minutes even with an army standing ready', () => {
     const h = makeHarness(EASY);
     h.army(AI_SQUAD_MAX * 3);   // far past any threshold, on tick zero
 
     const unlock = expectedUnlock(EASY);
-    expect(unlock / SIM_HZ, 'Easy must give the player a long beginner runway').toBeCloseTo(400, 0);
+    expect(unlock / SIM_HZ, 'Easy must give the player a long beginner runway').toBeCloseTo(500, 0);
 
     // One tick short of the gate: still massing, with a full army in hand.
     h.step(unlock - 1);
@@ -250,11 +256,11 @@ describe('the first push waits for the clock, not just for the headcount', () =>
 /* ========================================================================== */
 
 describe('the grace period is a head start, not a truce', () => {
-  it('cancels the moment the AI base is actually being hit', () => {
+  it('keeps Easy defensive without unlocking an early counterattack', () => {
     const h = makeHarness(EASY);
     h.army(AI_SQUAD_MAX * 3);
     h.step(SIM_HZ * 5);
-    expect(h.brain.intent().posture, 'not attacking yet — the gate is 400 s')
+    expect(h.brain.intent().posture, 'not attacking yet — the gate is 500 s')
       .not.toBe('attacking');
 
     // A sustained raid. `basePressure` accumulates per reported hit and decays
@@ -266,12 +272,28 @@ describe('the grace period is a head start, not a truce', () => {
     }
     expect(h.brain.intent().basePressure).toBeGreaterThan(AI_MILITARY.gracePressureCancel);
 
-    // It must now be capable of offence again well inside the original gate.
+    // It still defends, but pressure cannot permanently erase the beginner
+    // runway and launch the standing army across the map.
+    h.step(SIM_HZ * 90);
+    expect(h.brain.intent().posture).not.toBe('attacking');
+    expect(h.tick).toBeLessThan(expectedUnlock(EASY));
+  });
+
+  it('still lets Normal and above break the gate under sustained pressure', () => {
+    const h = makeHarness(NORMAL);
+    h.army(AI_SQUAD_MAX * 3);
+    h.step(SIM_HZ * 5);
+
+    for (let k = 0; k < 12; k++) {
+      h.channels.events.emit('combat:underAttack', { player: P_AI, x: 396, z: 396, isBuilding: true });
+      h.step(2);
+    }
+
+    expect(h.brain.intent().basePressure).toBeGreaterThan(AI_MILITARY.gracePressureCancel);
     const before = h.tick;
     const at = ticksToFirstAttack(h, SIM_HZ * 90);
-    expect(at, 'a rushed Easy AI must be able to hit back').toBeGreaterThan(0);
-    expect(at - before, 'and not wait out the rest of the 400 s')
-      .toBeLessThan(expectedUnlock(EASY) - before);
+    expect(at, 'a rushed Normal AI must be able to hit back').toBeGreaterThan(0);
+    expect(at - before).toBeLessThan(expectedUnlock(NORMAL) - before);
   });
 
   it('still answers a raid DURING the grace period', () => {
@@ -315,7 +337,7 @@ describe('the rearm gap between waves', () => {
   it('is ordered across the ladder and real on Easy', () => {
     const gap = (d: number): number =>
       Math.round((AI_MILITARY.rearmSeconds * SIM_HZ) / Math.max(0.1, AI_DIFFICULTY[d]!.aggression));
-    expect(gap(EASY) / SIM_HZ, 'well over two minutes between Easy waves').toBeCloseTo(160, 0);
+    expect(gap(EASY) / SIM_HZ, 'well over three minutes between Easy waves').toBeCloseTo(200, 0);
     for (const d of [NORMAL, HARD, BRUTAL]) expect(gap(d)).toBeLessThan(gap(d - 1));
   });
 });

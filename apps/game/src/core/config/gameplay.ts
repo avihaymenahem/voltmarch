@@ -227,7 +227,7 @@ export const VISION_REGROW_DELAY = 2.0;
  * `AI_SKILL` instead. Hard and Brutal are untouched.
  */
 export const AI_DIFFICULTY = [
-  { name: 'Easy',   reactionSec: 3.2, apmCap: 28,  waveSizeMul: 0.55, aggression: 0.3, resourceBonus: 0.65 },
+  { name: 'Easy',   reactionSec: 3.2, apmCap: 28,  waveSizeMul: 0.45, aggression: 0.24, resourceBonus: 0.65 },
   { name: 'Normal', reactionSec: 1.2, apmCap: 90,  waveSizeMul: 1.0, aggression: 0.7, resourceBonus: 1.0 },
   { name: 'Hard',   reactionSec: 0.6, apmCap: 160, waveSizeMul: 1.4, aggression: 1.0, resourceBonus: 1.15 },
   { name: 'Brutal', reactionSec: 0.3, apmCap: 260, waveSizeMul: 1.8, aggression: 1.3, resourceBonus: 1.35 },

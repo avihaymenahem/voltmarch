@@ -4277,11 +4277,14 @@ export class AiBrain {
     // Easy takes 2.4 s. The information arrives at the same instant for both.
     const observed = s.tick - this.attackObservedTick;
     const reacting = observed >= this.diff.reactionTicks && observed < AI_MILITARY.regroupTicks;
-    // Being hit cancels the opening grace period on the spot. An AI that
-    // absorbs a five-minute rush without ever counter-attacking because a timer
-    // said so is not easy, it is inert — and rushing the enemy base is the
-    // first thing anyone does to a new build.
-    if (this.basePressure > AI_MILITARY.gracePressureCancel && s.tick < this.offensiveUnlockTick) {
+    // Defence is never gated, but only the more aggressive rungs convert it
+    // into an early cross-map counterattack. Previously one structure hit
+    // permanently erased Easy's whole opening runway because a building hit
+    // adds 1.0 pressure against a 0.5 threshold. That made the gentlest rung
+    // feel harsher precisely when a beginner first probed the enemy base.
+    if (this.diff.aggression >= AI_MILITARY.graceCancelMinAggression
+      && this.basePressure > AI_MILITARY.gracePressureCancel
+      && s.tick < this.offensiveUnlockTick) {
       this.offensiveUnlockTick = s.tick;
     }
     if (reacting && this.basePressure > 0.2 && this.attackX >= 0) {

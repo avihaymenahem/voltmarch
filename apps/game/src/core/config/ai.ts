@@ -305,7 +305,7 @@ export const AI_MILITARY = {
    * aggression, so the table below is what the player actually experiences:
    *
    *                 aggression   first push     gap between waves
-   *      Easy          0.3         6:40               2:40
+   *      Easy          0.24        8:20               3:20
    *      Normal        0.7         2:51               1:09
    *      Hard          1.0         2:00               0:48
    *      Brutal        1.3         1:32               0:37
@@ -328,14 +328,16 @@ export const AI_MILITARY = {
   firstStrikeSeconds: 120,
   rearmSeconds: 48,
   /**
-   * The grace period is a HEAD START, not a truce. Base pressure above this
-   * cancels it outright: an AI that lets you demolish it unopposed for five
-   * minutes because the clock said so is not "easy", it is broken, and the
-   * first thing any player does to test a new build is rush the enemy base.
-   * Defence was never gated — `defendBase` returns long before the offensive
-   * branch — but the counter-attack was.
+   * The grace period is a HEAD START, not a truce. Base pressure above this may
+   * cancel it: an AI that lets you demolish it unopposed for five minutes
+   * because the clock said so is broken. Defence itself is never gated —
+   * `defendBase` returns before the offensive branch — so Easy can answer a
+   * rush without turning one stray shot into permission for an immediate
+   * cross-map counterattack.
    */
   gracePressureCancel: 0.5,
+  /** Only sufficiently aggressive rungs turn base defence into an early push. */
+  graceCancelMinAggression: 0.5,
   /** Strike group is beaten once it has lost this fraction of its start size. */
   retreatLossFrac: 0.45,
   /** ...or once its mean HP falls below this. */

@@ -41,7 +41,7 @@ project decision obsolete.
 - The title menu exposes top-right Support and News & Events actions. Support opens the stable
   Discord invite; News & Events opens the Updates tab, whose validated `voltmarch.com/news.json`
   feed can change independently of an installed client and falls back to a bundled release bulletin.
-- Easy skirmish now uses a 0.65 harvest multiplier, 28 APM, a 6:40 first-push floor and no advanced
+- Easy skirmish now uses a 0.65 harvest multiplier, 28 APM, an 8:20 first-push floor and no advanced
   tactics. A player who loses both yard and factory may buy the normal 3,000-credit/32-second MCV
   through one off-map recovery queue if any owned rendezvous asset survives.
 - Release 3.15.1 repairs the environment presentation regressions found in live overhead
