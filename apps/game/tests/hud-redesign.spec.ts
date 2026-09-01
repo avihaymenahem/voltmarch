@@ -496,7 +496,12 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).not.toContain("mapHardware.setAttribute('aria-hidden', 'true')");
     expect(HUD).toContain('centreOnHome: () => this.cameraRig.centreOnHome()');
     expect(HUD).toContain('centreOnSelection: () => this.focusSelection()');
-    expect(joined).toMatch(/\.vm-map-hardware-pod\s*\{\s*background:\s*transparent;/);
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware-pod\s*\{\s*background:\s*linear-gradient\(\s*180deg,/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-map-hardware-pod:disabled\s*\{\s*opacity:\s*1;/,
+    );
   });
 
   it('adds a subtle non-interactive phosphor layer over the live radar canvas', () => {

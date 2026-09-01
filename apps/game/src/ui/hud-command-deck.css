@@ -2125,7 +2125,34 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
-  background: transparent;
+  background: linear-gradient(
+    180deg,
+    rgba(25, 34, 34, 0.97) 0%,
+    rgba(8, 14, 14, 0.99) 52%,
+    rgba(3, 7, 8, 1) 100%
+  );
+  clip-path: polygon(
+    calc(5 * var(--vm-u)) 0,
+    calc(100% - 5 * var(--vm-u)) 0,
+    100% calc(5 * var(--vm-u)),
+    100% calc(100% - 5 * var(--vm-u)),
+    calc(100% - 5 * var(--vm-u)) 100%,
+    calc(5 * var(--vm-u)) 100%,
+    0 calc(100% - 5 * var(--vm-u)),
+    0 calc(5 * var(--vm-u))
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(168, 192, 187, 0.10),
+    inset 0 0 calc(9 * var(--vm-u)) rgba(0, 0, 0, 0.82);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:disabled {
+  opacity: 1;
+  color: rgba(141, 156, 161, 0.34);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-map-hardware-pod:disabled .vm-map-hardware-icon {
+  opacity: 0.42;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
