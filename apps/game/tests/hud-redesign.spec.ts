@@ -503,13 +503,22 @@ describe('approved command-deck skin', () => {
 
   it('registers live build controls to the authored asymmetric header bays', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(36 \* var\(--vm-u\)\);[\s\S]*?25\.55%[\s\S]*?16\.24%[\s\S]*?12\.79%[\s\S]*?10\.11%[\s\S]*?11\.04%[\s\S]*?10\.81%[\s\S]*?13\.46%/,
+      /\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(36 \* var\(--vm-u\)\);[\s\S]*?25\.55%[\s\S]*?16\.24%[\s\S]*?12\.79%[\s\S]*?10\.11%[\s\S]*?11\.04%[\s\S]*?10\.81%[\s\S]*?6\.73%[\s\S]*?6\.73%/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /@media \(max-width: 1400px\)[\s\S]*?\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(25 \* var\(--vm-u\)\);/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /@media \(max-width: 900px\)[\s\S]*?\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(24 \* var\(--vm-u\)\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tools\s*\{\s*display:\s*contents;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tool:is\(:hover, \.vm-pointer-hover\),[\s\S]*?background:\s*rgba\(var\(--deck-mint-rgb\), 0\.15\);/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tool:last-child:is\(:hover, \.vm-pointer-hover\),[\s\S]*?background:\s*rgba\(255, 77, 61, 0\.14\);/,
     );
   });
 

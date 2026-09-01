@@ -1713,8 +1713,9 @@
 }
 
 /* The build plate contains one title bay, five deliberately unequal tab bays,
- * then two tool bays. Register the live controls to those actual recesses,
- * rather than distributing equal columns across an asymmetric render. A
+ * then separate Repair and Sell bays. Register the live controls to those
+ * actual recesses rather than distributing equal columns across an asymmetric
+ * render. A
  * disabled tab still reserves its physical recess so subsequent controls
  * never slide left into the wrong piece of artwork. */
 .vm-hud[data-layout='perimeter'] .vm-dock-build {
@@ -1736,7 +1737,8 @@
     minmax(0, 10.11%)
     minmax(0, 11.04%)
     minmax(0, 10.81%)
-    minmax(0, 13.46%);
+    minmax(0, 6.73%)
+    minmax(0, 6.73%);
   align-items: stretch;
   gap: 0;
   box-sizing: border-box;
@@ -1801,12 +1803,51 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-tools {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 4%;
-  padding: 13% 5% 10%;
-  box-sizing: border-box;
+  display: contents;
+}
+
+/* Each tool owns its complete authored well. The previous nested two-column
+ * row reduced the real buttons to roughly 19x15px at 1280p and left most of
+ * the visible Repair well inert. */
+.vm-hud[data-layout='perimeter'] .vm-tool:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-tool:focus-visible {
+  color: var(--deck-mint-hi);
+  border-color: rgba(var(--deck-mint-rgb), 0.62);
+  background: rgba(var(--deck-mint-rgb), 0.15);
+  box-shadow:
+    inset 0 calc(-2 * var(--vm-u)) 0 var(--deck-mint),
+    inset 0 0 calc(12 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.16),
+    0 0 calc(7 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.18);
+  outline: none;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tool:last-child:is(:hover, .vm-pointer-hover),
+.vm-hud[data-layout='perimeter'] .vm-tool:last-child:focus-visible {
+  color: #ff8b80;
+  border-color: rgba(255, 77, 61, 0.66);
+  background: rgba(255, 77, 61, 0.14);
+  box-shadow:
+    inset 0 calc(-2 * var(--vm-u)) 0 var(--vm-danger),
+    inset 0 0 calc(12 * var(--vm-u)) rgba(255, 77, 61, 0.14),
+    0 0 calc(7 * var(--vm-u)) rgba(255, 77, 61, 0.16);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tool.is-active {
+  color: var(--deck-mint-hi);
+  border-color: var(--deck-mint);
+  background: rgba(var(--deck-mint-rgb), 0.22);
+  box-shadow:
+    inset 0 calc(-3 * var(--vm-u)) 0 var(--deck-mint-hi),
+    inset 0 0 calc(14 * var(--vm-u)) rgba(var(--deck-mint-rgb), 0.22);
+}
+
+.vm-hud[data-layout='perimeter'] .vm-tool:last-child.is-active {
+  color: #ff8b80;
+  border-color: var(--vm-danger);
+  background: rgba(255, 77, 61, 0.22);
+  box-shadow:
+    inset 0 calc(-3 * var(--vm-u)) 0 #ff8b80,
+    inset 0 0 calc(14 * var(--vm-u)) rgba(255, 77, 61, 0.20);
 }
 
 @media (max-width: 1400px) {
@@ -1824,7 +1865,8 @@
       minmax(0, 10.48%)
       minmax(0, 11.46%)
       minmax(0, 11.20%)
-      minmax(0, 12.13%);
+      minmax(0, 6.065%)
+      minmax(0, 6.065%);
   }
 
   .vm-hud[data-layout='perimeter'] .vm-tab {
@@ -1851,7 +1893,8 @@
       minmax(0, 10%)
       minmax(0, 10.94%)
       minmax(0, 10.69%)
-      minmax(0, 13.85%);
+      minmax(0, 6.925%)
+      minmax(0, 6.925%);
   }
 }
 
@@ -1870,7 +1913,8 @@
       minmax(0, 10.26%)
       minmax(0, 11.24%)
       minmax(0, 10.98%)
-      minmax(0, 12.89%);
+      minmax(0, 6.445%)
+      minmax(0, 6.445%);
   }
 }
 
