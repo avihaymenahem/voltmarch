@@ -17,6 +17,7 @@ const read = (file: string): string => readFileSync(path.join(repo, file), 'utf8
 
 describe('initial title-menu boot', () => {
   const shell = read('apps/game/src/shell/Shell.ts');
+  const settings = read('apps/game/src/shell/Settings.ts');
   const bootstrap = read('apps/game/src/game/Bootstrap.ts');
   const main = read('apps/game/src/main.ts');
   const html = read('apps/game/index.html');
@@ -74,6 +75,15 @@ describe('initial title-menu boot', () => {
     expect(helper).toContain('cancelAnimationFrame(frame)');
     expect(shell).toContain('game.ctx.loop.advanceFrames(5);');
     expect(shell).not.toContain('await nextFrames(6);');
+  });
+
+  it('stages the exact render scale before construction and avoids a post-warm graph resize', () => {
+    expect(shell).toContain("'graphics.resolutionScale'");
+    expect(shell).toContain("'graphics.adaptiveResolution'");
+    expect(shell).toContain("applySettings(this.settings.get(), game, ['audio', 'gameplay']);");
+    expect(settings).toContain(
+      'configureRender({ renderer: { resolutionScale: settings.graphics.resolutionScale } });',
+    );
   });
 
   it('prefetches code after first paint without scheduling world work', () => {

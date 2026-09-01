@@ -55,7 +55,7 @@ import {
 import { applyTeams, isHostileSeat } from '../game/Teams';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS, TITLE_BACKDROP_CAMERA_DISTANCE } from '../core/config';
-import { beginBootRun } from '../core/boot-telemetry';
+import { beginBootRun, beginBootSpan } from '../core/boot-telemetry';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
 import { DEF_TABLES } from '../data/Defs';
 
@@ -3372,12 +3372,14 @@ export class Shell {
      * default post/shadow graph behind the loading curtain, then rebuild and
      * compile the player's actual graph during the five hidden settle frames.
      * On the two-army/base probe that second, unreported compile cost about four
-     * seconds. Handle-owned values are still re-applied below once a handle
-     * exists; this pass stages only the renderer configuration they are built
-     * from, so one cold boot produces one graph.
+     * seconds. This pass stages the renderer configuration and exact resolution
+     * scale they are built from, so one cold boot produces one graph. The later
+     * live pass is intentionally limited to audio and input/navigation handles.
      */
     applySettings(settings, null, [
       'graphics.tier',
+      'graphics.resolutionScale',
+      'graphics.adaptiveResolution',
       'graphics.shadows',
       'graphics.shadowQuality',
       'graphics.ao',
@@ -3430,10 +3432,12 @@ export class Shell {
      * accept input first. Both promises are module-cached by the browser, so
      * subsequent matches pay no second network or parse cost.
      */
+    const finishEngineImport = beginBootSpan('app', 'engine-import');
     const [{ bootstrap }, { prepareRenderer }] = await Promise.all([
       import('../game/Bootstrap'),
       import('../render/renderer'),
     ]);
+    finishEngineImport();
     await prepareRenderer(this.options.canvas);
 
     const game = bootstrap(boot);
@@ -3468,9 +3472,15 @@ export class Shell {
      * than waiting on browser frames. The bank and game speed still land here,
      * at tick 0, before either presentation settling or the live loop.
      */
+    const finishSimPostBoot = beginBootSpan('app', 'sim-post-boot');
     this.applySimPostBoot(game, backdrop);
+    finishSimPostBoot();
     this.status('Deploying');
-    applySettings(this.settings.get(), game);
+    const finishSettingsPostBoot = beginBootSpan('app', 'settings-post-boot');
+    // Graph-shaping graphics values were staged before renderer construction;
+    // only settings that own live handles remain at this boundary.
+    applySettings(this.settings.get(), game, ['audio', 'gameplay']);
+    finishSettingsPostBoot();
 
     /*
      * SETTLE PRESENTATION SYNCHRONOUSLY, WITHOUT WAITING FOR THE WINDOW.
@@ -3486,8 +3496,12 @@ export class Shell {
      * still on this stack, the scenario releases the camera deterministically,
      * and match readiness no longer depends on focus or refresh rate.
      */
+    const finishPresentationSettle = beginBootSpan('app', 'presentation-settle');
     game.ctx.loop.advanceFrames(5);
+    finishPresentationSettle();
+    const finishCameraPostBoot = beginBootSpan('app', 'camera-post-boot');
     this.applyCameraPostBoot(game, backdrop);
+    finishCameraPostBoot();
     game.start();
   }
 

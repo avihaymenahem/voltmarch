@@ -185,8 +185,12 @@ export function applySettings(
     // player's explicit choices are re-asserted on top of it below.
   }
 
-  if (game !== null && (all || touched(changed, 'graphics.tier') || touched(changed, 'graphics.resolutionScale'))) {
-    game.ctx.handle.setResolutionScale(settings.graphics.resolutionScale);
+  if (all || touched(changed, 'graphics.tier') || touched(changed, 'graphics.resolutionScale')) {
+    // Stage the exact slider value before renderer construction. Otherwise a
+    // tier creates the render targets at its preset scale and this live pass
+    // resizes the completed WebGPU post graph after shader warm-up.
+    configureRender({ renderer: { resolutionScale: settings.graphics.resolutionScale } });
+    if (game !== null) game.ctx.handle.setResolutionScale(settings.graphics.resolutionScale);
     // The adaptive controller watches the handle and treats any scale it did
     // not itself command as a deliberate choice, re-arming its ceiling. That is
     // what makes this slider stick above the tier default — before it, setting
