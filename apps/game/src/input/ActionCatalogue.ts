@@ -1096,8 +1096,8 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'sys.perf',
     label: 'Performance Overlay',
     description:
-      'Frame time, draw calls, entity counts and the per-phase sim budget. Read straight ' +
-      'off the key code by the debug layer, so it cannot be rebound.',
+      'Toggles the single detailed performance panel with frame time, CPU/GPU timing, ' +
+      'draw calls, entity counts and the per-phase simulation budget.',
     category: 'interface',
     surface: 'global',
     binding: 'fixed',

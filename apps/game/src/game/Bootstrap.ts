@@ -286,6 +286,11 @@ export function bootstrap(options: BootOptions): GameHandle {
     cameraRig,
     post,
     mount: options.debugRoot,
+    // `ui/perf.system.ts` is the one visible performance instrument. Keep this
+    // module's timing/statistics seam for __VM and capture tools, but retire its
+    // older F3 panel so the two diagnostics can never stack over each other.
+    visible: false,
+    toggleKey: null,
     hooks: {
       /*
        * Guarantees screenshot() never captures a cleared buffer: it renders and

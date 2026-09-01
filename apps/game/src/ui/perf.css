@@ -293,17 +293,6 @@
   top: calc((10 + 214 + 6) * var(--vm-u, 1px));
 }
 
-/* -- the other overlay in this corner -------------------------------------- *
- * `src/render/debug.ts` mounts the developer F3 overlay at 8px/8px of the debug
- * root, in screen pixels rather than design units. It is a different instrument
- * for a different audience and both can legitimately be up at once, so when the
- * F3 panel is open this one steps aside by its measured width (212px minimum
- * plus its border and 20px of clearance).                                      */
-
-.vm-perf.is-clear-of-debug {
-  left: calc(10 * var(--vm-u, 1px) + 240px);
-}
-
 /* The panel is a diagnostic, not chrome: on a frame narrow enough that hud.css
    hides the objective panel, it would cover the battlefield instead of
    annotating it. */

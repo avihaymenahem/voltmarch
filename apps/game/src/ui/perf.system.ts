@@ -35,46 +35,20 @@
  * `src/input/input.system.ts` already use, and it is exactly what the Settings
  * screen's header says the published store is for.
  *
- * THE KEYBOARD SHORTCUT, AND WHY IT IS NOT HARD-CODED
- * --------------------------------------------------
+ * THE KEYBOARD SHORTCUT
+ * ---------------------
  * Every binding in this game must come from `src/input/ActionCatalogue.ts` so
- * the help screen and the tutorial can never teach a stale key. That file is
- * unverified in-tree work owned by another workflow and this one may not edit
- * it, so the shortcut is resolved from the catalogue AT RUNTIME: if
- * `sys.perfHud` is present, the key is live; if it is absent — which it is
- * today — no key is bound and the console says so. Nothing here teaches a key
- * the help screen does not know about, and the shortcut goes live the day the
- * entry below is added, with no edit to this file:
- *
- *     {
- *       id: 'sys.perfHud',
- *       label: 'Performance Overlay (HUD)',
- *       description:
- *         'Frame time, the CPU/GPU split, draw calls against the 130 budget, and ' +
- *         'whether a 60 fps reading has real headroom or is vsync capping a ' +
- *         'saturated GPU. Also on the Graphics tab in Options, where the choice ' +
- *         'is persisted. Distinct from F3, which is the developer render overlay.',
- *       category: 'interface',
- *       surface: 'global',
- *       binding: 'fixed',
- *       defaultChord: chord('F4'),
- *     },
- *
- * F4 rather than F3: `src/render/debug.ts` reads `e.code === 'F3'` directly and
- * ignores modifiers, so Shift+F3 would toggle BOTH overlays. F4 is bound by
- * nothing in this build and is not in `RESERVED_CODES`.
- *
- * A `KEYBINDS` row in `src/shell/settings-store.ts` is deliberately NOT added:
- * `tests/action-catalogue.spec.ts` asserts every KEYBINDS id has a catalogue
- * row, so adding one before the row above exists would break a gate. The action
- * is `fixed` in any case, and fixed actions are not stored.
+ * the help screen and the tutorial can never teach a stale key. `sys.perf` is
+ * the existing fixed F3 action. The render debug layer still supplies its
+ * counters and __VM tooling, but Bootstrap disables its legacy visual panel;
+ * this system is the single owner of the on-screen performance instrument.
  * ============================================================================
  */
 
 import { defineSystem } from '../core/loop';
 import { RenderPhase, type RenderContext } from '../core/types';
 import { ctx } from '../game/context';
-import { liveChordFor, type ActionChord, type StoredBindings } from '../input/ActionCatalogue';
+import { liveChordFor, type ActionChord } from '../input/ActionCatalogue';
 import type { LiveBackend } from '../render/backend';
 import { adaptiveResolutionEnabled } from '../render/adaptive-res.system';
 
@@ -91,19 +65,35 @@ import {
 } from './PerfHud';
 
 /** The catalogue id the shortcut is resolved from. See the header. */
-export const PERF_ACTION_ID = 'sys.perfHud';
+export const PERF_ACTION_ID = 'sys.perf';
 
-/** How often the panel checks whether the developer F3 overlay is up. */
-const DEBUG_PROBE_SECONDS = 0.5;
+/** Fixed system actions deliberately ignore historical stored binding rows. */
+export function perfToggleChord(): ActionChord | null {
+  return liveChordFor(PERF_ACTION_ID, undefined);
+}
 
 /** How often a missing settings store is looked for again. */
 const SETTINGS_PROBE_SECONDS = 1;
 
 let hud: PerfHud | null = null;
 
+/**
+ * The public console/tooling surface. Keep this smaller than `PerfHud`: every
+ * visibility change must pass through this system so the panel, profiler and
+ * persisted Options value cannot disagree.
+ */
+interface PerfOverlayController {
+  readonly shown: boolean;
+  /** Runtime-only passthrough used by `tools/gpu-frame-ab.mjs`. */
+  readonly timer: unknown;
+  setVisible(value: boolean): void;
+}
+
+let controller: PerfOverlayController | null = null;
+
 declare global {
   // eslint-disable-next-line no-var
-  var __vmPerf: PerfHud | undefined;
+  var __vmPerf: PerfOverlayController | undefined;
 }
 
 /* ==========================================================================
@@ -113,7 +103,6 @@ declare global {
 interface SettingsBridge {
   get(): {
     graphics?: { perfOverlay?: boolean };
-    controls?: { bindings?: StoredBindings };
   };
   patch(patch: { graphics: { perfOverlay: boolean } }): unknown;
   subscribe(fn: () => void): () => void;
@@ -283,26 +272,29 @@ function resolveMount(): HTMLElement | null {
   return document.getElementById('hud-root');
 }
 
-/**
- * The developer overlay from `src/render/debug.ts`, which owns the id
- * `vm-perf`. This panel uses `vm-perf` as a CLASS, so the lookup cannot find
- * itself. Resolved once and then only read, never queried again.
- */
-let debugOverlay: HTMLElement | null = null;
-let debugProbeIn = 0;
 let settingsProbeIn = 0;
 let store: SettingsBridge | null = null;
 let unsubscribe: (() => void) | null = null;
 let keyListener: ((e: KeyboardEvent) => void) | null = null;
 
-function applyStoredVisibility(): void {
-  const visible = readPerfSetting(store);
+function applyVisibility(visible: boolean, persist: boolean): void {
   hud?.setVisible(visible);
   try {
     ctx().registry.profiler.enabled = visible;
   } catch {
     /* The setting may arrive before the registry is ready. */
   }
+
+  if (!persist || store === null || readPerfSetting(store) === visible) return;
+  try {
+    store.patch({ graphics: { perfOverlay: visible } });
+  } catch {
+    /* Console tools still get a live panel in a standalone/unwritable harness. */
+  }
+}
+
+function applyStoredVisibility(): void {
+  applyVisibility(readPerfSetting(store), false);
 }
 
 function bindSettings(): void {
@@ -318,25 +310,11 @@ function bindSettings(): void {
   applyStoredVisibility();
 }
 
-/** Flip the setting where there is a store, and the panel alone where there is not. */
+/** Flip all three visibility authorities together. */
 function toggleOverlay(): void {
   const panel = hud;
   if (panel === null) return;
-  const next = !panel.shown;
-  if (store !== null) {
-    try {
-      store.patch({ graphics: { perfOverlay: next } });
-      return;
-    } catch {
-      /* Fall through: an unwritable store must not cost the player the key. */
-    }
-  }
-  panel.setVisible(next);
-  try {
-    ctx().registry.profiler.enabled = next;
-  } catch {
-    /* Standalone harness without a registry. */
-  }
+  applyVisibility(!panel.shown, true);
 }
 
 export default defineSystem({
@@ -379,35 +357,42 @@ export default defineSystem({
       timer = undefined;
     }
 
+    // Resolve the settings seam before constructing the panel so an explicit
+    // `?perf` boot cannot be immediately overwritten by the store's default.
+    bindSettings();
+
     // The screenshot/performance harness has no settings store to turn this
     // panel on. `?gpupasses` is a read-only developer boot flag that makes the
     // real per-pass timestamp rows observable during renderer experiments.
-    const queryWantsPasses = typeof location !== 'undefined'
-      && new URLSearchParams(location.search).has('gpupasses');
-    hud = new PerfHud({ mount, source: new EngineSource(), gl, timer, visible: queryWantsPasses });
-    // For the console and for `tools/playtest.mjs`, exactly as `ui.objectives`
-    // publishes its panel. Nothing in the game reads it.
-    globalThis.__vmPerf = hud;
-
-    bindSettings();
+    const queryWantsOverlay = typeof location !== 'undefined' && (() => {
+      const query = new URLSearchParams(location.search);
+      return query.has('perf') || query.has('gpupasses');
+    })();
+    const initialVisible = queryWantsOverlay || readPerfSetting(store);
+    hud = new PerfHud({ mount, source: new EngineSource(), gl, timer, visible: initialVisible });
+    profiler.enabled = initialVisible;
+    // Console and automated tooling get a controller rather than the raw HUD.
+    // That makes `__VM.setOverlay`, F3 and Options converge on the same state.
+    const panel = hud;
+    controller = {
+      get shown(): boolean { return panel.shown; },
+      get timer(): unknown {
+        return (panel as unknown as { readonly timer?: unknown }).timer;
+      },
+      setVisible(value: boolean): void { applyVisibility(value, true); },
+    };
+    globalThis.__vmPerf = controller;
 
     keyListener = (e: KeyboardEvent): void => {
-      // Resolved per keystroke rather than cached: the catalogue entry may not
-      // exist yet (see the header), and a player who rebinds mid-match must not
-      // have to reload for it to take.
-      let bindings: StoredBindings | undefined;
-      try {
-        bindings = store?.get().controls?.bindings;
-      } catch {
-        bindings = undefined;
-      }
-      if (!chordMatches(liveChordFor(PERF_ACTION_ID, bindings), e)) return;
+      // `sys.perf` is fixed. Historical settings may still contain a stale row
+      // for it, but fixed actions must always resolve from the catalogue.
+      if (!chordMatches(perfToggleChord(), e)) return;
       e.preventDefault();
       toggleOverlay();
     };
     window.addEventListener('keydown', keyListener);
 
-    const chord = liveChordFor(PERF_ACTION_ID, undefined);
+    const chord = perfToggleChord();
     const share = (perfFrameShareOf(1280, 720) * 100).toFixed(2);
     // The LIVE backend, read off the renderer. A boot log that named the
     // requested one would be the exact failure `src/render/backend.ts` exists
@@ -420,7 +405,8 @@ export default defineSystem({
       live = 'unknown';
     }
     console.info(
-      `[perf] overlay mounted — off by default, ${perfPanelHeightUnits()}u tall ` +
+      `[perf] overlay mounted — ${initialVisible ? 'visible' : 'off by default'}, ` +
+      `${perfPanelHeightUnits()}u tall ` +
       `(${share}% of a 720p frame), WebGL colour-pass draw budget ${DRAW_BUDGET}, ` +
       `backend ${live}, ` +
       `gpu timer ${hud.gpuTimerAvailable ? 'available' : 'unavailable (headroom cannot be proven)'}; ` +
@@ -447,19 +433,6 @@ export default defineSystem({
     // both are off, timestamp writes stop completely.
     panel.setProfilingActive(panel.shown || adaptiveResolutionEnabled());
 
-    // Only while the panel is up: DOM diagnostics that are off cost nothing.
-    if (panel.shown) {
-      debugProbeIn -= r.dt;
-      if (debugProbeIn <= 0) {
-        debugProbeIn = DEBUG_PROBE_SECONDS;
-        if (debugOverlay === null && typeof document !== 'undefined') {
-          debugOverlay = document.getElementById('vm-perf');
-        }
-        const up = debugOverlay !== null && debugOverlay.style.display !== 'none';
-        panel.root.classList.toggle('is-clear-of-debug', up);
-      }
-    }
-
     panel.frame(r.dt);
   },
 
@@ -471,8 +444,8 @@ export default defineSystem({
     unsubscribe?.();
     unsubscribe = null;
     store = null;
-    debugOverlay = null;
-    if (globalThis.__vmPerf === hud) globalThis.__vmPerf = undefined;
+    if (globalThis.__vmPerf === controller) globalThis.__vmPerf = undefined;
+    controller = null;
     hud?.dispose();
     hud = null;
     try {

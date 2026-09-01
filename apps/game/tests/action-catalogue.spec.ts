@@ -254,9 +254,8 @@ describe('catalogue vs settings store', () => {
     for (const k of KEYBINDS) {
       const a = actionById(k.id);
       if (a === undefined) continue;
-      // `sys.perf` is the one row the two describe differently ON PURPOSE: the
-      // store still normalises and persists a chord for it, and the catalogue
-      // records that the debug layer ignores that chord and reads F3 directly.
+      // `sys.perf` is fixed because the performance system resolves the F3
+      // catalogue action directly rather than treating it as a user binding.
       if (a.binding === 'fixed') continue;
       expect(a.live === false, `${k.id} liveness drifted`).toBe(k.advisory === true);
     }

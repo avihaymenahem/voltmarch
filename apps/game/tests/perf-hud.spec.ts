@@ -213,7 +213,8 @@ import {
   type PerfSource,
 } from '../src/ui/PerfHud';
 
-import { chordMatches, readPerfSetting } from '../src/ui/perf.system';
+import { PERF_ACTION_ID, chordMatches, perfToggleChord, readPerfSetting } from '../src/ui/perf.system';
+import { liveChordFor } from '../src/input/ActionCatalogue';
 
 import {
   SettingsStore,
@@ -932,22 +933,37 @@ describe('perf.system seams', () => {
     })).toBe(false);
   });
 
-  it('binds no key at all while the catalogue has no row for it', () => {
-    // The shortcut is resolved from `src/input/ActionCatalogue.ts`, which this
-    // workflow may not edit — see the header of perf.system.ts for the entry it
-    // needs. Until that lands `liveChordFor` returns null, and a null chord must
-    // match nothing rather than swallowing every keystroke.
-    const event = { code: 'F4', ctrlKey: false, shiftKey: false, altKey: false };
-    expect(chordMatches(null, event as unknown as KeyboardEvent)).toBe(false);
+  it('uses the existing F3 catalogue action as the one performance toggle', () => {
+    expect(PERF_ACTION_ID).toBe('sys.perf');
+    expect(perfToggleChord()).toEqual({
+      code: 'F3', ctrl: false, shift: false, alt: false,
+    });
+
+    // Old settings releases persisted fixed rows alongside rebindable rows.
+    // The generic resolver still sees that data, but this system must not.
+    expect(liveChordFor(PERF_ACTION_ID, {
+      'sys.perf': { code: 'KeyG', ctrl: false, shift: false, alt: false },
+    })?.code).toBe('KeyG');
+    expect(perfToggleChord()?.code).toBe('F3');
   });
 
   it('matches a chord exactly, modifiers included', () => {
-    const chord = { code: 'F4', ctrl: false, shift: false, alt: false };
+    const chord = { code: 'F3', ctrl: false, shift: false, alt: false };
     const press = (patch: Record<string, unknown>): KeyboardEvent =>
-      ({ code: 'F4', ctrlKey: false, shiftKey: false, altKey: false, ...patch }) as unknown as KeyboardEvent;
+      ({ code: 'F3', ctrlKey: false, shiftKey: false, altKey: false, ...patch }) as unknown as KeyboardEvent;
     expect(chordMatches(chord, press({}))).toBe(true);
-    expect(chordMatches(chord, press({ code: 'F3' }))).toBe(false);
+    expect(chordMatches(chord, press({ code: 'F4' }))).toBe(false);
     expect(chordMatches(chord, press({ shiftKey: true }))).toBe(false);
     expect(chordMatches({ code: '', ctrl: false, shift: false, alt: false }, press({ code: '' }))).toBe(false);
+  });
+
+  it('disables the legacy visual panel at bootstrap', () => {
+    const bootstrap = readFileSync('apps/game/src/game/Bootstrap.ts', 'utf8');
+    expect(bootstrap).toMatch(/initDebug\(\{[\s\S]*?visible:\s*false,[\s\S]*?toggleKey:\s*null,/);
+    const system = readFileSync('apps/game/src/ui/perf.system.ts', 'utf8');
+    expect(system).not.toContain("document.getElementById('vm-perf')");
+    expect(system).not.toContain('is-clear-of-debug');
+    expect(system).not.toContain('controls?.bindings');
+    expect(system).toContain('globalThis.__vmPerf = controller');
   });
 });

@@ -3,7 +3,8 @@
  * =============================================================================
  * Two things:
  *
- *  1. An on-screen performance overlay (F3): fps, frame ms with a rolling
+ *  1. A legacy on-screen performance overlay retained only as a programmatic
+ *     fallback when the HUD performance system is unavailable: fps, frame ms with a rolling
  *     sparkline, CPU time, draw calls, triangles, programs, geometry/texture
  *     counts, texture memory, entity/particle counters and a JS heap canary.
  *     Text nodes are created once and only their `nodeValue` is written, at
@@ -570,8 +571,8 @@ export interface InitDebugOptions {
   cameraRig: CameraRig;
   post?: PostChain | null;
   hooks?: DebugHooks;
-  /** KeyboardEvent.code that toggles the overlay. Default 'F3'. */
-  toggleKey?: string;
+  /** KeyboardEvent.code that toggles the legacy overlay. Null disables it. Default 'F3'. */
+  toggleKey?: string | null;
   /** Show the overlay immediately. Default: true when ?perf is in the URL. */
   visible?: boolean;
   /** Mount point; falls back to #debug-root then document.body. */
@@ -743,21 +744,41 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   }
 
   /* ---- key toggle ------------------------------------------------------- */
-  const toggleKey = options.toggleKey ?? 'F3';
+  const toggleKey = options.toggleKey === undefined ? 'F3' : options.toggleKey;
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.code !== toggleKey) return;
+    if (toggleKey === null || e.code !== toggleKey) return;
     e.preventDefault();
-    setVisible(!visible);
+    toggleVisible();
   };
-  window.addEventListener('keydown', onKeyDown);
+  if (toggleKey !== null) window.addEventListener('keydown', onKeyDown);
+
+  function livePerfPanel(): { readonly shown: boolean; setVisible(value: boolean): void } | null {
+    const candidate = (globalThis as unknown as { __vmPerf?: unknown }).__vmPerf;
+    if (typeof candidate !== 'object' || candidate === null) return null;
+    const panel = candidate as { readonly shown?: unknown; setVisible?: unknown };
+    if (typeof panel.shown !== 'boolean' || typeof panel.setVisible !== 'function') return null;
+    return panel as { readonly shown: boolean; setVisible(value: boolean): void };
+  }
 
   function setVisible(v: boolean): void {
+    const panel = livePerfPanel();
+    if (panel !== null) {
+      visible = false;
+      root.style.display = 'none';
+      panel.setVisible(v);
+      return;
+    }
     visible = v;
     root.style.display = v ? 'block' : 'none';
     if (v) {
       frameMsMax = 0;
       heapBase = 0;
     }
+  }
+
+  function toggleVisible(): void {
+    const panel = livePerfPanel();
+    setVisible(!(panel?.shown ?? visible));
   }
 
   /* ---- capture helpers -------------------------------------------------- */
@@ -1034,7 +1055,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     },
 
     toggleOverlay() {
-      setVisible(!visible);
+      toggleVisible();
     },
 
     pause() {
@@ -1173,13 +1194,13 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     endFrame,
     setVisible,
     toggle() {
-      setVisible(!visible);
+      toggleVisible();
     },
     setCounter(name, value) {
       counters[name] = value;
     },
     dispose() {
-      window.removeEventListener('keydown', onKeyDown);
+      if (toggleKey !== null) window.removeEventListener('keydown', onKeyDown);
       root.remove();
       frameListeners.length = 0;
       if (window.__VM === api) delete window.__VM;
@@ -1187,7 +1208,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   };
 
   console.info(
-    `%c VOLTMARCH %c render boot ok — window.__VM ready (F3 for perf overlay) `,
+    `%c VOLTMARCH %c render boot ok — window.__VM ready `,
     'background:#C0271E;color:#fff;font-weight:700;padding:2px 4px;border-radius:2px 0 0 2px',
     'background:#1B1F24;color:#7FD8C0;padding:2px 6px;border-radius:0 2px 2px 0'
   );
