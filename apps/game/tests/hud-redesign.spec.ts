@@ -458,6 +458,15 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('centres and fits the empty selection advisory in a longer plate', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-empty\s*\{[\s\S]*?width:\s*calc\(380 \* var\(--vm-u\)\);[\s\S]*?height:\s*calc\(72 \* var\(--vm-u\)\);[\s\S]*?padding:\s*0 calc\(24 \* var\(--vm-u\)\);[\s\S]*?justify-content:\s*center;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-empty \.vm-sel-idle\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*100%;[\s\S]*?gap:\s*calc\(6 \* var\(--vm-u\)\);[\s\S]*?justify-content:\s*center;[\s\S]*?font-size:\s*calc\(10\.75 \* var\(--vm-u\) \* var\(--vm-text-scale, 1\)\);/,
+    );
+  });
+
   it('registers live build controls to the authored asymmetric header bays', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-tabs\s*\{[\s\S]*?height:\s*calc\(36 \* var\(--vm-u\)\);[\s\S]*?25\.55%[\s\S]*?16\.24%[\s\S]*?12\.79%[\s\S]*?10\.11%[\s\S]*?11\.04%[\s\S]*?10\.81%[\s\S]*?13\.46%/,

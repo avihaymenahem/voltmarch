@@ -2183,6 +2183,70 @@
   }
 }
 
+/* The empty-state strip is a different component from the full inspector.
+ * Keep its live advisory centred in the generated aperture; inheriting the
+ * inspector's portrait padding pushed the line off-axis and shortened its
+ * usable run. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty {
+  width: calc(380 * var(--vm-u));
+  min-width: calc(380 * var(--vm-u));
+  max-width: calc(380 * var(--vm-u));
+  height: calc(72 * var(--vm-u));
+  padding: 0 calc(24 * var(--vm-u));
+  justify-content: center;
+  gap: 0;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-selection.is-empty .vm-sel-idle {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  gap: calc(6 * var(--vm-u));
+  justify-content: center;
+  text-align: center;
+  font-size: calc(10.75 * var(--vm-u) * var(--vm-text-scale, 1));
+  line-height: 1;
+  overflow: hidden;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-selection.is-empty .vm-sel-idle > svg {
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+}
+
+@media (max-width: 1400px) {
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty {
+    width: calc(260 * var(--vm-u));
+    min-width: calc(260 * var(--vm-u));
+    max-width: calc(260 * var(--vm-u));
+    height: calc(54 * var(--vm-u));
+    padding-inline: calc(18 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter']
+    .vm-dock-selection.is-empty .vm-sel-idle {
+    gap: calc(5 * var(--vm-u));
+    font-size: calc(10 * var(--vm-u) * var(--vm-text-scale, 1));
+  }
+}
+
+@media (max-width: 900px) {
+  .vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty {
+    width: calc(230 * var(--vm-u));
+    min-width: calc(230 * var(--vm-u));
+    max-width: calc(230 * var(--vm-u));
+    height: calc(50 * var(--vm-u));
+    padding-inline: calc(14 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter']
+    .vm-dock-selection.is-empty .vm-sel-idle {
+    font-size: calc(9 * var(--vm-u) * var(--vm-text-scale, 1));
+  }
+}
+
 /* ----------------------------------------------------------------------- */
 /* Battlefield separation                                                   */
 /* ----------------------------------------------------------------------- */
