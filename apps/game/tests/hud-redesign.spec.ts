@@ -182,6 +182,15 @@ describe('approved command-deck skin', () => {
     );
   });
 
+  it('keeps event toasts below the responsive operation bay even with perf enabled', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-hud\[data-layout='perimeter'\] \.vm-toasts,\s*\.vm-hud\[data-layout='perimeter'\]\.vm-perf-on \.vm-toasts\s*\{[^}]*top:\s*calc\(var\(--vm-top-node-h\) \+ 24 \* var\(--vm-u\)\);[^}]*z-index:\s*13;/s,
+    );
+    expect(COMMAND_DECK_CSS).not.toContain(
+      ".vm-hud[data-layout='perimeter'] .vm-toasts { top: calc(126 * var(--vm-u))",
+    );
+  });
+
   it('centres right-wing values beneath their instrument labels', () => {
     expect(COMMAND_DECK_CSS).toMatch(
       /:is\(\.vm-res-clock, \.vm-res-army, \.vm-res-base\)[\s\S]*?:is\(\.vm-res-label, \.vm-res-value\)[\s\S]*?text-align:\s*center;/,

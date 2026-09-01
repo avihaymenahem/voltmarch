@@ -804,8 +804,18 @@
 .vm-hud[data-layout='perimeter'] .vm-command-label { font-size: calc(9.5 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 600; letter-spacing: 0.11em; }
 .vm-hud[data-layout='perimeter'] .vm-command-key { top: calc(10 * var(--vm-u)); right: calc(9 * var(--vm-u)); color: #5e6c71; }
 
-/* Alerts float below the operation bay in a restrained amber instrument. */
-.vm-hud[data-layout='perimeter'] .vm-toasts { top: calc(126 * var(--vm-u)); width: calc(280 * var(--vm-u)); max-width: calc(280 * var(--vm-u)); }
+/* Alerts float below the operation bay in a restrained amber instrument.
+ * Anchor to the bay's live responsive height instead of a desktop literal.
+ * The perf panel now lives in the left information rail, so its state must not
+ * resurrect the old high-specificity toast offset and pull alerts under the
+ * operation artwork. */
+.vm-hud[data-layout='perimeter'] .vm-toasts,
+.vm-hud[data-layout='perimeter'].vm-perf-on .vm-toasts {
+  top: calc(var(--vm-top-node-h) + 24 * var(--vm-u));
+  z-index: 13;
+  width: calc(280 * var(--vm-u));
+  max-width: calc(280 * var(--vm-u));
+}
 .vm-hud[data-layout='perimeter'] .vm-toast { min-height: calc(35 * var(--vm-u)); border: 1px solid rgba(255,194,20,0.50); background: linear-gradient(90deg, rgba(41,32,10,0.86), rgba(5,10,12,0.96) 24%, rgba(5,10,12,0.96) 76%, rgba(41,32,10,0.86)); box-shadow: 0 calc(7 * var(--vm-u)) calc(18 * var(--vm-u)) rgba(0,0,0,0.52), inset 0 0 calc(13 * var(--vm-u)) rgba(255,190,20,0.035); }
 
 .vm-hud[data-layout='perimeter'] .vm-rail-stack { right: var(--vm-edge); bottom: calc(411 * var(--vm-u)); width: var(--vm-rail-w); }
