@@ -113,6 +113,11 @@ describe('the last resort drops captions, never verbs', () => {
     expect(firstRule).not.toContain('.vm-destruct');
     expect(firstRule).not.toContain('.vm-cargo');
   });
+
+  it('replaces an overflowing unit name with the compact quantity anchor', () => {
+    expect(TS).toContain('const countIdentity = !this.stanceRow.hidden || tight');
+    expect(TS).toContain('if (this.lastCount < 2) this.countEl.hidden = !countIdentity');
+  });
 });
 
 describe('a loaded transport exposes a strong bottom-right unload action', () => {

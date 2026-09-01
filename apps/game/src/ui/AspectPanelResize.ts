@@ -11,6 +11,8 @@ export interface AspectPanelResizeOptions {
   readonly storageKey: string;
   readonly label: string;
   readonly aspectRatio: number;
+  /** Authored panel width in HUD design units; descendants scale with the frame. */
+  readonly designWidthUnits: number;
   readonly minWidthPx: number;
   readonly maxViewportWidthShare: number;
   readonly maxViewportHeightShare: number;
@@ -136,6 +138,10 @@ export class AspectPanelResize {
     this.target.classList.add('has-user-size');
     this.target.style.setProperty('--vm-user-panel-width', `${Math.round(width)}px`);
     this.target.style.setProperty('--vm-user-panel-height', `${Math.round(height)}px`);
+    this.target.style.setProperty(
+      '--vm-user-panel-unit',
+      `${width / this.options.designWidthUnits}px`,
+    );
     this.options.onWidthChange?.(width);
     this.handle.setAttribute('aria-valuenow', String(Math.round(width)));
     this.handle.setAttribute('aria-valuemin', String(this.options.minWidthPx));

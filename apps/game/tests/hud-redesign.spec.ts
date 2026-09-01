@@ -95,10 +95,11 @@ describe('command deck behavior', () => {
 describe('approved command-deck skin', () => {
   const seal = COMMAND_DECK_CSS;
 
-  it('uses the measured desktop proportions from the approved concept', () => {
+  it('uses the authored plate proportions without distorting bitmap chrome', () => {
     expect(seal).toContain('--vm-map-w: calc(286 * var(--vm-u))');
-    expect(seal).toContain('--vm-map-h: calc(382 * var(--vm-u))');
+    expect(seal).toContain('--vm-map-h: calc(359 * var(--vm-u))');
     expect(seal).toContain('--vm-selection-w: calc(250 * var(--vm-u))');
+    expect(seal).toContain('--vm-selection-h: calc(329 * var(--vm-u))');
     expect(seal).toContain('--vm-command-w: calc(546 * var(--vm-u))');
     expect(seal).toContain('--vm-rail-w: calc(580 * var(--vm-u))');
   });
@@ -180,15 +181,15 @@ describe('approved command-deck skin', () => {
     expect(CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
   });
 
-  it('composes height-resized chrome from fixed artwork caps and a neutral middle', () => {
+  it('composes height-resized chrome as fixed-corner nine-slice plates', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-build\.vm-height-resizable\.has-user-height::before\s*\{[\s\S]*?height:\s*calc\(56 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+      /\.vm-dock-build\.vm-height-resizable\.has-user-height::before\s*\{[\s\S]*?border-image-source:\s*url\('\/ui\/command-deck\/build\.png'\);[\s\S]*?border-image-slice:\s*145 80 80;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-dock-build\.vm-height-resizable\.has-user-height::after\s*\{[\s\S]*?height:\s*calc\(22 \* var\(--vm-u\)\);[\s\S]*?100% auto no-repeat;/,
+      /\.vm-dock-build\.vm-height-resizable\.has-user-height::after\s*\{[\s\S]*?display:\s*none;/,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-objectives\.vm-height-resizable\.has-user-height:not\(\.is-collapsed\)::before\s*\{[\s\S]*?height:\s*calc\(33 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+      /\.vm-objectives\.vm-height-resizable\.has-user-height:not\(\.is-collapsed\)::before\s*\{[\s\S]*?border-image-source:\s*url\('\/ui\/command-deck\/objectives\.png'\);[\s\S]*?border-image-slice:\s*145 70 100;/,
     );
   });
 

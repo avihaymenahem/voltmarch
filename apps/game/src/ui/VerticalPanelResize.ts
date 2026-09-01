@@ -1,6 +1,7 @@
 /** Height-only HUD panel resizing with platform-native persistence. */
 
 import { persistentStorage } from '../platform/storage';
+import { computeUiScale } from './Chrome';
 
 import './panel-resize.css';
 
@@ -10,7 +11,8 @@ export const BUILD_PANEL_HEIGHT_KEY = 'vm.hud.build.height-ratio';
 export interface VerticalPanelResizeOptions {
   readonly storageKey: string;
   readonly label: string;
-  readonly minHeightPx: number;
+  /** Minimum authored HUD design units, scaled with the current viewport. */
+  readonly minHeightUnits: number;
   readonly maxViewportShare: number;
   /** Bottom for top-anchored panels; top for panels anchored to the viewport bottom. */
   readonly edge?: 'top' | 'bottom';
@@ -106,10 +108,11 @@ export class VerticalPanelResize {
   }
 
   private applyHeight(rawHeight: number): void {
+    const minimum = this.options.minHeightUnits * computeUiScale(this.viewportHeight());
     const height = clampPanelHeight(
       rawHeight,
       this.viewportHeight(),
-      this.options.minHeightPx,
+      minimum,
       this.options.maxViewportShare,
     );
     this.height = height;
@@ -120,7 +123,7 @@ export class VerticalPanelResize {
       `${Math.floor(this.viewportHeight() * this.options.maxViewportShare)}px`,
     );
     this.handle.setAttribute('aria-valuenow', String(Math.round(height)));
-    this.handle.setAttribute('aria-valuemin', String(this.options.minHeightPx));
+    this.handle.setAttribute('aria-valuemin', String(Math.round(minimum)));
     this.handle.setAttribute(
       'aria-valuemax',
       String(Math.floor(this.viewportHeight() * this.options.maxViewportShare)),
@@ -171,7 +174,9 @@ export class VerticalPanelResize {
     let next = current;
     if (event.key === 'ArrowUp') next += this.options.edge === 'top' ? step : -step;
     else if (event.key === 'ArrowDown') next += this.options.edge === 'top' ? -step : step;
-    else if (event.key === 'Home') next = this.options.minHeightPx;
+    else if (event.key === 'Home') {
+      next = this.options.minHeightUnits * computeUiScale(this.viewportHeight());
+    }
     else if (event.key === 'End') next = this.viewportHeight() * this.options.maxViewportShare;
     else return;
     event.preventDefault();

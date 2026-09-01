@@ -1672,7 +1672,8 @@ class SelectionPanel {
     this.sizeResize = new AspectPanelResize(this.root, {
       storageKey: SELECTION_PANEL_SIZE_KEY,
       label: 'Resize selection information panel',
-      aspectRatio: 250 / 338,
+      aspectRatio: 1007 / 1324,
+      designWidthUnits: 250,
       minWidthPx: 220,
       maxViewportWidthShare: 0.34,
       maxViewportHeightShare: 0.72,
@@ -1963,7 +1964,14 @@ class SelectionPanel {
     this.lastFitSig = sig;
 
     head.classList.remove('is-tight');
-    if (head.scrollWidth > head.clientWidth) head.classList.add('is-tight');
+    const tight = head.scrollWidth > head.clientWidth;
+    if (tight) head.classList.add('is-tight');
+    const countIdentity = !this.stanceRow.hidden || tight;
+    head.classList.toggle('uses-count-identity', countIdentity);
+    // The approved compact unit header leads with the quantity. A single unit
+    // normally omits the redundant x1, but once the long title yields to the
+    // action controls that short count becomes the stable identity anchor.
+    if (this.lastCount < 2) this.countEl.hidden = !countIdentity;
 
     // The strip has always scrolled; nothing ever said so. One pixel of slack
     // because a fractional layout width rounds `scrollWidth` up on its own and
@@ -2481,7 +2489,7 @@ class BuildPanel {
     this.heightResize = new VerticalPanelResize(this.root, {
       storageKey: BUILD_PANEL_HEIGHT_KEY,
       label: 'Resize construction panel height',
-      minHeightPx: 260,
+      minHeightUnits: 260,
       maxViewportShare: 0.75,
       edge: 'top',
     });
@@ -3617,10 +3625,11 @@ export class Sidebar {
     this.mapResize = new AspectPanelResize(this.mapDock, {
       storageKey: MAP_PANEL_SIZE_KEY,
       label: 'Resize tactical map panel',
-      aspectRatio: 286 / 382,
+      aspectRatio: 1100 / 1380,
+      designWidthUnits: 286,
       minWidthPx: 220,
       maxViewportWidthShare: 0.30,
-      maxViewportHeightShare: 0.72,
+      maxViewportHeightShare: 0.60,
       onWidthChange: (width) => {
         this.root.style.setProperty('--vm-live-map-w', `${Math.round(width)}px`);
       },

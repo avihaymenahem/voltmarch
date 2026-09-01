@@ -691,8 +691,8 @@ export class ObjectivesPanel {
     this.heightResize = new VerticalPanelResize(this.root, {
       storageKey: OBJECTIVES_PANEL_HEIGHT_KEY,
       label: 'Resize objectives panel height',
-      minHeightPx: 84,
-      maxViewportShare: 0.54,
+      minHeightUnits: 180,
+      maxViewportShare: 0.29,
     });
 
     this.applyView();

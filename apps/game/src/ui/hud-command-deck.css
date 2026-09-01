@@ -30,9 +30,9 @@
   --vm-edge: calc(8 * var(--vm-u));
   --vm-panel-gap: calc(8 * var(--vm-u));
   --vm-map-w: calc(286 * var(--vm-u));
-  --vm-map-h: calc(382 * var(--vm-u));
+  --vm-map-h: calc(359 * var(--vm-u));
   --vm-selection-w: calc(250 * var(--vm-u));
-  --vm-selection-h: calc(338 * var(--vm-u));
+  --vm-selection-h: calc(329 * var(--vm-u));
   --vm-command-w: calc(546 * var(--vm-u));
   --vm-command-h: calc(160 * var(--vm-u));
   --vm-rail-w: calc(580 * var(--vm-u));
@@ -486,6 +486,8 @@
 .vm-hud[data-layout='perimeter'] .vm-sel-head { height: calc(33 * var(--vm-u)); min-height: calc(33 * var(--vm-u)); padding-bottom: calc(10 * var(--vm-u)); border-bottom: 1px solid rgba(130, 153, 160, 0.32); box-shadow: 0 1px 0 rgba(0,0,0,0.72); }
 .vm-hud[data-layout='perimeter'] .vm-sel-title { font-size: calc(15 * var(--vm-u) * var(--vm-text-scale, 1)); font-weight: 700; letter-spacing: 0.08em; color: #edf1f2; }
 .vm-hud[data-layout='perimeter'] .vm-sel-count { color: var(--deck-violet-hi); }
+.vm-hud[data-layout='perimeter'] .vm-sel-head.uses-count-identity .vm-sel-id,
+.vm-hud[data-layout='perimeter'] .vm-sel-head.uses-count-identity .vm-sel-rule { display: none; }
 .vm-hud[data-layout='perimeter'] .vm-sel-body {
   display: grid;
   grid-template-columns: minmax(calc(72 * var(--vm-u)), 38%) minmax(0, 1fr);
@@ -512,7 +514,11 @@
 .vm-hud[data-layout='perimeter'] .vm-card-cameo { filter: saturate(0.88) brightness(1.06) contrast(1.08); }
 .vm-hud[data-layout='perimeter'] .vm-sel-info { justify-content: flex-start; gap: calc(12 * var(--vm-u)); }
 .vm-hud[data-layout='perimeter'] .vm-sel-sub { font-size: calc(8.5 * var(--vm-u) * var(--vm-text-scale, 1)); letter-spacing: 0.10em; color: #849197; }
-.vm-hud[data-layout='perimeter'] .vm-sel-stats { display: grid; grid-template-columns: repeat(2, max-content); gap: calc(10 * var(--vm-u)) calc(14 * var(--vm-u)); }
+.vm-hud[data-layout='perimeter'] .vm-sel-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(8 * var(--vm-u));
+}
 .vm-hud[data-layout='perimeter'] .vm-stat { gap: calc(5 * var(--vm-u)); }
 .vm-hud[data-layout='perimeter'] .vm-stat-icon { color: #718087; }
 .vm-hud[data-layout='perimeter'] .vm-sel-hp { height: calc(17 * var(--vm-u)); min-height: calc(17 * var(--vm-u)); border: 1px solid rgba(67,91,86,0.62); background: rgba(1,5,7,0.82); box-shadow: inset 0 0 calc(7 * var(--vm-u)) rgba(0,0,0,0.62); }
@@ -1132,7 +1138,7 @@
 
 .vm-hud[data-layout='perimeter'] .vm-grid {
   grid-template-rows: none;
-  grid-auto-rows: calc(150 * var(--vm-u));
+  grid-auto-rows: min(calc(150 * var(--vm-u)), calc(100% - 4 * var(--vm-u)));
   flex: 1 1 auto;
   max-height: none;
   padding: calc(2 * var(--vm-u)) calc(10 * var(--vm-u)) calc(2 * var(--vm-u)) calc(2 * var(--vm-u));
@@ -1201,82 +1207,79 @@
 /* Non-distorting resize slices                                             */
 /* ----------------------------------------------------------------------- */
 
-/* Height-resized plates cannot keep using `background-size: 100% 100%`:
- * that scales their headers, corners and illuminated feet. The top and bottom
- * pseudo-elements display authored pixels at their width-derived natural
- * scale. A deliberately detail-free CSS middle is the only expanding region. */
+/* Height-resized plates cannot keep using `background-size: 100% 100%`.
+ * Nine-slice borders hold the authored corners and cap depths while only the
+ * long, detail-free rail spans absorb the player's height adjustment. */
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable.has-user-height {
-  background-image: linear-gradient(90deg,
+  background: linear-gradient(90deg,
     rgba(43, 53, 60, 0.98) 0,
     rgba(11, 17, 21, 0.98) 2.8%,
     rgba(4, 9, 12, 0.98) 3.5%,
     rgba(4, 9, 12, 0.98) 96.5%,
     rgba(11, 17, 21, 0.98) 97.2%,
     rgba(43, 53, 60, 0.98) 100%) !important;
-  background-position: center calc(56 * var(--vm-u)) !important;
-  background-size: 100% calc(100% - 78 * var(--vm-u)) !important;
-  background-repeat: no-repeat !important;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable.has-user-height::before {
-  inset: 0 0 auto;
-  height: calc(56 * var(--vm-u));
-  border: 0;
-  background-image: url('/ui/command-deck/build.png');
-  background-position: center top;
-  background-size: 100% auto;
+  inset: 0;
+  height: auto;
+  box-sizing: border-box;
+  border-style: solid;
+  border-width:
+    calc(62 * var(--vm-u))
+    calc(34 * var(--vm-u))
+    calc(34 * var(--vm-u));
+  border-image-source: url('/ui/command-deck/build.png');
+  border-image-slice: 145 80 80;
+  border-image-width:
+    calc(62 * var(--vm-u))
+    calc(34 * var(--vm-u))
+    calc(34 * var(--vm-u));
+  border-image-repeat: stretch round;
+  background: none;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable.has-user-height::after {
-  content: '';
-  display: block;
-  position: absolute;
-  inset: auto 0 0;
-  height: calc(22 * var(--vm-u));
-  border: 0;
-  background: transparent url('/ui/command-deck/build.png') center bottom / 100% auto no-repeat;
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed) {
-  background-image: linear-gradient(90deg,
+  background: linear-gradient(90deg,
     rgba(38, 48, 54, 0.98) 0,
     rgba(7, 13, 17, 0.98) 6%,
     rgba(4, 9, 12, 0.98) 8%,
     rgba(4, 9, 12, 0.98) 92%,
     rgba(7, 13, 17, 0.98) 94%,
     rgba(38, 48, 54, 0.98) 100%) !important;
-  background-position: center calc(33 * var(--vm-u)) !important;
-  background-size: 100% calc(100% - 59 * var(--vm-u)) !important;
-  background-repeat: no-repeat !important;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::before {
-  inset: 0 0 auto;
-  height: calc(33 * var(--vm-u));
-  border: 0;
-  background-image: url('/ui/command-deck/objectives.png');
-  background-position: center top;
-  background-size: 100% auto;
+  inset: 0;
+  height: auto;
+  box-sizing: border-box;
+  border-style: solid;
+  border-width:
+    calc(42 * var(--vm-u))
+    calc(20 * var(--vm-u))
+    calc(29 * var(--vm-u));
+  border-image-source: url('/ui/command-deck/objectives.png');
+  border-image-slice: 145 70 100;
+  border-image-width:
+    calc(42 * var(--vm-u))
+    calc(20 * var(--vm-u))
+    calc(29 * var(--vm-u));
+  border-image-repeat: stretch round;
+  background: none;
 }
 
 .vm-hud[data-layout='perimeter']
   .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::after {
-  content: '';
-  display: block;
-  position: absolute;
-  inset: auto 0 0;
-  height: calc(26 * var(--vm-u));
-  border: 0;
-  background: transparent url('/ui/command-deck/objectives.png') center bottom / 100% auto no-repeat;
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 /* Empty selection is its own horizontal component. The portrait selection

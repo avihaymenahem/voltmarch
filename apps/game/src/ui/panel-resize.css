@@ -12,6 +12,14 @@
   display: none;
 }
 
+/* A proportional frame needs a proportional inner coordinate system too.
+   Selection drops back to the root HUD unit while empty so the dedicated
+   horizontal advisory strip does not inherit the portrait panel's scale. */
+.vm-hud .vm-dock-map.vm-aspect-resizable.has-user-size,
+.vm-hud .vm-dock-selection.vm-aspect-resizable.has-user-size:not(.is-empty) {
+  --vm-u: var(--vm-user-panel-unit);
+}
+
 .vm-hud .vm-height-resizable.has-user-height {
   height: var(--vm-user-panel-height);
 }
