@@ -87,9 +87,12 @@ describe('perimeter HUD composition', () => {
     expect(CSS).toContain('.vm-command-map');
   });
 
-  it('gives the power meter, numbers and status badge separate columns', () => {
+  it('keeps the power badge beside its title and the live readout to two columns', () => {
+    expect(SIDEBAR).toContain("const pHead = el('div', 'vm-power-head', pBody);");
+    expect(SIDEBAR).toContain("this.stateEl = el('span', 'vm-power-state', pHead);");
+    expect(CSS).toMatch(/\.vm-res-power \.vm-power-head\s*\{[\s\S]*?display:\s*flex;/);
     expect(CSS).toMatch(
-      /\.vm-res-power \.vm-power-line\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:[^;]*max-content;/,
+      /\.vm-res-power \.vm-power-line\s*\{[\s\S]*?grid-template-columns:\s*minmax\([^;]*\) max-content;/,
     );
     expect(CSS).toMatch(/\.vm-res-power \.vm-power-value\s*\{[\s\S]*?min-width:\s*0;/);
   });
@@ -350,8 +353,11 @@ describe('approved command-deck skin', () => {
     expect(COMMAND_DECK_CSS).toContain(
       '--vm-wide-wing-b: min(calc(31.32% - 93.96 * var(--vm-u)), calc(382.104 * var(--vm-u)));',
     );
-    expect(COMMAND_DECK_CSS).toContain('left: var(--vm-wide-wing-b);');
-    expect(COMMAND_DECK_CSS).toContain('right: var(--vm-wide-wing-b);');
+    expect(COMMAND_DECK_CSS).toContain(
+      'width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));',
+    );
+    expect(COMMAND_DECK_CSS).toContain('right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));');
+    expect(COMMAND_DECK_CSS).toContain('padding-left: calc(26 * var(--vm-u));');
     expect(COMMAND_DECK_CSS).toContain('width: calc(2 * var(--vm-top-node-half));');
     expect(COMMAND_DECK_CSS).toMatch(
       /\[data-top-fit='tight'\] \.vm-power-state\s*\{\s*display:\s*none;/,

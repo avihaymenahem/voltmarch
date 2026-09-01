@@ -1061,7 +1061,10 @@ export class ResourceStrip {
     const power = el('div', 'vm-res vm-res-power', this.root);
     power.appendChild(makeIcon('bolt', 'vm-icon vm-res-icon'));
     const pBody = el('div', 'vm-res-body', power);
-    label(pBody, 'vm-res-label', 'Power');
+    const pHead = el('div', 'vm-power-head', pBody);
+    label(pHead, 'vm-res-label', 'Power');
+    this.stateEl = el('span', 'vm-power-state', pHead);
+    this.stateNode = textNode(this.stateEl, POWER_WORDS.ok);
     const pLine = el('div', 'vm-power-line', pBody);
     const meter = el('div', 'vm-power', pLine);
     meter.setAttribute('role', 'meter');
@@ -1071,8 +1074,6 @@ export class ResourceStrip {
     }
     this.powerEl = el('span', 'vm-res-value vm-num vm-power-value', pLine);
     this.powerNode = textNode(this.powerEl, '0/0');
-    this.stateEl = el('span', 'vm-power-state', pLine);
-    this.stateNode = textNode(this.stateEl, POWER_WORDS.ok);
 
     el('span', 'vm-res-rule', this.root);
 

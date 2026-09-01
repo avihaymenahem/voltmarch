@@ -1708,17 +1708,23 @@
   gap: calc(2 * var(--vm-u));
 }
 
-/* The power cell has three independent readouts. Give each one an owned grid
-   column: the former flex row let a three-digit draw/supply value grow through
-   the OPTIMAL badge even though both were individually correct. */
+/* Keep the state beside the POWER heading so the live meter/value row has a
+   predictable two-column footprint and cannot grow toward the operation bay. */
 .vm-hud[data-layout='perimeter'] .vm-res-power .vm-res-body {
   flex: 1 1 auto;
   width: 0;
 }
 
+.vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-head {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+  min-width: 0;
+}
+
 .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-line {
   display: grid;
-  grid-template-columns: calc(54 * var(--vm-u)) minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(calc(42 * var(--vm-u)), 1fr) max-content;
   gap: calc(4 * var(--vm-u));
   width: 100%;
 }
@@ -1745,8 +1751,11 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-power-state {
-  padding: calc(3 * var(--vm-u)) calc(4 * var(--vm-u));
+  padding: calc(1.5 * var(--vm-u)) calc(3 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1));
+  line-height: 1;
   letter-spacing: 0.12em;
+  white-space: nowrap;
   background: rgba(0, 0, 0, 0.35);
 }
 

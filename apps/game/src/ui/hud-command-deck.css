@@ -238,10 +238,17 @@
 .vm-hud[data-layout='perimeter'] .vm-credit-delta { color: #efb91a; }
 .vm-hud[data-layout='perimeter'] .vm-res-cap { color: #657176; }
 
+.vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-head {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+  min-width: 0;
+}
+
 .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-line {
   display: grid;
-  grid-template-columns: minmax(calc(64 * var(--vm-u)), 1fr) max-content max-content;
-  gap: calc(7 * var(--vm-u));
+  grid-template-columns: minmax(calc(42 * var(--vm-u)), 1fr) max-content;
+  gap: calc(5 * var(--vm-u));
   width: 100%;
   align-items: center;
 }
@@ -249,7 +256,15 @@
 .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power { width: auto; height: calc(8 * var(--vm-u)); }
 .vm-hud[data-layout='perimeter'] .vm-power-seg { width: calc(3 * var(--vm-u)); background: rgba(132, 148, 154, 0.17); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); }
 .vm-hud[data-layout='perimeter'] .vm-power-seg.is-lit { background: linear-gradient(180deg, #d373fb, #9f3fd9); box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.45); }
-.vm-hud[data-layout='perimeter'] .vm-power-state { border: 1px solid currentColor; background: rgba(0,0,0,0.38); box-shadow: inset 0 0 calc(6 * var(--vm-u)) rgba(0,0,0,0.32); }
+.vm-hud[data-layout='perimeter'] .vm-power-state {
+  padding: calc(1.5 * var(--vm-u)) calc(3 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u) * var(--vm-text-scale, 1));
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+  background: rgba(0,0,0,0.38);
+  box-shadow: inset 0 0 calc(6 * var(--vm-u)) rgba(0,0,0,0.32);
+}
 
 /* The stitched compact power bay keeps the meter and numeric load, but the
  * redundant state word cannot fit the 16:9 `tight` tier without crossing the
@@ -1331,15 +1346,17 @@
     height: var(--vm-top-node-h);
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-resources .vm-res-cell {
+  .vm-hud[data-layout='perimeter'] .vm-resources > .vm-res {
     right: auto;
     border-left: 0;
     background: transparent;
   }
 
   .vm-hud[data-layout='perimeter'] .vm-res-credits {
-    left: calc(18 * var(--vm-u));
-    width: calc(var(--vm-wide-wing-a) - 18 * var(--vm-u));
+    left: calc(24 * var(--vm-u));
+    width: calc(var(--vm-wide-wing-a) - 24 * var(--vm-u));
+    padding-left: calc(26 * var(--vm-u));
+    padding-right: calc(8 * var(--vm-u));
   }
   .vm-hud[data-layout='perimeter'] .vm-res-trend {
     left: var(--vm-wide-wing-a);
@@ -1347,16 +1364,18 @@
   }
   .vm-hud[data-layout='perimeter'] .vm-res-power {
     left: var(--vm-wide-wing-b);
-    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b));
+    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));
+    padding-left: calc(10 * var(--vm-u));
+    padding-right: calc(8 * var(--vm-u));
   }
   .vm-hud[data-layout='perimeter'] .vm-res-clock {
     left: auto;
     right: var(--vm-wide-wing-b);
-    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b));
+    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b) - 18 * var(--vm-u));
   }
   .vm-hud[data-layout='perimeter'] .vm-res-army {
     left: auto;
-    right: var(--vm-wide-wing-a);
+    right: calc(var(--vm-wide-wing-a) - 8 * var(--vm-u));
     width: calc(var(--vm-wide-wing-b) - var(--vm-wide-wing-a));
   }
   .vm-hud[data-layout='perimeter'] .vm-res-base {
@@ -1365,12 +1384,7 @@
     width: calc(var(--vm-wide-wing-a) - var(--vm-wide-wing-margin));
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-res-power .vm-res-main {
-    gap: calc(5 * var(--vm-u));
-  }
-
-  .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power-meter {
-    flex: 1 1 auto;
+  .vm-hud[data-layout='perimeter'] .vm-res-power .vm-power {
     min-width: calc(38 * var(--vm-u));
   }
 }
