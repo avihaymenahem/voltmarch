@@ -9,7 +9,7 @@
  *   TOP CENTRE   `ResourceStrip`   credits, power, clock, and three telltales
  *   BOTTOM LEFT  `.vm-dock-map`    the minimap's glass panel plus its legend
  *   BOTTOM CENTRE`SelectionPanel`  the selection, OR the base status board
- *   BOTTOM RIGHT `BuildPanel`      4 named tabs over a 6-column slot grid
+ *   BOTTOM RIGHT `BuildPanel`      5 named tabs over a 4-column slot grid
  *
  * WHY BOTTOM-ANCHORED
  * -------------------
@@ -689,18 +689,9 @@ const POWER_SEGMENTS = 14;
  */
 export const STORAGE_WARN_FRACTION = 0.9;
 
-/** Tab titles, in `BuildTab` order. */
+/** Tab titles, in `BuildTab` order. The artwork bays are presentation only;
+ * their live labels must describe the actual gameplay categories. */
 const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles', 'Powers'];
-/**
- * What the tab STRIP shows, as opposed to what the tab IS.
- *
- * The full words fitted a 332u dock across the bottom. In a 240u rail four of
- * them get about 55u each and the browser truncated them to "STR..", "DEF..",
- * "INF..", "VE.." — an ellipsis is not a label. These are the same words at a
- * length that fits, and `TAB_LABELS` is still what the tooltip and the
- * `aria-label` say, so nothing that has to be read aloud got shortened.
- */
-const TAB_SHORT: readonly string[] = ['ALL', 'STRUCTURES', 'DEFENSE', 'UNITS', 'SUPPORT'];
 
 /**
  * The glyph a build cell draws.
@@ -2457,14 +2448,16 @@ class BuildPanel {
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', t === 0 ? 'true' : 'false');
       b.tabIndex = t === 0 ? 0 : -1;
-      // BUILT ONCE, HIDDEN UNTIL EARNED. `CommanderPowerBar` is the precedent
-      // and the reason: build the whole pool up front, park what is not wanted,
-      // and let `update` flip `hidden`. Creating the button lazily would mean a
-      // DOM insertion in the middle of a frame the first time a Command Post
-      // finished, and `this.tabs` is indexed by `BuildTab` everywhere below.
-      b.hidden = !this.tabVisible[t];
+      // Build every category once. Locked categories stay visible but disabled
+      // so the fifth authored bay never looks missing and players can discover
+      // that Powers exists before a Command Post unlocks it.
+      b.disabled = !this.tabVisible[t];
+      b.classList.toggle('is-locked', !this.tabVisible[t]);
+      b.setAttribute('aria-disabled', this.tabVisible[t] ? 'false' : 'true');
       const key = TAB_HOTKEY_LABELS[t] ?? '';
-      b.title = key === '' ? TAB_LABELS[t] : `${TAB_LABELS[t]}  (${key})`;
+      b.title = this.tabVisible[t]
+        ? (key === '' ? TAB_LABELS[t] : `${TAB_LABELS[t]}  (${key})`)
+        : `${TAB_LABELS[t]} — build a Command Post to unlock`;
       // The word and the key badge, one line, no icon. The icon-over-label
       // stack cost 22 design units of band height to draw a picture that the
       // word beside it already said — and the band is the thing this redesign
@@ -2475,13 +2468,14 @@ class BuildPanel {
       // badge would still draw its border and its padding — so it gets no
       // element at all rather than a hidden one.
       if (key !== '') label(b, 'vm-hk', key);
-      label(b, 'vm-tab-label', TAB_SHORT[t]);
+      label(b, 'vm-tab-label', TAB_LABELS[t].toUpperCase());
       const alert = el('span', 'vm-tab-alert', b);
       alert.hidden = true;
       this.tabAlerts.push(alert);
 
       b.addEventListener('pointerenter', () => this.cb.sound('hover'));
       b.addEventListener('click', () => {
+        if (!this.tabVisible[t]) return;
         this.cb.sound('tab');
         this.cb.selectTab(tab);
       });
@@ -2784,9 +2778,9 @@ class BuildPanel {
    * The next VISIBLE tab from `from`, walking by `step` and wrapping.
    *
    * Every arrow-key move goes through this rather than through `% BUILD_TAB_COUNT`
-   * arithmetic, because a hidden tab is still a `<button>` in `this.tabs` and
-   * plain modulo would happily focus one — a focus ring on nothing, and a
-   * `selectTab` the HUD would refuse. Returns `from` when nothing else is
+   * arithmetic, because a locked tab is still a `<button>` in `this.tabs` and
+   * plain modulo would happily focus one — a focus ring on a disabled control,
+   * and a `selectTab` the HUD would refuse. Returns `from` when nothing else is
    * visible, which cannot happen (four tabs are permanent) but is the answer
    * that does not loop forever if it ever did.
    */
@@ -3016,7 +3010,13 @@ class BuildPanel {
       const on = snap.tabVisible[t] !== false;
       if (this.tabVisible[t] === on) continue;
       this.tabVisible[t] = on;
-      this.tabs[t].hidden = !on;
+      this.tabs[t].disabled = !on;
+      this.tabs[t].classList.toggle('is-locked', !on);
+      this.tabs[t].setAttribute('aria-disabled', on ? 'false' : 'true');
+      const key = TAB_HOTKEY_LABELS[t] ?? '';
+      this.tabs[t].title = on
+        ? (key === '' ? TAB_LABELS[t] : `${TAB_LABELS[t]}  (${key})`)
+        : `${TAB_LABELS[t]} — build a Command Post to unlock`;
       if (!on && (this.activeTab as number) === t) this.cb.selectTab(BuildTab.Structures);
     }
 

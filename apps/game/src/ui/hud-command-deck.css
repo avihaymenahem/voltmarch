@@ -833,6 +833,7 @@
   .vm-hud[data-layout='perimeter'] .vm-build-title { flex-basis: calc(82 * var(--vm-u)); padding-left: calc(13 * var(--vm-u)); }
   .vm-hud[data-layout='perimeter'] .vm-build-title-label { font-size: calc(12 * var(--vm-u) * var(--vm-text-scale,1)); }
   .vm-hud[data-layout='perimeter'] .vm-command-icon { width: calc(23 * var(--vm-u)); height: calc(23 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-tab .vm-hk { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -1636,10 +1637,10 @@
   padding-inline: calc(3 * var(--vm-u));
 }
 
-.vm-hud[data-layout='perimeter'] .vm-tab[hidden] {
-  display: flex !important;
-  visibility: hidden;
-  pointer-events: none;
+.vm-hud[data-layout='perimeter'] .vm-tab.is-locked {
+  opacity: 0.48;
+  cursor: not-allowed;
+  filter: saturate(0.35);
 }
 
 .vm-hud[data-layout='perimeter'] .vm-tab::after {
@@ -1672,6 +1673,15 @@
       minmax(0, 11.46%)
       minmax(0, 11.20%)
       minmax(0, 12.13%);
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-tab {
+    padding-inline: calc(1 * var(--vm-u));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-tab-label {
+    font-size: clamp(7px, calc(5.25 * var(--vm-u) * var(--vm-text-scale, 1)), 8px);
+    letter-spacing: 0.02em;
   }
 }
 

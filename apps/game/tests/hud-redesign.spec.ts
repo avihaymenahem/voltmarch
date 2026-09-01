@@ -46,6 +46,38 @@ describe('perimeter HUD composition', () => {
     expect(INPUT).toContain('invokeHudFormation');
   });
 
+  it('labels every build bay with its real category and keeps locked Powers visible', () => {
+    expect(SIDEBAR).toContain(
+      "const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles', 'Powers']",
+    );
+    expect(SIDEBAR).toContain("label(b, 'vm-tab-label', TAB_LABELS[t].toUpperCase())");
+    expect(SIDEBAR).toContain("b.classList.toggle('is-locked', !this.tabVisible[t])");
+    expect(SIDEBAR).not.toContain('const TAB_SHORT');
+    expect(SIDEBAR).not.toContain('this.tabs[t].hidden = !on');
+    expect(COMMAND_DECK_CSS).toContain(".vm-tab.is-locked");
+    expect(COMMAND_DECK_CSS).toMatch(
+      /@media \(max-width: 1400px\)[\s\S]*?\.vm-tab \.vm-hk\s*\{ display: none; \}/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tab-label\s*\{[\s\S]*?font-size:\s*clamp\(7px, calc\(5\.25 \* var\(--vm-u\) \* var\(--vm-text-scale, 1\)\), 8px\);[\s\S]*?letter-spacing:\s*0\.02em;/,
+    );
+  });
+
+  it('fits every full tab name in its 1280px artwork bay at maximum text scale', () => {
+    const compactStripWidth = 372;
+    const tabShares = [0.1681, 0.1327, 0.1048, 0.1146, 0.1120];
+    const oldMeasuredWidths = [52, 36, 40, 39, 34];
+    const oldFontSize = 8.625;
+    const maxCompactFontSize = 7.875;
+    const inlinePadding = 2;
+
+    for (let i = 0; i < tabShares.length; i++) {
+      const available = compactStripWidth * tabShares[i] - inlinePadding;
+      const conservativeWidth = oldMeasuredWidths[i] * maxCompactFontSize / oldFontSize;
+      expect(conservativeWidth).toBeLessThanOrEqual(available);
+    }
+  });
+
   it('uses the centre node for match identity, not a duplicate objective', () => {
     expect(SIDEBAR).toContain("'vm-command-map'");
     expect(SIDEBAR).toContain('tele.matchMode');
@@ -116,7 +148,7 @@ describe('approved command-deck skin', () => {
 
   it('renders a wide four-column, two-row production console', () => {
     expect(SIDEBAR).toContain("'vm-build-title'");
-    expect(SIDEBAR).toContain("['ALL', 'STRUCTURES', 'DEFENSE', 'UNITS', 'SUPPORT']");
+    expect(SIDEBAR).toContain("['Structures', 'Defence', 'Infantry', 'Vehicles', 'Powers']");
     expect(seal).toContain('--vm-grid-cols: 4 !important');
     expect(seal).toContain('grid-template-rows: repeat(2, calc(158 * var(--vm-u)))');
   });
