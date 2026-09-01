@@ -300,6 +300,14 @@ describe('approved command-deck skin', () => {
     );
     // Scrolling belongs to the live inventories, not to an overflowing root.
     expect(COMMAND_DECK_CSS).toMatch(/\.vm-grid\s*\{[^}]*overflow-y:\s*auto;/s);
+    // The elastic middles are split into transparent-edged side rails and an
+    // inset well; a single 100%-wide rectangle is the overflow regression.
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-build\.vm-height-resizable\s*\{[^}]*background-size:\s*3%[^;]*,\s*3%[^;]*,\s*94%/s,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-objectives\.vm-height-resizable:not\(\.is-collapsed\)\s*\{[^}]*background-size:\s*5%[^;]*,\s*5%[^;]*,\s*90%/s,
+    );
   });
 
   it('preserves generated plate ratios and the reference info grid', () => {

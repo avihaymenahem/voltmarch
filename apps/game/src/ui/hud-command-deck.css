@@ -1386,10 +1386,10 @@
 .vm-hud[data-layout='perimeter']
   .vm-dock-build.vm-height-resizable {
   --vm-build-cap-h: calc(58 * var(--vm-u));
-  /* The cap artwork is alpha-shaped but the elastic middle fill is a CSS
-   * rectangle. Clip the assembled panel to the same chamfered perimeter so
-   * that fill can never escape past the armour while the inner grid remains
-   * independently scrollable. */
+  /* The middle is three rails, not one rectangle: two transparent-to-steel
+   * side pieces at the source artwork's 3% frame width, plus an inset well.
+   * The transparent outer pixels keep the fill from projecting beyond either
+   * cap while the side pieces retain a visible armoured edge. */
   overflow: hidden;
   clip-path: polygon(
     calc(18 * var(--vm-u)) 0,
@@ -1401,15 +1401,26 @@
     0 calc(100% - 16 * var(--vm-u)),
     0 calc(18 * var(--vm-u))
   ) !important;
-  background-image: linear-gradient(90deg,
-    rgba(43, 53, 60, 0.98) 0,
-    rgba(11, 17, 21, 0.98) 2.8%,
-    rgba(4, 9, 12, 0.98) 3.5%,
-    rgba(4, 9, 12, 0.98) 96.5%,
-    rgba(11, 17, 21, 0.98) 97.2%,
-    rgba(43, 53, 60, 0.98) 100%) !important;
-  background-position: center var(--vm-build-cap-h) !important;
-  background-size: 100% calc(100% - var(--vm-build-cap-h) - 22 * var(--vm-u)) !important;
+  background-image:
+    linear-gradient(90deg,
+      transparent 0 34%,
+      rgba(43, 53, 60, 0.96) 48%,
+      rgba(11, 17, 21, 0.98) 72%,
+      rgba(4, 9, 12, 0.98) 100%),
+    linear-gradient(270deg,
+      transparent 0 34%,
+      rgba(43, 53, 60, 0.96) 48%,
+      rgba(11, 17, 21, 0.98) 72%,
+      rgba(4, 9, 12, 0.98) 100%),
+    linear-gradient(rgba(4, 9, 12, 0.98), rgba(4, 9, 12, 0.98)) !important;
+  background-position:
+    left var(--vm-build-cap-h),
+    right var(--vm-build-cap-h),
+    center var(--vm-build-cap-h) !important;
+  background-size:
+    3% calc(100% - var(--vm-build-cap-h) - 22 * var(--vm-u)),
+    3% calc(100% - var(--vm-build-cap-h) - 22 * var(--vm-u)),
+    94% calc(100% - var(--vm-build-cap-h) - 22 * var(--vm-u)) !important;
   background-repeat: no-repeat !important;
 }
 
@@ -1452,8 +1463,8 @@
 
 .vm-hud[data-layout='perimeter']
   .vm-objectives.vm-height-resizable:not(.is-collapsed) {
-  /* Same contract as Build: fixed undistorted caps, an elastic CSS middle,
-   * and one authored silhouette around the assembled result. */
+  /* Objectives uses the same three-rail contract. Its portrait frame is
+   * thicker than Build's, measuring 5% per side in objectives.png. */
   overflow: hidden;
   clip-path: polygon(
     calc(16 * var(--vm-u)) 0,
@@ -1465,15 +1476,26 @@
     0 calc(100% - 16 * var(--vm-u)),
     0 calc(16 * var(--vm-u))
   ) !important;
-  background-image: linear-gradient(90deg,
-    rgba(38, 48, 54, 0.98) 0,
-    rgba(7, 13, 17, 0.98) 6%,
-    rgba(4, 9, 12, 0.98) 8%,
-    rgba(4, 9, 12, 0.98) 92%,
-    rgba(7, 13, 17, 0.98) 94%,
-    rgba(38, 48, 54, 0.98) 100%) !important;
-  background-position: center calc(33 * var(--vm-u)) !important;
-  background-size: 100% calc(100% - 59 * var(--vm-u)) !important;
+  background-image:
+    linear-gradient(90deg,
+      transparent 0 26%,
+      rgba(38, 48, 54, 0.96) 42%,
+      rgba(7, 13, 17, 0.98) 72%,
+      rgba(4, 9, 12, 0.98) 100%),
+    linear-gradient(270deg,
+      transparent 0 26%,
+      rgba(38, 48, 54, 0.96) 42%,
+      rgba(7, 13, 17, 0.98) 72%,
+      rgba(4, 9, 12, 0.98) 100%),
+    linear-gradient(rgba(4, 9, 12, 0.98), rgba(4, 9, 12, 0.98)) !important;
+  background-position:
+    left calc(33 * var(--vm-u)),
+    right calc(33 * var(--vm-u)),
+    center calc(33 * var(--vm-u)) !important;
+  background-size:
+    5% calc(100% - 59 * var(--vm-u)),
+    5% calc(100% - 59 * var(--vm-u)),
+    90% calc(100% - 59 * var(--vm-u)) !important;
   background-repeat: no-repeat !important;
 }
 
