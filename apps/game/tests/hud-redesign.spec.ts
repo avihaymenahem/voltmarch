@@ -139,8 +139,8 @@ describe('approved command-deck skin', () => {
 
   it('ships state-neutral standalone chrome plates with real live state above them', () => {
     const plates = [
-      'top-wing-left.png',
-      'top-wing-right.png',
+      'top-wing-left-wide.png',
+      'top-wing-right-wide.png',
       'operation.png',
       'objectives.png',
       'minimap.png',
@@ -199,9 +199,8 @@ describe('approved command-deck skin', () => {
 
   it('preserves generated plate ratios and the reference info grid', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?aspect-ratio:\s*899 \/ 227;[\s\S]*?background-size:\s*contain;/,
+      /\.vm-resources::before,[\s\S]*?\.vm-resources::after\s*\{[\s\S]*?aspect-ratio:\s*1475 \/ 227;[\s\S]*?background-size:\s*contain;/,
     );
-    expect(COMMAND_DECK_CSS).toContain('aspect-ratio: 898 / 227;');
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-command-deck::before\s*\{[\s\S]*?background-size:\s*100% auto;/,
     );
@@ -218,10 +217,22 @@ describe('approved command-deck skin', () => {
 
   it('caps structured top wings before filling ultrawide space with neutral rails', () => {
     expect(COMMAND_DECK_CSS).toContain(
-      'width: min(calc(50% - 235 * var(--vm-u)), calc(610 * var(--vm-u)))',
+      'width: min(calc(50% - 150 * var(--vm-u)), calc(610 * var(--vm-u)))',
+    );
+    expect(COMMAND_DECK_CSS).toContain('aspect-ratio: 1475 / 227;');
+    expect(COMMAND_DECK_CSS).toContain("url('/ui/command-deck/top-wing-left-wide.png')");
+    expect(COMMAND_DECK_CSS).toContain("url('/ui/command-deck/top-wing-right-wide.png')");
+    expect(COMMAND_DECK_CSS).toContain(
+      '--vm-wide-wing-a: min(calc(17.56% - 52.68 * var(--vm-u)), calc(214.232 * var(--vm-u)));',
     );
     expect(COMMAND_DECK_CSS).toContain(
-      '.vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }',
+      '--vm-wide-wing-b: min(calc(31.32% - 93.96 * var(--vm-u)), calc(382.104 * var(--vm-u)));',
+    );
+    expect(COMMAND_DECK_CSS).toContain('left: var(--vm-wide-wing-b);');
+    expect(COMMAND_DECK_CSS).toContain('right: var(--vm-wide-wing-b);');
+    expect(COMMAND_DECK_CSS).toContain('width: calc(2 * var(--vm-top-node-half));');
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\[data-top-fit='tight'\] \.vm-power-state\s*\{\s*display:\s*none;/,
     );
   });
 

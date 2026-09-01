@@ -40,6 +40,16 @@
     calc(100vw - (912 * var(--vm-u)))
   );
   --vm-command-h: calc(160 * var(--vm-u));
+  --vm-top-node-half: clamp(
+    calc(180 * var(--vm-u)),
+    calc(13.35vw + 9.12 * var(--vm-u)),
+    calc(235 * var(--vm-u))
+  );
+  --vm-top-node-h: clamp(
+    calc(90 * var(--vm-u)),
+    calc(6.31vw + 9.23 * var(--vm-u)),
+    calc(116 * var(--vm-u))
+  );
   --vm-rail-w: calc(580 * var(--vm-u));
   --vm-rail-top: calc(68 * var(--vm-u));
   --vm-obj-max-h: calc(360 * var(--vm-u));
@@ -231,6 +241,13 @@
 .vm-hud[data-layout='perimeter'] .vm-power-seg { width: calc(3 * var(--vm-u)); background: rgba(132, 148, 154, 0.17); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); }
 .vm-hud[data-layout='perimeter'] .vm-power-seg.is-lit { background: linear-gradient(180deg, #d373fb, #9f3fd9); box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--deck-violet-rgb), 0.45); }
 .vm-hud[data-layout='perimeter'] .vm-power-state { border: 1px solid currentColor; background: rgba(0,0,0,0.38); box-shadow: inset 0 0 calc(6 * var(--vm-u)) rgba(0,0,0,0.32); }
+
+/* The stitched compact power bay keeps the meter and numeric load, but the
+ * redundant state word cannot fit the 16:9 `tight` tier without crossing the
+ * authored divider. Desktop/wide frames continue to show it. */
+.vm-hud[data-layout='perimeter'][data-top-fit='tight'] .vm-power-state {
+  display: none;
+}
 
 /* The operation bay is a separate armoured object overlapping the bridge. */
 .vm-hud[data-layout='perimeter'] .vm-command-node {
@@ -996,7 +1013,7 @@
   bottom: auto;
   width: calc(50% - 196 * var(--vm-u));
   height: auto;
-  aspect-ratio: 899 / 227;
+  aspect-ratio: 1475 / 227;
   min-width: calc(300 * var(--vm-u));
   padding: 0;
   border: 0;
@@ -1014,7 +1031,7 @@
 .vm-hud[data-layout='perimeter'] .vm-resources::before {
   left: 0;
   right: auto;
-  background-image: url('/ui/command-deck/top-wing-left.png');
+  background-image: url('/ui/command-deck/top-wing-left-wide.png');
   background-position: left top;
 }
 
@@ -1022,8 +1039,8 @@
   left: auto;
   right: 0;
   inset-inline-start: auto;
-  aspect-ratio: 898 / 227;
-  background-image: url('/ui/command-deck/top-wing-right.png');
+  aspect-ratio: 1475 / 227;
+  background-image: url('/ui/command-deck/top-wing-right-wide.png');
   background-position: right top;
 }
 
@@ -1208,18 +1225,56 @@
  * bays with image-relative tracks so they do not invent a second layout on
  * top of the artwork. */
 @media (min-width: 901px) {
+  .vm-hud[data-layout='perimeter'] .vm-resources {
+    --vm-wide-wing-a: min(calc(17.56% - 52.68 * var(--vm-u)), calc(214.232 * var(--vm-u)));
+    --vm-wide-wing-b: min(calc(31.32% - 93.96 * var(--vm-u)), calc(382.104 * var(--vm-u)));
+    --vm-wide-wing-c: min(calc(45% - 135 * var(--vm-u)), calc(549 * var(--vm-u)));
+    --vm-wide-wing-margin: min(calc(5% - 15 * var(--vm-u)), calc(61 * var(--vm-u)));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-resources::before,
+  .vm-hud[data-layout='perimeter'] .vm-resources::after {
+    width: min(calc(50% - 150 * var(--vm-u)), calc(610 * var(--vm-u)));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-command-node {
+    width: calc(2 * var(--vm-top-node-half));
+    height: var(--vm-top-node-h);
+  }
+
   .vm-hud[data-layout='perimeter'] .vm-resources .vm-res-cell {
     right: auto;
     border-left: 0;
     background: transparent;
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-res-credits { left: 1.2%; width: 12.7%; }
-  .vm-hud[data-layout='perimeter'] .vm-res-trend   { left: 13.9%; width: 8.5%; }
-  .vm-hud[data-layout='perimeter'] .vm-res-power   { left: 22.4%; width: 8.0%; }
-  .vm-hud[data-layout='perimeter'] .vm-res-clock   { left: 70.4%; width: 9.4%; }
-  .vm-hud[data-layout='perimeter'] .vm-res-army    { left: 79.8%; width: 6.3%; }
-  .vm-hud[data-layout='perimeter'] .vm-res-base    { left: 86.1%; width: 10.5%; }
+  .vm-hud[data-layout='perimeter'] .vm-res-credits {
+    left: calc(18 * var(--vm-u));
+    width: calc(var(--vm-wide-wing-a) - 18 * var(--vm-u));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-res-trend {
+    left: var(--vm-wide-wing-a);
+    width: calc(var(--vm-wide-wing-b) - var(--vm-wide-wing-a));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-res-power {
+    left: var(--vm-wide-wing-b);
+    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-res-clock {
+    left: auto;
+    right: var(--vm-wide-wing-b);
+    width: calc(var(--vm-wide-wing-c) - var(--vm-wide-wing-b));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-res-army {
+    left: auto;
+    right: var(--vm-wide-wing-a);
+    width: calc(var(--vm-wide-wing-b) - var(--vm-wide-wing-a));
+  }
+  .vm-hud[data-layout='perimeter'] .vm-res-base {
+    left: auto;
+    right: var(--vm-wide-wing-margin);
+    width: calc(var(--vm-wide-wing-a) - var(--vm-wide-wing-margin));
+  }
 
   .vm-hud[data-layout='perimeter'] .vm-res-power .vm-res-main {
     gap: calc(5 * var(--vm-u));
@@ -1346,17 +1401,6 @@
     background-repeat: no-repeat !important;
   }
 
-  .vm-hud[data-layout='perimeter'] .vm-resources::before,
-  .vm-hud[data-layout='perimeter'] .vm-resources::after {
-    width: min(calc(50% - 235 * var(--vm-u)), calc(610 * var(--vm-u)));
-  }
-
-  .vm-hud[data-layout='perimeter'] .vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-res-trend   { left: calc(210 * var(--vm-u)); width: calc(129 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-res-power   { left: calc(339 * var(--vm-u)); width: calc(121 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-res-clock   { left: auto; right: calc(307 * var(--vm-u)); width: calc(142 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-res-army    { left: auto; right: calc(211 * var(--vm-u)); width: calc(96 * var(--vm-u)); }
-  .vm-hud[data-layout='perimeter'] .vm-res-base    { left: auto; right: calc(52 * var(--vm-u)); width: calc(159 * var(--vm-u)); }
 }
 
 /* The pod wells sit at roughly 22.5%, 50%, and 78% of the chassis in the
