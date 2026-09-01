@@ -2113,7 +2113,7 @@ function buildCafeUmbrella(m: PropMesh, rng: Rng, p: PropPalette): void {
   m.gloss(0);
 }
 
-function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): void {
+function statue(m: PropMesh, rng: Rng, p: PropPalette): void {
   // ra3steam_08 has SIX of these. Plinth + hedged kerb + a bronze figure whose
   // silhouette only has to read at ~60 px.
   m.ao(0.42, 0, 5).sway(0, 0, 1);
@@ -2135,31 +2135,16 @@ function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): voi
   // specular so the silhouette catches the sun. `ra3steam_08`'s six statues are
   // read entirely from shape — there is no surface variation on them at all.
   m.color(p.bronze).gloss(0.5);
-  if (equestrian) {
-    m.box(0, 2.60, 0, 2.4, 0.88, 0.76, 0.12, 0.18);        // barrel
-    m.box(-1.02, 3.20, 0, 0.56, 1.16, 0.56, 0.09, 0.18);   // neck
-    m.box(-1.34, 3.84, 0, 0.86, 0.46, 0.42, 0.07, 0.18);   // head
-    m.box(0.94, 2.12, 0.22, 0.30, 1.08, 0.30, 0.06);       // hind leg
-    m.box(0.94, 2.12, -0.22, 0.30, 1.08, 0.30, 0.06);
-    m.box(-0.52, 3.06, 0.30, 0.28, 1.10, 0.28, 0.05, 0.55); // raised foreleg
-    m.box(-0.52, 3.06, -0.30, 0.28, 1.10, 0.28, 0.05, 0.55);
-    m.box(0.72, 3.28, 0, 0.24, 0.90, 0.24, 0.05, -0.5);    // tail
-    m.box(0.06, 3.42, 0, 0.62, 1.20, 0.56, 0.09);          // rider
-    m.box(0.06, 4.18, 0, 0.44, 0.44, 0.42, 0.06);          // rider head
-    m.box(-0.42, 3.90, 0, 0.62, 0.20, 0.20, 0.04, 0.3);    // outstretched arm
-  } else {
-    m.box(0, 2.48, 0, 1.14, 1.46, 0.88, 0.12);             // greatcoat
-    m.box(0, 3.40, 0, 0.88, 0.56, 0.72, 0.10);             // shoulders
-    m.box(0, 3.86, 0, 0.46, 0.46, 0.44, 0.07);             // head
-    m.box(0.66, 3.62, 0, 0.26, 1.34, 0.26, 0.05);          // raised arm
-    m.box(-0.56, 3.08, 0, 0.24, 1.02, 0.24, 0.05);         // lowered arm
-    m.box(0, 1.92, 0.30, 1.30, 0.60, 0.30, 0.07, 0.15);    // flared hem
-  }
+  m.box(0, 2.48, 0, 1.14, 1.46, 0.88, 0.12);             // greatcoat
+  m.box(0, 3.40, 0, 0.88, 0.56, 0.72, 0.10);             // shoulders
+  m.box(0, 3.86, 0, 0.46, 0.46, 0.44, 0.07);             // head
+  m.box(0.66, 3.62, 0, 0.26, 1.34, 0.26, 0.05);          // raised arm
+  m.box(-0.56, 3.08, 0, 0.24, 1.02, 0.24, 0.05);         // lowered arm
+  m.box(0, 1.92, 0.30, 1.30, 0.60, 0.30, 0.07, 0.15);    // flared hem
   m.gloss(0);
 }
 
-function buildStatue(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p, false); }
-function buildStatueRider(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p, true); }
+function buildStatue(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p); }
 
 function buildFlowerBed(m: PropMesh, rng: Rng, p: PropPalette): void {
   // Straight off ra3steam_08: a hedged rectangle of tilled soil packed with
@@ -2396,12 +2381,10 @@ export const PROP_DEFS: readonly PropDef[] = [
     scaleMin: 0.90, scaleMax: 1.15, jitter: 0.6, castsShadow: false, build: buildFlowerBed },
   { key: 'statue', family: 'civic', radius: 2.6, height: 4.6, adorn: 8.0, spacing: 26,
     surfaces: SURF_ANY, maxSlope: 0.08, mode: 'solo', clumpMin: 1, clumpMax: 1,
-    clumpSpread: 0, urban: 1.00, biome: B(0.40, 0.40, 0.35, 1.00), blocksNav: true,
+    // Absorb the retired rider variant's biome weight so monument frequency
+    // remains stable while every placement resolves to the generated statue.
+    clumpSpread: 0, urban: 1.00, biome: B(0.70, 0.70, 0.60, 1.85), blocksNav: true,
     scaleMin: 0.94, scaleMax: 1.12, jitter: 0.3, build: buildStatue },
-  { key: 'statueRider', family: 'civic', radius: 2.6, height: 4.9, adorn: 8.0, spacing: 26,
-    surfaces: SURF_ANY, maxSlope: 0.08, mode: 'solo', clumpMin: 1, clumpMax: 1,
-    clumpSpread: 0, urban: 1.00, biome: B(0.30, 0.30, 0.25, 0.85), blocksNav: true,
-    scaleMin: 0.94, scaleMax: 1.12, jitter: 0.3, build: buildStatueRider },
   { key: 'waterTower', family: 'civic', radius: 3.2, height: 12.3, adorn: 9.0, spacing: 70,
     surfaces: SURF_ANY, maxSlope: 0.12, mode: 'solo', clumpMin: 1, clumpMax: 1,
     clumpSpread: 0, urban: 0.65, biome: B(0.80, 0.90, 0.70, 0.90), blocksNav: true,

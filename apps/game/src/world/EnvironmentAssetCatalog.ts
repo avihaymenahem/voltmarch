@@ -71,7 +71,6 @@ const STATIC_PROP_SPECS: readonly [
   ['roadSignDisc', 'street', 0.4, 2.52, 250, 'road-sign-disc-v1'],
   ['cafeUmbrella', 'civic', 1.8, 3.15, 844, 'cafe-umbrella-v1'],
   ['statue', 'civic', 2.6, 4.60, 8_094, 'statue-v2'],
-  ['statueRider', 'civic', 2.6, 4.40, 836, 'statue-rider-v1'],
   ['waterTower', 'civic', 3.2, 13.10, 1_778, 'water-tower-v1'],
 ];
 

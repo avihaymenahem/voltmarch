@@ -20,7 +20,7 @@ const allKeys = [
   'haystack', 'containerStack', 'barrel',
   'streetLamp', 'streetLampTwin', 'bench', 'carSedan', 'carVan', 'carPickup',
   'trafficLight', 'fence', 'railing', 'telegraphPole', 'roadSign', 'roadSignDisc',
-  'cafeUmbrella', 'statue', 'statueRider', 'waterTower',
+  'cafeUmbrella', 'waterTower',
 ];
 const requestedKey = process.argv.includes('--key')
   ? process.argv[process.argv.indexOf('--key') + 1]

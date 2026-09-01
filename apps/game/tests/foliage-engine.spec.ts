@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import sharp from 'sharp';
@@ -967,7 +967,7 @@ describe('foliage production profile', () => {
     const keys = PROP_KEYS.filter((key) => (
       environmentAssetManifest(key)?.materialFamily === 'prop-surface-v1-pbr'
     ));
-    expect(keys).toHaveLength(18);
+    expect(keys).toHaveLength(17);
     for (const key of keys) {
       const manifest = environmentAssetManifest(key)!;
       const files = [
@@ -1006,6 +1006,14 @@ describe('foliage production profile', () => {
       lod0: 'statue-v2.glb', lod1: 'statue-v2.glb', lod2: 'statue-v2.glb',
       shadow: 'derived/statue-v2.shadow.glb', emergency: 'statue-v2.glb',
     });
+    expect(PROP_KEYS).not.toContain('statueRider');
+    expect(environmentAssetManifest('statueRider')).toBeUndefined();
+    for (const legacy of [
+      'statue-v1.glb', 'statue-rider-v1.glb',
+      'derived/statue-v1.lod1.glb', 'derived/statue-v1.lod2.glb',
+      'derived/statue-v1.shadow.glb', 'derived/statue-rider-v1.lod1.glb',
+      'derived/statue-rider-v1.lod2.glb', 'derived/statue-rider-v1.shadow.glb',
+    ]) expect(existsSync(join(root, legacy)), legacy).toBe(false);
 
     const visible = join(root, manifest.deliveries!.lod0);
     const bytes = readFileSync(visible);
