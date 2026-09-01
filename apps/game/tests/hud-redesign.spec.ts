@@ -122,6 +122,12 @@ describe('approved command-deck skin', () => {
     }
   });
 
+  it('rounds live command hover, focus, and active outlines inside the authored wells', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-command\s*\{[\s\S]*?border-radius:\s*calc\(6 \* var\(--vm-u\)\);/,
+    );
+  });
+
   it('mounts the operation bay outside the clipped resource armour', () => {
     expect(SIDEBAR).toContain("const command = el('section', 'vm-command-node', parent)");
     expect(SIDEBAR).not.toContain("const command = el('section', 'vm-command-node', this.root)");

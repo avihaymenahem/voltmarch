@@ -1140,6 +1140,7 @@
 .vm-hud[data-layout='perimeter'] .vm-command {
   padding: calc(15 * var(--vm-u)) calc(5 * var(--vm-u)) calc(8 * var(--vm-u));
   border-color: transparent;
+  border-radius: calc(6 * var(--vm-u));
   background: transparent;
   clip-path: none;
   box-shadow: none;
