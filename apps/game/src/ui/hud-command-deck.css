@@ -28,7 +28,7 @@
 
   --vm-top-h: calc(70 * var(--vm-u));
   --vm-edge: calc(8 * var(--vm-u));
-  --vm-panel-gap: 0px;
+  --vm-panel-gap: calc(8 * var(--vm-u));
   --vm-map-w: calc(244 * var(--vm-u));
   --vm-map-h: calc(288 * var(--vm-u));
   --vm-selection-w: calc(369 * var(--vm-u));
@@ -1891,7 +1891,7 @@
  * keeps that plate's exact ratio, so proportional user resizing scales the
  * complete component and never pulls corners or button wells out of shape. */
 .vm-hud[data-layout='perimeter'] {
-  --vm-panel-gap: 0px;
+  --vm-panel-gap: calc(8 * var(--vm-u));
   --vm-map-w: calc(244 * var(--vm-u));
   --vm-map-h: calc(288 * var(--vm-u));
   --vm-selection-w: calc(369 * var(--vm-u));
@@ -1927,7 +1927,7 @@
 }
 
 .vm-hud[data-layout='perimeter'] .vm-map-hardware-pod {
-  background: rgba(2, 7, 10, 0.96);
+  background: transparent;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
@@ -1946,6 +1946,7 @@
 .vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::before {
   background-image: url('/ui/command-deck/selection-wide-v2.png');
   background-size: 100% 100%;
+  z-index: 1;
 }
 
 /* The generated apertures are real alpha. An explicit well beneath the live
@@ -1957,10 +1958,15 @@
   inset:
     calc(48 * var(--vm-u))
     calc(37 * var(--vm-u))
-    calc(43 * var(--vm-u));
-  z-index: 1;
+    calc(17 * var(--vm-u));
+  z-index: 0;
   background: rgba(2, 6, 9, 0.985);
   pointer-events: none;
+}
+
+/* The generated chrome always stays above live content. */
+.vm-hud[data-layout='perimeter'] .vm-dock-map::before {
+  z-index: 1;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-sel-live {
@@ -2042,7 +2048,7 @@
     inset:
       calc(47 * var(--vm-u))
       calc(36 * var(--vm-u))
-      calc(42 * var(--vm-u));
+      calc(16 * var(--vm-u));
   }
 }
 
@@ -2073,7 +2079,7 @@
     inset:
       calc(38 * var(--vm-u))
       calc(29 * var(--vm-u))
-      calc(34 * var(--vm-u));
+      calc(13 * var(--vm-u));
   }
 }
 
@@ -2104,7 +2110,7 @@
     inset:
       calc(35 * var(--vm-u))
       calc(27 * var(--vm-u))
-      calc(31 * var(--vm-u));
+      calc(12 * var(--vm-u));
   }
 
   .vm-hud[data-layout='perimeter'] .vm-sel-body {
@@ -2154,7 +2160,7 @@
     inset:
       calc(27 * var(--vm-u))
       calc(21 * var(--vm-u))
-      calc(24 * var(--vm-u));
+      calc(10 * var(--vm-u));
   }
 
   .vm-hud[data-layout='perimeter'] .vm-sel-head {
@@ -2171,4 +2177,45 @@
     display: flex;
     gap: calc(5 * var(--vm-u));
   }
+}
+
+/* ----------------------------------------------------------------------- */
+/* Battlefield separation                                                   */
+/* ----------------------------------------------------------------------- */
+
+/* Intentionally simple: one opaque rectangle behind each transparent PNG.
+ * This prevents battlefield colour from leaking through any authored opening
+ * without painting extra live layers over the frame itself. */
+.vm-hud[data-layout='perimeter'] .vm-dock-map,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty) {
+  background: #020609 !important;
+}
+
+.vm-hud[data-layout='perimeter'] .vm-dock-map::after,
+.vm-hud[data-layout='perimeter'] .vm-dock-selection:not(.is-empty)::after {
+  display: none;
+}
+
+/* One restrained black halo belongs to each complete instrument shell. It
+ * is applied after the component artwork has been composited, so generated
+ * corners keep their silhouette and live text/icons remain crisp. */
+.vm-hud[data-layout='perimeter'] {
+  --vm-shell-outer-glow:
+    drop-shadow(0 0 calc(3 * var(--vm-u)) rgba(0, 0, 0, 0.92))
+    drop-shadow(0 calc(5 * var(--vm-u)) calc(8 * var(--vm-u)) rgba(0, 0, 0, 0.78));
+}
+
+.vm-hud[data-layout='perimeter'] :is(
+  .vm-resources,
+  .vm-command-node,
+  .vm-objectives,
+  .vm-dock-map,
+  .vm-dock-selection,
+  .vm-command-deck,
+  .vm-dock-build,
+  .vm-perf,
+  .vm-toast,
+  .vm-super-row
+) {
+  filter: var(--vm-shell-outer-glow);
 }

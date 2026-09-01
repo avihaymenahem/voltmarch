@@ -3638,7 +3638,7 @@ export class Sidebar {
      * budget; independent viewport percentages can each be valid while their
      * sum still drives the inspector underneath the command buttons. */
     const hudScale = (): number => computeUiScale(Math.max(1, globalThis.innerHeight || 720));
-    const panelGap = (): number => 0;
+    const panelGap = (): number => 8 * hudScale();
     const compactCommandWidthUnits = (): number => {
       const viewport = Math.max(1, globalThis.innerWidth || 1280);
       return viewport <= 1400 ? 270 : 409.5;

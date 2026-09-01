@@ -43,7 +43,7 @@ describe('persisted HUD panel geometry', () => {
 
   it('keeps sequential compact maximums outside the centered command plate', () => {
     const commandLeft = 505;
-    const gap = 0;
+    const gap = 8;
     const selectionDefault = 269;
     const map = clampAspectPanelWidth(
       Number.POSITIVE_INFINITY, 1280, 720, 178, 625 / 738, 0.30, 0.60,
@@ -53,7 +53,7 @@ describe('persisted HUD panel geometry', () => {
       Number.POSITIVE_INFINITY, 1280, 720, 240, 946 / 738, 0.34, 0.72,
       commandLeft - map - 2 * gap,
     );
-    expect(map).toBe(236);
+    expect(map).toBe(220);
     expect(selection).toBe(269);
     expect(map + gap + selection).toBeLessThanOrEqual(commandLeft - gap);
   });
@@ -70,7 +70,7 @@ describe('persisted HUD panel geometry', () => {
 
   it('keeps the first desktop breakpoint outside the elastic command plate', () => {
     const viewport = 1401;
-    const gap = 0;
+    const gap = 8;
     const mapMinimum = 195;
     const selectionMinimum = 260;
     const commandWidth = Math.min(409.5, viewport - 912);

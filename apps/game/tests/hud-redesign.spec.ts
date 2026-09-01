@@ -285,6 +285,19 @@ describe('approved command-deck skin', () => {
     expect(await alphaAt('selection-wide-v2.png', 450, 665)).toBe(0);
   });
 
+  it('separates every complete HUD shell from the battlefield with one black halo', () => {
+    expect(COMMAND_DECK_CSS).toContain('--vm-shell-outer-glow:');
+    expect(COMMAND_DECK_CSS).toContain('rgba(0, 0, 0, 0.92)');
+    for (const shell of [
+      'vm-resources', 'vm-command-node', 'vm-objectives', 'vm-dock-map',
+      'vm-dock-selection', 'vm-command-deck', 'vm-dock-build', 'vm-perf',
+      'vm-toast', 'vm-super-row',
+    ]) {
+      expect(COMMAND_DECK_CSS).toContain(`.${shell}`);
+    }
+    expect(COMMAND_DECK_CSS).toContain('filter: var(--vm-shell-outer-glow);');
+  });
+
   it('keeps the build inventory continuous and scrollable beyond the visible eight cards', () => {
     expect(SIDEBAR).toContain('export const BUILD_ROWS = 7');
     expect(COMMAND_DECK_CSS).toMatch(/\.vm-grid\s*\{[\s\S]*?overflow-y:\s*auto/);
@@ -427,6 +440,19 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).not.toContain("mapHardware.setAttribute('aria-hidden', 'true')");
     expect(HUD).toContain('centreOnHome: () => this.cameraRig.centreOnHome()');
     expect(HUD).toContain('centreOnSelection: () => this.focusSelection()');
+    expect(joined).toMatch(/\.vm-map-hardware-pod\s*\{\s*background:\s*transparent;/);
+  });
+
+  it('keeps one opaque black box behind both transparent generated panels', () => {
+    expect(joined).toMatch(
+      /\.vm-dock-selection:not\(\.is-empty\)::before\s*\{[\s\S]*?z-index:\s*1;/,
+    );
+    expect(joined).toMatch(
+      /\.vm-dock-map,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)\s*\{\s*background:\s*#020609 !important;/,
+    );
+    expect(joined).toMatch(
+      /\.vm-dock-map::after,[\s\S]*?\.vm-dock-selection:not\(\.is-empty\)::after\s*\{\s*display:\s*none;/,
+    );
   });
 
   it('registers live build controls to the authored asymmetric header bays', () => {
