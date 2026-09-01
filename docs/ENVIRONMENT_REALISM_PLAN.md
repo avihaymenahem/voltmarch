@@ -170,7 +170,7 @@ Meshy's arbitrary material stack. Per-instance hue/value variation remains avail
 | Umbrella/table/bench | local authored kit; Meshy only if silhouette review fails | 300–900 | 120–350 | 80–200 | shared civic trim/vertex colour |
 | Crates/pallets/barrels | local modular kit | 150–700 per composition | 80–250 | 60–160 | shared yard trim/vertex colour |
 | Crate stack/flower box pilot | deterministic local box kit; ImageGen surface/canopy | 16–60 | 14–60 | 12–24 | one shared 1K/512/512 alpha PBR atlas; forged-iron mask is metallic, timber/soil/flowers remain dielectric |
-| Autumn/conifer/palm/grass | compact authored card/trunk families | 8–170 | 4–168 | 24–48 | one shared ImageGen alpha-tested 1K/512/512 PBR atlas |
+| Autumn/conifer/palm/grass | compact authored card/trunk families | 8–170 | 4–168 | 24–50 | one shared ImageGen alpha-tested 1K/512/512 PBR atlas |
 | Remaining yard/street/civic props | offline bake of reviewed authored silhouettes | 164–2,376 | topology-safe ~30–58% far deliveries | 12–128 | one shared ImageGen-derived metal/wood/hay/stone 1K/512/512 PBR atlas; 84-triangle tent and 128-triangle barrel casters preserve separated component silhouettes |
 | Bush/clipped hedge | deterministic local cards; separate ImageGen branch/panel sources | 12–28 | 10–16 | 12–48 | one shared alpha-tested 1K/512/512 PBR atlas plus biome vertex tint |
 | Boulder/rock cluster | deterministic local closed family; shared ImageGen-refined surface | 450–576 | 224–240 | 144–150 | one shared 1K/512/512 PBR set plus biome vertex tint; no unique map |

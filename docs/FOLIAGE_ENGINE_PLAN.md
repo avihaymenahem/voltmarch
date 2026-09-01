@@ -366,7 +366,7 @@ dedicated fissured conifer bark plate, coherent layered whole-pine crowns with b
 profile variation, a vertically conditioned KTX2,
 separate trunk-plus-crown proxies and
 the same alpha-test/map/side contract in WebGL colour and depth passes. Autumn/conifer/palm shadow
-budgets are now 48/48/44 triangles, and conifer colour rungs are 46/44/42 triangles. Fresh local
+budgets were initially 48/48/44 triangles, and conifer colour rungs are 46/44/42 triangles. Fresh local
 WebGL and native-WebGPU cardinal renders, the focused 29-test foliage/layout suite, TypeScript and
 the production build are the acceptance evidence for re-integration; no paid asset generation was
 used for this correction.
@@ -376,6 +376,12 @@ still crossed the trunk centre and one full-width horizontal card projected the 
 texture as a flat sunflower. The accepted 68/58/50-triangle family uses 12/8/5 smaller offset,
 tilted crown clusters plus 4/3/2 recessed top clusters. Dedicated WebGL and native-WebGPU overhead
 reviews now sit beside the cardinal sheets so this camera-specific silhouette cannot pass unnoticed.
+
+Live shadow correction, 2026-09-01: the autumn tree's 48-triangle closed proxy still collapsed the
+layered crown into one opaque 7.4 m frustum, projecting a solid rectangular wedge at the 38-degree
+gameplay sun angle. Its 50-triangle replacement derives from the accepted far card silhouette and
+uses the shared alpha-tested atlas plus authored depth material for both WebGL and WebGPU shadow
+submission. It adds two caster triangles and no material, texture or draw allocation.
 
 The shared extended-foliage atlas is a deterministic single-thread Basis cook. Three consecutive
 clean recooks reproduce its tracked report and source hashes. Output is 517,476 bytes versus 585,055

@@ -11,7 +11,7 @@
     "grassTuftGreen": "authored"
   },
   "source": {
-    "geometryMethod": "deterministic card, segmented-trunk and closed-caster generator",
+    "geometryMethod": "deterministic card, segmented-trunk, alpha-cut and closed-caster generator",
     "geometryTool": "tools/build-extended-foliage-family.mjs",
     "textureMethod": "four transparent ImageGen foliage sources conditioned into one alpha-safe PBR atlas",
     "textureTool": "tools/build-extended-foliage-pbr.mjs",
@@ -41,16 +41,17 @@
     ]
   },
   "deliveries": [
-    {"key":"treeAutumn","triangles":{"lod0":68,"lod1":58,"lod2Emergency":50,"shadow":48}},
+    {"key":"treeAutumn","triangles":{"lod0":68,"lod1":58,"lod2Emergency":50,"shadow":50}},
     {"key":"conifer","triangles":{"lod0":46,"lod1":44,"lod2Emergency":42,"shadow":48}},
     {"key":"palm","triangles":{"lod0":170,"lod1":168,"lod2Emergency":166,"shadow":44}},
     {"key":"grassTuft","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}},
     {"key":"grassTuftGreen","triangles":{"lod0":8,"lod1":6,"lod2Emergency":4,"shadow":24}}
   ],
   "deliveryFileCount": 20,
-  "deliveryBytes": 75436,
-  "deliveryAggregateSha256": "ec0a634c4932cbf939006879bca2e91ac96bd172e9d100ea8449b3836e11f977",
-  "shippingFamilyBytes": 660491,
+  "deliveryBytes": 76680,
+  "deliveryAggregateSha256": "3d3b313d928b7860ac6629110d41aa2d308052da06493adc2f22ae9b6220a425",
+  "deliveryAggregateMethod": "sha256 of the concatenated lowercase SHA256 hex digests of all 20 GLBs sorted by absolute path",
+  "shippingFamilyBytes": 661735,
   "reviews": [
     {"file":"review/autumn-webgpu.png","sha256":"ea5616545f7957a83b6fda042f2f8afae8036d10fe2e0fea4df175ac527cd63b","note":"WebGPU cardinal proof that the layered autumn crown retains a grounded medium-brown trunk in every view."},
     {"file":"review/autumn-top-webgpu.png","sha256":"43e2c901bd9d608c8a1684544e6bd23d2d11ebe2fb949712d5cb3d3ad13590ec","note":"Native-WebGPU overhead proof that smaller offset crown clusters replace the rejected single radial sunflower card."},
@@ -68,6 +69,7 @@
     {"delivery":"conifer bark plate inside crown UV","reason":"The first textured-bark pass let foliage cards sample the new brown tile as obvious rectangular holes. Accepted bark and crown rectangles are disjoint and regression-tested."},
     {"delivery":"unconditioned KTX2 atlas orientation","reason":"The compressed mip chain was vertically opposite the GLB UV convention: conifer crowns sampled the grass cell and bark sampled transparency, producing random hanging sprays and missing trunks. The deterministic cook now bakes TextureLoader-equivalent vertical orientation into every KTX2 mip."},
     {"delivery":"soft alpha-to-coverage foliage edges","reason":"Partial-alpha source texels produced bright strokes around leaf and grass silhouettes in the live WebGPU scene. Production uses a strict 0.85 mask without alpha-to-coverage."},
+    {"delivery":"opaque autumn crown caster","reason":"The former 7.4 m closed frustum filled every gap between the authored offset leaf cards and projected a solid rectangular wedge across the terrain. The 50-triangle replacement reuses the approved far-silhouette cards with the shared alpha-tested atlas and depth material in WebGL and WebGPU."},
     {"delivery":"broad grass caster with per-type shadow opt-out","reason":"The old 1.9 by 0.8 closed proxy projected as a detached oval, and disabling both grass identities created visibly inconsistent missing shadows among neighbouring clumps. Both types now cast the same narrow 1.55 by 0.38, 24-triangle proxy; only flowerBed retains the explicit low-cover opt-out."}
   ]
 }

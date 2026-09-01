@@ -312,10 +312,12 @@ function shadow(height, radius, sides = 8) {
 }
 
 function autumnShadow() {
-  const g = geometry();
-  appendFrustum(g, { height: 5.2, bottom: 0.48, top: 0.25, sides: 4, cell: 0 });
-  appendFrustum(g, { y: 3.5, height: 6.5, bottom: 3.7, top: 1.2, sides: 8, cell: 0 });
-  return g;
+  // The crown is authored as offset alpha cards, so an opaque frustum is not
+  // a silhouette proxy: it fills every gap between the lobes and projects a
+  // 7.4 m solid wedge across the ground. Reuse the approved five-card far
+  // silhouette for the caster. It is only two triangles above the old proxy,
+  // and the shared atlas/depth material preserves the actual leaf gaps.
+  return autumn(5);
 }
 
 function coniferShadow() {
@@ -332,7 +334,7 @@ function palmShadow() {
   return g;
 }
 
-async function writeGlb(relative, name, data, textured) {
+async function writeGlb(relative, name, data, textured, includeUv = textured) {
   const document = new Document();
   const buffer = document.createBuffer(`${name}.buffer`);
   const primitive = document.createPrimitive()
@@ -342,7 +344,7 @@ async function writeGlb(relative, name, data, textured) {
     .setIndices(document.createAccessor('indices').setType('SCALAR').setArray(new Uint16Array(data.indices)).setBuffer(buffer))
     .setMaterial(document.createMaterial(textured ? 'extended-foliage.shared-atlas' : 'extended-foliage.shadow')
       .setBaseColorFactor([1, 1, 1, 1]).setMetallicFactor(0).setRoughnessFactor(0.92).setDoubleSided(textured));
-  if (textured) primitive.setAttribute('TEXCOORD_0', document.createAccessor('TEXCOORD_0').setType('VEC2').setArray(new Float32Array(data.uvs)).setBuffer(buffer));
+  if (includeUv) primitive.setAttribute('TEXCOORD_0', document.createAccessor('TEXCOORD_0').setType('VEC2').setArray(new Float32Array(data.uvs)).setBuffer(buffer));
   document.createScene('Scene').addChild(document.createNode(name).setMesh(document.createMesh(name).addPrimitive(primitive)));
   const file = path.join(root, relative);
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -367,7 +369,13 @@ for (const [name, builds] of definitions) {
   for (let i = 0; i < roles.length; i++) {
     const role = roles[i];
     const relative = role === 'lod0' ? `${name}.glb` : `derived/${name}.${role}.glb`;
-    report.push(await writeGlb(relative, `${name}.${role}`, builds[i], role !== 'shadow'));
+    report.push(await writeGlb(
+      relative,
+      `${name}.${role}`,
+      builds[i],
+      role !== 'shadow',
+      role !== 'shadow' || name === 'tree-autumn-v1',
+    ));
   }
 }
 console.log(JSON.stringify({ root, deliveries: report }, null, 2));

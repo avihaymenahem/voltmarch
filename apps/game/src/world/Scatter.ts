@@ -2529,7 +2529,8 @@ export class Scatter {
       const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
       phaseAttr.setUsage(THREE.DynamicDrawUsage);
       geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
-      const shadow = new THREE.InstancedMesh(geometry, this.materials.material, capacity);
+      const shadowMaterial = type.renderFamily.shadow.material ?? this.materials.material;
+      const shadow = new THREE.InstancedMesh(geometry, shadowMaterial, capacity);
       shadow.name = `prop.${type.def.key}.shadow`;
       shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       shadow.userData[SHADOW_ONLY_TAG] = true;
@@ -2538,7 +2539,11 @@ export class Scatter {
       shadow.frustumCulled = false;
       shadow.matrixAutoUpdate = false;
       shadow.count = 0;
-      if (this.materials.depthMaterial !== null) shadow.customDepthMaterial = this.materials.depthMaterial;
+      const authoredDepth = shadowMaterial.userData.vmFoliageDepthMaterial;
+      const depthMaterial = authoredDepth instanceof THREE.Material
+        ? authoredDepth
+        : this.materials.depthMaterial;
+      if (depthMaterial !== null) shadow.customDepthMaterial = depthMaterial;
       type.shadowMesh = shadow;
       this.root.add(shadow);
     }
@@ -2582,7 +2587,7 @@ export class Scatter {
       })),
       shadow: typeCastsShadow(type.def, type.renderFamily.shadow, this.legacyShadows) ? {
         geometry: type.renderFamily.shadow.geometry,
-        material: this.materials.material,
+        material: type.renderFamily.shadow.material ?? this.materials.material,
         triangles: type.renderFamily.shadow.triangles,
       } : null,
     };

@@ -482,6 +482,17 @@ describe('broadleaf camera-band LOD pilot', () => {
   it('keeps an independent caster for every imported bush instance', () => {
     const source = new PropLibrary({ biome: 'temperate', seed: 11, keys: ['bush'] });
     const deliveries = family(source.get('bush')!);
+    const cutoutMap = new THREE.Texture();
+    const cutoutMaterial = createEnvironmentMaterial({
+      map: cutoutMap,
+      alphaTest: FOLIAGE_ALPHA_TEST,
+      side: THREE.DoubleSide,
+    }, true);
+    const cutoutDepth = cutoutMaterial.userData.vmFoliageDepthMaterial as THREE.Material;
+    const cutoutDeliveries = {
+      ...deliveries,
+      shadow: { ...deliveries.shadow, material: cutoutMaterial },
+    };
     const scene = new THREE.Scene();
     const terrain = new Terrain({
       scene, seed: 0x51a0, biome: 'temperate', anisotropy: 1,
@@ -490,7 +501,7 @@ describe('broadleaf camera-band LOD pilot', () => {
       scene, terrain, biome: 'temperate', seed: 0xb057, urban: 0,
       densityScale: 1, preferred: ['bush'], maxTypes: 18,
       foliagePresentation: 'imported',
-      importedFoliage: new Map([['bush', deliveries]]),
+      importedFoliage: new Map([['bush', cutoutDeliveries]]),
     });
     scatter.generate();
     scatter.update(camera(40), 0);
@@ -504,6 +515,8 @@ describe('broadleaf camera-band LOD pilot', () => {
     expect(shadow.castShadow).toBe(true);
     expect(shadow.userData.vmShadowOnly).toBe(true);
     expect(shadow.instanceMatrix.array).toEqual(colour.instanceMatrix.array);
+    expect(shadow.material).toBe(cutoutMaterial);
+    expect(shadow.customDepthMaterial).toBe(cutoutDepth);
 
     scatter.dispose();
     source.dispose();
@@ -740,7 +753,7 @@ describe('foliage production profile', () => {
     const repo = join(import.meta.dirname, '..', '..', '..');
     const root = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage');
     const expected = {
-      treeAutumn: [68, 58, 50, 48],
+      treeAutumn: [68, 58, 50, 50],
       conifer: [46, 44, 42, 48],
       palm: [170, 168, 166, 44],
       grassTuft: [8, 6, 4, 24],
@@ -759,6 +772,10 @@ describe('foliage production profile', () => {
         expect(gltf.meshes).toHaveLength(1);
         expect(gltf.meshes[0].primitives).toHaveLength(1);
         expect(gltf.materials[0].doubleSided ?? false).toBe(index < 3);
+        if (key === 'treeAutumn' && index === 3) {
+          expect(gltf.meshes[0].primitives[0].attributes.TEXCOORD_0)
+            .toBeTypeOf('number');
+        }
         return gltf.accessors[gltf.meshes[0].primitives[0].indices].count / 3;
       });
       expect(triangles).toEqual(expected[key]);
@@ -793,6 +810,18 @@ describe('foliage production profile', () => {
     expect(bush.height).toBeLessThanOrEqual(1.50);
 
     const extended = join(repo, 'packages', 'assets', 'game', 'environment', 'extended-foliage');
+    const autumnShadow = glbFloatAttribute(join(
+      extended, 'derived/tree-autumn-v1.shadow.glb',
+    ), 'POSITION');
+    const autumnRadius = Math.max(...Array.from(
+      { length: autumnShadow.length / 3 },
+      (_, index) => Math.hypot(autumnShadow[index * 3], autumnShadow[index * 3 + 2]),
+    ));
+    // The rejected closed proxy had a 3.7 m opaque radius. The card caster may
+    // span the whole irregular crown, but its atlas mask — pinned above — owns
+    // the empty space instead of turning that span into one solid polygon.
+    expect(autumnRadius).toBeLessThan(3.5);
+
     for (const file of [
       'derived/grass-tuft-v1.shadow.glb',
       'derived/grass-tuft-green-v1.shadow.glb',

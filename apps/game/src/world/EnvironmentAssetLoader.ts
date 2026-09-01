@@ -914,6 +914,10 @@ async function loadFamily(
   // PBR delivery. Matching the material mode lets the request cache return one
   // decoded geometry/material object for all three normal camera bands.
   const normalLodMaterial = key === 'tree' ? lod0Material : visibleMaterial;
+  // Autumn leaves are alpha cards, not a closed crown. Its dedicated shadow
+  // delivery therefore carries UVs and must use the same cutout atlas as the
+  // visible family; the other families retain their closed geometry proxies.
+  const shadowMaterial = key === 'treeAutumn' ? visibleMaterial : undefined;
   type AuthoredMaterial = Parameters<typeof loadDelivery>[3];
   const deliveryPromises = new Map<string, Promise<PropGeometry>>();
   const request = (
@@ -937,7 +941,7 @@ async function loadFamily(
     request(files.lod0, 'lod0', lod0Material),
     request(files.lod1, 'lod1', normalLodMaterial),
     request(files.lod2, 'lod2', normalLodMaterial),
-    request(files.shadow, 'shadow', undefined),
+    request(files.shadow, 'shadow', shadowMaterial),
     request(files.emergency, 'emergency', visibleMaterial),
   ]);
   const available = settled.map((result) => (

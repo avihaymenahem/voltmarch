@@ -157,7 +157,7 @@ export const ENVIRONMENT_ASSET_CATALOG: Readonly<Record<string, EnvironmentArche
       origin: 'ground-centre',
       metres: Object.freeze({ radius: 4.8, height: 10.6 }),
       wind: 'canopy',
-      budget: Object.freeze({ rawTriangles: 68, lod0Triangles: 68, lod1Triangles: 58, lod2Triangles: 50, shadowTriangles: 48, emergencyTriangles: 50, shippingBytes: 786_432 }),
+      budget: Object.freeze({ rawTriangles: 68, lod0Triangles: 68, lod1Triangles: 58, lod2Triangles: 50, shadowTriangles: 50, emergencyTriangles: 50, shippingBytes: 786_432 }),
       deliveries: Object.freeze({
         lod0: 'tree-autumn-v1.glb', lod1: 'derived/tree-autumn-v1.lod1.glb',
         lod2: 'derived/tree-autumn-v1.lod2.glb', shadow: 'derived/tree-autumn-v1.shadow.glb',
