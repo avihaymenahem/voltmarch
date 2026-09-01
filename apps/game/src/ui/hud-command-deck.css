@@ -1197,6 +1197,126 @@
   }
 }
 
+/* ----------------------------------------------------------------------- */
+/* Non-distorting resize slices                                             */
+/* ----------------------------------------------------------------------- */
+
+/* Height-resized plates cannot keep using `background-size: 100% 100%`:
+ * that scales their headers, corners and illuminated feet. The top and bottom
+ * pseudo-elements display authored pixels at their width-derived natural
+ * scale. A deliberately detail-free CSS middle is the only expanding region. */
+.vm-hud[data-layout='perimeter']
+  .vm-dock-build.vm-height-resizable.has-user-height {
+  background-image: linear-gradient(90deg,
+    rgba(43, 53, 60, 0.98) 0,
+    rgba(11, 17, 21, 0.98) 2.8%,
+    rgba(4, 9, 12, 0.98) 3.5%,
+    rgba(4, 9, 12, 0.98) 96.5%,
+    rgba(11, 17, 21, 0.98) 97.2%,
+    rgba(43, 53, 60, 0.98) 100%) !important;
+  background-position: center calc(56 * var(--vm-u)) !important;
+  background-size: 100% calc(100% - 78 * var(--vm-u)) !important;
+  background-repeat: no-repeat !important;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-build.vm-height-resizable.has-user-height::before {
+  inset: 0 0 auto;
+  height: calc(56 * var(--vm-u));
+  border: 0;
+  background-image: url('/ui/command-deck/build.png');
+  background-position: center top;
+  background-size: 100% auto;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-dock-build.vm-height-resizable.has-user-height::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(22 * var(--vm-u));
+  border: 0;
+  background: transparent url('/ui/command-deck/build.png') center bottom / 100% auto no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed) {
+  background-image: linear-gradient(90deg,
+    rgba(38, 48, 54, 0.98) 0,
+    rgba(7, 13, 17, 0.98) 6%,
+    rgba(4, 9, 12, 0.98) 8%,
+    rgba(4, 9, 12, 0.98) 92%,
+    rgba(7, 13, 17, 0.98) 94%,
+    rgba(38, 48, 54, 0.98) 100%) !important;
+  background-position: center calc(33 * var(--vm-u)) !important;
+  background-size: 100% calc(100% - 59 * var(--vm-u)) !important;
+  background-repeat: no-repeat !important;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::before {
+  inset: 0 0 auto;
+  height: calc(33 * var(--vm-u));
+  border: 0;
+  background-image: url('/ui/command-deck/objectives.png');
+  background-position: center top;
+  background-size: 100% auto;
+}
+
+.vm-hud[data-layout='perimeter']
+  .vm-objectives.vm-height-resizable.has-user-height:not(.is-collapsed)::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(26 * var(--vm-u));
+  border: 0;
+  background: transparent url('/ui/command-deck/objectives.png') center bottom / 100% auto no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Empty selection is its own horizontal component. The portrait selection
+ * plate must never be compressed into a status strip. `auto` preserves the
+ * generated asset's alpha-cropped silhouette ratio inside the live bar. */
+.vm-hud[data-layout='perimeter'] .vm-dock-selection.is-empty::before {
+  background-image: url('/ui/command-deck/selection-empty.png');
+  background-position: center;
+  background-size: 100% auto;
+}
+
+/* The structured resource bays stop growing once they reach the authored
+ * desktop width. On ultrawide frames only two neutral one-pixel bridge rails
+ * continue toward the fixed operation node; no bevel, divider or label bay is
+ * scaled wider than it appears at the 1900px reference viewport. */
+@media (min-width: 1401px) {
+  .vm-hud[data-layout='perimeter'] .vm-resources {
+    background-image:
+      linear-gradient(90deg, transparent, rgba(108, 137, 149, 0.42) 12%, rgba(108, 137, 149, 0.42) 88%, transparent),
+      linear-gradient(90deg, transparent, rgba(54, 67, 75, 0.72) 12%, rgba(54, 67, 75, 0.72) 88%, transparent) !important;
+    background-position:
+      center calc(8 * var(--vm-u)),
+      center calc(50 * var(--vm-u)) !important;
+    background-size: 100% 1px !important;
+    background-repeat: no-repeat !important;
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-resources::before,
+  .vm-hud[data-layout='perimeter'] .vm-resources::after {
+    width: min(calc(50% - 196 * var(--vm-u)), calc(560 * var(--vm-u)));
+  }
+
+  .vm-hud[data-layout='perimeter'] .vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-res-trend   { left: calc(210 * var(--vm-u)); width: calc(129 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-res-power   { left: calc(339 * var(--vm-u)); width: calc(121 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-res-clock   { left: auto; right: calc(307 * var(--vm-u)); width: calc(142 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-res-army    { left: auto; right: calc(211 * var(--vm-u)); width: calc(96 * var(--vm-u)); }
+  .vm-hud[data-layout='perimeter'] .vm-res-base    { left: auto; right: calc(52 * var(--vm-u)); width: calc(159 * var(--vm-u)); }
+}
+
 /* Only the middle 49% of the generated minimap chassis contains hardware
  * pods.  The old full-width rail was covering armor and drawing false boxes. */
 .vm-hud[data-layout='perimeter'] .vm-map-hardware {

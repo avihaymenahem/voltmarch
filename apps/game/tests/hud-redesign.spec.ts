@@ -143,6 +143,7 @@ describe('approved command-deck skin', () => {
       'objectives.png',
       'minimap.png',
       'selection.png',
+      'selection-empty.png',
       'commands.png',
       'build.png',
     ];
@@ -173,8 +174,37 @@ describe('approved command-deck skin', () => {
     expect(SIDEBAR).toContain('new AspectPanelResize(this.mapDock');
     expect(HUD).toContain('mapResized: () => this.resize(true)');
     expect(SIDEBAR).toContain("edge: 'top'");
-    expect(COMMAND_DECK_CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
+    expect(COMMAND_DECK_CSS).not.toMatch(
+      /\.vm-dock-build\.vm-height-resizable\.has-user-height\s*\{[^}]*\bheight:\s*calc\([^}]*!important/,
+    );
     expect(CSS).not.toContain('.vm-dock-build.vm-height-resizable.has-user-height');
+  });
+
+  it('composes height-resized chrome from fixed artwork caps and a neutral middle', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-build\.vm-height-resizable\.has-user-height::before\s*\{[\s\S]*?height:\s*calc\(56 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-build\.vm-height-resizable\.has-user-height::after\s*\{[\s\S]*?height:\s*calc\(22 \* var\(--vm-u\)\);[\s\S]*?100% auto no-repeat;/,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-objectives\.vm-height-resizable\.has-user-height:not\(\.is-collapsed\)::before\s*\{[\s\S]*?height:\s*calc\(33 \* var\(--vm-u\)\);[\s\S]*?background-size:\s*100% auto;/,
+    );
+  });
+
+  it('uses a dedicated horizontal asset for the empty selection state', () => {
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-dock-selection\.is-empty::before\s*\{[\s\S]*?selection-empty\.png[\s\S]*?background-size:\s*100% auto;/,
+    );
+  });
+
+  it('caps structured top wings before filling ultrawide space with neutral rails', () => {
+    expect(COMMAND_DECK_CSS).toContain(
+      'width: min(calc(50% - 196 * var(--vm-u)), calc(560 * var(--vm-u)))',
+    );
+    expect(COMMAND_DECK_CSS).toContain(
+      '.vm-res-credits { left: calc(18 * var(--vm-u)); width: calc(192 * var(--vm-u)); }',
+    );
   });
 
   it('keeps compact layouts usable without changing the desktop target', () => {
