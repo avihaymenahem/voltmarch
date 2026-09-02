@@ -1,6 +1,6 @@
 # RENDER FINDINGS — questions that are ANSWERED, so nobody pays for them twice
 
-**Measured 2026-08-17, on `gfx-perf-sweep` at `22b123c`.** Every number here came out of an
+**Original sweep measured 2026-08-17, on `gfx-perf-sweep` at `22b123c`.** This file also contains later amended findings; each later section identifies its own measurement date. Every number here came out of an
 instrument, not an argument. Re-measure before quoting any of it in a release note — but do NOT
 re-derive it from scratch, which is what this file exists to prevent.
 

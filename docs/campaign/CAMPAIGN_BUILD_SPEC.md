@@ -1,6 +1,6 @@
 # VOLTMARCH CAMPAIGN MODE — BUILD SPEC
 
-**Status:** merged from five reviewed workstreams (lore, missions, engine, progression, delivery). Every contradiction below is resolved, with the overruled position named. Code claims re-verified against the tree at `04ee0a5`, v2.15.1 — the verification log is §8.6.
+**Status:** merged from five reviewed workstreams (lore, missions, engine, progression, delivery). Every contradiction below is resolved, with the overruled position named. Code claims were verified against tree `04ee0a5`, v2.15.1; that verification snapshot is historical and implementation claims should be re-checked against the current tree. The verification log is §8.6.
 
 **This document is not durable. Read §10.4 for where it lives and when it is deleted.**
 

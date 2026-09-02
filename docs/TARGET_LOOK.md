@@ -166,18 +166,18 @@ gated behind the performance work.
 
 ## C. What these references change about work already in flight
 
-- **TODO #3 (buildings)** — the running agent was told its triangle and draw-call delta must be
+- **Building performance constraint** — the running agent was told its triangle and draw-call delta must be
   `<= 0`, because the user is at 100% GPU. That constraint still stands. Items B.1 §1–5 are all
   reachable inside it; item 6 is not. **Do not relax the constraint to chase the reference.**
-- **TODO #4 (roads)** — the reference confirms the intended junction behaviour: pavement cut back
+- **Map/road composition follow-up** — the reference confirms the intended junction behaviour: pavement cut back
   cleanly, corner islands planted with scatter.
-- **TODO #5 (props)** — the reference shows props abutting structures but never intersecting them,
+- **Environment-assets follow-up** — the reference shows props abutting structures but never intersecting them,
   which is the target state.
-- **TODO #6 (objectives)** — the reference shows **four objectives visible at once, grouped into
+- **Objective-panel follow-up** — the reference shows **four objectives visible at once, grouped into
   PRIMARY and SECONDARY sections.** Our panel caps at `MAX_VISIBLE_OBJECTIVES = 3` and the overflow
   line replaces the third row, so two show. The grouping is a better answer than a flat expander and
   the agent should consider it — but the §38 HUD frame budget (12–16%, panel already at 16.3%) is a
   measured constraint and the reference is not, so measure before adopting.
-- **TODO #2 (HUD)** — the ambiguity is resolved. It is a **visual treatment and layout** redesign
+- **HUD direction follow-up** — the ambiguity is resolved. It is a **visual treatment and layout** redesign
   (§A.1, §A.2) plus **making the existing model-render cameo path work for every def** (§A.3). It is
   *not* a request to import generated image assets, and the README's claim survives.

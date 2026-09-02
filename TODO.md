@@ -1,6 +1,6 @@
 # TODO
 
-**Outstanding work only.** A row here is open. When it closes, the row is deleted — there is no
+**Outstanding work only.** A row here is open. Numbered rows are tracked task IDs; unnumbered rows are provisional follow-ups awaiting task registration. When a row closes, it is deleted — there is no
 "done" section, no changelog and no history, because this file has now rotted twice by accumulating
 one.
 

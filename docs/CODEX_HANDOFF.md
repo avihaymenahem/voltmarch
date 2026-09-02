@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-09-01
+Last refreshed: 2026-09-02
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the

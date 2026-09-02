@@ -114,5 +114,5 @@ heavy wear, baked lighting and geometry changes are explicitly rejected.
 - The imported body replaces the old procedural shell completely. Only the explicitly authored
   sliding-door geometry is extracted by `STRUCTURE_FEATURE.door`, retaining the existing GPU door
   cycle, construction rise and animated depth shadow.
-- `runtime-webgpu.png` verifies the recessed open state and roster match; `runtime-webgl.png`
+- `runtime-webgpu.jpg` verifies the recessed open state and roster match; `runtime-webgl.jpg`
   verifies the closed crimson door, correct facade and renderer parity.

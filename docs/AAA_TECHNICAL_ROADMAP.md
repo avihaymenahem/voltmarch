@@ -1,8 +1,9 @@
 # AAA technical roadmap
 
 Status: active implementation plan
-Baseline: `origin/main` at `871b8408`
+Baseline: `origin/main` at `902020e6`
 Research completed: 2026-08-30
+Next active seam: Batch 12 — narrow audio runtime extraction
 Implementation branch: local `main` (the temporary roadmap worktree has been retired)
 
 This document turns the performance, graphics, worker/WASM and package-boundary audit into one
