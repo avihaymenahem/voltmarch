@@ -21,7 +21,7 @@
  *
  * WHAT IS NOT WIRED, AND WHY IT IS STILL HERE
  * -------------------------------------------
- * `tooltips`, `damageNumbers` and `screenShake` have no consumer
+ * `tooltips` and `damageNumbers` have no consumer
  * in the engine yet — the HUD and VFX modules that will read them are being
  * written in parallel. They are persisted and published on
  * `window.__vmSettings` (see Shell) precisely so those modules can subscribe
@@ -319,6 +319,7 @@ export function applySettings(
         invertDragPan: !p.dragPanNatural,
         momentum: p.cameraMomentum,
       });
+      game.ctx.cameraRig.setShakeScale(p.screenShake);
     }
   }
 }

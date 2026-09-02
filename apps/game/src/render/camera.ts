@@ -471,6 +471,8 @@ export class CameraRig {
   /** 0..1 trauma; decays. VFX pushes into this via addShake(). */
   private shakeTrauma = 0;
   private shakeTime = 0;
+  /** Player preference, 0 = off and 1 = the authored default intensity. */
+  private shakeScale = 1;
 
   private groundHeightFn: GroundHeightFn | null = null;
 
@@ -866,6 +868,11 @@ export class CameraRig {
     this.shakeTrauma = Math.min(1, this.shakeTrauma + amount);
   }
 
+  /** Apply the persisted screen-shake preference without resetting trauma. */
+  setShakeScale(scale: number): void {
+    this.shakeScale = THREE.MathUtils.clamp(scale, 0, 2);
+  }
+
   setBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
     const b = RENDER_CONFIG.camera.bounds;
     b.minX = minX;
@@ -992,7 +999,7 @@ export class CameraRig {
     if (this.shakeTrauma > 0) {
       this.shakeTime += d;
       this.shakeTrauma = Math.max(0, this.shakeTrauma - d * 1.6);
-      const s = this.shakeTrauma * this.shakeTrauma; // quadratic falloff
+      const s = this.shakeTrauma * this.shakeTrauma * this.shakeScale; // quadratic falloff
       const t = this.shakeTime * 34;
       this._shakeOffset.set(
         Math.sin(t * 1.13) * s * 0.9,

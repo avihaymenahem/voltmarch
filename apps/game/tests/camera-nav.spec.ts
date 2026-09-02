@@ -157,6 +157,25 @@ beforeEach(() => {
   });
 });
 
+describe('camera — screen shake preference', () => {
+  it('scales active trauma immediately, including turning it off', () => {
+    const rig = makeRig();
+    rig.update(1 / 60);
+    const steady = rig.camera.position.clone();
+
+    rig.setShakeScale(0);
+    rig.addShake(1);
+    rig.update(1 / 60);
+    expect(rig.camera.position.distanceTo(steady)).toBe(0);
+
+    rig.setShakeScale(2);
+    rig.addShake(1);
+    rig.update(1 / 60);
+    expect(rig.camera.position.distanceTo(steady)).toBeGreaterThan(0.1);
+    rig.dispose();
+  });
+});
+
 /* ==========================================================================
  * 1. The device classifier
  * ========================================================================== */
