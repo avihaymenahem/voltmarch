@@ -176,3 +176,30 @@ Final pre-tag gate: `npm run check:all` **passed**, all 23 workspace tasks succe
 The final run took 3m08s with 21 cached tasks; game tests and game build executed freshly. Lint,
 lint-rule/dependency tests, workspace ownership and dependency architecture also passed. Exact local
 output is `check-all-final.log`. This supersedes the earlier failed preflight checkpoints.
+
+## Published 3.16.2 receipt
+
+- Release commit: `682b0771cf4e5f7eeb7a9652e6fdeb811845e3e0`; annotated tag `v3.16.2`.
+- [Windows release](https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.2) published
+  2026-09-02 at 19:20:33 UTC. [Desktop workflow](https://github.com/avihaymenahem/voltmarch/actions/runs/33672111912)
+  succeeded, including source verification, packaging, checksums and provenance attestations.
+- [Relay workflow](https://github.com/avihaymenahem/voltmarch/actions/runs/33672111905) succeeded on
+  attempt two, including the verified Discord receipt. Attempt one timed out connecting to SSH before
+  upload; it never activated a release. The normal workflow retry recovered it. Local SSH was checked
+  read-only as a fallback, but no manual activation or host configuration change was needed.
+- Public smoke accepted build **3.16.2**, protocol **5**, with origin `app://voltmarch`.
+- All five release assets are present. Installer: 531,758,384 bytes; portable: 531,426,303 bytes.
+  The four `SHA256SUMS.txt` entries match GitHub's published asset digests. The downloaded `latest.yml`
+  hash also matches and names the 3.16.2 installer with the correct size. Installer binaries were not
+  downloaded or installed over the owner's local installation for this check.
+- Live `https://voltmarch.com/news.json` serves the 3.16.2 bulletin.
+- Final native `app://` smoke **passed all checks** on NVIDIA WebGPU, with isolated disposable user
+  data: production relay access, ten unique routes, top/left click-through, title return after its exit
+  transition, save/key-value relaunch persistence, profile export/import and fullscreen minimize/restore.
+  This exercised the rebuilt release renderer in Electron, not an end-to-end installed auto-update.
+  Log: `desktop-release-smoke-final.log` in the local artifact directory.
+- Native screenshots: `desktop-title-3.16.2.png`, `desktop-settings-3.16.2.png`,
+  `desktop-profile-3.16.2.png`; the gameplay capture waits for the separate `#loading` curtain as well
+  as Shell loading and advancing simulation. Its startup counters are not a steady-state benchmark.
+- Unrelated studio-workflow changes, including their separate handoff table row, remain uncommitted
+  and excluded from the patch. This receipt is a documentation follow-up; the release tag is unchanged.
