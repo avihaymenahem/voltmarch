@@ -3,8 +3,8 @@
 **Status:** active desktop direction, 2026-08-30.
 
 VOLTMARCH desktop now treats WebGPU as the product renderer. New visual systems are designed and
-accepted on the WebGPU desktop path first; WebGL compatibility work is maintenance for the existing
-browser fallback while that fallback still ships, not a gate on the modern desktop image.
+accepted on the WebGPU desktop path first; WebGL compatibility work is maintenance for local
+diagnostics, not a gate on the modern desktop image.
 
 ## What WebAssembly is for
 

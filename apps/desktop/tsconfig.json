@@ -1,6 +1,6 @@
 {
   "//": [
-    "Desktop shell only. Turborepo selects this workspace independently, so Pages CI",
+    "Desktop shell only. Turborepo selects this workspace independently, so general CI",
     "does not typecheck or build Electron while the complete root gate still does.",
     "Run it alone with `npm run desktop:typecheck` from the repo root.",
     "",

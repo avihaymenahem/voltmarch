@@ -9,7 +9,7 @@ die() { printf '[relay-bootstrap] %s\n' "$*" >&2; exit 1; }
 [[ ${EUID:-$(id -u)} -eq 0 ]] || die 'run as root'
 
 : "${RELAY_HOSTNAME:?set RELAY_HOSTNAME, for example relay.voltmarch.com}"
-: "${GAME_ORIGINS:?set GAME_ORIGINS, for example https://play.voltmarch.com}"
+: "${GAME_ORIGINS:?set GAME_ORIGINS, for example app://voltmarch}"
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL}"
 : "${DEPLOY_PUBLIC_KEY:?set DEPLOY_PUBLIC_KEY to the dedicated ssh-ed25519 public key}"
 

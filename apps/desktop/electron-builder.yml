@@ -39,7 +39,7 @@ files:
   - package.json
 
 # The game itself, unpacked beside the asar. It is the UNMODIFIED `vite build`
-# output — the same bytes GitHub Pages serves — and main.ts resolves it through
+# output — the shared game client packaged for desktop — and main.ts resolves it through
 # `process.resourcesPath` when packaged.
 #
 # Not inside the asar: the 6.9 MB of Ogg is already compressed, and the audio
@@ -88,7 +88,7 @@ portable:
 # Declared from day one even though it is INERT without `--publish`. It costs
 # nothing now and means the CI job that eventually arrives is a workflow file
 # rather than a config archaeology exercise. That workflow must be a NEW
-# .github/workflows/desktop.yml — never an edit to deploy.yml.
+# .github/workflows/desktop.yml — the dedicated desktop release workflow.
 publish:
   provider: github
   owner: avihaymenahem

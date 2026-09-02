@@ -151,11 +151,12 @@ export function locomotorForMoveClass(cls: MoveClass): Locomotor {
  * would have driven through a swimming squad, with no separation and no hard
  * relaxation — silent interpenetration rather than a collision.
  *
- * Air shares space with nothing, which is the caller's first test anyway; it is
- * repeated here so the predicate is total rather than nearly so.
+ * Aircraft share no ground space with other classes, but they do share the
+ * same air layer with one another. That distinction matters to presentation:
+ * a wing must separate from itself while remaining free to fly over tanks.
  */
 export function movesShareSpace(a: MoveClass, b: MoveClass): boolean {
-  if (a === MoveClass.Air || b === MoveClass.Air) return false;
+  if (a === MoveClass.Air || b === MoveClass.Air) return a === b;
   if (a === b) return true;
   // Naval is water-only. The only class it meets is the amphibious one.
   if (a === MoveClass.Naval) return b === MoveClass.Hover;

@@ -105,7 +105,6 @@ separate **Support** button opens the VOLTMARCH Discord in the system browser.
 Updates also reports the running version, edition and release status and links to the latest release
 and the complete GitHub archive.
 
-- A browser build is updated by reloading the deployed game.
 - An installed desktop build checks shortly after launch and every four hours. It can download in
   the background, then asks before restarting into the new version; an update never interrupts a
   battle.

@@ -61,8 +61,8 @@ describe('where the relay is', () => {
   });
 
   it('offers NOTHING to an https page with no relay configured', async () => {
-    // This is the shipped GitHub Pages case until a relay is deployed. It must
-    // report "not configured" rather than guessing at an address.
+    // A secure local browser preview has no packaged desktop relay configuration.
+    // It must report "not configured" rather than guessing at an address.
     pageAt('https://avihaymenahem.github.io/voltmarch/');
     const { relayUrl, unavailableReason } = await import('../src/shell/net-link');
     expect(relayUrl()).toBe('');

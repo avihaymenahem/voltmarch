@@ -115,7 +115,7 @@ Desktop WebGPU additionally ships the first cinematic atmosphere slice on Medium
 world-locked cloud cover and capped height-aware far haze are fused into the existing HDR composite,
 preserve emissive peaks, exclude sky depth and never lift undiscovered shroud. Sparse ambient dust
 reuses the lit-particle draw, emits only over visible non-water cells, yields to combat smoke and is
-scrubbed almost completely by rain. Low and the browser fallback disable this desktop-only slice.
+scrubbed almost completely by rain. Low and non-desktop diagnostic paths disable this desktop-only slice.
 
 Industrial Grid is the first dynamic time-of-day map. Its eight-minute day/dusk/night/dawn cycle is
 sampled from simulation ticks at 2 Hz, so pause freezes it, game speed advances it, and replay reaches

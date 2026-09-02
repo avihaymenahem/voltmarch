@@ -41,7 +41,7 @@ if (rendererStatus !== 0) process.exit(rendererStatus);
 
 // Playwright lives in the ROOT node_modules (it is a devDependency of the game,
 // used by tools/shoot.mjs); electron lives in DESKTOP's, because putting it in
-// the root would make every Pages CI run download a ~140 MB binary it never
+// the root would make every non-desktop CI run download a ~140 MB binary it never
 // uses. Two require roots, and `executablePath` must be passed explicitly —
 // Playwright resolves 'electron' from its own context and would not find it.
 const rootRequire = createRequire(path.join(HERE, '..', '..', 'package.json'));
@@ -286,7 +286,7 @@ await third.app.close();
  * Run 4 — CAN A DESKTOP PLAYER GET THEIR PROFILE OUT?
  *
  * THIS IS A SHIPPING GATE, NOT A NICETY. `app://voltmarch` is a different
- * storage partition from the web build, so a desktop player starts with an
+ * storage partition from local browser diagnostics, so a desktop player starts with an
  * empty profile and NO ROUTE BACK — and the campaign plan names profile
  * export/import as a HARD DEPENDENCY for exactly that reason: losing mission
  * counters is annoying, losing ten hours of campaign is a refund request.

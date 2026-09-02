@@ -10,7 +10,7 @@ const GAME = path.join(ROOT, 'apps', 'game');
 const PRODUCTION_RELAY_URL = 'wss://relay.voltmarch.com/ws';
 
 /**
- * Desktop packaging does not run inside the Pages workflow, so it must supply
+ * Desktop packaging runs separately from the relay deployment workflow, so it must supply
  * the production relay define itself. An explicit environment value still wins
  * for staging builds.
  */

@@ -642,7 +642,6 @@ export class MovementIntegrator {
       if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
 
       const cls = moveClassAt(st, i);
-      if (cls === MoveClass.Air) continue;        // aircraft share no space
 
       const ri = st.radius[i];
 
@@ -784,8 +783,8 @@ export class MovementIntegrator {
 
       st.cellX[i] = worldToCell(st.posX[i]);
       st.cellZ[i] = worldToCell(st.posZ[i]);
-      // Air was filtered out at the top of the loop; Naval sits on the
-      // waterline and does not resample.
+      // Naval sits on the waterline and does not resample; aircraft use the
+      // same in-map ride-height path as every other non-naval mover.
       if (cls !== MoveClass.Naval) {
         st.posY[i] = this.nav.rideHeight(cls, st.posX[i], st.posZ[i]);
       }

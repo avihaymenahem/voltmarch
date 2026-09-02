@@ -11,8 +11,8 @@
  * The source used to be read from an absolute path on one machine's Desktop, and the
  * output written to an absolute path too, so the script only ran for one person on one
  * disk. Both are resolved from this file's own location now. The source image itself was
- * living in the shipping brand directory, which meant a 2.4 MB file nothing ever loads was published to
- * GitHub Pages on every deploy; it is an input, so it lives beside the tool that reads it.
+ * living in the shipping brand directory, which meant a 2.4 MB file nothing ever loads was included in
+ * every public build; it is an input, so it lives beside the tool that reads it.
  */
 import sharp from 'sharp';
 import { mkdirSync, existsSync } from 'node:fs';

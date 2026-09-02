@@ -297,7 +297,7 @@ export default defineConfig(({ command, mode }) => ({
     // "the water is black", the first move could be to read the actual shader
     // line in the built bundle. That is a DEV need, and `npm run dev` serves
     // unminified modules where it is moot; what it actually bought in `dist/`
-    // was an 11.2 MB `.map` shipped beside a 2.4 MB bundle on every Pages
+    // was an 11.2 MB `.map` shipped beside a 2.4 MB bundle on every public
     // deploy, publishing full source for a debugging step nobody performs
     // against production.
     //

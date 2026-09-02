@@ -2,7 +2,7 @@
  * ============================================================================
  * src/shell/net-link.ts — where the relay is, and whether there is one
  * ============================================================================
- * The game is a static bundle on GitHub Pages; the relay is a process on a VPS
+ * The game is a shared client packaged for Windows; the relay is a process on a VPS
  * somewhere else. Nothing in the build knows that address, so it is configured
  * rather than assumed — and when it is NOT configured, multiplayer says so
  * plainly instead of failing with a socket error nobody can act on.
@@ -151,7 +151,7 @@ export function unavailableReason(): string {
 /*
  * `setRelayUrl` USED TO LIVE HERE AND IS DELETED. Its doc comment read "Used
  * from the console", and it had exactly one reference tree-wide — its own
- * definition. On the web build that made it dead code the bundler removed:
+ * definition. In the local diagnostic client that made it dead code the bundler removed:
  * `dist/assets/Shell-*.js` holds the READ of `vm.relayUrl` and contains no
  * `setItem` for it at all, so the console route it named had already stopped
  * existing. On the desktop build there is no console to use it from — the

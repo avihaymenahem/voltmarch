@@ -1692,7 +1692,7 @@ export class SteeringSolver {
       let queueSpeed = Infinity;
       // Right of travel, same convention as the obstacle sidestep in §5.
       const rightX = dirZ, rightZ = -dirX;
-      if (cls !== MoveClass.Air) {
+      {
         const range = radius * STEER_SEPARATION_RANGE_MUL + 3;
         // CAP THE SCAN, not just the accepted count. In a 200-unit blob
         // converging on one order point the query radius eventually contains
@@ -1711,8 +1711,9 @@ export class SteeringSolver {
             && (st.kind[j] === EntityKind.Infantry || st.kind[j] === EntityKind.Vehicle);
           if (jMover) {
             const jc = moveClassAt(st, j);
-            // Aircraft share no space with anything; a ship shares water with an
-            // amphibious hull and with nothing else. See `movesShareSpace`.
+            // Aircraft share the air layer with aircraft, but not with ground
+            // units; ships share water with amphibious hulls and nothing else.
+            // See `movesShareSpace`.
             if (!movesShareSpace(jc, cls)) continue;
             // A HULL DOES NOT LEAN AROUND, OR BRAKE FOR, A MAN IT IS ENTITLED
             // TO DRIVE OVER. `sim/Crush.ts` owns that entitlement; this is the

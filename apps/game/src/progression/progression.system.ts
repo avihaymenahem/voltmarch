@@ -91,7 +91,7 @@ function isTutorialRun(): boolean {
  * exactly. Nothing is persisted, so nothing has to be cleaned up.
  *
  * WHY IT IS NOT GATED ON `import.meta.env.DEV`. It would then be dead in the
- * one place it is actually needed: the GitHub Pages build is a production
+ * one place it is actually needed: the distributed desktop build is a production
  * bundle, and that is where this project's bugs are reported from. A flag that
  * only works on localhost is a flag that does not work. It is undiscoverable
  * rather than unavailable — no UI exposes it — and it announces itself loudly

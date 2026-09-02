@@ -19,7 +19,7 @@ unprivileged Node service.
 
    ```bash
    RELAY_HOSTNAME=relay.voltmarch.com \
-   GAME_ORIGINS=https://play.voltmarch.com \
+   GAME_ORIGINS=app://voltmarch \
    LETSENCRYPT_EMAIL=operator@example.com \
    DEPLOY_PUBLIC_KEY='ssh-ed25519 AAAA... voltmarch-hostinger-deploy' \
    bash bootstrap-host.sh
@@ -38,10 +38,9 @@ unprivileged Node service.
    builds, uploads, activates, probes through loopback, then probes through
    Cloudflare. Any activation failure restores the previous release.
 
-The GitHub Pages workflow serving `play.voltmarch.com` bakes
-`wss://relay.voltmarch.com/ws` into the client. The game still probes the relay
-before enabling Multiplayer, so a relay outage does not leave a dead lobby
-button.
+The Windows desktop workflow bakes `wss://relay.voltmarch.com/ws` into the packaged
+client. The desktop game still probes the relay before enabling Multiplayer, so a
+relay outage does not leave a dead lobby button.
 
 ## Files
 
@@ -55,9 +54,8 @@ button.
 ## Routine releases
 
 Push the coordinated `v*.*.*` release tag. The tag publishes the Windows desktop
-release and deploys the relay from the exact same commit; the `main` push deploys
-the matching GitHub Pages client. `workflow_dispatch` remains available for an
-operator to redeploy or recover an exact ref manually. The relay updates
+release and deploys the relay from the exact same commit. `workflow_dispatch` remains
+available for an operator to redeploy or recover an exact ref manually. The relay updates
 `VM_REQUIRE_BUILD` during activation, preventing two different deterministic
 builds from entering the same match.
 

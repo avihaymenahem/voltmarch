@@ -93,9 +93,6 @@ function list(name: string, fallback: string[]): string[] {
  */
 export const DESKTOP_ORIGIN = 'app://voltmarch';
 
-/** The canonical browser build; VM_ORIGINS must never remove it. */
-export const PUBLIC_WEB_ORIGIN = 'https://play.voltmarch.com';
-
 export const CONFIG = {
   /** Bind address. LOOPBACK BY DEFAULT — nginx is the only thing that should reach this. */
   host: process.env.VM_HOST ?? '127.0.0.1',
@@ -117,13 +114,11 @@ export const CONFIG = {
    * `DESKTOP_ORIGIN` is unioned in rather than listed as a default, because
    * `VM_ORIGINS` REPLACES the default. See its own comment.
    */
-  origins: [DESKTOP_ORIGIN, PUBLIC_WEB_ORIGIN, ...list('VM_ORIGINS', [
-    PUBLIC_WEB_ORIGIN,
-    'https://avihaymenahem.github.io',
+  origins: [DESKTOP_ORIGIN, ...list('VM_ORIGINS', [
     'http://localhost:5173',
     'http://localhost:4173',
     'http://127.0.0.1:5173',
-  ]).filter((o) => o !== DESKTOP_ORIGIN && o !== PUBLIC_WEB_ORIGIN)],
+  ]).filter((o) => o !== DESKTOP_ORIGIN)],
 
   /**
    * Set to '1' to accept any `Origin`. DEVELOPMENT ONLY, and the process
@@ -167,8 +162,8 @@ export const CONFIG = {
    * The client build that may connect, or empty to accept any.
    *
    * ENFORCED, NOT ADVISORY — unlike `ReplayHeader.buildVersion`, which only
-   * warns. GitHub Pages can serve a cached bundle to one player and a fresh one
-   * to the other, and two different builds of a deterministic simulation desync
+   * warns. A stale desktop bundle can meet a fresh one, and two different builds
+   * of a deterministic simulation desync
    * on contact. Refusing the pairing is a clear message; a desync forty seconds
    * in is not.
    */

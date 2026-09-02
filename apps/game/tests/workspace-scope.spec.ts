@@ -1,23 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string): string => readFileSync(path, 'utf8');
 
 describe('workspace deployment scopes', () => {
-  it('does not run the playable-site workflow for marketing or relay-only changes', () => {
-    const workflow = read('.github/workflows/deploy.yml');
-    for (const path of [
-      "'apps/game/**'",
-      "'packages/game-types/**'",
-      "'packages/protocol/**'",
-      "'package-lock.json'",
-      "'turbo.json'",
-    ]) {
-      expect(workflow).toContain(path);
-    }
-    expect(workflow).not.toContain("'apps/website/**'");
-    expect(workflow).not.toContain("'apps/relay/**'");
-    expect(workflow).toContain('fetch-depth: 0');
+  it('does not retain a public browser deployment path', () => {
+    expect(existsSync('.github/workflows/deploy.yml')).toBe(false);
+    expect(existsSync('apps/game/public/CNAME')).toBe(false);
   });
 
   it('anchors local affected checks to the remote mainline when available', () => {
@@ -30,7 +19,7 @@ describe('workspace deployment scopes', () => {
     expect(runner).toContain("env.TURBO_SCM_HEAD = 'HEAD'");
   });
 
-  it('documents the Pages workspace root that preserves its Functions directory', () => {
+  it('documents the marketing-site workspace root that preserves its Functions directory', () => {
     const docs = read('apps/website/README.md');
     expect(docs).toContain('- Root directory: `apps/website`');
     expect(docs).toContain('- Build command: `npm run build`');
@@ -49,7 +38,6 @@ describe('public README contract', () => {
 
   it('points the public calls to action at the live destinations', () => {
     const readme = read('README.md');
-    expect(readme).toContain('https://play.voltmarch.com/');
     expect(readme).toContain('https://github.com/avihaymenahem/voltmarch/releases/latest');
     expect(readme).toContain('https://discord.gg/pvJGJyafU3');
     expect(readme).toContain('docs/progress/03-faction-architecture.png');

@@ -20,7 +20,7 @@
  * The setting is visible in Diagnostics and is intentionally stored separately
  * from earned progression: enabling it changes what the gate answers, never
  * writes unlock rewards into the profile. On desktop the preference lives in
- * Electron userData through the native storage bridge; the web build uses its
+ * Electron userData through the native storage bridge; local diagnostics use their
  * platform fallback. Restore Defaults turns it off and removes the key.
  *
  * ----------------------------------------------------------------------------

@@ -25,10 +25,10 @@ npm run desktop        # build main + preload, then launch
 
 ## Workspace boundary
 
-This directory owns its package metadata so Turborepo can select it independently. Pages CI filters
-to `@voltmarch/game...`; desktop release CI installs the unified lockfile with lifecycle scripts
-disabled and then rebuilds Electron alone. That keeps dependency resolution reproducible without
-downloading the desktop runtime in the web deployment job.
+This directory owns its package metadata so Turborepo can select it independently. Desktop release
+CI installs the unified lockfile with lifecycle scripts disabled and then rebuilds Electron alone.
+That keeps dependency resolution reproducible without downloading the desktop runtime into unrelated
+workspace checks.
 
 ## The three things that are easy to get wrong
 
@@ -72,14 +72,14 @@ than assuming.
 
 **The first three are edited from Options → Graphics → Display now**, along with window mode,
 window size and which monitor. That section is desktop-only: it renders from
-`apps/game/src/platform/desktop.ts`, which returns null in a browser, so the web build draws nothing extra
+`apps/game/src/platform/desktop.ts`, which returns null in local browser diagnostics, so the shared client draws nothing extra
 and downloads nothing extra.
 
 Two things about that section are worth knowing before changing it.
 
 All renderer-owned persistent state uses the native bridge. Small versioned records share
 `userData/storage/state.json`; binary snapshots are individual files under
-`userData/storage/saves/`. The browser build keeps localStorage/IndexedDB as its web fallback.
+`userData/storage/saves/`. Local browser diagnostics may use localStorage/IndexedDB as a fallback.
 Electron selects `filesystem` first and only consults the old stores to import a pre-v5 value.
 
 **There are two window modes, not three, and it is a platform fact.** Chromium has no
@@ -168,10 +168,9 @@ false-positive procedure are in [`docs/DESKTOP_DISTRIBUTION.md`](../../docs/DESK
 The Discord announcement is deliberately not owned by the Windows workflow. The tag also deploys
 the multiplayer relay, so `.github/workflows/deploy-relay.yml` waits for both the verified public
 relay handshake and the complete four-file Windows updater set before posting through the
-`DISCORD_RELEASE_WEBHOOK_URL` repository secret. It also checks whether GitHub Pages successfully
-deployed the exact tagged commit. The card names only those verified surfaces, identifies anything
-not included in that deploy, carries the commit SHA, and attaches the complete generated notes.
-This prevents a successful installer build from advertising a relay or web build that failed.
+`DISCORD_RELEASE_WEBHOOK_URL` repository secret. The card names only those verified surfaces,
+identifies anything not included in that deploy, carries the commit SHA, and attaches the complete
+generated notes. This prevents a successful installer build from advertising a relay that failed.
 
 ## Verification
 

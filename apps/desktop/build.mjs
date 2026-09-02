@@ -17,7 +17,7 @@
  * `desktop/build.mjs`'s header says the renderer is not built there. Add why none of the
  * standard integrations were used, because it will be proposed again: **electron-vite**
  * *replaces* `vite build` and takes ownership of the renderer, which is the one thing that must
- * not move if `dist/` is to stay byte-for-byte the Pages artifact. **Electron Forge's Vite
+ * not move if `dist/` is to stay byte-for-byte the shared client artifact. **Electron Forge's Vite
  * plugin** is still marked experimental and mandates three config files plus a `main` pointing
  * into `.vite/build`. **vite-plugin-electron** is a direct violation of the plugin-free rule
  * stated in `vite.config.ts`. The main process here is small and imports only `electron`, so

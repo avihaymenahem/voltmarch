@@ -1,10 +1,10 @@
 {
   "name": "voltmarch-monorepo",
-  "version": "3.16.0",
+  "version": "3.16.1",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
-  "description": "VOLTMARCH monorepo: browser game, desktop shell, multiplayer relay, launch site, and shared game packages.",
+  "description": "VOLTMARCH monorepo: Windows desktop game, desktop shell, multiplayer relay, launch site, and shared game packages.",
   "workspaces": [
     "apps/*",
     "packages/*"

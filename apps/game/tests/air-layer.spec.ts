@@ -1006,7 +1006,7 @@ function airBlindTerrain(base: ITerrain): ITerrain {
 }
 
 describe('an aircraft can actually leave the factory', () => {
-  it('egresses onto a map whose passability grid has no bit for Air', async () => {
+  it('egresses multiple aircraft into separate lanes on a map with no Air bit', async () => {
     /*
      * THE BUG, IN ONE SENTENCE: `Production.findEgressSpot` asked
      * `terrain.isPassable(cx, cz, Locomotor.Air)`, which is false in every cell
@@ -1072,24 +1072,35 @@ describe('an aircraft can actually leave the factory', () => {
     // Asserted before the order, so "no aircraft came out" cannot secretly mean
     // "the sidebar would have greyed the cameo anyway".
     expect(service.availability(p, vind.publicId).ok, 'not buildable in this rig').toBe(true);
-    service.enqueue(p, vind.publicId);
-    // Twice the build time, so "still queued" cannot mean "still building".
-    run(Math.ceil(vind.buildTime / SIM_DT) * 2 + 60);
+    service.enqueue(p, vind.publicId, 3);
+    // Four times the build time, so "still queued" cannot mean "still building"
+    // and all three completed items have had an egress attempt.
+    run(Math.ceil(vind.buildTime / SIM_DT) * 4 + 60);
 
     let built = 0;
+    const aircraft: number[] = [];
     for (let a = 0; a < st.aliveCount; a++) {
       const i = st.alive[a];
-      if (st.kind[i] === EntityKind.Vehicle && st.defId[i] === vind.defId) built++;
+      if (st.kind[i] === EntityKind.Vehicle && st.defId[i] === vind.defId) {
+        built++;
+        aircraft.push(i);
+      }
     }
     const queued = world.player(p).queues[BuildTab.Vehicles].items.length;
-    expect(built, 'the aircraft never left the factory').toBe(1);
+    expect(built, 'the aircraft never left the factory').toBe(3);
     expect(queued, 'the queue is still holding a finished aircraft').toBe(0);
-    const aircraft = st.byKind[EntityKind.Vehicle].find(
-      (i) => st.defId[i] === vind.defId,
-    );
     expect(aircraft, 'the produced aircraft vanished before its stance could be read')
-      .not.toBeUndefined();
-    expect(st.stance[aircraft!], 'aircraft should not undo a short retreat by auto-chasing')
+      .toHaveLength(3);
+    for (let a = 0; a < aircraft.length; a++) {
+      for (let b = a + 1; b < aircraft.length; b++) {
+        expect(Math.hypot(
+          st.posX[aircraft[a]] - st.posX[aircraft[b]],
+          st.posZ[aircraft[a]] - st.posZ[aircraft[b]],
+        ), 'newly produced aircraft still share one spawn point')
+          .toBeGreaterThan(3);
+      }
+    }
+    expect(st.stance[aircraft[0]], 'aircraft should not undo a short retreat by auto-chasing')
       .toBe(Stance.Defensive);
   });
 
@@ -1148,7 +1159,7 @@ describe('an aircraft can actually leave the factory', () => {
   });
 });
 
-describe('an aircraft with nothing to do', () => {
+describe('aircraft spacing and idle behaviour', () => {
   it('loiters at cruise altitude and never lands, because there is nowhere to', () => {
     // THE DESIGN DECISION, ASSERTED. This game has no airfield, no rearm and
     // no fuel; `Movement` holds `MoveClass.Air` at `ground + AIR_CRUISE_ALTITUDE`
@@ -1174,11 +1185,10 @@ describe('an aircraft with nothing to do', () => {
     expect(st.posZ[i]).toBeCloseTo(180, 4);
   });
 
-  it('shares no space — two of them stack, two tanks do not', () => {
-    // `Steering` and `Movement` both skip `MoveClass.Air` in the separation
-    // pass ("aircraft share no space"). The consequence a player sees is that
-    // four gunships over one target is legal and there is no air traffic; the
-    // consequence a test can see is that co-located aircraft stay co-located.
+  it('separates aircraft from one another while staying above ground units', () => {
+    // Aircraft do not collide with the ground layer, but a wing is still a
+    // visible group of airframes. Both steering and relaxation must open a
+    // compressed wing without making aircraft dodge tanks below them.
     // 0.4 m apart, not zero: `relax` skips an EXACT overlap (`d2 < 1e-9` has no
     // push direction), so a zero-distance pair would prove nothing about either
     // class. Both radii are 2, so 0.4 is deep inside the 4 m they each want.
@@ -1197,8 +1207,32 @@ describe('an aircraft with nothing to do', () => {
     const gst = ground.world.store;
     const groundGap = Math.hypot(gst.posX[g0] - gst.posX[g1], gst.posZ[g0] - gst.posZ[g1]);
 
-    expect(airGap, 'the relaxation pass pushed two aircraft apart').toBeCloseTo(START, 4);
+    expect(airGap, 'the relaxation pass left two aircraft stacked').toBeGreaterThan(START * 3);
     expect(groundGap, 'two tanks in one spot must be separated').toBeGreaterThan(START * 3);
+  });
+
+  it('opens a compressed wing even when every aircraft starts at one point', () => {
+    const rig = makeFlightRig();
+    const planes: number[] = [];
+    for (let k = 0; k < 4; k++) {
+      const i = spawnMover(rig, 240, 240, Locomotor.Air);
+      rig.world.store.orderX[i] = 320;
+      rig.world.store.orderZ[i] = 320;
+      rig.world.store.state[i] = UnitState.Moving;
+      planes.push(i);
+    }
+    rig.step(SIM_HZ * 4);
+    const st = rig.world.store;
+    let nearest = Infinity;
+    for (let a = 0; a < planes.length; a++) {
+      for (let b = a + 1; b < planes.length; b++) {
+        nearest = Math.min(nearest, Math.hypot(
+          st.posX[planes[a]] - st.posX[planes[b]],
+          st.posZ[planes[a]] - st.posZ[planes[b]],
+        ));
+      }
+    }
+    expect(nearest, 'the moving wing still travels as one point').toBeGreaterThan(2.5);
   });
 });
 

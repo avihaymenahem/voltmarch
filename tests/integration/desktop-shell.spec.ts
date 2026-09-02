@@ -222,7 +222,7 @@ describe('desktop flags', () => {
  * ========================================================================== */
 
 describe('desktop app url', () => {
-  it('preserves the query string the web build already reads', () => {
+  it('preserves the query string the shared client already reads', () => {
     const q = flagsFromArgv(['electron', '.', '--vm-map=sunder-atoll', '--vm-seed=4242']);
     const url = appUrl(q);
     expect(url.startsWith(`${ORIGIN}/index.html?`)).toBe(true);
@@ -584,12 +584,10 @@ describe('the packaged desktop renderer carries the production relay', () => {
   const builderPath = path.join(REPO, 'apps/desktop', 'renderer-build.mjs');
   const builder = readFileSync(builderPath, 'utf8');
 
-  it('uses the same relay URL as the Pages deployment', () => {
+  it('uses the production relay URL baked into the desktop release', () => {
     const relay = /PRODUCTION_RELAY_URL\s*=\s*'([^']+)'/.exec(builder)?.[1];
     expect(relay).toBe('wss://relay.voltmarch.com/ws');
 
-    const workflow = readFileSync(path.join(REPO, '.github', 'workflows', 'deploy.yml'), 'utf8');
-    expect(workflow).toContain(`VITE_RELAY_URL: ${relay}`);
   });
 
   it('makes both package and preview builds use the configured renderer builder', () => {
@@ -737,8 +735,8 @@ describe('desktop shell import boundary', () => {
   it('is not reached INTO either — the game never imports the shell', () => {
     /*
      * The mirror of the rule above, and the one that would actually break the
-     * web build: an import from `src/` into `desktop/` would pull electron
-     * types — and on a bad day, code — into the Pages bundle. It is why
+     * shared client build: an import from `src/` into `desktop/` would pull electron
+     * types — and on a bad day, code — into the shared client bundle. It is why
      * `src/platform/desktop.ts` DECLARES the bridge shapes rather than
      * importing them, and why the two `DisplayState` checks above exist.
      */

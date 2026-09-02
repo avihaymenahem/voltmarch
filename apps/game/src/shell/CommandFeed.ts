@@ -40,17 +40,17 @@ export const COMMAND_FEED_URL = 'https://voltmarch.com/news.json';
 
 export const OFFLINE_COMMAND_FEED: CommandFeed = {
   version: 1,
-  updatedAt: '2026-09-01T18:14:23Z',
+  updatedAt: '2026-09-02T17:21:00Z',
   items: [
     {
-      id: 'update-3-16-0',
+      id: 'update-3-16-1',
       kind: 'update',
-      title: 'VOLTMARCH 3.16.0 is live',
-      summary: 'The rebuilt Command Deck scales cleanly, mixed selections scroll in a three-column '
-        + 'grid, Easy pressure is fairer, and the new bronze civic monument replaces the legacy prop.',
-      date: '2026-09-01',
+      title: 'VOLTMARCH 3.16.1 is live',
+      summary: 'Windows desktop is now the supported gameplay release, retired browser deployment '
+        + 'paths are gone, and aircraft spawn and move in separated deterministic formations.',
+      date: '2026-09-02',
       actionLabel: 'Read release notes',
-      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.0',
+      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.1',
     },
   ],
 };

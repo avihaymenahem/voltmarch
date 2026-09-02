@@ -9,7 +9,6 @@ import {
 describe('Cloudflare Web Analytics boundary', () => {
   it('accepts the public domain and rejects desktop, dev and lookalike hosts', () => {
     expect(cloudflareAnalyticsEligible({ protocol: 'https:', hostname: 'voltmarch.com' })).toBe(true);
-    expect(cloudflareAnalyticsEligible({ protocol: 'https:', hostname: 'play.voltmarch.com' })).toBe(true);
     expect(cloudflareAnalyticsEligible({ protocol: 'app:', hostname: 'voltmarch' })).toBe(false);
     expect(cloudflareAnalyticsEligible({ protocol: 'http:', hostname: 'localhost' })).toBe(false);
     expect(cloudflareAnalyticsEligible({ protocol: 'https:', hostname: 'voltmarch.com.example' })).toBe(false);

@@ -15,7 +15,7 @@
  * ----------------------------------------------------------------------------
  * This is game code. It cannot import from `desktop/` — `tests/desktop-shell.spec.ts`
  * enforces that boundary in the other direction and the same reasoning applies
- * here: the web build must not gain a byte because a desktop target exists.
+ * here: the shared client must not gain a byte because a desktop target exists.
  * So the shapes below are declared, not shared, and
  * `tests/desktop-shell.spec.ts` asserts they still match the shell's own types.
  * A duplicated interface that a test compares is honest; an import across the
@@ -29,7 +29,7 @@
  * against an unpacked `dist/`, or a `desktop:build` that did not re-run leaves
  * them mismatched. The current version and specifically named, shape-compatible
  * predecessors are admitted; everything else degrades to WEB BEHAVIOUR: no
- * Display section, no relaunch button, exactly as the browser build. A broad
+ * Display section, no relaunch button, exactly as the local browser harness. A broad
  * `>= 1` check would let a v1 preload reach `displayState()` and throw `is not
  * a function` inside the options screen.
  *

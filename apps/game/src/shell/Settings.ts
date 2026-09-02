@@ -1017,8 +1017,7 @@ export class SettingsScreen implements Screen {
    * Release management used to be buried at the top of Diagnostics. That made
    * a normal player wade into a developer report to answer the ordinary
    * question "am I current?". This tab is deliberately read-only: installer
-   * actions go through Electron's updater bridge, while browser builds link to
-   * the same public GitHub release history.
+   * actions go through Electron's updater bridge and the same public GitHub release history.
    * ------------------------------------------------------------------------ */
 
   private renderUpdates(body: HTMLElement): void {

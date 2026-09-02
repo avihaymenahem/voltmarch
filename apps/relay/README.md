@@ -122,11 +122,10 @@ which the client, unable to see an HTTP status, reports to the player as "the
 match server is not answering". It weakens nothing: no browser can mint an `app:`
 origin, and the browser-driven case is the only one this check exists to close.
 
-**`https://play.voltmarch.com` is also unconditional.** It is the canonical
-GitHub Pages browser build, and a host-level `VM_ORIGINS` value must not turn a
-domain-only routing change into a 401 at the WebSocket upgrade. The deployment
-smoke test uses that exact Origin. `voltmarch.com` is the marketing site and has
-no reason to open a match socket.
+The relay now serves the Windows desktop game only. `app://voltmarch` is the
+packaged client's unconditional origin; a host-level `VM_ORIGINS` value must not
+remove it or turn a desktop release into a 401 at the WebSocket upgrade.
+`voltmarch.com` is the marketing site and has no reason to open a match socket.
 
 ### Resource caps
 
@@ -239,8 +238,8 @@ two high-severity advisories that are precisely this server's threat model:
   *below* the message boundary, so no application-level rate limit can see it.
 
 **The relay deployment workflow runs `npm run audit` before packaging.** Keep `ws` pinned
-exactly and treat a high-severity audit result as a deployment failure; Pages CI does not
-install or test the relay because it filters to the game workspace.
+exactly and treat a high-severity audit result as a deployment failure; the Windows release
+workflow does not package the relay because relay deployment remains a separate server job.
 
 ### What lockstep cannot protect
 
@@ -271,15 +270,15 @@ Two things worth reading before editing them:
   code and executes it. Turning that flag on does not harden the service, it
   stops node from starting.
 - **Set `VM_REQUIRE_BUILD`** to the deployed client version once you are past
-  testing. GitHub Pages can serve a cached bundle to one player and a fresh one
-  to the other; two builds of a deterministic simulation desync on contact, and
+  testing. Two different desktop builds of a deterministic simulation desync on
+  contact, and
   refusing the pairing is far kinder than a desync forty seconds in. Read the
   number out of `package.json`: the commented example in the unit file said
   `1.33.0` for three major versions, and uncommenting it as written would have
   refused every real client.
 - **`VM_ORIGINS` REPLACES the compiled list.** Whatever is on that line is the
-  operator-provided browser allowlist. The fixed desktop and canonical web origins
-  are unioned in afterward. Measured: with the shipped unit's single entry,
+  operator-provided development allowlist. The fixed desktop origin is unioned in
+  afterward. Measured: with the shipped unit's single entry,
   `http://localhost:5173` — which IS in `config.ts`'s fallback array — is
   answered 401. The desktop origin is the exception and must not be added there.
 - **Obtain the certificate BEFORE enabling the nginx site.** `certbot --nginx`

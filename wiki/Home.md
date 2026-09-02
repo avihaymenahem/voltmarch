@@ -1,6 +1,6 @@
 # VOLTMARCH
 
-VOLTMARCH is an original real-time strategy game for desktop and the browser. You drive a
+VOLTMARCH is an original real-time strategy game for Windows desktop. You drive a
 construction vehicle somewhere worth building, unfold it into a base, mine ore, spend it on an army,
 and take the other side's base apart before they take yours. Four playable factions, an ore economy,
 a power grid that gates production, fog of war, engineer capture, neutral civilian structures worth
@@ -13,8 +13,7 @@ its par. It is deliberately walled off from skirmish progression: an operation
 advances no mission and grants no unlock, and the same page says why.
 
 There is also hosted deterministic-lockstep multiplayer: head-to-head 1v1 and two-human co-op
-against one or two AI armies. The public game at
-[play.voltmarch.com](https://play.voltmarch.com/) connects to the production relay at
+against one or two AI armies. The Windows desktop client connects to the production relay at
 `relay.voltmarch.com`; the title screen probes it before enabling Multiplayer, so an outage fails
 closed instead of leaving a dead lobby. See [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer)
 for the lockstep model, lobby rules and self-hosting notes.

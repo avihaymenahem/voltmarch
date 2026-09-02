@@ -22,15 +22,14 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.16.0**.
-- The `v3.16.0` tag is the coordinated desktop/web/relay release baseline.
+- Public version: **3.16.1**.
+- The `v3.16.1` tag is the coordinated desktop/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
-- `play.voltmarch.com` is the playable GitHub Pages build.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
 - GitHub Wiki is generated from the repository's `wiki/` directory by
   `.github/workflows/wiki.yml`. Never edit the detached wiki repository as a second source of truth.
 - The in-game Manual uses the same 19 files and remains a lazy build input. Wiki changes trigger
-  the game Pages workflow and the GitHub Wiki publisher.
+  the GitHub Wiki publisher.
 - The old `marketing/facebook-screenshots/` set was deliberately deleted because it no longer
   represented the game. Do not restore it; create new captures against the current build when a
   new marketing set is requested.
@@ -82,7 +81,7 @@ Verify rather than trusting that sentence after time has passed.
 | Windows signing, SmartScreen, checksums and antivirus disputes | `docs/DESKTOP_DISTRIBUTION.md` |
 | Model conditioning, LOD, texture and shadow budgets | `docs/ASSET_OPTIMIZATION_PIPELINE.md` |
 | Environment dirt/decals/props/atmosphere rollout | `docs/ENVIRONMENT_REALISM_PLAN.md` |
-| Future stable indirect lighting, authored map composition and material cohesion phases 2–4 | `docs/REALISM_PHASES_2_TO_4_PLAN.md` |
+| Current project decisions, closed realism work and rejected experiments | `docs/PROJECT_STATE.md` |
 | Audio inventory and remaining voice work | `docs/VOICEOVER_PLAN.md` and `docs/voice/` |
 | Soundtrack rights and masters | `docs/MUSIC_PROVENANCE.md` |
 | Third-party rights | root `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses/` |
@@ -90,7 +89,7 @@ Verify rather than trusting that sentence after time has passed.
 | Graphics measurements and rejected approaches | `docs/RENDER_FINDINGS.md`, `docs/SPEC_DRIFT_AUDIT.md` |
 | Cross-cutting AAA technical roadmap and ordered batches | `docs/AAA_TECHNICAL_ROADMAP.md`; Batches 9-10 evidence in `docs/reviews/batch9-10-framegraph-visual-depth.md` |
 | Boot phase definitions and current browser/Electron baselines | `docs/BOOT_BASELINE.md`, compact reports in `artifacts/perf/boot-baseline-*.json` |
-| Rejected Chrono Miner offline runtime-cook proof | `docs/RUNTIME_ASSET_COOK_POC.md`, `tools/asset-cooks/` |
+| Rejected Chrono Miner offline runtime-cook proof | `docs/PROJECT_STATE.md`, `tools/asset-cooks/` |
 
 Do not turn this handoff into another backlog. Put durable decisions in the owning document and open
 work in `TODO.md`; keep this page as the discovery layer.
@@ -134,8 +133,8 @@ These are host-level tools, not repository dependencies. A new host may need the
   Use its `meshy-3d-generation` skill for paid geometry/retexture/remesh calls.
 - **Image generation skill** is used for coherent concept art and cardinal-view sheets before Meshy
   when a bitmap reference is needed. It is not a substitute for the local 3D conditioning pipeline.
-- Browser and Windows-control plugins are available for live web/desktop validation. Keep one game
-  browser instance unless a multiplayer test explicitly needs two.
+- Browser and Windows-control plugins are available for local diagnostics and desktop validation.
+  Keep one game browser instance unless a multiplayer test explicitly needs two.
 
 The Meshy API key is local, gitignored configuration. Never print it, commit it, place it in this
 document or copy it into prompts/logs.
@@ -228,8 +227,8 @@ dozer into its imported shell.
   extend that vocabulary instead of creating route-local modal skins. The Service Record owns the
   always-available Commander Identity editor and persists the same `gameplay.commanderName` consumed
   by Multiplayer, chat, results and replays.
-- Browser builds do not show Quit because a page cannot reliably close its own tab. Desktop keeps a
-  real Quit action through the validated Electron bridge. The pause exit is the prominent
+- Local browser/dev harnesses do not show Quit because a page cannot reliably close its own tab.
+  Desktop keeps a real Quit action through the validated Electron bridge. The pause exit is the prominent
   `Evacuate To Main Menu` danger action, not a low-contrast generic row.
 - Do not pause loading, rendering or simulation solely because the desktop window loses focus.
 - Electron disables renderer backgrounding at the process, window-construction and live-WebContents
@@ -313,9 +312,9 @@ dozer into its imported shell.
 
 This is an index, not a duplicate checklist:
 
-- **Engineering backlog:** `TODO.md` — currently multiplayer seat/topology follow-ups, 3–4 player PvP,
-  LAN/self-hosting, desktop distribution/signing and the bounded WebGPU visual-performance
-  experiments below.
+- **Engineering backlog:** `TODO.md` — registered tasks only. It is intentionally empty until a task
+  is assigned an ID; stream-specific acceptance gates live in the owner documents below and in
+  `docs/PROJECT_STATE.md`.
 - **Asset conversion:** `docs/ASSET_CONVERSION_MAP.md` — continue imported assets only through the
   approved pipeline; do not infer completion from concept folders alone.
 - **Environment realism:** `docs/ENVIRONMENT_REALISM_PLAN.md` — contextual dirt/leaf/rust/gravel
@@ -325,15 +324,8 @@ This is an index, not a duplicate checklist:
   path is observable in ordinary matches. Industrial
   Grid is the deterministic eight-minute day/night pilot; it animates existing uniforms and one
   pooled lamp-decal gain only, with runtime PMREM rebakes explicitly forbidden after a measured
-  ~90 ms WebGPU hitch. The phases 2–4 implementation now covers all seven shipped maps through the normal
-  WebGPU path: one retained 64×64 irradiance field, bounded map-specific semantic context grammars/lights,
-  attacker-aligned damage-to-rubble continuity, causal shoreline/salt/snow state and shared terrain, road,
-  structure, unit, procedural-prop and authored-environment material response. The full local matrix passes
-  with 4,096 probes per map, stable camera-pan simulation hashes, 47–57 colour draws and zero post-warmup
-  program growth. The rollout adds no product query flag, runtime asset, render pass, draw call, material
-  clone, shader variant or worker pool; bounded scalar planners stay on the main thread because dispatch
-  overhead would cost more than their work. Device-vendor and release gates remain separately owned by
-  `docs/REALISM_PHASES_2_TO_4_PLAN.md`; that plan is not release authority.
+  ~90 ms WebGPU hitch. Closed phases 2–4 evidence and remaining device/release gates are recorded in
+  `docs/PROJECT_STATE.md`; that record is not release authority.
 - **SSGI checkpoint:** the first bounded candidate was rejected after live tactical views exposed reduced-
   resolution sampling rows, faction-colour contamination and whole-scene dulling. The corrected WebGPU
   candidate is accepted: High defaults to low SSGI and Ultra to medium SSGI, at 0.5 resolution with a

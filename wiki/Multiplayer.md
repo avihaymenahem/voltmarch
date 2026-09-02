@@ -2,8 +2,8 @@
 
 > ## Read this first
 >
-> **The public relay is live.** Open the current browser build at
-> [play.voltmarch.com](https://play.voltmarch.com/). It connects to
+> **The public relay is live.** Download the current Windows desktop release from the
+> [GitHub releases page](https://github.com/avihaymenahem/voltmarch/releases). It connects to
 > `wss://relay.voltmarch.com/ws`, and the title screen probes that relay before enabling Multiplayer.
 >
 > If the relay is unavailable, Multiplayer stays disabled rather than opening a dead lobby. The
@@ -47,18 +47,18 @@ The client resolves its relay address in this order: `?relay=` on the URL → th
 store → a `VITE_RELAY_URL` baked in at build time → **`ws://localhost:8787/ws` if and only
 if the page is served from `localhost` or `127.0.0.1`** → nothing.
 
-That last fallback makes multiplayer work out of the box in local development. The published build
-does not rely on it: GitHub Actions bakes `wss://relay.voltmarch.com/ws` into the game served from
-`play.voltmarch.com`.
+That last fallback makes multiplayer work out of the box in local development. The published desktop
+build does not rely on it: the Windows release workflow bakes `wss://relay.voltmarch.com/ws` into the
+packaged game.
 
 Before it lets you into the lobby the client probes the relay — it opens a socket, greets it, and
 requires an answer within four seconds. A relay that is not running produces *"the match server is
 not answering"* rather than a hang.
 
 **Hosting it for real is more work than it looks.** The relay binds to `127.0.0.1` by default and
-speaks plain WebSocket; a browser refuses a plaintext socket from a secure page, so a public
-deployment needs a TLS terminator and a real hostname — you cannot run it on a bare IP. The
-repository ships an nginx template and a systemd unit for exactly this, both with placeholder
+the released Windows client expects the secure `wss://relay.voltmarch.com/ws` endpoint. A public
+deployment therefore needs a TLS terminator and a real hostname — you cannot run it on a bare IP.
+The repository ships an nginx template and a systemd unit for exactly this, both with placeholder
 hostnames.
 
 ---
@@ -73,7 +73,7 @@ the relay. Then either:
 
 - **Host a match.** Choose a format — head-to-head 1v1, co-op 2v1 AI, or co-op 2v2 AI — then choose
   the human and AI factions, each AI difficulty, a compatible battlefield and a visibility.
-  *Public* puts the room in the browser; *Invite only* gives you a six-character code to send to one
+  *Public* puts the room in the open lobby list; *Invite only* gives you a six-character code to send to one
   person. Codes are single-use, expire after ten minutes, and omit easily confused characters.
 - **Join with a code.** Type the six characters and press Enter.
 

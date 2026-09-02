@@ -13,11 +13,10 @@ import { pathToFileURL } from 'node:url';
 const EMBED_DESCRIPTION_LIMIT = 3800;
 const MAX_ATTEMPTS = 4;
 const RELEASE_FIELDS = 'name,body,url,tagName,publishedAt,assets';
-const DEPLOY_TARGETS = ['desktop', 'relay', 'web'];
+const DEPLOY_TARGETS = ['desktop', 'relay'];
 const TARGET_COPY = {
   desktop: { label: 'Windows desktop', url: null },
   relay: { label: 'Multiplayer relay', url: null },
-  web: { label: 'Browser game', url: 'https://play.voltmarch.com' },
 };
 
 function required(value, name) {

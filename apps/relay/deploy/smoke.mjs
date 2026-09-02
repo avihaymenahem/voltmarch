@@ -10,7 +10,7 @@ import WebSocket from 'ws';
 const [url, origin, build, protocolArg] = process.argv.slice(2);
 const protocol = Number(protocolArg);
 if (!url || !origin || !build || !Number.isSafeInteger(protocol) || protocol < 1) {
-  console.error('usage: node smoke.mjs <ws-url> <https-origin> <build-version> <protocol-version>');
+  console.error('usage: node smoke.mjs <ws-url> <origin> <build-version> <protocol-version>');
   process.exit(2);
 }
 

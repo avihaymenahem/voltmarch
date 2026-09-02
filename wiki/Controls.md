@@ -52,9 +52,9 @@ Notes that matter:
 - **Pan speed scales with zoom.** The further out you are, the faster a keypress moves you.
 - **Right-click belongs to battlefield orders.** It never becomes a camera drag during a match;
   use middle-drag or `Space`+left-drag to move the camera without stealing a command.
-- **Lock Mouse To Window is on by default in the Windows desktop build.** It confines the pointer only
+- **Lock Mouse To Window is on by default.** It confines the pointer only
   during live gameplay, keeps contextual cursors, HUD hover and internal panel scrolling intact, and
-  releases for menus, pause, focus loss and visibility changes. Browser builds do not use it.
+  releases for menus, pause, focus loss and visibility changes.
 - **Edge scrolling ships off**, because on a laptop the cursor reaches an edge every time you
   touch the sidebar. Turned on, it scrolls only while the pointer is *moving* into the edge, never
   while it is parked there.

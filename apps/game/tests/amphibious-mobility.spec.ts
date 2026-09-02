@@ -138,11 +138,12 @@ describe('ordinary land vehicles cannot enter water', () => {
 describe('movesShareSpace', () => {
   const GROUND = [MoveClass.Foot, MoveClass.Track, MoveClass.Wheel];
 
-  it('keeps aircraft out of everyone else’s way', () => {
-    for (const c of [...GROUND, MoveClass.Hover, MoveClass.Naval, MoveClass.Air]) {
+  it('keeps aircraft out of everyone else’s way, but separates aircraft', () => {
+    for (const c of [...GROUND, MoveClass.Hover, MoveClass.Naval]) {
       expect(movesShareSpace(MoveClass.Air, c), `Air vs ${c}`).toBe(false);
       expect(movesShareSpace(c, MoveClass.Air), `${c} vs Air`).toBe(false);
     }
+    expect(movesShareSpace(MoveClass.Air, MoveClass.Air)).toBe(true);
   });
 
   it('puts a ship and an amphibious hull in the same water', () => {

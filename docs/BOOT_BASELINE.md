@@ -1,12 +1,12 @@
 # Boot baseline and phase telemetry
 
-VOLTMARCH has one opt-in wall-clock recorder for the built browser game and the
+VOLTMARCH has one opt-in wall-clock recorder for the local game client and the
 packaged Electron flow. Normal play does not enable it, it does not print, and
 no recorded value is read by simulation. Enable it only with
 `?bootprofile=1`; the snapshot is available from the established diagnostics
 seam as `window.__VM.hooks.bootReport()`.
 
-## Repeatable browser baseline
+## Repeatable local-client baseline
 
 Always compare the same built commit, fixture, viewport, backend, flags, and
 cache policy. The harness builds once, launches separate pages in one fresh

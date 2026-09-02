@@ -25,7 +25,7 @@ const release = normaliseRelease({
 });
 
 const deployment = normaliseDeployment({
-  targets: ['desktop', 'relay', 'web'],
+  targets: ['desktop', 'relay'],
   sha: '0123456789abcdef0123456789abcdef01234567',
 }, release);
 
@@ -43,7 +43,7 @@ describe('Discord release announcements', () => {
     expect(payload.embeds[0].title).toBe('VOLTMARCH 3.4.0 deployed');
     expect(payload.embeds[0].description).toContain('@everyone cannot ping');
     expect(payload.embeds[0].fields.find((field) => field.name === 'DEPLOYED')?.value)
-      .toContain('Browser game');
+      .toContain('Windows desktop');
     expect(releaseLog(release, deployment)).toContain(release.body);
     expect(releaseLog(release, deployment)).toContain(release.url);
     expect(releaseLog(release, deployment)).toContain(deployment.sha);
@@ -63,11 +63,11 @@ describe('Discord release announcements', () => {
     }, incomplete)).toThrow(/desktop release is incomplete/);
   });
 
-  it('names surfaces omitted from this exact deployment', () => {
+  it('does not invent a retired browser deployment surface', () => {
     const partial = normaliseDeployment({ targets: 'desktop,relay', sha: deployment.sha }, release);
     const field = discordPayload(release, partial).embeds[0].fields
       .find((candidate) => candidate.name === 'NOT IN THIS DEPLOY');
-    expect(field?.value).toBe('Browser game');
+    expect(field).toBeUndefined();
   });
 
   it('posts multipart data with confirmation enabled', async () => {
@@ -87,10 +87,12 @@ describe('Discord release announcements', () => {
     expect(desktopWorkflow).not.toContain('post-discord-release.mjs');
     expect(relayWorkflow).toContain('needs: deploy');
     expect(relayWorkflow).toContain('Wait for the complete Windows release');
-    expect(relayWorkflow).toContain('gh run list --workflow deploy.yml --commit "$GITHUB_SHA"');
+    expect(relayWorkflow).toContain("targets='desktop,relay'");
+    expect(relayWorkflow).not.toContain('deploy.yml');
+    expect(relayWorkflow).not.toContain('play.voltmarch.com');
     expect(relayWorkflow).toContain('VM_DEPLOYED_TARGETS: ${{ steps.surfaces.outputs.targets }}');
     expect(relayWorkflow).toContain('VM_DEPLOYED_SHA: ${{ github.sha }}');
-    expect(relayWorkflow.indexOf('Verify public Cloudflare route'))
-      .toBeLessThan(relayWorkflow.indexOf('Announce verified deployment on Discord'));
+    expect(relayWorkflow.indexOf('needs: deploy'))
+      .toBeLessThan(relayWorkflow.indexOf('Wait for the complete Windows release'));
   });
 });

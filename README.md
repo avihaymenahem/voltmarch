@@ -4,13 +4,10 @@
 
 <p align="center">
   <strong>Build the war machine. Break the line. Own the battlefield.</strong><br>
-  A modern base-building RTS for browser and Windows.
+  A modern base-building RTS for Windows desktop.
 </p>
 
 <p align="center">
-  <a href="https://play.voltmarch.com/">
-    <img src="https://img.shields.io/badge/PLAY_IN_BROWSER-play.voltmarch.com-35C8F0?style=for-the-badge&labelColor=0B1017" alt="Play VOLTMARCH in your browser" />
-  </a>
   <a href="https://github.com/avihaymenahem/voltmarch/releases/latest">
     <img src="https://img.shields.io/badge/DOWNLOAD-Windows-9B4DFF?style=for-the-badge&labelColor=0B1017" alt="Download VOLTMARCH for Windows" />
   </a>
@@ -39,7 +36,7 @@ immediately readable to genre veterans while pushing each army toward a distinct
 - **Campaign, skirmish and multiplayer** with deterministic replays and up to four armies in a match
 - **Deep unit control** with formations, stances, veterancy, garrisons, control groups and queued orders
 - **Strategic objectives** including civilian capture, commander powers, superweapons and faction progression
-- **Built for modern hardware** with WebGPU on desktop, WebGL fallback in browsers and scalable quality settings
+- **Built for modern hardware** with WebGPU on desktop and scalable quality settings
 
 <p align="center">
   <img src="docs/progress/03-faction-architecture.png" alt="Current in-engine showcase of Allied, Soviet, Meridian and Reclamation structures" width="900" />
@@ -85,6 +82,15 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
+## What's new in 3.16.1
+
+- **Desktop-only gameplay distribution:** Windows releases are now the supported game client while
+  `voltmarch.com` remains the Cloudflare Pages marketing and waitlist site.
+- **More natural air formations:** aircraft leave production in deterministic lanes and separate from
+  one another while moving, without colliding with ground units.
+- **Cleaner release surface:** retired browser deployment paths and stale documentation are removed;
+  local browser/WebGL diagnostics remain available for development.
+
 ## What's new in 3.16.0
 
 - **A rebuilt Command Deck:** the authored gunmetal HUD now scales as joined instruments, keeps its
@@ -102,14 +108,12 @@ before crisp lane, slab-edge and kerb treatments are applied.
 
 ## Play VOLTMARCH
 
-- **Browser:** [play.voltmarch.com](https://play.voltmarch.com/)
 - **Windows:** [latest desktop release](https://github.com/avihaymenahem/voltmarch/releases/latest)
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The browser build and Windows release share the same game. The current release is **3.16.0**. The
-Windows version uses the native Electron storage and update layers and is WebGPU-first and
-WebGPU-locked for normal play.
+The current release is **3.16.1**. VOLTMARCH is distributed as a Windows desktop game using native
+Electron storage and update layers, and is WebGPU-first and WebGPU-locked for normal play.
 
 ## For contributors
 
@@ -137,7 +141,7 @@ Open [http://localhost:5173](http://localhost:5173) after the development server
 ### Repository layout
 
 ```text
-apps/game/          Browser game and complete game test corpus
+apps/game/          Shared game client and complete game test corpus
 apps/desktop/       Electron shell, persistence and desktop updater
 apps/asset-lab/     Standalone WebGPU model catalog, audit and infantry stress app
 apps/relay/         Deterministic multiplayer relay

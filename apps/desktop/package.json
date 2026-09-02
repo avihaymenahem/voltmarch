@@ -5,7 +5,7 @@
   "author": {
     "name": "Avihay Menahem"
   },
-  "description": "VOLTMARCH desktop shell. Wraps the UNMODIFIED web build in Electron so the discrete GPU can be enforced and a match survives alt-tab.",
+  "description": "VOLTMARCH desktop shell. Wraps the shared game client in Electron so the discrete GPU can be enforced and a match survives alt-tab.",
   "main": "out/main.js",
   "scripts": {
     "build": "node build.mjs",

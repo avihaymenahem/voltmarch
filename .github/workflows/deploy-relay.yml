@@ -22,7 +22,7 @@ jobs:
       RELAY_PORT: ${{ vars.RELAY_SSH_PORT || '22' }}
       RELAY_USER: voltmarch-deploy
       RELAY_URL: wss://relay.voltmarch.com/ws
-      GAME_ORIGIN: https://play.voltmarch.com
+      GAME_ORIGIN: app://voltmarch
       RELAY_PRIVATE_KEY: ${{ secrets.RELAY_SSH_PRIVATE_KEY }}
       RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
 
@@ -96,7 +96,7 @@ jobs:
           ssh -i ~/.ssh/voltmarch-relay -p "$RELAY_PORT" "$RELAY_USER@$RELAY_HOST" \
             "sudo /usr/local/sbin/voltmarch-relay-deploy '$GITHUB_SHA' '${{ steps.release.outputs.version }}' '/tmp/voltmarch-relay-${GITHUB_SHA}.tgz'"
 
-      - name: Verify public Cloudflare route
+      - name: Verify public relay route
         run: node apps/relay/deploy/smoke.mjs "$RELAY_URL" "$GAME_ORIGIN" '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.protocol }}'
 
   announce:
@@ -135,30 +135,9 @@ jobs:
       - name: Resolve deployment surfaces for this commit
         id: surfaces
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           targets='desktop,relay'
-          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-          if [[ "$main_sha" == "$GITHUB_SHA" ]]; then
-            web_deployed=0
-            for attempt in $(seq 1 60); do
-              runs=$(gh run list --workflow deploy.yml --commit "$GITHUB_SHA" \
-                --json status,conclusion --limit 10)
-              if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' \
-                >/dev/null <<<"$runs"; then
-                web_deployed=1
-                break
-              fi
-              if jq -e 'any(.[]; .status == "completed" and (.conclusion != "success"))' \
-                >/dev/null <<<"$runs"; then
-                break
-              fi
-              sleep 10
-            done
-            if [[ $web_deployed == 1 ]]; then targets+=',web'; fi
-          fi
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
       - name: Post exact deployment receipt

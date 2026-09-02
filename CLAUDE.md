@@ -23,7 +23,7 @@ licence is the authority.
 
 ## What this project is
 
-VOLTMARCH — an original browser and Windows RTS in Three.js. Four playable factions, ore economy, base
+VOLTMARCH — an original Windows desktop RTS in Three.js. Four playable factions, ore economy, base
 building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
 structures, capturable civic landmarks, selected vehicles and the Soviet Attack Dog now use original Meshy generations
 that pass through the local VOLTMARCH asset pipeline.
@@ -83,8 +83,8 @@ one additional docs-only image is listed so it cannot be mistaken for shipped ga
    **THE SHELL HAS ONE VISUAL AND IDENTITY CONTRACT.** Out-of-game routes and pause overlays extend
    the shared command-shell treatment in `shell.css`; do not create route-local modal skins.
    Commander identity is edited from Service Record and persists through the same
-   `settings.gameplay.commanderName` Multiplayer consumes. Browser builds hide Quit because a page
-   cannot reliably close its own tab; desktop Quit goes through the validated Electron bridge.
+   `settings.gameplay.commanderName` Multiplayer consumes. Local browser/dev harnesses hide Quit
+   because a page cannot reliably close its own tab; desktop Quit goes through the validated Electron bridge.
    Keep `Evacuate To Main Menu` prominent on the pause surface.
 4. **Campaign character portraits** in `apps/game/public/campaign/portraits/` — nineteen authored command-cast
    portraits, original AI-assisted artwork generated with OpenAI's built-in image generation tool
@@ -246,34 +246,28 @@ npm run check:all    # complete release-equivalent monorepo gate
 
 **There is one lockfile and one install.** `npm ci` at the repository root installs all
 `apps/*` and `packages/*` workspaces. Do not restore nested lockfiles or `npm ci --prefix`
-commands: those bypass the task graph and were the reason unrelated Pages changes had to
+commands: those bypass the task graph and were the reason unrelated website changes had to
 install and test the relay. Turborepo owns dependency order and `.turbo/` owns local/CI cache.
 
-## Production web topology
+## Production topology
 
-The three public hosts are deliberately separate:
+The production surfaces are deliberately separate:
 
 - **`voltmarch.com`** — the Cloudflare Pages launch/marketing site rooted at `apps/website/`.
   Its `/api/subscribe` Pages Function stores normalized, deduplicated addresses in the D1 binding
   named `WAITLIST` (`voltmarch-launch-waitlist`). The function creates its schema defensively;
   `apps/website/migrations/0001_subscribers.sql` is the canonical idempotent copy.
-- **`play.voltmarch.com`** — the current game bundle deployed by
-  `.github/workflows/deploy.yml` to GitHub Pages. `apps/game/public/CNAME` is load-bearing. The workflow bakes
-  `wss://relay.voltmarch.com/ws` and the public Cloudflare analytics token into the build.
+- **Windows desktop release** — the game client is packaged and published by the tag-triggered
+  `.github/workflows/desktop.yml` workflow. It bakes `wss://relay.voltmarch.com/ws` and uses the
+  native `app://voltmarch` origin.
 - **`relay.voltmarch.com`** — the Hostinger/nginx production WebSocket relay. It is not a web page.
-
-The canonical browser Origin is exported as `PUBLIC_WEB_ORIGIN` in `apps/relay/src/config.ts` and is
-unioned in even when `VM_ORIGINS` replaces the defaults, for the same operational reason as the
-desktop origin. Moving the playable site without changing that constant, the relay smoke-test
-origin, the DNS record, `apps/game/public/CNAME`, and these docs creates a game that loads but cannot enter
-Multiplayer.
 
 Cloudflare Pages project: `voltmarch-coming-soon`, root `apps/website`, command
 `npm run build`, output `dist`, D1 binding `WAITLIST`.
 `CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a secret. Its build-watch include paths are
 `apps/website/*`, `package.json`, `package-lock.json`, and `turbo.json`; a game-only push must not
-start a marketing build. The GitHub Pages game workflow has the complementary game/shared-package
-path filter. The relay workflow stays manual because activating a release disconnects live rooms.
+start a marketing build. The relay workflow stays manual because activating a release disconnects live
+rooms.
 
 **The first line once said `npx tsc --noEmit`, and that is NOT the gate.**
 `npm run typecheck` now asks Turborepo to typecheck every workspace. The game workspace
@@ -325,7 +319,7 @@ every numeric claim on those pages is re-derived from `WEAPONS`/`UNITS`/`BUILDIN
 `ARMOR_MATRIX`, because the moment they ship inside the game they stop being documentation
 and become claims the product makes. `.github/workflows/wiki.yml` mirrors this canonical directory
 to the repository's GitHub Wiki after every main-branch wiki change; do not edit the detached wiki
-repository as a second source of truth. The Pages workflow also watches `wiki/**`, because the same
+repository as a second source of truth. The desktop workflow also watches `wiki/**`, because the same
 change must reach the in-game Manual.
 
 `npm run build` deliberately does **not** typecheck. esbuild strips types, so a type error must never
@@ -338,8 +332,8 @@ the build.
   `apps/`; dependency-ordered, environment-neutral contracts live under `packages/`.
   App code may depend on packages, never on another app's private source.
 - **Shared binary assets have one owner: `packages/assets/`.** Game models and terrain inputs live
-  under `packages/assets/game/`; shared brand art and fonts live beside them. The browser game,
-  desktop shell, website and Asset Lab consume or copy those canonical files at build time. Never
+  under `packages/assets/game/`; shared brand art and fonts live beside them. The shared game client,
+  desktop shell, marketing website and Asset Lab consume or copy those canonical files at build time. Never
   create a second app-local copy. `npm run lint` rejects source imports across private workspace
   boundaries at the offending line; `npm run check:ownership` hashes app and package source trees
   and rejects exact duplicates plus non-ESLint cross-app references.
@@ -347,7 +341,7 @@ the build.
   tree lazily, opens WebGPU by default through `npm run asset:lab`, and owns catalog, audit, infantry
   animation and bounded stress-test UI. Shared rendering helpers used by its pages belong in the app's
   `src/`; logic or assets needed by another app must move to a package before being consumed there.
-- **`packages/game-types` and `packages/protocol` are real boundaries.** The browser and
+- **`packages/game-types` and `packages/protocol` are real boundaries.** The game client and
   relay consume the same validated wire definitions; compatibility re-exports under
   `apps/game/src/` keep stable internal imports without duplicating ownership.
 
@@ -2219,13 +2213,13 @@ argument for why draping rather than grading the heightfield.
   pavement. Props use the narrower `isCarriageway` rule because benches and lamps belong on the
   sidewalk; buildings do not.
 
-## There are two renderers now; desktop ships WebGPU and browser retains fallback
+## There are two renderer paths; desktop ships WebGPU and local diagnostics retain fallback
 
 `?gpu=webgpu` used to throw. It boots the real game (shipped in v3.0.0): every shared shader in the
 project exists once as GLSL and once as a TSL node graph, and `apps/game/src/render/gpu-path.ts` is the
-seam that picks. **Desktop normal play is WebGPU-locked.** Browser builds retain negotiated WebGPU /
-WebGL fallback while the desktop-only visual roadmap may spend WebGPU capabilities without adding a
-new WebGL implementation. `docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` owns that roadmap.
+seam that picks. **Desktop normal play is WebGPU-locked.** The local browser/dev harness retains
+negotiated WebGPU / WebGL fallback for diagnostics; it is not a supported public game distribution.
+`docs/WEBGPU_VISUAL_PERFORMANCE_PLAN.md` owns the desktop roadmap.
 
 - **`gpu-path.ts` IMPORTS NO THREE AT ALL, and that is the constraint the whole design is built
   around.** `three/webgpu` is the entire node system — both backends, both builders, the node
@@ -2356,14 +2350,14 @@ shipped; its measurements are in `RENDER_FINDINGS.md` §7 and §11, and its rule
 labels were left in place deliberately — they are accurate provenance for which pass ported which
 shader, and rewriting 35 comments to erase that would lose real information to gain tidiness.
 
-## The desktop shell and web game are separate workspaces
+## The desktop shell and shared game client are separate workspaces
 
 `apps/desktop/` is an Electron shell around the UNMODIFIED `apps/game/dist/`. Read
 [`apps/desktop/README.md`](apps/desktop/README.md)
 before touching it. The workspace boundary is structural, not a convention.
 
-- **ONE ROOT LOCKFILE RESOLVES EVERY WORKSPACE.** Pages filters its Turbo run to
-  `@voltmarch/game...`; the Windows workflow installs with lifecycle scripts disabled and rebuilds
+- **ONE ROOT LOCKFILE RESOLVES EVERY WORKSPACE.** The Windows workflow filters its Turbo run to
+  `@voltmarch/game...`; it installs with lifecycle scripts disabled and rebuilds
   Electron alone. `npm run typecheck` includes desktop in the complete gate, while
   `npm run desktop:typecheck` remains the fast focused command.
 - **THE GPU SWITCH WORKS, AND IT IS MEASURED TWICE.** `RENDER_FINDINGS.md` §7j. On the RTX 3080
@@ -2420,7 +2414,7 @@ before touching it. The workspace boundary is structural, not a convention.
   portable-build handoff, release notes, and links to both the latest and complete GitHub release
   archive. Do not move it back into Diagnostics: update progress subscriptions intentionally
   rerender only the Updates tab, in five-percent buckets, so network events cannot rebuild the
-  diagnostic export several times per second. Browser and development builds state their limits
+  diagnostic export several times per second. Local diagnostic builds state their limits
   instead of presenting updater actions that cannot work.
 
 - **NEWS & EVENTS IS REMOTE-FIRST AND OFFLINE-SAFE.** The title screen's two community controls live
@@ -2434,8 +2428,8 @@ before touching it. The workspace boundary is structural, not a convention.
 
 - **DISCORD ANNOUNCEMENTS ARE DOWNSTREAM OF VERIFIED DEPLOYMENTS, NOT ANOTHER PUBLISHER.** The
   `announce` job in `.github/workflows/deploy-relay.yml` runs only after the public relay smoke
-  check, waits for the complete four-file Windows updater release, and checks whether Pages
-  deployed the exact tagged commit. `tools/post-discord-release.mjs` then names only those proven
+  check, waits for the complete four-file Windows updater release. `tools/post-discord-release.mjs`
+  then names only those proven
   surfaces, includes the commit SHA, marks omitted surfaces, and reads the already-created GitHub
   notes. It uses only the `DISCORD_RELEASE_WEBHOOK_URL` repository secret, sends
   `allowed_mentions.parse = []`, caps the visible embed to Discord's limit, and attaches the full
@@ -2473,20 +2467,18 @@ before touching it. The workspace boundary is structural, not a convention.
   restore the last normal bounds/maximised state inside a live work area, and keep fullscreen behind
   the Display row or Alt+Enter. Desktop pointer confinement is **on by default**, preserves contextual
   cursors, HUD hover, internal scrolling and right-button orders while active, and releases whenever
-  pause/menu UI covers gameplay or on focus/visibility loss. Browser builds never instantiate that adapter.
+  pause/menu UI covers gameplay or on focus/visibility loss. Local browser/dev harnesses never instantiate that adapter.
 
   **UNSIGNED BUILDS CANNOT CODE THEIR WAY AROUND REPUTATION.** The blue SmartScreen More info / Run
   anyway surface and McAfee's low-prevalence block are expected until a consistent trusted publisher
   identity earns reputation (or the app ships through Microsoft Store). Release checksums and GitHub
   attestations prove origin, not safety and not publisher reputation. The signing inputs, verification
   gate and vendor false-positive procedure live in `docs/DESKTOP_DISTRIBUTION.md`.
-- **WHAT IS STILL WEB-ONLY PROSE.** `README.md`, `package.json`, `index.html` and two wiki pages
-  describe this as a browser game; they are INCOMPLETE rather than false, and were deliberately left
-  until the desktop build is actually distributed. Two claims will need real care at that point:
-  `apps/relay/README.md:98` and `wiki/Multiplayer.md:58` say a browser refuses a plaintext socket from a
-  secure page, and that is the stated reason the relay needs no transport check of its own —
-  `pageIsPlaintext()` tests `location.protocol !== 'https:'`, which an `app:` origin passes. See
-  the Electron plan §8.
+- **PUBLIC GAME DISTRIBUTION.** The supported public game distribution is the Windows desktop
+  release. `voltmarch.com` remains the marketing and waitlist site; it is not the gameplay client.
+  The shared client source is still built inside Electron, while browser/WebGL paths remain useful
+  only for local diagnostics and compatibility checks. Keep public release receipts, relay origins
+  and documentation aligned with that split.
 
 -  **WHAT THE WRAPPER DOES NOT BUY, so nobody re-derives it.** Electron 43 is Chromium M150 — the
   same V8, the same ANGLE, the same Dawn — so there is no "native performance" here and **adapter

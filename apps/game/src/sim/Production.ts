@@ -4177,7 +4177,24 @@ export class ProductionService implements QueueHooks {
 
     if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, entry.waterOnly)) return false;
 
-    const id = this.spawnUnit(p, entry, spot[0], spot[1], yaw);
+    let spawnX = spot[0];
+    let spawnZ = spot[1];
+    if (loco === (Locomotor.Air as number)) {
+      // Keep the first plane at the authored exit, then put later aircraft in
+      // deterministic lateral lanes. The rally order below uses the same
+      // lattice, so a newly built plane starts on the lane it is already
+      // heading toward instead of visibly stacking at the door first.
+      const slot = (p.stats.unitsBuilt % RALLY_SLOT_COUNT) * 2;
+      const spread = Math.max(
+        PRODUCTION.rallyMinSpacing,
+        radius * 2 + PRODUCTION.rallyGap,
+      );
+      const lateral = RALLY_SLOTS[slot] * spread;
+      const forward = RALLY_SLOTS[slot + 1] * spread;
+      spawnX = clampWorld(spot[0] + lateral * cos + forward * sin, 2);
+      spawnZ = clampWorld(spot[1] + forward * cos - lateral * sin, 2);
+    }
+    const id = this.spawnUnit(p, entry, spawnX, spawnZ, yaw);
     if (id === NONE) return false;
 
     // Point it at the rally flag. This is spawn-time initialisation of the

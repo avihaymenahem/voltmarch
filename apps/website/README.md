@@ -23,12 +23,12 @@ running it before launch is optional and idempotent.
 
 ## Domain topology
 
-`voltmarch.com` is marketing only. The playable GitHub Pages build lives at
-`play.voltmarch.com`, and the multiplayer relay remains at `relay.voltmarch.com`. Do not point the
-apex back at the game or attach `play` to this Pages project.
+`voltmarch.com` is the public marketing and waitlist site. VOLTMARCH gameplay is distributed as a
+Windows desktop release; the multiplayer relay remains at `relay.voltmarch.com`. Do not point the
+apex at the relay or attach a game client to this Pages project.
 
-Every push to `main` that changes `apps/website/` triggers the Cloudflare project. The root game
-workflow deploys independently to GitHub Pages from `apps/game/dist/`.
+Every push to `main` that changes `apps/website/` triggers the Cloudflare project. The desktop
+release is built and published by the tag-triggered Windows workflow.
 
 The public community invite is `https://discord.gg/pvJGJyafU3`, and the public source and release
 page is `https://github.com/avihaymenahem/voltmarch`; keep the header, hero community CTAs, and

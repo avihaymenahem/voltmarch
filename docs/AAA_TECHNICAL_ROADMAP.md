@@ -120,7 +120,8 @@ The first eleven batches have completed their bounded implementation/decision pa
    deterministic structural checks and removed
    about 263 ms of warm conditioning but grew the family by 2,593,352 bytes (71.03%) and worsened
    the complete request window by 226.20 ms. The runtime route and shipping outputs were rolled
-   back; source/control/procedural fallbacks remain. See `docs/RUNTIME_ASSET_COOK_POC.md`.
+   back; source/control/procedural fallbacks remain. Its current decision is recorded in
+   `docs/PROJECT_STATE.md`.
 4. **Foliage Gate 3/4: complete for the broadleaf CPU pilot; catalogue rollout remains gated.** World reveal no longer awaits the
    imported catalogue: deterministic procedural geometry is placed immediately and the same
    placement/felling mask is promoted after the renderer-configured shared KTX2/GLTF load. Missing
