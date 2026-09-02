@@ -40,8 +40,9 @@ to version metadata, news copy and bounded menu DOM; no offload is promoted.
 
 ## Verification receipt
 
-Release validation and deployment receipts are pending; this document does not
-claim that a candidate or a successful local build is already public.
+Release **v3.16.3** is public from commit
+`3c71151622cb111f1a5258083df49620c1a2e95f`, published 2026-09-02 at 22:01:51 UTC
+(2026-09-03 local). The annotated tag was independently resolved to that commit.
 
 - Studio consistency: 28 profiles and 15 negative controls pass.
 - POC regressions: 6/6 pass; no POC benchmark rerun required for path-only export.
@@ -56,12 +57,46 @@ claim that a candidate or a successful local build is already public.
   the not-yet-updated relay explicitly accepts 3.16.2 and rejects 3.16.3 with
   `build-mismatch`. No assertion was weakened; the full smoke must pass again
   against the deployed relay before closing the release.
-- Publication and updater asset verification: pending.
-- Relay public handshake and coordinated announcement: pending.
-- Public news feed: intentionally remains on 3.16.2 until desktop/relay success.
+- Post-deploy native smoke: **ALL CHECKS PASSED**, including multiplayer, across
+  all five fresh/relaunched Electron runs. Direct public relay smoke also accepts
+  build 3.16.3 with protocol 5 and origin `app://voltmarch`.
+- [Windows publication](https://github.com/avihaymenahem/voltmarch/actions/runs/33687783461):
+  success, including checksum creation and GitHub provenance attestation.
+- [Relay deployment and coordinated announcement](https://github.com/avihaymenahem/voltmarch/actions/runs/33687783462):
+  both jobs successful, after verifying the public relay and desktop assets.
+- [Wiki publication](https://github.com/avihaymenahem/voltmarch/actions/runs/33687781135):
+  success. The release commit's Cloudflare Pages check also completed successfully.
+- Published installer, portable executable, blockmap, `latest.yml` and
+  `SHA256SUMS.txt`: all five downloads streamed and hashed; exact GitHub sizes
+  and SHA-256 digests match. Installer and metadata also match the published
+  checksum file; updater SHA-512 matches the installer bytes. No extra binary
+  copies were retained on disk.
+- `gh attestation verify` succeeds on `latest.yml`. All five independently
+  streamed asset digests match the verified provenance statement, whose signer
+  workflow, tag and source SHA bind this release.
+- Public news source is updated to 3.16.3 only after desktop/relay success. Its
+  website build passes; five feed tests pass. The news follow-up's Cloudflare
+  check and live `https://voltmarch.com/news.json` are monitored before handoff.
+
+Both Windows executables remain **NotSigned**, confirmed by the workflow. GitHub
+provenance is not Authenticode or SmartScreen reputation. Native smoke exercised
+the real desktop source path and newly deployed relay, not an installed
+cross-version updater cycle or a new AMD/Intel validation pass.
+
+Release URL: <https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.3>.
+
+| Published asset | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `VOLTMARCH-Setup-3.16.3.exe` | 531760480 | `86c3617c5d124176aecdfe72aca632e850491c2e3f56228e4084b2a459bed736` |
+| `VOLTMARCH-3.16.3-portable.exe` | 531428421 | `af4f31cb7214ff0f54ffbf2ede68158f3dad6c17f836b80ac956d39f8e39ce4a` |
+| `VOLTMARCH-Setup-3.16.3.exe.blockmap` | 555354 | `f0b1845de28174d425b858f3ca93fe07d8d2ccbd2472f7524a4c468bc4b982bd` |
+| `latest.yml` | 350 | `0f4aac45a2c0f5cdfa53efcd922790297283f36f1682b38a60e28d99a28a0a83` |
+| `SHA256SUMS.txt` | 372 | `df272e52c72717c6cbf9be92db020e6fb1b8e5a4f386320c41fe747cdb50e12d` |
 
 Local gate logs live under `.turbo/release-3.16.3-*`; they are not release assets.
 Deployment must use the existing tag-triggered desktop and relay workflows.
 The relay activation disconnects existing rooms and owns automatic rollback if
 its activation validation fails. Do not rewrite a published tag or substitute a
-local installer for the workflow artifacts.
+local installer for the workflow artifacts. An unrelated
+`marketing/medium-build-story/` directory appeared during the release and was
+left untouched and outside the release commits.

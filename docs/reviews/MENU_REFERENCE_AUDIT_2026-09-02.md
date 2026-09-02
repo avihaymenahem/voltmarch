@@ -374,3 +374,13 @@ Performance decision: DOM/CSS restructuring has no WASM/worker/WebGPU-compute us
 asset, dependency, renderer import, timer or per-frame allocation was added. The image-first cold
 title still does not start a decorative battlefield. Bundle sizes are measured; no comparative
 boot-time or frame-time improvement is claimed. The full release gate was not run.
+
+## Release checkpoint: 3.16.3 (2026-09-03 local date)
+
+The local follow-ups above are now included in source commit
+`3c71151622cb111f1a5258083df49620c1a2e95f`, tagged `v3.16.3`. The complete
+monorepo gate passes 23/23 tasks; a fresh seven-file menu/bundle/news gate passes
+100 tests. All five native Electron smoke runs pass against the deployed 3.16.3
+relay. Windows publication, relay activation and the coordinated announcement
+completed successfully. The detailed receipt and remaining distribution limits
+are in `PATCH_RELEASE_3_16_3.md`.

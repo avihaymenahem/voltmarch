@@ -88,7 +88,7 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-This branch targets **3.16.3**. VOLTMARCH is distributed as a Windows desktop game using native
+The current release is **3.16.3**. VOLTMARCH is distributed as a Windows desktop game using native
 Electron storage and update layers, and is WebGPU-first and WebGPU-locked for normal play.
 
 ## For contributors

@@ -1,6 +1,6 @@
 # VOLTMARCH project state
 
-Last refreshed: 2026-09-02
+Last refreshed: 2026-09-03
 
 This is the compact record of durable decisions extracted from retired planning documents. It is a
 current-state reference, not a backlog and not release authority: code, tests, and the deployment
@@ -8,7 +8,8 @@ workflows decide what is actually shipped.
 
 ## Current baseline
 
-- Public version: **3.16.2**.
+- Public version: **3.16.3**. The Missions, Service Record and title-menu polish
+  is deployed; release evidence is in `docs/reviews/PATCH_RELEASE_3_16_3.md`.
 - `voltmarch.com` is the marketing site; `relay.voltmarch.com` is the WebSocket relay; gameplay is
   distributed through the Windows desktop release.
 - WebGPU is the desktop product renderer. WebGL remains available for local diagnostics and fallback

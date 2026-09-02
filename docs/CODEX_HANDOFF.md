@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.16.2**.
-- The `v3.16.2` tag is the coordinated desktop/relay release baseline.
+- Public version: **3.16.3**.
+- The `v3.16.3` tag is the coordinated desktop/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
 - GitHub Wiki is generated from the repository's `wiki/` directory by
@@ -70,7 +70,7 @@ project decision obsolete.
   scene ceilings and the 58% coverage requirement are unchanged. Evidence and release gates are in
   `docs/reviews/MENU_REFERENCE_AUDIT_2026-09-02.md`.
 
-Local, unreleased follow-up: Missions now uses category/scope/status filters, a five-row paged list
+Release 3.16.3: Missions now uses category/scope/status filters, a five-row paged list
 and a selected dossier (Back to list on narrow screens). Do not restore the 55 expanded cards or
 unbounded earned-unlock strip. Service Record now separates Overview, Honours and Identity: one
 copy of career/faction totals, six paged honours with one detail panel, and a draft-preserving
@@ -79,10 +79,12 @@ facelift keeps its image-led spine, larger play choices, one Service Record iden
 a separate soundtrack footer. Only its play section scrolls; clipping the brand container cuts off
 the supplied logo's glow. The studio UX/QA workflow and current 1,082-test UI gate are recorded in
 `docs/reviews/MENU_REFERENCE_AUDIT_2026-09-02.md`. These rebuilds and the studio agent configuration
-remain uncommitted; they are not part of the shipped 3.16.2 tag. Verify current Git state rather
-than assuming the release receipt means a clean worktree.
+are committed in `3c71151622cb111f1a5258083df49620c1a2e95f` and included in the 3.16.3 source tag.
+The full release gate, native smoke and deployment receipt are in
+`docs/reviews/PATCH_RELEASE_3_16_3.md`. Verify current Git state rather than assuming the release
+receipt means a clean worktree.
 
-Local, tools-only experiment: the imported-geometry offload POC compared renderer,
+Committed, tools-only experiment: the imported-geometry offload POC compared renderer,
 Web Worker and Electron utility process on the compact Chrono Miner family. Its
 54 loads/72 captures support a bounded production-path worker trial; they do not
 justify utility migration or establish whole-game boot/FPS/lifecycle readiness.
