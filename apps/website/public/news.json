@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-02T17:21:00Z",
+  "updatedAt": "2026-09-02T19:00:00Z",
   "items": [
     {
-      "id": "update-3-16-1",
+      "id": "update-3-16-2",
       "kind": "update",
-      "title": "VOLTMARCH 3.16.1 is live",
-      "summary": "Windows desktop is now the supported gameplay release, retired browser deployment paths are gone, and aircraft spawn and move in separated deterministic formations.",
+      "title": "VOLTMARCH 3.16.2 is live",
+      "summary": "Menus share a consistent command frame with working navigation and no duplicate destinations. The cinematic title screen returns, Service Record is clearer, and city foliage coverage is repaired.",
       "date": "2026-09-02",
       "actionLabel": "Read release notes",
-      "url": "https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.1"
+      "url": "https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.2"
     }
   ]
 }

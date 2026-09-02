@@ -2,12 +2,12 @@
  * ============================================================================
  * src/shell/MainMenu.ts — the title screen and the credits
  * ============================================================================
- * The menu is a left-hand column over a LIVE battlefield: `Shell` boots a real
- * match behind it with the AI switched off and slowly orbits the camera around
- * a base. Nothing here paints a background — the background is the game.
+ * The opening menu is a left-hand column over the supplied title key art.
+ * It never boots a decorative battlefield and has no internal-page header or
+ * icon rail. Play choices and secondary actions belong to this screen.
  *
  * The only two visual jobs this file has are (a) guaranteeing the title reads
- * against whatever the renderer happens to be showing, which is the job of the
+ * against the key art, which is the job of the
  * `.vm-menu::before` wash rather than of a panel, and (b) keeping the button
  * column narrow enough that the battlefield is still the subject of the frame.
  *

@@ -47,6 +47,7 @@
  */
 
 import './shell.css';
+import './command-shell.css';
 
 import type { BootOptions, GameHandle, MatchPresentation } from '../game/Bootstrap';
 import {
@@ -616,16 +617,92 @@ export function pageFrame(
   const head = el('div', 'vm-page-head');
   const back = button('Back', { iconName: 'back', onClick: onBack });
   back.classList.add('is-page-back');
-  head.appendChild(back);
   const titleBlock = el('div', 'vm-page-title-block');
+  titleBlock.appendChild(el('span', 'vm-page-kicker', 'VOLTMARCH // COMMAND CENTRE'));
   titleBlock.appendChild(el('h2', 'vm-h2', title));
   head.appendChild(titleBlock);
   const body = el('div', 'vm-page-body');
   const foot = el('div', 'vm-page-foot');
+  foot.appendChild(back);
   root.appendChild(head);
   root.appendChild(body);
   root.appendChild(foot);
   return { root, head, body, foot };
+}
+
+/** Primary sections belong to the top bar; utilities belong only to the rail. */
+export const COMMAND_ROUTES = [
+  { id: 'menu', label: 'Command centre', icon: 'gauge', top: true },
+  { id: 'campaign', label: 'Operations', icon: 'flag', top: true },
+  { id: 'setup', label: 'Build', icon: 'cpu', top: true },
+  { id: 'missions', label: 'Intelligence', icon: 'target', top: true },
+  { id: 'profile', label: 'Service record', icon: 'trophy', top: true },
+  { id: 'codex', label: 'Codex', icon: 'info', top: true },
+  { id: 'multiplayer', label: 'Multiplayer', icon: 'swords', top: false },
+  { id: 'load', label: 'Load game', icon: 'folder', top: false },
+  { id: 'replays', label: 'Replays', icon: 'monitor', top: false },
+  { id: 'settings', label: 'Settings', icon: 'sliders', top: false },
+] as const;
+export type CommandRoute = typeof COMMAND_ROUTES[number]['id'];
+
+/** The title owns its play menu; busy and confirmation screens own their exits. */
+export function showsCommandNavigation(screenId: string): boolean {
+  return screenId !== 'menu' && screenId !== 'loading' && screenId !== 'menu-decision';
+}
+
+/** Also called when Settings switches to/from its lazy Manual tab. */
+export function updateCommandSection(host: HTMLElement, section: string): void {
+  host.dataset.commandSection = section;
+  for (const control of host.querySelectorAll<HTMLElement>('[data-command-route]')) {
+    const active = control.dataset.commandRoute === section;
+    control.classList.toggle('is-active', active);
+    if (active) control.setAttribute('aria-current', 'page');
+    else control.removeAttribute('aria-current');
+  }
+}
+
+/** Bounded DOM-only chrome; no profile loading, timers or renderer dependencies. */
+export function mountCommandNavigation(
+  host: HTMLElement,
+  section: string,
+  navigate: (route: CommandRoute) => void,
+): void {
+  host.classList.add('vm-command-shell');
+  const header = el('header', 'vm-command-header');
+  const brand = el('button', 'vm-command-brand');
+  brand.type = 'button';
+  brand.setAttribute('aria-label', 'Voltmarch command centre');
+  brand.addEventListener('click', () => navigate('menu'));
+  focusable(brand);
+  const mark = el('img');
+  mark.src = `${import.meta.env.BASE_URL}brand/mark-64.png`;
+  mark.alt = '';
+  mark.width = 40;
+  mark.height = 40;
+  brand.appendChild(mark);
+  const top = el('nav', 'vm-command-top');
+  top.setAttribute('aria-label', 'Command navigation');
+  const rail = el('nav', 'vm-command-rail');
+  rail.setAttribute('aria-label', 'Quick navigation');
+  for (const route of COMMAND_ROUTES) {
+    const control = (compact: boolean): HTMLButtonElement => {
+      const item = el('button', compact ? 'vm-command-rail-link' : 'vm-command-link');
+      item.type = 'button';
+      item.dataset.commandRoute = route.id;
+      item.setAttribute('aria-label', route.label);
+      item.title = route.label;
+      if (compact) item.appendChild(icon(route.icon, 19));
+      else item.textContent = route.label;
+      focusable(item);
+      item.addEventListener('click', () => navigate(route.id));
+      return item;
+    };
+    if (route.top) top.appendChild(control(false));
+    else rail.appendChild(control(true));
+  }
+  header.append(brand, top);
+  host.prepend(header, rail);
+  updateCommandSection(host, section);
 }
 
 /* ==========================================================================
@@ -699,7 +776,7 @@ export class FocusRing {
 
   /** Left/right on the focused control. True when something consumed it. */
   adjust(dir: number): boolean {
-    const node = this.current ?? (document.activeElement as HTMLElement | null);
+    const node = this.focusedControl();
     if (node === null) return false;
     const fn = getAdjust(node);
     if (fn === undefined) return false;
@@ -708,10 +785,22 @@ export class FocusRing {
   }
 
   activate(): boolean {
-    const node = this.current ?? (document.activeElement as HTMLElement | null);
+    const node = this.focusedControl();
     if (node === null) return false;
     node.click();
     return true;
+  }
+
+  /** Mouse clicks and Tab can move focus without moving the gamepad index. */
+  private focusedControl(): HTMLElement | null {
+    this.refresh();
+    const active = document.activeElement as HTMLElement | null;
+    if (active !== null && this.root.contains(active) && !active.hasAttribute('disabled')) {
+      const index = this.items.indexOf(active);
+      if (index >= 0) this.index = index;
+      return active;
+    }
+    return this.current;
   }
 }
 
@@ -2409,7 +2498,7 @@ export class Shell {
     // `missions` joins `settings` for the same reason: it is a sub-screen the
     // pause menu can route to, and closing it has to land back on the pause
     // menu rather than on a blank layer over a frozen match.
-    if (this.state !== 'playing' && this.state !== 'settings' && this.state !== 'missions') return;
+    if (this.state !== 'playing' && this.state !== 'settings' && this.state !== 'missions' && this.state !== 'paused') return;
 
     // THE MENU OPENS; THE SIMULATION DOES NOT STOP. There is no such thing as
     // pausing a lockstep match from one side — the other player is still
@@ -2971,12 +3060,21 @@ export class Shell {
       if (!reducedMotion) layer.classList.add('is-entering');
       this.host.appendChild(layer);
       next.mount(layer);
+      const initialFocus = layer.querySelector<HTMLElement>('[data-vm-focus]:not([disabled])');
+      // The opening title is image-led, not another internal command page.
+      // Decisions/loading must not allow navigation around a pending operation.
+      if (showsCommandNavigation(next.id)) {
+        const section = layer.dataset.commandSection
+          ?? (next.id === 'briefing' ? 'campaign' : next.id === 'paused' ? 'menu' : next.id);
+        mountCommandNavigation(layer, section, (route) => this.navigateCommand(route));
+      }
       this.ring = new FocusRing(layer);
       // Focus after layout so `offsetParent` is meaningful to the ring.
       requestAnimationFrame(() => {
         if (this.screen === next) {
           layer.classList.remove('is-entering');
-          this.ring.focusFirst();
+          if (initialFocus?.isConnected) this.ring.focusOn(initialFocus);
+          else this.ring.focusFirst();
         }
       });
     }
@@ -2986,6 +3084,57 @@ export class Shell {
     // menu over a replay must not have a second row of controls showing
     // through it.
     this.replay?.bar?.setVisible(next === null);
+  }
+
+  private navigateCommand(route: CommandRoute): void {
+    if (this.busy) return;
+    const liveMatch = this.game !== null && !this.backdrop;
+    const paused = liveMatch && this.state !== 'ended';
+    const open = (): void => {
+      switch (route) {
+        case 'menu': if (paused) this.pause(); else this.showMenu(); break;
+        case 'campaign': this.openCampaign(); break;
+        case 'setup': this.openSetup(); break;
+        case 'missions': this.openMissions(paused ? 'paused' : 'menu'); break;
+        case 'profile': this.openProfile(); break;
+        case 'codex': this.openSettings(paused ? 'paused' : 'menu', 'manual'); break;
+        case 'multiplayer': this.openMultiplayer(); break;
+        case 'load': this.openLoadGame(); break;
+        case 'replays': this.openReplays(); break;
+        case 'settings': this.openSettings(paused ? 'paused' : 'menu'); break;
+      }
+    };
+    const safeDuringMatch = route === 'menu' || route === 'missions'
+      || route === 'settings' || route === 'codex';
+    if (!liveMatch || (paused && safeDuringMatch)) {
+      open();
+      return;
+    }
+    // Title-only routes cannot leave a frozen world/relay behind. Keep the
+    // lifecycle on quitToMenu, then open the requested destination.
+    const leave = (): void => {
+      void this.quitToMenu().then(() => {
+        switch (route) {
+          case 'menu': break; // quitToMenu already opened the title.
+          case 'missions': this.openMissions('menu'); break;
+          case 'settings': this.openSettings('menu'); break;
+          case 'codex': this.openSettings('menu', 'manual'); break;
+          default: open();
+        }
+      });
+    };
+    if (!paused) { leave(); return; }
+    const cancel = (): void => this.pause();
+    this.show(new MenuDecisionScreen({
+      eyebrow: 'Leave current battle',
+      title: 'Evacuate to command?',
+      body: 'Opening this section ends the current battle. Unsaved progress will be lost.',
+      cancel,
+      actions: [
+        { label: 'Stay in battle', iconName: 'back', run: cancel },
+        { label: 'Leave battle', iconName: 'power', variant: 'danger', run: leave },
+      ],
+    }), 'paused');
   }
 
   /** Complete the delayed route cleanup, including during rapid navigation. */
@@ -4228,6 +4377,10 @@ export class Shell {
     }
 
     if (this.screen === null) return;
+
+    // Native pickers own these keys. Intercepting them would move the menu
+    // focus instead of changing the selected battlefield/filter.
+    if (target?.tagName === 'SELECT' && (e.code.startsWith('Arrow') || e.code === 'Enter')) return;
 
     switch (e.code) {
       case 'ArrowDown':

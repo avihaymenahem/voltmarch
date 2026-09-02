@@ -215,7 +215,7 @@ export class ReplaysScreen implements Screen {
 
     frame.body.appendChild(wrap);
     frame.foot.appendChild(el('div', 'vm-spacer'));
-    frame.foot.appendChild(button('Back', {
+    frame.foot.appendChild(button('Close', {
       variant: 'primary',
       onClick: () => this.shell.showMenu(),
     }));

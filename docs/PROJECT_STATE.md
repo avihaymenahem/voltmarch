@@ -8,7 +8,7 @@ workflows decide what is actually shipped.
 
 ## Current baseline
 
-- Public version: **3.16.1**.
+- Public version: **3.16.2**.
 - `voltmarch.com` is the marketing site; `relay.voltmarch.com` is the WebSocket relay; gameplay is
   distributed through the Windows desktop release.
 - WebGPU is the desktop product renderer. WebGL remains available for local diagnostics and fallback

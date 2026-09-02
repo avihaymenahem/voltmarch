@@ -825,7 +825,7 @@ export class LoadGameScreen implements Screen {
     this.status = el('p', 'vm-saves-status', '');
     frame.foot.appendChild(this.status);
     frame.foot.appendChild(el('div', 'vm-spacer'));
-    frame.foot.appendChild(button('Back', {
+    frame.foot.appendChild(button('Close', {
       variant: 'primary',
       onClick: () => this.shell.showMenu(),
     }));

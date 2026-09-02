@@ -266,8 +266,10 @@ Cloudflare Pages project: `voltmarch-coming-soon`, root `apps/website`, command
 `npm run build`, output `dist`, D1 binding `WAITLIST`.
 `CF_WEB_ANALYTICS_TOKEN` is a public build variable, not a secret. Its build-watch include paths are
 `apps/website/*`, `package.json`, `package-lock.json`, and `turbo.json`; a game-only push must not
-start a marketing build. The relay workflow stays manual because activating a release disconnects live
-rooms.
+start a marketing build. Both desktop and relay workflows run on `v*.*.*` release tags; the relay
+also supports manual dispatch. Relay activation disconnects live rooms, so web-only/documentation-only
+pushes must not create release tags. The relay workflow verifies the public build/protocol and waits
+for desktop assets before posting the coordinated release receipt.
 
 **The first line once said `npx tsc --noEmit`, and that is NOT the gate.**
 `npm run typecheck` now asks Turborepo to typecheck every workspace. The game workspace

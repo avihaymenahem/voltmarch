@@ -82,6 +82,17 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
+## What's new in 3.16.2
+
+- **Consistent command menus:** shared navy/cyan frames, aligned content and usable footers across
+  Settings, Operations, Service Record, lobbies, saves, replays and results.
+- **Working, distinct navigation:** primary sections live across the top and utilities in the left
+  rail, without duplicate destinations. In-match routes preserve pause and confirmation behavior.
+- **A cinematic first screen:** the opening title keeps its image-led layout; dense records and
+  compact screens scroll without hiding controls.
+- **City foliage repair:** coverage fill respects the city grass mix, preserving the existing
+  coverage requirement and scene ceilings.
+
 ## What's new in 3.16.1
 
 - **Desktop-only gameplay distribution:** Windows releases are now the supported game client while
@@ -91,28 +102,13 @@ before crisp lane, slab-edge and kerb treatments are applied.
 - **Cleaner release surface:** retired browser deployment paths and stale documentation are removed;
   local browser/WebGL diagnostics remain available for development.
 
-## What's new in 3.16.0
-
-- **A rebuilt Command Deck:** the authored gunmetal HUD now scales as joined instruments, keeps its
-  controls inside their chrome, scrolls mixed selections beneath a fixed header and fits three unit
-  cards per row. Radar, build, repair, sell and formation controls have restored interaction states.
-- **Clearer battlefield information:** top-wing resources, operation context, objectives, toasts and
-  selection details are aligned and contained at every supported HUD size. The radar gains a subtle
-  green phosphor-and-scanline treatment without sacrificing map readability.
-- **Fairer Easy skirmishes:** adaptive Easy pressure is less aggressive, giving new commanders more
-  recovery room without changing the higher difficulty profiles.
-- **Stronger WebGPU presentation:** the realism and diagnostics pass improves atmosphere and staged
-  render-scale startup, while corrected autumn-tree shadows remove detached dark blocks.
-- **A proper civic monument:** the legacy low-poly statue is retired in favour of the approved worn
-  bronze Meshy asset and its integrated base. New low-poly props now require explicit owner approval.
-
 ## Play VOLTMARCH
 
 - **Windows:** [latest desktop release](https://github.com/avihaymenahem/voltmarch/releases/latest)
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The current release is **3.16.1**. VOLTMARCH is distributed as a Windows desktop game using native
+The current release is **3.16.2**. VOLTMARCH is distributed as a Windows desktop game using native
 Electron storage and update layers, and is WebGPU-first and WebGPU-locked for normal play.
 
 ## For contributors

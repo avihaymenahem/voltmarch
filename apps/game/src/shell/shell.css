@@ -2031,6 +2031,449 @@ html.vm-reduced-motion .vm-shell .vm-load-bar::after {
   }
 }
 
+/* ===========================================================================
+ * 26. SERVICE RECORD DETAIL BOARD
+ *
+ * The reference is an information dashboard: the identity panel is a dossier,
+ * the centre is a composed career board, and missions read as a history rail.
+ * Keep these as layout primitives instead of painting a screenshot in one
+ * background so the live profile values remain legible and accessible.
+ * =========================================================================== */
+
+.vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel {
+  height: auto;
+  min-height: 0;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-profile-body {
+  grid-template-columns: minmax(300px, 0.76fr) minmax(460px, 1.36fr) minmax(330px, 0.92fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(154px, 0.62fr);
+  grid-template-areas:
+    'identity career missions'
+    'identity career missions'
+    'faction faction honours';
+}
+
+.vm-shell .vm-profile-identity-column {
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-dossier {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-color: rgba(var(--vm-accent-rgb), 0.32);
+  background:
+    linear-gradient(155deg, rgba(var(--vm-accent-rgb), 0.11), transparent 42%),
+    repeating-linear-gradient(135deg, transparent 0 18px, rgba(255, 255, 255, 0.014) 18px 19px),
+    rgba(3, 10, 18, 0.9);
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity {
+  flex: 0 0 auto;
+  gap: 12px;
+}
+
+.vm-shell .vm-profile-portrait-frame {
+  position: relative;
+  width: 100%;
+  height: 178px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.42);
+  background: #07111b;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.vm-shell .vm-profile-portrait-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(2, 8, 15, 0.55), transparent 52%),
+    linear-gradient(180deg, transparent 52%, rgba(2, 8, 15, 0.8));
+}
+
+.vm-shell .vm-profile-portrait-frame > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center 24%;
+  filter: saturate(0.68) contrast(1.08) brightness(0.82);
+}
+
+.vm-shell .vm-profile-portrait-frame .vm-profile-crest {
+  position: absolute;
+  z-index: 1;
+  right: 10px;
+  bottom: 10px;
+  width: 54px;
+  height: 54px;
+  flex-basis: 54px;
+  border-color: rgba(242, 195, 92, 0.55);
+  background: rgba(2, 6, 13, 0.76);
+  transform: rotate(45deg);
+}
+
+.vm-shell .vm-profile-portrait-frame .vm-profile-crest > .vm-profile-mark {
+  width: 42px;
+  height: 42px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-copy {
+  gap: 2px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-callsign {
+  margin-top: 6px;
+  font-size: calc(clamp(26px, 2.6vw, 38px) * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-service,
+.vm-shell .vm-profile-identity-column .vm-profile-chips {
+  display: flex;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-chips {
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.vm-shell .vm-profile-identity-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--vm-line-soft);
+  border-bottom: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-profile-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 6px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.vm-shell .vm-profile-fact > span,
+.vm-shell .vm-profile-channel-row > span:not(.vm-profile-channel-dot) {
+  color: var(--vm-text-faint);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-profile-fact > strong {
+  overflow: hidden;
+  color: var(--vm-text-dim);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-identity-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.vm-shell .vm-profile-subhead {
+  color: var(--vm-accent);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-profile-channel-row {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--vm-text-dim);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-channel-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #66dca5;
+  box-shadow: 0 0 8px rgba(102, 220, 165, 0.8);
+}
+
+.vm-shell .vm-profile-channel-row > strong {
+  color: #66dca5;
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  letter-spacing: 0.12em;
+}
+
+.vm-shell .vm-profile-career-board {
+  grid-area: career;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 14px;
+  padding: 14px;
+  overflow-y: auto;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.28);
+  background:
+    linear-gradient(145deg, rgba(var(--vm-accent-rgb), 0.06), transparent 42%),
+    rgba(3, 9, 17, 0.62);
+  scrollbar-width: thin;
+}
+
+.vm-shell .vm-profile-career-summary {
+  grid-area: auto;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.vm-shell .vm-profile-career-summary::before {
+  margin-bottom: 2px;
+}
+
+.vm-shell .vm-profile-career-summary .vm-profile-stat {
+  min-height: 92px;
+  padding: 11px;
+}
+
+.vm-shell .vm-profile-stat-value {
+  font-size: calc(clamp(22px, 2.1vw, 30px) * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-performance,
+.vm-shell .vm-profile-progression,
+.vm-shell .vm-profile-specializations {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(4, 11, 20, 0.74);
+}
+
+.vm-shell .vm-profile-specializations {
+  grid-column: 1 / -1;
+}
+
+.vm-shell .vm-profile-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.vm-shell .vm-profile-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vm-text-dim);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-progress-head > strong {
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-profile-progress-rail {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vm-shell .vm-profile-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--vm-accent);
+  box-shadow: 0 0 10px rgba(var(--vm-accent-rgb), 0.5);
+}
+
+.vm-shell .vm-profile-progress-rail.is-violet .vm-profile-progress-fill { background: #b179ff; box-shadow: 0 0 10px rgba(177, 121, 255, 0.55); }
+.vm-shell .vm-profile-progress-rail.is-amber .vm-profile-progress-fill { background: #f2c35c; box-shadow: 0 0 10px rgba(242, 195, 92, 0.45); }
+
+.vm-shell .vm-profile-specialization-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.vm-shell .vm-profile-specialization {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 8px 8px 12px;
+  overflow: hidden;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(7, 16, 27, 0.78);
+}
+
+.vm-shell .vm-profile-specialization-stripe {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--vm-faction, var(--vm-accent));
+}
+
+.vm-shell .vm-profile-specialization > strong {
+  overflow: hidden;
+  color: var(--vm-text);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-specialization > span {
+  overflow: hidden;
+  color: var(--vm-text-faint);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-mission-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-mission-filters {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--vm-line-soft);
+  color: var(--vm-text-faint);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.vm-shell .vm-profile-mission-filters > span { position: relative; white-space: nowrap; }
+.vm-shell .vm-profile-mission-filters > span.is-active { color: var(--vm-accent); }
+.vm-shell .vm-profile-mission-filters > span.is-active::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -10px;
+  left: 0;
+  height: 2px;
+  background: var(--vm-accent);
+}
+.vm-shell .vm-profile-mission-filters > .vm-icon { margin-left: auto; color: var(--vm-accent-dim); }
+
+.vm-shell .vm-profile-mission-list {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.vm-shell .vm-profile-mission {
+  display: grid;
+  grid-template-columns: 23px minmax(0, 1fr);
+  column-gap: 8px;
+  padding: 11px 10px;
+}
+
+.vm-shell .vm-profile-mission-marker {
+  grid-row: 1 / span 3;
+  display: grid;
+  place-items: start center;
+  padding-top: 2px;
+  color: #66dca5;
+}
+
+.vm-shell .vm-profile-mission.is-locked .vm-profile-mission-marker { color: var(--vm-text-faint); }
+.vm-shell .vm-profile-mission-head,
+.vm-shell .vm-profile-mission-description,
+.vm-shell .vm-profile-mission-progress { grid-column: 2; }
+.vm-shell .vm-profile-mission-description { margin: 6px 0 9px; }
+
+.vm-shell .vm-profile-faction-record .vm-profile-section-head,
+.vm-shell .vm-profile-honours-record .vm-profile-section-head {
+  min-height: 62px;
+  padding: 10px 12px;
+}
+
+.vm-shell .vm-profile-faction-record .vm-profile-factions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  padding: 9px;
+}
+
+.vm-shell .vm-profile-faction-record .vm-profile-faction {
+  padding: 9px 8px 8px 12px;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-awards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 9px 9px;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award {
+  min-height: 116px;
+  padding: 7px;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award-visual {
+  height: 48px;
+  margin-bottom: 3px;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award-name {
+  font-size: calc(9px * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award-source,
+.vm-shell .vm-profile-honours-record .vm-profile-award-progress {
+  display: none;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-reference-panel > .vm-profile-body {
+    grid-template-columns: minmax(250px, 0.74fr) minmax(0, 1.26fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'identity career'
+      'identity missions'
+      'faction faction'
+      'honours honours';
+  }
+
+  .vm-shell .vm-profile-specialization-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-profile-reference-panel > .vm-profile-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .vm-shell .vm-profile-career-board { display: flex; flex-direction: column; }
+  .vm-shell .vm-profile-specialization-grid,
+  .vm-shell .vm-profile-faction-record .vm-profile-factions,
+  .vm-shell .vm-profile-honours-record .vm-profile-awards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ==========================================================================
  * 11. CREDITS
  * ========================================================================== */
@@ -2673,6 +3116,547 @@ html.vm-reduced-motion .vm-shell .vm-load-bar::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* The command-frame panel is absolutely positioned by the reference route.
+   The general route rule below gives every page panel `width: 100%`, which
+   would otherwise use the full shell width *in addition to* this panel's
+   82px/20px inset. Keep the fixed rail and footer within a 1280px desktop
+   window, then explicitly beat the 12-column desktop dashboard at the
+   compact breakpoints. */
+.vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel {
+  width: auto;
+  max-width: none;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel > .vm-profile-body {
+    grid-template-columns: minmax(230px, 0.76fr) minmax(0, 1.24fr) !important;
+    grid-template-rows: auto;
+    grid-template-areas:
+      'identity career'
+      'identity missions'
+      'faction faction'
+      'honours honours'
+      'clearance clearance' !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel > .vm-profile-body {
+    display: flex !important;
+    flex-direction: column;
+  }
+}
+
+/* SETTINGS REFERENCE FRAME
+ * Settings keeps its existing category/data model, but now lives in the same
+ * full-screen command console as the Service Record reference composition. */
+.vm-shell .vm-screen.vm-page.vm-settings-reference-page {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background:
+    linear-gradient(90deg, rgba(1, 5, 10, 0.96), rgba(2, 8, 15, 0.73)),
+    radial-gradient(circle at 76% 18%, rgba(var(--vm-accent-rgb), 0.11), transparent 38%);
+}
+
+.vm-shell .vm-settings-reference-page > .vm-profile-global-nav {
+  position: absolute;
+  z-index: 5;
+  inset: 0 0 auto;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(var(--vm-accent-rgb), 0.22);
+  background: rgba(2, 8, 15, 0.94);
+}
+
+.vm-shell .vm-settings-reference-page > .vm-profile-global-nav .vm-profile-global-mark {
+  color: #c5e5f8;
+  font-family: var(--vm-font-display);
+  font-size: 34px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+}
+
+.vm-shell .vm-settings-reference-page > .vm-profile-global-nav .vm-profile-global-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(207, 231, 246, 0.48);
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-links {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2.4vw, 42px);
+  overflow: hidden;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-link {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 29px 0 27px;
+  color: #8ea9ba;
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-link.is-active {
+  color: #42d9fa;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-link.is-active::after {
+  content: '';
+  position: absolute;
+  right: -12px;
+  bottom: 0;
+  left: -12px;
+  height: 3px;
+  background: #42d9fa;
+  box-shadow: 0 0 18px rgba(66, 217, 250, 0.62);
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-resources {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+  padding-left: 18px;
+  border-left: 1px solid rgba(var(--vm-accent-rgb), 0.18);
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-resource {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-resource > small {
+  color: var(--vm-text-faint);
+  font-size: calc(7px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-resource > strong {
+  color: var(--vm-text-dim);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vm-shell .vm-settings-reference-page .vm-profile-global-channel {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #68e3a0;
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-settings-reference-page > .vm-settings-side-rail {
+  position: absolute;
+  z-index: 4;
+  top: 100px;
+  bottom: 62px;
+  left: 20px;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 0;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.26);
+  background: rgba(3, 10, 18, 0.78);
+}
+
+.vm-shell .vm-settings-reference-page > .vm-settings-side-rail .vm-profile-side-item {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #628096;
+  border: 1px solid transparent;
+}
+
+.vm-shell .vm-settings-reference-page > .vm-settings-side-rail .vm-profile-side-item.is-active {
+  color: #42d9fa;
+  border-color: rgba(66, 217, 250, 0.38);
+  background: rgba(66, 217, 250, 0.1);
+}
+
+.vm-shell .vm-settings-reference-page > .vm-settings-reference-panel {
+  position: absolute;
+  inset: 100px 20px 62px 82px;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-rows: 0 minmax(0, 1fr) auto;
+  border-color: rgba(var(--vm-accent-rgb), 0.3);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
+}
+
+/* The shared page rule gives ordinary routes a full-height panel. This route
+ * uses explicit top/bottom insets so its footer stays inside the viewport. */
+.vm-shell .vm-screen.vm-page.vm-settings-reference-page > .vm-page-panel.vm-settings-reference-panel {
+  height: auto;
+}
+
+.vm-shell .vm-settings-reference-panel > .vm-page-head {
+  display: none;
+}
+
+.vm-shell .vm-settings-reference-panel > .vm-page-body {
+  min-height: 0;
+  padding: 16px;
+  border: 0;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(var(--vm-accent-rgb), 0.09) 50%, transparent calc(50% + 1px)),
+    rgba(3, 8, 16, 0.7);
+}
+
+.vm-shell .vm-settings-reference-panel > .vm-page-foot {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-settings-reference-page .vm-profile-global-links {
+    gap: 14px;
+  }
+
+  .vm-shell .vm-settings-reference-page .vm-profile-global-link {
+    font-size: calc(9px * var(--vm-text-scale, 1));
+  }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-settings-reference-page > .vm-profile-global-nav {
+    height: 58px;
+    padding: 0 14px;
+  }
+
+  .vm-shell .vm-settings-reference-page .vm-profile-global-mark,
+  .vm-shell .vm-settings-reference-page .vm-profile-global-divider,
+  .vm-shell .vm-settings-reference-page .vm-profile-global-links,
+  .vm-shell .vm-settings-reference-page > .vm-settings-side-rail,
+  .vm-shell .vm-settings-reference-page .vm-profile-global-resources {
+    display: none;
+  }
+
+  .vm-shell .vm-settings-reference-page .vm-profile-global-channel {
+    margin-left: auto;
+  }
+
+  .vm-shell .vm-settings-reference-page > .vm-settings-reference-panel {
+    inset: 66px 8px 8px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .vm-shell .vm-settings-reference-panel > .vm-settings-nav {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .vm-shell .vm-settings-reference-panel > .vm-page-body {
+    grid-column: 1;
+    grid-row: 2;
+    padding: 10px;
+  }
+}
+
+.vm-shell .vm-profile-portrait-frame {
+  height: 110px;
+}
+
+.vm-shell .vm-profile-identity-column {
+  position: relative;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-dossier {
+  gap: 9px;
+  flex: 0 0 100%;
+  height: 100%;
+  padding-bottom: 78px;
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-dossier::after {
+  display: none;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity {
+  gap: 9px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-callsign {
+  font-size: calc(24px * var(--vm-text-scale, 1)) !important;
+  letter-spacing: 0.08em;
+  overflow: visible;
+}
+
+.vm-shell .vm-profile-identity-facts {
+  gap: 0;
+}
+
+.vm-shell .vm-profile-fact {
+  gap: 2px;
+  padding: 5px 6px;
+}
+
+.vm-shell .vm-profile-identity-channels {
+  display: none;
+  gap: 4px;
+}
+
+.vm-shell .vm-profile-identity-channels .vm-profile-channel-row:last-child {
+  display: none;
+}
+
+.vm-shell .vm-profile-channel-row {
+  font-size: calc(9px * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-editor {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  flex: none;
+  display: flex !important;
+  flex-direction: column;
+  height: 122px !important;
+  min-height: 122px !important;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-editor::before {
+  content: 'EDIT IDENTITY';
+  margin: 0;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-editor .vm-profile-editor-copy {
+  display: none;
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-field {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: end;
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-field .vm-btn {
+  width: 100% !important;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-status {
+  display: none;
+}
+
+.vm-shell .vm-profile-career-board {
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-career-summary .vm-profile-stat {
+  min-height: 78px !important;
+  padding: 8px 10px !important;
+}
+
+.vm-shell .vm-profile-career-summary .vm-profile-stat-value {
+  font-size: calc(clamp(20px, 1.8vw, 27px) * var(--vm-text-scale, 1));
+}
+
+.vm-shell .vm-profile-performance,
+.vm-shell .vm-profile-progression {
+  padding: 6px;
+}
+
+.vm-shell .vm-profile-progress-row {
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.vm-shell .vm-profile-specializations {
+  padding: 5px 10px;
+}
+
+.vm-shell .vm-profile-specialization-grid {
+  gap: 5px;
+  margin-top: 0;
+}
+
+.vm-shell .vm-profile-specialization {
+  gap: 3px;
+  padding: 3px 6px 3px 10px;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award {
+  min-height: 92px !important;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-award-visual {
+  height: 38px !important;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-awards {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-group-head {
+  padding: 6px 10px 4px !important;
+}
+
+/* Final cascade for the reference service-record composition. */
+.vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel {
+  height: auto;
+  min-height: 0;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-profile-body {
+  grid-template-columns: minmax(300px, 0.76fr) minmax(460px, 1.36fr) minmax(330px, 0.92fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(154px, 0.62fr);
+  grid-template-areas:
+    'identity career missions'
+    'identity career missions'
+    'faction faction honours';
+}
+
+.vm-shell .vm-profile-career-board {
+  grid-area: career;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-profile-body {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  grid-template-areas:
+    'identity identity identity career career career career career missions missions missions missions'
+    'identity identity identity career career career career career missions missions missions missions'
+    'honours honours honours honours honours honours faction faction faction faction clearance clearance' !important;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity {
+  display: grid !important;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-portrait-frame {
+  width: 140px;
+  height: 180px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-copy {
+  align-self: center;
+}
+
+.vm-shell .vm-profile-mission {
+  grid-template-columns: 58px 23px minmax(0, 1fr) !important;
+}
+
+.vm-shell .vm-profile-mission-preview {
+  grid-row: 1 / span 3;
+  grid-column: 1;
+  min-height: 58px;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.2);
+  filter: saturate(0.58) contrast(1.1);
+  opacity: 0.8;
+}
+
+.vm-shell .vm-profile-mission-marker {
+  grid-column: 2 !important;
+}
+
+.vm-shell .vm-profile-mission-head,
+.vm-shell .vm-profile-mission-description,
+.vm-shell .vm-profile-mission-progress {
+  grid-column: 3 !important;
+}
+
+.vm-shell .vm-profile-clearance-record {
+  grid-area: clearance;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid var(--vm-line-soft);
+  background:
+    linear-gradient(145deg, rgba(var(--vm-accent-rgb), 0.04), transparent 48%),
+    rgba(3, 8, 16, 0.56);
+}
+
+.vm-shell .vm-profile-clearance-level {
+  color: var(--vm-text);
+  font-family: var(--vm-font-display);
+  font-size: calc(26px * var(--vm-text-scale, 1));
+  letter-spacing: 0.14em;
+}
+
+.vm-shell .vm-profile-clearance-status {
+  color: #66dca5;
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.vm-shell .vm-profile-clearance-rule {
+  height: 1px;
+  width: 100%;
+  background: rgba(var(--vm-accent-rgb), 0.28);
+}
+
+.vm-shell .vm-profile-clearance-code {
+  color: var(--vm-text-faint);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+}
+
+.vm-shell .vm-profile-career-summary {
+  grid-area: auto;
+  grid-column: 1 / -1;
+}
+
+.vm-shell .vm-profile-performance,
+.vm-shell .vm-profile-progression {
+  align-self: start;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-reference-panel > .vm-profile-body {
+    grid-template-columns: minmax(250px, 0.74fr) minmax(0, 1.26fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'identity career'
+      'identity missions'
+      'faction faction'
+      'honours honours';
   }
 }
 
@@ -8959,6 +9943,773 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   }
 }
 
+/* ===========================================================================
+ * 23. COMMAND CENTRE PAGES
+ *
+ * The approved command-centre direction is a page system, not a new modal
+ * skin. Information-heavy routes get the viewport and a stable shell; the
+ * pause menu and destructive decisions remain compact overlays. These rules
+ * are DOM/CSS only, so opening a page never starts or reconfigures the match.
+ * =========================================================================== */
+
+.vm-shell .vm-screen.vm-page {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: clamp(18px, 5.8vh, 54px) clamp(18px, 5vw, 80px);
+}
+
+.vm-shell .vm-screen.vm-page > .vm-page-panel {
+  width: 100%;
+  max-width: 1440px;
+  height: 100%;
+  max-height: none;
+  margin: 0 auto;
+  min-height: 0;
+}
+
+.vm-shell .vm-page-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--vm-accent-dim);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-page-telemetry {
+  flex: 0 0 auto;
+}
+
+.vm-shell .vm-page-route-nav {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.2vw, 18px);
+  margin-left: auto;
+  overflow: hidden;
+}
+
+.vm-shell .vm-page-route-item {
+  position: relative;
+  flex: 0 0 auto;
+  color: var(--vm-text-faint);
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-page-route-item.is-active {
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-page-route-item.is-active::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -9px;
+  left: 0;
+  height: 2px;
+  background: var(--vm-accent);
+  box-shadow: 0 0 9px rgba(var(--vm-accent-rgb), 0.5);
+}
+
+.vm-shell .vm-page-body {
+  min-height: 0;
+}
+
+.vm-shell .vm-screen.vm-page > .vm-missions {
+  position: absolute;
+  inset: clamp(18px, 5.8vh, 54px) clamp(18px, 5vw, 80px);
+  padding: 0;
+}
+
+.vm-shell .vm-screen.vm-page > .vm-missions > .vm-missions-panel {
+  width: 100%;
+  max-width: 1440px;
+  height: 100%;
+  max-height: none;
+  margin: 0 auto;
+}
+
+/* The dossier follows the reference composition: editable identity on the
+   left, career signal in the centre, and long-form records below. */
+.vm-shell .vm-profile-panel {
+  width: 100%;
+  max-width: 1440px;
+}
+
+.vm-shell .vm-profile-body {
+  display: grid;
+  grid-template-columns: minmax(235px, 0.72fr) minmax(320px, 1.2fr) minmax(280px, 0.92fr);
+  grid-template-areas:
+    'identity dossier dossier'
+    'identity career career'
+    'faction faction honours';
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+}
+
+.vm-shell .vm-profile-identity-editor {
+  grid-area: identity;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid rgba(175, 211, 236, 0.25);
+  border-top: 2px solid rgba(175, 211, 236, 0.58);
+  background:
+    linear-gradient(160deg, rgba(175, 211, 236, 0.14), transparent 44%),
+    repeating-linear-gradient(135deg, transparent 0 22px, rgba(255, 255, 255, 0.012) 22px 23px),
+    rgba(5, 13, 23, 0.92);
+}
+
+.vm-shell .vm-profile-identity-editor::before {
+  content: '01  /  IDENTITY CHANNEL';
+  margin-bottom: auto;
+  color: #66dca5;
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.19em;
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-copy,
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-field,
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-status {
+  width: 100%;
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-field {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.vm-shell .vm-profile-identity-editor .vm-profile-editor-field .vm-btn {
+  width: 100%;
+}
+
+.vm-shell .vm-profile-dossier {
+  grid-area: dossier;
+  min-height: 190px;
+  margin: 0;
+}
+
+.vm-shell .vm-profile-offline-dossier {
+  grid-area: dossier;
+  margin-top: 0;
+}
+
+.vm-shell .vm-profile-career-summary {
+  grid-area: career;
+  margin: 0;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.vm-shell .vm-profile-faction-record,
+.vm-shell .vm-profile-honours-record {
+  min-width: 0;
+  margin: 0;
+}
+
+.vm-shell .vm-profile-faction-record { grid-area: faction; }
+.vm-shell .vm-profile-honours-record { grid-area: honours; }
+
+.vm-shell .vm-profile-faction-record .vm-profile-factions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vm-shell .vm-profile-honours-record .vm-profile-awards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Missions is a catalogue first: keep the category rail visible while the
+   content column owns the only scroll region. */
+.vm-shell .vm-missions-panel {
+  border-top: 2px solid rgba(var(--vm-accent-rgb), 0.55);
+}
+
+.vm-shell .vm-missions-panel > .vm-page-head {
+  min-height: 76px;
+}
+
+.vm-shell .vm-missions-panel > .vm-missions-rail {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  background: rgba(var(--vm-accent-rgb), 0.045);
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-body {
+    grid-template-columns: minmax(210px, 0.7fr) minmax(0, 1fr);
+    grid-template-areas:
+      'identity dossier'
+      'identity career'
+      'faction faction'
+      'honours honours';
+  }
+
+  .vm-shell .vm-profile-career-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-screen.vm-page {
+    padding: 8px;
+  }
+
+  .vm-shell .vm-screen.vm-page > .vm-missions {
+    inset: 8px;
+  }
+
+  .vm-shell .vm-page-kicker,
+  .vm-shell .vm-page-telemetry,
+  .vm-shell .vm-page-route-nav {
+    display: none;
+  }
+
+  .vm-shell .vm-profile-body {
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+  }
+
+  .vm-shell .vm-profile-identity-editor,
+  .vm-shell .vm-profile-dossier,
+  .vm-shell .vm-profile-career-summary,
+  .vm-shell .vm-profile-faction-record,
+  .vm-shell .vm-profile-honours-record {
+    width: 100%;
+  }
+
+  .vm-shell .vm-profile-career-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ===========================================================================
+ * 24. SERVICE RECORD / COMMAND CENTRE COMPOSITION
+ *
+ * This is the actual information architecture from the approved reference:
+ * identity dossier at left, career signal in the centre, mission queue at
+ * right, then faction and honours records below. The earlier page treatment
+ * only enlarged the old vertical stack; these rules give each information
+ * group a deliberate home.
+ * =========================================================================== */
+
+.vm-shell .vm-profile-body {
+  grid-template-columns: minmax(250px, 0.74fr) minmax(420px, 1.42fr) minmax(300px, 0.9fr);
+  grid-template-rows: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(140px, 0.65fr);
+  grid-template-areas:
+    'identity career missions'
+    'identity career missions'
+    'faction faction honours';
+  height: 100%;
+  align-items: stretch;
+}
+
+.vm-shell .vm-profile-identity-column {
+  grid-area: identity;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-dossier {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-crest {
+  flex-basis: 92px;
+  width: 92px;
+  height: 92px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-copy {
+  width: 100%;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-service,
+.vm-shell .vm-profile-identity-column .vm-profile-chips {
+  display: none;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-callsign {
+  font-size: calc(clamp(24px, 2.4vw, 32px) * var(--vm-text-scale, 1));
+  letter-spacing: 0.11em;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-ribbons {
+  display: none;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-ribbons-label {
+  text-align: left;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-identity-editor {
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 10px;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-editor-note {
+  display: none;
+}
+
+.vm-shell .vm-profile-identity-column .vm-profile-name-input,
+.vm-shell .vm-profile-identity-column .vm-profile-editor-field .vm-btn {
+  min-height: 36px;
+}
+
+.vm-shell .vm-profile-career-summary {
+  grid-area: career;
+  align-self: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.vm-shell .vm-profile-career-summary::before {
+  content: '02  /  CAREER SUMMARY';
+  grid-column: 1 / -1;
+  padding: 0 2px 2px;
+  color: var(--vm-accent);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+
+.vm-shell .vm-profile-career-summary .vm-profile-stat {
+  min-height: 124px;
+  padding: 15px;
+}
+
+.vm-shell .vm-profile-mission-panel {
+  grid-area: missions;
+  min-width: 0;
+  align-self: stretch;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.25);
+  background:
+    linear-gradient(160deg, rgba(var(--vm-accent-rgb), 0.09), transparent 38%),
+    rgba(3, 9, 17, 0.82);
+}
+
+.vm-shell .vm-profile-mission-panel > .vm-profile-section-head {
+  min-height: 76px;
+}
+
+.vm-shell .vm-profile-mission-panel > .vm-profile-section-head .vm-profile-section-index {
+  color: #66dca5;
+}
+
+.vm-shell .vm-profile-mission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.vm-shell .vm-profile-mission {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.17);
+  background: rgba(7, 16, 27, 0.78);
+}
+
+.vm-shell .vm-profile-mission.is-active {
+  border-left: 2px solid #66dca5;
+}
+
+.vm-shell .vm-profile-mission.is-locked {
+  opacity: 0.62;
+  border-left: 2px solid rgba(255, 255, 255, 0.16);
+}
+
+.vm-shell .vm-profile-mission-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vm-shell .vm-profile-mission-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vm-text);
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-mission-state,
+.vm-shell .vm-profile-mission-gate {
+  flex: 0 0 auto;
+  color: #66dca5;
+  font-size: calc(8px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-profile-mission.is-locked .vm-profile-mission-state,
+.vm-shell .vm-profile-mission-gate {
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-profile-mission-description {
+  margin: 8px 0 12px;
+  color: var(--vm-text-dim);
+  font-size: calc(10px * var(--vm-text-scale, 1));
+  line-height: 1.35;
+}
+
+.vm-shell .vm-profile-mission-progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.vm-shell .vm-profile-mission-rail {
+  display: block;
+  flex: 1 1 auto;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vm-shell .vm-profile-mission-fill {
+  display: block;
+  height: 100%;
+  background: #66dca5;
+  box-shadow: 0 0 9px rgba(102, 220, 165, 0.38);
+}
+
+.vm-shell .vm-profile-mission-count,
+.vm-shell .vm-profile-mission-empty {
+  color: var(--vm-text-faint);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-mission-empty {
+  margin: 0;
+  padding: 16px;
+  line-height: 1.45;
+}
+
+.vm-shell .vm-profile-faction-record { grid-area: faction; }
+.vm-shell .vm-profile-honours-record { grid-area: honours; }
+
+.vm-shell .vm-profile-faction-record,
+.vm-shell .vm-profile-honours-record {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-faction-record .vm-profile-factions,
+.vm-shell .vm-profile-honours-record .vm-profile-awards {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-body {
+    grid-template-columns: minmax(230px, 0.76fr) minmax(0, 1.24fr);
+    grid-template-rows: auto;
+    height: auto;
+    grid-template-areas:
+      'identity career'
+      'identity missions'
+      'faction faction'
+      'honours honours';
+  }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-profile-body {
+    display: flex;
+  }
+
+  .vm-shell .vm-profile-identity-column,
+  .vm-shell .vm-profile-career-summary,
+  .vm-shell .vm-profile-mission-panel,
+  .vm-shell .vm-profile-faction-record,
+  .vm-shell .vm-profile-honours-record {
+    flex: 0 0 auto;
+  }
+
+  .vm-shell .vm-profile-career-summary {
+    display: grid;
+  }
+}
+
+/* ===========================================================================
+ * 25. PROFILE REFERENCE FRAME
+ *
+ * The service record is the one information-dense route that owns its own
+ * console chrome. It deliberately does not reuse the centred page treatment:
+ * the global bar and icon rail are part of the page's navigation model.
+ * =========================================================================== */
+
+.vm-shell .vm-profile-reference-page {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  padding: 0;
+  background:
+    linear-gradient(90deg, rgba(1, 5, 10, 0.96), rgba(2, 8, 15, 0.73)),
+    radial-gradient(circle at 76% 18%, rgba(var(--vm-accent-rgb), 0.11), transparent 38%);
+}
+
+.vm-shell .vm-profile-reference-page > .vm-profile-global-nav {
+  position: absolute;
+  z-index: 5;
+  inset: 0 0 auto;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(var(--vm-accent-rgb), 0.22);
+  background: rgba(2, 8, 15, 0.94);
+}
+
+.vm-shell .vm-profile-global-mark {
+  color: #c5e5f8;
+  font-family: var(--vm-font-display);
+  font-size: 34px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+}
+
+.vm-shell .vm-profile-global-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(207, 231, 246, 0.48);
+}
+
+.vm-shell .vm-profile-global-links {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2.4vw, 42px);
+  overflow: hidden;
+}
+
+.vm-shell .vm-profile-global-link {
+  position: relative;
+  flex: 0 0 auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 29px 0 27px;
+  color: #8ea9ba;
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-global-link.is-active {
+  color: #42d9fa;
+}
+
+.vm-shell .vm-profile-global-link.is-active::after {
+  content: '';
+  position: absolute;
+  right: -12px;
+  bottom: 0;
+  left: -12px;
+  height: 3px;
+  background: #42d9fa;
+  box-shadow: 0 0 18px rgba(66, 217, 250, 0.62);
+}
+
+.vm-shell .vm-profile-global-channel {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #68e3a0;
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-profile-global-resources {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+  padding-left: 18px;
+  border-left: 1px solid rgba(var(--vm-accent-rgb), 0.18);
+}
+
+.vm-shell .vm-profile-global-resource {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.vm-shell .vm-profile-global-resource > small {
+  color: var(--vm-text-faint);
+  font-size: calc(7px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.vm-shell .vm-profile-global-resource > strong {
+  color: var(--vm-text-dim);
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vm-shell .vm-profile-reference-page > .vm-profile-side-rail {
+  position: absolute;
+  z-index: 4;
+  top: 100px;
+  bottom: 62px;
+  left: 20px;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 0;
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.26);
+  background: rgba(3, 10, 18, 0.78);
+}
+
+.vm-shell .vm-profile-side-item {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  color: #628096;
+  border: 1px solid transparent;
+}
+
+.vm-shell .vm-profile-global-link:focus-visible,
+.vm-shell .vm-profile-side-item:focus-visible {
+  outline: 1px solid var(--vm-accent);
+  outline-offset: 2px;
+}
+
+.vm-shell .vm-profile-side-item:first-child {
+  color: #42d9fa;
+  border-color: rgba(66, 217, 250, 0.38);
+  background: rgba(66, 217, 250, 0.1);
+}
+
+.vm-shell .vm-profile-reference-page > .vm-profile-reference-panel {
+  position: absolute;
+  inset: 100px 20px 62px 82px;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  border-color: rgba(var(--vm-accent-rgb), 0.3);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-page-head {
+  display: none;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-profile-body {
+  flex: 1 1 auto;
+  height: auto;
+  padding: 16px;
+  border: 0;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-page-foot {
+  flex: 0 0 60px;
+  min-height: 60px;
+  justify-content: space-between;
+  padding: 8px 16px;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-page-foot > .vm-btn:first-child {
+  margin-right: auto;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-page-foot > .vm-btn:not(:first-child) {
+  margin-left: 8px;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-global-links {
+    gap: 14px;
+  }
+
+  .vm-shell .vm-profile-global-link {
+    font-size: calc(9px * var(--vm-text-scale, 1));
+  }
+}
+
+@media (max-width: 700px) {
+  .vm-shell .vm-profile-reference-page > .vm-profile-global-nav {
+    height: 58px;
+    padding: 0 14px;
+  }
+
+  .vm-shell .vm-profile-global-mark,
+  .vm-shell .vm-profile-global-divider,
+  .vm-shell .vm-profile-global-links,
+  .vm-shell .vm-profile-side-rail {
+    display: none;
+  }
+
+  .vm-shell .vm-profile-global-channel {
+    margin-left: auto;
+  }
+
+  .vm-shell .vm-profile-global-resources {
+    display: none;
+  }
+
+  .vm-shell .vm-profile-reference-page > .vm-profile-reference-panel {
+    inset: 66px 8px 8px;
+  }
+}
+
 @media (max-width: 560px) {
   .vm-shell .vm-menu-decision {
     padding: 12px;
@@ -8985,5 +10736,46 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   .vm-shell .vm-pause > .is-overlay-snapshot {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Final cascade for the reference service-record composition. */
+.vm-shell .vm-screen.vm-page.vm-profile-reference-page > .vm-page-panel.vm-profile-reference-panel {
+  height: auto;
+  min-height: 0;
+}
+
+.vm-shell .vm-profile-reference-panel > .vm-profile-body {
+  grid-template-columns: minmax(300px, 0.76fr) minmax(460px, 1.36fr) minmax(330px, 0.92fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(154px, 0.62fr);
+  grid-template-areas:
+    'identity career missions'
+    'identity career missions'
+    'faction faction honours';
+}
+
+.vm-shell .vm-profile-career-board {
+  grid-area: career;
+}
+
+.vm-shell .vm-profile-career-summary {
+  grid-area: auto;
+  grid-column: 1 / -1;
+}
+
+.vm-shell .vm-profile-performance,
+.vm-shell .vm-profile-progression {
+  align-self: start;
+}
+
+@media (max-width: 1080px) {
+  .vm-shell .vm-profile-reference-panel > .vm-profile-body {
+    grid-template-columns: minmax(250px, 0.74fr) minmax(0, 1.26fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'identity career'
+      'identity missions'
+      'faction faction'
+      'honours honours';
   }
 }

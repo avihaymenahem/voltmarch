@@ -502,6 +502,18 @@ an isolated single or another full island; the final bounded composition pass re
 with the authored islands. This remains the same two instanced
 8-triangle colour families, with the same terrain draw and sampler set.
 
+Release-gate correction, 2026-09-02 (3.16.2): coverage fill accidentally used the 70% wilderness
+grass target even on city maps, unlike both surrounding placement passes. It now receives their
+same blended target. The unchanged 12-type urban regression improves from 50.97% to 68.25%
+adornment against the existing 58% requirement, with 3,870 → 3,874 props. The 9,000-prop/30-type
+ceilings, assets, materials and frame-loop code do not change. Ten alternating-order warmed CPU
+generation pairs measured 78.82 → 80.67 ms on that urban fixture (+1.85 ms, +2.35%) and
+92.67 → 90.16 ms on the quarter-urban fixture. These are generation costs, not GPU frame timings.
+Corrected placement can change a map's fingerprint; existing saved-mask fingerprint validation
+remains authoritative. Test corrections also measure local clearing against a truly compacted
+far-field fixture and focus composition by local clump centres, rather than assuming the density
+dial scales totals linearly or that a focus-spacing option raises the global count.
+
 ## Explicit non-goals for the POC
 
 - Rewriting terrain scatter density or map composition.

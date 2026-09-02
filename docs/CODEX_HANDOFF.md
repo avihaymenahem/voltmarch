@@ -22,8 +22,8 @@ project decision obsolete.
 
 ## Current shipped state
 
-- Public version: **3.16.1**.
-- The `v3.16.1` tag is the coordinated desktop/relay release baseline.
+- Public version: **3.16.2**.
+- The `v3.16.2` tag is the coordinated desktop/relay release baseline.
 - `voltmarch.com` is the Cloudflare Pages marketing/coming-soon site.
 - `relay.voltmarch.com` is the Hostinger/nginx WebSocket relay.
 - GitHub Wiki is generated from the repository's `wiki/` directory by
@@ -62,6 +62,13 @@ project decision obsolete.
   is corrected. The approved worn-bronze Meshy civic monument, including its integrated base, is the
   only map statue; the retired procedural low-poly variants must not return. New low-poly props require
   explicit project-owner approval before creation.
+
+- Release 3.16.2 aligns internal menus to the navy/cyan command-frame reference, repairs shared
+  Settings and in-match routes, separates primary top navigation from left-rail utilities, and
+  restores the image-led opening title. Service Record filters and lobby connection states reflect
+  real data. City coverage fill now uses the same urban grass target as the other placement passes;
+  scene ceilings and the 58% coverage requirement are unchanged. Evidence and release gates are in
+  `docs/reviews/MENU_REFERENCE_AUDIT_2026-09-02.md`.
 
 The repository should be clean and `origin/main` should match the working branch at this handoff.
 Verify rather than trusting that sentence after time has passed.
@@ -223,7 +230,12 @@ dozer into its imported shell.
   the separately authorised removal of the legacy renderer; do not spend new graphics work on parity.
 - Title/menu presentation is image-first. Show the key art and interactive menu before loading or
   compiling the game scene. Returning from a match must not block on shader preparation again.
-- Out-of-game pages, overlays and the pause menu share the command-shell chrome in `shell.css`;
+  The opening title keeps its own cinematic layout and play choices, without the inner-page top
+  navigation or utility rail; `showsCommandNavigation` owns that distinction.
+- Out-of-game pages, overlays and the pause menu share `mountCommandNavigation` in `Shell.ts` and
+  the reference frame in `command-shell.css`, layered after the base `shell.css`;
+  primary sections live only in the top bar; Multiplayer, Load Game, Replays and Settings live only
+  in the utility rail. Do not duplicate these destinations across both navigation surfaces.
   extend that vocabulary instead of creating route-local modal skins. The Service Record owns the
   always-available Commander Identity editor and persists the same `gameplay.commanderName` consumed
   by Multiplayer, chat, results and replays.
@@ -290,16 +302,18 @@ dozer into its imported shell.
   not shipped.
 - Multiplayer speed is fixed at 1×. Single-player speed cycles through 0.5×, 1×, 1.5×, 2× and 2.5×.
 - Profile-based unlocks are suppressed in multiplayer to prevent divergent local rosters.
-- Relay deployments are deliberate/manual because activating one disconnects live rooms. A web-only
-  or documentation-only change must not redeploy the relay.
+- Relay activation disconnects live rooms. Both desktop and relay workflows run on `v*.*.*` tags;
+  relay also supports manual dispatch. A web-only or documentation-only push must not create a
+  release tag or redeploy the relay.
 
 ## Release and deployment decisions
 
 - SemVer policy: patch for fixes/polish without a new player-facing capability; minor for meaningful
   features, content or workflow-visible behavior. Ask when the classification is genuinely mixed.
 - Never change a version merely to deploy documentation or a website-only correction.
-- `main` pushes deploy only affected public surfaces through path-filtered workflows. Tagging a release
-  is what produces desktop artifacts and release messaging.
+- `main` pushes can update path-filtered marketing/wiki surfaces. A `v*.*.*` release tag publishes
+  desktop artifacts and activates the matching relay; the relay workflow posts release messaging
+  only after public relay validation and desktop-asset verification.
 - Keep the Discord release post aligned with what actually deployed. Do not claim relay, desktop or
   website changes when only the game shipped.
 - The installed desktop updater checks after launch and every four hours, downloads in the background

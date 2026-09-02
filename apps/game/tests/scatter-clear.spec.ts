@@ -326,22 +326,38 @@ describe('Scatter.clearFootprint — cost', () => {
     expect(scatter.lastClearCount).toBeLessThanOrEqual(scatter.lastClearScanned);
   });
 
-  it('scans the same amount on a map with four times the props', () => {
-    // The honest O() witness: same footprint, wildly different total density.
-    // A full sweep would scale with `propCount`; a cell-indexed scan scales
-    // with LOCAL density, which moves by a small factor, not by 4x-of-total.
-    const sparse = track(rig(0.4)).scatter;
+  it('scans the same amount when only distant placements differ', () => {
+    // The density dial has a floor and grass completion has its own target:
+    // different dial values no longer guarantee different total populations.
+    // Instead hold the local placements identical and remove distant entries
+    // from one fixture, rebuilding its real instance buffers and cell index.
+    // Compact the list rather than marking entries dead: a full-array sweep
+    // must have genuinely different amounts of work in these two fixtures.
+    const sparse = track(rig(2.5)).scatter;
     const dense = track(rig(2.5)).scatter;
-    expect(dense.propCount).toBeGreaterThan(sparse.propCount * 1.5);
+    const fixture = sparse as unknown as {
+      placements: { x: number; z: number }[];
+      disposeMeshes(): void;
+      buildInstances(): void;
+    };
+    fixture.disposeMeshes();
+    fixture.placements = fixture.placements.filter((p) => (
+      p.x >= 150 && p.x <= 270 && p.z >= 150 && p.z <= 270
+    ));
+    fixture.buildInstances();
+    expect(sparse.propCount).toBeGreaterThan(0);
+    expect(dense.propCount).toBeGreaterThan(sparse.propCount * 4);
 
     const box: [number, number, number, number] = [200, 200, 220, 220];
     sparse.clearFootprint(box[0], box[1], box[2], box[3]);
     dense.clearFootprint(box[0], box[1], box[2], box[3]);
 
-    // Scanned counts stay in the same order of magnitude even though the maps
-    // do not. Loose on purpose: local density genuinely does rise.
+    // Identical local content must cost exactly the same, not merely remain
+    // within a loose ratio of the global population.
+    expect(dense.lastClearScanned).toBe(sparse.lastClearScanned);
+    expect(dense.lastClearScanned).toBeGreaterThan(0);
+    expect(dense.lastClearCount).toBe(sparse.lastClearCount);
     expect(dense.lastClearScanned).toBeLessThan(400);
-    expect(sparse.lastClearScanned).toBeLessThan(400);
   });
 
   it('costs a fraction of a millisecond per placement', () => {

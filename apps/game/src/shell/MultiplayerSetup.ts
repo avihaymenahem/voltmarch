@@ -107,6 +107,8 @@ export class MultiplayerSetup implements Screen {
   private hostPanel: HTMLElement | null = null;
   private roomList: HTMLElement | null = null;
   private roomCount: HTMLElement | null = null;
+  private roomBadge: HTMLElement | null = null;
+  private roomsReceived = false;
   private mapFilterSelect: HTMLSelectElement | null = null;
   private factionFilterSelect: HTMLSelectElement | null = null;
   private seatGrid: HTMLElement | null = null;
@@ -413,7 +415,8 @@ export class MultiplayerSetup implements Screen {
       'Live games you can join immediately. Select a row to take the open commander seat.',
     ));
     browserHead.appendChild(browserTitle);
-    browserHead.appendChild(el('span', 'vm-mp-live-badge', 'Live list'));
+    this.roomBadge = el('span', 'vm-mp-live-badge', 'Connecting');
+    browserHead.appendChild(this.roomBadge);
     browser.appendChild(browserHead);
 
     /* -- filters ----------------------------------------------------------- */
@@ -487,6 +490,20 @@ export class MultiplayerSetup implements Screen {
     const list = this.roomList;
     if (list === null) return;
     list.replaceChildren();
+
+    const connected = this.phase === 'ready' || this.phase === 'hosting' || this.phase === 'queued';
+    const connecting = this.phase === 'connecting';
+    if (this.roomBadge !== null) this.roomBadge.textContent = connected ? 'Live list' : connecting ? 'Connecting' : 'Offline';
+    if (!connected || !this.roomsReceived) {
+      const waiting = el('div', 'vm-mp-empty');
+      waiting.appendChild(el('strong', 'vm-mp-empty-title', connected ? 'Loading public matches'
+        : connecting ? 'Connecting to the match server' : 'Match server unavailable'));
+      waiting.appendChild(el('span', 'vm-mp-empty-copy', connected
+        ? 'Waiting for the current lobby list.' : 'The list will refresh when the connection is restored. You can still configure a match.'));
+      list.appendChild(waiting);
+      if (this.roomCount !== null) this.roomCount.textContent = connected ? 'Waiting for match list…' : PHASE_TEXT[this.phase];
+      return;
+    }
 
     const shown = this.rooms.filter((r) => (
       (this.filterMap === ANY || r.map === this.filterMap)
@@ -571,6 +588,8 @@ export class MultiplayerSetup implements Screen {
       onPhase: (p) => {
         if (this.session !== session || this.disposed) return;
         this.phase = p;
+        if (p === 'connecting' || p === 'ended') this.roomsReceived = false;
+        this.renderRooms();
         // Subscribe as soon as the handshake lands, and drop the subscription
         // whenever we are no longer idle — a player sitting in a match does not
         // need the lobby pushed at them.
@@ -596,6 +615,7 @@ export class MultiplayerSetup implements Screen {
         if (this.session !== session || this.disposed) return;
         this.rooms = rooms;
         this.roomTotal = total;
+        this.roomsReceived = true;
         this.renderRooms();
       },
       onStart: (info) => {

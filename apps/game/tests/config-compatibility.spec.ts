@@ -120,7 +120,10 @@ describe('core/config compatibility facade', () => {
   });
 
   it('preserves the aggregate runtime value graph, not only its names', () => {
-    expect(runtimeValueDigest()).toBe('449be0e0d55a3b098c5e14339d41ce095a2eea833300f307b9e6ee63c01e3625');
+    // Audited against 7e439823: only config/scatter.ts changed afterwards in
+    // 3c049314 (grass share/weight and island spacing, documented in the
+    // 2026-09-02 foliage checkpoint). Keep the complete graph locked.
+    expect(runtimeValueDigest()).toBe('cf4afb50b0087a5be301739b9829131b2f452fd313e6f9240fcfd1b3d9e2c40d');
   });
 
   it('keeps representative derived relationships unchanged', () => {

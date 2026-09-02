@@ -1777,7 +1777,7 @@ export class Scatter {
       habitatSeed, rng.fork(),
     );
 
-    this.fillToTarget(live, rng.fork());
+    this.fillToTarget(live, grassTarget, rng.fork());
     this.fillGrassToShare(live, grassTarget, habitatSeed, rng.fork());
     this.types = live.filter((t) => t.count > 0);
 
@@ -2401,7 +2401,7 @@ export class Scatter {
    * rich splat this loop does almost nothing — which is the intent. It only
    * works hard on exactly the maps that would otherwise ship as a green plane.
    */
-  private fillToTarget(avail: ScatterType[], rng: Rng): void {
+  private fillToTarget(avail: ScatterType[], grassTarget: number, rng: Rng): void {
     // Fillers must be cheap, legal almost anywhere, and small enough that
     // dropping three into a gap does not build a wall across it.
     // Grass may satisfy coverage only as a complete patch. Placing one card at
@@ -2422,10 +2422,11 @@ export class Scatter {
       let n = 0;
       if (pick.def.family === 'grass') {
         // Coverage owns small edge knots, not the 36-72 card hero islands.
-        // Stop selecting them at the authored target so this utility pass
-        // cannot silently turn the whole composition into grass.
+        // Use the same wilderness-to-city target as structured placement and
+        // final completion. The wilderness-only target spent urban coverage
+        // headroom on overlapping cards before shrubs/rocks could fill gaps.
         if (coverageGrass / Math.max(this.placements.length, 1)
-          >= SCATTER_DENSITY.targetGrassFraction) return 0;
+          >= grassTarget) return 0;
         const want = rng.int(4, 8);
         for (let i = 0; i < want; i++) {
           const angle = rng.next() * TAU;

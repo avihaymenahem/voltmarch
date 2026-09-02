@@ -594,7 +594,8 @@ describe('multiplayer workflow and discovery', () => {
       .toEqual(['true', 'false']);
     expect(one(host, 'vm-mp-browser').textContent).toContain('Public matches');
     expect(one(host, 'vm-mp-rooms').getAttribute('aria-label')).toBe('Open public matches');
-    expect(one(host, 'vm-mp-empty').textContent).toContain('No public matches are open');
+    expect(one(host, 'vm-mp-empty').textContent).toContain('Connecting to the match server');
+    expect(one(host, 'vm-mp-live-badge').textContent).toBe('Connecting');
 
     controls[1].click();
     expect(workflows.map((panel) => panel.hidden)).toEqual([true, false]);
@@ -622,6 +623,21 @@ describe('multiplayer workflow and discovery', () => {
     expect(room.textContent).toContain('Rook');
     expect(one(room, 'vm-mp-room-action').textContent).toBe('Join');
     expect(one(host, 'vm-mp-count').textContent).toBe('1 of 1 shown');
+    screen.unmount();
+  });
+
+  it('distinguishes connecting, waiting, empty and disconnected public lists', () => {
+    const { host, screen } = mountMultiplayer();
+    const socket = LobbySocket.instances[0]!;
+    socket.open();
+    socket.receive({ t: 'welcome', protocol: PROTOCOL_VERSION });
+    expect(one(host, 'vm-mp-empty').textContent).toContain('Loading public matches');
+    socket.receive({ t: 'rooms', rooms: [], total: 0 });
+    expect(one(host, 'vm-mp-empty').textContent).toContain('No public matches are open');
+    expect(one(host, 'vm-mp-live-badge').textContent).toBe('Live list');
+    socket.drop();
+    expect(one(host, 'vm-mp-empty').textContent).toContain('Match server unavailable');
+    expect(one(host, 'vm-mp-live-badge').textContent).toBe('Offline');
     screen.unmount();
   });
 

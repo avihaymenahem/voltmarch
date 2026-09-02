@@ -4,15 +4,35 @@ import { describe, expect, it } from 'vitest';
 
 import { Faction } from '../src/core/types';
 import { MISSIONS, UNLOCKS } from '../src/data/Missions';
+import { ProfileReader } from '../src/shell/profile-reader';
+import {
+  PROFILE_STORAGE_KEY,
+  ProfileStore,
+  memoryStorage,
+} from '../src/progression/profile-store';
 import type { CatalogueEntry, ProfileView } from '../src/ui/Objectives';
 import {
   careerRecord,
   cosmeticCollection,
   cosmeticName,
   factionCareerRows,
+  profileMissionRows,
 } from '../src/shell/Profile';
 import { cosmeticKind } from '../src/shell/CosmeticMarks';
 import type { FactionOption } from '../src/shell/Shell';
+
+const NO_TIMERS = { schedule: () => 0, cancel: () => { /* nothing scheduled */ } };
+
+describe('Service Record mission filters', () => {
+  it('filters real profile progress, not fictional victories/defeats', () => {
+    const rows = catalogue(['tactics.streak.1']);
+    const completed = profileMissionRows(rows, 'complete');
+    expect(completed.map(row => row.id)).toEqual(['tactics.streak.1']);
+    expect(profileMissionRows(rows, 'active').every(row => !row.progress.complete && !row.locked)).toBe(true);
+    expect(profileMissionRows(rows, 'all')).toHaveLength(6);
+    expect(profileMissionRows([], 'complete')).toEqual([]);
+  });
+});
 
 function catalogue(completed: readonly string[] = []): CatalogueEntry[] {
   const done = new Set(completed);
@@ -136,5 +156,28 @@ describe('Service Record career model', () => {
     });
     expect(factionCareerRows(p, factions).map((f) => [f.key, f.wins]))
       .toEqual([['allies', 4], ['soviets', 5]]);
+  });
+});
+
+describe('Service Record menu reader', () => {
+  it('reads the persisted profile without a running battlefield', () => {
+    const storage = memoryStorage();
+    const writer = new ProfileStore(storage, NO_TIMERS);
+    writer.mutate((draft) => {
+      draft.stats.matchesPlayed = 4;
+      draft.stats.wins = 3;
+      draft.stats.losses = 1;
+      draft.unlocked.push(UNLOCKS.insigniaGold);
+      return true;
+    }, true);
+
+    const reader = new ProfileReader(storage);
+    expect(reader.profile().stats?.matchesPlayed).toBe(4);
+    expect(reader.profile().stats?.wins).toBe(3);
+    expect(reader.profile().unlocked).toContain(UNLOCKS.insigniaGold);
+    expect(reader.catalogue().length).toBe(MISSIONS.length);
+    expect((globalThis as { __vmProgression?: unknown }).__vmProgression).toBeUndefined();
+    expect(storage.getItem(PROFILE_STORAGE_KEY)).toBeTruthy();
+    reader.dispose();
   });
 });

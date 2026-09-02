@@ -34,6 +34,7 @@ import {
 import { humaniseId } from './Missions';
 import { cosmeticKind, cosmeticMark, type CosmeticKind } from './CosmeticMarks';
 import { COMMANDER_NAME_MAX, normalizeCommanderName } from '../net/protocol';
+import { CAMPAIGN_OPERATION_COUNT } from './CampaignPresentation';
 
 export type { CosmeticKind } from './CosmeticMarks';
 
@@ -162,6 +163,16 @@ function dateLabel(epoch: number | undefined): string {
   }
 }
 
+export type ProfileMissionFilter = 'all' | 'active' | 'complete';
+
+export function profileMissionRows(catalogue: readonly CatalogueEntry[], filter: ProfileMissionFilter): CatalogueEntry[] {
+  return catalogue.filter((mission) => mission.scope === 'profile'
+    && (filter === 'all' || (filter === 'complete' ? mission.progress.complete : !mission.progress.complete && !mission.locked)))
+    .sort((left, right) => Number(left.progress.complete) - Number(right.progress.complete)
+      || Number(left.locked) - Number(right.locked))
+    .slice(0, 6);
+}
+
 function progressLabel(award: CosmeticAward): string {
   if (award.earned) return 'Earned';
   if (award.complete) return 'Awaiting debrief';
@@ -183,6 +194,77 @@ function statCard(label: string, value: string, detail: string, iconName: string
   card.appendChild(el('span', 'vm-profile-stat-detail', detail));
   return card;
 }
+
+function profileFact(label: string, value: string): HTMLElement {
+  const row = el('div', 'vm-profile-fact');
+  row.appendChild(el('span', undefined, label));
+  row.appendChild(el('strong', undefined, value));
+  return row;
+}
+
+function profileChannel(label: string, detail: string): HTMLElement {
+  const row = el('div', 'vm-profile-channel-row');
+  row.appendChild(el('span', 'vm-profile-channel-dot'));
+  row.appendChild(el('span', undefined, label));
+  row.appendChild(el('strong', undefined, detail));
+  return row;
+}
+
+function profileProgress(label: string, value: string, fraction: number, tone = 'cyan'): HTMLElement {
+  const row = el('div', 'vm-profile-progress-row');
+  const head = el('div', 'vm-profile-progress-head');
+  head.appendChild(el('span', undefined, label));
+  head.appendChild(el('strong', 'vm-num', value));
+  row.appendChild(head);
+  const rail = el('i', `vm-profile-progress-rail is-${tone}`);
+  const fill = el('i', 'vm-profile-progress-fill');
+  fill.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+  rail.appendChild(fill);
+  row.appendChild(rail);
+  return row;
+}
+
+function profileMissionCard(mission: CatalogueEntry): HTMLElement {
+  const card = el('article', `vm-profile-mission ${mission.locked ? 'is-locked' : 'is-active'}`);
+  const previewByCategory: Record<CatalogueEntry['category'], string> = {
+    combat: 'industrial-grid',
+    economy: 'temperate-valley',
+    construction: 'airbase-flats',
+    tactics: 'frozen-sector',
+    mastery: 'contested-strait',
+  };
+  const preview = el('div', 'vm-profile-mission-preview');
+  preview.style.backgroundImage = `url("${import.meta.env.BASE_URL}maps/previews/${previewByCategory[mission.category]}.webp")`;
+  preview.setAttribute('aria-hidden', 'true');
+  card.appendChild(preview);
+  const marker = el('div', 'vm-profile-mission-marker');
+  marker.appendChild(icon(mission.progress.complete ? 'check' : mission.locked ? 'lock' : 'target', 16));
+  card.appendChild(marker);
+  const head = el('div', 'vm-profile-mission-head');
+  head.appendChild(el('strong', 'vm-profile-mission-title', mission.title));
+  head.appendChild(el('span', 'vm-profile-mission-state', mission.progress.complete ? 'Complete' : mission.locked ? 'Locked' : 'In progress'));
+  card.appendChild(head);
+  card.appendChild(el('p', 'vm-profile-mission-description', mission.description));
+  if (mission.locked) {
+    card.appendChild(el('span', 'vm-profile-mission-gate', 'Prerequisite mission required'));
+  } else {
+    const progress = el('div', 'vm-profile-mission-progress');
+    const rail = el('i', 'vm-profile-mission-rail');
+    const fill = el('i', 'vm-profile-mission-fill');
+    const target = Math.max(1, mission.progress.target);
+    fill.style.width = `${Math.min(100, Math.max(0, mission.progress.value / target * 100)).toFixed(1)}%`;
+    rail.appendChild(fill);
+    progress.appendChild(rail);
+    progress.appendChild(el(
+      'span',
+      'vm-profile-mission-count vm-num',
+      `${Math.floor(Math.min(target, mission.progress.value)).toLocaleString('en-US')} / ${target.toLocaleString('en-US')}`,
+    ));
+    card.appendChild(progress);
+  }
+  return card;
+}
+
 
 function awardCard(award: CosmeticAward, index: number): HTMLElement {
   const card = el('article', `vm-profile-award ${award.earned ? 'is-earned' : 'is-locked'}`);
@@ -212,7 +294,10 @@ export class ProfileScreen implements Screen {
   private body: HTMLElement | null = null;
   private unsubscribe: (() => void) | null = null;
   private identityNotice = '';
-  private readonly progression: ProgressionView | null;
+  private progression: ProgressionView | null;
+  private profileReader: { dispose(): void } | null = null;
+  private loadingProfile = false;
+  private profileLoadError: unknown = null;
 
   constructor(private readonly shell: Shell, progression?: ProgressionView | null) {
     this.progression = progression ?? readProgression();
@@ -220,9 +305,10 @@ export class ProfileScreen implements Screen {
 
   mount(host: HTMLElement): void {
     this.host = host;
-    host.classList.add('vm-page', 'is-modal', 'vm-profile-page');
+    host.classList.add('vm-page', 'is-modal', 'vm-profile-page', 'vm-profile-reference-page');
     const frame = pageFrame('Service Record', () => this.close());
     frame.root.classList.add('vm-profile-panel');
+    frame.root.classList.add('vm-profile-reference-panel');
     frame.head.appendChild(el('span', 'vm-profile-head-code', 'CAREER // LOCAL PROFILE'));
     frame.body.classList.add('vm-profile-body');
     this.body = frame.body;
@@ -236,15 +322,20 @@ export class ProfileScreen implements Screen {
     this.render();
 
     if (this.progression !== null) {
-      try { this.unsubscribe = this.progression.subscribe(() => this.render()); } catch { /* read once */ }
+      this.subscribeToProgression(this.progression);
+    } else {
+      this.loadingProfile = true;
+      void this.loadProfileReader();
     }
   }
 
   unmount(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.profileReader?.dispose();
+    this.profileReader = null;
     this.body = null;
-    this.host?.classList.remove('vm-page', 'is-modal', 'vm-profile-page');
+    this.host?.classList.remove('vm-page', 'is-modal', 'vm-profile-page', 'vm-profile-reference-page');
     this.host = null;
   }
 
@@ -266,6 +357,32 @@ export class ProfileScreen implements Screen {
 
   private close(): void {
     this.shell.showMenu();
+  }
+
+  /** Attach one reader and keep its lifetime tied to this modal. */
+  private subscribeToProgression(progression: ProgressionView): void {
+    try { this.unsubscribe = progression.subscribe(() => this.render()); } catch { /* read once */ }
+  }
+
+  /** Load profile data on demand without booting the battlefield engine. */
+  private async loadProfileReader(): Promise<void> {
+    try {
+      const { ProfileReader } = await import('./profile-reader');
+      const reader = new ProfileReader();
+      if (this.body === null) {
+        reader.dispose();
+        return;
+      }
+      this.profileReader = reader;
+      this.progression = reader;
+      this.loadingProfile = false;
+      this.subscribeToProgression(reader);
+      this.render();
+    } catch (err) {
+      this.loadingProfile = false;
+      this.profileLoadError = err;
+      this.render();
+    }
   }
 
   /** One editor over the same settings field consumed by lobby and records. */
@@ -364,13 +481,34 @@ export class ProfileScreen implements Screen {
     body.replaceChildren();
     // Identity remains editable even if progression is temporarily offline;
     // it belongs to settings, not to the mission tracker lifecycle.
-    body.appendChild(this.buildIdentityEditor());
+    const identityEditor = this.buildIdentityEditor();
+    identityEditor.classList.add('vm-profile-identity-editor');
     const progression = this.progression;
     if (progression === null) {
-      body.appendChild(this.buildUnavailableDossier(
+      const identityColumn = el('section', 'vm-profile-identity-column');
+      identityColumn.appendChild(identityEditor);
+      if (this.loadingProfile) {
+        identityColumn.appendChild(this.buildUnavailableDossier(
+          'Loading service record',
+          'Reading your local profile. The battlefield is not being started.',
+        ));
+        body.appendChild(identityColumn);
+        return;
+      }
+      if (this.profileLoadError !== null) {
+        identityColumn.appendChild(this.buildUnavailableDossier(
+          'Service record unreadable',
+          String(this.profileLoadError),
+          true,
+        ));
+        body.appendChild(identityColumn);
+        return;
+      }
+      identityColumn.appendChild(this.buildUnavailableDossier(
         'Service record offline',
         'Progression is not available in this session. Your stored profile has not been changed.',
       ));
+      body.appendChild(identityColumn);
       return;
     }
 
@@ -388,16 +526,25 @@ export class ProfileScreen implements Screen {
     const career = careerRecord(profile, catalogue, collection);
     const earned = collection.filter((a) => a.earned);
     const featured = earned.at(-1) ?? collection[0];
+    const factionRows = factionCareerRows(profile, playableFactions());
+    const maxWins = Math.max(1, ...factionRows.map((f) => f.wins));
 
     const dossier = el('section', 'vm-profile-dossier');
     const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
       ?? 'Commander';
     const identity = el('div', 'vm-profile-identity');
+    const portraitFrame = el('div', 'vm-profile-portrait-frame');
+    const portrait = document.createElement('img');
+    portrait.src = `${import.meta.env.BASE_URL}campaign/portraits/nael.webp`;
+    portrait.alt = 'Commander portrait';
+    portrait.loading = 'eager';
+    portraitFrame.appendChild(portrait);
     const crest = el('div', `vm-profile-crest${earned.length === 0 ? ' is-empty' : ''}`);
     if (featured !== undefined) crest.appendChild(cosmeticMark(featured.id, featured.kind, 104));
-    identity.appendChild(crest);
+    portraitFrame.appendChild(crest);
+    identity.appendChild(portraitFrame);
     const copy = el('div', 'vm-profile-identity-copy');
-    copy.appendChild(el('span', 'vm-profile-kicker', 'VOLTMARCH COMMAND AUTHORITY'));
+    copy.appendChild(el('span', 'vm-profile-kicker', 'LOCAL COMMAND IDENTITY'));
     copy.appendChild(el('h3', 'vm-profile-callsign', commanderName.toLocaleUpperCase()));
     copy.appendChild(el('p', 'vm-profile-service', `Service record opened ${dateLabel(profile.createdAt)}`));
     const chips = el('div', 'vm-profile-chips');
@@ -407,6 +554,20 @@ export class ProfileScreen implements Screen {
     copy.appendChild(chips);
     identity.appendChild(copy);
     dossier.appendChild(identity);
+
+    const facts = el('div', 'vm-profile-identity-facts');
+    facts.appendChild(profileFact('Status', 'Active duty'));
+    facts.appendChild(profileFact('Rank', 'Commander'));
+    facts.appendChild(profileFact('Record', 'Local profile'));
+    facts.appendChild(profileFact('D.O.S.', dateLabel(profile.createdAt)));
+    dossier.appendChild(facts);
+
+    const channels = el('div', 'vm-profile-identity-channels');
+    channels.appendChild(el('span', 'vm-profile-subhead', 'IDENTITY CHANNELS'));
+    channels.appendChild(profileChannel('Multiplayer', 'SHARED'));
+    channels.appendChild(profileChannel('Chat and results', 'SHARED'));
+    channels.appendChild(profileChannel('Replays', 'SHARED'));
+    dossier.appendChild(channels);
 
     const ribbons = el('div', 'vm-profile-ribbons');
     const recent = earned.slice(-4).reverse();
@@ -419,18 +580,92 @@ export class ProfileScreen implements Screen {
     }
     dossier.appendChild(ribbons);
 
-    body.appendChild(dossier);
+    const identityColumn = el('section', 'vm-profile-identity-column');
+    identityColumn.appendChild(dossier);
+    identityColumn.appendChild(identityEditor);
+    body.appendChild(identityColumn);
 
-    const stats = el('section', 'vm-profile-stats');
+    const stats = el('div', 'vm-profile-stats vm-profile-career-summary');
     stats.appendChild(statCard('Matches', career.matches.toLocaleString('en-US'), `${career.wins} victories · ${career.losses} defeats`, 'swords'));
     stats.appendChild(statCard('Win rate', `${career.winRate.toFixed(1)}%`, career.matches > 0 ? 'Lifetime skirmish record' : 'Complete a skirmish to establish', 'target'));
-    stats.appendChild(statCard('Current streak', career.currentStreak.toLocaleString('en-US'), `Best ${career.bestStreak.toLocaleString('en-US')}`, 'bolt'));
+    stats.appendChild(statCard('Current streak', career.currentStreak.toLocaleString('en-US'), `Best ${career.bestStreak.toLocaleString('en-US')}`, 'clock'));
     stats.appendChild(statCard('Missions', `${career.missionsComplete} / ${career.missionsTotal}`, 'Profile chains completed', 'trophy'));
     stats.appendChild(statCard('Operations', career.operationsComplete.toLocaleString('en-US'), `${career.goldOperations} gold-grade`, 'flag'));
-    stats.appendChild(statCard('Honours', `${career.honoursEarned} / ${career.honoursTotal}`, 'Insignia and field decals', 'crest'));
-    body.appendChild(stats);
+    stats.appendChild(statCard('Honours', `${career.honoursEarned} / ${career.honoursTotal}`, 'Insignia and field decals', 'trophy'));
 
-    const factionSection = el('section', 'vm-profile-section');
+    const careerBoard = el('section', 'vm-profile-career-board');
+    careerBoard.appendChild(stats);
+    const performance = el('section', 'vm-profile-performance');
+    performance.appendChild(el('span', 'vm-profile-subhead', 'COMBAT PERFORMANCE'));
+    performance.appendChild(profileProgress('Victory rate', `${career.winRate.toFixed(1)}%`, career.winRate / 100, 'violet'));
+    performance.appendChild(profileProgress('Current streak', `${career.currentStreak} wins`, career.bestStreak > 0 ? career.currentStreak / career.bestStreak : 0, 'cyan'));
+    performance.appendChild(profileProgress('Best streak', `${career.bestStreak} wins`, career.bestStreak > 0 ? 1 : 0, 'amber'));
+    careerBoard.appendChild(performance);
+
+    const careerProgression = el('section', 'vm-profile-progression');
+    careerProgression.appendChild(el('span', 'vm-profile-subhead', 'CAREER PROGRESSION'));
+    careerProgression.appendChild(profileProgress('Profile chains', `${career.missionsComplete} / ${career.missionsTotal}`, career.missionsTotal > 0 ? career.missionsComplete / career.missionsTotal : 0, 'violet'));
+    careerProgression.appendChild(profileProgress('Operations cleared', `${career.operationsComplete} / ${CAMPAIGN_OPERATION_COUNT}`, Math.min(1, career.operationsComplete / CAMPAIGN_OPERATION_COUNT), 'cyan'));
+    careerProgression.appendChild(profileProgress('Honours recovered', `${career.honoursEarned} / ${career.honoursTotal}`, career.honoursTotal > 0 ? career.honoursEarned / career.honoursTotal : 0, 'amber'));
+    careerBoard.appendChild(careerProgression);
+
+    const specializations = el('section', 'vm-profile-specializations');
+    specializations.appendChild(el('span', 'vm-profile-subhead', 'COMMAND SPECIALIZATIONS'));
+    const specializationGrid = el('div', 'vm-profile-specialization-grid');
+    factionRows.forEach((faction) => {
+      const item = el('article', 'vm-profile-specialization');
+      item.style.setProperty('--vm-faction', faction.color);
+      item.appendChild(el('i', 'vm-profile-specialization-stripe'));
+      item.appendChild(el('strong', undefined, faction.name));
+      item.appendChild(el('span', undefined, `${faction.wins} victories credited`));
+      specializationGrid.appendChild(item);
+    });
+    specializations.appendChild(specializationGrid);
+    careerBoard.appendChild(specializations);
+    body.appendChild(careerBoard);
+
+    const missionPanel = el('section', 'vm-profile-mission-panel');
+    const missionHead = el('div', 'vm-profile-section-head');
+    missionHead.appendChild(el('span', 'vm-profile-section-index', '03'));
+    const missionTitle = el('div');
+    missionTitle.appendChild(el('h3', 'vm-h3', 'Missions'));
+    missionTitle.appendChild(el('p', 'vm-body', `${career.missionsComplete} of ${career.missionsTotal} profile chains complete.`));
+    missionHead.appendChild(missionTitle);
+    missionPanel.appendChild(missionHead);
+    const missionFilters = el('div', 'vm-profile-mission-filters');
+    missionFilters.setAttribute('aria-label', 'Filter profile missions');
+    const missionList = el('div', 'vm-profile-mission-list');
+    const renderMissions = (filter: ProfileMissionFilter): void => {
+      const rows = profileMissionRows(catalogue, filter);
+      missionList.replaceChildren();
+      if (rows.length === 0) {
+        missionList.appendChild(el('p', 'vm-profile-mission-empty', filter === 'complete'
+          ? 'No profile missions completed yet.' : 'No missions in this category. Explore the full catalogue below.'));
+      }
+      rows.forEach((mission) => missionList.appendChild(profileMissionCard(mission)));
+      for (const item of missionFilters.querySelectorAll<HTMLButtonElement>('button')) {
+        const active = item.dataset.filter === filter;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-pressed', String(active));
+      }
+    };
+    for (const [filter, label] of [['all', 'All'], ['active', 'Active'], ['complete', 'Complete']] as const) {
+      const item = el('button', undefined, label);
+      item.type = 'button';
+      item.dataset.filter = filter;
+      focusable(item);
+      item.addEventListener('click', () => renderMissions(filter));
+      missionFilters.appendChild(item);
+    }
+    missionPanel.appendChild(missionFilters);
+    missionPanel.appendChild(missionList);
+    renderMissions('all');
+    missionPanel.appendChild(button('View all missions', {
+      iconName: 'chevronRight', onClick: () => this.shell.openMissions('profile'),
+    }));
+    body.appendChild(missionPanel);
+
+    const factionSection = el('section', 'vm-profile-section vm-profile-faction-record');
     const factionHead = el('div', 'vm-profile-section-head');
     factionHead.appendChild(el('span', 'vm-profile-section-index', '01'));
     const factionTitle = el('div');
@@ -439,8 +674,6 @@ export class ProfileScreen implements Screen {
     factionHead.appendChild(factionTitle);
     factionSection.appendChild(factionHead);
     const factionGrid = el('div', 'vm-profile-factions');
-    const factionRows = factionCareerRows(profile, playableFactions());
-    const maxWins = Math.max(1, ...factionRows.map((f) => f.wins));
     for (const faction of factionRows) {
       const card = el('article', 'vm-profile-faction');
       card.style.setProperty('--vm-faction', faction.color);
@@ -457,7 +690,7 @@ export class ProfileScreen implements Screen {
     factionSection.appendChild(factionGrid);
     body.appendChild(factionSection);
 
-    const honourSection = el('section', 'vm-profile-section');
+    const honourSection = el('section', 'vm-profile-section vm-profile-honours-record');
     const honourHead = el('div', 'vm-profile-section-head');
     honourHead.appendChild(el('span', 'vm-profile-section-index', '02'));
     const honourTitle = el('div');
@@ -477,6 +710,14 @@ export class ProfileScreen implements Screen {
       awards.forEach((award, i) => grid.appendChild(awardCard(award, i)));
       honourSection.appendChild(grid);
     }
-    body.appendChild(honourSection);
+     body.appendChild(honourSection);
+
+    const clearance = el('section', 'vm-profile-clearance-record');
+    clearance.appendChild(el('span', 'vm-profile-subhead', 'CLEARANCE LEVEL'));
+    clearance.appendChild(el('strong', 'vm-profile-clearance-level', 'LOCAL'));
+    clearance.appendChild(el('span', 'vm-profile-clearance-status', 'ACCESS GRANTED'));
+    clearance.appendChild(el('i', 'vm-profile-clearance-rule'));
+    clearance.appendChild(el('span', 'vm-profile-clearance-code', 'PROFILE CHANNEL // VERIFIED'));
+    body.appendChild(clearance);
   }
 }

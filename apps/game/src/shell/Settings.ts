@@ -127,6 +127,7 @@ import {
   setAdjust,
   slider,
   toggle,
+  updateCommandSection,
   type Screen,
   type Shell,
   type ShellState,
@@ -547,6 +548,7 @@ function diagStamp(): string {
     + `-${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
+
 export class SettingsScreen implements Screen {
   readonly id = 'settings';
 
@@ -651,11 +653,12 @@ export class SettingsScreen implements Screen {
 
   mount(host: HTMLElement): void {
     this.host = host;
-    host.classList.add('vm-page');
+    host.classList.add('vm-page', 'vm-command-page', 'vm-settings-reference-page');
     if (this.returnTo !== 'menu') host.classList.add('is-modal');
 
     const frame = pageFrame('Settings', () => this.leave());
     frame.root.classList.add('vm-settings-panel');
+    frame.root.classList.add('vm-settings-reference-panel');
     frame.body.id = 'vm-settings-body';
 
     const tabs = el('nav', 'vm-tabs vm-settings-nav');
@@ -796,7 +799,7 @@ export class SettingsScreen implements Screen {
     this.frameRoot = null;
     this.diagStatus = null;
     this.diagText = '';
-    this.host?.classList.remove('vm-page', 'is-modal');
+    this.host?.classList.remove('vm-page', 'is-modal', 'vm-command-page', 'vm-settings-reference-page');
     this.host = null;
     this.body = null;
     this.listening = null;
@@ -868,6 +871,7 @@ export class SettingsScreen implements Screen {
   private renderTab(): void {
     const body = this.body;
     if (body === null) return;
+    if (this.host !== null) updateCommandSection(this.host, this.tab === 'manual' ? 'codex' : 'settings');
     // A reset confirmation belongs to the DOM that owns its armed button. If
     // the player changes tabs, cancel it before that button is detached.
     this.disarmProfileReset();

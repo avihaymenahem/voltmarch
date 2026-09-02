@@ -1,0 +1,219 @@
+/* Shared reference frame. Route content owns its layout; chrome owns the
+   viewport, navigation and safe edges. No animation or per-frame JS is needed. */
+.vm-shell .vm-screen.vm-command-shell,
+.vm-shell .vm-screen.vm-command-shell.vm-page {
+  --vm-command-top: 76px;
+  --vm-command-left: 82px;
+  --vm-command-edge: 20px;
+  --vm-command-gap: 24px;
+  padding: calc(var(--vm-command-top) + var(--vm-command-gap)) var(--vm-command-edge) 14px var(--vm-command-left);
+  min-width: 0;
+  min-height: 0;
+}
+
+.vm-shell .vm-command-header {
+  position: absolute;
+  z-index: 5;
+  inset: 0 0 auto;
+  height: var(--vm-command-top);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(72, 185, 214, .32);
+  background: rgba(2, 9, 16, .97);
+}
+.vm-shell .vm-command-brand,
+.vm-shell .vm-command-link,
+.vm-shell .vm-command-rail-link {
+  appearance: none;
+  color: #8eaebf;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--vm-font-display);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.vm-shell .vm-command-brand { display: grid; place-items: center; padding: 0; width: 42px; height: 44px; }
+.vm-shell .vm-command-brand img { object-fit: contain; }
+.vm-shell .vm-command-top {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: clamp(4px, 1.2vw, 22px);
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #235062 transparent;
+}
+.vm-shell .vm-command-link {
+  min-height: 44px;
+  padding: 12px 14px;
+  font-size: calc(11px * var(--vm-text-scale, 1));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.vm-shell .vm-command-link.is-active,
+.vm-shell .vm-command-rail-link.is-active {
+  color: #3cddfa;
+  border-color: rgba(60, 221, 250, .4);
+  border-bottom-color: #3cddfa;
+  background: linear-gradient(0deg, rgba(25, 139, 166, .17), transparent);
+  box-shadow: inset 0 -1px #3cddfa;
+}
+.vm-shell .vm-command-rail {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--vm-command-top) + var(--vm-command-gap));
+  bottom: 14px;
+  left: var(--vm-command-edge);
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  overflow-y: auto;
+  padding: 8px 0;
+  border: 1px solid rgba(72, 185, 214, .3);
+  background: rgba(3, 11, 19, .9);
+  scrollbar-width: thin;
+}
+.vm-shell .vm-command-rail-link { display: grid; place-items: center; width: 38px; min-height: 40px; padding: 0; }
+.vm-shell .vm-command-link:hover,
+.vm-shell .vm-command-rail-link:hover,
+.vm-shell .vm-command-brand:hover { color: #e1f7ff; background-color: rgba(60, 221, 250, .08); }
+.vm-shell .vm-command-header button:focus-visible,
+.vm-shell .vm-command-rail button:focus-visible,
+.vm-shell .vm-command-header button.is-focus,
+.vm-shell .vm-command-rail button.is-focus { outline: 1px solid #3cddfa; outline-offset: -3px; }
+
+/* Every full page uses the same edges, including the nested Missions panel. */
+.vm-shell .vm-screen.vm-command-shell.vm-page { display: flex; align-items: stretch; justify-content: stretch; }
+.vm-shell .vm-screen.vm-command-shell.vm-page > .vm-panel.vm-page-panel,
+.vm-shell .vm-screen.vm-command-shell.vm-page > .vm-missions {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
+.vm-shell .vm-screen.vm-command-shell.vm-page > .vm-missions { padding: 0; }
+.vm-shell .vm-screen.vm-command-shell.vm-page > .vm-missions > .vm-missions-panel { width: 100%; max-width: none; margin: 0; }
+.vm-shell .vm-command-shell .vm-page-panel { border-color: rgba(72, 185, 214, .3); }
+.vm-shell .vm-command-shell .vm-page-head { flex-shrink: 0; min-height: 64px; padding: 12px 18px; }
+.vm-shell .vm-command-shell .vm-page-body { min-width: 0; min-height: 0; overscroll-behavior: contain; }
+.vm-shell .vm-command-shell .vm-page-foot { min-height: 54px; flex-shrink: 0; padding: 8px 16px; gap: 8px; }
+.vm-shell .vm-command-shell .vm-page-foot:empty { display: none; }
+.vm-shell .vm-command-shell .vm-page-foot .vm-btn { min-height: 36px; }
+.vm-shell .vm-command-shell .vm-page-foot > .is-page-back { margin-right: auto; }
+.vm-shell .vm-command-shell .vm-settings-panel .vm-row-control .vm-btn { min-width: 0; max-width: 100%; padding-inline: 12px; }
+.vm-shell .vm-command-shell .vm-settings-panel .vm-btn-label { white-space: normal; letter-spacing: .14em; }
+.vm-shell .vm-command-shell .vm-page-head .vm-h2 { color: #b9dbe9; }
+.vm-shell .vm-command-shell .vm-section > .vm-h3,
+.vm-shell .vm-command-shell .vm-profile-section-head .vm-h3 {
+  color: #3cddfa;
+  font-size: calc(12px * var(--vm-text-scale, 1));
+  letter-spacing: .16em;
+}
+
+/* Paused tools retain the match beneath them. Nested Save/Help/Missions use
+   the available content rectangle, never the global header/rail hit area. */
+.vm-shell .vm-command-shell.vm-pause,
+.vm-shell .vm-command-shell.vm-end { display: flex; align-items: center; justify-content: center; }
+.vm-shell .vm-command-shell .vm-pause-panel,
+.vm-shell .vm-command-shell .vm-end-panel { max-height: 100%; min-height: 0; overflow-y: auto; }
+.vm-shell .vm-command-shell .vm-end-panel { width: 100%; height: 100%; zoom: 1; }
+.vm-shell .vm-command-shell .vm-end-body { min-height: 120px; }
+.vm-shell .vm-command-shell .vm-end-panel > .vm-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.vm-shell .vm-command-shell .vm-end-panel > .vm-page-foot { position: sticky; bottom: 0; z-index: 1; background: #030b13; }
+.vm-shell .vm-command-shell.vm-pause > :is(.vm-help, .vm-saves, .vm-missions),
+.vm-shell .vm-command-shell.vm-end > .vm-missions,
+.vm-shell .vm-command-shell.vm-settings-reference-page > .vm-help {
+  position: absolute;
+  inset: calc(var(--vm-command-top) + var(--vm-command-gap)) var(--vm-command-edge) 14px var(--vm-command-left);
+  padding: 0;
+  z-index: 6;
+}
+.vm-shell .vm-command-shell :is(.vm-help-panel, .vm-saves-panel, .vm-missions-panel) { max-height: 100%; }
+.vm-shell .vm-command-shell .vm-saves > .vm-saves-panel { width: 100%; height: 100%; margin: 0; }
+.vm-shell .vm-command-shell .vm-missions > .vm-missions-panel { width: 100%; max-width: none; margin: 0; }
+.vm-shell .vm-command-shell .vm-saves > .vm-saves-panel > .vm-page-body { padding: 18px; }
+
+/* The dossier is dense, not cropped. Each tall record scrolls independently
+   at desktop size, then becomes normal document flow on smaller windows. */
+.vm-shell .vm-command-shell .vm-profile-identity-column { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; }
+.vm-shell .vm-command-shell .vm-profile-identity-column .vm-profile-dossier { flex: 0 0 auto; height: auto; padding-bottom: 12px; overflow: visible; }
+.vm-shell .vm-command-shell .vm-profile-identity-column .vm-profile-identity { grid-template-columns: minmax(64px, .7fr) minmax(0, 1fr); }
+.vm-shell .vm-command-shell .vm-profile-identity-column .vm-profile-portrait-frame { width: 100%; height: 156px; }
+.vm-shell .vm-command-shell .vm-profile-portrait-frame .vm-profile-crest { width: 44px; height: 44px; right: 8px; bottom: 8px; }
+.vm-shell .vm-command-shell .vm-profile-portrait-frame .vm-profile-crest.is-empty { display: none; }
+.vm-shell .vm-command-shell .vm-profile-identity-column .vm-profile-callsign { overflow-wrap: anywhere; font-size: calc(21px * var(--vm-text-scale, 1)) !important; }
+.vm-shell .vm-command-shell .vm-profile-identity-channels { display: flex; flex-direction: column; }
+.vm-shell .vm-command-shell .vm-profile-identity-channels .vm-profile-channel-row:last-child { display: grid; }
+.vm-shell .vm-command-shell .vm-profile-identity-column .vm-profile-identity-editor {
+  position: static;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-top: auto;
+  flex: 0 0 auto;
+  padding: 12px;
+}
+.vm-shell .vm-command-shell .vm-profile-editor-status { display: block; }
+.vm-shell .vm-command-shell .vm-profile-career-board { overflow-y: auto; min-height: 0; }
+.vm-shell .vm-command-shell .vm-profile-honours-record,
+.vm-shell .vm-command-shell .vm-profile-faction-record { overflow-y: auto; }
+.vm-shell .vm-command-shell .vm-profile-honours-record .vm-profile-award-source { display: block; }
+.vm-shell .vm-command-shell .vm-profile-honours-record .vm-profile-award-progress { display: flex; }
+.vm-shell .vm-command-shell .vm-profile-mission-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.vm-shell .vm-command-shell .vm-profile-mission-list { flex: 1; min-height: 0; overflow-y: auto; }
+.vm-shell .vm-command-shell .vm-profile-mission-filters { display: flex; flex-wrap: wrap; flex-shrink: 0; }
+.vm-shell .vm-command-shell .vm-profile-mission-filters button {
+  appearance: none;
+  flex: 1;
+  min-height: 34px;
+  border: 1px solid var(--vm-line-soft);
+  background: transparent;
+  color: var(--vm-text-dim);
+  font: inherit;
+  font-size: calc(9px * var(--vm-text-scale, 1));
+  cursor: pointer;
+}
+.vm-shell .vm-command-shell .vm-profile-mission-filters button.is-active { color: var(--vm-accent); border-bottom-color: var(--vm-accent); background: rgba(60, 221, 250, .07); }
+.vm-shell .vm-command-shell .vm-profile-mission-filters button:focus-visible { outline: 1px solid var(--vm-accent); outline-offset: -3px; }
+
+@media (max-width: 1360px) {
+  .vm-shell .vm-command-shell .vm-settings-columns { grid-template-columns: 1fr; }
+  .vm-shell .vm-command-shell .vm-settings-reference-panel > .vm-page-body { background: rgba(3, 8, 16, .7); }
+}
+@media (max-width: 1100px) {
+  .vm-shell .vm-command-header { gap: 10px; }
+  .vm-shell .vm-command-link { padding-inline: 10px; }
+  .vm-shell .vm-command-shell .vm-profile-identity-column,
+  .vm-shell .vm-command-shell .vm-profile-career-board { overflow: visible; }
+  .vm-shell .vm-command-shell .vm-profile-mission-list { max-height: 460px; flex: auto; }
+}
+@media (max-width: 700px) {
+  .vm-shell .vm-screen.vm-command-shell,
+  .vm-shell .vm-screen.vm-command-shell.vm-page { --vm-command-top: 60px; --vm-command-left: 60px; --vm-command-edge: 8px; --vm-command-gap: 10px; }
+  .vm-shell .vm-command-header { gap: 6px; padding: 0 8px; }
+  .vm-shell .vm-command-brand { width: 34px; }
+  .vm-shell .vm-command-brand img { width: 30px; height: 30px; }
+  .vm-shell .vm-command-link { padding: 10px; }
+  .vm-shell .vm-command-rail { width: 42px; }
+  .vm-shell .vm-command-rail-link { width: 34px; }
+  .vm-shell .vm-command-shell .vm-profile-body > * { flex: 0 0 auto; height: auto; max-height: none; }
+  .vm-shell .vm-command-shell .vm-end-panel { display: block; }
+  .vm-shell .vm-command-shell .vm-end-body { overflow: visible; }
+  .vm-shell .vm-command-shell .vm-end-panel > .vm-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vm-shell .vm-command-shell .vm-page-foot { flex-wrap: wrap; }
+  .vm-shell .vm-command-shell .vm-page-head { padding: 10px; }
+}

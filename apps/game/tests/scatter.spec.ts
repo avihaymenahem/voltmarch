@@ -329,7 +329,7 @@ describe('Scatter — placement', () => {
     // Preserve enough non-grass composition that the cap's "not dense purely
     // by hiding under a lawn" contract remains true.
     // This fixture is one quarter urban, so its authored target blends from
-    // the 70% wilderness endpoint toward the 42% city endpoint.
+    // the 70% wilderness endpoint toward the 24% city endpoint.
     const expectedTarget = SCATTER_DENSITY.targetGrassFraction
       + (SCATTER_DENSITY.urbanGrassFraction - SCATTER_DENSITY.targetGrassFraction) * 0.25;
     expect(share).toBeGreaterThanOrEqual(expectedTarget - 0.02);
@@ -722,7 +722,22 @@ describe('Scatter — placement', () => {
     const rich = make(0.55);
     normal.generate();
     rich.generate();
-    expect(rich.propCount).toBeGreaterThan(normal.propCount);
+    // Coverage/composition completion can spend the same global ceiling in
+    // both arms. This option controls the photographed area's clump spacing,
+    // so measure actual composition centres inside that area, not map totals.
+    const localClumps = (scatter: Scatter): number => {
+      const centers = new Float32Array(SCATTER_LIMITS.maxProps * 3);
+      const count = scatter.compositionCenters(centers);
+      let local = 0;
+      for (let i = 0; i < count; i++) {
+        const x = centers[i * 3], z = centers[i * 3 + 1];
+        if (x >= 192 && x <= 320 && z >= 192 && z <= 320) local++;
+      }
+      return local;
+    };
+    expect(localClumps(normal)).toBeGreaterThan(0);
+    expect(localClumps(rich)).toBeGreaterThan(localClumps(normal));
+    expect(normal.propCount).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
     expect(rich.propCount).toBeLessThanOrEqual(SCATTER_LIMITS.maxProps);
     normal.dispose();
     rich.dispose();

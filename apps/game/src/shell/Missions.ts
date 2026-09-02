@@ -40,8 +40,10 @@
  * DEGRADING IS THE DEFAULT, NOT THE EDGE CASE
  * -------------------------------------------
  * The progression handle is read from `globalThis.__vmProgression` and may be
- * absent: a `?shot=` boot never publishes one. With no handle the screen
- * renders an honest empty state. Profile file management lives in Settings.
+ * absent: a `?shot=` boot never publishes one. The full-screen title route
+ * lazily attaches the same read-only profile provider as Service Record;
+ * injected panels and screenshot harnesses can still render an honest empty
+ * state. Profile file management lives in Settings.
  * ============================================================================
  */
 
@@ -379,11 +381,11 @@ export class MissionsPanel {
   private readonly body: HTMLElement;
   private readonly summary: HTMLElement;
   private readonly sections = new Map<string, HTMLElement>();
-  private readonly progression: ProgressionView | null;
+  private progression: ProgressionView | null;
   private unsubscribe: (() => void) | null = null;
 
   constructor(options: MissionsPanelOptions) {
-    this.progression = options.progression ?? readProgression();
+    this.progression = options.progression !== undefined ? options.progression : readProgression();
 
     this.root = el('div', 'vm-missions');
     const frame = pageFrame('Missions', options.onClose);
@@ -407,12 +409,28 @@ export class MissionsPanel {
     this.root.appendChild(frame.root);
     this.render();
 
-    if (this.progression !== null) {
-      try {
-        this.unsubscribe = this.progression.subscribe(() => this.render());
-      } catch {
-        /* A provider whose subscribe throws still renders once, correctly. */
-      }
+    this.subscribeToProgression();
+  }
+
+  /** Attach a title-screen reader after the first frame without rebuilding the panel. */
+  setProgression(progression: ProgressionView): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.progression = progression;
+    this.render();
+    this.subscribeToProgression();
+  }
+
+  hasProgression(): boolean {
+    return this.progression !== null;
+  }
+
+  private subscribeToProgression(): void {
+    if (this.progression === null) return;
+    try {
+      this.unsubscribe = this.progression.subscribe(() => this.render());
+    } catch {
+      /* A provider whose subscribe throws still renders once, correctly. */
     }
   }
 
@@ -656,6 +674,7 @@ export class MissionsScreen implements Screen {
   readonly id = 'missions';
   private host: HTMLElement | null = null;
   private panel: MissionsPanel | null = null;
+  private profileReader: { dispose(): void } | null = null;
 
   /**
    * @param shell Used only for the default back action.
@@ -671,11 +690,14 @@ export class MissionsScreen implements Screen {
     host.classList.add('vm-page', 'is-modal');
     this.panel = new MissionsPanel({ onClose: () => this.close() });
     host.appendChild(this.panel.root);
+    if (!this.panel.hasProgression()) void this.loadProfileReader();
   }
 
   unmount(): void {
     this.panel?.dispose();
     this.panel = null;
+    this.profileReader?.dispose();
+    this.profileReader = null;
     this.host?.classList.remove('vm-page', 'is-modal');
     this.host = null;
   }
@@ -692,5 +714,21 @@ export class MissionsScreen implements Screen {
   private close(): void {
     if (this.onClose !== undefined) this.onClose();
     else this.shell.showMenu();
+  }
+
+  /** Read the local record on demand without booting the battlefield. */
+  private async loadProfileReader(): Promise<void> {
+    try {
+      const { ProfileReader } = await import('./profile-reader');
+      const reader = new ProfileReader();
+      if (this.panel === null) {
+        reader.dispose();
+        return;
+      }
+      this.profileReader = reader;
+      this.panel.setProgression(reader);
+    } catch {
+      // Keep the honest offline state already rendered by MissionsPanel.
+    }
   }
 }
