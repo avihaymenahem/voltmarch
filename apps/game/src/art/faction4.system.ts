@@ -34,6 +34,7 @@ import {
 import { isArtFactionPlanned } from './boot-plan';
 import { liveAssetStreamingEnabled, scheduleBattlefieldWork } from '../core/battlefield-ready';
 import { contentClosureEpoch, markContentProviderReady } from '../core/content-closure';
+import { prewarmKindMesh, type KindMeshPrewarmer } from '../render/RenderBridge';
 import {
   buildingProviderBindingsReady, unitProviderBindingsReady,
 } from './provider-readiness';
@@ -91,9 +92,14 @@ export default defineSystem({
       const epoch = ++deferredEpoch;
       cancelDeferredWork = scheduleBattlefieldWork(40, async () => {
         cancelDeferredWork = null;
+        const { cameraRig, handle } = ctx();
+        const renderer = handle.node ?? handle.webgl;
+        if (renderer === null) return;
+        const prewarm: KindMeshPrewarmer = (kind, mesh) =>
+          prewarmKindMesh(kind, mesh, renderer, cameraRig.camera);
         for (const stream of streamers) {
           if (epoch !== deferredEpoch) return;
-          await stream(() => epoch === deferredEpoch);
+          await stream(() => epoch === deferredEpoch, prewarm);
         }
       });
     }

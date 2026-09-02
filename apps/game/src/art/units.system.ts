@@ -50,7 +50,10 @@ import {
   waitForBattlefieldIdle,
 } from '../core/battlefield-ready';
 import { plannedScenario, resolveDefBinding, type DefBinding } from '../game/Scenarios';
-import { FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec } from '../render/RenderBridge';
+import {
+  FACTION_ANY, prewarmKindMesh, registerKindMesh,
+  type KindMesh, type SocketSpec,
+} from '../render/RenderBridge';
 import { ARMY_ORDER, GAIA_SLOT, type PerArmy } from './faction-models';
 import { formatStats } from './MassList';
 import { UNIT_MASS_LISTS } from './UnitDefs';
@@ -635,15 +638,24 @@ export default defineSystem({
         cancelDeferredWork = null;
         const results = await loadSpecs(deferredSpecs, true);
         if (epoch !== importedAssetEpoch) return;
+        const { cameraRig, handle } = ctx();
+        const renderer = handle.node ?? handle.webgl;
         for (const result of results) {
+          const registration = registrations.find((r) => r.key === result.key);
+          if (registration === undefined || renderer === null
+            || !(await prewarmKindMesh(
+              registration.kind, result.mesh, renderer, cameraRig.camera,
+            ))) {
+            continue;
+          }
           meshes.set(result.key, result.mesh);
-          for (const registration of registrations) {
-            if (registration.key !== result.key) continue;
+          for (const target of registrations) {
+            if (target.key !== result.key) continue;
             registerKindMesh(
-              registration.kind,
-              registration.faction,
+              target.kind,
+              target.faction,
               result.mesh,
-              registration.defId,
+              target.defId,
               true,
             );
           }

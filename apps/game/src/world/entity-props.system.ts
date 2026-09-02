@@ -57,7 +57,9 @@ import {
 } from '../core/wrecks';
 import { ctx } from '../game/context';
 import { FALLBACK_PROPS, PROP_DEF_ID } from '../game/Scenarios';
-import { FACTION_ANY, registerKindMesh, type KindMesh } from '../render/RenderBridge';
+import {
+  FACTION_ANY, prewarmKindMesh, registerKindMesh, type KindMesh,
+} from '../render/RenderBridge';
 import type { PropMaterialSetLike } from '../render/gpu-path';
 import { createPropMaterial, PropLibrary, propPalette } from './PropLibrary';
 import { buildWreckSet, type WreckFaction, type WreckSet } from '../art/Wrecks';
@@ -320,28 +322,46 @@ export default defineSystem({
     requestArtAssetFamily(
       authoredWreckDependencies, 'art.entityProps:authored-wreck', closureEpoch,
     );
-    void loadImportedWreckSet().then((imported) => {
+    void loadImportedWreckSet().then(async (imported) => {
       if (assetEpoch !== importedWreckEpoch) {
         imported.dispose();
         return;
       }
       importedWreckSet = imported;
       markArtAssetFamilyReady(authoredWreckDependencies, closureEpoch);
+      const { cameraRig, handle } = ctx();
+      const renderer = handle.node ?? handle.webgl;
+      const warmed = new Set<KindMesh>();
+      const warm = async (mesh: KindMesh): Promise<boolean> => {
+        if (renderer === null) return false;
+        if (warmed.has(mesh)) return true;
+        const ok = await prewarmKindMesh(
+          EntityKind.Wreck, mesh, renderer, cameraRig.camera,
+        );
+        if (ok) warmed.add(mesh);
+        return ok;
+      };
       let overrides = 0;
       for (const cls of IMPORTED_WRECK_CLASSES) {
+        const allies = imported.hulk('allies', cls);
+        const soviets = imported.hulk('soviets', cls);
+        const neutral = imported.hulk('neutral', cls);
+        if (!(await warm(allies)) || !(await warm(soviets)) || !(await warm(neutral))) {
+          continue;
+        }
         registerKindMesh(
           EntityKind.Wreck, Faction.Allies,
-          imported.hulk('allies', cls), VEHICLE_WRECK_DEF[cls], true,
+          allies, VEHICLE_WRECK_DEF[cls], true,
         );
         registerKindMesh(
           EntityKind.Wreck, Faction.Soviets,
-          imported.hulk('soviets', cls), VEHICLE_WRECK_DEF[cls], true,
+          soviets, VEHICLE_WRECK_DEF[cls], true,
         );
         // Neutral/legacy conventional wrecks use the same hulk. Exact
         // Meridian/Reclaim registrations above still win over this wildcard.
         registerKindMesh(
           EntityKind.Wreck, FACTION_ANY,
-          imported.hulk('neutral', cls), VEHICLE_WRECK_DEF[cls], true,
+          neutral, VEHICLE_WRECK_DEF[cls], true,
         );
         overrides += 3;
       }

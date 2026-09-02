@@ -346,7 +346,12 @@ export interface NodeRendererLike {
     faceIndex?: number,
   ): Promise<ArrayBufferView>;
   getMaxAnisotropy(): number;
-  compile(scene: THREE.Object3D, camera: THREE.Camera): unknown;
+  compile(scene: THREE.Object3D, camera: THREE.Camera, targetScene?: THREE.Scene): unknown;
+  compileAsync?(
+    scene: THREE.Object3D,
+    camera: THREE.Camera,
+    targetScene?: THREE.Scene,
+  ): Promise<unknown>;
   /** Synchronous after the renderer's boot-time `init()` has resolved. */
   hasFeature(name: string): boolean;
   /** Synchronous after the renderer's boot-time `init()` has resolved. */

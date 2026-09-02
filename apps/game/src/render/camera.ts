@@ -1513,11 +1513,12 @@ export class CameraRig {
    * because those really do belong to whatever DOM is under the cursor.
    *
    * THE HUD WAS A WHEEL DEAD ZONE AND NOBODY HAD MEASURED IT. `#hud-root` is
-   * `pointer-events: none`, but `.vm-hud .vm-panel { pointer-events: auto }`
-   * is the generic class on EVERY HUD panel, so a wheel over one has a target
-   * outside the canvas — `ownsEvent` says no — and `#hud-root` is a SIBLING of
-   * `#app > canvas`, so the input module's canvas listener is not on the
-   * propagation path either. Neither handler ran. Measured live in Chromium at
+   * `pointer-events: none`, while actual controls and scroll surfaces opt back
+   * in. A wheel over a real scroll surface still has a target outside the
+   * canvas — `ownsEvent` says no — and `#hud-root` is a SIBLING of `#app >
+   * canvas`, so the input module's canvas listener is not on the propagation
+   * path either. Neither handler would run without this registration. Measured
+   * live in Chromium at
    * four MacBook-shaped viewports: 25.95% of 1440x900, 23.79% of 1280x700,
    * 21.24% of 1440x789, 19.91% of 1512x850 — one pointer position in five.
    * Device-independent; a Windows mouse player lost the same fifth.

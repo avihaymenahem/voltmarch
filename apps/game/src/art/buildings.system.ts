@@ -68,6 +68,7 @@ import { plannedScenario, resolveDefBinding } from '../game/Scenarios';
 import { requestedBackend } from '../render/backend';
 import {
   FACTION_ANY,
+  prewarmKindMesh,
   registerKindMesh,
   type KindMesh,
   type SocketSpec,
@@ -2263,19 +2264,28 @@ export default defineSystem({
         cancelDeferredWork = null;
         const results = await loadSpecs(deferredSpecs, true);
         if (epoch !== importedAssetEpoch) return;
+        const { cameraRig, handle } = ctx();
+        const renderer = handle.node ?? handle.webgl;
         let loaded = importedMeshes.size;
         for (const result of results) {
           if (result === null) continue;
           const [key, mesh] = result;
+          const registration = registrations.find((r) => r.key === key);
+          if (registration === undefined || renderer === null
+            || !(await prewarmKindMesh(
+              EntityKind.Building, mesh, renderer, cameraRig.camera,
+            ))) {
+            continue;
+          }
           importedMeshes.set(key, mesh);
           loaded++;
-          for (const registration of registrations) {
-            if (registration.key !== key) continue;
+          for (const target of registrations) {
+            if (target.key !== key) continue;
             registerKindMesh(
               EntityKind.Building,
-              registration.faction,
+              target.faction,
               mesh,
-              registration.defId,
+              target.defId,
               true,
             );
           }

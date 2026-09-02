@@ -578,12 +578,15 @@ describe('approved command-deck skin', () => {
     );
   });
 
-  it('makes the complete build header a pointer island above the clipped inventory', () => {
+  it('keeps header chrome click-through while retaining live controls', () => {
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-tabs\s*\{[^}]*z-index:\s*20;[^}]*isolation:\s*isolate;[^}]*pointer-events:\s*auto;/s,
+      /\.vm-tabs\s*\{[^}]*z-index:\s*20;[^}]*isolation:\s*isolate;[^}]*pointer-events:\s*none;/s,
     );
     expect(COMMAND_DECK_CSS).toMatch(
-      /\.vm-tabs::after\s*\{[^}]*inset:\s*0;[^}]*z-index:\s*1;[^}]*pointer-events:\s*auto;/s,
+      /\.vm-tabs::after\s*\{[^}]*inset:\s*0;[^}]*z-index:\s*1;[^}]*pointer-events:\s*none;/s,
+    );
+    expect(COMMAND_DECK_CSS).toMatch(
+      /\.vm-tab,\s*\n\.vm-hud\[data-layout='perimeter'\] \.vm-tool\s*\{[^}]*pointer-events:\s*auto;/s,
     );
     expect(COMMAND_DECK_CSS).toMatch(
       /\.vm-build-body\s*\{[^}]*z-index:\s*1;[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;/s,

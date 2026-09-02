@@ -41,7 +41,7 @@ import type { Node, NodeBuilder } from 'three/webgpu';
 import {
   Fn, attribute, batch, clamp, cos, float, fract, instancedMesh, materialColor, materialEmissive,
   materialRoughness, min, mix, normalGeometry, normalLocal, normalWorld, positionGeometry,
-  positionLocal, sin, smoothstep, step, uniform, varyingProperty, vec3, vec4, vertexColor,
+  positionLocal, sin, smoothstep, step, texture, uniform, varyingProperty, vec3, vec4, vertexColor,
 } from 'three/tsl';
 import { PROP_EMISSIVE_GAIN, PROP_LIGHT_ANIM, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
@@ -275,6 +275,7 @@ function applyPropSurfaceEnvironment(
   material: MeshPhysicalNodeMaterial,
   authoredRoughness: FloatN,
   porous: FloatN,
+  authoredAlpha: FloatN = float(1.0),
 ): void {
   const up = clamp(normalWorld.y, 0.0, 1.0).toVar('raPropSurfaceUp');
   const wet = clamp(surfaceClimateNode.x, 0.0, 1.0).toVar('raPropWet');
@@ -286,9 +287,9 @@ function applyPropSurfaceEnvironment(
   const snow = clamp(surfaceClimateNode.z, 0.0, 1.0)
     .mul(smoothstep(0.52, 0.9, up))
     .toVar('raPropSnow');
-  // `materialColor` resolves to RGBA when the authored base map carries
-  // coverage, even though its public TSL type is the RGB material factor.
-  // Widen once so the climate graph can share the sampled RGB and alpha.
+  // `materialColor` is the authored RGB map multiplied by the material colour.
+  // Its public TSL type is vec3, so alpha-tested families pass their coverage
+  // separately below instead of relying on a vec4 widening to preserve it.
   const authoredColor = vec4(materialColor as unknown as Vec4N)
     .toVar('raPropAuthoredColor');
   const dusty = mix(authoredColor.rgb, vec3(0.43, 0.37, 0.27), dust.mul(0.16));
@@ -298,7 +299,7 @@ function applyPropSurfaceEnvironment(
   // opaque black rectangle even though alphaTest itself is still configured.
   material.colorNode = vec4(
     snowed.mul(wet.mul(0.055).oneMinus()),
-    authoredColor.a,
+    authoredAlpha,
   );
   material.roughnessNode = clamp(
     authoredRoughness
@@ -392,7 +393,15 @@ export function createEnvironmentPropNodeMaterials(
   // Authored PBR maps remain the starting point. Unlike the procedural packed
   // gloss channel, imported aSurface.y is a runtime-layout placeholder and is
   // not a material classifier, so use the stock mapped roughness directly.
-  applyPropSurfaceEnvironment(material, materialRoughness, float(0.72));
+  // `materialColor` is deliberately RGB-only in Three's TSL API. Alpha-tested
+  // foliage stores its cutout in the base map's A channel, so feed that channel
+  // explicitly into the colour node; otherwise WebGPU renders each crossed
+  // branch card's transparent atlas padding as an opaque rectangle.
+  const authoredAlpha = params.alphaTest !== undefined && params.alphaTest > 0
+    && params.map?.isTexture === true
+    ? texture(params.map).a
+    : float(1.0);
+  applyPropSurfaceEnvironment(material, materialRoughness, float(0.72), authoredAlpha);
   material.castShadowPositionNode = propShadowPosition(uniforms);
   return {
     material,

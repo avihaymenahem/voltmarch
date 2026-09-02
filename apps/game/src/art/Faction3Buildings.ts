@@ -60,7 +60,8 @@ import {
   type StructureModel, type StructurePalettes, type StructureSocket,
 } from './BuildingFactory';
 import {
-  FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
+  FACTION_ANY, registerKindMesh, type KindMesh, type KindMeshPrewarmer,
+  type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
 import { mapConcurrent } from '../core/async-pool';
 import { waitForBattlefieldIdle } from '../core/battlefield-ready';
@@ -1572,7 +1573,10 @@ export interface MeridianStructureReport {
   bound: number;
   imported: number;
   /** Promote non-opening authored shells after Bootstrap presents frame zero. */
-  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
+  streamRemaining?: (
+    isCurrent?: () => boolean,
+    prewarm?: KindMeshPrewarmer,
+  ) => Promise<number>;
 }
 
 /**
@@ -1717,6 +1721,7 @@ export async function buildAndRegisterMeridianStructures(
 
   const streamRemaining = deferredSpecs.length === 0 ? undefined : async (
     isCurrent: () => boolean = () => true,
+    prewarm?: KindMeshPrewarmer,
   ): Promise<number> => {
     const results = await loadSpecs(deferredSpecs, true);
     if (!isCurrent()) return 0;
@@ -1724,10 +1729,13 @@ export async function buildAndRegisterMeridianStructures(
     for (const result of results) {
       if (result === null) continue;
       const [key, mesh] = result;
+      const targets = registrationTargets.filter((target) => target.key === key);
+      if (targets.length === 0 || (prewarm !== undefined && !(await prewarm(EntityKind.Building, mesh)))) {
+        continue;
+      }
       importedMeshes.set(key, mesh);
       promoted++;
-      for (const target of registrationTargets) {
-        if (target.key !== key) continue;
+      for (const target of targets) {
         registerKindMesh(EntityKind.Building, target.faction, mesh, target.defId, true);
       }
     }

@@ -569,20 +569,25 @@ describe('the prop node material', () => {
   });
 
   it('preserves authored foliage alpha while climate modifies RGB', () => {
+    const map = new THREE.Texture();
     const set = createEnvironmentPropNodeMaterials({
-      map: new THREE.Texture(),
+      map,
       alphaTest: 0.85,
       transparent: false,
     });
     const alphaSplits: Node[] = [];
+    const alphaSamples: Node[] = [];
     set.material.colorNode?.traverse((node) => {
       const split = node as Node & { readonly components?: string };
+      const textureNode = node as Node & { readonly isTextureNode?: boolean; readonly value?: unknown };
       // TSL canonicalises the RGBA alias `.a` to the XYZW component `.w`.
       if (split.components === 'w') alphaSplits.push(node);
+      if (textureNode.isTextureNode === true && textureNode.value === map) alphaSamples.push(node);
     });
     expect(set.material.alphaTest).toBe(0.85);
     expect(alphaSplits).toHaveLength(1);
-    set.material.map?.dispose();
+    expect(alphaSamples).toHaveLength(1);
+    map.dispose();
     set.dispose();
   });
 

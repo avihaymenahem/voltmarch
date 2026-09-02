@@ -17,6 +17,7 @@ import { DeployVisualClip } from '../src/core/DeployVisual';
 import { hexToLinearRgb, wrapAngle } from '../src/core/math';
 import {
   FACTION_ANY,
+  prewarmKindMesh,
   RenderBridge,
   clearKindMeshes,
   registerKindMesh,
@@ -702,6 +703,43 @@ describe('RenderBridge — sockets', () => {
 });
 
 describe('RenderBridge — late-arriving art replaces the placeholder', () => {
+  it('prewarms the real batch and colour/depth LOD variants before publication', async () => {
+    const { scene, bridge } = makeRig();
+    const material = new THREE.MeshStandardMaterial();
+    const depth = new THREE.MeshDepthMaterial();
+    const model: KindMesh = {
+      geometry: new THREE.BoxGeometry(3, 2, 4),
+      lods: [{ geometry: new THREE.BoxGeometry(2, 1, 3), minDistance: 40 }],
+      material,
+      customDepthMaterial: depth,
+    };
+    const camera = new THREE.PerspectiveCamera();
+    const calls: { material: THREE.Material | THREE.Material[]; scene: THREE.Scene }[] = [];
+    const renderer = {
+      compileAsync(object: THREE.Object3D, _camera: THREE.Camera, targetScene?: THREE.Scene) {
+        calls.push({ material: (object as THREE.Mesh).material, scene: targetScene! });
+        return Promise.resolve();
+      },
+      compile(): void {
+        throw new Error('prewarm should prefer compileAsync');
+      },
+    };
+
+    expect(await prewarmKindMesh(EntityKind.Vehicle, model, renderer, camera)).toBe(true);
+    expect(bridge.batchCount).toBe(1);
+    expect(meshes(scene)).toHaveLength(1);
+    expect(meshes(scene)[0].count).toBe(0);
+    expect(calls).toHaveLength(4);
+    expect(calls.map((call) => call.material)).toEqual(
+      expect.arrayContaining([material, depth]),
+    );
+    expect(calls.every((call) => call.scene === scene)).toBe(true);
+
+    registerKindMesh(EntityKind.Vehicle, Faction.Allies, model);
+    expect(bridge.batchCount).toBe(1);
+    teardown(bridge);
+  });
+
   it('rebinds live entities when a model is registered mid-match', () => {
     const { store, scene, bridge } = makeRig();
     store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 12, 0, 12, 0);

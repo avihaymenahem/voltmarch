@@ -393,7 +393,7 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: calc(18 * var(--vm-u)) 1fr;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 5;
 }
 
@@ -549,7 +549,7 @@
   display: grid;
   grid-template-columns: calc(92 * var(--vm-u)) minmax(0, 1fr);
   overflow: visible;
-  pointer-events: auto;
+  pointer-events: none;
   background:
     linear-gradient(100deg, rgba(var(--vm-comms-rgb), 0.16), transparent 45%),
     linear-gradient(180deg, rgba(17, 22, 39, 0.98), rgba(3, 6, 14, 0.985));

@@ -355,6 +355,9 @@ export class BatchPart {
     this.matrix = this.mesh.instanceMatrix.array as Float32Array;
   }
 
+  /** Every geometry variant owned by this part, nearest first. */
+  get geometryVariants(): readonly THREE.BufferGeometry[] { return this.geometries; }
+
   /** Grow every per-instance channel, preserving slot indices. */
   grow(capacity: number): void {
     const nextMatrix = new Float32Array(capacity * 16);

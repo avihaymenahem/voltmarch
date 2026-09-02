@@ -79,7 +79,10 @@ import {
   setContentDeliveryState,
 } from '../core/content-closure';
 
-import { InstanceBatcher, type BatchPartSpec, type InstanceBatch } from './InstanceBatcher';
+import {
+  InstanceBatcher, type BatchPartSpec, type InstanceBatch,
+} from './InstanceBatcher';
+import type { BatchPart } from './InstanceBatcher';
 import { applyShroudTint } from './FogOfWar';
 import type { RenderCullVolume } from './RenderCullVolume';
 import { LAYERS } from './scene';
@@ -179,13 +182,30 @@ export interface KindMesh {
   turretPivotY?: number;
 }
 
+/** The small renderer surface needed to prewarm a newly promoted model. */
+export interface RuntimeCompileRenderer {
+  compile(
+    object: THREE.Object3D,
+    camera: THREE.Camera,
+    targetScene?: THREE.Scene,
+  ): unknown;
+  compileAsync?: (
+    object: THREE.Object3D,
+    camera: THREE.Camera,
+    targetScene?: THREE.Scene,
+  ) => Promise<unknown>;
+}
+
+/** Callback used by art streams to keep an unpublished replacement off-frame. */
+export type KindMeshPrewarmer = (kind: EntityKind, mesh: KindMesh) => Promise<boolean>;
+
 /* ==========================================================================
  * 2. MODEL REGISTRY (module-level, valid before and after init)
  *
  * Art modules `init()` in registry phase order, which may put them before or
  * after this module. So registration must never depend on the bridge existing:
- * it fills a plain map, and batches are built lazily the first frame an entity
- * actually needs one.
+ * it fills a plain map. Batches are normally built lazily, but deferred authored
+ * replacements can prewarm an unpublished batch before they replace a fallback.
  * ========================================================================== */
 
 interface ResolvedSocket {
@@ -270,6 +290,15 @@ function settleContentBindings(): void {
 const byKey = new Map<number, ModelEntry>();
 /** KindMesh identity -> entry, so one mesh shared by two factions is one batch. */
 const byMesh = new Map<KindMesh, ModelEntry>();
+
+function getOrCreateModelEntry(mesh: KindMesh, kind: EntityKind): ModelEntry {
+  let entry = byMesh.get(mesh);
+  if (entry === undefined) {
+    entry = buildEntry(mesh, kind, `model#${entries.length}`);
+    byMesh.set(mesh, entry);
+  }
+  return entry;
+}
 /** Per-kind placeholders, built on demand. */
 const placeholders: (ModelEntry | null)[] = new Array(ENTITY_KIND_COUNT).fill(null);
 /** Bumped on every registration so bound entities re-resolve on the next frame. */
@@ -455,11 +484,7 @@ export function registerKindMesh(
   /** True when a deferred authored asset intentionally replaces its fallback. */
   replaceExisting = false,
 ): void {
-  let entry = byMesh.get(mesh);
-  if (entry === undefined) {
-    entry = buildEntry(mesh, kind, `model#${entries.length}`);
-    byMesh.set(mesh, entry);
-  }
+  const entry = getOrCreateModelEntry(mesh, kind);
   const key = packKey(kind, faction as number, defId);
   const previous = byKey.get(key);
   if (previous !== undefined && previous !== entry && !replaceExisting) {
@@ -471,6 +496,97 @@ export function registerKindMesh(
   byKey.set(key, entry);
   registryVersion++;
   if (unresolvedContentBindings.size > 0) settleContentBindings();
+}
+
+/**
+ * Build and compile a promoted model while it is still unpublished.
+ *
+ * `compileAsync()` only removes shader compilation from the frame when the
+ * exact render object is presented to it. Creating the real InstanceBatch here
+ * also means its cloned instance geometry and bindings are uploaded before the
+ * registry version makes live entities switch away from their fallback.
+ */
+export async function prewarmKindMesh(
+  kind: EntityKind,
+  mesh: KindMesh,
+  renderer: RuntimeCompileRenderer,
+  camera: THREE.Camera,
+): Promise<boolean> {
+  const bridge = bridgeInstance;
+  if (bridge === null) return false;
+
+  const existing = byMesh.get(mesh);
+  const entry = getOrCreateModelEntry(mesh, kind);
+  if (entry.batch !== null) return true;
+
+  let batch: InstanceBatch | null = null;
+  const detached: { part: BatchPart; parent: THREE.Object3D | null }[] = [];
+  try {
+    batch = bridge.batcher.createBatch(entry.specs, entry.name);
+    entry.batch = batch;
+
+    // Keep the real batch out of the live scene while compileAsync yields. It
+    // is not registered yet, so no frame can need it during this operation.
+    for (const part of batch.parts) {
+      const parent = part.mesh.parent;
+      detached.push({ part, parent });
+      parent?.remove(part.mesh);
+    }
+
+    for (const part of batch.parts) {
+      const object = part.mesh;
+      const originalGeometry = object.geometry;
+      const originalMaterial = object.material;
+      const originalVisible = object.visible;
+      const originalCount = object.count;
+      const originalFrustumCulled = object.frustumCulled;
+      try {
+        object.visible = true;
+        object.count = 1;
+        object.frustumCulled = false;
+        const materials: THREE.Material[] = [
+          ...(Array.isArray(originalMaterial) ? originalMaterial : [originalMaterial]),
+        ];
+        if (object.customDepthMaterial !== undefined
+          && !materials.includes(object.customDepthMaterial)) {
+          materials.push(object.customDepthMaterial);
+        }
+        for (const material of materials) {
+          object.material = material;
+          for (const geometry of part.geometryVariants) {
+            object.geometry = geometry;
+            const compileAsync = renderer.compileAsync;
+            if (typeof compileAsync === 'function') {
+              await compileAsync.call(renderer, object, camera, bridge.scene);
+            } else {
+              await Promise.resolve(renderer.compile(object, camera, bridge.scene));
+            }
+          }
+        }
+      } finally {
+        object.geometry = originalGeometry;
+        object.material = originalMaterial;
+        object.visible = originalVisible;
+        object.count = originalCount;
+        object.frustumCulled = originalFrustumCulled;
+      }
+    }
+
+    for (const { part, parent } of detached) parent?.add(part.mesh);
+    return true;
+  } catch (error) {
+    for (const { part, parent } of detached) parent?.add(part.mesh);
+    if (batch !== null) {
+      bridge.batcher.destroyBatch(batch);
+      entry.batch = null;
+    }
+    if (existing === undefined && entries[entries.length - 1] === entry) {
+      entries.pop();
+      byMesh.delete(mesh);
+    }
+    console.warn(`[render.bridge] failed to prewarm ${entry.name}; fallback retained`, error);
+    return false;
+  }
 }
 
 /**
@@ -1004,6 +1120,7 @@ const AUDIT_MISS_LIMIT = 64;
 
 export class RenderBridge {
   readonly batcher: InstanceBatcher;
+  readonly scene: THREE.Scene;
 
   /**
    * Set by the fog module every frame at `RenderPhase.FowUpload` (20), which
@@ -1109,6 +1226,7 @@ export class RenderBridge {
   };
 
   constructor(private readonly store: EntityStore, scene: THREE.Scene) {
+    this.scene = scene;
     this.batcher = new InstanceBatcher(scene);
   }
 

@@ -118,6 +118,7 @@ import type { SystemModule, SimContext, RenderContext, QualityTier, IRng } from 
 import type { World } from './world';
 import type { Channels } from './events';
 import { Rng } from './math';
+import { logDiagnostic } from './diagnostic-log';
 
 /* ==========================================================================
  * 1. TIME SOURCE
@@ -158,6 +159,8 @@ const cancelFrame: FrameCanceller =
 const PROFILE_WINDOW = 60;
 /** Three missed 60 Hz presents is a visible hitch, not ordinary frame jitter. */
 const LONG_FRAME_MS = 50;
+/** Recent frame samples retained for a hitch report. 48 frames is ~0.8 s at 60 Hz. */
+const HITCH_HISTORY = 48;
 
 export interface SystemTiming {
   id: string;
@@ -170,12 +173,50 @@ export interface SystemTiming {
   peak: number;
 }
 
+/** One frame sample retained around an automatically reported hitch. */
+export interface HitchFrameSample {
+  readonly frame: number;
+  readonly wallGapMs: number;
+  readonly cpuMs: number;
+  readonly simMs: number;
+  readonly substeps: number;
+}
+
+/** The trigger and rolling history handed to a hitch context provider. */
+export interface HitchEvent {
+  readonly sequence: number;
+  readonly frame: number;
+  readonly wallGapMs: number;
+  readonly cpuMs: number;
+  readonly simMs: number;
+  readonly substeps: number;
+  readonly history: readonly HitchFrameSample[];
+}
+
+/**
+ * Called only when a wall-time hitch is detected. The provider is intentionally
+ * pull-based: normal frames never allocate stats objects or inspect renderer
+ * state just to keep a recorder armed.
+ */
+export type HitchContextProvider = (
+  event: HitchEvent,
+) => Readonly<Record<string, unknown>> | null;
+
 /** Per-system timing collector. */
 export class Profiler {
   enabled = false;
   private readonly timings = new Map<string, SystemTiming>();
   private readonly samples = new Map<string, Float64Array>();
   private readonly cursor = new Map<string, number>();
+  private readonly hitchFrames = new Float64Array(HITCH_HISTORY);
+  private readonly hitchGaps = new Float64Array(HITCH_HISTORY);
+  private readonly hitchCpu = new Float64Array(HITCH_HISTORY);
+  private readonly hitchSim = new Float64Array(HITCH_HISTORY);
+  private readonly hitchSteps = new Float64Array(HITCH_HISTORY);
+  private hitchHead = 0;
+  private hitchFilled = 0;
+  private hitchSequence = 0;
+  private hitchContextProvider: HitchContextProvider | null = null;
 
   /** Milliseconds of the whole sim step and the whole render frame. */
   simMs = 0;
@@ -195,6 +236,29 @@ export class Profiler {
   /** Heap canary. Flat over a 60 s soak means we are not allocating per frame. */
   heapBytes = 0;
   heapStartBytes = 0;
+
+  /** Install the expensive, on-hitch-only snapshot provider. */
+  setHitchContextProvider(provider: HitchContextProvider | null): void {
+    this.hitchContextProvider = provider;
+  }
+
+  /** Return the current bounded frame history, oldest sample first. */
+  hitchHistory(limit = HITCH_HISTORY): readonly HitchFrameSample[] {
+    const take = Math.max(0, Math.min(this.hitchFilled, Math.floor(limit)));
+    const result: HitchFrameSample[] = [];
+    const start = (this.hitchHead - take + HITCH_HISTORY) % HITCH_HISTORY;
+    for (let i = 0; i < take; i++) {
+      const index = (start + i) % HITCH_HISTORY;
+      result.push({
+        frame: this.hitchFrames[index],
+        wallGapMs: this.hitchGaps[index],
+        cpuMs: this.hitchCpu[index],
+        simMs: this.hitchSim[index],
+        substeps: this.hitchSteps[index],
+      });
+    }
+    return result;
+  }
 
   record(id: string, phase: number, ms: number): void {
     let t = this.timings.get(id);
@@ -218,7 +282,7 @@ export class Profiler {
     t.avg = sum / PROFILE_WINDOW;
   }
 
-  recordFrame(ms: number, wallGapMs = 0): void {
+  recordFrame(ms: number, wallGapMs = 0, frame = 0, substeps = 0): void {
     this.frameMs = ms;
     this.frameSamples[this.frameCursor] = ms;
     this.frameCursor = (this.frameCursor + 1) % PROFILE_WINDOW;
@@ -226,12 +290,50 @@ export class Profiler {
     let sum = 0;
     for (let i = 0; i < this.frameFilled; i++) sum += this.frameSamples[i];
     this.avgFrameMs = sum / this.frameFilled;
+    const index = this.hitchHead;
+    this.hitchFrames[index] = frame;
+    this.hitchGaps[index] = wallGapMs;
+    this.hitchCpu[index] = ms;
+    this.hitchSim[index] = this.simMs;
+    this.hitchSteps[index] = substeps;
+    this.hitchHead = (index + 1) % HITCH_HISTORY;
+    this.hitchFilled = Math.min(this.hitchFilled + 1, HITCH_HISTORY);
+
     if (wallGapMs >= LONG_FRAME_MS) {
       this.longFrameCount++;
       this.lastLongFrameGapMs = wallGapMs;
       this.lastLongFrameCpuMs = ms;
       if (wallGapMs > this.worstLongFrameGapMs) this.worstLongFrameGapMs = wallGapMs;
+      this.reportHitch({
+        sequence: ++this.hitchSequence,
+        frame,
+        wallGapMs,
+        cpuMs: ms,
+        simMs: this.simMs,
+        substeps,
+        history: this.hitchHistory(),
+      });
     }
+  }
+
+  private reportHitch(event: HitchEvent): void {
+    let context: Readonly<Record<string, unknown>> | null = null;
+    try {
+      context = this.hitchContextProvider?.(event) ?? null;
+    } catch (error) {
+      context = { providerError: error instanceof Error ? error.message : String(error) };
+    }
+    logDiagnostic(
+      'warn',
+      'performance',
+      'long-frame',
+      'Long frame gap detected',
+      {
+        thresholdMs: LONG_FRAME_MS,
+        hitch: event,
+        ...(context ?? {}),
+      },
+    );
   }
 
   /** Sample the JS heap where the browser exposes it (Chromium only). */
@@ -270,6 +372,9 @@ export class Profiler {
     this.lastLongFrameGapMs = 0;
     this.lastLongFrameCpuMs = 0;
     this.worstLongFrameGapMs = 0;
+    this.hitchHead = 0;
+    this.hitchFilled = 0;
+    this.hitchSequence = 0;
     this.heapStartBytes = 0;
   }
 }
@@ -790,6 +895,8 @@ export class GameLoop {
     profiler.recordFrame(
       now() - frameStart,
       this.captureClock ? 0 : wallGapMs,
+      this.frame,
+      this.lastSteps,
     );
     if ((this.frame & 63) === 0) profiler.sampleHeap();
   }

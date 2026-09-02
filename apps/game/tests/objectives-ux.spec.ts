@@ -871,8 +871,8 @@ describe('the banner layer is inert', () => {
     const card = css.slice(css.indexOf('\n.vm-objdone {'));
     expect(card.slice(0, card.indexOf('}'))).toContain('pointer-events: none');
 
-    // `.vm-panel` sets `pointer-events: auto`; a full-frame layer must never
-    // borrow that class, and the module must never write the property inline.
+    // `.vm-panel` is visual chrome; a full-frame layer must never borrow that
+    // class, and the module must never write the property inline.
     expect(css).not.toContain('.vm-objdone-layer.vm-panel');
   });
 });

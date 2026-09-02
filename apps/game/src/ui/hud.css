@@ -284,8 +284,32 @@
     var(--vm-glass);
   -webkit-backdrop-filter: var(--vm-blur);
   backdrop-filter: var(--vm-blur);
-  pointer-events: auto;
+  /* A panel is visual chrome, not a rectangular input mask. Only the
+     controls and instrument surfaces below opt back in, so the battlefield
+     canvas keeps receiving move/order input through empty panel areas. */
+  pointer-events: none;
   clip-path: var(--vm-clip, none);
+}
+
+/* Pointer input is inherited. Restore it only on elements that actually have
+   HUD behaviour; otherwise a decorative bevel, padding strip, or charge bar
+   can replace the world's command cursor with the browser default. */
+.vm-hud .vm-panel :where(
+  button,
+  input,
+  select,
+  textarea,
+  [role='button'],
+  [role='tab'],
+  [role='grid'],
+  [role='gridcell'],
+  [role='listbox'],
+  [role='option'],
+  [role='toolbar'],
+  canvas,
+  .vm-panel-corner-handle
+) {
+  pointer-events: auto;
 }
 
 /* -- 1. the dark outer rim ----------------------------------------------- */
@@ -1777,7 +1801,7 @@
   gap: calc(2 * var(--vm-u));
   padding: calc(4 * var(--vm-u));
   box-sizing: border-box;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .vm-hud .vm-super-row {
@@ -1793,6 +1817,7 @@
   text-align: left;
   background: var(--vm-well);
   border: 1px solid var(--vm-hairline);
+  pointer-events: auto;
   cursor: default;
 }
 
@@ -1894,7 +1919,7 @@
   gap: calc(2 * var(--vm-u));
   padding: calc(4 * var(--vm-u));
   box-sizing: border-box;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* A power's label is a proper name ("Emergency Repair") rather than a weapon
@@ -2058,7 +2083,7 @@
   padding: 0;
   border-bottom: 0;
   flex: 0 0 auto;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* One word per tab, on one line. The icon-over-label stack cost 22u of band

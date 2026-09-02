@@ -98,7 +98,8 @@ import {
 } from './ImportedUnitAssets';
 import { IMPORTED_INFANTRY_FAMILIES, loadImportedInfantryFamily } from './ImportedInfantryAssets';
 import {
-  FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
+  FACTION_ANY, registerKindMesh, type KindMesh, type KindMeshPrewarmer,
+  type SocketSpec as BridgeSocket,
 } from '../render/RenderBridge';
 
 /* ==========================================================================
@@ -1618,7 +1619,10 @@ export interface ReclaimBuildReport {
   registrations: number;
   bound: number;
   /** Promote non-opening authored units after Bootstrap presents frame zero. */
-  streamRemaining?: (isCurrent?: () => boolean) => Promise<number>;
+  streamRemaining?: (
+    isCurrent?: () => boolean,
+    prewarm?: KindMeshPrewarmer,
+  ) => Promise<number>;
 }
 
 /**
@@ -1804,6 +1808,7 @@ export async function buildAndRegisterReclaimUnits(
 
   const streamRemaining = immediateImportedKeys === undefined ? undefined : async (
     isCurrent: () => boolean = () => true,
+    prewarm?: KindMeshPrewarmer,
   ): Promise<number> => {
     const lateInfantry = await loadInfantry(true);
     if (!isCurrent()) return 0;
@@ -1818,9 +1823,12 @@ export async function buildAndRegisterReclaimUnits(
       if (result !== null) promoted.set(result[0], result[1]);
     }
     for (const [key, mesh] of promoted) {
+      const targets = registrationTargets.filter((target) => target.key === key);
+      if (targets.length === 0 || (prewarm !== undefined && !(await prewarm(targets[0].kind, mesh)))) {
+        continue;
+      }
       meshes.set(key, mesh);
-      for (const target of registrationTargets) {
-        if (target.key !== key) continue;
+      for (const target of targets) {
         registerKindMesh(target.kind, target.faction, mesh, target.defId, true);
       }
     }

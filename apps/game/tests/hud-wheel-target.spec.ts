@@ -12,8 +12,8 @@
  *
  *   1. `#hud-root` is `pointer-events: none` (index.html), so it looks
  *      click-through.
- *   2. `.vm-hud .vm-panel { pointer-events: auto }` (src/ui/hud.css) is the
- *      GENERIC class on every HUD panel, so it is not.
+ *   2. `.vm-hud .vm-panel { pointer-events: none }` (src/ui/hud.css) now makes
+ *      the generic panel chrome click-through; actual controls opt back in.
  *   3. A wheel over a panel therefore has `e.target` outside the canvas, and
  *      `CameraRig.ownsEvent` refused it.
  *   4. `#hud-root` is a SIBLING of `#app > canvas`, not a descendant, so the
@@ -280,17 +280,23 @@ describe('a genuinely scrollable ancestor keeps its wheel', () => {
 /* ==========================================================================
  * 3. THE CSS THE PREDICATE IS SOLVING FOR
  *
- * If `.vm-panel` ever stops being `pointer-events: auto`, everything above is
- * machinery for a problem that no longer exists — and nothing else in the tree
- * would say so.
+ * Panels are visual chrome, so their empty surfaces must be click-through.
+ * Actual controls and scroll surfaces opt back in; otherwise a panel would
+ * steal both the world's command cursor and its pointer events.
  * ========================================================================== */
 
-describe('the CSS that makes the dead zone real', () => {
+describe('the CSS that keeps HUD chrome click-through', () => {
   const css = readFileSync(new URL('../src/ui/hud.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-  it('still gives every HUD panel `pointer-events: auto`', () => {
-    expect(css).toMatch(/\.vm-hud \.vm-panel\s*\{[^}]*pointer-events:\s*auto/);
+  it('makes panel chrome transparent to battlefield pointer input', () => {
+    expect(css).toMatch(/\.vm-hud \.vm-panel\s*\{[^}]*pointer-events:\s*none/);
+  });
+
+  it('restores pointer input only for controls and instrument surfaces', () => {
+    expect(css).toMatch(/\.vm-hud \.vm-panel :where\([\s\S]*?button,[\s\S]*?canvas,[\s\S]*?\)\s*\{[^}]*pointer-events:\s*auto/);
+    expect(css).toMatch(/\.vm-hud \.vm-super-row\s*\{[^}]*pointer-events:\s*auto/);
+    expect(css).toMatch(/\.vm-hud \.vm-dock-powers\s*\{[^}]*pointer-events:\s*none/);
   });
 
   it('still mounts the HUD as a SIBLING of the canvas, not inside it', () => {

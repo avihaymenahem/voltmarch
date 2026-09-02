@@ -37,8 +37,8 @@
  * --------------------------------
  * `.vm-objdone-layer` is `pointer-events: none`, it contains no button, no
  * link and no focusable node, and — deliberately — it is NOT a `.vm-panel`,
- * because `.vm-panel` sets `pointer-events: auto` and a full-frame layer that
- * did that would swallow every right-click in the middle of a fight. It also
+ * because `.vm-panel` is visual chrome and a full-frame layer that opted into
+ * pointer events would swallow every right-click in the middle of a fight. It also
  * carries no `backdrop-filter`: the macOS blur gate in hud.css §12 governs the
  * panels, and a second ungated blur here is exactly the bug that gate exists
  * to prevent.

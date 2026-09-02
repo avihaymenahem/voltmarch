@@ -1760,7 +1760,7 @@
   position: relative;
   z-index: 20;
   isolation: isolate;
-  pointer-events: auto;
+  pointer-events: none;
   height: calc(36 * var(--vm-u));
   grid-template-columns:
     minmax(0, 25.55%)
@@ -1784,10 +1784,9 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
-.vm-hud[data-layout='perimeter'] .vm-build-title,
 .vm-hud[data-layout='perimeter'] .vm-tab,
 .vm-hud[data-layout='perimeter'] .vm-tool {
   position: relative;
@@ -2025,7 +2024,7 @@
   position: relative;
   left: auto !important;
   bottom: auto !important;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .vm-hud[data-layout='perimeter'] .vm-radar-selection-group

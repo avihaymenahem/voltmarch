@@ -550,6 +550,67 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   // Modules reach the world through ctx(); it must exist before any init runs.
   setGameContext(ctx);
+  profiler.setHitchContextProvider((event) => {
+    /*
+     * This callback runs only after a wall-time gap of LONG_FRAME_MS or more.
+     * Keep the normal frame path to typed-array writes; the allocations here
+     * are the evidence we specifically want when a player reports a hitch.
+     */
+    const stats = debug.api.stats();
+    const gpu = debug.api.gpuInfo();
+    const boot = bootTelemetryReport();
+    const node = handle.node;
+    return {
+      match: {
+        frame: event.frame,
+        hitchSequence: event.sequence,
+        simTick: loop.tick,
+        simSeconds: loop.simTime,
+        wallSeconds: loop.wallTime,
+        paused: loop.paused,
+        speed: loop.speed,
+        loopHitches: loop.hitchCount,
+      },
+      render: {
+        backend: gpu.live,
+        resolution: stats.resolution,
+        pixelRatio: stats.pixelRatio,
+        quality: stats.quality,
+        post: stats.post,
+        frameMs: stats.frameMs,
+        frameMsAvg: stats.frameMsAvg,
+        frameMsMax: stats.frameMsMax,
+        cpuMs: stats.cpuMs,
+        drawCalls: stats.drawCalls,
+        drawCallsByPass: stats.drawCallsByPass,
+        triangles: stats.triangles,
+        trianglesByPass: stats.trianglesByPass,
+        gpuPasses: stats.gpuPasses,
+        resources: {
+          programs: stats.programs,
+          geometries: stats.geometries,
+          textures: stats.textures,
+          textureMB: stats.textureMB,
+          heapMB: stats.heapMB,
+          heapGrowthMB: stats.heapGrowthMB,
+        },
+      },
+      counters: stats.counters,
+      gpu: {
+        requested: gpu.requested,
+        live: gpu.live,
+        name: gpu.gpu,
+        adapter: gpu.adapter,
+        deviceLost: gpu.deviceLost,
+      },
+      pipelineCache: node === null ? null : pipelineCacheStats(node),
+      assetActivity: {
+        bootSpans: boot.spans.slice(-16),
+        bootLongTasks: boot.longTasks.entries.slice(-16),
+        bootTruncated: boot.truncated,
+      },
+    };
+  });
   markBootPhase('registry', 'context-published');
 
   // A module joins the frame by existing — see src/game/Systems.ts. Discovery
