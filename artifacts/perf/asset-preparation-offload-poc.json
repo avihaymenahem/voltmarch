@@ -1,0 +1,4030 @@
+{
+  "schema": 1,
+  "measuredAt": "2026-09-02T21:38:17.163Z",
+  "scope": "Isolated real-Electron WebGPU family benchmark; conditioning placement only, not game boot or production material readiness",
+  "gitHead": "9592c4b2c3522fbf1a4bb82d3e5d02088b50143e",
+  "dirty": true,
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "cpu": "AMD Ryzen 9 5900HX with Radeon Graphics        ",
+    "logicalCpus": 16,
+    "memoryBytes": 33738022912
+  },
+  "provenance": {
+    "inputs": {
+      "lod0": {
+        "path": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb",
+        "bytes": 2561984,
+        "sha256": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86"
+      },
+      "lod1": {
+        "path": "packages/assets/game/units/allies/derived/chrono-miner.lod1.glb",
+        "bytes": 706412,
+        "sha256": "c3768b9490e5b124aa8a8848ca2854e974458f8a94d2767e4dbacb20f81dd546"
+      },
+      "lod2": {
+        "path": "packages/assets/game/units/allies/derived/chrono-miner.lod2.glb",
+        "bytes": 357928,
+        "sha256": "b739c3af4815df43198b03dc16b3bd4f25e2f35d44ed923406175433eb7d0f18"
+      },
+      "shadow": {
+        "path": "packages/assets/game/units/allies/derived/chrono-miner.shadow.glb",
+        "bytes": 24996,
+        "sha256": "f6c3467a1e965a581c1e3704e2c209c96ccae0c119454b49eaa84377721cf5b6"
+      }
+    },
+    "authoritySha256": "16870460a4aab1f359315ccb248c6a0616030ab8833e57328c6cce09c38f993d",
+    "attributesSha256": "b963bf58e3d56c54771fd5d1defc33b9933beaef26af15155f0321b0a9d59e29",
+    "kernelSha256": "5b5909822ee297480b77eab6f02c310bc2dd99bf1cff76e50163d3aaf100f9ad",
+    "builtSha256": {
+      "renderer.js": "0afc189366de5c8f8ed5733c45f84b7da301e194f7dd34ccb1e802b6b87483fe",
+      "worker.js": "965ca09a011969b64a743abe333aa01204875ad3971671075657d8f968a209bc",
+      "utility.cjs": "e96af3d14cd172a0985db6a3107507144d9f819ba7a8642fe9cf1973de2e294e",
+      "main.cjs": "90fd8b404c95eea53ad019d194a6b08cc84c268079a6b3c4e5f875d369cda345",
+      "preload.cjs": "130d3edbe4bf6c80009bb82930ee39474239ecfe474d66d4c175f7138e83f47a"
+    },
+    "sourceSha256": {
+      "tools/asset-prep-poc/build.mjs": "f2fcc68a7fddeeb867f27007526ebee3f4f8a55ce7907259bf465eb459363ff0",
+      "tools/asset-prep-poc/geometry.mjs": "722c18eda5a77ab7136974d8ce1a080cac2f4aaeab792c007211f9c6f13b0680",
+      "tools/asset-prep-poc/main.mjs": "4c07bb6529feb1be93e63df7b55e7f39ca99fd1192997b7e5eb7c1189ae384ed",
+      "tools/asset-prep-poc/preload.mjs": "d5a2df42d586fcbeaf0cd6725e83cd66483d5f749e91ab7e541ea42ad4e0c283",
+      "tools/asset-prep-poc/renderer.mjs": "a32b12ac2bc2bb0b510e55896e3ad7fa48f6f5ef1679e951e6d1b289e7eba162",
+      "tools/asset-prep-poc/worker.mjs": "ba5712e1c2e749e6c86585345bf3f07a0899c9b25b9f93afb14f9c32ef10ca28",
+      "tools/asset-prep-poc/utility.mjs": "50d0a29140be613772d498294cdd6d8e3530d05c6e3267737a16fc9fd0cc488c",
+      "tools/asset-prep-poc/run.mjs": "377634f6e604b79740f33a109a95b787c3db2452c4a13180c7f3d8f14c2c3f10",
+      "package-lock.json": "5d9a5c0fd96cfff360dfe2d8be0dd0322a0a00bfc9c41dfcfad1cf0b567cfc9a",
+      "packages/gltf-runtime/src/gltf.ts": "2fd62a8f5dc220be3f2442837b09c440f282ebd17599b0a90ca461df88de6f1e",
+      "packages/gltf-runtime/src/ktx2.ts": "a6f0e905d03fc7d6a85c2a2093bf444fdd9d54a0da4ebb646589880d2883680e",
+      "node_modules/three/examples/jsm/libs/basis/basis_transcoder.js": "8478b5b6d6b74e7d3082b89f6417321d8d1dc0307f2b30d4484bb11b441696a1",
+      "node_modules/three/examples/jsm/libs/basis/basis_transcoder.wasm": "6cf17dc889352c42e9acf8897107978d127005fe3386c36a0e3845e27967630a"
+    },
+    "manifest": {
+      "$schema": "../runtime-asset-cook.schema.json",
+      "version": 1,
+      "family": "allied-chrono-miner",
+      "runtimeKey": "allied_harvester",
+      "sourceAuthority": {
+        "authoring": "packages/assets/game/units/allies/chrono-miner.glb",
+        "runtimeControl": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb"
+      },
+      "inputs": {
+        "lod0": "packages/assets/game/units/allies/compressed/chrono-miner.meshopt.glb",
+        "lod1": "packages/assets/game/units/allies/derived/chrono-miner.lod1.glb",
+        "lod2": "packages/assets/game/units/allies/derived/chrono-miner.lod2.glb",
+        "shadow": "packages/assets/game/units/allies/derived/chrono-miner.shadow.glb"
+      },
+      "inputSha256": {
+        "authoring": "19f1c372be50db49ae1c259472b424b69e86be6f6a8312d3435ce24992306f94",
+        "runtimeControl": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+        "lod0": "341c7287da793eaf1401237600a82e317eba21df367a85d03ddebfd967750c86",
+        "lod1": "c3768b9490e5b124aa8a8848ca2854e974458f8a94d2767e4dbacb20f81dd546",
+        "lod2": "b739c3af4815df43198b03dc16b3bd4f25e2f35d44ed923406175433eb7d0f18",
+        "shadow": "f6c3467a1e965a581c1e3704e2c209c96ccae0c119454b49eaa84377721cf5b6"
+      },
+      "outputs": {
+        "lod0": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.glb",
+        "lod1": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.lod1.glb",
+        "lod2": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.lod2.glb",
+        "shadow": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime.shadow.glb",
+        "report": ".turbo/runtime-cooks/chrono-miner/chrono-miner.runtime-cook-report.json"
+      },
+      "contract": {
+        "hullName": "Hull",
+        "movingParts": [],
+        "target": [
+          4,
+          3.3,
+          8.6
+        ],
+        "sourceLongAxis": "x",
+        "yawDeg": 90,
+        "targetPivot": [
+          0,
+          0,
+          0
+        ],
+        "creaseAngleDeg": 30,
+        "lodDistances": [
+          46,
+          76
+        ],
+        "sockets": "procedural-authority"
+      },
+      "budgets": {
+        "maxLod0Bytes": 6291456,
+        "maxFamilyBytes": 8388608,
+        "maxTriangles": {
+          "lod0": 50000,
+          "lod1": 25000,
+          "lod2": 15000,
+          "shadow": 2000
+        }
+      }
+    }
+  },
+  "rounds": 6,
+  "jobs": 3,
+  "runDir": ".turbo/asset-prep-poc/run-eiOMMd",
+  "coldPolicy": "Fresh Electron/userData per arm/round; OS file and driver caches uncontrolled. Reused helper but freshly parsed assets and fresh KTX2 pool per subsequent job.",
+  "memoryCaveat": "50 ms samples of summed process working sets may double-count shared pages and miss peaks. Post-dispose observations can still retain JS references and helper heaps; not leak/soak evidence.",
+  "transferPolicy": {
+    "worker": "Owned input snapshot and transferable buffers in both directions",
+    "utility": "Owned input snapshot plus structured-clone typed-array copies in BOTH directions; native endpoints transfer ports only"
+  },
+  "parity": {
+    "allGeometryExact": true,
+    "fingerprintSha256": "a0d180105b4256d9c3ab7d5066ff639311368507793332363da981cf818b7fcf",
+    "captures": {
+      "lod0": {
+        "width": 1280,
+        "height": 720,
+        "samples": 18,
+        "allPixelsExact": true,
+        "rgbaSha256": "ed3e68d3ec7a9117e8d891a77ac3f3246726bf829b8c6c9acfb401b176815361"
+      },
+      "lod1": {
+        "width": 1280,
+        "height": 720,
+        "samples": 18,
+        "allPixelsExact": true,
+        "rgbaSha256": "880c3590f5d27e9fa06b18c285b0b0dbad4474b9be7ec03dbf8d500b25f4ad9a"
+      },
+      "lod2": {
+        "width": 1280,
+        "height": 720,
+        "samples": 18,
+        "allPixelsExact": true,
+        "rgbaSha256": "b35ade92dfefacd354947066812dca3fc15e5e1c35d67d56f449a74d9d770ffd"
+      },
+      "shadow": {
+        "width": 1280,
+        "height": 720,
+        "samples": 18,
+        "allPixelsExact": true,
+        "rgbaSha256": "24bddb966e72330cc24d471917a10bb96ba88d090b223f5a83909b0b17e8fcc5"
+      }
+    }
+  },
+  "summary": {
+    "main": {
+      "fresh-helper-and-process": {
+        "samples": 6,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 0.10000000894069672,
+            "p95": 0.20000000298023224,
+            "min": 0,
+            "max": 0.20000000298023224
+          },
+          "loadMs": {
+            "p50": 172.79999999701977,
+            "p95": 193.20000000298023,
+            "min": 166.59999999403954,
+            "max": 193.20000000298023
+          },
+          "snapshotMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "computeMs": {
+            "p50": 310.09999999403954,
+            "p95": 329.5,
+            "min": 301.20000000298023,
+            "max": 329.5
+          },
+          "conditioningMs": {
+            "p50": 310.20000000298023,
+            "p95": 329.5,
+            "min": 301.20000000298023,
+            "max": 329.5
+          },
+          "roundTripMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "hydrateMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "geometryReadyMs": {
+            "p50": 484.5,
+            "p95": 511.5,
+            "min": 474.1000000089407,
+            "max": 511.5
+          },
+          "renderMs": {
+            "p50": 100.59999999403954,
+            "p95": 129.79999999701977,
+            "min": 98.5,
+            "max": 129.79999999701977
+          },
+          "firstRenderMs": {
+            "p50": 590.5,
+            "p95": 614.7000000029802,
+            "min": 575.4000000059605,
+            "max": 614.7000000029802
+          },
+          "maxFrameGapMs": {
+            "p50": 300.0999999999999,
+            "p95": 316.7000000000003,
+            "min": 300,
+            "max": 316.7000000000003
+          },
+          "maxTimerGapMs": {
+            "p50": 336.29999999701977,
+            "p95": 357.3999999910593,
+            "min": 328.90000000596046,
+            "max": 357.3999999910593
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 300,
+            "min": 16.5,
+            "max": 316.7000000000003
+          },
+          "peakWorkingSetMiB": {
+            "p50": 906.98046875,
+            "p95": 909.8203125,
+            "min": 906.0546875,
+            "max": 909.8203125
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 909.4140625,
+            "p95": 911.98046875,
+            "min": 908.671875,
+            "max": 911.98046875
+          }
+        },
+        "longTasks": 6,
+        "gapsOver50ms": 6,
+        "gapsOver100ms": 6
+      },
+      "reused-helper-fresh-assets": {
+        "samples": 12,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "loadMs": {
+            "p50": 170.1000000089407,
+            "p95": 180.80000001192093,
+            "min": 161.79999999701977,
+            "max": 180.80000001192093
+          },
+          "snapshotMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "computeMs": {
+            "p50": 290.40000000596046,
+            "p95": 322.8999999910593,
+            "min": 279.29999999701977,
+            "max": 322.8999999910593
+          },
+          "conditioningMs": {
+            "p50": 290.40000000596046,
+            "p95": 322.8999999910593,
+            "min": 279.29999999701977,
+            "max": 322.8999999910593
+          },
+          "roundTripMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "hydrateMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "geometryReadyMs": {
+            "p50": 456.09999999403954,
+            "p95": 498.40000000596046,
+            "min": 444.5,
+            "max": 498.40000000596046
+          },
+          "renderMs": {
+            "p50": 24.400000005960464,
+            "p95": 28,
+            "min": 23.80000001192093,
+            "max": 28
+          },
+          "firstRenderMs": {
+            "p50": 480,
+            "p95": 526.4000000059605,
+            "min": 469.09999999403954,
+            "max": 526.4000000059605
+          },
+          "maxFrameGapMs": {
+            "p50": 283.3000000000002,
+            "p95": 316.6999999999998,
+            "min": 266.60000000000036,
+            "max": 316.6999999999998
+          },
+          "maxTimerGapMs": {
+            "p50": 306.40000000596046,
+            "p95": 338.79999999701977,
+            "min": 295.20000000298023,
+            "max": 338.79999999701977
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 283.2999999999993,
+            "min": 15.800000000000182,
+            "max": 316.6999999999998
+          },
+          "peakWorkingSetMiB": {
+            "p50": 976.36328125,
+            "p95": 999.953125,
+            "min": 972.46484375,
+            "max": 999.953125
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 924.1875,
+            "p95": 944.50390625,
+            "min": 915.578125,
+            "max": 944.50390625
+          }
+        },
+        "longTasks": 12,
+        "gapsOver50ms": 12,
+        "gapsOver100ms": 12
+      }
+    },
+    "worker": {
+      "fresh-helper-and-process": {
+        "samples": 6,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 12,
+            "p95": 62.6000000089407,
+            "min": 11.799999997019768,
+            "max": 62.6000000089407
+          },
+          "loadMs": {
+            "p50": 179.20000000298023,
+            "p95": 188.70000000298023,
+            "min": 175,
+            "max": 188.70000000298023
+          },
+          "snapshotMs": {
+            "p50": 1.2000000029802322,
+            "p95": 1.2000000029802322,
+            "min": 1,
+            "max": 1.2000000029802322
+          },
+          "computeMs": {
+            "p50": 220.09999999403954,
+            "p95": 221.59999999403954,
+            "min": 214.1000000089407,
+            "max": 221.59999999403954
+          },
+          "conditioningMs": {
+            "p50": 223.20000000298023,
+            "p95": 224.69999998807907,
+            "min": 217.1000000089407,
+            "max": 224.69999998807907
+          },
+          "roundTripMs": {
+            "p50": 221.90000000596046,
+            "p95": 223.5,
+            "min": 215.69999998807907,
+            "max": 223.5
+          },
+          "hydrateMs": {
+            "p50": 0.19999998807907104,
+            "p95": 0.29999999701976776,
+            "min": 0.09999999403953552,
+            "max": 0.29999999701976776
+          },
+          "geometryReadyMs": {
+            "p50": 415.20000000298023,
+            "p95": 462.40000000596046,
+            "min": 408.09999999403954,
+            "max": 462.40000000596046
+          },
+          "renderMs": {
+            "p50": 99,
+            "p95": 103.70000000298023,
+            "min": 97.70000000298023,
+            "max": 103.70000000298023
+          },
+          "firstRenderMs": {
+            "p50": 514.2000000029802,
+            "p95": 562,
+            "min": 505.79999999701977,
+            "max": 562
+          },
+          "maxFrameGapMs": {
+            "p50": 16.800000000000182,
+            "p95": 17.299999999999727,
+            "min": 16.799999999999727,
+            "max": 17.299999999999727
+          },
+          "maxTimerGapMs": {
+            "p50": 27.19999998807907,
+            "p95": 29.200000002980232,
+            "min": 25.599999994039536,
+            "max": 29.200000002980232
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 16.799999999999727,
+            "min": 16,
+            "max": 17.299999999999727
+          },
+          "peakWorkingSetMiB": {
+            "p50": 928.2890625,
+            "p95": 931.08203125,
+            "min": 925.8359375,
+            "max": 931.08203125
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 925.83203125,
+            "p95": 928.9453125,
+            "min": 922.625,
+            "max": 928.9453125
+          }
+        },
+        "longTasks": 0,
+        "gapsOver50ms": 0,
+        "gapsOver100ms": 0
+      },
+      "reused-helper-fresh-assets": {
+        "samples": 12,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "loadMs": {
+            "p50": 169,
+            "p95": 180.59999999403954,
+            "min": 158.20000000298023,
+            "max": 180.59999999403954
+          },
+          "snapshotMs": {
+            "p50": 0.7999999970197678,
+            "p95": 0.9000000059604645,
+            "min": 0.699999988079071,
+            "max": 0.9000000059604645
+          },
+          "computeMs": {
+            "p50": 185.59999999403954,
+            "p95": 197.29999999701977,
+            "min": 174.79999999701977,
+            "max": 197.29999999701977
+          },
+          "conditioningMs": {
+            "p50": 187.29999999701977,
+            "p95": 198.70000000298023,
+            "min": 176.40000000596046,
+            "max": 198.70000000298023
+          },
+          "roundTripMs": {
+            "p50": 186.40000000596046,
+            "p95": 197.8999999910593,
+            "min": 175.5,
+            "max": 197.8999999910593
+          },
+          "hydrateMs": {
+            "p50": 0,
+            "p95": 0.10000000894069672,
+            "min": 0,
+            "max": 0.10000000894069672
+          },
+          "geometryReadyMs": {
+            "p50": 354.5,
+            "p95": 374.70000000298023,
+            "min": 345.5,
+            "max": 374.70000000298023
+          },
+          "renderMs": {
+            "p50": 23.700000002980232,
+            "p95": 24.599999994039536,
+            "min": 22.799999997019768,
+            "max": 24.599999994039536
+          },
+          "firstRenderMs": {
+            "p50": 377.59999999403954,
+            "p95": 399.40000000596046,
+            "min": 369.29999999701977,
+            "max": 399.40000000596046
+          },
+          "maxFrameGapMs": {
+            "p50": 16.800000000000182,
+            "p95": 17.5,
+            "min": 16.700000000000273,
+            "max": 17.5
+          },
+          "maxTimerGapMs": {
+            "p50": 17,
+            "p95": 20.299999997019768,
+            "min": 14.400000005960464,
+            "max": 20.299999997019768
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 16.800000000000182,
+            "min": 15.800000000000182,
+            "max": 17.5
+          },
+          "peakWorkingSetMiB": {
+            "p50": 994.984375,
+            "p95": 1014.06640625,
+            "min": 988.1875,
+            "max": 1014.06640625
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 940.12890625,
+            "p95": 959.69921875,
+            "min": 934.7734375,
+            "max": 959.69921875
+          }
+        },
+        "longTasks": 0,
+        "gapsOver50ms": 0,
+        "gapsOver100ms": 0
+      }
+    },
+    "utility": {
+      "fresh-helper-and-process": {
+        "samples": 6,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 110.80000001192093,
+            "p95": 159,
+            "min": 103.3999999910593,
+            "max": 159
+          },
+          "loadMs": {
+            "p50": 179.80000001192093,
+            "p95": 188,
+            "min": 165.29999999701977,
+            "max": 188
+          },
+          "snapshotMs": {
+            "p50": 1.1000000089406967,
+            "p95": 1.2000000029802322,
+            "min": 1,
+            "max": 1.2000000029802322
+          },
+          "computeMs": {
+            "p50": 202.5496,
+            "p95": 213.30169999999998,
+            "min": 200.5693,
+            "max": 213.30169999999998
+          },
+          "conditioningMs": {
+            "p50": 227.8999999910593,
+            "p95": 238.70000000298023,
+            "min": 225.29999999701977,
+            "max": 238.70000000298023
+          },
+          "roundTripMs": {
+            "p50": 226.40000000596046,
+            "p95": 237.29999999701977,
+            "min": 223.69999998807907,
+            "max": 237.29999999701977
+          },
+          "hydrateMs": {
+            "p50": 0.20000000298023224,
+            "p95": 0.29999999701976776,
+            "min": 0.19999998807907104,
+            "max": 0.29999999701976776
+          },
+          "geometryReadyMs": {
+            "p50": 520.5,
+            "p95": 578.0999999940395,
+            "min": 494.59999999403954,
+            "max": 578.0999999940395
+          },
+          "renderMs": {
+            "p50": 102.70000000298023,
+            "p95": 108.09999999403954,
+            "min": 100.29999999701977,
+            "max": 108.09999999403954
+          },
+          "firstRenderMs": {
+            "p50": 623.2999999970198,
+            "p95": 678.3999999910593,
+            "min": 602.6999999880791,
+            "max": 678.3999999910593
+          },
+          "maxFrameGapMs": {
+            "p50": 16.800000000000182,
+            "p95": 17.40000000000009,
+            "min": 16.700000000000273,
+            "max": 17.40000000000009
+          },
+          "maxTimerGapMs": {
+            "p50": 35,
+            "p95": 36.30000001192093,
+            "min": 30.899999991059303,
+            "max": 36.30000001192093
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 16.799999999999955,
+            "min": 15.799999999999727,
+            "max": 17.40000000000009
+          },
+          "peakWorkingSetMiB": {
+            "p50": 1032.4296875,
+            "p95": 1036.95703125,
+            "min": 1032.171875,
+            "max": 1036.95703125
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 1015.2734375,
+            "p95": 1019.34765625,
+            "min": 1014.08984375,
+            "max": 1019.34765625
+          }
+        },
+        "longTasks": 0,
+        "gapsOver50ms": 0,
+        "gapsOver100ms": 0
+      },
+      "reused-helper-fresh-assets": {
+        "samples": 12,
+        "metrics": {
+          "helperStartupMs": {
+            "p50": 0,
+            "p95": 0,
+            "min": 0,
+            "max": 0
+          },
+          "loadMs": {
+            "p50": 172.5,
+            "p95": 178.70000000298023,
+            "min": 160.40000000596046,
+            "max": 178.70000000298023
+          },
+          "snapshotMs": {
+            "p50": 0.7999999970197678,
+            "p95": 1.1000000089406967,
+            "min": 0.7000000029802322,
+            "max": 1.1000000089406967
+          },
+          "computeMs": {
+            "p50": 196.09299999999985,
+            "p95": 206.20409999999993,
+            "min": 163.45010000000002,
+            "max": 206.20409999999993
+          },
+          "conditioningMs": {
+            "p50": 218,
+            "p95": 229,
+            "min": 183.70000000298023,
+            "max": 229
+          },
+          "roundTripMs": {
+            "p50": 217,
+            "p95": 227.80000001192093,
+            "min": 182.79999999701977,
+            "max": 227.80000001192093
+          },
+          "hydrateMs": {
+            "p50": 0.09999999403953552,
+            "p95": 0.10000000894069672,
+            "min": 0,
+            "max": 0.10000000894069672
+          },
+          "geometryReadyMs": {
+            "p50": 379.30000001192093,
+            "p95": 401.90000000596046,
+            "min": 352.40000000596046,
+            "max": 401.90000000596046
+          },
+          "renderMs": {
+            "p50": 26.19999998807907,
+            "p95": 30.200000002980232,
+            "min": 24.299999997019768,
+            "max": 30.200000002980232
+          },
+          "firstRenderMs": {
+            "p50": 405.5,
+            "p95": 427.90000000596046,
+            "min": 379.20000000298023,
+            "max": 427.90000000596046
+          },
+          "maxFrameGapMs": {
+            "p50": 16.800000000000182,
+            "p95": 17.600000000000364,
+            "min": 16.700000000000273,
+            "max": 17.600000000000364
+          },
+          "maxTimerGapMs": {
+            "p50": 23.700000002980232,
+            "p95": 29.299999997019768,
+            "min": 21.19999998807907,
+            "max": 29.299999997019768
+          },
+          "frameGapMs": {
+            "p50": 16.699999999999818,
+            "p95": 16.800000000000182,
+            "min": 15.699999999999818,
+            "max": 17.600000000000364
+          },
+          "peakWorkingSetMiB": {
+            "p50": 1139.57421875,
+            "p95": 1158.64453125,
+            "min": 1123.40625,
+            "max": 1158.64453125
+          },
+          "disposedWorkingSetMiB": {
+            "p50": 1089.8515625,
+            "p95": 1113.16015625,
+            "min": 1071.75390625,
+            "max": 1113.16015625
+          }
+        },
+        "longTasks": 0,
+        "gapsOver50ms": 0,
+        "gapsOver100ms": 0
+      }
+    }
+  },
+  "rawReport": ".turbo/asset-prep-poc/run-eiOMMd/report.json",
+  "samplePercentilePolicy": "Nearest rank. With n=6 cold/n=12 reused, p95 is the observed maximum, not a population estimate. Per-round reused comparisons use the lower median of the two reused jobs.",
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "ampere",
+    "device": "",
+    "description": ""
+  },
+  "versions": {
+    "node": "24.18.1",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "148",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.29.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.0.245.28-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "43.4.1",
+    "chrome": "150.0.7871.224"
+  },
+  "geometryFingerprint": [
+    {
+      "name": "allied_harvester.imported.hull",
+      "attributes": {
+        "normal": {
+          "type": "Float32Array",
+          "count": 448425,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "758965f69412cd65da89d97063d139546b49c7e24bda75710d77c4bb2491a9e0"
+        },
+        "position": {
+          "type": "Float32Array",
+          "count": 448425,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "0474417ad9c7ffe248680cb9f77f026a679308bfe93746f65c6f32f64058ee5a"
+        },
+        "uv": {
+          "type": "Float32Array",
+          "count": 298950,
+          "itemSize": 2,
+          "normalized": false,
+          "sha256": "6b3fd5a53270e0bd5835a14de24c67115338d4ec5307d9b7d5a398ca6b51caf4"
+        }
+      },
+      "groups": [],
+      "box": [
+        [
+          -2,
+          0,
+          -4.300000190734863
+        ],
+        [
+          2,
+          3.299999952316284,
+          4.300000190734863
+        ]
+      ],
+      "sphere": [
+        [
+          0,
+          1.649999976158142,
+          0
+        ],
+        4.892355228553243
+      ],
+      "drawRange": {
+        "start": 0,
+        "count": "Infinity"
+      },
+      "triangles": 49825,
+      "bytes": 4783200
+    },
+    {
+      "name": "allied_harvester.imported.hull.lod1",
+      "attributes": {
+        "position": {
+          "type": "Float32Array",
+          "count": 201744,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "a3358ebd11d01ff2f463edb7c8259d04a8c0601147c06ee739d2992a027638bf"
+        },
+        "normal": {
+          "type": "Float32Array",
+          "count": 201744,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "bdbf531ded792688a9bd07979ee2e45b893fdaf24833a779bfaec225691ce79f"
+        },
+        "uv": {
+          "type": "Float32Array",
+          "count": 134496,
+          "itemSize": 2,
+          "normalized": false,
+          "sha256": "5b2c24e69672e0112a1386962e128eaeb7311086df30e3784d983e07442aec04"
+        }
+      },
+      "groups": [],
+      "box": [
+        [
+          -1.994168758392334,
+          0.0005895390058867633,
+          -4.297501564025879
+        ],
+        [
+          2.000267744064331,
+          3.299630641937256,
+          4.300000190734863
+        ]
+      ],
+      "sphere": [
+        [
+          0.003049492835998535,
+          1.6501100904715713,
+          0.0012493133544921875
+        ],
+        4.890343720452693
+      ],
+      "drawRange": {
+        "start": 0,
+        "count": "Infinity"
+      },
+      "triangles": 22416,
+      "bytes": 2151936
+    },
+    {
+      "name": "allied_harvester.imported.hull.lod2",
+      "attributes": {
+        "position": {
+          "type": "Float32Array",
+          "count": 80712,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "9508ed94d7f246aa1fa568202a549f1a3712a52716bf753b64fd37e31d0749d0"
+        },
+        "normal": {
+          "type": "Float32Array",
+          "count": 80712,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "6ad3f4be9db96568aaa8b3830467c5c96b3a9e547a79496347e452e3d4ba2df4"
+        },
+        "uv": {
+          "type": "Float32Array",
+          "count": 53808,
+          "itemSize": 2,
+          "normalized": false,
+          "sha256": "c39ea49c1d2c32f441472d08d5476b0c188532ac0848a8fddfeaa3d087a9e6c2"
+        }
+      },
+      "groups": [],
+      "box": [
+        [
+          -1.994067668914795,
+          0.0009705708362162113,
+          -4.29327917098999
+        ],
+        [
+          2.000166893005371,
+          3.299511194229126,
+          4.300000190734863
+        ]
+      ],
+      "sphere": [
+        [
+          0.003049612045288086,
+          1.650240882532671,
+          0.0033605098724365234
+        ],
+        4.888600229075964
+      ],
+      "drawRange": {
+        "start": 0,
+        "count": "Infinity"
+      },
+      "triangles": 8968,
+      "bytes": 860928
+    },
+    {
+      "name": "allied_harvester.imported.shadow",
+      "attributes": {
+        "position": {
+          "type": "Float32Array",
+          "count": 15552,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "cc63dd481b317b027dbcf901264b98f3f5b4ffb22ea7c3875e0399be291a6d14"
+        },
+        "normal": {
+          "type": "Float32Array",
+          "count": 15552,
+          "itemSize": 3,
+          "normalized": false,
+          "sha256": "77ad0dac35e91fd688ad27ba023628621851cebaed9ee5be69cf698de82ae3fb"
+        }
+      },
+      "groups": [],
+      "box": [
+        [
+          -2.000096321105957,
+          0.0002364176034461707,
+          -4.300000190734863
+        ],
+        [
+          2.000096321105957,
+          3.2997636795043945,
+          4.300000190734863
+        ]
+      ],
+      "sphere": [
+        [
+          0,
+          1.6500000485539204,
+          0
+        ],
+        5.021165897680372
+      ],
+      "drawRange": {
+        "start": 0,
+        "count": "Infinity"
+      },
+      "triangles": 1728,
+      "bytes": 124416
+    }
+  ],
+  "allRunsSuccessful": true,
+  "samples": [
+    {
+      "round": 0,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0,
+      "loadMs": 172.90000000596046,
+      "snapshotMs": 0,
+      "computeMs": 301.20000000298023,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 301.20000000298023,
+      "geometryReadyMs": 474.1000000089407,
+      "renderMs": 129.79999999701977,
+      "firstRenderMs": 604,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 20,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 300.0999999999999,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 328.90000000596046
+      },
+      "longTasks": [
+        {
+          "start": 3443.4000000059605,
+          "duration": 311
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 795.14453125,
+        "peakSummedWorkingSetMiB": 908.52734375,
+        "afterSummedWorkingSetMiB": 905.86328125,
+        "postDisposeSummedWorkingSetMiB": 909.4140625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 179.29999999701977,
+      "snapshotMs": 0,
+      "computeMs": 319.1000000089407,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 319.1000000089407,
+      "geometryReadyMs": 498.40000000596046,
+      "renderMs": 28,
+      "firstRenderMs": 526.4000000059605,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 316.6999999999998,
+        "max": 316.6999999999998,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 336.70000000298023
+      },
+      "longTasks": [
+        {
+          "start": 4633.20000000298,
+          "duration": 325
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 909.37890625,
+        "peakSummedWorkingSetMiB": 972.46484375,
+        "afterSummedWorkingSetMiB": 947.1171875,
+        "postDisposeSummedWorkingSetMiB": 921.31640625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 176.79999999701977,
+      "snapshotMs": 0,
+      "computeMs": 279.29999999701977,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 279.29999999701977,
+      "geometryReadyMs": 456.09999999403954,
+      "renderMs": 23.80000001192093,
+      "firstRenderMs": 480,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 266.7000000000007,
+        "max": 266.7000000000007,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 295.20000000298023
+      },
+      "longTasks": [
+        {
+          "start": 5497.4000000059605,
+          "duration": 283
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 921.35546875,
+        "peakSummedWorkingSetMiB": 986.44140625,
+        "afterSummedWorkingSetMiB": 968.88671875,
+        "postDisposeSummedWorkingSetMiB": 915.578125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 62.6000000089407,
+      "loadMs": 182.69999998807907,
+      "snapshotMs": 1.2000000029802322,
+      "computeMs": 214.1000000089407,
+      "workerUnpackMs": 0.8999999910593033,
+      "workerTotalMs": 215.09999999403954,
+      "roundTripMs": 215.69999998807907,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 217.1000000089407,
+      "geometryReadyMs": 462.40000000596046,
+      "renderMs": 99.5,
+      "firstRenderMs": 562,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.29999999701976776,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 34,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 25.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 796.3046875,
+        "peakSummedWorkingSetMiB": 928.2890625,
+        "afterSummedWorkingSetMiB": 928.02734375,
+        "postDisposeSummedWorkingSetMiB": 928.9453125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 176.70000000298023,
+      "snapshotMs": 0.699999988079071,
+      "computeMs": 184.70000000298023,
+      "workerUnpackMs": 0.29999999701976776,
+      "workerTotalMs": 185,
+      "roundTripMs": 185.3999999910593,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 186.29999999701977,
+      "geometryReadyMs": 363,
+      "renderMs": 23,
+      "firstRenderMs": 386,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.699999988079071,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 17
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 929.06640625,
+        "peakSummedWorkingSetMiB": 994.984375,
+        "afterSummedWorkingSetMiB": 988.08203125,
+        "postDisposeSummedWorkingSetMiB": 940.12890625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 178.09999999403954,
+      "snapshotMs": 0.9000000059604645,
+      "computeMs": 174.79999999701977,
+      "workerUnpackMs": 0.20000000298023224,
+      "workerTotalMs": 175,
+      "roundTripMs": 175.5,
+      "hydrateMs": 0,
+      "conditioningMs": 176.40000000596046,
+      "geometryReadyMs": 354.5,
+      "renderMs": 23.099999994039536,
+      "firstRenderMs": 377.59999999403954,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.29999999701976776,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 17.199999999999818,
+        "max": 17.5,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 14.400000005960464
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 940.21875,
+        "peakSummedWorkingSetMiB": 1014.02734375,
+        "afterSummedWorkingSetMiB": 1014.02734375,
+        "postDisposeSummedWorkingSetMiB": 959.69921875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 0,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 159,
+      "loadMs": 184,
+      "snapshotMs": 1.0999999940395355,
+      "computeMs": 210.8331,
+      "workerUnpackMs": 0.9162999999999784,
+      "workerTotalMs": 211.95980000000003,
+      "roundTripMs": 233.70000000298023,
+      "hydrateMs": 0.29999999701976776,
+      "conditioningMs": 235.09999999403954,
+      "geometryReadyMs": 578.0999999940395,
+      "renderMs": 100.29999999701977,
+      "firstRenderMs": 678.3999999910593,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.399999991059303,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 41,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 17.200000000000273,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 30.899999991059303
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 797.09765625,
+        "peakSummedWorkingSetMiB": 1032.4296875,
+        "afterSummedWorkingSetMiB": 1032.4296875,
+        "postDisposeSummedWorkingSetMiB": 1017.8359375,
+        "auxiliary": {
+          "rss": 130887680,
+          "heapTotal": 10285056,
+          "heapUsed": 4928076,
+          "external": 25253859,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 0,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 175.5,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 206.20409999999993,
+      "workerUnpackMs": 0.2919000000001688,
+      "workerTotalMs": 206.59550000000013,
+      "roundTripMs": 225.5,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 226.40000000596046,
+      "geometryReadyMs": 401.90000000596046,
+      "renderMs": 25,
+      "firstRenderMs": 426.90000000596046,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 26,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 21.80000001192093
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1017.859375,
+        "peakSummedWorkingSetMiB": 1139.57421875,
+        "afterSummedWorkingSetMiB": 1112.85546875,
+        "postDisposeSummedWorkingSetMiB": 1080.3125,
+        "auxiliary": {
+          "rss": 160821248,
+          "heapTotal": 10809344,
+          "heapUsed": 4962952,
+          "external": 19321476,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 0,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 166.19999998807907,
+      "snapshotMs": 1,
+      "computeMs": 202.40959999999995,
+      "workerUnpackMs": 0.24089999999978318,
+      "workerTotalMs": 202.72989999999982,
+      "roundTripMs": 226.90000000596046,
+      "hydrateMs": 0,
+      "conditioningMs": 227.90000000596046,
+      "geometryReadyMs": 394.09999999403954,
+      "renderMs": 30.200000002980232,
+      "firstRenderMs": 424.29999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.200000002980232,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 26,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.900000000000546,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 29.299999997019768
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1080.375,
+        "peakSummedWorkingSetMiB": 1154.36328125,
+        "afterSummedWorkingSetMiB": 1135.78125,
+        "postDisposeSummedWorkingSetMiB": 1101.67578125,
+        "auxiliary": {
+          "rss": 160067584,
+          "heapTotal": 8974336,
+          "heapUsed": 4715676,
+          "external": 21757098,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 1,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 112.79999999701977,
+      "loadMs": 179.80000001192093,
+      "snapshotMs": 1.199999988079071,
+      "computeMs": 202.5496,
+      "workerUnpackMs": 0.8806999999999903,
+      "workerTotalMs": 203.639,
+      "roundTripMs": 226.40000000596046,
+      "hydrateMs": 0.29999999701976776,
+      "conditioningMs": 227.8999999910593,
+      "geometryReadyMs": 520.5,
+      "renderMs": 102.79999999701977,
+      "firstRenderMs": 623.2999999970198,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.400000005960464,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 38,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 35.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.54296875,
+        "peakSummedWorkingSetMiB": 1032.3046875,
+        "afterSummedWorkingSetMiB": 1028.96875,
+        "postDisposeSummedWorkingSetMiB": 1014.40234375,
+        "auxiliary": {
+          "rss": 130846720,
+          "heapTotal": 9760768,
+          "heapUsed": 5393656,
+          "external": 25253859,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 1,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 177.40000000596046,
+      "snapshotMs": 1,
+      "computeMs": 200.94769999999994,
+      "workerUnpackMs": 0.3889999999998963,
+      "workerTotalMs": 201.46399999999994,
+      "roundTripMs": 222.59999999403954,
+      "hydrateMs": 0.09999999403953552,
+      "conditioningMs": 223.69999998807907,
+      "geometryReadyMs": 401.09999999403954,
+      "renderMs": 26.700000002980232,
+      "firstRenderMs": 427.90000000596046,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.299999997019768,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 26,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 26.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1014.421875,
+        "peakSummedWorkingSetMiB": 1128.765625,
+        "afterSummedWorkingSetMiB": 1104.953125,
+        "postDisposeSummedWorkingSetMiB": 1071.75390625,
+        "auxiliary": {
+          "rss": 154337280,
+          "heapTotal": 11071488,
+          "heapUsed": 5246636,
+          "external": 19321476,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 1,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 178.70000000298023,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 179.24239999999963,
+      "workerUnpackMs": 0.2426999999997861,
+      "workerTotalMs": 179.54729999999972,
+      "roundTripMs": 199.59999999403954,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 200.6000000089407,
+      "geometryReadyMs": 379.30000001192093,
+      "renderMs": 26.19999998807907,
+      "firstRenderMs": 405.5,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.299999997019768,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 25,
+        "p50": 16.699999999999818,
+        "p95": 16.699999999999818,
+        "max": 16.799999999999272,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 24.099999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1071.81640625,
+        "peakSummedWorkingSetMiB": 1141.78125,
+        "afterSummedWorkingSetMiB": 1128.25390625,
+        "postDisposeSummedWorkingSetMiB": 1094.59765625,
+        "auxiliary": {
+          "rss": 153706496,
+          "heapTotal": 10285056,
+          "heapUsed": 5079868,
+          "external": 21757098,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 1,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 12.5,
+      "loadMs": 179.20000000298023,
+      "snapshotMs": 1.2000000029802322,
+      "computeMs": 220.40000000596046,
+      "workerUnpackMs": 1.0999999940395355,
+      "workerTotalMs": 221.69999998807907,
+      "roundTripMs": 222.30000001192093,
+      "hydrateMs": 0.19999998807907104,
+      "conditioningMs": 223.8999999910593,
+      "geometryReadyMs": 415.59999999403954,
+      "renderMs": 103.70000000298023,
+      "firstRenderMs": 519.4000000059605,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.4000000059604645,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 32,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 29.200000002980232
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.0703125,
+        "peakSummedWorkingSetMiB": 928.8671875,
+        "afterSummedWorkingSetMiB": 925.21875,
+        "postDisposeSummedWorkingSetMiB": 925.69921875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 1,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 168,
+      "snapshotMs": 0.9000000059604645,
+      "computeMs": 180,
+      "workerUnpackMs": 0.30000001192092896,
+      "workerTotalMs": 180.40000000596046,
+      "roundTripMs": 180.79999999701977,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 181.80000001192093,
+      "geometryReadyMs": 349.80000001192093,
+      "renderMs": 23.700000002980232,
+      "firstRenderMs": 373.6000000089407,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.29999999701976776,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.700000000000273,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 18.099999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 925.78125,
+        "peakSummedWorkingSetMiB": 990.3671875,
+        "afterSummedWorkingSetMiB": 983.12890625,
+        "postDisposeSummedWorkingSetMiB": 935.859375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 1,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 158.90000000596046,
+      "snapshotMs": 0.8999999910593033,
+      "computeMs": 186.40000000596046,
+      "workerUnpackMs": 0.20000000298023224,
+      "workerTotalMs": 186.70000000298023,
+      "roundTripMs": 187,
+      "hydrateMs": 0,
+      "conditioningMs": 188,
+      "geometryReadyMs": 346.90000000596046,
+      "renderMs": 23.399999991059303,
+      "firstRenderMs": 370.29999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.3999999910593033,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 17.899999991059303
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 935.8671875,
+        "peakSummedWorkingSetMiB": 1005.0390625,
+        "afterSummedWorkingSetMiB": 1005.0390625,
+        "postDisposeSummedWorkingSetMiB": 949.515625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 1,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0.20000000298023224,
+      "loadMs": 169.90000000596046,
+      "snapshotMs": 0,
+      "computeMs": 329.5,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 329.5,
+      "geometryReadyMs": 499.6000000089407,
+      "renderMs": 100.09999999403954,
+      "firstRenderMs": 599.7000000029802,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 18,
+        "p50": 16.699999999999818,
+        "p95": 316.60000000000036,
+        "max": 316.60000000000036,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 357.3999999910593
+      },
+      "longTasks": [
+        {
+          "start": 2351.300000011921,
+          "duration": 340
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 793.7421875,
+        "peakSummedWorkingSetMiB": 906.98046875,
+        "afterSummedWorkingSetMiB": 906.1953125,
+        "postDisposeSummedWorkingSetMiB": 911.98046875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 1,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 163,
+      "snapshotMs": 0,
+      "computeMs": 322.8999999910593,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 322.8999999910593,
+      "geometryReadyMs": 485.8999999910593,
+      "renderMs": 24.400000005960464,
+      "firstRenderMs": 510.29999999701977,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 13,
+        "p50": 16.699999999999818,
+        "p95": 316.6999999999998,
+        "max": 316.6999999999998,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 338.79999999701977
+      },
+      "longTasks": [
+        {
+          "start": 3527.9000000059605,
+          "duration": 327
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 912.0234375,
+        "peakSummedWorkingSetMiB": 974.59765625,
+        "afterSummedWorkingSetMiB": 951.859375,
+        "postDisposeSummedWorkingSetMiB": 923.44140625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 1,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 161.79999999701977,
+      "snapshotMs": 0,
+      "computeMs": 284.40000000596046,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 284.5,
+      "geometryReadyMs": 446.29999999701977,
+      "renderMs": 24.400000005960464,
+      "firstRenderMs": 470.70000000298023,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 13,
+        "p50": 16.699999999999818,
+        "p95": 283.39999999999964,
+        "max": 283.39999999999964,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 302.40000000596046
+      },
+      "longTasks": [
+        {
+          "start": 4376.4000000059605,
+          "duration": 289
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 923.50390625,
+        "peakSummedWorkingSetMiB": 998.80859375,
+        "afterSummedWorkingSetMiB": 998.80859375,
+        "postDisposeSummedWorkingSetMiB": 944.50390625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 12,
+      "loadMs": 176.5,
+      "snapshotMs": 1,
+      "computeMs": 220.09999999403954,
+      "workerUnpackMs": 0.9000000059604645,
+      "workerTotalMs": 221.09999999403954,
+      "roundTripMs": 221.90000000596046,
+      "hydrateMs": 0.20000000298023224,
+      "conditioningMs": 223.20000000298023,
+      "geometryReadyMs": 411.70000000298023,
+      "renderMs": 101.09999999403954,
+      "firstRenderMs": 512.7999999970198,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.5,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 31,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 27.900000005960464
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.51953125,
+        "peakSummedWorkingSetMiB": 926.34375,
+        "afterSummedWorkingSetMiB": 925.3359375,
+        "postDisposeSummedWorkingSetMiB": 922.625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 164.29999999701977,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 193.5,
+      "workerUnpackMs": 0.29999999701976776,
+      "workerTotalMs": 193.79999999701977,
+      "roundTripMs": 194.29999999701977,
+      "hydrateMs": 0,
+      "conditioningMs": 195.09999999403954,
+      "geometryReadyMs": 359.5,
+      "renderMs": 23.899999991059303,
+      "firstRenderMs": 383.5,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.30000001192092896,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.899999999999636,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 14.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 922.67578125,
+        "peakSummedWorkingSetMiB": 988.1875,
+        "afterSummedWorkingSetMiB": 983.65625,
+        "postDisposeSummedWorkingSetMiB": 934.7734375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 176,
+      "snapshotMs": 0.7000000029802322,
+      "computeMs": 197.29999999701977,
+      "workerUnpackMs": 0.20000000298023224,
+      "workerTotalMs": 197.5,
+      "roundTripMs": 197.8999999910593,
+      "hydrateMs": 0,
+      "conditioningMs": 198.70000000298023,
+      "geometryReadyMs": 374.70000000298023,
+      "renderMs": 24.599999994039536,
+      "firstRenderMs": 399.40000000596046,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.4000000059604645,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.899999999999636,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 18.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 934.86328125,
+        "peakSummedWorkingSetMiB": 1013.2109375,
+        "afterSummedWorkingSetMiB": 1013.2109375,
+        "postDisposeSummedWorkingSetMiB": 959.625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0.10000000894069672,
+      "loadMs": 172.79999999701977,
+      "snapshotMs": 0,
+      "computeMs": 315.29999999701977,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 315.29999999701977,
+      "geometryReadyMs": 488.20000000298023,
+      "renderMs": 102.19999998807907,
+      "firstRenderMs": 590.5,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 19,
+        "p50": 16.699999999999818,
+        "p95": 300,
+        "max": 300,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 342.20000000298023
+      },
+      "longTasks": [
+        {
+          "start": 2436.7000000029802,
+          "duration": 325
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 793.97265625,
+        "peakSummedWorkingSetMiB": 909.8203125,
+        "afterSummedWorkingSetMiB": 906.828125,
+        "postDisposeSummedWorkingSetMiB": 911.75,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 170.79999999701977,
+      "snapshotMs": 0,
+      "computeMs": 312.8999999910593,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 312.8999999910593,
+      "geometryReadyMs": 483.69999998807907,
+      "renderMs": 24.400000005960464,
+      "firstRenderMs": 508.09999999403954,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 300,
+        "max": 300,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 330.8999999910593
+      },
+      "longTasks": [
+        {
+          "start": 3601.4000000059605,
+          "duration": 318
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 911.01953125,
+        "peakSummedWorkingSetMiB": 974.109375,
+        "afterSummedWorkingSetMiB": 950.9921875,
+        "postDisposeSummedWorkingSetMiB": 921.984375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 164.3999999910593,
+      "snapshotMs": 0,
+      "computeMs": 290.40000000596046,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 290.40000000596046,
+      "geometryReadyMs": 454.79999999701977,
+      "renderMs": 23.900000005960464,
+      "firstRenderMs": 478.79999999701977,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 13,
+        "p50": 16.699999999999818,
+        "p95": 283.3000000000002,
+        "max": 283.3000000000002,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 306.40000000596046
+      },
+      "longTasks": [
+        {
+          "start": 4445.0999999940395,
+          "duration": 294
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 922.12109375,
+        "peakSummedWorkingSetMiB": 999.36328125,
+        "afterSummedWorkingSetMiB": 999.36328125,
+        "postDisposeSummedWorkingSetMiB": 943.5078125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 2,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 103.3999999910593,
+      "loadMs": 165.29999999701977,
+      "snapshotMs": 1,
+      "computeMs": 201.42280000000002,
+      "workerUnpackMs": 0.848399999999998,
+      "workerTotalMs": 202.4613,
+      "roundTripMs": 224.40000000596046,
+      "hydrateMs": 0.29999999701976776,
+      "conditioningMs": 225.90000000596046,
+      "geometryReadyMs": 494.59999999403954,
+      "renderMs": 108.09999999403954,
+      "firstRenderMs": 602.6999999880791,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 12.900000005960464,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 37,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.700000000000273,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 36.30000001192093
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 795.203125,
+        "peakSummedWorkingSetMiB": 1032.171875,
+        "afterSummedWorkingSetMiB": 1028.99609375,
+        "postDisposeSummedWorkingSetMiB": 1014.08984375,
+        "auxiliary": {
+          "rss": 130646016,
+          "heapTotal": 9760768,
+          "heapUsed": 4418240,
+          "external": 24475991,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 2,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 172.5,
+      "snapshotMs": 0.9000000059604645,
+      "computeMs": 203.4176,
+      "workerUnpackMs": 0.3490999999999076,
+      "workerTotalMs": 203.8288,
+      "roundTripMs": 225.5,
+      "hydrateMs": 0.09999999403953552,
+      "conditioningMs": 226.5,
+      "geometryReadyMs": 399,
+      "renderMs": 26.900000005960464,
+      "firstRenderMs": 425.90000000596046,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.5,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 26,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 24.899999991059303
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1014.17578125,
+        "peakSummedWorkingSetMiB": 1139.31640625,
+        "afterSummedWorkingSetMiB": 1113.21484375,
+        "postDisposeSummedWorkingSetMiB": 1081.6640625,
+        "auxiliary": {
+          "rss": 163065856,
+          "heapTotal": 11071488,
+          "heapUsed": 5444744,
+          "external": 19930176,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 2,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 178.09999999403954,
+      "snapshotMs": 0.800000011920929,
+      "computeMs": 168.29700000000003,
+      "workerUnpackMs": 0.2798000000002503,
+      "workerTotalMs": 168.65390000000025,
+      "roundTripMs": 189.59999999403954,
+      "hydrateMs": 0,
+      "conditioningMs": 190.5,
+      "geometryReadyMs": 368.59999999403954,
+      "renderMs": 27.899999991059303,
+      "firstRenderMs": 396.59999999403954,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.900000005960464,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 25.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1081.6796875,
+        "peakSummedWorkingSetMiB": 1147.89453125,
+        "afterSummedWorkingSetMiB": 1137.37109375,
+        "postDisposeSummedWorkingSetMiB": 1103.7890625,
+        "auxiliary": {
+          "rss": 164544512,
+          "heapTotal": 9236480,
+          "heapUsed": 5944128,
+          "external": 23741922,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 3,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 116,
+      "loadMs": 178.59999999403954,
+      "snapshotMs": 1.1000000089406967,
+      "computeMs": 213.30169999999998,
+      "workerUnpackMs": 0.9862999999999715,
+      "workerTotalMs": 214.5143,
+      "roundTripMs": 237.29999999701977,
+      "hydrateMs": 0.20000000298023224,
+      "conditioningMs": 238.70000000298023,
+      "geometryReadyMs": 533.2999999970198,
+      "renderMs": 102.70000000298023,
+      "firstRenderMs": 636.0999999940395,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.100000008940697,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 39,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 36.099999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 796.75,
+        "peakSummedWorkingSetMiB": 1036.19140625,
+        "afterSummedWorkingSetMiB": 1033.23046875,
+        "postDisposeSummedWorkingSetMiB": 1019.34765625,
+        "auxiliary": {
+          "rss": 133038080,
+          "heapTotal": 9760768,
+          "heapUsed": 4470032,
+          "external": 24475991,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 3,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 166.59999999403954,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 200.1232,
+      "workerUnpackMs": 0.29980000000000473,
+      "workerTotalMs": 200.47199999999998,
+      "roundTripMs": 220.1000000089407,
+      "hydrateMs": 0,
+      "conditioningMs": 220.90000000596046,
+      "geometryReadyMs": 387.5,
+      "renderMs": 24.299999997019768,
+      "firstRenderMs": 411.8999999910593,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.299999997019768,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 25,
+        "p50": 16.699999999999818,
+        "p95": 17.299999999999727,
+        "max": 17.5,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 21.19999998807907
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1019.37109375,
+        "peakSummedWorkingSetMiB": 1132.80859375,
+        "afterSummedWorkingSetMiB": 1121.65234375,
+        "postDisposeSummedWorkingSetMiB": 1089.21484375,
+        "auxiliary": {
+          "rss": 170123264,
+          "heapTotal": 11333632,
+          "heapUsed": 5625940,
+          "external": 19930176,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 3,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 165.5,
+      "snapshotMs": 0.7000000029802322,
+      "computeMs": 166.5565999999999,
+      "workerUnpackMs": 0.23309999999992215,
+      "workerTotalMs": 166.85300000000007,
+      "roundTripMs": 186,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 186.90000000596046,
+      "geometryReadyMs": 352.40000000596046,
+      "renderMs": 26.799999997019768,
+      "firstRenderMs": 379.20000000298023,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.5,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 17.600000000000364,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 26.100000008940697
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1089.27734375,
+        "peakSummedWorkingSetMiB": 1157.44921875,
+        "afterSummedWorkingSetMiB": 1146.33984375,
+        "postDisposeSummedWorkingSetMiB": 1113.16015625,
+        "auxiliary": {
+          "rss": 171081728,
+          "heapTotal": 11071488,
+          "heapUsed": 5950916,
+          "external": 23741922,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 3,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0.09999999403953552,
+      "loadMs": 193.20000000298023,
+      "snapshotMs": 0,
+      "computeMs": 318.20000000298023,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 318.20000000298023,
+      "geometryReadyMs": 511.5,
+      "renderMs": 103.1000000089407,
+      "firstRenderMs": 614.7000000029802,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 19,
+        "p50": 16.699999999999818,
+        "p95": 316.7000000000003,
+        "max": 316.7000000000003,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 346.6000000089407
+      },
+      "longTasks": [
+        {
+          "start": 2470.7999999970198,
+          "duration": 329
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.6875,
+        "peakSummedWorkingSetMiB": 906.0546875,
+        "afterSummedWorkingSetMiB": 902.01953125,
+        "postDisposeSummedWorkingSetMiB": 908.9765625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 3,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 179.20000000298023,
+      "snapshotMs": 0,
+      "computeMs": 316.59999999403954,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 316.59999999403954,
+      "geometryReadyMs": 495.79999999701977,
+      "renderMs": 25,
+      "firstRenderMs": 520.7999999970198,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 316.60000000000036,
+        "max": 316.60000000000036,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 333.1000000089407
+      },
+      "longTasks": [
+        {
+          "start": 3623.5999999940395,
+          "duration": 321
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 908.9921875,
+        "peakSummedWorkingSetMiB": 973.359375,
+        "afterSummedWorkingSetMiB": 950.609375,
+        "postDisposeSummedWorkingSetMiB": 924.1875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 3,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 166.59999999403954,
+      "snapshotMs": 0,
+      "computeMs": 286.79999999701977,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 286.79999999701977,
+      "geometryReadyMs": 453.3999999910593,
+      "renderMs": 24.900000005960464,
+      "firstRenderMs": 478.29999999701977,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 13,
+        "p50": 16.699999999999818,
+        "p95": 283.2999999999993,
+        "max": 283.2999999999993,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 304.3999999910593
+      },
+      "longTasks": [
+        {
+          "start": 4477.399999991059,
+          "duration": 291
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 924.1875,
+        "peakSummedWorkingSetMiB": 995.5859375,
+        "afterSummedWorkingSetMiB": 995.5859375,
+        "postDisposeSummedWorkingSetMiB": 940.99609375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 3,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 11.899999991059303,
+      "loadMs": 175,
+      "snapshotMs": 1.2000000029802322,
+      "computeMs": 217.79999999701977,
+      "workerUnpackMs": 0.9000000059604645,
+      "workerTotalMs": 218.90000000596046,
+      "roundTripMs": 219.5,
+      "hydrateMs": 0.29999999701976776,
+      "conditioningMs": 221.20000000298023,
+      "geometryReadyMs": 408.09999999403954,
+      "renderMs": 97.70000000298023,
+      "firstRenderMs": 505.79999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.3999999910593033,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 31,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 16.799999999999727,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 25.899999991059303
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.62109375,
+        "peakSummedWorkingSetMiB": 929.51953125,
+        "afterSummedWorkingSetMiB": 926.0703125,
+        "postDisposeSummedWorkingSetMiB": 925.83203125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 3,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 164.90000000596046,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 185.6000000089407,
+      "workerUnpackMs": 0.19999998807907104,
+      "workerTotalMs": 185.8999999910593,
+      "roundTripMs": 187.6000000089407,
+      "hydrateMs": 0,
+      "conditioningMs": 188.5,
+      "geometryReadyMs": 353.40000000596046,
+      "renderMs": 22.799999997019768,
+      "firstRenderMs": 376.20000000298023,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.6000000089406967,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 20.299999997019768
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 925.96875,
+        "peakSummedWorkingSetMiB": 990.33203125,
+        "afterSummedWorkingSetMiB": 984.9140625,
+        "postDisposeSummedWorkingSetMiB": 937.1171875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 3,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 173.09999999403954,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 177.6000000089407,
+      "workerUnpackMs": 0.19999998807907104,
+      "workerTotalMs": 177.8999999910593,
+      "roundTripMs": 178.29999999701977,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 179.20000000298023,
+      "geometryReadyMs": 352.29999999701977,
+      "renderMs": 24.399999991059303,
+      "firstRenderMs": 376.69999998807907,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.3999999910593033,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 17.200000002980232
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 937.15625,
+        "peakSummedWorkingSetMiB": 1010.3359375,
+        "afterSummedWorkingSetMiB": 1010.3359375,
+        "postDisposeSummedWorkingSetMiB": 956.3203125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0.10000000894069672,
+      "loadMs": 166.59999999403954,
+      "snapshotMs": 0,
+      "computeMs": 310.09999999403954,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 310.20000000298023,
+      "geometryReadyMs": 476.90000000596046,
+      "renderMs": 98.5,
+      "firstRenderMs": 575.4000000059605,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 17,
+        "p50": 16.699999999999818,
+        "p95": 316.6999999999998,
+        "max": 316.6999999999998,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 336.29999999701977
+      },
+      "longTasks": [
+        {
+          "start": 2444.2000000029802,
+          "duration": 320
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 798.34765625,
+        "peakSummedWorkingSetMiB": 907.7578125,
+        "afterSummedWorkingSetMiB": 907.7578125,
+        "postDisposeSummedWorkingSetMiB": 911.98046875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 180.80000001192093,
+      "snapshotMs": 0,
+      "computeMs": 306.69999998807907,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 306.69999998807907,
+      "geometryReadyMs": 487.5,
+      "renderMs": 24,
+      "firstRenderMs": 511.5,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 300,
+        "max": 300,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 323.59999999403954
+      },
+      "longTasks": [
+        {
+          "start": 3608.4000000059605,
+          "duration": 311
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 911.99609375,
+        "peakSummedWorkingSetMiB": 976.36328125,
+        "afterSummedWorkingSetMiB": 954.7890625,
+        "postDisposeSummedWorkingSetMiB": 928.234375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 172.6000000089407,
+      "snapshotMs": 0,
+      "computeMs": 282.3999999910593,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 282.3999999910593,
+      "geometryReadyMs": 455,
+      "renderMs": 24,
+      "firstRenderMs": 479.1000000089407,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 266.60000000000036,
+        "max": 266.60000000000036,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 298.70000000298023
+      },
+      "longTasks": [
+        {
+          "start": 4450.20000000298,
+          "duration": 286
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 928.2421875,
+        "peakSummedWorkingSetMiB": 999.953125,
+        "afterSummedWorkingSetMiB": 999.953125,
+        "postDisposeSummedWorkingSetMiB": 944.1640625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 105.79999999701977,
+      "loadMs": 188,
+      "snapshotMs": 1.2000000029802322,
+      "computeMs": 200.5693,
+      "workerUnpackMs": 0.8947999999999752,
+      "workerTotalMs": 201.66539999999998,
+      "roundTripMs": 223.69999998807907,
+      "hydrateMs": 0.20000000298023224,
+      "conditioningMs": 225.29999999701977,
+      "geometryReadyMs": 519.0999999940395,
+      "renderMs": 101.40000000596046,
+      "firstRenderMs": 620.5,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.699999988079071,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 38,
+        "p50": 16.699999999999818,
+        "p95": 17,
+        "max": 17.40000000000009,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 31.700000002980232
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 799.5,
+        "peakSummedWorkingSetMiB": 1036.0234375,
+        "afterSummedWorkingSetMiB": 1032.453125,
+        "postDisposeSummedWorkingSetMiB": 1018.890625,
+        "auxiliary": {
+          "rss": 130220032,
+          "heapTotal": 10285056,
+          "heapUsed": 4509444,
+          "external": 24475991,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 4,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 160.40000000596046,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 196.09299999999985,
+      "workerUnpackMs": 0.3744000000001506,
+      "workerTotalMs": 196.51880000000006,
+      "roundTripMs": 217,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 218,
+      "geometryReadyMs": 378.40000000596046,
+      "renderMs": 25.399999991059303,
+      "firstRenderMs": 403.79999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.700000002980232,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 25,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 22.5
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1018.91015625,
+        "peakSummedWorkingSetMiB": 1132.390625,
+        "afterSummedWorkingSetMiB": 1122.16796875,
+        "postDisposeSummedWorkingSetMiB": 1089.8515625,
+        "auxiliary": {
+          "rss": 167903232,
+          "heapTotal": 10809344,
+          "heapUsed": 4596636,
+          "external": 19690292,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 4,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 174.70000000298023,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 163.45010000000002,
+      "workerUnpackMs": 0.327900000000227,
+      "workerTotalMs": 163.8397,
+      "roundTripMs": 182.79999999701977,
+      "hydrateMs": 0.10000000894069672,
+      "conditioningMs": 183.70000000298023,
+      "geometryReadyMs": 358.40000000596046,
+      "renderMs": 27.399999991059303,
+      "firstRenderMs": 385.79999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.099999994039536,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 23.700000002980232
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1089.9453125,
+        "peakSummedWorkingSetMiB": 1158.64453125,
+        "afterSummedWorkingSetMiB": 1145.875,
+        "postDisposeSummedWorkingSetMiB": 1111.98828125,
+        "auxiliary": {
+          "rss": 168558592,
+          "heapTotal": 9236480,
+          "heapUsed": 5917760,
+          "external": 23741922,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 4,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 11.799999997019768,
+      "loadMs": 179.20000000298023,
+      "snapshotMs": 1.2000000029802322,
+      "computeMs": 221,
+      "workerUnpackMs": 0.8999999910593033,
+      "workerTotalMs": 222,
+      "roundTripMs": 222.59999999403954,
+      "hydrateMs": 0.20000000298023224,
+      "conditioningMs": 224.20000000298023,
+      "geometryReadyMs": 415.20000000298023,
+      "renderMs": 99,
+      "firstRenderMs": 514.2000000029802,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.4000000059604645,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 31,
+        "p50": 16.699999999999818,
+        "p95": 17.199999999999818,
+        "max": 17.299999999999727,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 27.19999998807907
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.24609375,
+        "peakSummedWorkingSetMiB": 925.8359375,
+        "afterSummedWorkingSetMiB": 925.328125,
+        "postDisposeSummedWorkingSetMiB": 927.078125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 158.20000000298023,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 185.59999999403954,
+      "workerUnpackMs": 0.20000000298023224,
+      "workerTotalMs": 185.79999999701977,
+      "roundTripMs": 186.40000000596046,
+      "hydrateMs": 0,
+      "conditioningMs": 187.29999999701977,
+      "geometryReadyMs": 345.5,
+      "renderMs": 23.799999997019768,
+      "firstRenderMs": 369.29999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.5,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.799999999999727,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 16.099999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 927.11328125,
+        "peakSummedWorkingSetMiB": 994.12109375,
+        "afterSummedWorkingSetMiB": 984.3515625,
+        "postDisposeSummedWorkingSetMiB": 936.92578125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 4,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 169,
+      "snapshotMs": 0.9000000059604645,
+      "computeMs": 187.70000000298023,
+      "workerUnpackMs": 0.09999999403953552,
+      "workerTotalMs": 187.8999999910593,
+      "roundTripMs": 188.29999999701977,
+      "hydrateMs": 0.09999999403953552,
+      "conditioningMs": 189.29999999701977,
+      "geometryReadyMs": 358.29999999701977,
+      "renderMs": 23.700000002980232,
+      "firstRenderMs": 382,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.3999999910593033,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 16.899999999999636,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 17.799999997019768
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 937.0078125,
+        "peakSummedWorkingSetMiB": 1014.06640625,
+        "afterSummedWorkingSetMiB": 1014.06640625,
+        "postDisposeSummedWorkingSetMiB": 959.62890625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "worker",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 13.299999997019768,
+      "loadMs": 188.70000000298023,
+      "snapshotMs": 1,
+      "computeMs": 221.59999999403954,
+      "workerUnpackMs": 1,
+      "workerTotalMs": 222.79999999701977,
+      "roundTripMs": 223.5,
+      "hydrateMs": 0.09999999403953552,
+      "conditioningMs": 224.69999998807907,
+      "geometryReadyMs": 426.69999998807907,
+      "renderMs": 98.79999999701977,
+      "firstRenderMs": 525.5999999940395,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.29999999701976776,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 32,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 28.30000001192093
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 793.578125,
+        "peakSummedWorkingSetMiB": 931.08203125,
+        "afterSummedWorkingSetMiB": 928.23828125,
+        "postDisposeSummedWorkingSetMiB": 928.59375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "worker",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 180.59999999403954,
+      "snapshotMs": 0.7999999970197678,
+      "computeMs": 186.5,
+      "workerUnpackMs": 0.19999998807907104,
+      "workerTotalMs": 186.69999998807907,
+      "roundTripMs": 187.29999999701977,
+      "hydrateMs": 0,
+      "conditioningMs": 188.20000000298023,
+      "geometryReadyMs": 368.79999999701977,
+      "renderMs": 23.400000005960464,
+      "firstRenderMs": 392.29999999701977,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.3999999910593033,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.800000000000182,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 14.900000005960464
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 928.7734375,
+        "peakSummedWorkingSetMiB": 993.2578125,
+        "afterSummedWorkingSetMiB": 987.74609375,
+        "postDisposeSummedWorkingSetMiB": 939.3515625,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "worker",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 177.59999999403954,
+      "snapshotMs": 0.800000011920929,
+      "computeMs": 177.29999999701977,
+      "workerUnpackMs": 0.29999999701976776,
+      "workerTotalMs": 177.59999999403954,
+      "roundTripMs": 178.19999998807907,
+      "hydrateMs": 0,
+      "conditioningMs": 179,
+      "geometryReadyMs": 356.59999999403954,
+      "renderMs": 24,
+      "firstRenderMs": 380.59999999403954,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 0.4000000059604645,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 23,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "max": 16.799999999999272,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 15.900000005960464
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 939.43359375,
+        "peakSummedWorkingSetMiB": 1012.90625,
+        "afterSummedWorkingSetMiB": 1012.90625,
+        "postDisposeSummedWorkingSetMiB": 959.3828125,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "utility",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 110.80000001192093,
+      "loadMs": 187.19999998807907,
+      "snapshotMs": 1.1000000089406967,
+      "computeMs": 210.27370000000002,
+      "workerUnpackMs": 0.9168000000000234,
+      "workerTotalMs": 211.40470000000005,
+      "roundTripMs": 233.5,
+      "hydrateMs": 0.19999998807907104,
+      "conditioningMs": 235,
+      "geometryReadyMs": 533,
+      "renderMs": 103.70000000298023,
+      "firstRenderMs": 636.8000000119209,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 11.200000002980232,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 39,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999955,
+        "max": 16.800000000000182,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 35
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 796.73046875,
+        "peakSummedWorkingSetMiB": 1036.95703125,
+        "afterSummedWorkingSetMiB": 1033.4140625,
+        "postDisposeSummedWorkingSetMiB": 1015.2734375,
+        "auxiliary": {
+          "rss": 133812224,
+          "heapTotal": 10809344,
+          "heapUsed": 5005480,
+          "external": 24715875,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 5,
+      "arm": "utility",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 160.70000000298023,
+      "snapshotMs": 1,
+      "computeMs": 206.12259999999992,
+      "workerUnpackMs": 0.3795000000000073,
+      "workerTotalMs": 206.59889999999996,
+      "roundTripMs": 227.80000001192093,
+      "hydrateMs": 0.09999999403953552,
+      "conditioningMs": 229,
+      "geometryReadyMs": 389.70000000298023,
+      "renderMs": 25,
+      "firstRenderMs": 414.70000000298023,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 10.200000002980232,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 25,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999727,
+        "max": 17.199999999999818,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 21.599999994039536
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1015.296875,
+        "peakSummedWorkingSetMiB": 1123.40625,
+        "afterSummedWorkingSetMiB": 1113.6953125,
+        "postDisposeSummedWorkingSetMiB": 1080.3984375,
+        "auxiliary": {
+          "rss": 164724736,
+          "heapTotal": 11333632,
+          "heapUsed": 5870652,
+          "external": 19930176,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 5,
+      "arm": "utility",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 174.59999999403954,
+      "snapshotMs": 1.1000000089406967,
+      "computeMs": 175.3669,
+      "workerUnpackMs": 0.25900000000001455,
+      "workerTotalMs": 175.6866,
+      "roundTripMs": 194.09999999403954,
+      "hydrateMs": 0,
+      "conditioningMs": 195.20000000298023,
+      "geometryReadyMs": 369.79999999701977,
+      "renderMs": 25.700000002980232,
+      "firstRenderMs": 395.5,
+      "inputBytes": 2972094,
+      "outputBytes": 7920480,
+      "echoMs": 9.900000005960464,
+      "rejectsMalformed": true,
+      "frameGaps": {
+        "count": 24,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000273,
+        "max": 16.700000000000273,
+        "over50ms": 0,
+        "over100ms": 0
+      },
+      "timerGaps": {
+        "max": 21.200000002980232
+      },
+      "longTasks": [],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 1080.515625,
+        "peakSummedWorkingSetMiB": 1143.70703125,
+        "afterSummedWorkingSetMiB": 1137.328125,
+        "postDisposeSummedWorkingSetMiB": 1103.4296875,
+        "auxiliary": {
+          "rss": 165117952,
+          "heapTotal": 10022912,
+          "heapUsed": 4749008,
+          "external": 22952898,
+          "arrayBuffers": 0
+        }
+      }
+    },
+    {
+      "round": 5,
+      "arm": "main",
+      "job": 0,
+      "state": "fresh-helper-and-process",
+      "helperStartupMs": 0.10000000894069672,
+      "loadMs": 176.8999999910593,
+      "snapshotMs": 0,
+      "computeMs": 307.5,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 307.5,
+      "geometryReadyMs": 484.5,
+      "renderMs": 100.59999999403954,
+      "firstRenderMs": 585.2000000029802,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 19,
+        "p50": 16.699999999999818,
+        "p95": 300,
+        "max": 300,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 333.09999999403954
+      },
+      "longTasks": [
+        {
+          "start": 2487.2999999970198,
+          "duration": 317
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 794.46875,
+        "peakSummedWorkingSetMiB": 906.29296875,
+        "afterSummedWorkingSetMiB": 903.72265625,
+        "postDisposeSummedWorkingSetMiB": 908.671875,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "main",
+      "job": 1,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 170.1000000089407,
+      "snapshotMs": 0,
+      "computeMs": 305.3999999910593,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 305.3999999910593,
+      "geometryReadyMs": 475.5,
+      "renderMs": 25.100000008940697,
+      "firstRenderMs": 500.6000000089407,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 15,
+        "p50": 16.699999999999818,
+        "p95": 283.3000000000002,
+        "max": 283.3000000000002,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 324.5
+      },
+      "longTasks": [
+        {
+          "start": 3632.5,
+          "duration": 310
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 908.6953125,
+        "peakSummedWorkingSetMiB": 973.30859375,
+        "afterSummedWorkingSetMiB": 952.30078125,
+        "postDisposeSummedWorkingSetMiB": 923.6484375,
+        "auxiliary": null
+      }
+    },
+    {
+      "round": 5,
+      "arm": "main",
+      "job": 2,
+      "state": "reused-helper-fresh-assets",
+      "helperStartupMs": 0,
+      "loadMs": 163.40000000596046,
+      "snapshotMs": 0,
+      "computeMs": 281.09999999403954,
+      "workerUnpackMs": 0,
+      "workerTotalMs": 0,
+      "roundTripMs": 0,
+      "hydrateMs": 0,
+      "conditioningMs": 281.09999999403954,
+      "geometryReadyMs": 444.5,
+      "renderMs": 24.5,
+      "firstRenderMs": 469.09999999403954,
+      "inputBytes": 0,
+      "outputBytes": 7920480,
+      "echoMs": null,
+      "rejectsMalformed": null,
+      "frameGaps": {
+        "count": 14,
+        "p50": 16.699999999999818,
+        "p95": 266.60000000000036,
+        "max": 266.60000000000036,
+        "over50ms": 1,
+        "over100ms": 1
+      },
+      "timerGaps": {
+        "max": 295.5
+      },
+      "longTasks": [
+        {
+          "start": 4473.70000000298,
+          "duration": 285
+        }
+      ],
+      "memory": {
+        "beforeSummedWorkingSetMiB": 923.74609375,
+        "peakSummedWorkingSetMiB": 994.65625,
+        "afterSummedWorkingSetMiB": 994.65625,
+        "postDisposeSummedWorkingSetMiB": 940.08984375,
+        "auxiliary": null
+      }
+    }
+  ],
+  "paired": [
+    {
+      "round": 0,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 301.20000000298023,
+          "candidateMs": 217.1000000089407,
+          "deltaMs": -84.09999999403954,
+          "improvementPercent": 27.921646744092765
+        },
+        "geometryReadyMs": {
+          "controlMs": 474.1000000089407,
+          "candidateMs": 462.40000000596046,
+          "deltaMs": -11.700000002980232,
+          "improvementPercent": 2.4678337909216603
+        },
+        "firstRenderMs": {
+          "controlMs": 604,
+          "candidateMs": 562,
+          "deltaMs": -42,
+          "improvementPercent": 6.95364238410596
+        }
+      }
+    },
+    {
+      "round": 0,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 301.20000000298023,
+          "candidateMs": 235.09999999403954,
+          "deltaMs": -66.1000000089407,
+          "improvementPercent": 21.945551131569278
+        },
+        "geometryReadyMs": {
+          "controlMs": 474.1000000089407,
+          "candidateMs": 578.0999999940395,
+          "deltaMs": 103.99999998509884,
+          "improvementPercent": -21.93630035501742
+        },
+        "firstRenderMs": {
+          "controlMs": 604,
+          "candidateMs": 678.3999999910593,
+          "deltaMs": 74.3999999910593,
+          "improvementPercent": -12.31788079322174
+        }
+      }
+    },
+    {
+      "round": 0,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 279.29999999701977,
+          "candidateMs": 176.40000000596046,
+          "deltaMs": -102.8999999910593,
+          "improvementPercent": 36.8421052603499
+        },
+        "geometryReadyMs": {
+          "controlMs": 456.09999999403954,
+          "candidateMs": 354.5,
+          "deltaMs": -101.59999999403954,
+          "improvementPercent": 22.275816705846804
+        },
+        "firstRenderMs": {
+          "controlMs": 480,
+          "candidateMs": 377.59999999403954,
+          "deltaMs": -102.40000000596046,
+          "improvementPercent": 21.333333334575098
+        }
+      }
+    },
+    {
+      "round": 0,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 279.29999999701977,
+          "candidateMs": 226.40000000596046,
+          "deltaMs": -52.8999999910593,
+          "improvementPercent": 18.940207659013165
+        },
+        "geometryReadyMs": {
+          "controlMs": 456.09999999403954,
+          "candidateMs": 394.09999999403954,
+          "deltaMs": -62,
+          "improvementPercent": 13.59351019531029
+        },
+        "firstRenderMs": {
+          "controlMs": 480,
+          "candidateMs": 424.29999999701977,
+          "deltaMs": -55.70000000298023,
+          "improvementPercent": 11.604166667287547
+        }
+      }
+    },
+    {
+      "round": 1,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 329.5,
+          "candidateMs": 223.8999999910593,
+          "deltaMs": -105.6000000089407,
+          "improvementPercent": 32.0485584245647
+        },
+        "geometryReadyMs": {
+          "controlMs": 499.6000000089407,
+          "candidateMs": 415.59999999403954,
+          "deltaMs": -84.00000001490116,
+          "improvementPercent": 16.813450763290216
+        },
+        "firstRenderMs": {
+          "controlMs": 599.7000000029802,
+          "candidateMs": 519.4000000059605,
+          "deltaMs": -80.29999999701977,
+          "improvementPercent": 13.390028346943591
+        }
+      }
+    },
+    {
+      "round": 1,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 329.5,
+          "candidateMs": 227.8999999910593,
+          "deltaMs": -101.6000000089407,
+          "improvementPercent": 30.834597878282455
+        },
+        "geometryReadyMs": {
+          "controlMs": 499.6000000089407,
+          "candidateMs": 520.5,
+          "deltaMs": 20.899999991059303,
+          "improvementPercent": -4.183346675477439
+        },
+        "firstRenderMs": {
+          "controlMs": 599.7000000029802,
+          "candidateMs": 623.2999999970198,
+          "deltaMs": 23.599999994039536,
+          "improvementPercent": -3.935300982811782
+        }
+      }
+    },
+    {
+      "round": 1,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 284.5,
+          "candidateMs": 181.80000001192093,
+          "deltaMs": -102.69999998807907,
+          "improvementPercent": 36.098418273490005
+        },
+        "geometryReadyMs": {
+          "controlMs": 446.29999999701977,
+          "candidateMs": 346.90000000596046,
+          "deltaMs": -99.3999999910593,
+          "improvementPercent": 22.27201433827539
+        },
+        "firstRenderMs": {
+          "controlMs": 470.70000000298023,
+          "candidateMs": 370.29999999701977,
+          "deltaMs": -100.40000000596046,
+          "improvementPercent": 21.329934141772846
+        }
+      }
+    },
+    {
+      "round": 1,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 284.5,
+          "candidateMs": 200.6000000089407,
+          "deltaMs": -83.8999999910593,
+          "improvementPercent": 29.490333916013817
+        },
+        "geometryReadyMs": {
+          "controlMs": 446.29999999701977,
+          "candidateMs": 379.30000001192093,
+          "deltaMs": -66.99999998509884,
+          "improvementPercent": 15.01232354594359
+        },
+        "firstRenderMs": {
+          "controlMs": 470.70000000298023,
+          "candidateMs": 405.5,
+          "deltaMs": -65.20000000298023,
+          "improvementPercent": 13.851710219368476
+        }
+      }
+    },
+    {
+      "round": 2,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 315.29999999701977,
+          "candidateMs": 223.20000000298023,
+          "deltaMs": -92.09999999403954,
+          "improvementPercent": 29.210275926073603
+        },
+        "geometryReadyMs": {
+          "controlMs": 488.20000000298023,
+          "candidateMs": 411.70000000298023,
+          "deltaMs": -76.5,
+          "improvementPercent": 15.669807455865016
+        },
+        "firstRenderMs": {
+          "controlMs": 590.5,
+          "candidateMs": 512.7999999970198,
+          "deltaMs": -77.70000000298023,
+          "improvementPercent": 13.158340390005119
+        }
+      }
+    },
+    {
+      "round": 2,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 315.29999999701977,
+          "candidateMs": 225.90000000596046,
+          "deltaMs": -89.3999999910593,
+          "improvementPercent": 28.35394861779395
+        },
+        "geometryReadyMs": {
+          "controlMs": 488.20000000298023,
+          "candidateMs": 494.59999999403954,
+          "deltaMs": 6.399999991059303,
+          "improvementPercent": -1.3109381382671517
+        },
+        "firstRenderMs": {
+          "controlMs": 590.5,
+          "candidateMs": 602.6999999880791,
+          "deltaMs": 12.199999988079071,
+          "improvementPercent": -2.066045721943958
+        }
+      }
+    },
+    {
+      "round": 2,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 290.40000000596046,
+          "candidateMs": 195.09999999403954,
+          "deltaMs": -95.30000001192093,
+          "improvementPercent": 32.816804411144936
+        },
+        "geometryReadyMs": {
+          "controlMs": 454.79999999701977,
+          "candidateMs": 359.5,
+          "deltaMs": -95.29999999701977,
+          "improvementPercent": 20.95426561073972
+        },
+        "firstRenderMs": {
+          "controlMs": 478.79999999701977,
+          "candidateMs": 383.5,
+          "deltaMs": -95.29999999701977,
+          "improvementPercent": 19.903926482375304
+        }
+      }
+    },
+    {
+      "round": 2,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 290.40000000596046,
+          "candidateMs": 190.5,
+          "deltaMs": -99.90000000596046,
+          "improvementPercent": 34.400826447627416
+        },
+        "geometryReadyMs": {
+          "controlMs": 454.79999999701977,
+          "candidateMs": 368.59999999403954,
+          "deltaMs": -86.20000000298023,
+          "improvementPercent": 18.953386104561364
+        },
+        "firstRenderMs": {
+          "controlMs": 478.79999999701977,
+          "candidateMs": 396.59999999403954,
+          "deltaMs": -82.20000000298023,
+          "improvementPercent": 17.16791980022804
+        }
+      }
+    },
+    {
+      "round": 3,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 318.20000000298023,
+          "candidateMs": 221.20000000298023,
+          "deltaMs": -97,
+          "improvementPercent": 30.48397234415195
+        },
+        "geometryReadyMs": {
+          "controlMs": 511.5,
+          "candidateMs": 408.09999999403954,
+          "deltaMs": -103.40000000596046,
+          "improvementPercent": 20.21505376460615
+        },
+        "firstRenderMs": {
+          "controlMs": 614.7000000029802,
+          "candidateMs": 505.79999999701977,
+          "deltaMs": -108.90000000596046,
+          "improvementPercent": 17.71595900527615
+        }
+      }
+    },
+    {
+      "round": 3,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 318.20000000298023,
+          "candidateMs": 238.70000000298023,
+          "deltaMs": -79.5,
+          "improvementPercent": 24.98428661195959
+        },
+        "geometryReadyMs": {
+          "controlMs": 511.5,
+          "candidateMs": 533.2999999970198,
+          "deltaMs": 21.799999997019768,
+          "improvementPercent": -4.2619745839725836
+        },
+        "firstRenderMs": {
+          "controlMs": 614.7000000029802,
+          "candidateMs": 636.0999999940395,
+          "deltaMs": 21.399999991059303,
+          "improvementPercent": -3.4813730260217257
+        }
+      }
+    },
+    {
+      "round": 3,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 286.79999999701977,
+          "candidateMs": 179.20000000298023,
+          "deltaMs": -107.59999999403954,
+          "improvementPercent": 37.51743375005497
+        },
+        "geometryReadyMs": {
+          "controlMs": 453.3999999910593,
+          "candidateMs": 352.29999999701977,
+          "deltaMs": -101.09999999403954,
+          "improvementPercent": 22.298191441560025
+        },
+        "firstRenderMs": {
+          "controlMs": 478.29999999701977,
+          "candidateMs": 376.20000000298023,
+          "deltaMs": -102.09999999403954,
+          "improvementPercent": 21.346435290544786
+        }
+      }
+    },
+    {
+      "round": 3,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 286.79999999701977,
+          "candidateMs": 186.90000000596046,
+          "deltaMs": -99.8999999910593,
+          "improvementPercent": 34.83263598050816
+        },
+        "geometryReadyMs": {
+          "controlMs": 453.3999999910593,
+          "candidateMs": 352.40000000596046,
+          "deltaMs": -100.99999998509884,
+          "improvementPercent": 22.276135859525912
+        },
+        "firstRenderMs": {
+          "controlMs": 478.29999999701977,
+          "candidateMs": 379.20000000298023,
+          "deltaMs": -99.09999999403954,
+          "improvementPercent": 20.719213881383443
+        }
+      }
+    },
+    {
+      "round": 4,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 310.20000000298023,
+          "candidateMs": 224.20000000298023,
+          "deltaMs": -86,
+          "improvementPercent": 27.724049000378386
+        },
+        "geometryReadyMs": {
+          "controlMs": 476.90000000596046,
+          "candidateMs": 415.20000000298023,
+          "deltaMs": -61.70000000298023,
+          "improvementPercent": 12.93772279350159
+        },
+        "firstRenderMs": {
+          "controlMs": 575.4000000059605,
+          "candidateMs": 514.2000000029802,
+          "deltaMs": -61.20000000298023,
+          "improvementPercent": 10.636079249625698
+        }
+      }
+    },
+    {
+      "round": 4,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 310.20000000298023,
+          "candidateMs": 225.29999999701977,
+          "deltaMs": -84.90000000596046,
+          "improvementPercent": 27.369439073225273
+        },
+        "geometryReadyMs": {
+          "controlMs": 476.90000000596046,
+          "candidateMs": 519.0999999940395,
+          "deltaMs": 42.19999998807907,
+          "improvementPercent": -8.848815262644504
+        },
+        "firstRenderMs": {
+          "controlMs": 575.4000000059605,
+          "candidateMs": 620.5,
+          "deltaMs": 45.099999994039536,
+          "improvementPercent": -7.838025720120326
+        }
+      }
+    },
+    {
+      "round": 4,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 282.3999999910593,
+          "candidateMs": 187.29999999701977,
+          "deltaMs": -95.09999999403954,
+          "improvementPercent": 33.67563739272322
+        },
+        "geometryReadyMs": {
+          "controlMs": 455,
+          "candidateMs": 345.5,
+          "deltaMs": -109.5,
+          "improvementPercent": 24.065934065934066
+        },
+        "firstRenderMs": {
+          "controlMs": 479.1000000089407,
+          "candidateMs": 369.29999999701977,
+          "deltaMs": -109.80000001192093,
+          "improvementPercent": 22.917971198052996
+        }
+      }
+    },
+    {
+      "round": 4,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 282.3999999910593,
+          "candidateMs": 183.70000000298023,
+          "deltaMs": -98.69999998807907,
+          "improvementPercent": 34.9504249260637
+        },
+        "geometryReadyMs": {
+          "controlMs": 455,
+          "candidateMs": 358.40000000596046,
+          "deltaMs": -96.59999999403954,
+          "improvementPercent": 21.23076922945924
+        },
+        "firstRenderMs": {
+          "controlMs": 479.1000000089407,
+          "candidateMs": 385.79999999701977,
+          "deltaMs": -93.30000001192093,
+          "improvementPercent": 19.47401377795446
+        }
+      }
+    },
+    {
+      "round": 5,
+      "state": "fresh-helper-and-process",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 307.5,
+          "candidateMs": 224.69999998807907,
+          "deltaMs": -82.80000001192093,
+          "improvementPercent": 26.926829272169407
+        },
+        "geometryReadyMs": {
+          "controlMs": 484.5,
+          "candidateMs": 426.69999998807907,
+          "deltaMs": -57.80000001192093,
+          "improvementPercent": 11.929824563863969
+        },
+        "firstRenderMs": {
+          "controlMs": 585.2000000029802,
+          "candidateMs": 525.5999999940395,
+          "deltaMs": -59.6000000089407,
+          "improvementPercent": 10.184552291291384
+        }
+      }
+    },
+    {
+      "round": 5,
+      "state": "fresh-helper-and-process",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 307.5,
+          "candidateMs": 235,
+          "deltaMs": -72.5,
+          "improvementPercent": 23.577235772357724
+        },
+        "geometryReadyMs": {
+          "controlMs": 484.5,
+          "candidateMs": 533,
+          "deltaMs": 48.5,
+          "improvementPercent": -10.010319917440661
+        },
+        "firstRenderMs": {
+          "controlMs": 585.2000000029802,
+          "candidateMs": 636.8000000119209,
+          "deltaMs": 51.6000000089407,
+          "improvementPercent": -8.817498292665398
+        }
+      }
+    },
+    {
+      "round": 5,
+      "state": "reused-helper-fresh-assets",
+      "arm": "worker",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 281.09999999403954,
+          "candidateMs": 179,
+          "deltaMs": -102.09999999403954,
+          "improvementPercent": 36.32159373753272
+        },
+        "geometryReadyMs": {
+          "controlMs": 444.5,
+          "candidateMs": 356.59999999403954,
+          "deltaMs": -87.90000000596046,
+          "improvementPercent": 19.775028122825752
+        },
+        "firstRenderMs": {
+          "controlMs": 469.09999999403954,
+          "candidateMs": 380.59999999403954,
+          "deltaMs": -88.5,
+          "improvementPercent": 18.86591345152942
+        }
+      }
+    },
+    {
+      "round": 5,
+      "state": "reused-helper-fresh-assets",
+      "arm": "utility",
+      "differences": {
+        "conditioningMs": {
+          "controlMs": 281.09999999403954,
+          "candidateMs": 195.20000000298023,
+          "deltaMs": -85.8999999910593,
+          "improvementPercent": 30.558520097076038
+        },
+        "geometryReadyMs": {
+          "controlMs": 444.5,
+          "candidateMs": 369.79999999701977,
+          "deltaMs": -74.70000000298023,
+          "improvementPercent": 16.805399325754834
+        },
+        "firstRenderMs": {
+          "controlMs": 469.09999999403954,
+          "candidateMs": 395.5,
+          "deltaMs": -73.59999999403954,
+          "improvementPercent": 15.689618417176446
+        }
+      }
+    }
+  ]
+}

@@ -39,6 +39,18 @@ Boundary traffic and duplicate memory would erase the gain. Do not move authorit
 world generation onto GPU compute: cross-vendor floating point differences can desynchronise a
 lockstep match.
 
+### Imported-geometry placement POC (2026-09-03, tools-only)
+
+The compact Chrono Miner four-file family now has a measured renderer/worker/
+Electron-utility comparison: 54 loads with exact geometry and role-matched pixel
+parity. A reused Web Worker improved complete family-ready time by 19.8–24.1% in
+each matched round and removed the observed roughly 300 ms renderer stalls.
+The utility process regressed fresh-process readiness in every round and had
+larger copy/memory costs. This supports a bounded **production-path worker trial**,
+not utility migration or a shipping rollout. Full-game boot, actual materials,
+moving/multi-material families and lifecycle/soak remain unvalidated. Decision,
+method and evidence: `docs/reviews/ASSET_PREPARATION_OFFLOAD_POC_2026-09-03.md`.
+
 ## What belongs on WebGPU compute instead
 
 Render-only parallel work should stay in GPU memory:

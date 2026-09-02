@@ -203,3 +203,174 @@ output is `check-all-final.log`. This supersedes the earlier failed preflight ch
   as Shell loading and advancing simulation. Its startup counters are not a steady-state benchmark.
 - Unrelated studio-workflow changes, including their separate handoff table row, remain uncommitted
   and excluded from the patch. This receipt is a documentation follow-up; the release tag is unchanged.
+
+## Local follow-up: bounded Missions browser
+
+The owner requested the studio workflow to remove the Missions page's long, cluttered scroll.
+Fetched origin before editing; baseline was `9592c4b2c3522fbf1a4bb82d3e5d02088b50143e`.
+Existing studio configuration changes were preserved.
+This follow-up is local only: no commit, version bump, tag, deployment or publication.
+
+Delegation decision: two bounded specialists, with parent integration and one browser owner.
+`ux_accessibility` reviewed information structure without writes; `qa_engineer` owned only
+`apps/game/tests/missions-browser.spec.ts`. Both used the studio's `gpt-5.6-terra` / high defaults.
+The parent performed the UI-engineer implementation and live browser checks. Role instructions
+were transferred explicitly because the collaboration API does not select native TOML profiles;
+this does not claim that the profiles' sandbox defaults were enforced by this session.
+
+Implemented in `Missions.ts` and `command-shell.css`:
+
+- Category buttons filter results rather than jumping through an expanded catalogue. Scope and
+  status are labelled native selects. Five compact mission rows and one selected dossier replace
+  all 55 expanded cards and the unbounded earned-unlock strip.
+- Pagination exposes the entire catalogue. Chain ordering, named cross-category prerequisites,
+  progress, difficulty, visible rewards and completion/earned status remain. Credits are still
+  suppressed where no real payout exists. No progression rules or profile writes changed.
+- At widths up to 850px, selection opens the dossier with Back to list. At larger widths, list and
+  details sit side by side. Long details and enlarged text scroll locally; the shared page does not.
+- Provider refreshes preserve selection, focused controls and unchanged-list scroll. Different
+  pages reset list scroll. Home/End/Page keys apply only to mission rows; native selects keep their
+  keys. A status region announces selection without replacing the filter controls.
+- One shared Back exit replaces duplicate Back/Close buttons. Offline, unreadable profile,
+  empty catalogue and no-filter-match states remain distinct. Show all missions resets filters.
+- The new regression file is registered in `scripts/test-scope.mjs` so the UI gate includes it.
+
+Browser evidence is in this task's screenshots and DOM-geometry tool results. One in-app tab used
+the existing local profile; no match, reward claim, import/reset or paid asset operation was run.
+The local dev server exited during final checks; restarted it on the same loopback port and
+reloaded the current 3.16.2 development build before the final populated measurements.
+
+At 1280×720 / 115% text, the old body contained 1,221 descendants and scrolled 10,348px within
+421px. The new body contains 67 descendants (94.5% fewer) and measures 349px content/349px viewport.
+Its default list measures 288/288px and default dossier 349/349px: neither needs a scrollbar.
+At 900×800 / 115%, the default list and dossier also fit. At 640×800 / 115%, the list fits and
+the dossier uses the compact drilldown. All three widths were also exercised at 90% and 150% text;
+no Missions-panel horizontal overflow was observed. Larger text and long, multi-reward dossiers
+retain contained vertical scrolling. Keyboard Space/Enter, Home/End, pagination, all 55 unique
+mission titles, completed/match filters, empty-filter recovery and compact return focus were checked.
+Original 115% text was restored after accessibility checks; viewport override removed afterward.
+
+Performance decision before implementation: this is bounded, event-driven DOM work. WASM, workers
+and WebGPU compute do not fit it; dispatch/transfer overhead would add complexity to a small menu
+filter, and simulation determinism stays untouched. No new per-frame work, timer, renderer import,
+asset, render pass or dependency was added. The DOM reduction is measured; frame-time/boot-time
+improvements are not claimed without a comparative timing benchmark.
+
+Final proportional gates: UI suite **32 files / 1,065 tests passed**, including **14 new Missions
+tests**; game typecheck; targeted ESLint; production build; dependency architecture; workspace
+ownership; reward wiring **8 tests**; and fresh campaign/WebGPU bundle-isolation **44 tests**.
+The build retains its existing external font/splash and mixed-import warnings. The full release
+gate and packaged-Electron/live-pause/result gameplay validation were not rerun for this local UI
+follow-up. Panel subscription and wrapper return/cleanup are covered by unit tests; fake DOM tests
+do not substitute for native-device layout evidence.
+
+## Local follow-up: focused Service Record
+
+The owner requested the same studio workflow for Service Record / Profile. Origin was fetched
+before editing; HEAD and origin/main were both `9592c4b2c3522fbf1a4bb82d3e5d02088b50143e`.
+Existing Missions and studio changes were preserved. This follow-up is local and unreleased:
+no commit, version bump, tag, deployment or publication.
+
+Delegation decision: two bounded specialists using the studio's `gpt-5.6-terra` / high defaults.
+The UX/accessibility reviewer performed source-only analysis without writes; the QA engineer owned
+only `apps/game/tests/profile-browser.spec.ts`. The parent implemented and integrated the UI and
+was the sole browser owner. Profile instructions were transferred explicitly; this is not a claim
+that native TOML role selection or its sandbox defaults were enforced by the collaboration API.
+
+Implemented in `Profile.ts` and `command-shell.css`:
+
+- Three native section buttons: Overview, Honours and Identity. Overview has one copy of six career
+  totals and four faction records, plus routes to Missions and Operations. Repeated progression
+  panels, mission previews, identity-channel decoration and invented clearance/verification chrome
+  are removed. Real progression and settings storage contracts are unchanged.
+- Honours retains all 17 reward-derived insignia/decals, six per page. Type and ownership filters
+  lead to one selected detail with source mission, description, progress, earned/debrief state and
+  award date when available. Completed-but-unclaimed is not presented as owned. No credits or
+  gameplay strength are invented. At <=850px, selection opens a detail with Back to honours.
+- Identity is available while profile data loads or fails. Its existing normalized, maximum-20
+  character callsign field is retained as one DOM instance. Unsaved draft, caret and focused control
+  survive provider refreshes and section changes. Home/End/Page keys are not intercepted by Profile.
+- Honour selection and focused controls survive provider refreshes; a changed page resets list
+  scroll. Empty catalogue and empty filter states are distinct, and Show all honours resets both
+  selects. One shared Back replaces duplicated footer exits. Lazy reader disposal remains tied to
+  the screen lifetime. The new spec is automatically included by the UI scope's `profile` matcher.
+
+Browser evidence is in the task's screenshots and DOM-geometry results. At 1280×720 / 115% text,
+the old body had 530 descendants, with identity content 521px inside 344px, career content 446px
+inside 342px, and honours content 695px inside 152px. The new Overview has 69 descendants (87%
+fewer), and its 410px content fits its 410px viewport. Honours body/detail measure 349/349px and
+the six-award list 288/288px. Identity also fits without scrolling.
+
+All three sections were checked at 1280×720, 900×800 and 640×800 with 90%, 115% and 150% text.
+No Profile-panel horizontal overflow was observed. The 640px Overview has a short contained scroll
+at 115% and 150%; maximum text and longer details may scroll locally without moving the section
+controls. The maximum-text compact honour detail was keyboard-opened with Space, and Enter on
+Back to honours restored the selected tile's focus. All 17 unique honours, pagination, type and
+ownership filters, empty-filter recovery, an invalid callsign and an unsaved draft were checked in
+the browser. Original 115% text was restored; no callsign, reward, progression or profile reset
+was committed. View Missions and its Back return, and View Operations opening Campaign without
+starting a match, were also checked. The viewport override was removed and Service Record left open.
+These are browser checks, not a packaged-Electron or assistive-technology audit.
+
+Performance decision before implementation: small, event-driven DOM filtering does not justify
+WASM, worker transfers or WebGPU compute. No new per-frame work, timer, renderer import, dependency,
+asset or render pass was added. Identity DOM is reused; only the selected section and six honour
+tiles are mounted. The measured DOM reduction is not a boot-time or frame-time benchmark.
+
+Final proportional gates: UI **33 files / 1,074 tests passed**, including **nine new Profile browser
+regressions**; game typecheck; targeted ESLint; production build; dependency architecture; workspace
+ownership; reward-wiring and fresh campaign/WebGPU bundle isolation **52 tests**; and diff whitespace
+validation. Production Shell JavaScript is 327.43 kB, Shell CSS 236.94 kB, and the lazy profile reader
+remains a separate 1.18 kB chunk (uncompressed build output). Existing external font/splash and
+mixed-import warnings remain. No full release gate, packaged native smoke or live-battle performance
+gate was run for this local menu-only follow-up.
+
+## Local follow-up: title facelift and desktop-only scope
+
+The owner requested a main-page facelift, then identified logo clipping and explicitly confirmed
+that VOLTMARCH is desktop-only. Mobile is unsupported and must not be a design, optimization or
+QA target. The persistent rule is now in `AGENTS.md`, `CLAUDE.md`, the handoff, studio workflow,
+common studio policy and all 28 specialist prompts. This policy update used no additional agents
+and has no runtime or performance cost. Profile validation passes, including 15 negative controls.
+
+The title task used two bounded studio specialists (`gpt-5.6-terra` / high): source-only UX review
+and QA owning only `apps/game/tests/main-menu-browser.spec.ts`. Parent owned implementation and
+the sole browser. Prompt-transferred role instructions are not enforced TOML sandbox selection.
+Origin was fetched; HEAD/origin were `9592c4b2c3522fbf1a4bb82d3e5d02088b50143e`; earlier
+Missions/Profile/studio work was preserved. No commit, version bump, publication or deployment.
+
+`MainMenu.ts` and the existing cinematic section of `shell.css` now provide:
+
+- Larger, readable play rows over the supplied key art, with truthful tutorial, campaign, save,
+  replay and relay states. Decorative row numbers and redundant headings are removed.
+- One keyboard-registered Service Record identity button, without the duplicate Profile utility.
+  Community remains top-right; Load, Settings, Replays and desktop-only confirmed Quit share one
+  quiet utility group. Updated `wiki/How-to-Play.md` to describe the single identity entry.
+- A separate footer soundtrack group with 44px controls, real track title/index and pause/resume.
+  Passive faction/map/build metadata stays separate from those controls.
+- The logo is outside the scrolling area. The first candidate clipped its drop-shadow against the
+  menu container; the owner's screenshot exposed the defect. The corrected container has visible
+  overflow, while the play section alone has bounded scrolling and non-shrinking children. Neither
+  the supplied logo nor its pixels were edited. A regression guards that scroll-ownership boundary.
+
+Final desktop checks: 1280×720 at 115% has an unclipped logo and a fitting main layout; 1280×900
+shows the full brand/glow. At 1280×720 / 150%, the play section scrolls 105px within 383px while
+the brand/header/footer remain clear. Shift+Tab from soundtrack to Replays scrolls that focused
+button completely into the visible play area. Earlier 90–150% text and contrast/reduced-motion
+checks exercised the new layout; smaller preview checks are not a mobile support commitment.
+Campaign and keyboard Skirmish entry/back were checked without starting a match. Soundtrack
+pause/resume works at its new location. Original 115% text, high contrast enabled and reduced motion
+disabled were restored. Browser captures/DOM results are in the task; no native packaged smoke,
+two-player session, save creation, profile mutation or support-link posting was performed.
+
+Final proportional gates: UI **34 files / 1,082 passed**, including **eight title regressions**;
+game typecheck and targeted ESLint; fresh production build; **120 tests** covering initial menu
+boot, campaign/WebGPU bundle isolation, wiki numbers and truthful credits; ownership/dependency
+architecture and diff checks. The test fake was extended for native `insertBefore`; no assertions
+or performance thresholds were weakened. Final Shell JS is 326.75 kB and CSS 236.09 kB; the
+profile reader remains a lazy 1.18 kB chunk. Existing build warnings remain.
+
+Performance decision: DOM/CSS restructuring has no WASM/worker/WebGPU-compute use case; no new
+asset, dependency, renderer import, timer or per-frame allocation was added. The image-first cold
+title still does not start a decorative battlefield. Bundle sizes are measured; no comparative
+boot-time or frame-time improvement is claimed. The full release gate was not run.

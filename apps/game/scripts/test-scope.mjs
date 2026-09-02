@@ -11,7 +11,7 @@ const scope = process.argv[2] ?? 'all';
 const groups = {
   assets: /(?:asset|cameo|icon|palette|texture|ktx2|building-shape|faction-model|greeble|infantry-legibility)/,
   render: /(?:render|gpu|webgpu|adaptive|composit|frame-rate|fog|shroud|terrain|road|water|surface|shadow|bloom|post-|ao-|vfx|scatter|prop-|resize|hardware-calibration|metrics|overlay-frame|panel-blur|structure-rim)/,
-  ui: /(?:hud|shell|settings|accessibility|tutorial|manual|profile|progression-ui|loading-tip|tips-|campaign-briefing|campaign-presentation|campaign-results|commander-powers-ui|savegame-ux|selection-cameo|objectives-ux|rally-overlay|boot-splash|desktop-|cloudflare)/,
+  ui: /(?:hud|shell|settings|accessibility|tutorial|manual|profile|missions-browser|main-menu-browser|progression-ui|loading-tip|tips-|campaign-briefing|campaign-presentation|campaign-results|commander-powers-ui|savegame-ux|selection-cameo|objectives-ux|rally-overlay|boot-splash|desktop-|cloudflare)/,
   contracts: /(?:truthful|credits|wiki|discord|features|architecture|bundle-isolation|scope|citations|action-catalogue|reward-wiring|build-descriptions|data\.spec|content-|faction-unit-tables)/,
 };
 

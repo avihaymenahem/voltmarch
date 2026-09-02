@@ -82,33 +82,13 @@ before crisp lane, slab-edge and kerb treatments are applied.
   <sub>An amphibious force approaches the coast on Sunder Atoll in the current WebGPU path.</sub>
 </p>
 
-## What's new in 3.16.2
-
-- **Consistent command menus:** shared navy/cyan frames, aligned content and usable footers across
-  Settings, Operations, Service Record, lobbies, saves, replays and results.
-- **Working, distinct navigation:** primary sections live across the top and utilities in the left
-  rail, without duplicate destinations. In-match routes preserve pause and confirmation behavior.
-- **A cinematic first screen:** the opening title keeps its image-led layout; dense records and
-  compact screens scroll without hiding controls.
-- **City foliage repair:** coverage fill respects the city grass mix, preserving the existing
-  coverage requirement and scene ceilings.
-
-## What's new in 3.16.1
-
-- **Desktop-only gameplay distribution:** Windows releases are now the supported game client while
-  `voltmarch.com` remains the Cloudflare Pages marketing and waitlist site.
-- **More natural air formations:** aircraft leave production in deterministic lanes and separate from
-  one another while moving, without colliding with ground units.
-- **Cleaner release surface:** retired browser deployment paths and stale documentation are removed;
-  local browser/WebGL diagnostics remain available for development.
-
 ## Play VOLTMARCH
 
 - **Windows:** [latest desktop release](https://github.com/avihaymenahem/voltmarch/releases/latest)
 - **Community:** [VOLTMARCH Discord](https://discord.gg/pvJGJyafU3)
 - **News and updates:** [voltmarch.com](https://voltmarch.com/)
 
-The current release is **3.16.2**. VOLTMARCH is distributed as a Windows desktop game using native
+This branch targets **3.16.3**. VOLTMARCH is distributed as a Windows desktop game using native
 Electron storage and update layers, and is WebGPU-first and WebGPU-locked for normal play.
 
 ## For contributors

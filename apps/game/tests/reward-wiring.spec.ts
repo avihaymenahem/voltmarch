@@ -159,10 +159,11 @@ function claimFor(r: Reward): Claim | null {
        * consumer rather than a one-frame reward announcement. */
       if (id.startsWith('cosmetic.')) {
         return {
-          consumer: 'apps/game/src/shell/Profile.ts#cosmeticCollection -> awardCard',
+          consumer: 'apps/game/src/shell/Profile.ts#cosmeticCollection -> buildHonours',
           resolves: () => profileSource.includes("reward.kind !== 'cosmetic'")
             && profileSource.includes('owned.has(id)')
-            && profileSource.includes('awardCard(award'),
+            && profileSource.includes('this.buildHonours(collection, requestedPage)')
+            && profileSource.includes("el('h4', 'vm-h3', award.missionTitle)"),
         };
       }
 
@@ -182,10 +183,11 @@ function claimFor(r: Reward): Claim | null {
     // half answers ownership; this half supplies kind and catalogue provenance.
     case 'cosmetic':
       return {
-        consumer: 'apps/game/src/shell/Profile.ts#cosmeticCollection -> awardCard',
+        consumer: 'apps/game/src/shell/Profile.ts#cosmeticCollection -> buildHonours',
         resolves: () => profileSource.includes("reward.kind !== 'cosmetic'")
           && profileSource.includes('missionTitle: mission.title')
-          && profileSource.includes('awardCard(award'),
+          && profileSource.includes('this.buildHonours(collection, requestedPage)')
+          && profileSource.includes("el('h4', 'vm-h3', award.missionTitle)"),
       };
 
     case 'credits':

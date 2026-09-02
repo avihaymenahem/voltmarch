@@ -38,6 +38,7 @@ import { CAMPAIGN_OPERATION_COUNT, CAMPAIGN_OPERATION_IDS } from './CampaignPres
 import {
   button,
   el,
+  focusable,
   icon,
   pageFrame,
   playableFactions,
@@ -68,26 +69,6 @@ function openCommunityLink(url: string): void {
 /* ==========================================================================
  * MAIN MENU
  * ========================================================================== */
-
-/**
- * The hint under the Missions button: "3 / 20" earned.
- *
- * Empty string when there is no progression handle, which collapses the hint
- * row rather than printing "0 / 0" — the `?shot=` harness and any build with
- * `src/progression/**` removed get a plain button, not a broken counter.
- */
-function profileHint(): string {
-  const p = readProgression();
-  if (p === null) return '';
-  try {
-    const profile = p.profile();
-    const honours = profile.unlocked.filter((id) => id.startsWith('cosmetic.')).length;
-    const wins = profile.stats?.wins ?? 0;
-    return `${honours} honours · ${wins} wins`;
-  } catch {
-    return '';
-  }
-}
 
 /** Return-player campaign progress, without pulling the authored table into the title chunk. */
 export function campaignHint(
@@ -131,8 +112,8 @@ function hintFor(reason: string, known: boolean | null): string {
 }
 
 /**
- * The title menu mounts before its deferred battlefield, so there is no live
- * renderer to inspect on first paint. In that one state the requested backend
+ * The title menu does not start a battlefield, so there is no live
+ * renderer to inspect on first paint. In that state the requested backend
  * is the truthful answer; once a renderer exists its live backend wins.
  */
 export function menuBackendLabel(live: LiveBackend | undefined, search: string): string {
@@ -165,13 +146,13 @@ export class MainMenuScreen implements Screen {
     // compete with the play choices.  The title screen should read as a
     // battlefield first and a menu second, not as a dashboard of equal boxes.
     const top = el('header', 'vm-cinematic-topbar');
-    const identity = el('button', 'vm-cinematic-identity');
+    const identity = focusable(el('button', 'vm-cinematic-identity'));
     identity.type = 'button';
     identity.setAttribute('aria-label', 'Open Service Record');
     identity.addEventListener('click', () => this.shell.openProfile());
     identity.appendChild(icon('trophy', 20));
     const identityCopy = el('span', 'vm-cinematic-identity-copy');
-    identityCopy.appendChild(el('span', 'vm-cinematic-overline', 'COMMANDER PROFILE'));
+    identityCopy.appendChild(el('span', 'vm-cinematic-overline', 'SERVICE RECORD'));
     const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
       ?? 'Commander';
     identityCopy.appendChild(el('strong', 'vm-cinematic-callsign', commanderName.toLocaleUpperCase()));
@@ -184,13 +165,6 @@ export class MainMenuScreen implements Screen {
       control.classList.add('vm-cinematic-top-action');
       return control;
     };
-    const profileAction = topAction(button('Profile', {
-      iconName: 'trophy',
-      hint: profileHint(),
-      onClick: () => this.shell.openProfile(),
-    }));
-    profileAction.setAttribute('aria-label', 'Open Service Record');
-    topActions.appendChild(profileAction);
     topActions.appendChild(topAction(button('Settings', {
       iconName: 'sliders',
       onClick: () => this.shell.openSettings('menu'),
@@ -203,7 +177,7 @@ export class MainMenuScreen implements Screen {
         onClick: () => this.shell.openQuitConfirmation(),
       })));
     }
-    inner.appendChild(top);
+    host.appendChild(top);
 
     /* -- brand ------------------------------------------------------------ */
     const brand = el('div', 'vm-menu-brand vm-cinematic-brand');
@@ -228,24 +202,17 @@ export class MainMenuScreen implements Screen {
     /* -- play field ------------------------------------------------------- */
     const play = el('main', 'vm-cinematic-play');
     const playHeading = el('div', 'vm-cinematic-heading');
-    playHeading.appendChild(el('span', 'vm-cinematic-overline', 'VOLTMARCH // COMMAND THE FRONT'));
-    playHeading.appendChild(el('h2', 'vm-cinematic-title', 'Enter The Theatre'));
-    playHeading.appendChild(el('p', 'vm-cinematic-lede', 'Choose an operation and deploy.'));
+    playHeading.appendChild(el('h2', 'vm-cinematic-title', 'Choose your front'));
     play.appendChild(playHeading);
 
     const nav = el('nav', 'vm-menu-nav vm-cinematic-modes');
     nav.setAttribute('aria-label', 'Main menu');
 
-    let modeIndex = 0;
     const operationButton = (
       control: HTMLButtonElement,
       kind: 'feature' | 'standard' | 'online',
-      eyebrow: string,
     ): HTMLButtonElement => {
-      modeIndex += 1;
       control.classList.add('vm-cinematic-mode', `is-${kind}`);
-      control.insertBefore(el('span', 'vm-cinematic-mode-index', `0${modeIndex}`), control.firstChild);
-      control.appendChild(el('span', 'vm-cinematic-mode-eyebrow', eyebrow));
       control.appendChild(icon('chevronRight', 18));
       return control;
     };
@@ -263,7 +230,7 @@ export class MainMenuScreen implements Screen {
         hint: tutorialMenuHint(),
         variant: fresh ? 'primary' : 'default',
         onClick: () => this.shell.openTutorialConfirmation(),
-      }), fresh ? 'feature' : 'standard', 'COMMAND SCHOOL'));
+      }), fresh ? 'feature' : 'standard'));
     }
 
     // ABOVE SKIRMISH, DELIBERATELY. The campaign is the authored content and
@@ -274,14 +241,14 @@ export class MainMenuScreen implements Screen {
       iconName: 'flag',
       hint: campaignHint(),
       onClick: () => this.shell.openCampaign(),
-    }), tutorialCompleted() ? 'feature' : 'standard', 'AUTHORED OPERATIONS'));
+    }), tutorialCompleted() ? 'feature' : 'standard'));
 
     nav.appendChild(operationButton(button('Skirmish', {
       iconName: 'swords',
-      hint: 'vs AI',
+      hint: 'Custom battle against AI',
       variant: fresh ? 'default' : 'primary',
       onClick: () => this.shell.openSetup(),
-    }), 'standard', 'CUSTOM BATTLE'));
+    }), !fresh && !tutorialCompleted() ? 'feature' : 'standard'));
 
     // Directly under Skirmish, because the two are the same verb pointed at a
     // different opponent.
@@ -294,31 +261,29 @@ export class MainMenuScreen implements Screen {
     // DISABLED RATHER THAN HIDDEN, because a missing menu entry is
     // indistinguishable from a feature that does not exist. The hint carries the
     // reason: no server configured, wrong scheme, or simply not answering.
-    const multiplayer = operationButton(this.multiplayerButton(), 'online', 'ONLINE COMMAND');
+    const multiplayer = operationButton(this.multiplayerButton(), 'online');
     nav.appendChild(multiplayer);
     play.appendChild(nav);
 
     const secondary = el('div', 'vm-cinematic-secondary');
-    secondary.appendChild(topActions);
     const saves = saveSlots().length;
-    secondary.appendChild(topAction(button('Load Game', {
+    topActions.insertBefore(topAction(button('Load Game', {
       iconName: 'folder',
       hint: loadHint(saves),
       disabled: saves === 0,
       onClick: () => this.shell.openLoadGame(),
-    })));
+    })), topActions.firstChild);
 
     // NEVER DISABLED, unlike Load Game, and the difference is real rather than
     // an inconsistency: the load screen can only offer what is in this
     // browser's storage, while this one can always open a file somebody sent.
     // The hint says whether there is also a match from this session to watch.
-    secondary.appendChild(topAction(button('Replays', {
+    topActions.appendChild(topAction(button('Replays', {
       iconName: 'monitor',
       hint: this.shell.latestReplay() === null ? 'Open a recording' : 'Last match ready',
       onClick: () => this.shell.openReplays(),
     })));
-    this.musicControl = new MusicControl('menu');
-    secondary.appendChild(this.musicControl.root);
+    secondary.appendChild(topActions);
     play.appendChild(secondary);
     inner.appendChild(play);
     host.appendChild(inner);
@@ -337,7 +302,7 @@ export class MainMenuScreen implements Screen {
       iconName: 'refresh',
       onClick: () => this.shell.openSettings('menu', 'updates'),
     }));
-    host.appendChild(community);
+    top.appendChild(community);
 
     /* -- footer chips ----------------------------------------------------- */
     const foot = el('div', 'vm-menu-foot');
@@ -370,7 +335,9 @@ export class MainMenuScreen implements Screen {
     const backend = (this.shell as Partial<Shell>).getGame?.()?.ctx.handle.backend;
     const search = typeof location === 'undefined' ? '' : location.search;
     const backendLabel = menuBackendLabel(backend, search);
-    foot.appendChild(el('span', undefined, `Build ${build} · ${backendLabel}`));
+    left.appendChild(el('span', 'vm-menu-build', `Build ${build} · ${backendLabel}`));
+    this.musicControl = new MusicControl('menu');
+    foot.appendChild(this.musicControl.root);
     host.appendChild(foot);
   }
 

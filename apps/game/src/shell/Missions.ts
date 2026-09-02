@@ -2,28 +2,11 @@
  * ============================================================================
  * src/shell/Missions.ts — the missions screen
  * ============================================================================
- * The screen that has to make a player want the next thing.
- *
- * `docs/MISSIONS_DESIGN.md` is blunt about it: "the deliverable is not add
- * missions — missions are only the delivery mechanism. The actual design is the
- * unlock curve." A screen that lists tasks and ticks them off implements the
- * delivery mechanism and none of the design. So every card here leads with the
- * REWARD — what it is, what kind of thing it is, and what having it actually
- * changes — and the progress bar is the supporting detail rather than the
- * subject.
- *
- * CHAINS, NOT A CHECKLIST
- * -----------------------
- * `MissionDef.requires` is the only structure the data carries, and it is
- * enough: within a category, a mission with no in-category prerequisite is a
- * chain root and everything that (transitively) requires it hangs off it in
- * breadth order. `buildChains` is pure and covered by tests, because a cycle or
- * a dangling id in the mission table must produce a rendered screen with a
- * visible complaint rather than an infinite loop in the front end.
- *
- * A prerequisite in ANOTHER category is not dropped — it becomes an "after X"
- * note on the card. Silently hiding a gate is how a player ends up staring at a
- * locked row with no idea what to do about it.
+ * A bounded catalogue: five compact rows and one complete mission dossier.
+ * Categories and filters change results, not the scroll position. Chains keep
+ * authored order; prerequisites resolve against the whole catalogue. Provider
+ * notifications preserve selection, focus and local scroll offsets. No polling,
+ * game boot, simulation work or generated assets are needed.
  *
  * WHERE IT LIVES
  * --------------
@@ -35,7 +18,7 @@
  *   EndScreen.ts   same, straight off the reward reveal
  *
  * `MissionsScreen` wraps it as a `Screen` for a host that DOES want a full
- * screen — the title menu, which this agent does not own. See the report.
+ * screen — including the renderer-free title route.
  *
  * DEGRADING IS THE DEFAULT, NOT THE EDGE CASE
  * -------------------------------------------
@@ -109,7 +92,7 @@ export const MISSION_CATEGORIES: readonly CategoryDef[] = [
   {
     id: 'mastery',
     label: 'Mastery',
-    blurb: 'The long chains. Superweapons and commander powers sit at the end of these.',
+    blurb: 'Faction victories and career milestones. Earn honours and specialist superweapons.',
     iconName: 'trophy',
   },
 ];
@@ -364,12 +347,51 @@ export function summarise(entries: readonly CatalogueEntry[], unlocked: number):
   return `${done} of ${entries.length} complete · ${unlocked} unlock${unlocked === 1 ? '' : 's'} earned`;
 }
 
+export const MISSION_PAGE_SIZE = 5;
+
+export interface MissionFilters {
+  category: MissionCategory | 'all';
+  scope: 'all' | 'profile' | 'match';
+  state: MissionState | 'all';
+}
+
+/** Pure selection policy shared by refreshes, filters, pagination and tests. */
+export function missionBrowserView(
+  entries: readonly CatalogueEntry[],
+  filters: MissionFilters,
+  selectedId: string | null = null,
+  requestedPage?: number,
+): {
+  filtered: CatalogueEntry[];
+  visible: CatalogueEntry[];
+  selected: CatalogueEntry | null;
+  page: number;
+  pages: number;
+} {
+  const ordered = MISSION_CATEGORIES.flatMap(cat =>
+    buildChains(entries.filter(entry => entry.category === cat.id)).flatMap(chain => chain.map(node => node.entry)),
+  );
+  const filtered = ordered.filter(entry =>
+    (filters.category === 'all' || entry.category === filters.category) &&
+    (filters.scope === 'all' || entry.scope === filters.scope) &&
+    (filters.state === 'all' || missionState(entry) === filters.state),
+  );
+  let selected = filtered.find(entry => entry.id === selectedId)
+    ?? filtered.find(entry => missionState(entry) === 'active') ?? filtered[0] ?? null;
+  const pages = Math.max(1, Math.ceil(filtered.length / MISSION_PAGE_SIZE));
+  const preferredPage = requestedPage ?? (selected === null ? 0 : Math.floor(filtered.indexOf(selected) / MISSION_PAGE_SIZE));
+  const page = Math.max(0, Math.min(pages - 1, Number.isFinite(preferredPage) ? Math.floor(preferredPage) : 0));
+  const visible = filtered.slice(page * MISSION_PAGE_SIZE, (page + 1) * MISSION_PAGE_SIZE);
+  if (selected !== null && !visible.includes(selected)) selected = visible[0] ?? null;
+  return { filtered, visible, selected, page, pages };
+}
+
 /* ==========================================================================
  * 5. THE PANEL
  * ========================================================================== */
 
 export interface MissionsPanelOptions {
-  /** Back / Escape / the Close button. */
+  /** Shared Back button / Escape. */
   onClose: () => void;
   /** Injected by tests; production reads `globalThis.__vmProgression`. */
   progression?: ProgressionView | null;
@@ -380,7 +402,15 @@ export class MissionsPanel {
 
   private readonly body: HTMLElement;
   private readonly summary: HTMLElement;
-  private readonly sections = new Map<string, HTMLElement>();
+  private readonly announcement: HTMLElement;
+  private readonly categoryButtons = new Map<MissionFilters['category'], HTMLButtonElement>();
+  private readonly scopeSelect: HTMLSelectElement;
+  private readonly stateSelect: HTMLSelectElement;
+  private readonly filters: MissionFilters = { category: 'all', scope: 'all', state: 'all' };
+  private selectedId: string | null = null;
+  private view: ReturnType<typeof missionBrowserView> | null = null;
+  private reading = false;
+  private backToList: HTMLButtonElement | null = null;
   private progression: ProgressionView | null;
   private unsubscribe: (() => void) | null = null;
 
@@ -394,17 +424,38 @@ export class MissionsPanel {
     this.summary = el('span', 'vm-missions-summary', '');
     frame.head.appendChild(this.summary);
 
-    /* -- jump rail ------------------------------------------------------ */
     const rail = el('nav', 'vm-missions-rail');
-    rail.setAttribute('aria-label', 'Jump to a category');
-    for (const cat of MISSION_CATEGORIES) rail.appendChild(this.railButton(cat));
+    rail.setAttribute('aria-label', 'Mission categories');
+    rail.appendChild(this.categoryButton('all', 'All missions'));
+    for (const cat of MISSION_CATEGORIES) rail.appendChild(this.categoryButton(cat.id, cat.label, cat.iconName));
     frame.root.insertBefore(rail, frame.body);
+
+    const filters = el('div', 'vm-missions-filters');
+    this.scopeSelect = this.filterSelect('Scope', [['all', 'All scopes'], ['profile', 'Career'], ['match', 'This match']], value => {
+      this.filters.scope = value as MissionFilters['scope'];
+      this.reading = false;
+      this.render();
+    });
+    this.stateSelect = this.filterSelect('Status', [['all', 'All statuses'], ['active', 'In progress'], ['locked', 'Locked'], ['complete', 'Complete']], value => {
+      this.filters.state = value as MissionFilters['state'];
+      this.reading = false;
+      this.render();
+    });
+    for (const select of [this.scopeSelect, this.stateSelect]) {
+      const label = el('label', 'vm-missions-filter');
+      label.append(el('span', undefined, select.getAttribute('aria-label')!), select);
+      filters.appendChild(label);
+    }
+    frame.root.insertBefore(filters, frame.body);
 
     this.body = frame.body;
     this.body.classList.add('vm-missions-body');
 
-    /* -- foot ----------------------------------------------------------- */
-    frame.foot.appendChild(button('Close', { variant: 'primary', onClick: options.onClose }));
+    // One exit (the shared Back button), with a quiet status announcement.
+    this.announcement = el('span', 'vm-missions-announcement');
+    this.announcement.setAttribute('role', 'status');
+    this.announcement.setAttribute('aria-atomic', 'true');
+    frame.foot.appendChild(this.announcement);
 
     this.root.appendChild(frame.root);
     this.render();
@@ -440,53 +491,97 @@ export class MissionsPanel {
     this.unsubscribe = null;
   }
 
-  /**
-   * Page-scroll keys only. Up/Down and Enter belong to the shell's focus ring,
-   * and a screen this tall needs a way down that is not forty presses.
-   */
+  /** List navigation is scoped; text inputs and native pickers keep their keys. */
   onKeyDown(e: KeyboardEvent): boolean {
-    const page = Math.max(120, this.body.clientHeight - 60);
+    const target = e.target as HTMLElement | null;
+    if (!target?.closest('.vm-mission-row') || !this.view?.filtered.length) return false;
     switch (e.code) {
-      case 'PageDown': this.body.scrollTop += page; return true;
-      case 'PageUp': this.body.scrollTop -= page; return true;
-      case 'Home': this.body.scrollTop = 0; return true;
-      case 'End': this.body.scrollTop = this.body.scrollHeight; return true;
+      case 'PageDown': this.render(this.view.page + 1); break;
+      case 'PageUp': this.render(this.view.page - 1); break;
+      case 'Home': this.selectedId = this.view.filtered[0].id; this.render(); break;
+      case 'End': this.selectedId = this.view.filtered[this.view.filtered.length - 1].id; this.render(); break;
       default: return false;
     }
+    this.focusSelectedRow();
+    return true;
   }
 
   /* -------------------------------------------------------------------- */
   /* rendering                                                             */
   /* -------------------------------------------------------------------- */
 
-  private railButton(cat: CategoryDef): HTMLElement {
+  private categoryButton(id: MissionFilters['category'], label: string, iconName?: string): HTMLButtonElement {
     const b = el('button', 'vm-missions-jump');
     b.type = 'button';
-    b.appendChild(icon(cat.iconName, 14));
-    b.appendChild(el('span', undefined, cat.label));
+    b.setAttribute('aria-pressed', String(id === this.filters.category));
+    if (iconName) b.appendChild(icon(iconName, 14));
+    b.append(el('span', undefined, label), el('span', 'vm-missions-count', '0'));
     focusable(b);
     b.addEventListener('click', () => {
-      const section = this.sections.get(cat.id);
-      if (section === undefined) return;
-      // Offset arithmetic rather than `scrollIntoView`, which on some browsers
-      // also scrolls the shell layer this panel is mounted into.
-      this.body.scrollTop = section.offsetTop - this.body.offsetTop;
+      this.filters.category = id;
+      this.reading = false;
+      this.render();
     });
+    this.categoryButtons.set(id, b);
     return b;
   }
 
-  private render(): void {
+  private filterSelect(label: string, choices: readonly (readonly [string, string])[], change: (value: string) => void): HTMLSelectElement {
+    const select = el('select', 'vm-missions-select');
+    select.setAttribute('aria-label', label);
+    for (const [value, text] of choices) {
+      const option = el('option', undefined, text);
+      option.value = value;
+      select.appendChild(option);
+    }
+    focusable(select);
+    select.addEventListener('change', () => change(select.value));
+    return select;
+  }
+
+  private focusSelectedRow(): void {
+    const row = Array.from(this.body.querySelectorAll<HTMLElement>('.vm-mission-row'))
+      .find(node => node.dataset.missionId === this.selectedId);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private render(requestedPage?: number): void {
+    const active = document.activeElement as HTMLElement | null;
+    const ownedFocus = active !== null && this.body.contains(active);
+    const focusKey = ownedFocus ? active.dataset.missionFocus : undefined;
+    const oldSelection = this.view?.selected?.id;
+    const oldFirstRow = this.view?.visible[0]?.id;
+    const listScroll = this.body.querySelector('.vm-mission-list')?.scrollTop ?? 0;
+    const detailScroll = this.body.querySelector('.vm-mission-detail')?.scrollTop ?? 0;
+    this.renderContent(requestedPage);
+    const list = this.body.querySelector('.vm-mission-list');
+    if (list) list.scrollTop = oldFirstRow === this.view?.visible[0]?.id ? listScroll : 0;
+    const detail = this.body.querySelector('.vm-mission-detail');
+    if (detail && oldSelection === this.selectedId) detail.scrollTop = detailScroll;
+    if (ownedFocus) {
+      const replacement = Array.from(this.body.querySelectorAll<HTMLElement>('[data-mission-focus]'))
+        .find(node => node.dataset.missionFocus === focusKey && !node.hasAttribute('disabled') && node.offsetParent !== null);
+      if (replacement) replacement.focus({ preventScroll: true });
+      else if (this.reading && this.backToList?.offsetParent != null) this.backToList.focus({ preventScroll: true });
+      else if (this.view?.selected) this.focusSelectedRow();
+      else this.scopeSelect.focus({ preventScroll: true });
+    }
+  }
+
+  private renderContent(requestedPage?: number): void {
     this.body.replaceChildren();
-    this.sections.clear();
+    this.view = null;
+    this.backToList = null;
 
     const p = this.progression;
     if (p === null) {
       this.summary.textContent = 'Progression offline';
+      this.announcement.textContent = 'Progression unavailable';
       this.body.appendChild(this.emptyState(
         'Progression is not running',
-        'Missions track from the event bus while a match is live. Start a skirmish and ' +
-        'this screen fills in. If it stays empty the profile store failed to load — your ' +
-        'saved progress is untouched either way.',
+        'The saved profile is still loading or unavailable. Reopen Missions to retry. ' +
+        'Your saved progress has not been changed.',
       ));
       return;
     }
@@ -496,67 +591,106 @@ export class MissionsPanel {
     try {
       entries = p.catalogue();
       unlocked = p.profile().unlocked;
-    } catch (err) {
+    } catch {
       this.summary.textContent = 'Profile unreadable';
+      this.announcement.textContent = 'Profile unreadable';
       this.body.appendChild(this.emptyState(
         'The profile could not be read',
-        `${String(err)}. Import a profile below, or reset — a reset produces a fresh ` +
-        'profile rather than leaving a broken one in place.',
+        'Reopen Missions to retry, or use profile management in Settings to restore a backup. ' +
+        'Your saved progress has not been changed.',
       ));
       return;
     }
 
     this.summary.textContent = summarise(entries, unlocked.length);
 
-    if (unlocked.length > 0) this.body.appendChild(this.earnedStrip(unlocked));
+    for (const [id, b] of this.categoryButtons) {
+      b.setAttribute('aria-pressed', String(id === this.filters.category));
+      b.querySelector('.vm-missions-count')!.textContent = String(id === 'all' ? entries.length : entries.filter(e => e.category === id).length);
+    }
 
     if (entries.length === 0) {
+      this.announcement.textContent = 'No missions authored yet';
       this.body.appendChild(this.emptyState(
         'No missions authored yet',
-        'The mission table is empty. Every unlock is therefore available from the start, ' +
-        'which is the correct behaviour for a profile that has nothing to earn.',
+        'There are no missions in this catalogue. Your saved progress has not been changed.',
       ));
       return;
     }
 
-    for (const cat of MISSION_CATEGORIES) {
-      const mine = entries.filter((e) => e.category === cat.id);
-      if (mine.length === 0) continue;
-      this.body.appendChild(this.renderCategory(cat, mine));
-    }
-  }
-
-  /** What the player already has. Concrete, above the fold, and never a count. */
-  private earnedStrip(unlocked: readonly string[]): HTMLElement {
-    const wrap = el('section', 'vm-missions-earned');
-    wrap.appendChild(el('h3', 'vm-h3', 'Earned'));
-    const chips = el('div', 'vm-missions-chips');
-    for (const id of unlocked) {
-      const chip = el('div', 'vm-chip');
-      chip.appendChild(icon('check', 13));
-      chip.appendChild(el('span', undefined, unlockLabel(id)));
-      chips.appendChild(chip);
-    }
-    wrap.appendChild(chips);
-    return wrap;
-  }
-
-  private renderCategory(cat: CategoryDef, entries: readonly CatalogueEntry[]): HTMLElement {
-    const section = el('section', 'vm-missions-section');
-    const head = el('div', 'vm-missions-cat');
-    head.appendChild(icon(cat.iconName, 16));
-    head.appendChild(el('h3', 'vm-h3', cat.label));
-    section.appendChild(head);
-    section.appendChild(el('p', 'vm-body vm-missions-blurb', cat.blurb));
-
-    for (const chain of buildChains(entries)) {
-      const list = el('div', 'vm-chain');
-      for (const node of chain) list.appendChild(this.renderMission(node));
-      section.appendChild(list);
+    const view = missionBrowserView(entries, this.filters, this.selectedId, requestedPage);
+    this.view = view;
+    this.selectedId = view.selected?.id ?? null;
+    this.body.classList.toggle('is-reading', this.reading && view.selected !== null);
+    if (view.selected === null) {
+      const empty = this.emptyState('No matching missions', 'Try another category, scope or status. No missions have been removed.');
+      empty.appendChild(button('Show all missions', { onClick: () => {
+        this.filters.category = this.filters.scope = this.filters.state = 'all';
+        this.scopeSelect.value = this.stateSelect.value = 'all';
+        this.reading = false;
+        this.render();
+      } }));
+      this.body.appendChild(empty);
+      this.announcement.textContent = 'No matching missions';
+      return;
     }
 
-    this.sections.set(cat.id, section);
-    return section;
+    const results = el('section', 'vm-mission-results');
+    results.setAttribute('aria-label', 'Mission results');
+    const list = el('ul', 'vm-mission-list');
+    for (const entry of view.visible) {
+      const item = el('li');
+      const row = el('button', 'vm-mission-row');
+      row.type = 'button';
+      row.dataset.missionId = entry.id;
+      row.dataset.missionFocus = `row:${entry.id}`;
+      row.setAttribute('aria-pressed', String(entry.id === this.selectedId));
+      focusable(row);
+      row.append(el('strong', 'vm-mission-row-title', entry.title),
+        el('span', `vm-mission-row-state is-${missionState(entry)}`, STATE_LABEL[missionState(entry)]));
+      const rewards = presentableRewards(entry.reward);
+      const teaser = rewards.length ? rewardCopy(rewards[0]).name + (rewards.length > 1 ? ` +${rewards.length - 1}` : '')
+        : entry.scope === 'match' ? 'Match objective' : 'Career objective';
+      row.append(el('span', 'vm-mission-row-reward', teaser),
+        el('span', 'vm-mission-row-progress vm-num', readoutOf(entry.progress)));
+      row.addEventListener('click', () => {
+        this.selectedId = entry.id;
+        this.reading = true;
+        this.render();
+        if (this.backToList?.offsetParent != null) this.backToList.focus({ preventScroll: true });
+      });
+      item.appendChild(row);
+      list.appendChild(item);
+    }
+    results.appendChild(list);
+    const pager = el('nav', 'vm-missions-pager');
+    pager.setAttribute('aria-label', 'Mission pages');
+    for (const [label, delta, disabled] of [['Previous', -1, view.page === 0], ['Next', 1, view.page === view.pages - 1]] as const) {
+      const b = button(label, { disabled, onClick: () => this.render(view.page + delta) });
+      b.dataset.missionFocus = label;
+      if (delta === 1) pager.appendChild(el('span', 'vm-missions-page-count vm-num', `${view.page * MISSION_PAGE_SIZE + 1}–${view.page * MISSION_PAGE_SIZE + view.visible.length} / ${view.filtered.length}`));
+      pager.appendChild(b);
+    }
+    results.appendChild(pager);
+
+    const detail = el('section', 'vm-mission-detail');
+    detail.setAttribute('aria-label', 'Selected mission details');
+    detail.dataset.missionFocus = 'detail';
+    focusable(detail);
+    this.backToList = button('Back to list', { onClick: () => {
+      this.reading = false;
+      this.render();
+      this.focusSelectedRow();
+    } });
+    this.backToList.classList.add('vm-missions-list-back');
+    this.backToList.dataset.missionFocus = 'list-back';
+    detail.appendChild(this.backToList);
+    detail.appendChild(el('p', 'vm-mission-detail-kicker', `${MISSION_CATEGORIES.find(cat => cat.id === view.selected!.category)?.label ?? ''} / ${view.selected.scope === 'match' ? 'This match' : 'Career'}`));
+    const gates = (view.selected.requires ?? []).map(id => entries.find(entry => entry.id === id)?.title ?? humaniseId(id));
+    detail.appendChild(this.renderMission({ entry: view.selected, depth: 0, after: gates, foreign: [] }));
+    this.body.append(results, detail);
+    const message = `${view.selected.title} selected · Page ${view.page + 1} of ${view.pages}`;
+    if (this.announcement.textContent !== message) this.announcement.textContent = message;
   }
 
   private renderMission(node: ChainNode): HTMLElement {
@@ -564,16 +698,13 @@ export class MissionsPanel {
     const state = missionState(entry);
 
     const card = el('article', `vm-mission is-${state}`);
-    // Depth is a data attribute, not an inline margin: the rail that draws the
-    // chain is a pseudo-element and needs the indent in one place only.
-    card.dataset.depth = String(Math.min(3, node.depth));
 
     /* -- head ------------------------------------------------------------ */
     const head = el('div', 'vm-mission-head');
-    head.appendChild(el('h4', 'vm-mission-title', entry.title));
+    head.appendChild(el('h3', 'vm-mission-title', entry.title));
 
     if (entry.difficulty !== undefined) {
-      const pips = el('div', 'vm-mission-diff');
+      const pips = el('div', 'vm-mission-diff', `Difficulty ${entry.difficulty} / 3`);
       pips.title = `Difficulty ${entry.difficulty} of 3`;
       for (let i = 1; i <= 3; i++) {
         const pip = el('i', 'vm-mission-pip');
@@ -583,13 +714,13 @@ export class MissionsPanel {
       head.appendChild(pips);
     }
 
-    if (entry.scope === 'match') {
-      head.appendChild(el('span', 'vm-mission-scope', 'In match'));
-    }
     head.appendChild(el('span', `vm-mission-state is-${state}`, STATE_LABEL[state]));
     card.appendChild(head);
 
     card.appendChild(el('p', 'vm-mission-desc', entry.description));
+    card.appendChild(el('p', 'vm-mission-scope-note', entry.scope === 'match'
+      ? 'Progress resets each match. Outside a match, this is an objective preview.'
+      : 'Career progress is saved across matches.'));
 
     /* -- gate ------------------------------------------------------------ */
     const gates = [...node.after, ...node.foreign];
@@ -605,6 +736,12 @@ export class MissionsPanel {
     /* -- track ----------------------------------------------------------- */
     const track = el('div', 'vm-mission-track');
     const bar = el('div', 'vm-mission-bar');
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-label', `${entry.title} progress`);
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.setAttribute('aria-valuenow', String(Math.round(fractionOf(entry.progress) * 100)));
+    bar.setAttribute('aria-valuetext', readoutOf(entry.progress));
     const fill = el('i', 'vm-mission-fill');
     fill.style.width = `${(fractionOf(entry.progress) * 100).toFixed(1)}%`;
     bar.appendChild(fill);
@@ -615,11 +752,14 @@ export class MissionsPanel {
     /* -- rewards --------------------------------------------------------- */
     const visibleRewards = presentableRewards(entry.reward);
     if (visibleRewards.length > 0) {
+      card.appendChild(el('h4', 'vm-h3 vm-mission-rewards-heading', state === 'complete' ? 'Rewards earned' : 'Rewards'));
       const rewards = el('div', 'vm-mission-rewards');
       for (const r of visibleRewards) {
         rewards.appendChild(rewardCard(r, state === 'complete'));
       }
       card.appendChild(rewards);
+    } else {
+      card.appendChild(el('p', 'vm-mission-scope-note', 'No permanent unlock reward. Completion is recorded for this objective.'));
     }
 
     return card;

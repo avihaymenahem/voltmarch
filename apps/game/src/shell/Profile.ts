@@ -119,7 +119,7 @@ export function cosmeticCollection(
 export function careerRecord(
   profile: ProfileView,
   catalogue: readonly CatalogueEntry[],
-  collection = cosmeticCollection(catalogue, profile.unlocked),
+  collection: readonly CosmeticAward[] = cosmeticCollection(catalogue, profile.unlocked),
 ): CareerRecord {
   const stats = profile.stats;
   const matches = safeCount(stats?.matchesPlayed);
@@ -195,98 +195,28 @@ function statCard(label: string, value: string, detail: string, iconName: string
   return card;
 }
 
-function profileFact(label: string, value: string): HTMLElement {
-  const row = el('div', 'vm-profile-fact');
-  row.appendChild(el('span', undefined, label));
-  row.appendChild(el('strong', undefined, value));
-  return row;
+export const HONOURS_PAGE_SIZE = 6;
+export type HonourFilter = 'all' | 'earned' | 'locked';
+
+export function honoursBrowserView(
+  collection: readonly CosmeticAward[],
+  kind: CosmeticKind | 'all' = 'all',
+  filter: HonourFilter = 'all',
+  selectedId: string | null = null,
+  requestedPage?: number,
+): { filtered: CosmeticAward[]; visible: CosmeticAward[]; selected: CosmeticAward | null; page: number; pages: number } {
+  const filtered = collection.filter(award => (kind === 'all' || award.kind === kind)
+    && (filter === 'all' || award.earned === (filter === 'earned')));
+  let selected = filtered.find(award => award.id === selectedId) ?? filtered[0] ?? null;
+  const pages = Math.max(1, Math.ceil(filtered.length / HONOURS_PAGE_SIZE));
+  const preferred = requestedPage ?? (selected === null ? 0 : Math.floor(filtered.indexOf(selected) / HONOURS_PAGE_SIZE));
+  const page = Math.max(0, Math.min(pages - 1, Number.isFinite(preferred) ? Math.floor(preferred) : 0));
+  const visible = filtered.slice(page * HONOURS_PAGE_SIZE, (page + 1) * HONOURS_PAGE_SIZE);
+  if (selected !== null && !visible.includes(selected)) selected = visible[0] ?? null;
+  return { filtered, visible, selected, page, pages };
 }
 
-function profileChannel(label: string, detail: string): HTMLElement {
-  const row = el('div', 'vm-profile-channel-row');
-  row.appendChild(el('span', 'vm-profile-channel-dot'));
-  row.appendChild(el('span', undefined, label));
-  row.appendChild(el('strong', undefined, detail));
-  return row;
-}
-
-function profileProgress(label: string, value: string, fraction: number, tone = 'cyan'): HTMLElement {
-  const row = el('div', 'vm-profile-progress-row');
-  const head = el('div', 'vm-profile-progress-head');
-  head.appendChild(el('span', undefined, label));
-  head.appendChild(el('strong', 'vm-num', value));
-  row.appendChild(head);
-  const rail = el('i', `vm-profile-progress-rail is-${tone}`);
-  const fill = el('i', 'vm-profile-progress-fill');
-  fill.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
-  rail.appendChild(fill);
-  row.appendChild(rail);
-  return row;
-}
-
-function profileMissionCard(mission: CatalogueEntry): HTMLElement {
-  const card = el('article', `vm-profile-mission ${mission.locked ? 'is-locked' : 'is-active'}`);
-  const previewByCategory: Record<CatalogueEntry['category'], string> = {
-    combat: 'industrial-grid',
-    economy: 'temperate-valley',
-    construction: 'airbase-flats',
-    tactics: 'frozen-sector',
-    mastery: 'contested-strait',
-  };
-  const preview = el('div', 'vm-profile-mission-preview');
-  preview.style.backgroundImage = `url("${import.meta.env.BASE_URL}maps/previews/${previewByCategory[mission.category]}.webp")`;
-  preview.setAttribute('aria-hidden', 'true');
-  card.appendChild(preview);
-  const marker = el('div', 'vm-profile-mission-marker');
-  marker.appendChild(icon(mission.progress.complete ? 'check' : mission.locked ? 'lock' : 'target', 16));
-  card.appendChild(marker);
-  const head = el('div', 'vm-profile-mission-head');
-  head.appendChild(el('strong', 'vm-profile-mission-title', mission.title));
-  head.appendChild(el('span', 'vm-profile-mission-state', mission.progress.complete ? 'Complete' : mission.locked ? 'Locked' : 'In progress'));
-  card.appendChild(head);
-  card.appendChild(el('p', 'vm-profile-mission-description', mission.description));
-  if (mission.locked) {
-    card.appendChild(el('span', 'vm-profile-mission-gate', 'Prerequisite mission required'));
-  } else {
-    const progress = el('div', 'vm-profile-mission-progress');
-    const rail = el('i', 'vm-profile-mission-rail');
-    const fill = el('i', 'vm-profile-mission-fill');
-    const target = Math.max(1, mission.progress.target);
-    fill.style.width = `${Math.min(100, Math.max(0, mission.progress.value / target * 100)).toFixed(1)}%`;
-    rail.appendChild(fill);
-    progress.appendChild(rail);
-    progress.appendChild(el(
-      'span',
-      'vm-profile-mission-count vm-num',
-      `${Math.floor(Math.min(target, mission.progress.value)).toLocaleString('en-US')} / ${target.toLocaleString('en-US')}`,
-    ));
-    card.appendChild(progress);
-  }
-  return card;
-}
-
-
-function awardCard(award: CosmeticAward, index: number): HTMLElement {
-  const card = el('article', `vm-profile-award ${award.earned ? 'is-earned' : 'is-locked'}`);
-  card.title = award.earned
-    ? `${award.name} — earned from ${award.missionTitle}`
-    : `${award.name} — ${award.missionDescription}`;
-  const visual = el('div', 'vm-profile-award-visual');
-  visual.appendChild(cosmeticMark(award.id, award.kind));
-  visual.appendChild(el('span', 'vm-profile-award-index vm-num', String(index + 1).padStart(2, '0')));
-  card.appendChild(visual);
-  card.appendChild(el('strong', 'vm-profile-award-name', award.name));
-  card.appendChild(el('span', 'vm-profile-award-source', award.missionTitle));
-  const progress = el('div', 'vm-profile-award-progress');
-  const rail = el('i', 'vm-profile-award-rail');
-  const fill = el('i', 'vm-profile-award-fill');
-  fill.style.width = `${(progressFraction(award) * 100).toFixed(1)}%`;
-  rail.appendChild(fill);
-  progress.appendChild(rail);
-  progress.appendChild(el('span', undefined, progressLabel(award)));
-  card.appendChild(progress);
-  return card;
-}
+type RecordSection = 'overview' | 'honours' | 'identity';
 
 export class ProfileScreen implements Screen {
   readonly id = 'profile';
@@ -294,39 +224,73 @@ export class ProfileScreen implements Screen {
   private body: HTMLElement | null = null;
   private unsubscribe: (() => void) | null = null;
   private identityNotice = '';
+  private identityEditor: HTMLFormElement | null = null;
   private progression: ProgressionView | null;
   private profileReader: { dispose(): void } | null = null;
   private loadingProfile = false;
   private profileLoadError: unknown = null;
+  private section: RecordSection = 'overview';
+  private readonly sectionButtons = new Map<RecordSection, HTMLButtonElement>();
+  private announcement: HTMLElement | null = null;
+  private tools: HTMLElement | null = null;
+  private kindSelect: HTMLSelectElement | null = null;
+  private earnedSelect: HTMLSelectElement | null = null;
+  private honourKind: CosmeticKind | 'all' = 'all';
+  private honourFilter: HonourFilter = 'all';
+  private selectedAward: string | null = null;
+  private honourView: ReturnType<typeof honoursBrowserView> | null = null;
+  private readingAward = false;
+  private backToHonours: HTMLButtonElement | null = null;
 
   constructor(private readonly shell: Shell, progression?: ProgressionView | null) {
-    this.progression = progression ?? readProgression();
+    this.progression = progression !== undefined ? progression : readProgression();
   }
 
   mount(host: HTMLElement): void {
     this.host = host;
-    host.classList.add('vm-page', 'is-modal', 'vm-profile-page', 'vm-profile-reference-page');
+    host.classList.add('vm-page', 'is-modal', 'vm-profile-page');
     const frame = pageFrame('Service Record', () => this.close());
     frame.root.classList.add('vm-profile-panel');
-    frame.root.classList.add('vm-profile-reference-panel');
+    frame.root.classList.add('vm-record-panel');
     frame.head.appendChild(el('span', 'vm-profile-head-code', 'CAREER // LOCAL PROFILE'));
-    frame.body.classList.add('vm-profile-body');
-    this.body = frame.body;
-
-    frame.foot.appendChild(button('Missions', {
-      iconName: 'trophy',
-      onClick: () => this.shell.openMissions('profile'),
-    }));
-    frame.foot.appendChild(button('Close', { variant: 'primary', onClick: () => this.close() }));
-    host.appendChild(frame.root);
-    this.render();
-
-    if (this.progression !== null) {
-      this.subscribeToProgression(this.progression);
-    } else {
-      this.loadingProfile = true;
-      void this.loadProfileReader();
+    const navigation = el('nav', 'vm-record-sections');
+    navigation.setAttribute('aria-label', 'Service Record sections');
+    for (const [id, label] of [['overview', 'Overview'], ['honours', 'Honours'], ['identity', 'Identity']] as const) {
+      const item = button(label, { onClick: () => this.openSection(id) });
+      item.setAttribute('aria-pressed', String(id === this.section));
+      this.sectionButtons.set(id, item);
+      navigation.appendChild(item);
     }
+    frame.root.insertBefore(navigation, frame.body);
+    this.tools = el('div', 'vm-record-tools');
+    this.kindSelect = this.filterSelect('Award type', [['all', 'All types'], ['insignia', 'Insignia'], ['decal', 'Field decals']], value => {
+      this.honourKind = value as CosmeticKind | 'all';
+      this.readingAward = false;
+      this.render();
+    });
+    this.earnedSelect = this.filterSelect('Ownership', [['all', 'All honours'], ['earned', 'Earned'], ['locked', 'Not earned']], value => {
+      this.honourFilter = value as HonourFilter;
+      this.readingAward = false;
+      this.render();
+    });
+    for (const select of [this.kindSelect, this.earnedSelect]) {
+      const label = el('label', 'vm-record-filter');
+      label.append(el('span', undefined, select.getAttribute('aria-label')!), select);
+      this.tools.appendChild(label);
+    }
+    frame.root.insertBefore(this.tools, frame.body);
+    frame.body.classList.add('vm-record-body');
+    this.body = frame.body;
+    this.identityEditor = this.buildIdentityEditor();
+    this.announcement = el('span', 'vm-record-announcement');
+    this.announcement.setAttribute('role', 'status');
+    this.announcement.setAttribute('aria-atomic', 'true');
+    frame.foot.appendChild(this.announcement);
+    host.appendChild(frame.root);
+    this.loadingProfile = this.progression === null;
+    this.render();
+    if (this.progression !== null) this.subscribeToProgression(this.progression);
+    else void this.loadProfileReader();
   }
 
   unmount(): void {
@@ -334,45 +298,53 @@ export class ProfileScreen implements Screen {
     this.unsubscribe = null;
     this.profileReader?.dispose();
     this.profileReader = null;
+    this.identityEditor = null;
     this.body = null;
-    this.host?.classList.remove('vm-page', 'is-modal', 'vm-profile-page', 'vm-profile-reference-page');
+    this.tools = null;
+    this.announcement = null;
+    this.sectionButtons.clear();
+    this.host?.classList.remove('vm-page', 'is-modal', 'vm-profile-page');
     this.host = null;
   }
 
-  onBack(): boolean {
-    this.close();
-    return true;
+  onBack(): boolean { this.close(); return true; }
+
+  // Native scrolling and caret/picker keys belong to the focused control.
+  onKeyDown(_event: KeyboardEvent): boolean { return false; }
+
+  private close(): void { this.shell.showMenu(); }
+
+  private openSection(section: RecordSection): void {
+    this.section = section;
+    this.readingAward = false;
+    if (this.body) this.body.scrollTop = 0;
+    this.render();
+    this.sectionButtons.get(section)?.focus({ preventScroll: true });
   }
 
-  onKeyDown(e: KeyboardEvent): boolean {
-    const body = this.body;
-    if (body === null) return false;
-    const page = Math.max(120, body.clientHeight - 60);
-    if (e.code === 'PageDown') { body.scrollTop += page; return true; }
-    if (e.code === 'PageUp') { body.scrollTop -= page; return true; }
-    if (e.code === 'Home') { body.scrollTop = 0; return true; }
-    if (e.code === 'End') { body.scrollTop = body.scrollHeight; return true; }
-    return false;
+  private filterSelect(label: string, choices: readonly (readonly [string, string])[], change: (value: string) => void): HTMLSelectElement {
+    const select = el('select', 'vm-record-select');
+    select.setAttribute('aria-label', label);
+    for (const [value, text] of choices) {
+      const option = el('option', undefined, text);
+      option.value = value;
+      select.appendChild(option);
+    }
+    focusable(select);
+    select.addEventListener('change', () => change(select.value));
+    return select;
   }
 
-  private close(): void {
-    this.shell.showMenu();
-  }
-
-  /** Attach one reader and keep its lifetime tied to this modal. */
   private subscribeToProgression(progression: ProgressionView): void {
     try { this.unsubscribe = progression.subscribe(() => this.render()); } catch { /* read once */ }
   }
 
-  /** Load profile data on demand without booting the battlefield engine. */
+  /** Renderer-free profile loading; late results cannot remount a closed screen. */
   private async loadProfileReader(): Promise<void> {
     try {
       const { ProfileReader } = await import('./profile-reader');
       const reader = new ProfileReader();
-      if (this.body === null) {
-        reader.dispose();
-        return;
-      }
+      if (this.body === null) { reader.dispose(); return; }
       this.profileReader = reader;
       this.progression = reader;
       this.loadingProfile = false;
@@ -385,23 +357,20 @@ export class ProfileScreen implements Screen {
     }
   }
 
-  /** One editor over the same settings field consumed by lobby and records. */
+  private commanderName(): string {
+    return normalizeCommanderName(this.shell.settings.get().gameplay.commanderName) ?? 'Commander';
+  }
+
+  /** Kept as one DOM instance across notifications and section switches. */
   private buildIdentityEditor(): HTMLFormElement {
-    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
-      ?? 'Commander';
     const editor = el('form', 'vm-profile-editor');
     editor.setAttribute('aria-label', 'Commander identity');
-    const editorCopy = el('div', 'vm-profile-editor-copy');
+    const copy = el('div', 'vm-profile-editor-copy');
     const label = el('label', 'vm-profile-editor-label', 'Commander identity');
     label.htmlFor = 'vm-profile-commander-name';
-    editorCopy.appendChild(label);
-    editorCopy.appendChild(el(
-      'p',
-      'vm-profile-editor-note',
-      'Your local callsign is used in multiplayer, chat, results, replays and this service record.',
-    ));
-    editor.appendChild(editorCopy);
-
+    copy.append(label, el('p', 'vm-profile-editor-note',
+      'Your local callsign is shared by multiplayer, chat, results, replays and this service record. It is not an online account.'));
+    editor.appendChild(copy);
     const field = el('div', 'vm-profile-editor-field');
     const nameInput = el('input', 'vm-profile-name-input');
     nameInput.id = 'vm-profile-commander-name';
@@ -409,315 +378,277 @@ export class ProfileScreen implements Screen {
     nameInput.maxLength = COMMANDER_NAME_MAX;
     nameInput.autocomplete = 'off';
     nameInput.spellcheck = false;
-    nameInput.value = commanderName;
+    nameInput.value = this.commanderName();
+    nameInput.dataset.recordFocus = 'commander-name';
     nameInput.setAttribute('aria-describedby', 'vm-profile-identity-status');
     focusable(nameInput);
     field.appendChild(nameInput);
-
-    const commitIdentity = (): void => {
-      const next = normalizeCommanderName(nameInput.value);
-      const invalid = next === null;
-      nameInput.classList.toggle('is-invalid', invalid);
-      nameInput.setAttribute('aria-invalid', invalid ? 'true' : 'false');
-      if (next === null) {
-        this.identityNotice = `Enter a visible callsign up to ${COMMANDER_NAME_MAX} characters.`;
-        const live = editor.querySelector<HTMLElement>('#vm-profile-identity-status');
-        if (live !== null) live.textContent = this.identityNotice;
-        nameInput.focus();
-        return;
-      }
-      this.shell.settings.patch({ gameplay: { commanderName: next } });
-      this.identityNotice = 'Commander identity updated.';
-      this.render();
-    };
-
-    field.appendChild(button('Update Identity', {
-      iconName: 'check',
-      variant: 'primary',
-      onClick: commitIdentity,
-    }));
-    editor.appendChild(field);
     const status = el('p', 'vm-profile-editor-status', this.identityNotice);
     status.id = 'vm-profile-identity-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    editor.appendChild(status);
-    editor.addEventListener('submit', (event) => {
-      event.preventDefault();
-      commitIdentity();
-    });
+    const commitIdentity = (): void => {
+      const next = normalizeCommanderName(nameInput.value);
+      nameInput.classList.toggle('is-invalid', next === null);
+      nameInput.setAttribute('aria-invalid', String(next === null));
+      if (next === null) {
+        this.identityNotice = 'Enter a visible callsign up to ' + COMMANDER_NAME_MAX + ' characters.';
+        status.textContent = this.identityNotice;
+        nameInput.focus();
+        return;
+      }
+      nameInput.value = next;
+      this.shell.settings.patch({ gameplay: { commanderName: next } });
+      this.identityNotice = 'Commander identity updated.';
+      status.textContent = this.identityNotice;
+      this.render();
+    };
+    const save = button('Update Identity', { iconName: 'check', variant: 'primary', onClick: commitIdentity });
+    save.dataset.recordFocus = 'save-identity';
+    field.appendChild(save);
+    editor.append(field, status);
+    editor.addEventListener('submit', event => { event.preventDefault(); commitIdentity(); });
     return editor;
   }
 
-  /** Truthful dossier shell for sessions where progression cannot be read. */
-  private buildUnavailableDossier(title: string, detail: string, warning = false): HTMLElement {
-    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
-      ?? 'Commander';
-    const dossier = el('section', 'vm-profile-offline-dossier');
-
-    const plate = el('div', 'vm-profile-offline-plate');
-    const crest = el('div', 'vm-profile-offline-crest');
-    crest.appendChild(icon('crest', 52));
-    plate.appendChild(crest);
-    plate.appendChild(el('span', 'vm-profile-kicker', 'LOCAL COMMAND IDENTITY'));
-    plate.appendChild(el('strong', 'vm-profile-offline-name', commanderName.toLocaleUpperCase()));
-    plate.appendChild(el('span', 'vm-profile-offline-clearance', 'IDENTITY CHANNEL ACTIVE'));
-
-    const status = el('div', `vm-profile-offline-status${warning ? ' is-warning' : ''}`);
-    status.appendChild(icon(warning ? 'warning' : 'info', 28));
-    status.appendChild(el('span', 'vm-profile-offline-code', warning ? 'RECORD // READ ERROR' : 'RECORD // OFFLINE'));
-    status.appendChild(el('h3', 'vm-h3', title));
-    status.appendChild(el('p', 'vm-body', detail));
-    status.appendChild(el('p', 'vm-profile-offline-truth', 'No career totals or honours are shown while the record channel is unavailable.'));
-
-    dossier.appendChild(plate);
-    dossier.appendChild(status);
-    return dossier;
+  private portrait(): HTMLImageElement {
+    const image = el('img', 'vm-record-portrait');
+    image.src = import.meta.env.BASE_URL + 'campaign/portraits/nael.webp';
+    image.alt = 'Commander portrait';
+    return image;
   }
 
-  private render(): void {
+  private buildIdentity(): HTMLElement {
+    const section = el('section', 'vm-record-identity');
+    section.setAttribute('aria-label', 'Identity');
+    const preview = el('div', 'vm-record-identity-preview');
+    preview.append(this.portrait(), el('h3', 'vm-record-callsign', this.commanderName()));
+    section.append(preview, this.identityEditor!);
+    return section;
+  }
+
+  private unavailable(title: string, detail: string): HTMLElement {
+    const section = el('section', 'vm-record-unavailable');
+    section.append(el('h3', 'vm-h3', title), el('p', 'vm-body', detail),
+      el('p', 'vm-body', 'Career totals and honours are unavailable. Your saved record has not been changed.'));
+    section.appendChild(button('Edit identity', { onClick: () => this.openSection('identity') }));
+    return section;
+  }
+
+  private announce(message: string): void {
+    if (this.announcement && this.announcement.textContent !== message) this.announcement.textContent = message;
+  }
+
+  private focusAward(): void {
+    const row = Array.from(this.body?.querySelectorAll<HTMLElement>('.vm-record-award') ?? [])
+      .find(item => item.dataset.awardId === this.selectedAward);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private render(requestedPage?: number): void {
     const body = this.body;
     if (body === null) return;
+    const active = document.activeElement as HTMLElement | null;
+    const ownedFocus = active !== null && body.contains(active);
+    const key = ownedFocus ? active.dataset.recordFocus : undefined;
+    const input = ownedFocus && active.tagName === 'INPUT' ? active as HTMLInputElement : null;
+    const selectionStart = input?.selectionStart ?? null;
+    const selectionEnd = input?.selectionEnd ?? null;
+    const scroll = body.scrollTop;
+    const oldFirst = this.honourView?.visible[0]?.id;
+    const oldSelected = this.honourView?.selected?.id;
+    const listScroll = body.querySelector('.vm-record-award-list')?.scrollTop ?? 0;
+    const detailScroll = body.querySelector('.vm-record-award-detail')?.scrollTop ?? 0;
+    this.renderContent(requestedPage);
+    body.scrollTop = scroll;
+    const list = body.querySelector('.vm-record-award-list');
+    if (list) list.scrollTop = oldFirst === this.honourView?.visible[0]?.id ? listScroll : 0;
+    const detail = body.querySelector('.vm-record-award-detail');
+    if (detail && oldSelected === this.selectedAward) detail.scrollTop = detailScroll;
+    if (ownedFocus) {
+      const replacement = Array.from(body.querySelectorAll<HTMLElement>('[data-record-focus]'))
+        .find(node => node.dataset.recordFocus === key && !node.hasAttribute('disabled') && node.offsetParent !== null);
+      if (replacement) {
+        replacement.focus({ preventScroll: true });
+        if (replacement === input && selectionStart !== null && selectionEnd !== null) input.setSelectionRange(selectionStart, selectionEnd);
+      } else if (this.readingAward && this.backToHonours?.offsetParent != null) this.backToHonours.focus({ preventScroll: true });
+      else if (this.section === 'honours' && this.honourView?.selected) this.focusAward();
+      else this.sectionButtons.get(this.section)?.focus({ preventScroll: true });
+    }
+  }
+
+  private renderContent(requestedPage?: number): void {
+    const body = this.body!;
     body.replaceChildren();
-    // Identity remains editable even if progression is temporarily offline;
-    // it belongs to settings, not to the mission tracker lifecycle.
-    const identityEditor = this.buildIdentityEditor();
-    identityEditor.classList.add('vm-profile-identity-editor');
-    const progression = this.progression;
-    if (progression === null) {
-      const identityColumn = el('section', 'vm-profile-identity-column');
-      identityColumn.appendChild(identityEditor);
-      if (this.loadingProfile) {
-        identityColumn.appendChild(this.buildUnavailableDossier(
-          'Loading service record',
-          'Reading your local profile. The battlefield is not being started.',
-        ));
-        body.appendChild(identityColumn);
-        return;
-      }
-      if (this.profileLoadError !== null) {
-        identityColumn.appendChild(this.buildUnavailableDossier(
-          'Service record unreadable',
-          String(this.profileLoadError),
-          true,
-        ));
-        body.appendChild(identityColumn);
-        return;
-      }
-      identityColumn.appendChild(this.buildUnavailableDossier(
-        'Service record offline',
-        'Progression is not available in this session. Your stored profile has not been changed.',
-      ));
-      body.appendChild(identityColumn);
+    body.className = 'vm-page-body vm-record-body is-' + this.section;
+    this.backToHonours = null;
+    this.honourView = null;
+    this.tools!.hidden = this.section !== 'honours';
+    for (const [id, item] of this.sectionButtons) item.setAttribute('aria-pressed', String(id === this.section));
+    if (this.section === 'identity') {
+      body.appendChild(this.buildIdentity());
+      this.announce('Identity · Callsign used across the game');
       return;
     }
-
+    if (this.progression === null) {
+      const unreadable = this.profileLoadError !== null;
+      const title = unreadable ? 'Service record unreadable' : this.loadingProfile ? 'Loading service record' : 'Service record offline';
+      body.appendChild(this.unavailable(title, unreadable
+        ? 'Reopen Service Record to retry, or restore a profile backup in Settings.'
+        : 'Reading your local profile does not start the battlefield.'));
+      this.announce(title);
+      return;
+    }
     let profile: ProfileView;
     let catalogue: readonly CatalogueEntry[];
-    try {
-      profile = progression.profile();
-      catalogue = progression.catalogue();
-    } catch (err) {
-      body.appendChild(this.buildUnavailableDossier('Service record unreadable', String(err), true));
+    try { profile = this.progression.profile(); catalogue = this.progression.catalogue(); }
+    catch {
+      body.appendChild(this.unavailable('Service record unreadable', 'Reopen Service Record to retry, or restore a profile backup in Settings.'));
+      this.announce('Service record unreadable');
       return;
     }
-
     const collection = cosmeticCollection(catalogue, profile.unlocked);
+    if (this.section === 'overview') {
+      body.appendChild(this.buildOverview(profile, catalogue, collection));
+      this.announce('Overview · Lifetime record');
+    } else {
+      this.buildHonours(collection, requestedPage);
+    }
+  }
+
+  private buildOverview(profile: ProfileView, catalogue: readonly CatalogueEntry[], collection: readonly CosmeticAward[]): HTMLElement {
+    const overview = el('section', 'vm-record-overview');
+    overview.setAttribute('aria-label', 'Overview');
+    const identity = el('div', 'vm-record-summary');
+    const copy = el('div');
+    copy.append(el('h3', 'vm-record-callsign', this.commanderName()),
+      el('p', 'vm-body', 'Local profile · Service record opened ' + dateLabel(profile.createdAt)));
+    identity.append(this.portrait(), copy);
+    overview.appendChild(identity);
     const career = careerRecord(profile, catalogue, collection);
-    const earned = collection.filter((a) => a.earned);
-    const featured = earned.at(-1) ?? collection[0];
-    const factionRows = factionCareerRows(profile, playableFactions());
-    const maxWins = Math.max(1, ...factionRows.map((f) => f.wins));
-
-    const dossier = el('section', 'vm-profile-dossier');
-    const commanderName = normalizeCommanderName(this.shell.settings.get().gameplay.commanderName)
-      ?? 'Commander';
-    const identity = el('div', 'vm-profile-identity');
-    const portraitFrame = el('div', 'vm-profile-portrait-frame');
-    const portrait = document.createElement('img');
-    portrait.src = `${import.meta.env.BASE_URL}campaign/portraits/nael.webp`;
-    portrait.alt = 'Commander portrait';
-    portrait.loading = 'eager';
-    portraitFrame.appendChild(portrait);
-    const crest = el('div', `vm-profile-crest${earned.length === 0 ? ' is-empty' : ''}`);
-    if (featured !== undefined) crest.appendChild(cosmeticMark(featured.id, featured.kind, 104));
-    portraitFrame.appendChild(crest);
-    identity.appendChild(portraitFrame);
-    const copy = el('div', 'vm-profile-identity-copy');
-    copy.appendChild(el('span', 'vm-profile-kicker', 'LOCAL COMMAND IDENTITY'));
-    copy.appendChild(el('h3', 'vm-profile-callsign', commanderName.toLocaleUpperCase()));
-    copy.appendChild(el('p', 'vm-profile-service', `Service record opened ${dateLabel(profile.createdAt)}`));
-    const chips = el('div', 'vm-profile-chips');
-    chips.appendChild(el('span', 'vm-chip', `${career.honoursEarned} honours`));
-    chips.appendChild(el('span', 'vm-chip', `${career.operationsComplete} operations`));
-    chips.appendChild(el('span', 'vm-chip', `${career.winRate.toFixed(0)}% win rate`));
-    copy.appendChild(chips);
-    identity.appendChild(copy);
-    dossier.appendChild(identity);
-
-    const facts = el('div', 'vm-profile-identity-facts');
-    facts.appendChild(profileFact('Status', 'Active duty'));
-    facts.appendChild(profileFact('Rank', 'Commander'));
-    facts.appendChild(profileFact('Record', 'Local profile'));
-    facts.appendChild(profileFact('D.O.S.', dateLabel(profile.createdAt)));
-    dossier.appendChild(facts);
-
-    const channels = el('div', 'vm-profile-identity-channels');
-    channels.appendChild(el('span', 'vm-profile-subhead', 'IDENTITY CHANNELS'));
-    channels.appendChild(profileChannel('Multiplayer', 'SHARED'));
-    channels.appendChild(profileChannel('Chat and results', 'SHARED'));
-    channels.appendChild(profileChannel('Replays', 'SHARED'));
-    dossier.appendChild(channels);
-
-    const ribbons = el('div', 'vm-profile-ribbons');
-    const recent = earned.slice(-4).reverse();
-    ribbons.appendChild(el('span', 'vm-profile-ribbons-label', recent.length > 0 ? 'Displayed honours' : 'No honours earned yet'));
-    for (const award of recent) {
-      const mark = el('div', 'vm-profile-ribbon');
-      mark.title = award.name;
-      mark.appendChild(cosmeticMark(award.id, award.kind, 46));
-      ribbons.appendChild(mark);
-    }
-    dossier.appendChild(ribbons);
-
-    const identityColumn = el('section', 'vm-profile-identity-column');
-    identityColumn.appendChild(dossier);
-    identityColumn.appendChild(identityEditor);
-    body.appendChild(identityColumn);
-
-    const stats = el('div', 'vm-profile-stats vm-profile-career-summary');
-    stats.appendChild(statCard('Matches', career.matches.toLocaleString('en-US'), `${career.wins} victories · ${career.losses} defeats`, 'swords'));
-    stats.appendChild(statCard('Win rate', `${career.winRate.toFixed(1)}%`, career.matches > 0 ? 'Lifetime skirmish record' : 'Complete a skirmish to establish', 'target'));
-    stats.appendChild(statCard('Current streak', career.currentStreak.toLocaleString('en-US'), `Best ${career.bestStreak.toLocaleString('en-US')}`, 'clock'));
-    stats.appendChild(statCard('Missions', `${career.missionsComplete} / ${career.missionsTotal}`, 'Profile chains completed', 'trophy'));
-    stats.appendChild(statCard('Operations', career.operationsComplete.toLocaleString('en-US'), `${career.goldOperations} gold-grade`, 'flag'));
-    stats.appendChild(statCard('Honours', `${career.honoursEarned} / ${career.honoursTotal}`, 'Insignia and field decals', 'trophy'));
-
-    const careerBoard = el('section', 'vm-profile-career-board');
-    careerBoard.appendChild(stats);
-    const performance = el('section', 'vm-profile-performance');
-    performance.appendChild(el('span', 'vm-profile-subhead', 'COMBAT PERFORMANCE'));
-    performance.appendChild(profileProgress('Victory rate', `${career.winRate.toFixed(1)}%`, career.winRate / 100, 'violet'));
-    performance.appendChild(profileProgress('Current streak', `${career.currentStreak} wins`, career.bestStreak > 0 ? career.currentStreak / career.bestStreak : 0, 'cyan'));
-    performance.appendChild(profileProgress('Best streak', `${career.bestStreak} wins`, career.bestStreak > 0 ? 1 : 0, 'amber'));
-    careerBoard.appendChild(performance);
-
-    const careerProgression = el('section', 'vm-profile-progression');
-    careerProgression.appendChild(el('span', 'vm-profile-subhead', 'CAREER PROGRESSION'));
-    careerProgression.appendChild(profileProgress('Profile chains', `${career.missionsComplete} / ${career.missionsTotal}`, career.missionsTotal > 0 ? career.missionsComplete / career.missionsTotal : 0, 'violet'));
-    careerProgression.appendChild(profileProgress('Operations cleared', `${career.operationsComplete} / ${CAMPAIGN_OPERATION_COUNT}`, Math.min(1, career.operationsComplete / CAMPAIGN_OPERATION_COUNT), 'cyan'));
-    careerProgression.appendChild(profileProgress('Honours recovered', `${career.honoursEarned} / ${career.honoursTotal}`, career.honoursTotal > 0 ? career.honoursEarned / career.honoursTotal : 0, 'amber'));
-    careerBoard.appendChild(careerProgression);
-
-    const specializations = el('section', 'vm-profile-specializations');
-    specializations.appendChild(el('span', 'vm-profile-subhead', 'COMMAND SPECIALIZATIONS'));
-    const specializationGrid = el('div', 'vm-profile-specialization-grid');
-    factionRows.forEach((faction) => {
-      const item = el('article', 'vm-profile-specialization');
+    const stats = el('div', 'vm-record-stats');
+    stats.append(
+      statCard('Matches', career.matches.toLocaleString('en-US'), career.wins + ' victories · ' + career.losses + ' defeats', 'swords'),
+      statCard('Win rate', career.winRate.toFixed(1) + '%', career.matches > 0 ? 'Lifetime skirmish record' : 'Complete a skirmish to establish', 'target'),
+      statCard('Current streak', career.currentStreak.toLocaleString('en-US'), 'Best ' + career.bestStreak.toLocaleString('en-US'), 'clock'),
+      statCard('Missions', career.missionsComplete + ' / ' + career.missionsTotal, 'Career chains completed', 'trophy'),
+      statCard('Operations', career.operationsComplete + ' / ' + CAMPAIGN_OPERATION_COUNT, career.goldOperations + ' gold-grade', 'flag'),
+      statCard('Honours', career.honoursEarned + ' / ' + career.honoursTotal, 'Insignia and field decals', 'trophy'),
+    );
+    overview.appendChild(stats);
+    const factions = el('section', 'vm-record-factions');
+    factions.setAttribute('aria-label', 'Faction record');
+    factions.appendChild(el('h3', 'vm-h3', 'Faction record'));
+    const grid = el('div', 'vm-record-faction-grid');
+    for (const faction of factionCareerRows(profile, playableFactions())) {
+      const item = el('article', 'vm-record-faction');
       item.style.setProperty('--vm-faction', faction.color);
-      item.appendChild(el('i', 'vm-profile-specialization-stripe'));
-      item.appendChild(el('strong', undefined, faction.name));
-      item.appendChild(el('span', undefined, `${faction.wins} victories credited`));
-      specializationGrid.appendChild(item);
-    });
-    specializations.appendChild(specializationGrid);
-    careerBoard.appendChild(specializations);
-    body.appendChild(careerBoard);
-
-    const missionPanel = el('section', 'vm-profile-mission-panel');
-    const missionHead = el('div', 'vm-profile-section-head');
-    missionHead.appendChild(el('span', 'vm-profile-section-index', '03'));
-    const missionTitle = el('div');
-    missionTitle.appendChild(el('h3', 'vm-h3', 'Missions'));
-    missionTitle.appendChild(el('p', 'vm-body', `${career.missionsComplete} of ${career.missionsTotal} profile chains complete.`));
-    missionHead.appendChild(missionTitle);
-    missionPanel.appendChild(missionHead);
-    const missionFilters = el('div', 'vm-profile-mission-filters');
-    missionFilters.setAttribute('aria-label', 'Filter profile missions');
-    const missionList = el('div', 'vm-profile-mission-list');
-    const renderMissions = (filter: ProfileMissionFilter): void => {
-      const rows = profileMissionRows(catalogue, filter);
-      missionList.replaceChildren();
-      if (rows.length === 0) {
-        missionList.appendChild(el('p', 'vm-profile-mission-empty', filter === 'complete'
-          ? 'No profile missions completed yet.' : 'No missions in this category. Explore the full catalogue below.'));
-      }
-      rows.forEach((mission) => missionList.appendChild(profileMissionCard(mission)));
-      for (const item of missionFilters.querySelectorAll<HTMLButtonElement>('button')) {
-        const active = item.dataset.filter === filter;
-        item.classList.toggle('is-active', active);
-        item.setAttribute('aria-pressed', String(active));
-      }
-    };
-    for (const [filter, label] of [['all', 'All'], ['active', 'Active'], ['complete', 'Complete']] as const) {
-      const item = el('button', undefined, label);
-      item.type = 'button';
-      item.dataset.filter = filter;
-      focusable(item);
-      item.addEventListener('click', () => renderMissions(filter));
-      missionFilters.appendChild(item);
+      item.append(el('strong', undefined, faction.name),
+        el('span', 'vm-num', faction.wins + (faction.wins === 1 ? ' victory' : ' victories')));
+      grid.appendChild(item);
     }
-    missionPanel.appendChild(missionFilters);
-    missionPanel.appendChild(missionList);
-    renderMissions('all');
-    missionPanel.appendChild(button('View all missions', {
-      iconName: 'chevronRight', onClick: () => this.shell.openMissions('profile'),
-    }));
-    body.appendChild(missionPanel);
+    factions.appendChild(grid);
+    overview.appendChild(factions);
+    const actions = el('div', 'vm-record-actions');
+    actions.append(button('View Missions', { onClick: () => this.shell.openMissions('profile') }),
+      button('View Operations', { onClick: () => this.shell.openCampaign() }));
+    overview.appendChild(actions);
+    return overview;
+  }
 
-    const factionSection = el('section', 'vm-profile-section vm-profile-faction-record');
-    const factionHead = el('div', 'vm-profile-section-head');
-    factionHead.appendChild(el('span', 'vm-profile-section-index', '01'));
-    const factionTitle = el('div');
-    factionTitle.appendChild(el('h3', 'vm-h3', 'Faction record'));
-    factionTitle.appendChild(el('p', 'vm-body', 'Victories credited to each command doctrine.'));
-    factionHead.appendChild(factionTitle);
-    factionSection.appendChild(factionHead);
-    const factionGrid = el('div', 'vm-profile-factions');
-    for (const faction of factionRows) {
-      const card = el('article', 'vm-profile-faction');
-      card.style.setProperty('--vm-faction', faction.color);
-      card.appendChild(el('i', 'vm-profile-faction-stripe'));
-      card.appendChild(el('strong', 'vm-profile-faction-name', faction.name));
-      card.appendChild(el('span', 'vm-profile-faction-wins vm-num', `${faction.wins} win${faction.wins === 1 ? '' : 's'}`));
-      const rail = el('i', 'vm-profile-faction-rail');
-      const fill = el('i', 'vm-profile-faction-fill');
-      fill.style.width = `${(faction.wins / maxWins * 100).toFixed(1)}%`;
-      rail.appendChild(fill);
-      card.appendChild(rail);
-      factionGrid.appendChild(card);
+  private buildHonours(collection: readonly CosmeticAward[], requestedPage?: number): void {
+    const view = honoursBrowserView(collection, this.honourKind, this.honourFilter, this.selectedAward, requestedPage);
+    this.honourView = view;
+    this.selectedAward = view.selected?.id ?? null;
+    const body = this.body!;
+    body.classList.toggle('is-reading', this.readingAward && view.selected !== null);
+    if (view.selected === null) {
+      const empty = el('section', 'vm-record-unavailable');
+      empty.append(el('h3', 'vm-h3', collection.length === 0 ? 'No honours authored yet' : 'No matching honours'),
+        el('p', 'vm-body', collection.length === 0 ? 'No insignia or field decals exist in this catalogue.' : 'Try another award type or ownership filter.'));
+      if (collection.length > 0) empty.appendChild(button('Show all honours', { onClick: () => {
+        this.honourKind = this.honourFilter = 'all';
+        this.kindSelect!.value = this.earnedSelect!.value = 'all';
+        this.readingAward = false;
+        this.render();
+      } }));
+      body.appendChild(empty);
+      this.announce(collection.length === 0 ? 'No honours authored yet' : 'No matching honours');
+      return;
     }
-    factionSection.appendChild(factionGrid);
-    body.appendChild(factionSection);
-
-    const honourSection = el('section', 'vm-profile-section vm-profile-honours-record');
-    const honourHead = el('div', 'vm-profile-section-head');
-    honourHead.appendChild(el('span', 'vm-profile-section-index', '02'));
-    const honourTitle = el('div');
-    honourTitle.appendChild(el('h3', 'vm-h3', 'Honours collection'));
-    honourTitle.appendChild(el('p', 'vm-body', `${career.honoursEarned} of ${career.honoursTotal} recovered. Every award names the mission that pays it.`));
-    honourHead.appendChild(honourTitle);
-    honourSection.appendChild(honourHead);
-
-    for (const kind of ['insignia', 'decal'] as const) {
-      const awards = collection.filter((a) => a.kind === kind);
-      if (awards.length === 0) continue;
-      const groupHead = el('div', 'vm-profile-group-head');
-      groupHead.appendChild(el('span', 'vm-profile-group-title', kind === 'insignia' ? 'Command insignia' : 'Field decals'));
-      groupHead.appendChild(el('span', 'vm-profile-group-count vm-num', `${awards.filter((a) => a.earned).length} / ${awards.length}`));
-      honourSection.appendChild(groupHead);
-      const grid = el('div', 'vm-profile-awards');
-      awards.forEach((award, i) => grid.appendChild(awardCard(award, i)));
-      honourSection.appendChild(grid);
+    const results = el('section', 'vm-record-award-results');
+    results.setAttribute('aria-label', 'Honours collection');
+    const list = el('ul', 'vm-record-award-list');
+    for (const award of view.visible) {
+      const item = el('li');
+      const card = el('button', 'vm-record-award');
+      card.type = 'button';
+      card.dataset.awardId = award.id;
+      card.dataset.recordFocus = 'award:' + award.id;
+      card.setAttribute('aria-pressed', String(award.id === this.selectedAward));
+      focusable(card);
+      card.append(cosmeticMark(award.id, award.kind, 40), el('strong', undefined, award.name),
+        el('span', undefined, award.earned ? 'Earned' : award.complete ? 'Awaiting debrief' : 'Not earned'));
+      card.addEventListener('click', () => {
+        this.selectedAward = award.id;
+        this.readingAward = true;
+        this.render();
+        if (this.backToHonours?.offsetParent != null) this.backToHonours.focus({ preventScroll: true });
+      });
+      item.appendChild(card);
+      list.appendChild(item);
     }
-     body.appendChild(honourSection);
-
-    const clearance = el('section', 'vm-profile-clearance-record');
-    clearance.appendChild(el('span', 'vm-profile-subhead', 'CLEARANCE LEVEL'));
-    clearance.appendChild(el('strong', 'vm-profile-clearance-level', 'LOCAL'));
-    clearance.appendChild(el('span', 'vm-profile-clearance-status', 'ACCESS GRANTED'));
-    clearance.appendChild(el('i', 'vm-profile-clearance-rule'));
-    clearance.appendChild(el('span', 'vm-profile-clearance-code', 'PROFILE CHANNEL // VERIFIED'));
-    body.appendChild(clearance);
+    results.appendChild(list);
+    const pager = el('nav', 'vm-record-pager');
+    pager.setAttribute('aria-label', 'Honour pages');
+    for (const [label, delta, disabled] of [['Previous', -1, view.page === 0], ['Next', 1, view.page === view.pages - 1]] as const) {
+      if (delta === 1) pager.appendChild(el('span', 'vm-num',
+        (view.page * HONOURS_PAGE_SIZE + 1) + '–' + (view.page * HONOURS_PAGE_SIZE + view.visible.length) + ' / ' + view.filtered.length));
+      const item = button(label, { disabled, onClick: () => this.render(view.page + delta) });
+      item.dataset.recordFocus = label;
+      pager.appendChild(item);
+    }
+    results.appendChild(pager);
+    const detail = el('section', 'vm-record-award-detail');
+    detail.setAttribute('aria-label', 'Selected honour details');
+    detail.dataset.recordFocus = 'award-detail';
+    focusable(detail);
+    this.backToHonours = button('Back to honours', { onClick: () => {
+      this.readingAward = false;
+      this.render();
+      this.focusAward();
+    } });
+    this.backToHonours.classList.add('vm-record-list-back');
+    this.backToHonours.dataset.recordFocus = 'honours-back';
+    detail.appendChild(this.backToHonours);
+    const award = view.selected;
+    const hero = el('div', 'vm-record-award-hero');
+    const title = el('div');
+    title.append(el('p', 'vm-record-kicker', award.kind === 'insignia' ? 'Command insignia' : 'Field decal'),
+      el('h3', 'vm-record-award-name', award.name));
+    hero.append(cosmeticMark(award.id, award.kind, 64), title);
+    detail.append(hero, el('p', 'vm-record-award-status', award.earned ? 'Earned' : award.complete ? 'Awaiting debrief' : 'Not earned'),
+      el('h4', 'vm-h3', award.missionTitle), el('p', 'vm-body', award.missionDescription));
+    const progress = el('div', 'vm-record-progress');
+    progress.setAttribute('role', 'progressbar');
+    progress.setAttribute('aria-label', award.name + ' progress');
+    progress.setAttribute('aria-valuemin', '0');
+    progress.setAttribute('aria-valuemax', '100');
+    progress.setAttribute('aria-valuenow', String(Math.round(progressFraction(award) * 100)));
+    progress.setAttribute('aria-valuetext', progressLabel(award));
+    const fill = el('i');
+    fill.style.width = (progressFraction(award) * 100) + '%';
+    progress.appendChild(fill);
+    detail.append(progress, el('p', 'vm-record-award-count vm-num', progressLabel(award)),
+      el('p', 'vm-body', 'Cosmetic only. Honours do not change combat strength.'));
+    if (award.earned && award.claimedAt !== null && award.claimedAt > 0) {
+      detail.appendChild(el('p', 'vm-body', 'Awarded ' + dateLabel(award.claimedAt)));
+    }
+    const missions = button('View Missions', { onClick: () => this.shell.openMissions('profile') });
+    missions.dataset.recordFocus = 'view-missions';
+    detail.appendChild(missions);
+    body.append(results, detail);
+    this.announce(award.name + ' selected · Page ' + (view.page + 1) + ' of ' + view.pages);
   }
 }

@@ -190,6 +190,153 @@
 .vm-shell .vm-command-shell .vm-profile-mission-filters button.is-active { color: var(--vm-accent); border-bottom-color: var(--vm-accent); background: rgba(60, 221, 250, .07); }
 .vm-shell .vm-command-shell .vm-profile-mission-filters button:focus-visible { outline: 1px solid var(--vm-accent); outline-offset: -3px; }
 
+/* Service Record: one focused section, without the repeated dashboard panels. */
+.vm-shell .vm-record-panel > .vm-page-head { flex-wrap: wrap; gap: 8px; }
+.vm-shell .vm-record-panel > .vm-page-head::after { display: none; }
+.vm-shell .vm-record-panel .vm-profile-head-code { white-space: normal; }
+.vm-shell .vm-record-sections { display: flex; flex: 0 0 auto; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--vm-line); }
+.vm-shell .vm-record-sections .vm-btn { width: auto; min-width: 0; min-height: 44px; padding: 8px 20px; }
+.vm-shell .vm-record-sections .vm-btn-label { letter-spacing: .1em; }
+.vm-shell .vm-record-sections .vm-btn[aria-pressed='true'] { border-color: var(--vm-accent); color: var(--vm-accent); background: rgba(60, 221, 250, .09); }
+.vm-shell .vm-record-body { padding: 16px; overflow-y: auto; }
+.vm-shell .vm-record-overview { display: grid; grid-template-columns: minmax(200px, .6fr) minmax(0, 1.4fr); grid-template-areas: 'summary stats' 'factions factions' 'actions actions'; gap: 12px; min-width: 0; }
+.vm-shell .vm-record-summary { grid-area: summary; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--vm-line-soft); background: rgba(60, 221, 250, .035); }
+.vm-shell .vm-record-summary > div { min-width: 0; }
+.vm-shell .vm-record-summary .vm-body { margin: 4px 0 0; }
+.vm-shell .vm-record-portrait { width: 60px; height: 72px; flex-shrink: 0; object-fit: cover; border: 1px solid var(--vm-line); }
+.vm-shell .vm-record-callsign { margin: 0; font-family: var(--vm-font-display); font-size: calc(25px * var(--vm-text-scale, 1)); line-height: 1.2; letter-spacing: .08em; overflow-wrap: anywhere; }
+.vm-shell .vm-record-stats { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vm-shell .vm-record-factions { grid-area: factions; }
+.vm-shell .vm-record-stats .vm-profile-stat { min-height: 0; padding: 10px 12px; gap: 4px; }
+.vm-shell .vm-record-stats .vm-profile-stat-value { font-size: calc(28px * var(--vm-text-scale, 1)); line-height: 1; }
+.vm-shell .vm-record-stats .vm-profile-stat-head, .vm-shell .vm-record-stats .vm-profile-stat-detail { font-size: calc(11px * var(--vm-text-scale, 1)); white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+.vm-shell .vm-record-factions > .vm-h3 { margin-bottom: 8px; }
+.vm-shell .vm-record-faction-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.vm-shell .vm-record-faction { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--vm-line-soft); border-left: 2px solid var(--vm-faction); font-size: calc(12px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-record-faction > span { color: var(--vm-text-dim); }
+.vm-shell .vm-record-actions { grid-area: actions; display: flex; flex-wrap: wrap; gap: 8px; }
+.vm-shell .vm-record-actions .vm-btn { width: auto; min-height: 44px; padding: 8px 16px; }
+.vm-shell .vm-record-actions .vm-btn-label { font-size: calc(12px * var(--vm-text-scale, 1)); letter-spacing: .1em; }
+.vm-shell .vm-record-identity { display: grid; grid-template-columns: minmax(160px, .6fr) minmax(0, 1.4fr); align-items: start; gap: 24px; }
+.vm-shell .vm-record-identity-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.vm-shell .vm-record-identity-preview .vm-record-portrait { width: 160px; height: 200px; }
+.vm-shell .vm-record-identity .vm-profile-editor { grid-column: auto; display: flex; flex-direction: column; align-items: stretch; gap: 18px; margin: 0; padding: 20px; min-width: 0; }
+.vm-shell .vm-record-identity .vm-profile-editor-field { display: flex; flex-wrap: wrap; gap: 12px; }
+.vm-shell .vm-record-identity .vm-profile-name-input { width: 100%; min-width: 0; min-height: 44px; }
+.vm-shell .vm-record-identity .vm-profile-editor-field .vm-btn { width: auto; min-width: 0; min-height: 44px; }
+.vm-shell .vm-record-identity .vm-profile-editor-note { margin: 8px 0 0; }
+.vm-shell .vm-record-tools { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px 20px; padding: 8px 16px; border-bottom: 1px solid var(--vm-line-soft); }
+.vm-shell .vm-record-tools[hidden] { display: none; }
+.vm-shell .vm-record-filter { display: flex; align-items: center; gap: 10px; color: var(--vm-text-dim); font-size: calc(12px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-record-select { min-height: 44px; max-width: 100%; border: 1px solid var(--vm-line); padding: 6px 28px 6px 10px; color: var(--vm-text); background: #07121c; font: inherit; }
+.vm-shell .vm-record-body.is-honours { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); padding: 0; overflow: hidden; }
+.vm-shell .vm-record-award-results { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--vm-line); }
+.vm-shell .vm-record-award-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; flex: 1; min-height: 0; margin: 0; padding: 12px; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.vm-shell .vm-record-award { appearance: none; display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 4px 10px; width: 100%; height: 100%; min-height: 78px; padding: 10px; color: var(--vm-text); background: rgba(6, 16, 24, .7); border: 1px solid var(--vm-line-soft); font: inherit; text-align: left; cursor: pointer; }
+.vm-shell .vm-record-award > svg { grid-row: span 2; }
+.vm-shell .vm-record-award > strong { font-size: calc(13px * var(--vm-text-scale, 1)); overflow-wrap: anywhere; }
+.vm-shell .vm-record-award > span { color: var(--vm-text-dim); font-size: calc(11px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-record-award[aria-pressed='true'] { border-color: var(--vm-accent); background: rgba(60, 221, 250, .09); }
+.vm-shell .vm-record-pager { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--vm-line-soft); }
+.vm-shell .vm-record-pager .vm-btn { flex: 0 0 auto; width: auto; min-width: 0; min-height: 44px; padding: 8px 12px; }
+.vm-shell .vm-record-pager .vm-btn-label, .vm-shell .vm-record-pager > span { font-size: calc(11px * var(--vm-text-scale, 1)); letter-spacing: .08em; }
+.vm-shell .vm-record-award-detail { min-width: 0; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+.vm-shell .vm-record-award-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.vm-shell .vm-record-award-hero > svg { flex-shrink: 0; }
+.vm-shell .vm-record-kicker { margin: 0 0 6px; color: var(--vm-accent); font-size: calc(11px * var(--vm-text-scale, 1)); text-transform: uppercase; letter-spacing: .1em; }
+.vm-shell .vm-record-award-name { margin: 0; font-size: calc(25px * var(--vm-text-scale, 1)); line-height: 1.2; overflow-wrap: anywhere; }
+.vm-shell .vm-record-award-detail .vm-h3 { margin-top: 16px; }
+.vm-shell .vm-record-award-detail .vm-body { margin: 8px 0 12px; }
+.vm-shell .vm-record-award-status { color: var(--vm-accent); font-size: calc(12px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-record-progress { height: 4px; background: rgba(255,255,255,.1); }
+.vm-shell .vm-record-progress > i { display: block; height: 100%; background: var(--vm-accent); }
+.vm-shell .vm-record-award-count { margin: 6px 0; font-size: calc(12px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-record-award-detail > .vm-btn { min-height: 44px; padding: 8px 16px; }
+.vm-shell .vm-record-award-detail > .vm-btn .vm-btn-label { font-size: calc(12px * var(--vm-text-scale, 1)); letter-spacing: .1em; }
+.vm-shell .vm-record-list-back { display: none; }
+.vm-shell .vm-record-announcement { color: var(--vm-text-dim); font-size: calc(11px * var(--vm-text-scale, 1)); line-height: 1.4; }
+.vm-shell .vm-record-unavailable { grid-column: 1 / -1; padding: 20px; overflow-y: auto; }
+.vm-shell .vm-record-unavailable > .vm-btn { margin-top: 12px; width: auto; }
+.vm-shell .vm-record-award:focus-visible, .vm-shell .vm-record-award.is-focus, .vm-shell .vm-record-award-detail:focus-visible, .vm-shell .vm-record-award-detail.is-focus, .vm-shell .vm-record-select:focus-visible { outline: 1px solid var(--vm-accent); outline-offset: -3px; }
+@media (max-width: 850px) {
+  .vm-shell .vm-record-overview { display: flex; flex-direction: column; }
+  .vm-shell .vm-record-summary { flex-direction: row; justify-content: flex-start; align-items: center; padding: 0; border: 0; background: none; }
+  .vm-shell .vm-record-body.is-honours { grid-template-columns: minmax(0, 1fr); }
+  .vm-shell .vm-record-body.is-honours:not(.is-reading) > .vm-record-award-detail,
+  .vm-shell .vm-record-body.is-reading > .vm-record-award-results { display: none; }
+  .vm-shell .vm-record-list-back { display: inline-flex; margin-bottom: 16px; }
+  .vm-shell .vm-record-award-results { border: 0; }
+  .vm-shell .vm-record-faction-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vm-shell .vm-record-tools { gap: 8px; }
+  .vm-shell .vm-record-filter { flex: 1; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .vm-shell .vm-record-select { width: 100%; }
+  .vm-shell .vm-record-sections .vm-btn { flex: 1; padding-inline: 10px; }
+}
+@media (max-width: 600px) {
+  .vm-shell .vm-record-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vm-shell .vm-record-identity { grid-template-columns: minmax(0, 1fr); }
+  .vm-shell .vm-record-identity-preview { flex-direction: row; align-items: center; }
+  .vm-shell .vm-record-identity-preview .vm-record-portrait { width: 60px; height: 72px; }
+}
+
+/* Missions: a bounded browser, not fifty expanded dossiers. The list and the
+   selected dossier may scroll locally; the page and its controls stay put. */
+.vm-shell .vm-command-shell .vm-missions > .vm-missions-panel { height: 100%; }
+.vm-shell .vm-missions-panel > .vm-page-head { flex-wrap: wrap; gap: 8px 24px; }
+.vm-shell .vm-missions-summary { white-space: normal; letter-spacing: .12em; line-height: 1.5; }
+.vm-shell .vm-missions-panel > .vm-missions-rail { gap: 6px; padding: 8px 16px; }
+.vm-shell .vm-missions-jump { min-height: 44px; padding: 8px 12px; letter-spacing: .1em; }
+.vm-shell .vm-missions-jump[aria-pressed='true'] { color: var(--vm-accent); border-color: var(--vm-accent); background: rgba(60, 221, 250, .09); }
+.vm-shell .vm-missions-count { font-size: .85em; opacity: .75; }
+.vm-shell .vm-missions-filters { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px 20px; padding: 8px 16px; border-bottom: 1px solid var(--vm-line-soft); }
+.vm-shell .vm-missions-filter { display: flex; align-items: center; gap: 10px; color: var(--vm-text-dim); font-size: calc(12px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-missions-select { min-height: 44px; max-width: 100%; border: 1px solid var(--vm-line); padding: 6px 28px 6px 10px; color: var(--vm-text); background: #07121c; font: inherit; }
+.vm-shell .vm-missions-body { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(0, 1.1fr); gap: 0; padding: 0; overflow: hidden; }
+.vm-shell .vm-mission-results { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--vm-line); }
+.vm-shell .vm-mission-list { flex: 1; min-height: 0; margin: 0; padding: 8px; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.vm-shell .vm-mission-list > li + li { margin-top: 4px; }
+.vm-shell .vm-mission-row { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; width: 100%; min-height: 44px; padding: 5px 10px; text-align: left; color: var(--vm-text); background: rgba(6, 16, 24, .7); border: 1px solid var(--vm-line-soft); border-left: 2px solid transparent; font: inherit; line-height: 1.3; cursor: pointer; }
+.vm-shell .vm-mission-row[aria-pressed='true'] { border-left-color: var(--vm-accent); background: rgba(60, 221, 250, .09); }
+.vm-shell .vm-mission-row:hover { background: rgba(60, 221, 250, .06); }
+.vm-shell .vm-mission-row-title { font-family: var(--vm-font-display); font-size: calc(13px * var(--vm-text-scale, 1)); letter-spacing: .08em; overflow-wrap: anywhere; }
+.vm-shell .vm-mission-row-state { align-self: start; color: var(--vm-text-dim); font-size: calc(10px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-mission-row-state.is-complete { color: var(--vm-success, #71d99b); }
+.vm-shell .vm-mission-row-state.is-active { color: var(--vm-accent); }
+.vm-shell .vm-mission-row-reward, .vm-shell .vm-mission-row-progress { color: var(--vm-text-dim); font-size: calc(11px * var(--vm-text-scale, 1)); overflow-wrap: anywhere; }
+.vm-shell .vm-mission-row-progress { text-align: right; }
+.vm-shell .vm-missions-pager { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--vm-line-soft); }
+.vm-shell .vm-missions-pager .vm-btn { flex: 0 0 auto; width: auto; min-width: 0; min-height: 44px; padding: 8px 12px; }
+.vm-shell .vm-missions-pager .vm-btn-label { font-size: calc(11px * var(--vm-text-scale, 1)); letter-spacing: .08em; }
+.vm-shell .vm-missions-page-count { font-size: calc(11px * var(--vm-text-scale, 1)); white-space: nowrap; color: var(--vm-text-dim); }
+.vm-shell .vm-mission-detail { min-width: 0; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+.vm-shell .vm-mission-detail-kicker { margin: 0 0 12px; color: var(--vm-accent); text-transform: uppercase; font-size: calc(11px * var(--vm-text-scale, 1)); letter-spacing: .14em; }
+.vm-shell .vm-mission-detail .vm-mission { padding: 0; gap: 8px; background: none; border: 0; clip-path: none; opacity: 1; }
+.vm-shell .vm-mission-detail .vm-mission-head { gap: 10px; }
+.vm-shell .vm-mission-detail .vm-mission-title { flex-basis: 100%; margin: 0; font-size: calc(25px * var(--vm-text-scale, 1)); line-height: 1.15; overflow-wrap: anywhere; }
+.vm-shell .vm-mission-detail .vm-mission-diff { margin: 0 auto 0 0; color: var(--vm-text-dim); font-size: calc(11px * var(--vm-text-scale, 1)); }
+.vm-shell .vm-mission-detail .vm-mission-desc { font-size: calc(15px * var(--vm-text-scale, 1)); margin: 0; }
+.vm-shell .vm-mission-scope-note { margin: 0; color: var(--vm-text-dim); font-size: calc(12px * var(--vm-text-scale, 1)); line-height: 1.5; }
+.vm-shell .vm-mission-detail .vm-mission-rewards { grid-template-columns: minmax(0, 1fr); }
+.vm-shell .vm-mission-rewards-heading { margin: 4px 0 -4px; }
+.vm-shell .vm-missions-list-back { display: none; }
+.vm-shell .vm-missions-announcement { color: var(--vm-text-dim); font-size: calc(11px * var(--vm-text-scale, 1)); line-height: 1.4; }
+.vm-shell .vm-missions-body > .vm-missions-empty { grid-column: 1 / -1; min-height: 0; overflow-y: auto; }
+.vm-shell .vm-mission-row:focus-visible, .vm-shell .vm-mission-detail:focus-visible, .vm-shell .vm-missions-select:focus-visible,
+.vm-shell .vm-mission-row.is-focus, .vm-shell .vm-mission-detail.is-focus, .vm-shell .vm-missions-jump:focus-visible { outline: 1px solid var(--vm-accent); outline-offset: -3px; }
+
+@media (max-width: 850px) {
+  .vm-shell .vm-missions-body { grid-template-columns: minmax(0, 1fr); }
+  .vm-shell .vm-mission-results { border-right: 0; }
+  .vm-shell .vm-missions-body:not(.is-reading) > .vm-mission-detail,
+  .vm-shell .vm-missions-body.is-reading > .vm-mission-results { display: none; }
+  .vm-shell .vm-missions-list-back { display: inline-flex; min-height: 44px; margin-bottom: 16px; }
+  .vm-shell .vm-mission-detail { padding: 16px; }
+  .vm-shell .vm-missions-filters { gap: 8px; }
+  .vm-shell .vm-missions-filter { flex: 1; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .vm-shell .vm-missions-select { width: 100%; }
+  .vm-shell .vm-missions-jump { flex: 1 0 auto; }
+}
+
 @media (max-width: 1360px) {
   .vm-shell .vm-command-shell .vm-settings-columns { grid-template-columns: 1fr; }
   .vm-shell .vm-command-shell .vm-settings-reference-panel > .vm-page-body { background: rgba(3, 8, 16, .7); }

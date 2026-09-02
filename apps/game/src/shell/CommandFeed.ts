@@ -40,17 +40,17 @@ export const COMMAND_FEED_URL = 'https://voltmarch.com/news.json';
 
 export const OFFLINE_COMMAND_FEED: CommandFeed = {
   version: 1,
-  updatedAt: '2026-09-02T19:00:00Z',
+  updatedAt: '2026-09-02T21:48:00Z',
   items: [
     {
-      id: 'update-3-16-2',
+      id: 'update-3-16-3',
       kind: 'update',
-      title: 'VOLTMARCH 3.16.2 is live',
-      summary: 'Menus share a consistent command frame with working navigation and no duplicate '
-        + 'destinations. The cinematic title screen returns, Service Record is clearer, and city foliage coverage is repaired.',
+      title: 'VOLTMARCH 3.16.3 is live',
+      summary: 'Missions now uses filters, compact pages and a focused dossier. Service Record separates '
+        + 'Overview, Honours and Identity. The title screen has clearer play choices, an unclipped logo and dedicated soundtrack controls.',
       date: '2026-09-02',
       actionLabel: 'Read release notes',
-      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.2',
+      url: 'https://github.com/avihaymenahem/voltmarch/releases/tag/v3.16.3',
     },
   ],
 };

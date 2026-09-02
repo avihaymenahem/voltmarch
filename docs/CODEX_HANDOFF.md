@@ -1,6 +1,6 @@
 # Codex handoff
 
-Last refreshed: 2026-09-02
+Last refreshed: 2026-09-03
 
 This is the first document to read when a new Codex chat takes over VOLTMARCH. It is a jump table
 and a current-state snapshot, not a second copy of every design document. If this file and the
@@ -70,8 +70,24 @@ project decision obsolete.
   scene ceilings and the 58% coverage requirement are unchanged. Evidence and release gates are in
   `docs/reviews/MENU_REFERENCE_AUDIT_2026-09-02.md`.
 
-The repository should be clean and `origin/main` should match the working branch at this handoff.
-Verify rather than trusting that sentence after time has passed.
+Local, unreleased follow-up: Missions now uses category/scope/status filters, a five-row paged list
+and a selected dossier (Back to list on narrow screens). Do not restore the 55 expanded cards or
+unbounded earned-unlock strip. Service Record now separates Overview, Honours and Identity: one
+copy of career/faction totals, six paged honours with one detail panel, and a draft-preserving
+callsign editor. Do not restore the repeated dashboard panels or expanded 17-award grid. The title
+facelift keeps its image-led spine, larger play choices, one Service Record identity control and
+a separate soundtrack footer. Only its play section scrolls; clipping the brand container cuts off
+the supplied logo's glow. The studio UX/QA workflow and current 1,082-test UI gate are recorded in
+`docs/reviews/MENU_REFERENCE_AUDIT_2026-09-02.md`. These rebuilds and the studio agent configuration
+remain uncommitted; they are not part of the shipped 3.16.2 tag. Verify current Git state rather
+than assuming the release receipt means a clean worktree.
+
+Local, tools-only experiment: the imported-geometry offload POC compared renderer,
+Web Worker and Electron utility process on the compact Chrono Miner family. Its
+54 loads/72 captures support a bounded production-path worker trial; they do not
+justify utility migration or establish whole-game boot/FPS/lifecycle readiness.
+Shipping paths and assets remain unchanged. Evidence and limits:
+`docs/reviews/ASSET_PREPARATION_OFFLOAD_POC_2026-09-03.md`.
 
 ## Source-of-truth map
 
@@ -79,6 +95,7 @@ Verify rather than trusting that sentence after time has passed.
 | --- | --- |
 | Architecture, hard rules, renderer history, deployment topology | `CLAUDE.md` |
 | Open engineering work only | `TODO.md` |
+| Studio roles, delegation, model defaults and permission limits | `docs/STUDIO_WORKFLOW.md`, `.codex/STUDIO_POLICY.md`, `.codex/agents/` |
 | Player-visible rules and numbers | `wiki/`; guarded by wiki/manual tests |
 | Visual identity and faction language | `docs/VISUAL_DNA.md`, `docs/ART_DIRECTION_V2.md`, `docs/RA3_LOOK_BIBLE.md` |
 | Imported model roster and status | `docs/ASSET_CONVERSION_MAP.md` |
@@ -224,6 +241,12 @@ dozer into its imported shell.
   through LODs, shadow proxies, shared materials, KTX2/Basis and batching.
 
 ## Platform and UX decisions
+
+- **Desktop-only game, explicitly confirmed by the owner. Mobile is unsupported and out of scope.**
+  Do not design/test phone or tablet layouts, touch controls, mobile performance or mobile-browser
+  compatibility. Browser previews are desktop development tools. Validate desktop windows/resolutions,
+  keyboard/mouse interaction and accessibility text scaling; do not sacrifice desktop quality for
+  mobile. This applies to the parent and every specialist in `.codex/agents/`.
 
 - WebGPU is the only graphics acceptance target and the no-query product default on desktop and web.
   Do not silently fall back. `?gpu=webgl` remains only as a temporary explicit rollback seam pending

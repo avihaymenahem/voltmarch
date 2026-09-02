@@ -23,6 +23,12 @@ licence is the authority.
 
 ## What this project is
 
+**DESKTOP ONLY.** VOLTMARCH does not support mobile. Do not design, implement, optimize or test
+phone/tablet experiences, touch controls or mobile-browser compatibility unless the project owner
+explicitly changes this policy. Browser previews serve desktop development; they do not create a
+mobile support commitment. UI resize and accessibility checks target desktop windows, resolutions,
+keyboard/mouse operation and supported text scaling, without sacrificing desktop usability for mobile.
+
 VOLTMARCH — an original Windows desktop RTS in Three.js. Four playable factions, ore economy, base
 building, AI opponent, fog of war. Most game-world art is generated from code; selected faction
 structures, capturable civic landmarks, selected vehicles and the Soviet Attack Dog now use original Meshy generations
