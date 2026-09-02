@@ -60,6 +60,7 @@ import {
 import { EntityFlag, EntityKind, Faction, VisionLevel, type PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
+import { VIS_EXPLORED, VIS_VISIBLE } from '../sim/Vision';
 import { SEMANTIC, accentFor, hexToRgb, hostileColor, mixHex, rgba } from './Chrome';
 import type { ArmyLegendEntry } from './Sidebar';
 
@@ -684,7 +685,8 @@ export class Minimap {
     for (let cz = 0; cz < MAP_CELLS; cz++) {
       let run = -1;
       for (let cx = 0; cx <= MAP_CELLS; cx++) {
-        const dark = cx < MAP_CELLS && (grid[cz * MAP_CELLS + cx] & 0b01) === 0;
+        const dark = cx < MAP_CELLS
+          && (grid[cz * MAP_CELLS + cx] & VIS_EXPLORED) === 0;
         if (dark && run < 0) run = cx;
         else if (!dark && run >= 0) {
           ctx.fillRect(this.mapX + run * px, this.mapY + cz * px, (cx - run) * px + 1, px + 1);
@@ -698,7 +700,9 @@ export class Minimap {
       let run = -1;
       for (let cx = 0; cx <= MAP_CELLS; cx++) {
         const v = cx < MAP_CELLS ? grid[cz * MAP_CELLS + cx] : 0;
-        const dim = cx < MAP_CELLS && (v & 0b01) !== 0 && (v & 0b10) === 0;
+        const dim = cx < MAP_CELLS
+          && (v & VIS_EXPLORED) !== 0
+          && (v & VIS_VISIBLE) === 0;
         if (dim && run < 0) run = cx;
         else if (!dim && run >= 0) {
           ctx.fillRect(this.mapX + run * px, this.mapY + cz * px, (cx - run) * px + 1, px + 1);

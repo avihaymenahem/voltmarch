@@ -35,10 +35,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { HUD_RADAR, MAP_CELLS } from '../src/core/config';
+import { HUD_MINIMAP_SHROUD, HUD_RADAR, MAP_CELLS } from '../src/core/config';
 import { Faction } from '../src/core/types';
 import type { PlayerId } from '../src/core/types';
 import { World } from '../src/core/world';
+import { VIS_EXPLORED, VIS_FULL } from '../src/sim/Vision';
 import { SEMANTIC, accentFor, hostileColor } from '../src/ui/Chrome';
 import { Minimap } from '../src/ui/Minimap';
 import type { MinimapOptions } from '../src/ui/Minimap';
@@ -52,6 +53,14 @@ interface StrokeRecord {
   readonly style: string;
   readonly radius: number;
   readonly alpha: number;
+}
+
+interface FillRecord {
+  readonly style: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
 }
 
 class FakeGradient {
@@ -68,10 +77,14 @@ class FakeCtx {
 
   /** Every `stroke()`, with the state that was live when it happened. */
   readonly strokes: StrokeRecord[] = [];
+  /** Every fill, so shroud passes can be checked without screenshot pixels. */
+  readonly fillRects: FillRecord[] = [];
   /** Radius of the last `arc`, so a stroke can be tied to the ring it drew. */
   private lastArcRadius = 0;
 
-  fillRect(): void {}
+  fillRect(x = 0, y = 0, w = 0, h = 0): void {
+    this.fillRects.push({ style: this.fillStyle, x, y, w, h });
+  }
   strokeRect(): void {}
   clearRect(): void {}
   drawImage(): void {}
@@ -149,6 +162,7 @@ interface Rig {
   readonly map: Minimap;
   readonly world: World;
   readonly canvas: FakeCanvas;
+  readonly fillRects: readonly FillRecord[];
   /** Redraw once and hand back the strokes that redraw produced. */
   redraw(): readonly StrokeRecord[];
 }
@@ -182,8 +196,10 @@ function rig(armies: number): Rig {
     map,
     world,
     canvas,
+    fillRects: canvas.fake.fillRects,
     redraw(): readonly StrokeRecord[] {
       canvas.fake.strokes.length = 0;
+      canvas.fake.fillRects.length = 0;
       // One 60 Hz step. Long enough to pass the redraw gate (a live ping raises
       // the rate to 60 Hz) and far short of `pingSeconds`, so nothing expires
       // between arming a ping and photographing it.
@@ -335,6 +351,24 @@ describe('Minimap — the alert ring is coloured by seat, like everything else',
     // Past `pingSeconds` the ring is dropped rather than drawn at zero alpha.
     r.map.frame(1000, HUD_RADAR.pingSeconds + 1);
     expect(r.redraw()).toHaveLength(0);
+    r.map.dispose();
+  });
+});
+
+describe('Minimap — shroud distinguishes memory from unexplored terrain', () => {
+  it('paints only unexplored cells black and explored-not-visible cells dim', () => {
+    const r = rig(1);
+    const grid = r.world.vision.gridFor(0 as PlayerId);
+    grid.fill(VIS_FULL);
+    grid[0] = 0;
+    grid[1] = VIS_EXPLORED;
+
+    r.redraw();
+
+    const shroudFills = r.fillRects.filter((fill) =>
+      fill.style === HUD_MINIMAP_SHROUD || fill.style === 'rgba(0,0,0,0.55)');
+    expect(shroudFills.filter((fill) => fill.style === HUD_MINIMAP_SHROUD)).toHaveLength(1);
+    expect(shroudFills.filter((fill) => fill.style === 'rgba(0,0,0,0.55)')).toHaveLength(1);
     r.map.dispose();
   });
 });
