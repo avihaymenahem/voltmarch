@@ -251,6 +251,48 @@ describe('Strategic Airbase bay contract', () => {
     expect(st.stance[bi]).toBe(Stance.HoldFire);
   });
 
+  it('lets the HUD AttackMove command fire a newly launched HoldFire bomber', () => {
+    expect(setWeaponTable(WEAPONS)).toBe(true);
+    const { world, host, spawnBomber } = rig();
+    const channels = new Channels();
+    const projectiles = new ProjectileSystem(world, channels);
+    const weapons = new WeaponSystem(world, channels, projectiles);
+    const targeting = new TargetingSystem(world, channels, weapons);
+    const sorties = new BomberSortieSystem(world, [AIRBASE_DEF]);
+    const bomber = spawnBomber();
+    const st = world.store;
+    const bi = st.index(bomber);
+    expect(dockNewBomber(world, bomber, host)).toBe(true);
+    const target = st.alloc(
+      EntityKind.Building, 91, 1 as PlayerId, Faction.Soviets,
+      st.posX[bi], 0, st.posZ[bi] + 1, 0,
+    );
+    const ti = st.index(target);
+    st.maxHp[ti] = st.hp[ti] = 1000;
+    st.radius[ti] = 1;
+    st.armorClass[ti] = ArmorClass.Heavy;
+    st.buildProgress[ti] = 1;
+
+    st.orderKind[bi] = OrderKind.AttackMove;
+    st.orderX[bi] = st.posX[ti];
+    st.orderZ[bi] = st.posZ[ti];
+    st.state[bi] = UnitState.AttackMoving;
+    sorties.preTick(context(1));
+    expect(sortieState(st.sortieData[bi])).toBe(BomberSortieState.EnRoute);
+    expect(st.stance[bi]).toBe(Stance.HoldFire);
+
+    world.spatial.rebuild();
+    for (let tick = 1; tick <= 16 && st.cooldown[bi] <= 0; tick++) {
+      targeting.tick(context(tick));
+      weapons.tick(context(tick));
+    }
+    expect(st.cooldown[bi]).toBeGreaterThan(0);
+    expect(projectiles.liveCount).toBe(1);
+    sorties.postWeaponsTick();
+    expect(sortieState(st.sortieData[bi])).toBe(BomberSortieState.Returning);
+    expect(sortieHasBomb(st.sortieData[bi])).toBe(false);
+  });
+
   it('lets Stop cancel an attack run without forcing the loaded bomber home', () => {
     const { world, host, spawnBomber } = rig();
     const st = world.store;
@@ -307,6 +349,34 @@ describe('Strategic Airbase bay contract', () => {
     expect(sortieState(st.sortieData[bi])).toBe(BomberSortieState.FreeFlight);
     expect(sortieHasBomb(st.sortieData[bi])).toBe(false);
     expect(st.locomotor[bi]).toBe(Locomotor.Air);
+  });
+
+  it('returns a loaded bomber when its explicit target disappears before release', () => {
+    const { world, host, spawnBomber } = rig();
+    const st = world.store;
+    const bomber = spawnBomber();
+    const target = st.alloc(
+      EntityKind.Building, 91, 1 as PlayerId, Faction.Soviets, 170, 0, 120, 0,
+    );
+    expect(dockNewBomber(world, bomber, host)).toBe(true);
+    const bi = st.index(bomber);
+
+    st.orderKind[bi] = OrderKind.Attack;
+    st.orderTarget[bi] = target as number;
+    st.state[bi] = UnitState.Attacking;
+    const sorties = new BomberSortieSystem(world, [AIRBASE_DEF]);
+    sorties.preTick(context(1));
+    expect(sortieState(st.sortieData[bi])).toBe(BomberSortieState.EnRoute);
+
+    // The target remains readable until Cleanup, which is the real window in
+    // which this bug occurred: Targeting sees it as pending and clears its
+    // lock, while the sortie still carried the stale explicit Attack order.
+    st.markDead(target);
+    sorties.preTick(context(2));
+    expect(sortieState(st.sortieData[bi])).toBe(BomberSortieState.Returning);
+    expect(sortieHasBomb(st.sortieData[bi])).toBe(true);
+    expect(st.orderKind[bi]).toBe(OrderKind.Move);
+    expect(st.orderTarget[bi]).toBe(0);
   });
 
   it('treats a Move onto its own airbase as a landing request', () => {

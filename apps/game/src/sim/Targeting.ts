@@ -329,6 +329,10 @@ export class TargetingSystem {
 
     // --- an explicit order beats everything -------------------------------
     const order = st.orderKind[i] as OrderKind;
+    // Attack Move is itself an explicit request to engage targets of
+    // opportunity. It must be allowed through the HoldFire stance gate below;
+    // the command is not the same as an ordinary Move with a red marker.
+    const attackMove = order === OrderKind.AttackMove;
     // Guard fights FROM its post, not on the journey to it. This matters most
     // for large naval hulls whose long braking arc made a newly issued Guard
     // look indistinguishable from Attack Move: they kept sailing and firing.
@@ -384,7 +388,7 @@ export class TargetingSystem {
       || (isAirborne(st, i) && !stillGood);
     if (stillGood && !sliceTick) { this.stats.engaged++; return; }
     if (!stillGood && !sliceTick && !hadTarget) return;
-    if (!stanceAllowsAcquire(st.stance[i] as Stance) && !stillGood) return;
+    if (!stanceAllowsAcquire(st.stance[i] as Stance) && !stillGood && !attackMove) return;
 
     const before = st.targetId[i];
     this.acquire(s, i, w, cur, Math.max(reach, w.range * COMBAT_TARGETING.acquireRangeMul));

@@ -706,6 +706,7 @@ export class WeaponSystem {
     // already ran) — they simply never pull the trigger unless force-fired.
     if (st.stance[i] === Stance.HoldFire
         && st.orderKind[i] !== OrderKind.ForceAttack
+        && st.orderKind[i] !== OrderKind.AttackMove
         && !(w.projectile === ProjectileKind.Bomb && st.orderKind[i] === OrderKind.Attack)) return;
     if ((st.flags[i] & EntityFlag.UnderConstruction) !== 0) return;
     /*

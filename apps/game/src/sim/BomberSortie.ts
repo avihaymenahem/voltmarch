@@ -164,6 +164,27 @@ function beginFlight(world: World, i: number): void {
   st.flags[i] &= ~EntityFlag.Immobilized;
 }
 
+/** Publish the one authoritative return-to-bay transition. */
+function orderHome(
+  world: World, i: number, hostSlot: number, data: number,
+  hasBomb = sortieHasBomb(data),
+): void {
+  const st = world.store;
+  bomberBayPosition(world, hostSlot, sortieSlot(data), HOME_POINT);
+  st.sortieData[i] = pack(
+    BomberSortieState.Returning, sortieSlot(data), hasBomb, sortieRearm(data),
+  );
+  st.targetId[i] = 0;
+  st.orderTarget[i] = 0;
+  st.orderKind[i] = OrderKind.Move;
+  st.orderX[i] = HOME_POINT[0];
+  st.orderZ[i] = HOME_POINT[1];
+  st.state[i] = UnitState.Moving;
+  st.stance[i] = Stance.HoldFire;
+}
+
+const HOME_POINT = new Float32Array(2);
+
 /**
  * Context-clicking a friendly structure resolves to a point Move order. The
  * input layer deliberately does not retain that structure as `orderTarget`, so
@@ -323,7 +344,9 @@ export class BomberSortieSystem {
           attack ? BomberSortieState.EnRoute : BomberSortieState.FreeFlight,
           sortieSlot(data), true, 0,
         );
-        st.state[i] = attack ? UnitState.Attacking : UnitState.Moving;
+        st.state[i] = attack
+          ? (order === OrderKind.AttackMove ? UnitState.AttackMoving : UnitState.Attacking)
+          : UnitState.Moving;
         continue;
       }
 
@@ -336,7 +359,8 @@ export class BomberSortieSystem {
           st.sortieData[i] = pack(
             BomberSortieState.EnRoute, sortieSlot(data), true, sortieRearm(data),
           );
-          st.state[i] = UnitState.Attacking;
+          st.state[i] = order === OrderKind.AttackMove
+            ? UnitState.AttackMoving : UnitState.Attacking;
         } else if (order === OrderKind.Guard || moveOrdersHome(this.world, i, hi)) {
           bomberBayPosition(this.world, hi, sortieSlot(data), this.point);
           st.sortieData[i] = pack(
@@ -362,18 +386,22 @@ export class BomberSortieSystem {
 
       if (state === BomberSortieState.EnRoute) {
         const order = st.orderKind[i] as OrderKind;
+        // An explicit strike can lose its target before the bomber gets a
+        // firing window (another unit kills it, or it is pending destruction).
+        // Leaving the stale Attack order in place strands the aircraft in
+        // EnRoute forever: Targeting has no live target to resolve and this
+        // state no longer has a destination that movement can finish. A
+        // one-bomb sortie has no useful reason to loiter in that case, so RTB.
+        const explicitTarget = order === OrderKind.Attack || order === OrderKind.ForceAttack;
+        if (explicitTarget && st.orderTarget[i] !== 0) {
+          const ti = st.index(st.orderTarget[i] as EntityId);
+          if (ti < 0 || (st.flags[ti] & EntityFlag.PendingDestroy) !== 0) {
+            orderHome(this.world, i, hi, data);
+            continue;
+          }
+        }
         if (moveOrdersHome(this.world, i, hi) || order === OrderKind.Guard) {
-          bomberBayPosition(this.world, hi, sortieSlot(data), this.point);
-          st.sortieData[i] = pack(
-            BomberSortieState.Returning, sortieSlot(data), sortieHasBomb(data), 0,
-          );
-          st.targetId[i] = 0;
-          st.orderTarget[i] = 0;
-          st.orderKind[i] = OrderKind.Move;
-          st.orderX[i] = this.point[0];
-          st.orderZ[i] = this.point[1];
-          st.state[i] = UnitState.Moving;
-          st.stance[i] = Stance.HoldFire;
+          orderHome(this.world, i, hi, data);
         } else if (order === OrderKind.Move
             || (order === OrderKind.None && st.state[i] === UnitState.Idle)) {
           // Stop or a normal move cancels the attack run without forcing the
@@ -457,15 +485,7 @@ export class BomberSortieSystem {
       if (st.cooldown[i] <= 0) continue;
       const hi = st.index(st.sortieHostId[i] as EntityId);
       if (hi < 0) continue;
-      bomberBayPosition(this.world, hi, sortieSlot(data), this.point);
-      st.sortieData[i] = pack(BomberSortieState.Returning, sortieSlot(data), false, 0);
-      st.targetId[i] = 0;
-      st.orderTarget[i] = 0;
-      st.orderKind[i] = OrderKind.Move;
-      st.orderX[i] = this.point[0];
-      st.orderZ[i] = this.point[1];
-      st.state[i] = UnitState.Moving;
-      st.stance[i] = Stance.HoldFire;
+      orderHome(this.world, i, hi, data, false);
     }
   }
 }
